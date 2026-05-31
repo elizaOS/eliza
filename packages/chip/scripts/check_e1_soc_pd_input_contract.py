@@ -62,6 +62,14 @@ FORBIDDEN_REPORT_TERMS = [
     "pd_release_allowed: true",
     "fabrication_release_allowed: true",
 ]
+FALSE_CLAIM_FLAGS = {
+    "drc_claim_allowed": False,
+    "lvs_claim_allowed": False,
+    "sta_claim_allowed": False,
+    "pd_release_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+}
 
 
 class NoAliasDumper(yaml.SafeDumper):
@@ -251,6 +259,9 @@ def check_report(report: dict[str, Any]) -> list[str]:
         failures.append("blocker_count_stale")
     if report["summary"]["input_contract_pass"] != (len(report["blockers"]) == 0):
         failures.append("input_contract_pass_stale")
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if report.get(flag) is not expected:
+            failures.append(f"{flag}_must_be_false")
     for key, value in report["release_policy"].items():
         if key.endswith("_allowed") and value is not False:
             failures.append(f"release_policy_open:{key}")
@@ -291,16 +302,13 @@ def build_report() -> dict[str, Any]:
         "spice": dir_ref_for(str(macro["spice"]), config_base),
     }
     actual_refs = {
-        "lef": config.get("EXTRA_LEFS", [None])[0],
-        "lib": config.get("EXTRA_LIBS", [None])[0],
-        "gds": config.get("EXTRA_GDS_FILES", [None])[0],
+        "lef": (macro_cfg.get("lef") or [None])[0],
+        "lib": ((macro_cfg.get("lib") or {}).get("*") or [None])[0],
+        "gds": (macro_cfg.get("gds") or [None])[0],
         "spice": (macro_cfg.get("spice") or [None])[0],
         "nl": (macro_cfg.get("nl") or [None])[0],
     }
     macro_ref_sets = {
-        "extra_lefs": config.get("EXTRA_LEFS", []),
-        "extra_libs": config.get("EXTRA_LIBS", []),
-        "extra_gds_files": config.get("EXTRA_GDS_FILES", []),
         "extra_verilog_models": config.get("EXTRA_VERILOG_MODELS", []),
         "macro_lef": macro_cfg.get("lef", []),
         "macro_lib": (macro_cfg.get("lib") or {}).get("*", []),
@@ -416,7 +424,14 @@ def build_report() -> dict[str, Any]:
     for port in sorted(sdc_ports):
         if port and port not in top_ports:
             sdc_semantic_failures.append({"id": "sdc_port_missing_on_top", "port": port})
-    io_pin_order_ref = config.get("IO_PIN_ORDER_CFG")
+    io_pin_order_key = (
+        "IO_PIN_ORDER_CFG"
+        if isinstance(config.get("IO_PIN_ORDER_CFG"), str)
+        else "FP_PIN_ORDER_CFG"
+        if isinstance(config.get("FP_PIN_ORDER_CFG"), str)
+        else None
+    )
+    io_pin_order_ref = config.get(io_pin_order_key) if io_pin_order_key else None
     io_pin_order_path = (
         resolve_dir_ref(io_pin_order_ref, config_base)
         if isinstance(io_pin_order_ref, str)
@@ -535,6 +550,7 @@ def build_report() -> dict[str, Any]:
         ),
         "release_use": "prohibited_until_external_review",
         "scope": "e1_soc_pd_input_contract_for_openlane_sky130_hard_sram_macro",
+        **FALSE_CLAIM_FLAGS,
         "release_blockers": [
             "Input contract validation is local setup evidence only; DRC/LVS/STA, antenna, IR, density, foundry/EDA review, and tapeout signoff remain required before release use.",
             "Upstream hard-macro and PD signoff evidence remain prohibited for release until externally reviewed and replayed through the complete fail-closed OpenLane/signoff flow.",
@@ -596,6 +612,7 @@ def build_report() -> dict[str, Any]:
             "clock_period": clock_period,
             "top_ports": sorted(top_ports),
             "sdc_ports": sorted(sdc_ports),
+            "io_pin_order_key": io_pin_order_key,
             "io_pin_order_cfg": io_pin_order_ref,
             "io_pin_order_present": bool(io_pin_order_path and io_pin_order_path.exists()),
         },

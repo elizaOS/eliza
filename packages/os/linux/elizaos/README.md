@@ -165,8 +165,11 @@ sources in `assets/` using ImageMagick. The PNGs are staged into
 `scripts/check_release_manifest.py` validates a filled `manifest.json`
 against the schema at `packages/os/release/schema/`. It is fail-closed:
 informational by default, `release-check-strict` for the release pipeline.
-No promoted artifact exists yet — the manifest template carries
-`provenance: scaffolding` until a real build replaces it.
+The checked-in `manifest.json` is scoped to the generic qemu-virt RISC-V
+release candidate backed by local ISO, transcript, and runtime-smoke evidence;
+it is not generated Eliza AP, chip-emulator, phone, silicon, or physical board
+boot evidence. `manifest.json.template` remains the skeleton for future
+builds before evidence collection.
 
 ## Chip/AP evidence
 

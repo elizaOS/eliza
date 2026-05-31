@@ -15,6 +15,17 @@ OPTIMIZER = ROOT / "benchmarks/results/soc-optimized-operating-point.json"
 TARGET_SPEC = ROOT / "docs/spec-db/npu-2028-target.yaml"
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_class_release_claim_allowed": False,
+    "aosp_scheduler_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "thermal_enclosure_claim_allowed": False,
+    "battery_claim_allowed": False,
+    "sustained_performance_claim_allowed": False,
+    "measured_tops_w_claim_allowed": False,
+}
+
 
 def check_row(row_id: str, status: str, evidence: str) -> dict[str, str]:
     return {"id": row_id, "status": status, "evidence": evidence}
@@ -136,6 +147,7 @@ def build_policy() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_npu_2028_burst_sustained_policy.v1",
         "status": "fail" if failed else "modeled_policy_release_blocked" if blocked else "pass",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Deterministic modeled DVFS/governor policy only; not AOSP scheduler, silicon, "
             "thermal enclosure, battery, or phone-class sustained performance evidence."
@@ -193,6 +205,9 @@ def validate_policy(data: dict[str, Any]) -> list[str]:
         errors.append("policy must remain modeled_policy_release_blocked")
     if "not AOSP" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block AOSP scheduler claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     checks = data.get("checks")
     if not isinstance(checks, list):
         errors.append("checks must be a list")

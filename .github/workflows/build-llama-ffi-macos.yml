@@ -39,7 +39,7 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
 
 jobs:
   build:

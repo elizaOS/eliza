@@ -614,6 +614,45 @@ def supplier_step_intake_for_lane(lane: str) -> dict[str, Any]:
     }
 
 
+def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
+    reference = str(model.get("reference", ""))
+    footprint = str(model.get("footprint", ""))
+    if reference not in {"J_TOP_BOTTOM_FLEX_TOP", "J_TOP_BOTTOM_FLEX_BOTTOM"}:
+        return {
+            "public_cad_step_overlay_status": "not_applicable_or_not_downloaded",
+            "public_cad_step_overlay_file": "",
+            "public_cad_step_overlay_sha256": "",
+            "public_cad_step_overlay_bytes": 0,
+            "public_cad_source_record": "",
+            "public_cad_step_overlay_release_credit": False,
+        }
+    step_path = (
+        ROOT
+        / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
+        "hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp"
+    )
+    if not step_path.is_file():
+        return {
+            "public_cad_step_overlay_status": "expected_hirose_bm28_50dp_step_missing",
+            "public_cad_step_overlay_file": chip_rel(step_path),
+            "public_cad_step_overlay_sha256": "",
+            "public_cad_step_overlay_bytes": 0,
+            "public_cad_source_record": "hirose_bm28b0_6_50dp_2_0_35v_53",
+            "public_cad_step_overlay_release_credit": False,
+        }
+    status = "downloaded_hashed_public_manufacturer_step_overlay_not_release"
+    if footprint != "HIROSE_DF40_80P_0P4_DEV":
+        status = "downloaded_hashed_public_manufacturer_step_overlay_footprint_mismatch"
+    return {
+        "public_cad_step_overlay_status": status,
+        "public_cad_step_overlay_file": chip_rel(step_path),
+        "public_cad_step_overlay_sha256": sha256(step_path),
+        "public_cad_step_overlay_bytes": step_path.stat().st_size,
+        "public_cad_source_record": "hirose_bm28b0_6_50dp_2_0_35v_53",
+        "public_cad_step_overlay_release_credit": False,
+    }
+
+
 def write_local_supplier_lane_surrogate_steps(models: list[dict[str, Any]]) -> dict[str, Any]:
     lane_models: dict[str, list[dict[str, Any]]] = {}
     for model in models:
@@ -823,6 +862,42 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
         "release_allowed": False,
         "claim_boundary": "blocked local candidate; not release evidence",
     }
+    if path == ROOT / "board/kicad/e1-phone/production/reports/drc.json":
+        payload.update(
+            {
+                "raw_kicad_report_kind": "drc",
+                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_cli_command": (
+                    "kicad-cli pcb drc --format json --output "
+                    "board/kicad/e1-phone/production/reports/drc.json "
+                    "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+                ),
+                "kicad_cli_version": "",
+                "source_board_sha256": sha256(SOURCE_BOARD),
+                "tool_exit_code": "not_run",
+                "raw_kicad_cli_report": {},
+                "raw_kicad_cli_payload_required_for_release": True,
+            }
+        )
+    if path == ROOT / "board/kicad/e1-phone/production/reports/erc.json":
+        payload.update(
+            {
+                "raw_kicad_report_kind": "erc",
+                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_cli_command": (
+                    "kicad-cli sch erc --format json --output "
+                    "board/kicad/e1-phone/production/reports/erc.json "
+                    "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
+                ),
+                "kicad_cli_version": "",
+                "source_schematic_sha256": sha256(
+                    ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
+                ),
+                "tool_exit_code": "not_run",
+                "raw_kicad_cli_report": {},
+                "raw_kicad_cli_payload_required_for_release": True,
+            }
+        )
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {"path": chip_rel(path), "kind": "json", "metadata": ""}
 
@@ -1296,105 +1371,56 @@ def write_local_envelope_step(path: Path, model: dict[str, Any]) -> None:
     depth = max(float(envelope.get("depth", 0) or 0), 0.1)
     height = max(float(envelope.get("height", 0) or 0), 0.05)
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import cadquery as cq
-    except ModuleNotFoundError:
-        try:
-            from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-            from OCP.IFSelect import IFSelect_RetDone
-            from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
-            from OCP.gp import gp_Pnt
-        except ModuleNotFoundError:
-            venv_python = ROOT / ".venv/bin/python"
-            if venv_python.is_file():
-                subprocess.run(
-                    [
-                        str(venv_python),
-                        "-c",
-                        (
-                            "import cadquery as cq, sys\n"
-                            "path, width, depth, height = sys.argv[1], float(sys.argv[2]), "
-                            "float(sys.argv[3]), float(sys.argv[4])\n"
-                            "shape = cq.Workplane('XY').box(width, depth, height)\n"
-                            "cq.exporters.export(shape, path)\n"
-                        ),
-                        str(path),
-                        str(width),
-                        str(depth),
-                        str(height),
-                    ],
-                    check=True,
-                )
-                return
-        else:
-            shape = BRepPrimAPI_MakeBox(
-                gp_Pnt(-width / 2.0, -depth / 2.0, -height / 2.0),
-                width,
-                depth,
-                height,
-            ).Shape()
-            writer = STEPControl_Writer()
-            writer.Transfer(shape, STEPControl_AsIs)
-            status = writer.Write(str(path))
-            if status != IFSelect_RetDone:
-                raise RuntimeError(f"OCP STEP write failed: {status}")
-            return
-        reference = str(model.get("reference", "LOCAL_ENVELOPE"))
-        half_w = width / 2.0
-        half_d = depth / 2.0
-        points = [
-            (-half_w, -half_d, 0.0),
-            (half_w, -half_d, 0.0),
-            (half_w, half_d, 0.0),
-            (-half_w, half_d, 0.0),
-            (-half_w, -half_d, height),
-            (half_w, -half_d, height),
-            (half_w, half_d, height),
-            (-half_w, half_d, height),
-        ]
-        triangles = [
-            (1, 2, 3),
-            (1, 3, 4),
-            (5, 7, 6),
-            (5, 8, 7),
-            (1, 5, 6),
-            (1, 6, 2),
-            (2, 6, 7),
-            (2, 7, 3),
-            (3, 7, 8),
-            (3, 8, 4),
-            (4, 8, 5),
-            (4, 5, 1),
-        ]
-        point_text = ",".join(
-            f"({x:.4f},{y:.4f},{z:.4f})" for x, y, z in points
-        )
-        triangle_text = ",".join(f"({a},{b},{c})" for a, b, c in triangles)
-        path.write_text(
-            "\n".join(
-                [
-                    "ISO-10303-21;",
-                    "HEADER;",
-                    "FILE_DESCRIPTION(('E1 phone local development envelope STEP'),'2;1');",
-                    f"FILE_NAME('{path.name}','2026-05-22',('eliza'),('elizaOS'),'generate_e1_phone_routed_output_candidates.py','local','non-release');",
-                    "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
-                    "ENDSEC;",
-                    "DATA;",
-                    f"#1=CARTESIAN_POINT_LIST_3D('{reference}',({point_text}));",
-                    f"#2=TRIANGULATED_FACE_SET('{reference}_LOCAL_ENVELOPE',#1,$,.T.,({triangle_text}),$);",
-                    "#3=GEOMETRIC_REPRESENTATION_CONTEXT(3);",
-                    "#4=SHAPE_REPRESENTATION('local_development_envelope',(#2),#3);",
-                    "ENDSEC;",
-                    "END-ISO-10303-21;",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        return
-
-    shape = cq.Workplane("XY").box(width, depth, height)
-    cq.exporters.export(shape, str(path))
+    reference = str(model.get("reference", "LOCAL_ENVELOPE"))
+    half_w = width / 2.0
+    half_d = depth / 2.0
+    points = [
+        (-half_w, -half_d, 0.0),
+        (half_w, -half_d, 0.0),
+        (half_w, half_d, 0.0),
+        (-half_w, half_d, 0.0),
+        (-half_w, -half_d, height),
+        (half_w, -half_d, height),
+        (half_w, half_d, height),
+        (-half_w, half_d, height),
+    ]
+    triangles = [
+        (1, 2, 3),
+        (1, 3, 4),
+        (5, 7, 6),
+        (5, 8, 7),
+        (1, 5, 6),
+        (1, 6, 2),
+        (2, 6, 7),
+        (2, 7, 3),
+        (3, 7, 8),
+        (3, 8, 4),
+        (4, 8, 5),
+        (4, 5, 1),
+    ]
+    point_text = ",".join(f"({x:.4f},{y:.4f},{z:.4f})" for x, y, z in points)
+    triangle_text = ",".join(f"({a},{b},{c})" for a, b, c in triangles)
+    path.write_text(
+        "\n".join(
+            [
+                "ISO-10303-21;",
+                "HEADER;",
+                "FILE_DESCRIPTION(('E1 phone local development envelope STEP'),'2;1');",
+                f"FILE_NAME('{path.name}','2026-05-22',('eliza'),('elizaOS'),'generate_e1_phone_routed_output_candidates.py','local','non-release');",
+                "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
+                "ENDSEC;",
+                "DATA;",
+                f"#1=CARTESIAN_POINT_LIST_3D('{reference}',({point_text}));",
+                f"#2=TRIANGULATED_FACE_SET('{reference}_LOCAL_ENVELOPE',#1,$,.T.,({triangle_text}),$);",
+                "#3=GEOMETRIC_REPRESENTATION_CONTEXT(3);",
+                "#4=SHAPE_REPRESENTATION('local_development_envelope',(#2),#3);",
+                "ENDSEC;",
+                "END-ISO-10303-21;",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def validate_local_envelope_step(path: Path, model: dict[str, Any]) -> dict[str, Any]:
@@ -1536,9 +1562,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         supplier_step_intake = supplier_step_intake_for_lane(supplier_lane)
         write_local_envelope_step(local_step_path, model)
         local_step_rel = chip_rel(local_step_path)
+        local_step_validation = validate_local_envelope_step(local_step_path, model)
         local_step_sha256 = sha256(local_step_path)
         local_step_bytes = local_step_path.stat().st_size
-        local_step_validation = validate_local_envelope_step(local_step_path, model)
         local_discrete_step_imported_as_solid = (
             local_step_validation.get("import_status") == "pass"
             and local_step_validation.get("solid_type") == "Solid"
@@ -1582,6 +1608,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             ),
             "supplier_sourcing_lane": supplier_lane,
             **supplier_step_intake,
+            **public_step_overlay_for_model(model),
             "source_step_intake": model.get("source_step_intake", ""),
             "source_assembly_item": model.get("source_assembly_item", ""),
             "discrete_supplier_step_file": "",
@@ -1681,6 +1708,18 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 ],
                 "supplier_step_intake_sha256": record["supplier_step_intake_sha256"],
                 "supplier_step_intake_bytes": record["supplier_step_intake_bytes"],
+                "public_cad_step_overlay_status": record[
+                    "public_cad_step_overlay_status"
+                ],
+                "public_cad_step_overlay_file": record["public_cad_step_overlay_file"],
+                "public_cad_step_overlay_sha256": record[
+                    "public_cad_step_overlay_sha256"
+                ],
+                "public_cad_step_overlay_bytes": record["public_cad_step_overlay_bytes"],
+                "public_cad_source_record": record["public_cad_source_record"],
+                "public_cad_step_overlay_release_credit": record[
+                    "public_cad_step_overlay_release_credit"
+                ],
                 "pinout_bound": bool(model.get("pinout_file")),
                 "support_pattern_has_explicit_provenance": bool(
                     model.get("support_pattern_has_explicit_provenance", False)
@@ -1709,6 +1748,21 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "release_credit": False,
             }
         )
+
+    for record in model_records:
+        local_step_path = ROOT / str(record["local_discrete_step_file"])
+        record_path = path / str(record["metadata"])
+        local_step_sha256 = sha256(local_step_path)
+        local_step_bytes = local_step_path.stat().st_size
+        record["local_discrete_step_sha256"] = local_step_sha256
+        record["local_discrete_step_bytes"] = local_step_bytes
+        metadata = json.loads(record_path.read_text(encoding="utf-8"))
+        metadata["local_discrete_step_sha256"] = local_step_sha256
+        metadata["local_discrete_step_bytes"] = local_step_bytes
+        record_path.write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        record["metadata_sha256"] = sha256(record_path)
 
     records_by_reference = {
         str(record.get("reference", "")): record
@@ -1739,6 +1793,14 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         model["local_discrete_step_bbox_matches_envelope"] = record[
             "local_discrete_step_bbox_matches_envelope"
         ]
+        model["public_cad_step_overlay_status"] = record["public_cad_step_overlay_status"]
+        model["public_cad_step_overlay_file"] = record["public_cad_step_overlay_file"]
+        model["public_cad_step_overlay_sha256"] = record["public_cad_step_overlay_sha256"]
+        model["public_cad_step_overlay_bytes"] = record["public_cad_step_overlay_bytes"]
+        model["public_cad_source_record"] = record["public_cad_source_record"]
+        model["public_cad_step_overlay_release_credit"] = record[
+            "public_cad_step_overlay_release_credit"
+        ]
     component_manifest["local_discrete_step_binding"] = {
         "source": chip_rel(path / "release-manifest.yaml"),
         "binding_basis": (
@@ -1765,6 +1827,15 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         ),
         "local_discrete_step_bytes_total": sum(
             int(item.get("local_discrete_step_bytes", 0) or 0) for item in model_records
+        ),
+        "public_cad_step_overlay_count": sum(
+            1
+            for item in model_records
+            if item.get("public_cad_step_overlay_status")
+            == "downloaded_hashed_public_manufacturer_step_overlay_not_release"
+        ),
+        "public_cad_step_overlay_release_candidate_count": sum(
+            1 for item in model_records if item.get("public_cad_step_overlay_release_credit")
         ),
         "all_models_have_local_discrete_step_file": len(model_records) == len(models)
         and all(
@@ -1993,6 +2064,15 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "supplier_step_intake_release_candidate_count": sum(
                 1 for item in model_records if item.get("supplier_step_intake_release_credit")
             ),
+            "public_cad_step_overlay_count": sum(
+                1
+                for item in model_records
+                if item.get("public_cad_step_overlay_status")
+                == "downloaded_hashed_public_manufacturer_step_overlay_not_release"
+            ),
+            "public_cad_step_overlay_release_candidate_count": sum(
+                1 for item in model_records if item.get("public_cad_step_overlay_release_credit")
+            ),
             "supplier_step_intake_lane_counts": dict(
                 sorted(
                     {
@@ -2075,6 +2155,19 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
                 "supplier_step_intake_bytes": str(
                     int(item.get("supplier_step_intake_bytes", 0) or 0)
                 ),
+                "public_cad_step_overlay_file": str(
+                    item.get("public_cad_step_overlay_file") or ""
+                ),
+                "public_cad_step_overlay_status": str(
+                    item.get("public_cad_step_overlay_status") or ""
+                ),
+                "public_cad_step_overlay_sha256": str(
+                    item.get("public_cad_step_overlay_sha256") or ""
+                ),
+                "public_cad_step_overlay_bytes": str(
+                    int(item.get("public_cad_step_overlay_bytes", 0) or 0)
+                ),
+                "public_cad_source_record": str(item.get("public_cad_source_record") or ""),
                 "supplier_step_intake_release_credit": str(
                     item.get("supplier_step_intake_release_credit") is True
                 ).lower(),
@@ -2150,6 +2243,12 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
             ),
             "supplier_step_intake_release_candidate_count": sum(
                 1 for row in rows if row["supplier_step_intake_release_credit"] == "true"
+            ),
+            "public_cad_step_overlay_count": sum(
+                1
+                for row in rows
+                if row["public_cad_step_overlay_status"]
+                == "downloaded_hashed_public_manufacturer_step_overlay_not_release"
             ),
             "all_rows_release_credit_false": all(row["release_credit"] == "false" for row in rows),
             "all_rows_release_allowed_false": all(

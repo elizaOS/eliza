@@ -144,6 +144,74 @@ async function withSpawnedSession(): Promise<{
   return { service, acp, taskId: task.id, sessionId };
 }
 
+/** Like {@link withSpawnedSession} but the spawn carries an explicit
+ * human-provided label, exercising the "keep the user's choice" precedence. */
+async function withSpawnedSessionLabel(label: string): Promise<{
+  service: OrchestratorTaskService;
+  acp: FakeAcp;
+  taskId: string;
+  sessionId: string;
+}> {
+  const acp = new FakeAcp();
+  const service = makeService(acp);
+  await service.start();
+  const task = await service.createTask(createInput());
+  const detail = must(
+    await service.spawnAgentForTask(task.id, { label }),
+    "expected spawn detail",
+  );
+  const sessionId = must(detail.sessions[0], "expected session").sessionId;
+  return { service, acp, taskId: task.id, sessionId };
+}
+
+describe("OrchestratorTaskService — sub-agent naming", () => {
+  it("gives a spawned session a non-empty person-name label", async () => {
+    const { service, taskId } = await withSpawnedSession();
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    expect(session.label.length).toBeGreaterThan(0);
+    // Not the generic "<framework> agent" descriptor any more.
+    expect(session.label).not.toMatch(/ agent$/);
+  });
+
+  it("weaves the assigned name into the session's goal prompt", async () => {
+    const { service, taskId } = await withSpawnedSession();
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    expect(session.goalPrompt).toBeTruthy();
+    expect(session.goalPrompt).toContain(`You are ${session.label},`);
+  });
+
+  it("assigns distinct names to two concurrent sub-agents on one task", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.spawnAgentForTask(task.id);
+    await service.spawnAgentForTask(task.id);
+    const sessions = must(await service.getTask(task.id), "detail").sessions;
+    expect(sessions).toHaveLength(2);
+    const [first, second] = sessions;
+    expect(must(first, "first").label.length).toBeGreaterThan(0);
+    expect(must(second, "second").label.length).toBeGreaterThan(0);
+    expect(must(first, "first").label).not.toBe(must(second, "second").label);
+  });
+
+  it("keeps an explicit caller label instead of assigning a pooled name", async () => {
+    const { service, taskId } = await withSpawnedSessionLabel("Release Captain");
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    expect(session.label).toBe("Release Captain");
+    expect(session.goalPrompt).toContain("You are Release Captain,");
+  });
+});
+
 describe("OrchestratorTaskService — lifecycle", () => {
   it("creates a task and defaults originalRequest to the goal without an extra message", async () => {
     const service = makeService();

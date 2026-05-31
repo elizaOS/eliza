@@ -85,6 +85,7 @@ import {
 } from "../lifeops/browser-extension-store.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -198,6 +199,25 @@ const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
 const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
 const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
+const routeSchemaBootstraps = new WeakMap<AgentRuntime, Promise<void>>();
+
+async function ensureRouteSchema(runtime: AgentRuntime | null): Promise<void> {
+  if (!runtime) return;
+  const adapter = runtime.adapter;
+  if (!adapter || typeof adapter.runPluginMigrations !== "function") return;
+  if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
+    return;
+  }
+  let bootstrap = routeSchemaBootstraps.get(runtime);
+  if (!bootstrap) {
+    bootstrap = LifeOpsRepository.bootstrapSchema(runtime).catch((error) => {
+      routeSchemaBootstraps.delete(runtime);
+      throw error;
+    });
+    routeSchemaBootstraps.set(runtime, bootstrap);
+  }
+  await bootstrap;
+}
 
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
@@ -695,6 +715,9 @@ async function runRoute(
     return true;
   }
   try {
+    // Routes can be served before a startup hook migrates the LifeOps DB;
+    // bootstrap the schema here (memoized per runtime) before any handler runs.
+    await ensureRouteSchema(ctx.state.runtime);
     await fn(service);
     span.success({
       statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
@@ -1599,6 +1622,7 @@ export async function handleLifeOpsRoutes(
     const service = getService(ctx);
     if (!service) return true;
     try {
+      await ensureRouteSchema(ctx.state.runtime);
       const status = await service.completeHealthConnectorCallback(url);
       if (status.provider !== provider) {
         throw new LifeOpsServiceError(
@@ -2324,6 +2348,7 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, {
         signals: await service.listActivitySignals({
           sinceAt: parseOptionalIsoQuery(
@@ -2348,6 +2373,7 @@ export async function handleLifeOpsRoutes(
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, { signal: await service.captureActivitySignal(body) }, 201);
     });
   }

@@ -1,5 +1,4 @@
 import {
-  Badge,
   Button,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
@@ -21,12 +20,24 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
+  ChevronsUp,
+  ChevronUp,
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CirclePlay,
   CircleStop,
+  CircleX,
   Copy,
-  Eye,
-  EyeOff,
+  Gauge,
   GitFork,
   Layers,
+  ListTodo,
+  type LucideIcon,
+  OctagonX,
+  PanelRightOpen,
   Pause,
   Play,
   Plus,
@@ -34,6 +45,7 @@ import {
   Send,
   Trash2,
   UserPlus,
+  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -67,16 +79,28 @@ const TASK_LIST_LIMIT = 100;
 const TIMELINE_PAGE_LIMIT = 50;
 const POLL_INTERVAL_MS = 5_000;
 
-const STATUS_DOT: Record<TaskStatus, string> = {
-  open: "bg-muted",
-  active: "bg-ok",
-  waiting_on_user: "bg-warn",
-  blocked: "bg-warn",
-  validating: "bg-accent",
-  done: "bg-ok",
-  failed: "bg-danger",
-  archived: "bg-muted",
-  interrupted: "bg-warn",
+const STATUS_ICON: Record<TaskStatus, LucideIcon> = {
+  open: Circle,
+  active: CirclePlay,
+  waiting_on_user: UserRound,
+  blocked: OctagonX,
+  validating: CircleDashed,
+  done: CircleCheck,
+  failed: CircleX,
+  archived: Archive,
+  interrupted: CircleAlert,
+};
+
+const STATUS_TONE: Record<TaskStatus, string> = {
+  open: "text-muted",
+  active: "text-ok",
+  waiting_on_user: "text-warn",
+  blocked: "text-warn",
+  validating: "text-accent",
+  done: "text-ok",
+  failed: "text-danger",
+  archived: "text-muted",
+  interrupted: "text-warn",
 };
 
 const STATUS_PULSE: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
@@ -84,35 +108,42 @@ const STATUS_PULSE: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
   "validating",
 ]);
 
-const STATUS_BADGE: Record<TaskStatus, string> = {
-  open: "bg-muted/20 text-muted",
-  active: "bg-ok/20 text-ok",
-  waiting_on_user: "bg-warn/20 text-warn",
-  blocked: "bg-warn/20 text-warn",
-  validating: "bg-accent/20 text-accent",
-  done: "bg-ok/20 text-ok",
-  failed: "bg-danger/20 text-danger",
-  archived: "bg-muted/20 text-muted",
-  interrupted: "bg-warn/20 text-warn",
+const PRIORITY_ICON: Record<TaskPriority, LucideIcon | null> = {
+  low: ChevronDown,
+  normal: null,
+  high: ChevronUp,
+  urgent: ChevronsUp,
 };
 
-const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  low: "bg-muted/15 text-muted",
+const PRIORITY_TONE: Record<TaskPriority, string> = {
+  low: "text-muted",
   normal: "",
-  high: "bg-warn/20 text-warn",
-  urgent: "bg-danger/20 text-danger",
+  high: "text-warn",
+  urgent: "text-danger",
 };
 
-const SESSION_DOT: Record<string, string> = {
-  active: "bg-ok",
-  running: "bg-ok",
-  tool_running: "bg-ok",
-  blocked: "bg-warn",
-  idle: "bg-muted",
-  completed: "bg-muted",
-  stopped: "bg-muted",
-  error: "bg-danger",
-  errored: "bg-danger",
+const SESSION_ICON: Record<string, LucideIcon> = {
+  active: CirclePlay,
+  running: CirclePlay,
+  tool_running: CirclePlay,
+  blocked: OctagonX,
+  idle: Circle,
+  completed: CircleCheck,
+  stopped: CircleStop,
+  error: CircleX,
+  errored: CircleX,
+};
+
+const SESSION_TONE: Record<string, string> = {
+  active: "text-ok",
+  running: "text-ok",
+  tool_running: "text-ok",
+  blocked: "text-warn",
+  idle: "text-muted",
+  completed: "text-ok",
+  stopped: "text-muted",
+  error: "text-danger",
+  errored: "text-danger",
 };
 
 const SESSION_PULSE: ReadonlySet<string> = new Set([
@@ -121,14 +152,50 @@ const SESSION_PULSE: ReadonlySet<string> = new Set([
   "tool_running",
 ]);
 
-const VERIFICATION_BADGE: Record<
+const VERIFICATION_ICON: Record<
+  CodingAgentTaskArtifactRecord["verificationStatus"],
+  LucideIcon
+> = {
+  passed: CircleCheck,
+  failed: CircleX,
+  pending: CircleDashed,
+  unknown: Circle,
+};
+
+const VERIFICATION_TONE: Record<
   CodingAgentTaskArtifactRecord["verificationStatus"],
   string
 > = {
-  passed: "bg-ok/20 text-ok",
-  failed: "bg-danger/20 text-danger",
-  pending: "bg-warn/20 text-warn",
-  unknown: "bg-muted/20 text-muted",
+  passed: "text-ok",
+  failed: "text-danger",
+  pending: "text-warn",
+  unknown: "text-muted",
+};
+
+const PLAN_STEP_ICON: Record<string, LucideIcon> = {
+  done: CircleCheck,
+  completed: CircleCheck,
+  passed: CircleCheck,
+  in_progress: CircleDashed,
+  active: CircleDashed,
+  running: CircleDashed,
+  blocked: OctagonX,
+  failed: CircleX,
+  pending: Circle,
+  todo: Circle,
+};
+
+const PLAN_STEP_TONE: Record<string, string> = {
+  done: "text-ok",
+  completed: "text-ok",
+  passed: "text-ok",
+  in_progress: "text-accent",
+  active: "text-accent",
+  running: "text-accent",
+  blocked: "text-warn",
+  failed: "text-danger",
+  pending: "text-muted",
+  todo: "text-muted",
 };
 
 const FILTER_OPTIONS: StatusFilter[] = [
@@ -165,6 +232,123 @@ function labelPriority(priority: TaskPriority, t: Translate): string {
   return t(`orchestrator.priority.${priority}`, { defaultValue: priority });
 }
 
+function StatusGlyph({
+  status,
+  paused,
+  t,
+  size = "h-3.5 w-3.5",
+}: {
+  status: TaskStatus;
+  paused?: boolean;
+  t: Translate;
+  size?: string;
+}) {
+  const Icon = STATUS_ICON[status];
+  const label = labelStatus(status, t);
+  const pulse = STATUS_PULSE.has(status) && !paused ? " animate-pulse" : "";
+  return (
+    <span
+      className="inline-flex shrink-0"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <Icon className={`${size} ${STATUS_TONE[status]}${pulse}`} aria-hidden />
+    </span>
+  );
+}
+
+function PriorityGlyph({
+  priority,
+  t,
+  size = "h-3.5 w-3.5",
+}: {
+  priority: TaskPriority;
+  t: Translate;
+  size?: string;
+}) {
+  const Icon = PRIORITY_ICON[priority];
+  if (!Icon) return null;
+  const label = labelPriority(priority, t);
+  return (
+    <span
+      className="inline-flex shrink-0"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <Icon className={`${size} ${PRIORITY_TONE[priority]}`} aria-hidden />
+    </span>
+  );
+}
+
+function SessionGlyph({
+  status,
+  t,
+  size = "h-3.5 w-3.5",
+}: {
+  status: string;
+  t: Translate;
+  size?: string;
+}) {
+  const Icon = SESSION_ICON[status] ?? Circle;
+  const tone = SESSION_TONE[status] ?? "text-muted";
+  const label = labelSessionStatus(status, t);
+  const pulse = SESSION_PULSE.has(status) ? " animate-pulse" : "";
+  return (
+    <span
+      className="inline-flex shrink-0"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <Icon className={`${size} ${tone}${pulse}`} aria-hidden />
+    </span>
+  );
+}
+
+function VerificationGlyph({
+  status,
+  t,
+}: {
+  status: CodingAgentTaskArtifactRecord["verificationStatus"];
+  t: Translate;
+}) {
+  const Icon = VERIFICATION_ICON[status];
+  const label = t(`orchestrator.verification.${status}`, {
+    defaultValue: status,
+  });
+  return (
+    <span
+      className="inline-flex shrink-0"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <Icon className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`} aria-hidden />
+    </span>
+  );
+}
+
+function PlanStepGlyph({ status, t }: { status: string; t: Translate }) {
+  const key = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const Icon = PLAN_STEP_ICON[key] ?? Circle;
+  const tone = PLAN_STEP_TONE[key] ?? "text-muted";
+  const label = t(`orchestrator.planStatus.${key}`, {
+    defaultValue: status.replace(/_/g, " "),
+  });
+  return (
+    <span
+      className="mt-px inline-flex shrink-0"
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden />
+    </span>
+  );
+}
+
 const SENDER_LABEL_KEY: Record<
   CodingAgentTaskMessageRecord["senderKind"],
   { key: string; fallback: string }
@@ -184,6 +368,30 @@ function labelSender(
 ): string {
   const meta = SENDER_LABEL_KEY[kind];
   return t(meta.key, { defaultValue: meta.fallback });
+}
+
+/**
+ * Resolve the display name for a timeline message's sender. Sub-agents render
+ * their per-session label (the name they were spun up with); the orchestrator
+ * renders the running agent's name (usually "Eliza"). Falls back to the generic
+ * role label when no specific name is available.
+ */
+function resolveSenderName(
+  message: CodingAgentTaskMessageRecord,
+  sessionLabelById: Map<string, string>,
+  mainAgentName: string | undefined,
+  t: Translate,
+): string {
+  if (message.senderKind === "sub_agent") {
+    const label = message.sessionId
+      ? sessionLabelById.get(message.sessionId)?.trim()
+      : undefined;
+    return label || labelSender("sub_agent", t);
+  }
+  if (message.senderKind === "orchestrator") {
+    return mainAgentName?.trim() || labelSender("orchestrator", t);
+  }
+  return labelSender(message.senderKind, t);
 }
 
 function getClientErrorMessage(error: unknown, fallback: string): string {
@@ -482,11 +690,12 @@ function StatChip({
             ? "text-accent"
             : "text-txt";
   return (
-    <div className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1">
+    <div
+      className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1"
+      title={label}
+      aria-label={label}
+    >
       {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
-      <span className="text-2xs uppercase tracking-[0.08em] text-muted">
-        {label}
-      </span>
       <span className={`text-xs font-semibold tabular-nums ${toneClass}`}>
         {value}
       </span>
@@ -555,16 +764,19 @@ function WorkbenchHeader({
       <StatChip
         label={t("orchestrator.stat.tasks", { defaultValue: "Tasks" })}
         value={String(status?.taskCount ?? 0)}
+        icon={<ListTodo className="h-3 w-3" />}
       />
       <StatChip
         label={t("orchestrator.stat.active", { defaultValue: "Active" })}
         value={String(status?.activeTaskCount ?? 0)}
         tone="ok"
+        icon={<CirclePlay className="h-3 w-3" />}
       />
       <StatChip
         label={t("orchestrator.stat.blocked", { defaultValue: "Blocked" })}
         value={String(status?.blockedTaskCount ?? 0)}
         tone="warn"
+        icon={<OctagonX className="h-3 w-3" />}
       />
       <StatChip
         label={t("orchestrator.stat.validating", {
@@ -572,6 +784,7 @@ function WorkbenchHeader({
         })}
         value={String(status?.validatingTaskCount ?? 0)}
         tone="accent"
+        icon={<CircleDashed className="h-3 w-3" />}
       />
       <StatChip
         label={t("orchestrator.stat.agents", { defaultValue: "Agents" })}
@@ -581,7 +794,12 @@ function WorkbenchHeader({
       {status ? (
         <StatChip
           label={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
-          value={`${renderTokens(status.usage, t, locale)} · ${renderCost(status.usage, t, locale)}`}
+          value={
+            isMobile
+              ? renderTokens(status.usage, t, locale)
+              : `${renderTokens(status.usage, t, locale)} · ${renderCost(status.usage, t, locale)}`
+          }
+          icon={<Gauge className="h-3 w-3" />}
         />
       ) : null}
     </div>
@@ -592,6 +810,9 @@ function WorkbenchHeader({
   const resumeAllLabel = t("orchestrator.action.resumeAll", {
     defaultValue: "Resume all",
   });
+  const newTaskLabel = t("orchestrator.action.newTask", {
+    defaultValue: "New task",
+  });
   const actions = (
     <div className="ml-auto flex shrink-0 items-center gap-1.5">
       <Button
@@ -599,36 +820,35 @@ function WorkbenchHeader({
         size="sm"
         disabled={busy || !status?.activeTaskCount}
         onClick={onPauseAll}
-        className="h-7 gap-1 px-2 text-xs-tight"
+        className="h-7 w-7 p-0"
         aria-label={pauseAllLabel}
-        title={isMobile ? pauseAllLabel : undefined}
+        title={pauseAllLabel}
         data-testid="orchestrator-pause-all"
       >
         <Pause className="h-3.5 w-3.5" />
-        {isMobile ? null : pauseAllLabel}
       </Button>
       <Button
         variant="ghost"
         size="sm"
         disabled={busy || !status?.pausedTaskCount}
         onClick={onResumeAll}
-        className="h-7 gap-1 px-2 text-xs-tight"
+        className="h-7 w-7 p-0"
         aria-label={resumeAllLabel}
-        title={isMobile ? resumeAllLabel : undefined}
+        title={resumeAllLabel}
         data-testid="orchestrator-resume-all"
       >
         <Play className="h-3.5 w-3.5" />
-        {isMobile ? null : resumeAllLabel}
       </Button>
       <Button
         size="sm"
         disabled={busy}
         onClick={onNewTask}
-        className="h-7 gap-1 px-2.5 text-xs-tight"
+        className="h-7 w-7 p-0"
+        aria-label={newTaskLabel}
+        title={newTaskLabel}
         data-testid="orchestrator-new-task"
       >
         <Plus className="h-3.5 w-3.5" />
-        {t("orchestrator.action.newTask", { defaultValue: "New task" })}
       </Button>
     </div>
   );
@@ -731,33 +951,16 @@ function TaskRailItem({
         className="flex w-full flex-col gap-1 p-2.5 text-left"
       >
         <div className="flex items-center gap-1.5">
-          <span
-            className={`inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[thread.status]}${
-              STATUS_PULSE.has(thread.status) && !thread.paused ? " animate-pulse" : ""
-            }`}
-          />
+          <StatusGlyph status={thread.status} paused={thread.paused} t={t} />
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
             {thread.title}
           </span>
           {thread.paused ? (
             <Pause className="h-3 w-3 shrink-0 text-warn" />
           ) : null}
-          {PRIORITY_BADGE[thread.priority] ? (
-            <Badge
-              variant="secondary"
-              className={`shrink-0 text-3xs ${PRIORITY_BADGE[thread.priority]}`}
-            >
-              {labelPriority(thread.priority, t)}
-            </Badge>
-          ) : null}
+          <PriorityGlyph priority={thread.priority} t={t} />
         </div>
         <div className="flex items-center gap-2.5 text-2xs text-muted">
-          <Badge
-            variant="secondary"
-            className={`text-3xs ${STATUS_BADGE[thread.status]}`}
-          >
-            {labelStatus(thread.status, t)}
-          </Badge>
           <span className="flex items-center gap-0.5">
             <Bot className="h-3 w-3" />
             {thread.activeSessionCount}/{thread.sessionCount}
@@ -774,35 +977,38 @@ function TaskRailItem({
 
 function MessageEntry({
   message,
-  t,
+  senderName,
   locale,
 }: {
   message: CodingAgentTaskMessageRecord;
-  t: Translate;
+  senderName: string;
   locale?: string;
 }) {
   const text = stripAnsi(message.content);
   if (!text) return null;
   const isUser = message.senderKind === "user";
-  const tone =
-    message.senderKind === "user"
-      ? "border-accent/30 bg-accent/10"
-      : message.senderKind === "orchestrator"
-        ? "border-border/50 bg-bg-accent/40"
-        : "border-border/40 bg-bg-hover/40";
+  // Your own messages read as "yours" by color + right-alignment, so the
+  // explicit "You" label is redundant; everyone else keeps their name.
+  const tone = isUser
+    ? "bg-accent/20"
+    : message.senderKind === "orchestrator"
+      ? "bg-bg-accent/60"
+      : "bg-bg-hover/60";
   return (
     <div
       className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
       data-testid="orchestrator-message"
     >
       <div
-        className={`rounded-lg border px-2.5 py-1.5 ${tone}`}
+        className={`rounded-lg px-2.5 py-1.5 ${tone}`}
         style={{ maxWidth: "88%" }}
       >
         <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-          <span className="font-semibold uppercase tracking-[0.06em]">
-            {labelSender(message.senderKind, t)}
-          </span>
+          {isUser ? null : (
+            <span className="font-semibold tracking-tight text-txt/90">
+              {senderName}
+            </span>
+          )}
           <span className="tabular-nums">
             {formatClockTime(message.timestamp, locale)}
           </span>
@@ -822,20 +1028,22 @@ function EventEntry({
   event: CodingAgentTaskEventRecord;
   locale?: string;
 }) {
+  // Show the specific summary as the single line; the event type (e.g.
+  // "agent spawned") only restates what the summary already says ("token-
+  // exchange spawned"), so it's dropped unless there is no summary.
+  const text = event.summary?.trim() || event.eventType.replace(/_/g, " ");
   return (
     <div
       className="flex items-center gap-2 px-1 text-2xs text-muted"
       data-testid="orchestrator-event"
     >
       <span className="h-px flex-1 bg-border/40" />
-      <span className="shrink-0 font-medium">
-        {event.eventType.replace(/_/g, " ")}
+      <span
+        className="min-w-0 shrink truncate font-medium"
+        style={{ maxWidth: "72%" }}
+      >
+        {text}
       </span>
-      {event.summary ? (
-        <span className="truncate" style={{ maxWidth: "50%" }}>
-          {event.summary}
-        </span>
-      ) : null}
       <span className="shrink-0 tabular-nums">
         {formatClockTime(event.timestamp, locale)}
       </span>
@@ -868,11 +1076,7 @@ function SubAgentCard({
   return (
     <div className="rounded-md border border-border/40 bg-bg/40 p-2">
       <div className="flex items-center gap-1.5">
-        <span
-          className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-            SESSION_DOT[session.status] ?? "bg-muted"
-          }${SESSION_PULSE.has(session.status) ? " animate-pulse" : ""}`}
-        />
+        <SessionGlyph status={session.status} t={t} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
           {session.label}
         </span>
@@ -895,7 +1099,6 @@ function SubAgentCard({
         <div className="mt-0.5 truncate text-2xs text-muted">{provider}</div>
       ) : null}
       <div className="mt-0.5 flex items-center gap-2 text-2xs text-muted">
-        <span>{labelSessionStatus(session.status, t)}</span>
         {session.activeTool ? (
           <span className="truncate text-warn">{session.activeTool}</span>
         ) : null}
@@ -939,9 +1142,7 @@ function PlanSection({ plan, t }: { plan: NormalizedPlan; t: Translate }) {
               </span>
               <span className="min-w-0 flex-1">{step.label}</span>
               {step.status ? (
-                <span className="shrink-0 text-2xs text-muted">
-                  {step.status}
-                </span>
+                <PlanStepGlyph status={step.status} t={t} />
               ) : null}
             </li>
           ))}
@@ -995,14 +1196,10 @@ function ArtifactSection({
               <span className="min-w-0 flex-1 truncate font-medium text-txt">
                 {artifact.title}
               </span>
-              <Badge
-                variant="secondary"
-                className={`shrink-0 text-3xs ${VERIFICATION_BADGE[artifact.verificationStatus]}`}
-              >
-                {t(`orchestrator.verification.${artifact.verificationStatus}`, {
-                  defaultValue: artifact.verificationStatus,
-                })}
-              </Badge>
+              <VerificationGlyph
+                status={artifact.verificationStatus}
+                t={t}
+              />
             </div>
             <div className="truncate text-muted">
               {artifact.artifactType}
@@ -1364,7 +1561,9 @@ function ControlButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 text-2xs transition-colors disabled:opacity-50 ${
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center rounded-md border border-border/50 p-1.5 transition-colors disabled:opacity-50 ${
         tone === "danger"
           ? "text-muted hover:bg-danger/10 hover:text-danger"
           : "text-muted hover:bg-bg-hover/60 hover:text-txt"
@@ -1372,7 +1571,6 @@ function ControlButton({
       data-testid={testId}
     >
       {icon}
-      {label}
     </button>
   );
 }
@@ -1699,25 +1897,22 @@ const HIDDEN_STYLE: CSSProperties = { display: "none" };
 function TimelineHeader({
   detail,
   isMobile,
-  showSystem,
   onBack,
-  onToggleSystem,
   onOpenInspector,
   t,
 }: {
   detail: CodingAgentTaskThreadDetail;
   isMobile: boolean;
-  showSystem: boolean;
   onBack: () => void;
-  onToggleSystem: () => void;
   onOpenInspector: () => void;
   t: Translate;
 }) {
   const statusDot = (
-    <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[detail.status]}${
-        STATUS_PULSE.has(detail.status) && !detail.paused ? " animate-pulse" : ""
-      }`}
+    <StatusGlyph
+      status={detail.status}
+      paused={detail.paused}
+      t={t}
+      size="h-4 w-4"
     />
   );
   const title = (
@@ -1725,47 +1920,22 @@ function TimelineHeader({
       {detail.title}
     </span>
   );
-  const badge = (
-    <Badge
-      variant="secondary"
-      className={`shrink-0 text-3xs ${STATUS_BADGE[detail.status]}`}
-    >
-      {labelStatus(detail.status, t)}
-    </Badge>
-  );
-  const pausedBadge = detail.paused ? (
-    <Badge
-      variant="secondary"
-      className="shrink-0 gap-0.5 bg-warn/20 text-3xs text-warn"
-    >
-      <Pause className="h-3 w-3" />
-      {t("orchestrator.status.paused", { defaultValue: "Paused" })}
-    </Badge>
-  ) : null;
-  const systemEventsLabel = t("orchestrator.systemEvents", {
-    defaultValue: "System events",
+  const pausedLabel = t("orchestrator.status.paused", {
+    defaultValue: "Paused",
   });
-  const systemToggle = (
-    <button
-      type="button"
-      onClick={onToggleSystem}
-      className={`shrink-0 rounded border p-1 transition-colors ${
-        showSystem
-          ? "border-accent/40 bg-accent/10 text-accent"
-          : "border-border/50 text-muted hover:bg-bg-hover/50"
-      }`}
-      aria-label={systemEventsLabel}
-      aria-pressed={showSystem}
-      title={systemEventsLabel}
-      data-testid="orchestrator-toggle-system"
+  const pausedBadge = detail.paused ? (
+    <span
+      className="inline-flex shrink-0 text-warn"
+      title={pausedLabel}
+      aria-label={pausedLabel}
+      role="img"
     >
-      {showSystem ? (
-        <Eye className="h-3.5 w-3.5" />
-      ) : (
-        <EyeOff className="h-3.5 w-3.5" />
-      )}
-    </button>
-  );
+      <Pause className="h-3.5 w-3.5" aria-hidden />
+    </span>
+  ) : null;
+  const detailsLabel = t("orchestrator.action.details", {
+    defaultValue: "Details",
+  });
 
   if (isMobile) {
     return (
@@ -1787,17 +1957,17 @@ function TimelineHeader({
           <button
             type="button"
             onClick={onOpenInspector}
-            className="shrink-0 rounded border border-border/50 px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
+            className="shrink-0 rounded-md border border-border/50 p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            aria-label={detailsLabel}
+            title={detailsLabel}
             data-testid="orchestrator-open-inspector"
           >
-            {t("orchestrator.action.details", { defaultValue: "Details" })}
+            <PanelRightOpen className="h-4 w-4" aria-hidden />
           </button>
         </div>
-        <div className="mt-1.5 flex items-center gap-1.5">
-          {badge}
-          {pausedBadge}
-          {systemToggle}
-        </div>
+        {pausedBadge ? (
+          <div className="mt-1.5 flex items-center gap-1.5">{pausedBadge}</div>
+        ) : null}
       </div>
     );
   }
@@ -1806,9 +1976,7 @@ function TimelineHeader({
     <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
       {statusDot}
       {title}
-      {badge}
       {pausedBadge}
-      {systemToggle}
     </div>
   );
 }
@@ -1819,6 +1987,10 @@ export function OrchestratorWorkbench() {
   const locale =
     typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
   const copyToClipboard = app?.copyToClipboard;
+  const mainAgentName =
+    typeof app?.agentStatus?.agentName === "string"
+      ? app.agentStatus.agentName
+      : undefined;
 
   const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
     null,
@@ -1836,7 +2008,6 @@ export function OrchestratorWorkbench() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
-  const [showSystem, setShowSystem] = useState(true);
   const [composer, setComposer] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
@@ -2017,16 +2188,22 @@ export function OrchestratorWorkbench() {
       | { kind: "event"; at: number; event: CodingAgentTaskEventRecord }
     > = [];
     for (const message of messages) {
-      if (message.senderKind === "system" && !showSystem) continue;
       items.push({ kind: "message", at: message.timestamp, message });
     }
-    if (showSystem) {
-      for (const event of events) {
-        items.push({ kind: "event", at: event.timestamp, event });
-      }
+    for (const event of events) {
+      items.push({ kind: "event", at: event.timestamp, event });
     }
     return items.sort((a, b) => a.at - b.at);
-  }, [messages, events, showSystem]);
+  }, [messages, events]);
+
+  const sessionLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const session of detail?.sessions ?? []) {
+      const label = session.label?.trim();
+      if (session.sessionId && label) map.set(session.sessionId, label);
+    }
+    return map;
+  }, [detail?.sessions]);
 
   const viewState = JSON.stringify({
     selectedId,
@@ -2150,9 +2327,7 @@ export function OrchestratorWorkbench() {
               <TimelineHeader
                 detail={detail}
                 isMobile={isMobile}
-                showSystem={showSystem}
                 onBack={() => setSelectedId(null)}
-                onToggleSystem={() => setShowSystem((prev) => !prev)}
                 onOpenInspector={() => setInspectorOpen(true)}
                 t={t}
               />
@@ -2187,7 +2362,12 @@ export function OrchestratorWorkbench() {
                       <MessageEntry
                         key={item.message.id}
                         message={item.message}
-                        t={t}
+                        senderName={resolveSenderName(
+                          item.message,
+                          sessionLabelById,
+                          mainAgentName,
+                          t,
+                        )}
                         locale={locale}
                       />
                     ) : (
@@ -2222,11 +2402,16 @@ export function OrchestratorWorkbench() {
                     size="sm"
                     disabled={mutating || composer.trim() === ""}
                     onClick={handleSend}
-                    className="h-8 shrink-0 gap-1 px-2.5 text-xs-tight"
+                    className="h-8 w-8 shrink-0 p-0"
+                    aria-label={t("orchestrator.action.send", {
+                      defaultValue: "Send",
+                    })}
+                    title={t("orchestrator.action.send", {
+                      defaultValue: "Send",
+                    })}
                     data-testid="orchestrator-send"
                   >
                     <Send className="h-3.5 w-3.5" />
-                    {t("orchestrator.action.send", { defaultValue: "Send" })}
                   </Button>
                 </div>
               </div>

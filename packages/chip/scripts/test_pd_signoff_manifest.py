@@ -8,6 +8,12 @@ import check_pd_signoff
 import yaml
 
 
+def assert_false_claim_flags(payload: dict[str, object]) -> None:
+    assert payload["claim_boundary"] == check_pd_signoff.CLAIM_BOUNDARY
+    for key, expected in check_pd_signoff.FALSE_CLAIM_FLAGS.items():
+        assert payload.get(key) is expected, key
+
+
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -291,6 +297,7 @@ def test_blocked_artifact_report_summarizes_closest_run_gap() -> None:
             )
 
         payload = json.loads(artifact_report.read_text(encoding="utf-8"))
+        assert_false_claim_flags(payload)
         assert payload["summary"]["blockers"] == 1
         assert payload["summary"]["closest_run_missing_artifact_count"] == 1
         assert payload["summary"]["blocked_release_gate_count"] == 1
@@ -426,6 +433,7 @@ def test_manifest_report_does_not_overwrite_artifact_report() -> None:
                 ["release gate remains blocked"],
             )
             artifact_payload = json.loads(artifact_report.read_text(encoding="utf-8"))
+            assert_false_claim_flags(artifact_payload)
             check_pd_signoff.write_report(
                 "pass",
                 "manifest",

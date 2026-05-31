@@ -56,6 +56,9 @@ def test_optimizer_selects_feasible_no_throttle_point() -> None:
     errors = checker.check_report(data)
     if errors:
         raise AssertionError("\n".join(errors))
+    flags = {key: value for key, value in data.items() if key.endswith("_claim_allowed")}
+    if not flags or any(value is not False for value in flags.values()):
+        raise AssertionError(flags)
     optimized = data["optimized"]["summary"]
     baseline = data["baseline"]["summary"]
     if optimized["any_modeled_throttle_required"]:

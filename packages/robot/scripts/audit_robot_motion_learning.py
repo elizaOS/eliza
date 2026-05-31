@@ -937,6 +937,19 @@ def _fresh_obstacle_smoke_summary(
         if isinstance(smoke_report.get("obstacle_trace_rollouts"), dict)
         else {}
     )
+    alberta_trace = traces_by_learner.get("alberta", {})
+    alberta_obstacle = (
+        alberta_trace.get("obstacle")
+        if isinstance(alberta_trace.get("obstacle"), dict)
+        else {}
+    )
+    alberta_obstacle_radius = (
+        float(alberta_obstacle.get("radius"))
+        if isinstance(alberta_obstacle.get("radius"), int | float)
+        else None
+    )
+    alberta_min_clearance = alberta_trace.get("min_obstacle_clearance_from_steps_m")
+    alberta_max_abs_y_in_band = alberta_trace.get("max_abs_y_in_obstacle_band_m")
     checks = {
         "validator_ok": smoke_report.get("ok") is True,
         "demo_schema": demo.get("schema") == "robot-alberta-obstacle-demo-v1",
@@ -975,6 +988,35 @@ def _fresh_obstacle_smoke_summary(
             "alberta_final_clear_advantage"
         )
         is True,
+        "alberta_trace_reaches_obstacle_x": alberta_trace.get("reached_obstacle_x")
+        is True,
+        "alberta_trace_clears_obstacle_centerline": alberta_trace.get(
+            "cleared_obstacle_centerline"
+        )
+        is True,
+        "alberta_trace_passes_obstacle_by_steps": alberta_trace.get(
+            "passed_obstacle_ever"
+        )
+        is True,
+        "alberta_trace_no_collision_by_steps": alberta_trace.get("collision_ever")
+        is False,
+        "alberta_trace_clearance_summary_matches_steps": alberta_trace.get(
+            "clearance_summary_matches_steps"
+        )
+        is True,
+        "alberta_trace_positive_step_clearance": isinstance(
+            alberta_min_clearance, int | float
+        )
+        and float(alberta_min_clearance) > 0.0,
+        "alberta_trace_samples_obstacle_band": int(
+            alberta_trace.get("obstacle_band_sample_count") or 0
+        )
+        > 0,
+        "alberta_trace_detours_around_obstacle": isinstance(
+            alberta_obstacle_radius, int | float
+        )
+        and isinstance(alberta_max_abs_y_in_band, int | float)
+        and float(alberta_max_abs_y_in_band) > float(alberta_obstacle_radius),
     }
     return {
         "ok": all(checks.values()),
@@ -1492,6 +1534,14 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"Fresh smoke has successful final clear trace: `{smoke.get('obstacle_trace_rollouts', {}).get('any_required_learner_successful_final_clear')}`",
         f"Fresh smoke Alberta final clear rate: `{smoke.get('obstacle_trace_rollouts', {}).get('alberta_successful_final_clear_rate')}`",
         f"Fresh smoke Alberta majority final clear: `{smoke.get('obstacle_trace_rollouts', {}).get('alberta_majority_final_clear')}`",
+        f"Fresh smoke Alberta step trace reaches obstacle x: `{smoke.get('checks', {}).get('alberta_trace_reaches_obstacle_x')}`",
+        f"Fresh smoke Alberta step trace clears obstacle centerline: `{smoke.get('checks', {}).get('alberta_trace_clears_obstacle_centerline')}`",
+        f"Fresh smoke Alberta step trace passes obstacle: `{smoke.get('checks', {}).get('alberta_trace_passes_obstacle_by_steps')}`",
+        f"Fresh smoke Alberta step trace has no collision: `{smoke.get('checks', {}).get('alberta_trace_no_collision_by_steps')}`",
+        f"Fresh smoke Alberta step clearance matches summary: `{smoke.get('checks', {}).get('alberta_trace_clearance_summary_matches_steps')}`",
+        f"Fresh smoke Alberta step clearance stays positive: `{smoke.get('checks', {}).get('alberta_trace_positive_step_clearance')}`",
+        f"Fresh smoke Alberta samples obstacle band: `{smoke.get('checks', {}).get('alberta_trace_samples_obstacle_band')}`",
+        f"Fresh smoke Alberta detours outside obstacle radius in band: `{smoke.get('checks', {}).get('alberta_trace_detours_around_obstacle')}`",
         f"Fresh smoke demo frames: `{smoke.get('demo', {}).get('frames')}`",
         f"Fresh smoke demo video bytes json/file: `{smoke.get('demo', {}).get('video_bytes_json')}` / `{smoke.get('demo', {}).get('video_bytes_file')}`",
         f"Fresh smoke demo video: `{smoke.get('demo', {}).get('video')}`",
@@ -1764,6 +1814,39 @@ def main(argv: list[str] | None = None) -> int:
             ROOT
             / "evidence"
             / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_yaw055_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_honest_stride_mod_resid025_yaw055_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_cadence_honest_stride_mod_resid025_yaw055_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contract_honest_stride_mod_resid025_yaw055_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_stride_mod_resid025_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_stride_mod_resid050_seed27_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_no_progress_honest_resid025_seed28_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_active_prior_reward_resid025_seed29_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_max_slip_aligned_resid025_seed30_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_hold_taper_support_resid025_seed31_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_terminal_support_resid025_seed32_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_contact_sine_terminal_support_evalsplit_resid025_seed33_8k",
             ROOT
             / "evidence"
             / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_pitch3_yaw075_8k",

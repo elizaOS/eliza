@@ -24,7 +24,7 @@ import {
   useState,
 } from "react";
 import { createNavigateViewHandler } from "./app-navigate-view";
-import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
+import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -988,7 +988,9 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={headerActions} />
+      {props.tab !== "orchestrator" ? (
+        <Header pageRightExtras={headerActions} />
+      ) : null}
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1106,7 +1108,7 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat";
+  return tab === "home" || tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {
@@ -1588,15 +1590,12 @@ export function App() {
   // StartupCoordinator gate — the coordinator is the sole startup authority.
   // Non-ready phases are handled by StartupScreen.
   if (startupCoordinator.phase !== "ready" || !firstRunComplete) {
-    // Pre-agent / first-run setup surface: the cloud loop is a true full-viewport
-    // background (poster first, video streamed in once the client is loaded);
-    // the first-run shell layers above it in Z and scrolls within itself.
+    // Pre-agent / first-run setup surface: the living crystal-ball-over-orange
+    // homescreen backdrop is a true full-viewport background; the first-run
+    // shell layers above it in Z and scrolls within itself.
     return (
       <BugReportProvider value={bugReport}>
-        <CloudVideoBackground
-          scrim={0.05}
-          style={{ position: "fixed", inset: 0 }}
-        >
+        <HomescreenBackdrop style={{ position: "fixed", inset: 0 }}>
           <div
             data-testid="pre-agent-cloud-shell"
             className="flex h-full min-h-0 w-full flex-col overflow-y-auto text-txt"
@@ -1604,7 +1603,7 @@ export function App() {
           >
             <StartupScreen />
           </div>
-        </CloudVideoBackground>
+        </HomescreenBackdrop>
         <BugReportModal />
       </BugReportProvider>
     );
@@ -1698,7 +1697,9 @@ export function App() {
           tab !== "views" && <GameViewOverlay />}
         <ShellOverlays actionNotice={actionNotice} />
         {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
-          <ShellFoundationMount />
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center">
+            <ShellFoundationMount />
+          </div>
         ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

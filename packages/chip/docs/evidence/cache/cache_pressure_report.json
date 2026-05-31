@@ -1,8 +1,6 @@
 {
-  "blocked_count": 0,
-  "captured_utc": "2026-05-23T23:50:54+00:00",
   "claim_allowed": false,
-  "claim_boundary": "This cocotb report measures RTL pressure behavior only. It is not phone, release, L5/L6 silicon, DRAM, LPDDR, Android, or bandwidth evidence.",
+  "claim_boundary": "This cocotb report measures RTL pressure behavior only. It is not L5/L6 silicon, DRAM, LPDDR, Android, or phone bandwidth evidence.",
   "cocotb_top_levels": [
     "e1_l1d_cache",
     "e1_l2_tb",
@@ -20,46 +18,12 @@
     "slc"
   ],
   "evidence_class": "rtl_cocotb_pressure_measurement",
-  "findings": [
-    {
-      "name": "lmbench_memory_runner",
-      "path": "docs/evidence/memory/lmbench_blocked.json",
-      "reason": "RV64 cross toolchain or lmbench source absent",
-      "status": "blocked"
-    },
-    {
-      "missing_reports": [
-        {
-          "name": "contended_android_memory_trace",
-          "path": "docs/evidence/memory/contended_android_memory_trace.json"
-        },
-        {
-          "name": "contended_bandwidth_latency_report",
-          "path": "docs/evidence/memory/contended_bandwidth_latency_report.json"
-        },
-        {
-          "name": "lpddr_bandwidth_latency_benchmark_report",
-          "path": "docs/evidence/memory/lpddr_bandwidth_latency_benchmark_report.json"
-        },
-        {
-          "name": "phone_2028_memory_scorecard",
-          "path": "docs/evidence/memory/phone_2028_memory_scorecard.json"
-        }
-      ],
-      "name": "l5_l6_memory_real_target_reports",
-      "path": "docs/evidence/memory",
-      "reason": "Phone-class memory evidence requires real-target L5/L6 bandwidth, latency, contention, Android shared-buffer, and scorecard artifacts.",
-      "status": "missing"
-    }
-  ],
   "generated_by": "verify/cocotb/cache/test_cache_pressure.py",
-  "generated_by_sha256": "51c3640458af6d1a20b65ba5a697e74eee56d90b2d85ecd5fa4745c4cd064dd8",
-  "generated_utc": "2026-05-24T02:03:00Z",
-  "memory_blocked_count": 1,
+  "generated_utc": "2026-05-30T23:52:11Z",
   "metrics": {
-    "attempted_misses": 12,
-    "blocked_cycles": 4,
-    "completed_misses": 8,
+    "attempted_misses": 20,
+    "blocked_cycles": 8,
+    "completed_misses": 12,
     "display_service_window_violations": 0,
     "max_in_flight_misses": 4,
     "p95_miss_latency_cycles": 4
@@ -72,24 +36,6 @@
   ],
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
-  "result_artifacts": {
-    "e1_l1d_cache": {
-      "path": "verify/cocotb/cache/results/e1_l1d_cache_test_cache_pressure.xml",
-      "sha256": "11b65564f76cabc75addea8e890279954b1ff4a96122338591cd5e3417886c16"
-    },
-    "e1_l2_tb": {
-      "path": "verify/cocotb/cache/results/e1_l2_tb_test_cache_pressure.xml",
-      "sha256": "aa1e9b56d10a869a37a7452bfefab13502a83c8cb5d723b8d1c8cf446dead564"
-    },
-    "e1_l3_tb": {
-      "path": "verify/cocotb/cache/results/e1_l3_tb_test_cache_pressure.xml",
-      "sha256": "9e9f04f46ec51786395abce04a48ecc6758ae1389de2af99eab0e76587461466"
-    },
-    "e1_slc_tb": {
-      "path": "verify/cocotb/cache/results/e1_slc_tb_test_cache_pressure.xml",
-      "sha256": "49a82de49e5fa27735b482ab5bd374b9063ae68f9c24d63764b1233a5d4ee168"
-    }
-  },
   "rtl_pressure_claim_allowed": true,
   "schema": "eliza.cache_pressure_evidence.v1",
   "source": "cocotb-cache-pressure",

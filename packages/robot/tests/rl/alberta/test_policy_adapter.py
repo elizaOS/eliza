@@ -21,6 +21,7 @@ from eliza_robot.rl.alberta.cbp_agent import (
 from eliza_robot.rl.alberta.checkpoint import save_state_npz
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.train_robot import (
+    DEFAULT_HIWONDER_SINE_FEEDBACK,
     _action_scale_gate_passed,
     _build_action_scale_schedule,
     _build_locomotion_prior_residual_schedule,
@@ -28,6 +29,7 @@ from eliza_robot.rl.alberta.train_robot import (
     _physical_checks,
     _promotion_blocker,
     _promotion_passed,
+    _resolve_locomotion_prior_feedback,
     _telemetry_sample_from_info,
     steps_per_task_from_total,
     train_robot,
@@ -658,6 +660,31 @@ def test_physical_checks_require_clearance_slip_and_no_self_collision_for_walk()
         task_id="walk_forward",
         min_success_rate=1.0,
     )
+
+
+def test_hiwonder_sine_training_defaults_to_stabilizing_feedback() -> None:
+    assert _resolve_locomotion_prior_feedback(
+        locomotion_action_prior="hiwonder_sine",
+        pitch=None,
+        roll=None,
+        yaw=None,
+    ) == (
+        DEFAULT_HIWONDER_SINE_FEEDBACK["pitch"],
+        DEFAULT_HIWONDER_SINE_FEEDBACK["roll"],
+        DEFAULT_HIWONDER_SINE_FEEDBACK["yaw"],
+    )
+    assert _resolve_locomotion_prior_feedback(
+        locomotion_action_prior="hiwonder_sine",
+        pitch=0.0,
+        roll=0.0,
+        yaw=0.0,
+    ) == (0.0, 0.0, 0.0)
+    assert _resolve_locomotion_prior_feedback(
+        locomotion_action_prior="none",
+        pitch=None,
+        roll=None,
+        yaw=None,
+    ) == (0.0, 0.0, 0.0)
 
 
 @pytest.mark.parametrize(

@@ -9,16 +9,23 @@ human-readable companion to `docs/evidence/pd/dft-evidence.yaml`.
 
 ## Scan insertion (random logic)
 
-- **Tool:** Fault DFT pass + Yosys `dfflibmap`+`dff2dffe`-based scan-flop
-  retargeting. Upstream Yosys does NOT ship a `scanchain` macro pass; the
-  earlier draft of `pd/dft/scan_insertion.tcl` that referenced a
-  `scanchain` command is therefore BLOCKED and the gate fails closed.
-  The real open-source path is:
-  1. `yosys -p "synth_sky130 -top <mod>"` to map to scan-capable FFs in the
-     Sky130 high-density library (`sky130_fd_sc_hd__sdfxxx`).
-  2. `fault.py dft -top <mod>` (https://github.com/AUCOHL/Fault) to thread the
-     scan chain, expose `scan_in`/`scan_en`/`scan_out` ports, and emit the
-     STIL/VCD harness.
+- **Tool:** Yosys for standard FF mapping (prep only) + Fault DFT pass for the
+  actual scan-flop substitution and chain stitching. Upstream Yosys does NOT
+  ship a `scanchain` macro pass, and `dfflibmap` does NOT retarget to scan
+  cells -- it maps each D-FF onto the best-matching *ordinary* library flop
+  (e.g. `sky130_fd_sc_hd__dfrtp_1`), not a `sky130_fd_sc_hd__sdfxxx` mux-D scan
+  flop. The earlier draft of `pd/dft/scan_insertion.tcl` that referenced a
+  `scanchain` command is BLOCKED and the gate fails closed. The real
+  open-source path is:
+  1. `yosys -p "synth_sky130 -top <mod>"` (or `pd/dft/scan_insertion.tcl`) to
+     map combinational logic and D-FFs onto ordinary `sky130_fd_sc_hd` cells.
+     This is preparation only; the result still contains non-scan flops.
+  2. `fault.py dft -top <mod>` (https://github.com/AUCOHL/Fault) to perform the
+     scan-flop substitution (producing `sky130_fd_sc_hd__sdfxxx` cells), thread
+     the scan chain, expose `scan_in`/`scan_en`/`scan_out` ports, and emit the
+     STIL/VCD harness. Fault is not vendored under `external/`, so this step is
+     BLOCKED; `scripts/build_scan_chain_contract.py` fails closed when the
+     netlist contains no `sdf*` scan flops rather than inventing a chain.
 - **Configuration:** Single scan chain. Top-level scan ports route to the
   pad ring through the JTAG TAP `IEEE 1149.1` USERCODE-style instruction.
 - **Fault model:** stuck-at + transition-delay.

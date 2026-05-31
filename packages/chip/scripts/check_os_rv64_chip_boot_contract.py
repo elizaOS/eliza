@@ -158,6 +158,7 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    blocker_dependency: str = "live_device_validation"
 
 
 def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:

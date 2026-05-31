@@ -199,6 +199,16 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
         "supplier_step_intake_release_credit": (
             record.get("supplier_step_intake_release_credit") is True
         ),
+        "public_cad_step_overlay_status": record.get("public_cad_step_overlay_status"),
+        "public_cad_step_overlay_file": record.get("public_cad_step_overlay_file"),
+        "public_cad_step_overlay_sha256": record.get("public_cad_step_overlay_sha256"),
+        "public_cad_step_overlay_bytes": int(
+            record.get("public_cad_step_overlay_bytes") or 0
+        ),
+        "public_cad_source_record": record.get("public_cad_source_record"),
+        "public_cad_step_overlay_release_credit": (
+            record.get("public_cad_step_overlay_release_credit") is True
+        ),
         "source_routed_step": record.get("source_routed_step"),
         "release_credit": record.get("release_credit") is True,
     }

@@ -88,6 +88,13 @@
     }
   ],
   "claim_boundary": "external_chip_or_sim_transcripts_only_not_placeholder_evidence",
+  "claim_allowed": false,
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "silicon_claim_allowed": false,
+  "board_claim_allowed": false,
+  "android_boot_claim_allowed": false,
+  "production_readiness_claim_allowed": false,
   "command_plan": [
     "export ELIZA_LINUX_TREE=/path/to/linux",
     "export ELIZA_BUILDROOT_TREE=/path/to/buildroot",

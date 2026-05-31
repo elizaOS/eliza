@@ -43,6 +43,15 @@ MINIMUM_CPU_AP_TRANSCRIPTS = {
     "isa_cache_mmu": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
     "ap_benchmarks": "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_class_performance_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "sustained_performance_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 DEVICE_PATH = "/dev/e1-npu"
 WORKLOAD = "gemm_s8_int8_2x2x3"
@@ -1292,6 +1301,7 @@ def build_report() -> dict[str, Any]:
         "generated_utc": generated_utc(),
         "status": "fail" if errors else ("blocked" if blockers else "pass"),
         "claim_boundary": "minimum Linux basic ML only; not Android NNAPI or phone-class performance",
+        **FALSE_CLAIM_FLAGS,
         "integrated_linux_npu_ml_claim": not errors and not blockers,
         "benchmark_command": BENCHMARK_COMMAND,
         "blocking_summary": provenance_safe_value(blocking_summary),

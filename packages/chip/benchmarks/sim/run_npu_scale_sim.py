@@ -38,6 +38,14 @@ CONFIGS = {
 MODEL = ROOT / "benchmarks/models/mobile_smoke.tflite"
 PROCESS_EFFECTS = ROOT / "docs/spec-db/process-14a-effects.yaml"
 DESCRIPTOR_BYTES = 16
+FALSE_CLAIM_FLAGS = {
+    "rtl_dma_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "silicon_performance_claim_allowed": False,
+    "phone_class_throughput_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -334,6 +342,7 @@ def main() -> int:
             "Deterministic architecture scale model only; not measured RTL, "
             "Android NNAPI, silicon performance, or phone-class throughput evidence."
         ),
+        **FALSE_CLAIM_FLAGS,
         "config": {
             "name": config.name,
             "tiles": config.tiles,

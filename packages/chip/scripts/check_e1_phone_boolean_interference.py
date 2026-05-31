@@ -21,6 +21,7 @@ import csv
 import json
 import sys
 import time
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -971,6 +972,13 @@ def evaluate_side_frame_external_cutouts(parts: dict[str, Part]) -> dict:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="run the boolean calculations without rewriting review artifacts",
+    )
+    args = parser.parse_args()
     t0 = time.time()
     with open(MANIFEST) as f:
         manifest = json.load(f)
@@ -1167,11 +1175,13 @@ def main() -> int:
         },
         "overall_status": "pass" if overall_pass else "blocked_boolean_interference_incomplete",
         "release_credit": False,
-        "release_blocked": not overall_pass,
+        "release_blocked": True,
         "release_blocker_category": (
-            "none" if overall_pass else "local_concept_boolean_interference_clashes"
+            "routed_supplier_boolean_rerun_missing"
+            if overall_pass
+            else "local_concept_boolean_interference_clashes"
         ),
-        "release_blocker_count": 0 if overall_pass else len(interferences),
+        "release_blocker_count": 1 if overall_pass else len(interferences),
         "next_action": (
             "Local concept boolean evidence passed; promote/rerun release evidence "
             "against routed board STEP and supplier B-rep models through the enclosure gate."
@@ -1185,14 +1195,21 @@ def main() -> int:
         ),
     }
     out_json_path = REVIEW_DIR / "full-cad-boolean-interference.json"
-    out_json_path.write_text(json.dumps(out_json, indent=2, default=str))
-    print(f"wrote {out_json_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {out_json_path}", file=sys.stderr)
+    else:
+        out_json_path.write_text(json.dumps(out_json, indent=2, default=str))
+        print(f"wrote {out_json_path}", file=sys.stderr)
 
     # --- write Markdown ---
     md_lines = [
         "# E1 Phone Full CAD Boolean Interference Acceptance",
         "",
         f"Status: {'PASS' if overall_pass else 'BLOCKED'}.",
+        (
+            "Release: BLOCKED. This is local concept-envelope B-rep evidence only; "
+            "release credit requires rerun against routed board STEP and supplier B-rep models."
+        ),
         "",
         f"Engine: `{ENGINE_NAME}`.",
         f"Date: {DATE}. Reviewer: `{REVIEWER}`.",
@@ -1341,50 +1358,59 @@ def main() -> int:
         "",
     ]
     md_path = REVIEW_DIR / "full-cad-boolean-interference.md"
-    md_path.write_text("\n".join(md_lines))
-    print(f"wrote {md_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {md_path}", file=sys.stderr)
+    else:
+        md_path.write_text("\n".join(md_lines))
+        print(f"wrote {md_path}", file=sys.stderr)
 
     # --- write results template CSV (populated) ---
     csv_path = REVIEW_DIR / "full-cad-boolean-interference-results-template.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow(
-            [
-                "scope_id",
-                "assembly_step",
-                "boolean_engine",
-                "min_gap_mm",
-                "interference_count",
-                "interference_volume_mm3",
-                "pass",
-                "reviewer",
-                "notes",
-            ]
-        )
-        for s in scope_results:
+    if args.check_only:
+        print(f"check-only: not rewriting {csv_path}", file=sys.stderr)
+    else:
+        with open(csv_path, "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
             w.writerow(
                 [
-                    s["case"],
-                    "fully_assembled",
-                    ENGINE_NAME,
-                    s["min_gap_mm"],
-                    s["interference_count"],
-                    s["interference_volume_mm3"],
-                    "true" if s["status"] == "pass" else "false",
-                    REVIEWER,
-                    s["risk"],
+                    "scope_id",
+                    "assembly_step",
+                    "boolean_engine",
+                    "min_gap_mm",
+                    "interference_count",
+                    "interference_volume_mm3",
+                    "pass",
+                    "reviewer",
+                    "notes",
                 ]
             )
-    print(f"wrote {csv_path}", file=sys.stderr)
+            for s in scope_results:
+                w.writerow(
+                    [
+                        s["case"],
+                        "fully_assembled",
+                        ENGINE_NAME,
+                        s["min_gap_mm"],
+                        s["interference_count"],
+                        s["interference_volume_mm3"],
+                        "true" if s["status"] == "pass" else "false",
+                        REVIEWER,
+                        s["risk"],
+                    ]
+                )
+        print(f"wrote {csv_path}", file=sys.stderr)
 
     # --- write N x N min-gap matrix CSV ---
     mat_path = REVIEW_DIR / "full-cad-min-gap-matrix.csv"
-    with open(mat_path, "w", newline="") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow([""] + names)
-        for i, ni in enumerate(names):
-            w.writerow([ni] + [matrix[i][j] for j in range(N)])
-    print(f"wrote {mat_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {mat_path}", file=sys.stderr)
+    else:
+        with open(mat_path, "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
+            w.writerow([""] + names)
+            for i, ni in enumerate(names):
+                w.writerow([ni] + [matrix[i][j] for j in range(N)])
+        print(f"wrote {mat_path}", file=sys.stderr)
 
     # --- refresh assembly-clearance.json/md to reaffirm pass ---
     ac_json_path = REVIEW_DIR / "assembly-clearance.json"
@@ -1400,8 +1426,11 @@ def main() -> int:
         ac["full_assembly_boolean_pass"] = overall_pass
         ac["full_assembly_unintentional_clash_count"] = len(interferences)
         ac["min_gap_mm_assembly_wide"] = min((s["min_gap_mm"] for s in scope_results), default=0.0)
-        ac_json_path.write_text(json.dumps(ac, indent=2))
-        print(f"refreshed {ac_json_path}", file=sys.stderr)
+        if args.check_only:
+            print(f"check-only: not rewriting {ac_json_path}", file=sys.stderr)
+        else:
+            ac_json_path.write_text(json.dumps(ac, indent=2))
+            print(f"refreshed {ac_json_path}", file=sys.stderr)
 
     ac_md_path = REVIEW_DIR / "assembly-clearance.md"
     if ac_md_path.exists():
@@ -1417,8 +1446,11 @@ def main() -> int:
                 f"Unintentional clash pairs: {len(interferences)}.",
                 "",
             ]
-            ac_md_path.write_text(original.rstrip() + "\n" + "\n".join(addendum))
-            print(f"refreshed {ac_md_path}", file=sys.stderr)
+            if args.check_only:
+                print(f"check-only: not rewriting {ac_md_path}", file=sys.stderr)
+            else:
+                ac_md_path.write_text(original.rstrip() + "\n" + "\n".join(addendum))
+                print(f"refreshed {ac_md_path}", file=sys.stderr)
 
     print(
         f"\n=== SUMMARY ===\n"

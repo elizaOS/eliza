@@ -22,6 +22,16 @@ EXPECTED_SCHEMA = "eliza.e1_phone_fabrication_enclosure_e2e_release_gate.v1"
 REPORT = ROOT / "build/reports/e1_phone_fabrication_release.json"
 REPORT_SCHEMA = "eliza.e1_phone_fabrication_release.v1"
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_fabrication_release.py"
+CLAIM_BOUNDARY = "release_gate_blocker_report_only_not_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fabrication_release_claim_allowed": False,
+    "enclosure_release_claim_allowed": False,
+    "factory_first_article_claim_allowed": False,
+    "end_to_end_release_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 RELEASE_FLAGS = (
     "fabrication_release_allowed",
     "enclosure_release_allowed",
@@ -266,6 +276,8 @@ def write_report(
         "schema": REPORT_SCHEMA,
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "release_ready": status == "pass",
             "release_state": release_state,
@@ -312,7 +324,6 @@ def write_report(
         "blocker_diagnostics": diagnostics,
         "next_unblock_groups": diagnostics["next_unblock_groups"],
         "next_unblock_actions": (blocked_inventory or [])[:20],
-        "claim_boundary": "release_gate_blocker_report_only_not_release_evidence",
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(

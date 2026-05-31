@@ -139,9 +139,9 @@ jobs:
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
-            # Pin bun version on first install to narrow `curl | bash` blast radius.
+            # Install the canary (Rust) Bun on first install.
             if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+              curl -fsSL https://bun.sh/install | bash -s "canary"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi

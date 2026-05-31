@@ -165,6 +165,13 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             report["summary"]["blocker_dependency_counts"],
             report["blocker_dependency_counts"],
         )
+        self.assertTrue(
+            all(
+                finding["blocker_dependency"] == "live_device_validation"
+                for finding in report["findings"]
+                if finding["severity"] == "blocker"
+            )
+        )
         command_ids = {item["id"] for item in report["next_command_plan"]}
         self.assertIn("write_blocked_boot_evidence_from_real_transcript", command_ids)
         self.assertIn("write_blocked_agent_live_evidence_from_real_transcript", command_ids)

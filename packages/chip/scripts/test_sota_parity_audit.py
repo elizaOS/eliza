@@ -30,6 +30,10 @@ def main() -> int:
     data = json.loads(REPORT.read_text(encoding="utf-8"))
     assert data["schema"] == "eliza.sota_parity_audit.v1"
     assert data["status"] == "blocked"
+    assert data["generated_utc"].endswith("Z")
+    flags = {key: value for key, value in data.items() if key.endswith("_claim_allowed")}
+    assert flags
+    assert all(value is False for value in flags.values())
     assert data["summary"]["ready_for_sota_claim"] is False
     assert data["summary"]["blocked_domain_count"] == data["summary"]["domain_count"]
     domain_ids = {domain["id"] for domain in data["parity_domains"]}

@@ -58,10 +58,10 @@ const controllerMock = vi.hoisted(() => ({
 
 const backgroundRenders = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock("../voice/VoiceWaveform", () => ({
-  VoiceWaveform: ({ mode }: { mode: string }) => {
+vi.mock("../../homescreen/Homescreen", () => ({
+  Homescreen: ({ phase }: { phase: string }) => {
     backgroundRenders.count += 1;
-    return <div data-testid="voice-waveform" data-mode={mode} />;
+    return <div data-testid="homescreen" data-phase={phase} />;
   },
 }));
 
@@ -82,10 +82,10 @@ afterEach(() => {
 });
 
 describe("HomeView", () => {
-  it("renders the cloud orb, concise assistant transcript, and the home composer", () => {
+  it("renders the homescreen canvas, concise assistant transcript, and the home composer", () => {
     render(<HomeView />);
 
-    expect(screen.getByTestId("voice-waveform")).toBeTruthy();
+    expect(screen.getByTestId("homescreen")).toBeTruthy();
     expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
       "I can open any view and keep the conversation moving.",
     );
@@ -109,7 +109,7 @@ describe("HomeView", () => {
     expect(input.value).toBe("");
   });
 
-  it("never re-renders the voice cloud background while typing into the composer", () => {
+  it("never re-renders the homescreen background while typing into the composer", () => {
     render(<HomeView />);
 
     expect(backgroundRenders.count).toBe(1);
@@ -122,7 +122,7 @@ describe("HomeView", () => {
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.blur(input);
 
-    // The memoized WebGPU cloudscape must stay mounted without a single extra
+    // The memoized WebGL homescreen must stay mounted without a single extra
     // render across all of the composer's state churn — remounting it would tear
     // down and rebuild the renderer on every keystroke.
     expect(backgroundRenders.count).toBe(1);

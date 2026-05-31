@@ -16,11 +16,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
   type AgentType,
   type ApprovalPreset,
+  type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
@@ -38,6 +40,22 @@ function shouldAutoPreflight(): boolean {
 
 function isPathInside(parent: string, candidate: string): boolean {
   return candidate === parent || candidate.startsWith(`${parent}${path.sep}`);
+}
+
+/** Names taken by live sessions — the names a newly spawned sub-agent must not
+ * collide with. The display name is `metadata.label` (set at spawn), falling
+ * back to the raw session name. Terminal sessions free their name for reuse. */
+function activeSessionNames(sessions: readonly SessionInfo[]): string[] {
+  return sessions
+    .filter((session) => !TERMINAL_SESSION_STATUSES.has(session.status))
+    .map((session) =>
+      typeof session.metadata?.label === "string"
+        ? session.metadata.label
+        : session.name,
+    )
+    .filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
 }
 
 async function resolveSafeVenvPath(
@@ -581,11 +599,26 @@ export async function handleAgentRoutes(
           ? callerMetadata.worktreeRoomId
           : undefined;
 
+      // Give the sub-agent a distinct person-name. An explicit caller label
+      // wins; otherwise pick a pooled name unique among the live sessions (the
+      // concurrency snapshot above) and distinct from the running agent. The
+      // same name is the session label AND the identity woven into the prompt.
+      const explicitLabel =
+        typeof callerMetadata.label === "string" && callerMetadata.label.trim()
+          ? callerMetadata.label.trim()
+          : undefined;
+      const agentName = assignAgentName({
+        explicitLabel,
+        activeNames: activeSessionNames(activeSessions),
+        mainAgentName: ctx.runtime.character?.name,
+      });
+
       // Every direct-API spawn passes through the same goal wrapper the
       // orchestrator and planner action emit, so worker behaviour is identical
       // regardless of entry point.
       const goalPrompt = taskText
         ? buildGoalPrompt({
+            agentName,
             goal: taskText,
             workdir,
             taskRoomId,
@@ -606,6 +639,7 @@ export async function handleAgentRoutes(
         metadata: {
           requestedType: agentStr,
           ...callerMetadata,
+          label: agentName,
           // Persist the bare goal so follow-up sends can re-anchor through
           // buildGoalFollowUp instead of parsing it out of the wrapped prompt.
           ...(taskText ? { goal: taskText } : {}),

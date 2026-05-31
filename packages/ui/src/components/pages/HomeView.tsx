@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-
+import { Homescreen } from "../../homescreen/Homescreen";
+import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
@@ -24,27 +25,44 @@ import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import {
-  type FrequencyAnalyser,
-  VoiceWaveform,
-  type VoiceWaveformMode,
+import type {
+  FrequencyAnalyser,
+  VoiceWaveformMode,
 } from "../voice/VoiceWaveform";
 
-// The home hero background: a full-bleed WebGPU cloudscape with the voice orb
-// refracting it. Memoized on its mode + analyser so the heavy WebGPU layer never
-// re-renders on the composer's keystroke/focus state churn — only when the voice
-// phase or audio source actually changes.
+// The voice waveform speaks in three modes; the homescreen scene contract has a
+// richer four-phase vocabulary. Map the one onto the other at the boundary so
+// scenes can distinguish assistant speech ("speaking") from silence ("idle").
+function phaseForMode(mode: VoiceWaveformMode): HomescreenPhase {
+  if (mode === "listening") return "listening";
+  if (mode === "responding") return "speaking";
+  return "idle";
+}
+
+// The home hero background: the editable WebGL homescreen canvas. Memoized on
+// its inputs so the renderer never re-renders on the composer's keystroke/focus
+// churn — only when the voice phase, audio source, or transcripts change.
 const HomeVoiceBackground = memo(function HomeVoiceBackground({
   mode,
   analyser,
+  userText,
+  assistantText,
+  onEditModeChange,
 }: {
   mode: VoiceWaveformMode;
   analyser: FrequencyAnalyser | null;
+  userText: string;
+  assistantText: string;
+  onEditModeChange: (editing: boolean) => void;
 }): React.JSX.Element {
   return (
-    <div className="absolute inset-0">
-      <VoiceWaveform mode={mode} analyser={analyser} />
-    </div>
+    <Homescreen
+      analyser={analyser}
+      phase={phaseForMode(mode)}
+      userText={userText}
+      assistantText={assistantText}
+      onEditModeChange={onEditModeChange}
+    />
   );
 });
 
@@ -110,11 +128,21 @@ export function HomeView(): React.JSX.Element {
     modelStatus.kind !== "not-required" &&
     modelStatus.kind !== "ready";
 
+  const [editingHome, setEditingHome] = useState(false);
+
   const latestAssistant = useMemo(
     () =>
       [...(controller?.messages ?? [])]
         .reverse()
         .find((message) => message.role === "assistant"),
+    [controller?.messages],
+  );
+
+  const latestUserText = useMemo(
+    () =>
+      [...(controller?.messages ?? [])]
+        .reverse()
+        .find((message) => message.role === "user")?.content ?? "",
     [controller?.messages],
   );
 
@@ -141,10 +169,18 @@ export function HomeView(): React.JSX.Element {
       <HomeVoiceBackground
         mode={mode}
         analyser={controller?.analyser ?? null}
+        userText={latestUserText}
+        assistantText={latestAssistant?.content ?? ""}
+        onEditModeChange={setEditingHome}
       />
       <div
         data-testid="home-view"
-        className="relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt"
+        className={cn(
+          "relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt transition-opacity duration-200",
+          // In edit mode the foreground collapses to a peekable overlay so the
+          // canvas — and its edit toolbar — own the screen while customizing.
+          editingHome && "pointer-events-none opacity-0",
+        )}
       >
         <HomeHeader onNavigate={setTab} />
 

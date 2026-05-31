@@ -1,6 +1,14 @@
 schema: eliza.security_usb_storage_update_fail_closed_work_order.v1
 status: fail_closed_work_order
 date: 2026-05-17
+secure_boot_claim_allowed: false
+usb_c_pd_claim_allowed: false
+storage_claim_allowed: false
+avb_claim_allowed: false
+ab_ota_claim_allowed: false
+recovery_claim_allowed: false
+fastboot_security_claim_allowed: false
+release_claim_allowed: false
 claim_boundary: >
   This work order is not implementation evidence. Secure boot, USB-C/PD,
   storage, AVB, A/B updates, recovery, fastboot, and OTA flows are not

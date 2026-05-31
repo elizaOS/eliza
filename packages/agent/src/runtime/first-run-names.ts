@@ -84,3 +84,30 @@ export function pickRandomNames(count: number): string[] {
   }
   return [DEFAULT_AGENT_NAME, ...pool.slice(0, clamped - 1)];
 }
+
+/**
+ * Pick a single random agent name not present in `exclude` (case-insensitive).
+ *
+ * Used when spawning a sub-agent so each one gets its own distinct person-name,
+ * the way the main agent is named. When every pooled name is already taken the
+ * pool is exhausted, so a numeric suffix is appended to the first pooled name to
+ * guarantee a non-empty, distinct result rather than failing.
+ */
+export function pickAgentName(exclude: readonly string[] = []): string {
+  const taken = new Set(exclude.map((name) => name.trim().toLowerCase()));
+  const available = RANDOM_AGENT_NAME_POOL.filter(
+    (name) => !taken.has(name.toLowerCase()),
+  );
+  if (available.length > 0) {
+    const index = Math.floor(Math.random() * available.length);
+    return available[index] as string;
+  }
+
+  const base = RANDOM_AGENT_NAME_POOL[0] as string;
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${base} ${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+}

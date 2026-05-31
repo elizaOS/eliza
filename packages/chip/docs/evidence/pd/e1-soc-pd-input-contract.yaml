@@ -16,10 +16,13 @@ config_contract:
   - rtl/top/e1_chip_top.sv
   - rtl/clock/e1_reset_sync.sv
   - rtl/debug/e1_dbg_mmio_bridge.sv
+  - rtl/dft/e1_jtag_tap.sv
   - rtl/top/e1_soc_top.sv
   - rtl/bootrom/e1_bootrom.sv
   - rtl/cpu/e1_cva6_wrapper.sv
   - rtl/cpu/e1_cpu_axi_bridge.sv
+  - rtl/interconnect/e1_axil_to_mmio.sv
+  - rtl/interconnect/e1_mmio_arb2.sv
   - rtl/peripherals/e1_peripherals.sv
   - rtl/peripherals/e1_mmio_decode.sv
   - rtl/peripherals/e1_clint.sv
@@ -32,6 +35,8 @@ config_contract:
   - rtl/memory/e1_axi_lite_dram.sv
   - rtl/memory/e1_behavioral_dram.sv
   - rtl/memory/e1_weight_buffer_sram.sv
+drc_claim_allowed: false
+fabrication_claim_allowed: false
 forbidden_claims:
 - drc_clean
 - lvs_clean
@@ -42,14 +47,16 @@ forbidden_claims:
 frontend_contract:
   guarded_yosys_incompatible_constructs_allowed: true
   unguarded_blockers: []
-generated_utc: '2026-05-29T02:45:54Z'
+generated_utc: '2026-05-31T00:00:40Z'
+input_contract_status: pd_input_contract_pass_signoff_still_blocked
+lvs_claim_allowed: false
 macro_contract:
   actual_refs:
-    gds: dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
-    lef: dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
-    lib: dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
+    gds: pdk_dir::libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
+    lef: pdk_dir::libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+    lib: pdk_dir::libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
     nl: dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v
-    spice: dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
+    spice: pdk_dir::libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
   blackbox_ports:
   - addr0
   - addr1
@@ -92,24 +99,18 @@ macro_contract:
       path: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
   macro_name: sky130_sram_2kbyte_1rw1r_32x512_8
   macro_ref_sets:
-    extra_gds_files:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
-    extra_lefs:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
-    extra_libs:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
     extra_verilog_models:
     - dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v
     macro_gds:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
+    - pdk_dir::libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
     macro_lef:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+    - pdk_dir::libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
     macro_lib:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
+    - pdk_dir::libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
     macro_nl:
     - dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v
     macro_spice:
-    - dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
+    - pdk_dir::libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
   manifest_instance_path: u_soc/u_weight_buffer/u_sram
   openlane_instance_paths:
   - u_soc.u_weight_buffer.u_sram
@@ -128,11 +129,14 @@ macro_contract:
   - vssd1
   - web0
   - wmask0
+pd_release_claim_allowed: false
 release_blockers:
-- External PD review and signoff release remain blocked even though the local input
-  contract is internally consistent.
-- DRC, LVS, STA, antenna, slew, max-cap, and fabrication release evidence must pass
-  before this manifest can support release.
+- Input contract validation is local setup evidence only; DRC/LVS/STA, antenna, IR,
+  density, foundry/EDA review, and tapeout signoff remain required before release
+  use.
+- Upstream hard-macro and PD signoff evidence remain prohibited for release until
+  externally reviewed and replayed through the complete fail-closed OpenLane/signoff
+  flow.
 release_policy:
   drc_lvs_sta_signoff_required: true
   external_review_required: true
@@ -142,11 +146,12 @@ release_policy:
   tapeout_release_allowed: false
 release_use: prohibited_until_external_review
 schema: eliza.e1_soc_pd_input_contract.v1
-scope: e1_soc_pd_input_contract_local_inputs_only_not_signoff_release
+scope: e1_soc_pd_input_contract_for_openlane_sky130_hard_sram_macro
 sdc_contract:
   clock_period: 100.0
   clock_port: CLK_IN
   io_pin_order_cfg: dir::../pin_order.cfg
+  io_pin_order_key: FP_PIN_ORDER_CFG
   io_pin_order_present: true
   sdc_ports:
   - CLK_IN
@@ -194,6 +199,7 @@ source_artifacts:
 - pd/constraints/e1_soc.sdc
 - pd/signoff/manifest.yaml
 - docs/evidence/pd/e1-soc-hard-macro-signoff-gate.yaml
+sta_claim_allowed: false
 status: draft_local_evidence
 summary:
   blackbox_port_compatibility_failure_count: 0
@@ -211,7 +217,8 @@ summary:
   signoff_release_blocked: true
   tapeout_ready: false
   upstream_warning_count: 1
-  verilog_file_count: 20
+  verilog_file_count: 23
+tapeout_claim_allowed: false
 upstream_signoff_state:
   hard_macro_gate_release_use: prohibited_until_external_review
   hard_macro_gate_status: draft_local_evidence

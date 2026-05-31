@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Inline Thread Voice / Warm Hardware generated assistant preview">
+    <rect width="1200" height="750" fill="#171513"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#f4efe7" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#f4efe726"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#f4efe7" font-weight="900">Inline Thread Voice</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#f4efe7" opacity="0.72">Warm Hardware / inline transcript / inline apps</text>
+
+    <rect x="70" y="112" width="575" height="520" rx="3" fill="#f4efe718" stroke="#f4efe744"/>
+    <rect x="675" y="112" width="455" height="250" rx="3" fill="#f4efe718" stroke="#f4efe744"/>
+    <rect x="675" y="392" width="455" height="240" rx="3" fill="#f4efe718" stroke="#f4efe744"/>
+    <circle cx="228" cy="255" r="74" fill="#ff8a00"/>
+    <rect x="340" y="210" width="210" height="9" rx="4.5" fill="#f4efe733"/><rect x="340" y="234" width="170" height="9" rx="4.5" fill="#f4efe733"/><rect x="340" y="258" width="250" height="9" rx="4.5" fill="#f4efe733"/><rect x="340" y="282" width="198" height="9" rx="4.5" fill="#f4efe733"/>
+    <rect x="720" y="168" width="260" height="9" rx="4.5" fill="#f4efe733"/><rect x="720" y="192" width="320" height="9" rx="4.5" fill="#f4efe733"/><rect x="720" y="216" width="240" height="9" rx="4.5" fill="#f4efe733"/>
+
+    <rect x="150" y="468" width="101" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="168" y="490" font-size="13" fill="#f4efe7" font-weight="700">voice</text>
+
+
+    <rect x="300" y="468" width="88" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="318" y="490" font-size="13" fill="#f4efe7" font-weight="700">file</text>
+
+
+    <rect x="430" y="468" width="75" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="448" y="490" font-size="13" fill="#f4efe7" font-weight="700">app</text>
+
+
+  </svg>

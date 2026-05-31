@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_footprint_3d_model_library_map.v1
 date: '2026-05-21'
-status: library_match_preparation_not_release_not_routed
+status: library_match_preparation_with_local_routed_candidate_not_release
 claim_boundary: >
   Library-level footprint and 3D-model availability map only. For each REAL single
   catalog component in the unit-cost BOM it records whether the LOCAL KiCad install
@@ -11,17 +11,25 @@ claim_boundary: >
   flip any release or routed gate. The mainboard concept PCB
   (board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb) still carries 87
   NON-RELEASE E1Phone: placeholder footprints with generic evenly-pitched pad rows
-  and no electrical netlist; a prior investigation recorded 1316 DRC / 366 ERC
-  violations. That board remains a concept scaffold.
+  and no electrical netlist. The routed/local-development PCB
+  (board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb) has replaced those
+  literal placeholders with 89 board-bound e1-phone-dev development patterns and
+  zero E1_PHONE_PLACEHOLDER markers, but every such pattern remains tagged
+  NON_RELEASE_DEVELOPMENT_PATTERN pending supplier land-pattern, pinout, and STEP
+  approval. A prior concept-board investigation recorded 1316 DRC / 366 ERC
+  violations. The concept board remains a scaffold; the routed board remains a
+  local candidate rather than release evidence.
 
 toolchain_provenance:
-  kicad_cli_version: 9.0.9
-  active_binary_install: external/deb-tools/kicad-9.0.9
+  kicad_cli_version: 7.0.11
+  active_binary_install: scripts/kicad_run.sh -> .tools/kicad-local
   active_binary_ships_3d_models: false
   notes_active_binary: >
-    The deb-tools KiCad 9.0.9 install (the binary that tools/bin/kicad-cli runs)
-    ships footprints and symbols but NO 3D model package (kicad-packages3d is a
-    separate distribution package and is not present under deb-tools).
+    The active wrapper resolves KiCad CLI 7.0.11 from .tools/kicad-local. It exposes
+    pcb export step but lacks the release-required sch erc and pcb drc command
+    families, and it cannot open the current routed board file because that file was
+    created by a newer KiCad format. It ships footprints and symbols but the local
+    3D model subset is incomplete.
   footprint_library_root: .tools/kicad-local/usr/share/kicad/footprints
   model_library_root: .tools/kicad-local/usr/share/kicad/3dmodels
   footprint_library_count_pretty: 142
@@ -334,6 +342,11 @@ summary:
   matched_footprint_and_3d_model: 4
   matched_footprint_only_model_missing: 2
   needs_custom_or_supplier_step: many
+  concept_board_placeholder_footprint_count: 87
+  concept_board_placeholder_marker_count: 72
+  routed_local_development_footprint_count: 89
+  routed_local_development_placeholder_marker_count: 0
+  routed_local_development_non_release_pattern_count: 89
   matched_footprint_and_3d_model_lines:
     - line 17 GCT USB4105 USB-C receptacle
     - line 12 display 40-pin FPC mating connector (Hirose FH12-40S candidate)
@@ -348,16 +361,19 @@ summary:
       catalog matches (EVQP7A switch, Knowles MEMS) have a real land pattern but a missing
       bundled 3D body. The footprint files themselves reference those .wrl via env vars.
     - >
-      The active kicad-cli binary (deb-tools 9.0.9) ships NO 3D models at all; all 3D paths
-      above resolve only inside the .tools/kicad-local subset.
+      The active KiCad CLI is 7.0.11 via scripts/kicad_run.sh. It is sufficient to
+      inspect local footprint library paths but is not sufficient for release
+      DRC/ERC or routed-board STEP export from the current board.
     - >
       All IC/SoC/memory/module/PMIC land patterns are datasheet/supplier-defined. A generic
       KiCad QFN/BGA package footprint exists for several but is NOT a release-grade match
       without the supplier pin map and exposed-pad geometry. They are honestly marked
       needs_custom_or_supplier_step.
     - >
-      This map assigns nothing in the .kicad_pcb and creates no netlist. The mainboard remains
-      a concept scaffold with 87 NON-RELEASE placeholders.
+      This map is library evidence, not release assignment. The concept PCB remains
+      a scaffold with 87 NON-RELEASE placeholders, while the routed candidate has
+      89 concrete local development patterns and zero literal placeholder markers.
+      Those 89 patterns still require supplier approval before fabrication release.
 
 cross_checks:
   exact_usb_c_footprint_and_step_available_locally: true
@@ -367,6 +383,8 @@ cross_checks:
   module_soc_memory_pmic_and_wireless_land_patterns_remain_supplier_defined: true
   local_map_assigns_no_footprints_to_kicad_pcb: true
   concept_board_remains_placeholder_not_routed: true
+  routed_candidate_replaces_literal_placeholders_with_development_patterns: true
+  routed_candidate_development_patterns_release_blocked: true
 
 release_blockers:
   - local catalog matches do not replace supplier pinouts, signed drawings, land patterns, or sample inspection

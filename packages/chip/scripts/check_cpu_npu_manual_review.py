@@ -48,6 +48,17 @@ REQUIRED_RELEASE_GATES = {
     "make pd-signoff-check",
 }
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "target_benchmark_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "post_route_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def run_scorecard_check(errors: list[str]) -> None:
     result = subprocess.run(
@@ -212,6 +223,8 @@ def check_review(review: dict[str, Any], optimizer: dict[str, Any]) -> list[str]
         "claim boundary must block phone-class claims",
         errors,
     )
+    for flag in FALSE_CLAIM_FLAGS:
+        require(review.get(flag) is False, f"{flag} must be exactly false", errors)
     check_selected_point(review, optimizer, errors)
     check_findings(review, optimizer, errors)
     check_decision(review, errors)

@@ -1,6 +1,6 @@
 # E1 phone — Interconnect Completeness Audit
 
-**Date:** 2026-05-21
+**Date:** 2026-05-28
 **Evidence class:** `cross_artifact_paper_audit_for_evt_planning_not_measured_hardware`
 **Discipline:** electrical-mechanical integration review
 **Companion data:** [`interconnect-completeness-audit.json`](./interconnect-completeness-audit.json)
@@ -8,12 +8,14 @@
 ## Claim boundary
 
 This reconciles the electrical block-netlist + BOM against the mechanical CAD
-`assembly-manifest.json` (222 parts). It is **not** routed copper, ERC/DRC, a
-fabricated flex drawing, or a built unit. `ACCOUNTED` means the interconnect
-appears in the electrical plan **and** has a BOM line **and** has a mechanical
-representation (a real part, or a modeled keepout/connector). It does **not**
-mean release-ready — most accounted items still carry vendor-drawing freeze
-blockers tracked elsewhere.
+`assembly-manifest.json` (258 parts) and `cad-connection-coverage.json`
+(32 modeled CAD connection records, 32/32 passing local marker checks). It is
+**not** routed copper, ERC/DRC, a fabricated flex drawing, or a built unit.
+`ACCOUNTED` means the high-level interconnect family appears in the electrical
+plan **and** has a BOM line **and** has a mechanical representation (a real
+part, flex/cable marker, RF-feed marker, or modeled keepout/connector). It does
+**not** mean release-ready — most accounted items still carry vendor-drawing
+freeze blockers tracked elsewhere.
 
 ## Tally
 
@@ -22,14 +24,18 @@ blockers tracked elsewhere.
 | ACCOUNTED | 19 |
 | PARTIAL | 0 |
 | MISSING | 0 |
-| **Total interconnects** | **19** |
+| **Total interconnect families** | **19** |
+| CAD connection records | 32 |
+| CAD connection records passing local marker checks | 32 |
+| Assembly manifest parts | 258 |
 
 ACCOUNTED: display FPC, rear/front camera FPC markers, battery lead flex,
 side-key flex, USB-C receptacle, split flex connector pair, development RF feed
 envelopes, antenna aperture tuner, bottom speaker, haptic flex, SIM/eSIM marker,
-flash LED drive, compute SoM SODIMM connector/keepout markers, 42 explicit
-connection terminal markers, and the split PCB island geometry. These are local
-CAD review representations, not release-ready supplier drawings.
+flash LED drive, compute SoM SODIMM connector/keepout markers, 64 CAD
+connection terminal markers in `cad-connection-coverage.json`, and the split
+PCB island geometry. These are local CAD review representations, not
+release-ready supplier drawings.
 
 ## Register (summary — full detail in JSON)
 
@@ -47,7 +53,7 @@ CAD review representations, not release-ready supplier drawings.
 | Wi-Fi/BT antenna feed | RF feed | ACCOUNTED | RF0/RF1 development feed envelopes modeled; coexistence/feed validation blocked |
 | GPS/GNSS antenna feed | RF feed | ACCOUNTED | GNSS development feed envelope modeled; antenna/BOM/validation blocked |
 | Aperture tuner (QPC1252Q) RFFE + RF | SMT IC + RFFE | ACCOUNTED | IC modeled+lined; production antenna/contact drawings still blocked |
-| Bottom speaker SPK_P/N | spring/solder | ACCOUNTED | contact method to freeze with vendor drawing |
+| Bottom speaker SPK_P/N | spring/solder | ACCOUNTED | bottom speaker lead pair modeled; contact method to freeze with vendor drawing |
 | Earpiece receiver | spring/FPC | ACCOUNTED | earpiece lead flex modeled; vendor contact/SPL/leak evidence blocked |
 | Microphones ×2 | on-board / FPC | ACCOUNTED | bottom and top mic flex markers modeled; SNR/leak evidence blocked |
 | Haptic LRA | wires/FPC | ACCOUNTED | haptic flex tail modeled; driver/preload/first-article evidence blocked |

@@ -1,5 +1,7 @@
+// The repo standardizes on the Bun 1.4 canary line (the Rust rewrite). Anything
+// at or above 1.4 — canary or, once it lands, stable — is accepted.
 const RECOMMENDED_BUN_MAJOR = 1;
-const RECOMMENDED_BUN_MINOR = 3;
+const RECOMMENDED_BUN_MINOR = 4;
 
 function parseBunVersion(rawVersion) {
   const trimmed = String(rawVersion ?? "").trim();
@@ -15,9 +17,9 @@ function parseBunVersion(rawVersion) {
 }
 
 /**
- * Returns a non-fatal advisory string if the given Bun version string is
- * canary or outside the recommended 1.3.x range. Returns null if OK or if
- * no version is provided.
+ * Returns a non-fatal advisory string if the given Bun version is older than
+ * the recommended Bun 1.4 canary (Rust) line. Returns null if OK or if no
+ * version is provided.
  *
  * @param {string | undefined} [raw] - The Bun version string to check.
  *   Defaults to `globalThis.Bun?.version`.
@@ -25,20 +27,18 @@ function parseBunVersion(rawVersion) {
 export function getBunVersionAdvisory(raw = globalThis.Bun?.version) {
   if (!raw) return null;
   const parsed = parseBunVersion(raw);
+  const advisory = `Recommended: Bun ${RECOMMENDED_BUN_MAJOR}.${RECOMMENDED_BUN_MINOR}.x (canary, Rust build). Run \`bun upgrade --canary\`.`;
   if (!parsed) {
-    return `Detected Bun ${raw}. Recommended: Bun ${RECOMMENDED_BUN_MAJOR}.${RECOMMENDED_BUN_MINOR}.x stable.`;
-  }
-
-  if (parsed.suffix.includes("canary")) {
-    return `Detected Bun ${parsed.raw} (canary). Canary can break module interop; prefer Bun ${RECOMMENDED_BUN_MAJOR}.${RECOMMENDED_BUN_MINOR}.x stable.`;
+    return `Detected Bun ${raw}. ${advisory}`;
   }
 
   if (
-    parsed.major !== RECOMMENDED_BUN_MAJOR ||
-    parsed.minor !== RECOMMENDED_BUN_MINOR
+    parsed.major > RECOMMENDED_BUN_MAJOR ||
+    (parsed.major === RECOMMENDED_BUN_MAJOR &&
+      parsed.minor >= RECOMMENDED_BUN_MINOR)
   ) {
-    return `Detected Bun ${parsed.raw}. Recommended: Bun ${RECOMMENDED_BUN_MAJOR}.${RECOMMENDED_BUN_MINOR}.x stable.`;
+    return null;
   }
 
-  return null;
+  return `Detected Bun ${parsed.raw}. ${advisory}`;
 }

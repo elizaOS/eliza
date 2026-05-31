@@ -11,6 +11,16 @@ ROOT = Path(__file__).resolve().parents[1]
 OPT = ROOT / "benchmarks/sim/optimize_soc_operating_point.py"
 REPORT = ROOT / "benchmarks/results/soc-optimized-operating-point.json"
 FORBIDDEN_FIELDS = {"phone_score", "geekbench_score", "wall_clock_score"}
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_score_claim_allowed": False,
+    "rtl_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "sustained_power_thermal_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -58,6 +68,8 @@ def check_report(data: dict[str, Any]) -> list[str]:
         "claim boundary must block RTL/PDK/silicon use",
         errors,
     )
+    for field, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(field) is expected, f"{field} must be exactly false", errors)
     for field in FORBIDDEN_FIELDS:
         require(field not in data, f"forbidden comparable score field present: {field}", errors)
 

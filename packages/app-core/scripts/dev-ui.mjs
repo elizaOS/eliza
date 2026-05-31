@@ -1191,10 +1191,19 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createDevChildEnv(process.env);
+  // V8 bytecode cache for the Node API runtime. The runtime is deliberately
+  // Node (not Bun) for node: built-ins, so this persists compiled module
+  // bytecode across boots and --watch restarts, trimming plugin-import cost.
+  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
+  // Co-located with tsx's transpile cache in tmpdir so both share a lifecycle.
+  const apiCompileCacheDir =
+    childEnv.NODE_COMPILE_CACHE?.trim() ||
+    path.join(os.tmpdir(), "eliza-node-compile-cache");
   const apiSpawnEnv = extendNodePathEnv(
     {
       ...childEnv,
       NODE_ENV: "development",
+      NODE_COMPILE_CACHE: apiCompileCacheDir,
       NODE_OPTIONS: appendNodeOption(
         childEnv.NODE_OPTIONS,
         "--disable-warning=ExperimentalWarning",

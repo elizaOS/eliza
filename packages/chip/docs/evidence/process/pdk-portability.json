@@ -1,6 +1,6 @@
 {
   "schema": "eliza.process_pdk_portability_report.v1",
-  "generated_utc": "2026-05-29T07:04:44.362416+00:00",
+  "generated_utc": "2026-05-30T23:53:01.075488+00:00",
   "claim_boundary": "pdk_portability_index_only_not_production_pdk_or_tapeout_signoff",
   "evidence_class": "real_open_pdk_methodology_index_with_advanced_node_blocked_gates",
   "checked_index": "pd/openlane/portability-index.yaml",

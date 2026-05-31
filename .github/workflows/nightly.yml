@@ -24,7 +24,7 @@ env:
   CI: "true"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=4096"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
   NODE_VERSION: "24.15.0"
 
 permissions:

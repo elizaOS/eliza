@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import re
 import subprocess
@@ -15,6 +16,10 @@ from chip_utils import load_json_object, load_yaml_object
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "build/reports/sota_parity_audit.json"
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
 
 REQUIRED_SPECS = {
     "cpu": ROOT / "docs/spec-db/cpu-2028-target.yaml",
@@ -200,6 +205,17 @@ PARITY_DOMAINS = [
     },
 ]
 
+FALSE_CLAIM_FLAGS = {
+    "sota_claim_allowed": False,
+    "phone_class_parity_claim_allowed": False,
+    "measured_phone_evidence_claim_allowed": False,
+    "runtime_parity_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "benchmark_leadership_claim_allowed": False,
+}
+
 
 def run_json(command: list[str]) -> Any:
     result = subprocess.run(
@@ -329,6 +345,8 @@ def build_report() -> dict[str, Any]:
     report = {
         "schema": "eliza.sota_parity_audit.v1",
         "status": "blocked",
+        "generated_utc": utc_now(),
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Fail-closed aggregate audit for 2023/2028 SOTA parity. A pass here "
             "would require phone-class measured evidence across all domains; "
@@ -357,6 +375,9 @@ def validate_report(report: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.sota_parity_audit.v1":
         errors.append("wrong schema")
+    for flag in FALSE_CLAIM_FLAGS:
+        if report.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     domains = report.get("parity_domains")
     if not isinstance(domains, list):
         return errors + ["parity_domains must be a list"]

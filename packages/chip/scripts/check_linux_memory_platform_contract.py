@@ -10,6 +10,7 @@ blocked entries instead of placeholder logs.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import re
 import shutil
@@ -277,6 +278,7 @@ def build_report(*, evidence_only: bool = False) -> tuple[dict[str, Any], int]:
         "schema": "eliza.linux_memory_platform_contract.status.v1",
         "status": status,
         "claim_boundary": "static_contract_and_missing_evidence_gate_no_boot_evidence_created",
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "errors": errors,
         "blockers": blockers,
         "checked": [

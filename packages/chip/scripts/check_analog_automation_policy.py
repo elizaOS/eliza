@@ -55,6 +55,14 @@ REQUIRED_GATES = {
     "make board-package-evidence-check",
     "make no-hardware-action-check",
 }
+FALSE_CLAIM_FLAGS = {
+    "spice_netlist_claim_allowed": False,
+    "analog_layout_claim_allowed": False,
+    "foundry_ip_claim_allowed": False,
+    "analog_performance_claim_allowed": False,
+    "si_pi_closure_claim_allowed": False,
+    "tapeout_or_release_claim_allowed": False,
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -94,6 +102,9 @@ def main() -> int:
             fail(errors, "unsafe claim boundary")
         if policy.get("status") != "DRAFT_CAPTURE_ONLY":
             fail(errors, "status must be DRAFT_CAPTURE_ONLY")
+        for flag, expected in FALSE_CLAIM_FLAGS.items():
+            if policy.get(flag) is not expected:
+                fail(errors, f"{flag} must be false")
         require_set(
             policy.get("blocked_actions"), "blocked_actions", REQUIRED_BLOCKED_ACTIONS, errors
         )

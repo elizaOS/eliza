@@ -55,6 +55,9 @@ def test_generated_sweep_has_no_phone_score_and_all_corners() -> None:
 
     if {"phone_score", "geekbench_score", "wall_clock_score"} & set(data):
         raise AssertionError("forbidden comparable score present")
+    flags = {key: value for key, value in data.items() if key.endswith("_claim_allowed")}
+    if not flags or any(value is not False for value in flags.values()):
+        raise AssertionError(flags)
     errors = checker.check_report(data)
     if errors:
         raise AssertionError("\n".join(errors))

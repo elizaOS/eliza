@@ -8,6 +8,22 @@ import {
   type VoiceWaveformMode,
 } from "@ui-src/components/voice/VoiceWaveform.tsx";
 import { makeOscillatingAnalyser } from "./stories/voice.tsx";
+import {
+  type ConceptBuilder,
+  type ConceptDescriptor,
+  type ConceptFamily,
+  makeChromeGem,
+  makeCrystalGlass,
+  makeFacetedIcosa,
+  makeGlass,
+  makeOrbitParticles,
+  makeStudioEnv,
+  type OrbUniforms,
+  type TSLModule,
+  type VariantHandle,
+  type WebGPUModule,
+} from "./orb-kit.ts";
+import { CONCEPTS } from "./concepts/index.ts";
 import "./stories.css";
 
 // Home accent so every variant is judged under the real surface accent.
@@ -23,329 +39,345 @@ function worldPerPixel(heightPx: number): number {
   return (2 * CAMERA_Z * HALF_FOV_TAN) / Math.max(1, heightPx);
 }
 
-// TSL's node API is a runtime proxy with no usable static types, so — like the
-// production VoiceWaveform and the prior prototype — the three/tsl modules are
-// typed loosely at this boundary and nowhere else.
-type WebGPUModule = Record<string, any>;
-type TSLModule = Record<string, any>;
-
-/** The five comparison variants. */
-export type OrbVariant = "blob" | "core" | "crystal" | "oilslick" | "chrome";
-
-export const ORB_VARIANTS: { id: OrbVariant; label: string }[] = [
-  { id: "blob", label: "1 · liquid blob" },
-  { id: "core", label: "2 · inner core" },
-  { id: "crystal", label: "3 · crystal" },
-  { id: "oilslick", label: "4 · oil-slick" },
-  { id: "chrome", label: "5 · chrome" },
-];
-
-/** Per-frame state pushed into the shader uniforms. Amplitudes are [0,1]. */
-interface OrbFrame {
-  time: number;
-  energy: number;
-  low: number;
-  listen: number;
-  respond: number;
-}
-
-/** Shared uniform set every variant reads from. */
-interface OrbUniforms {
-  uTime: any;
-  uEnergy: any;
-  uLow: any;
-  uListen: any;
-  uRespond: any;
-  uAspect: any;
-  uAccent: any;
-}
-
-/** A built orb: its meshes live under a provided parent group. */
-interface VariantHandle {
-  frame: (f: OrbFrame) => void;
-  dispose: () => void;
-}
-
-/**
- * Studio-gradient equirectangular environment (bright sky → dark ground with a
- * warm bloom) so reflective/refractive surfaces get a rim and surface sheen.
- * Without an environment the glass reads as matte jelly.
- */
-function makeStudioEnv(THREE: WebGPUModule): any {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 256;
-  const ctx = c.getContext("2d");
-  if (!ctx) throw new Error("2d context unavailable");
-  const sky = ctx.createLinearGradient(0, 0, 0, 256);
-  sky.addColorStop(0, "#ffffff");
-  sky.addColorStop(0.42, "#cfd8e6");
-  sky.addColorStop(0.5, "#3a2c34");
-  sky.addColorStop(0.54, "#1c1620");
-  sky.addColorStop(1, "#050506");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, 512, 256);
-  const bloom = ctx.createRadialGradient(150, 64, 0, 150, 64, 150);
-  bloom.addColorStop(0, "rgba(255,196,140,0.9)");
-  bloom.addColorStop(1, "rgba(255,196,140,0)");
-  ctx.fillStyle = bloom;
-  ctx.fillRect(0, 0, 512, 256);
-  const texture = new THREE.Texture(c);
-  texture.mapping = THREE.EquirectangularReflectionMapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-/** Base prismatic transmissive glass shared by the glass-bodied variants. */
-function makeGlass(THREE: WebGPUModule): any {
-  const m = new THREE.MeshPhysicalNodeMaterial();
-  m.transmission = 1;
-  m.ior = 1.45;
-  m.thickness = 1.6;
-  m.roughness = 0.0;
-  m.metalness = 0;
-  m.dispersion = 9;
-  m.clearcoat = 1;
-  m.clearcoatRoughness = 0.04;
-  m.envMapIntensity = 1.0;
-  m.color = new THREE.Color(1, 1, 1);
-  return m;
-}
-
-// --- variant 1: liquid metaball blob ---------------------------------------
-// Break the round silhouette. Big slow lobes ride the bass (uLow), fast surface
-// chop rides overall energy, both domain-warped so the shape rolls organically.
-// Idle → a gentle wobble; loud speech → an agitated, near-spiky deformation.
-function buildBlob(
+// --- reference variant 1: swarm — glass gem inside an orbiting particle halo --
+// A clean nested glass gem (refractive shell + chrome heart) wrapped in a GPU
+// particle swarm that orbits on tilted rings and breathes outward with the
+// voice, so points fly off on peaks. Slow spin throughout.
+function buildSwarm(
   THREE: WebGPUModule,
   TSL: TSLModule,
   U: OrbUniforms,
   parent: any,
 ): VariantHandle {
-  const { vec3, float, positionLocal, normalLocal, mx_fractal_noise_float } = TSL;
-  const geo = new THREE.SphereGeometry(1, 168, 168);
-  const mat = makeGlass(THREE);
-  const warp = vec3(U.uTime.mul(0.15), U.uTime.mul(0.2), U.uTime.mul(0.1));
-  const pW = positionLocal.add(warp);
-  const lobes = mx_fractal_noise_float(pW.mul(1.05), 2, 2.0, 0.5);
-  const chop = mx_fractal_noise_float(pW.mul(3.4), 4, 2.0, 0.5);
-  const disp = lobes
-    .mul(float(0.06).add(U.uLow.mul(0.4)))
-    .add(chop.mul(float(0.015).add(U.uEnergy.mul(0.16))));
-  mat.positionNode = positionLocal.add(normalLocal.mul(disp));
-  const mesh = new THREE.Mesh(geo, mat);
-  parent.add(mesh);
-  return {
-    frame(f) {
-      mesh.rotation.y = f.time * 0.12;
-      mesh.rotation.x = Math.sin(f.time * 0.1) * 0.1;
-    },
-    dispose() {
-      geo.dispose();
-      mat.dispose();
-      parent.remove(mesh);
-    },
-  };
-}
-
-// --- variant 2: inner nucleus ----------------------------------------------
-// A near-static glass shell around an opaque emissive core with its own fbm
-// surface. The shell refracts AND reflects the core, which is what produces real
-// internal depth instead of a hollow bubble. Core brightens/swells with energy,
-// flares while responding, contracts while listening.
-function buildCore(
-  THREE: WebGPUModule,
-  TSL: TSLModule,
-  U: OrbUniforms,
-  parent: any,
-): VariantHandle {
-  const { vec3, float, positionLocal, normalLocal, mix, mx_fractal_noise_float } = TSL;
-
-  const shellGeo = new THREE.SphereGeometry(1, 128, 128);
-  const shellMat = makeGlass(THREE);
-  const drift = vec3(0, U.uTime.mul(0.2), U.uTime.mul(0.06));
-  const ripple = mx_fractal_noise_float(positionLocal.mul(2.2).add(drift), 3, 2, 0.5);
-  shellMat.positionNode = positionLocal.add(
-    normalLocal.mul(ripple.mul(float(0.012).add(U.uEnergy.mul(0.04)))),
-  );
+  const shellGeo = makeFacetedIcosa(THREE, 1, 1, 0.1);
+  const shellMat = makeCrystalGlass(THREE);
+  shellMat.flatShading = true;
   const shell = new THREE.Mesh(shellGeo, shellMat);
 
-  const coreGeo = new THREE.SphereGeometry(0.55, 96, 96);
-  const coreMat = new THREE.MeshBasicNodeMaterial();
-  const cDrift = vec3(U.uTime.mul(0.3), U.uTime.mul(0.22), U.uTime.mul(0.15));
-  const cNoise = mx_fractal_noise_float(positionLocal.mul(2.6).add(cDrift), 4, 2.1, 0.55)
-    .mul(0.5)
-    .add(0.5);
-  const hot = mix(U.uAccent, vec3(1, 1, 1), cNoise.pow(2.0));
-  coreMat.colorNode = hot.mul(
-    float(0.55).add(U.uEnergy.mul(1.7)).add(U.uRespond.mul(0.8)),
-  );
-  coreMat.positionNode = positionLocal.add(
-    normalLocal.mul(cNoise.sub(0.5).mul(float(0.03).add(U.uEnergy.mul(0.12)))),
-  );
-  const core = new THREE.Mesh(coreGeo, coreMat);
+  const midGeo = new THREE.IcosahedronGeometry(0.5, 1);
+  const midMat = makeChromeGem(THREE);
+  const mid = new THREE.Mesh(midGeo, midMat);
+
+  const swarm = makeOrbitParticles(THREE, TSL, U, 240);
 
   parent.add(shell);
-  parent.add(core);
+  parent.add(mid);
+  parent.add(swarm.points);
   return {
     frame(f) {
-      shell.rotation.y = f.time * 0.14;
-      core.rotation.y = -f.time * 0.26;
-      core.scale.setScalar(1 + f.energy * 0.2 - f.listen * 0.12);
+      shell.rotation.y = f.time * 0.06;
+      shell.rotation.x = Math.sin(f.time * 0.08) * 0.12;
+      mid.rotation.y = -f.time * 0.1;
+      swarm.points.rotation.y = f.time * 0.04;
     },
     dispose() {
       shellGeo.dispose();
       shellMat.dispose();
+      midGeo.dispose();
+      midMat.dispose();
+      swarm.dispose();
+      parent.remove(shell);
+      parent.remove(mid);
+      parent.remove(swarm.points);
+    },
+  };
+}
+
+// --- reference variant 2: intense glass — thick, high-IOR, dispersive --------
+// Maximal glass: thick walls, a high index of refraction and strong dispersion
+// so the clouds bend hard and split into spectral fire at the facet edges. A
+// reflective gem inside reads through the heavy refraction. Slow spin.
+function buildIntense(
+  THREE: WebGPUModule,
+  TSL: TSLModule,
+  U: OrbUniforms,
+  parent: any,
+): VariantHandle {
+  const shellGeo = makeFacetedIcosa(THREE, 1, 1, 0.12);
+  const shellMat = makeGlass(THREE);
+  shellMat.flatShading = true;
+  shellMat.ior = 1.7;
+  shellMat.thickness = 2.4;
+  shellMat.dispersion = 6;
+  shellMat.envMapIntensity = 1.2;
+  shellMat.attenuationColor = new THREE.Color(0.8, 0.88, 1.0);
+  shellMat.attenuationDistance = 2.0;
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+
+  const innerGeo = makeFacetedIcosa(THREE, 0.55, 1, 0.12);
+  const innerMat = makeChromeGem(THREE);
+  const inner = new THREE.Mesh(innerGeo, innerMat);
+
+  parent.add(shell);
+  parent.add(inner);
+  return {
+    frame(f) {
+      shell.rotation.y = f.time * 0.05;
+      shell.rotation.z = Math.sin(f.time * 0.06) * 0.1;
+      inner.rotation.y = -f.time * 0.08;
+      inner.scale.setScalar(1 + f.energy * 0.1);
+    },
+    dispose() {
+      shellGeo.dispose();
+      shellMat.dispose();
+      innerGeo.dispose();
+      innerMat.dispose();
+      parent.remove(shell);
+      parent.remove(inner);
+    },
+  };
+}
+
+// --- reference variant 3: fresnel — clear glass with a view-angle rim glow ----
+// Colourless glass whose facets stay transparent face-on but flare with a
+// fresnel rim at grazing angles — a bright cool edge that warms toward the
+// accent while responding. A chrome heart anchors the centre. Slow spin.
+function buildFresnel(
+  THREE: WebGPUModule,
+  TSL: TSLModule,
+  U: OrbUniforms,
+  parent: any,
+): VariantHandle {
+  const { vec3, float, mix, normalView, positionViewDirection } = TSL;
+  const shellGeo = makeFacetedIcosa(THREE, 1, 1, 0.1);
+  const shellMat = makeCrystalGlass(THREE);
+  shellMat.flatShading = true;
+  const fresnel = normalView
+    .dot(positionViewDirection)
+    .abs()
+    .oneMinus()
+    .pow(2.5);
+  const rimColor = mix(vec3(0.7, 0.85, 1.0), U.uAccent, U.uRespond.mul(0.6));
+  shellMat.emissiveNode = rimColor.mul(
+    fresnel.mul(float(0.5).add(U.uEnergy.mul(1.4)).add(U.uRespond.mul(0.8))),
+  );
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+
+  const midGeo = new THREE.IcosahedronGeometry(0.5, 0);
+  const midMat = makeChromeGem(THREE);
+  const mid = new THREE.Mesh(midGeo, midMat);
+
+  parent.add(shell);
+  parent.add(mid);
+  return {
+    frame(f) {
+      shell.rotation.y = f.time * 0.06;
+      shell.rotation.x = Math.sin(f.time * 0.07) * 0.1;
+      mid.rotation.y = -f.time * 0.09;
+    },
+    dispose() {
+      shellGeo.dispose();
+      shellMat.dispose();
+      midGeo.dispose();
+      midMat.dispose();
+      parent.remove(shell);
+      parent.remove(mid);
+    },
+  };
+}
+
+// --- reference variant 4: refract — balanced transparency and reflection -----
+// Real glass tuned for both at once: high transmission so you see the clouds
+// through it, high env reflection so the facets carry crisp mirror highlights.
+// Chrome gem plus a pulsing nucleus for depth. Slow spin.
+function buildRefract(
+  THREE: WebGPUModule,
+  TSL: TSLModule,
+  U: OrbUniforms,
+  parent: any,
+): VariantHandle {
+  const { vec3, float } = TSL;
+  const shellGeo = makeFacetedIcosa(THREE, 1, 1, 0.1);
+  const shellMat = makeCrystalGlass(THREE);
+  shellMat.flatShading = true;
+  shellMat.transmission = 0.92;
+  shellMat.roughness = 0.04;
+  shellMat.envMapIntensity = 1.6;
+  shellMat.ior = 1.52;
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+
+  const midGeo = new THREE.IcosahedronGeometry(0.58, 1);
+  const midMat = makeChromeGem(THREE);
+  const mid = new THREE.Mesh(midGeo, midMat);
+
+  const coreGeo = new THREE.IcosahedronGeometry(0.3, 0);
+  const coreMat = new THREE.MeshBasicNodeMaterial();
+  coreMat.colorNode = vec3(0.82, 0.9, 1.0).mul(
+    float(0.4).add(U.uEnergy.mul(1.4)).add(U.uRespond.mul(0.6)),
+  );
+  const core = new THREE.Mesh(coreGeo, coreMat);
+
+  parent.add(shell);
+  parent.add(mid);
+  parent.add(core);
+  return {
+    frame(f) {
+      shell.rotation.y = f.time * 0.06;
+      shell.rotation.x = Math.sin(f.time * 0.05) * 0.1;
+      mid.rotation.y = -f.time * 0.1;
+      core.rotation.y = f.time * 0.14;
+      core.scale.setScalar(1 + f.energy * 0.2 - f.listen * 0.08);
+    },
+    dispose() {
+      shellGeo.dispose();
+      shellMat.dispose();
+      midGeo.dispose();
+      midMat.dispose();
       coreGeo.dispose();
       coreMat.dispose();
       parent.remove(shell);
+      parent.remove(mid);
       parent.remove(core);
     },
   };
 }
 
-// --- variant 3: cut crystal ------------------------------------------------
-// Faceted icosahedron with baked flat normals: crisp internal reflections and
-// edges that split into rainbow at the rim like a diamond. Facets breathe along
-// their normals with energy; dispersion widens (rainbow flares) on speech; spin
-// accelerates while responding.
-function buildCrystal(
+// --- reference variant 5: shards — everything at once ------------------------
+// The combined showcase: colourless glass with a fresnel rim, a chrome heart,
+// and an orbiting particle swarm that flies off on peaks. Slowest spin so the
+// refraction and the particle motion both read clearly.
+function buildShards(
   THREE: WebGPUModule,
   TSL: TSLModule,
   U: OrbUniforms,
   parent: any,
 ): VariantHandle {
-  const { float, positionLocal, normalLocal } = TSL;
-  const geo = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
-  geo.computeVertexNormals();
-  const mat = makeGlass(THREE);
-  mat.flatShading = true;
-  mat.roughness = 0.02;
-  mat.clearcoatRoughness = 0.02;
-  mat.dispersion = 10;
-  const push = float(0.0).add(U.uEnergy.mul(0.07)).add(U.uRespond.mul(0.04));
-  mat.positionNode = positionLocal.add(normalLocal.mul(push));
-  const mesh = new THREE.Mesh(geo, mat);
-  parent.add(mesh);
+  const { vec3, float, mix, normalView, positionViewDirection } = TSL;
+  const shellGeo = makeFacetedIcosa(THREE, 1, 1, 0.12);
+  const shellMat = makeCrystalGlass(THREE);
+  shellMat.flatShading = true;
+  shellMat.envMapIntensity = 1.4;
+  const fresnel = normalView
+    .dot(positionViewDirection)
+    .abs()
+    .oneMinus()
+    .pow(2.5);
+  shellMat.emissiveNode = mix(
+    vec3(0.7, 0.85, 1.0),
+    U.uAccent,
+    U.uRespond.mul(0.6),
+  ).mul(fresnel.mul(float(0.4).add(U.uEnergy.mul(1.2)).add(U.uRespond.mul(0.7))));
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+
+  const midGeo = new THREE.IcosahedronGeometry(0.5, 1);
+  const midMat = makeChromeGem(THREE);
+  const mid = new THREE.Mesh(midGeo, midMat);
+
+  const swarm = makeOrbitParticles(THREE, TSL, U, 260);
+
+  parent.add(shell);
+  parent.add(mid);
+  parent.add(swarm.points);
   return {
     frame(f) {
-      mesh.rotation.y = f.time * (0.2 + f.respond * 0.3);
-      mesh.rotation.x = Math.sin(f.time * 0.15) * 0.2;
-      mat.dispersion = 6 + f.energy * 14;
+      shell.rotation.y = f.time * 0.05;
+      shell.rotation.z = Math.sin(f.time * 0.06) * 0.08;
+      mid.rotation.y = -f.time * 0.09;
+      swarm.points.rotation.y = f.time * 0.03;
     },
     dispose() {
-      geo.dispose();
-      mat.dispose();
-      parent.remove(mesh);
+      shellGeo.dispose();
+      shellMat.dispose();
+      midGeo.dispose();
+      midMat.dispose();
+      swarm.dispose();
+      parent.remove(shell);
+      parent.remove(mid);
+      parent.remove(swarm.points);
     },
   };
 }
 
-// --- variant 4: oil-slick + caustic veins ----------------------------------
-// Thin-film iridescence shimmers an oil-slick rainbow that shifts with view
-// angle, while a ridged-fbm "vein" pattern crawls across the emissive and pulses
-// with amplitude. Accent-weighted veins, brightest while responding.
-function buildOilSlick(
+// The five original glass references, shown as their own selector row ahead of
+// the 20 authored concepts.
+const REFERENCE_VARIANTS: { id: string; label: string; build: ConceptBuilder }[] =
+  [
+    { id: "swarm", label: "swarm", build: buildSwarm },
+    { id: "intense", label: "intense", build: buildIntense },
+    { id: "fresnel", label: "fresnel", build: buildFresnel },
+    { id: "refract", label: "refract", build: buildRefract },
+    { id: "shards", label: "shards", build: buildShards },
+  ];
+
+// id → builder for every selectable orb (references + authored concepts).
+const BUILDERS: Map<string, ConceptBuilder> = new Map();
+for (const v of REFERENCE_VARIANTS) BUILDERS.set(v.id, v.build);
+for (const c of CONCEPTS) BUILDERS.set(c.id, c.build);
+
+const DEFAULT_VARIANT = "shards";
+
+// Selector rows: the reference set, then the authored concepts grouped by family
+// in a fixed order. Empty families are skipped so the harness stays tidy before
+// every concept exists.
+const FAMILY_ORDER: ConceptFamily[] = [
+  "artful",
+  "mood",
+  "sci-fi",
+  "geometric",
+  "abstract",
+];
+interface SelectorRow {
+  label: string;
+  items: { id: string; label: string }[];
+}
+const SELECTOR_ROWS: SelectorRow[] = [
+  { label: "ref", items: REFERENCE_VARIANTS.map((v) => ({ id: v.id, label: v.label })) },
+  ...FAMILY_ORDER.map((family) => ({
+    label: family,
+    items: CONCEPTS.filter((c) => c.family === family).map((c) => ({
+      id: c.id,
+      label: c.label,
+    })),
+  })).filter((row) => row.items.length > 0),
+];
+
+/**
+ * Build a concept body under its own holder group so a throw can't leave half a
+ * concept attached, and a per-frame or build error can't kill the shared stage.
+ * The harness runs authored concept code that can't be exercised before it's
+ * loaded here, so the guard is the thing that keeps every *other* concept
+ * selectable when one is malformed.
+ */
+function safeBuild(
+  build: ConceptBuilder,
   THREE: WebGPUModule,
   TSL: TSLModule,
   U: OrbUniforms,
   parent: any,
 ): VariantHandle {
-  const { vec3, float, positionLocal, normalLocal, mix, clamp, mx_fractal_noise_float } =
-    TSL;
-  const geo = new THREE.SphereGeometry(1, 168, 168);
-  const mat = makeGlass(THREE);
-  mat.iridescence = 1;
-  mat.iridescenceIOR = 1.32;
-  mat.iridescenceThicknessRange = [120, 560];
-
-  const vDrift = vec3(U.uTime.mul(0.12), U.uTime.mul(-0.08), U.uTime.mul(0.1));
-  const fb = mx_fractal_noise_float(positionLocal.mul(3.0).add(vDrift), 4, 2.0, 0.5);
-  const ridge = float(1.0).sub(fb.mul(2.0).sub(1.0).abs());
-  const vein = clamp(ridge.sub(0.74).mul(5.0), 0, 1);
-  const veinColor = mix(U.uAccent, vec3(0.7, 0.85, 1.0), 0.4);
-  mat.emissiveNode = veinColor.mul(
-    vein.mul(float(0.12).add(U.uEnergy.mul(1.3)).add(U.uRespond.mul(0.5))),
-  );
-  const ripple = mx_fractal_noise_float(positionLocal.mul(2.2).add(vDrift), 3, 2, 0.5);
-  mat.positionNode = positionLocal.add(
-    normalLocal.mul(ripple.mul(float(0.012).add(U.uEnergy.mul(0.04)))),
-  );
-  const mesh = new THREE.Mesh(geo, mat);
-  parent.add(mesh);
-  return {
-    frame(f) {
-      mesh.rotation.y = f.time * 0.12;
-    },
-    dispose() {
-      geo.dispose();
-      mat.dispose();
-      parent.remove(mesh);
-    },
-  };
+  const holder = new THREE.Group();
+  parent.add(holder);
+  try {
+    const handle = build(THREE, TSL, U, holder);
+    let frameDead = false;
+    return {
+      frame(f) {
+        if (frameDead) return;
+        try {
+          handle.frame(f);
+        } catch (err) {
+          frameDead = true;
+          console.error("[orb] concept frame threw; freezing it", err);
+        }
+      },
+      dispose() {
+        try {
+          handle.dispose();
+        } catch (err) {
+          console.error("[orb] concept dispose threw", err);
+        }
+        parent.remove(holder);
+      },
+    };
+  } catch (err) {
+    console.error("[orb] concept build threw", err);
+    parent.remove(holder);
+    return { frame() {}, dispose() {} };
+  }
 }
-
-// --- variant 5: liquid chrome ----------------------------------------------
-// A mirror-metal droplet reflecting the studio env (note: metals reflect the env
-// map, not the cloud plane). Ripple rings travel from the top pole and the
-// surface roughens slightly with energy — a polished liquid-metal look.
-function buildChrome(
-  THREE: WebGPUModule,
-  TSL: TSLModule,
-  U: OrbUniforms,
-  parent: any,
-): VariantHandle {
-  const { vec3, float, positionLocal, normalLocal, sin, mx_fractal_noise_float } = TSL;
-  const geo = new THREE.SphereGeometry(1, 200, 200);
-  const mat = new THREE.MeshPhysicalNodeMaterial();
-  mat.metalness = 1;
-  mat.roughness = 0.04;
-  mat.transmission = 0;
-  mat.envMapIntensity = 1.4;
-  mat.clearcoat = 1;
-  mat.clearcoatRoughness = 0.02;
-  mat.color = new THREE.Color(0.92, 0.94, 0.98);
-
-  const fromPole = positionLocal.y.oneMinus();
-  const rings = sin(fromPole.mul(14.0).sub(U.uTime.mul(4.0)));
-  const ringAmp = float(0.0).add(U.uEnergy.mul(0.06)).add(U.uRespond.mul(0.05));
-  const chop = mx_fractal_noise_float(
-    positionLocal.mul(3.0).add(vec3(0, U.uTime.mul(0.5), 0)),
-    3,
-    2,
-    0.5,
-  );
-  const disp = rings.mul(ringAmp).add(chop.mul(float(0.005).add(U.uLow.mul(0.05))));
-  mat.positionNode = positionLocal.add(normalLocal.mul(disp));
-  const mesh = new THREE.Mesh(geo, mat);
-  parent.add(mesh);
-  return {
-    frame(f) {
-      mesh.rotation.y = f.time * 0.1;
-      mat.roughness = 0.04 + f.energy * 0.12;
-    },
-    dispose() {
-      geo.dispose();
-      mat.dispose();
-      parent.remove(mesh);
-    },
-  };
-}
-
-const VARIANT_BUILDERS: Record<
-  OrbVariant,
-  (THREE: WebGPUModule, TSL: TSLModule, U: OrbUniforms, parent: any) => VariantHandle
-> = {
-  blob: buildBlob,
-  core: buildCore,
-  crystal: buildCrystal,
-  oilslick: buildOilSlick,
-  chrome: buildChrome,
-};
 
 interface StageHandle {
-  setVariant: (variant: OrbVariant) => void;
+  setVariant: (variant: string) => void;
   setMode: (mode: VoiceWaveformMode) => void;
   resize: (width: number, height: number) => void;
   dispose: () => void;
@@ -361,7 +393,7 @@ async function mountStage(
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
-  initialVariant: OrbVariant,
+  initialVariant: string,
   initialMode: VoiceWaveformMode,
   analyser: FrequencyAnalyser,
 ): Promise<StageHandle> {
@@ -401,8 +433,8 @@ async function mountStage(
   // --- shared volumetric cloud backdrop (iq XslGRr, ported to TSL) ----------
   type Vec3Node = ReturnType<typeof vec3>;
   const densityAt = (p: Vec3Node) => {
-    const wind = vec3(U.uTime.mul(0.22), U.uTime.mul(-0.015), U.uTime.mul(0.06));
-    const noise = mx_fractal_noise_float(p.mul(0.62).add(wind), 5, 2.02, 0.5)
+    const wind = vec3(U.uTime.mul(0.08), U.uTime.mul(-0.006), U.uTime.mul(0.022));
+    const noise = mx_fractal_noise_float(p.mul(0.62).add(wind), 4, 2.02, 0.5)
       .mul(0.5)
       .add(0.5);
     const slab = float(1.0).sub(p.y.sub(3.0).abs().div(1.7)).clamp(0, 1);
@@ -414,12 +446,12 @@ async function mountStage(
     const rd = normalize(
       vec3(ndc.x.mul(U.uAspect).mul(0.62), ndc.y.mul(0.62).add(0.12), float(-1.0)),
     );
-    const ro = vec3(U.uTime.mul(0.08), 1.25, 6.0);
+    const ro = vec3(U.uTime.mul(0.03), 1.25, 6.0);
     const horizon = clamp(screenUV.y.sub(0.18).mul(1.4), 0, 1);
     const sky = mix(vec3(0.74, 0.86, 1.0), vec3(0.2, 0.45, 0.86), horizon.pow(0.7));
     const sum = vec4(0.0).toVar();
     const t = float(1.2).toVar();
-    Loop(46, () => {
+    Loop(32, () => {
       If(sum.w.greaterThan(0.985), () => {
         Break();
       });
@@ -437,9 +469,51 @@ async function mountStage(
     return vec3(sky.mul(sum.w.oneMinus()).add(sum.xyz));
   });
 
+  // The cloud raymarch is the dominant cost — and transmission makes it run
+  // twice a frame at full res. Instead, raymarch into a small offscreen target a
+  // few times a second; the visible backdrop and the gem's refraction source
+  // both sample that cheap texture, so the heavy shader never runs at full res.
+  const CLOUD_SCALE = 0.4;
+  const CLOUD_EVERY = 2;
+  const cloudRT = new THREE.RenderTarget(
+    Math.max(2, Math.round(width * CLOUD_SCALE)),
+    Math.max(2, Math.round(height * CLOUD_SCALE)),
+    { depthBuffer: false },
+  );
+  const cloudScene = new THREE.Scene();
+  const cloudCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+  const cloudQuadGeo = new THREE.PlaneGeometry(2, 2);
+  const cloudQuadMat = new THREE.MeshBasicNodeMaterial();
+  cloudQuadMat.colorNode = cloudColor();
+  cloudQuadMat.depthTest = false;
+  cloudQuadMat.depthWrite = false;
+  const cloudQuad = new THREE.Mesh(cloudQuadGeo, cloudQuadMat);
+  cloudScene.add(cloudQuad);
+
   const bgGeo = new THREE.PlaneGeometry(120, 120);
   const bgMat = new THREE.MeshBasicNodeMaterial();
-  bgMat.colorNode = cloudColor();
+  // Vibrant orange field with a very slow, very smooth noise drift: the color
+  // gently oscillates between a deep orange and a warmer tangerine over time
+  // (an animated flow-noise gradient). Two low octaves keep it buttery-smooth;
+  // the slow time term keeps the motion gentle. Linear RGB is chosen so the
+  // sRGB output lands on a punchy ~#ff5d00 ↔ ~#ff7c12 instead of pale amber.
+  const orangeField = Fn(() => {
+    const t = U.uTime.mul(0.045);
+    const q1 = vec3(screenUV.x.mul(1.1), screenUV.y.mul(1.1), t);
+    const n1 = mx_fractal_noise_float(q1, 2, 2.0, 0.5).mul(0.5).add(0.5);
+    const q2 = vec3(
+      screenUV.x.mul(0.6).add(7.2),
+      screenUV.y.mul(0.6).sub(3.1),
+      t.mul(0.7).add(2.0),
+    );
+    const n2 = mx_fractal_noise_float(q2, 2, 2.0, 0.5).mul(0.5).add(0.5);
+    const deep = vec3(1.0, 0.12, 0.0);
+    const tangerine = vec3(1.0, 0.2, 0.015);
+    const base = mix(deep, tangerine, n1);
+    // Gentle brightness breath (±~7%) on a second, even slower noise channel.
+    return base.mul(float(0.93).add(n2.mul(0.14)));
+  });
+  bgMat.colorNode = orangeField();
   const backdrop = new THREE.Mesh(bgGeo, bgMat);
   backdrop.position.set(0, 0, -10);
 
@@ -456,6 +530,9 @@ async function mountStage(
   );
   const glow = new THREE.Mesh(glowGeo, glowMat);
   glow.renderOrder = 2;
+  // Every variant is now a self-lit glass gem, so the shared accent halo stays
+  // off — kept only as scaffolding for quick A/B experiments.
+  glow.visible = false;
 
   // orbGroup carries the pixel-stable scale; the swappable orb body lives in a
   // child contentGroup so a variant switch never disturbs the glow or scale.
@@ -473,9 +550,6 @@ async function mountStage(
   const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(2.5, 3, 4);
   scene.add(key);
-  const accentLight = new THREE.PointLight(0xff6a1a, 12, 0, 2);
-  accentLight.position.set(-1.5, -2.4, 2.6);
-  scene.add(accentLight);
 
   const camera = new THREE.PerspectiveCamera(FOV_DEG, width / height, 0.1, 100);
   camera.position.set(0, 0, CAMERA_Z);
@@ -483,7 +557,7 @@ async function mountStage(
 
   const renderer = new THREE.WebGPURenderer({ canvas, alpha: true, antialias: true });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+  renderer.setPixelRatio(1);
 
   function applyOrbScale(h: number) {
     const targetPx = Math.min(Math.max(h * 0.46, 180), 360);
@@ -493,13 +567,28 @@ async function mountStage(
   applyOrbScale(height);
   await renderer.init();
 
-  let current: VariantHandle = VARIANT_BUILDERS[initialVariant](THREE, TSL, U, contentGroup);
+  function resolveBuild(variant: string): ConceptBuilder {
+    return BUILDERS.get(variant) ?? BUILDERS.get(DEFAULT_VARIANT) ?? buildShards;
+  }
+
+  let current: VariantHandle = safeBuild(
+    resolveBuild(initialVariant),
+    THREE,
+    TSL,
+    U,
+    contentGroup,
+  );
   let mode = initialMode;
   let t = 0;
   let energy = 0;
   let low = 0;
   let listen: number = U.uListen.value;
   let respond: number = U.uRespond.value;
+  let frame = 0;
+  // A concept whose node graph fails to compile makes the main render throw; log
+  // it once (reset on each variant switch) so the loop and backdrop survive and
+  // the next concept is still selectable.
+  let renderErrorLogged = false;
 
   renderer.setAnimationLoop(() => {
     t += 0.016;
@@ -514,13 +603,29 @@ async function mountStage(
     U.uListen.value = listen;
     U.uRespond.value = respond;
     current.frame({ time: t, energy, low, listen, respond });
-    renderer.render(scene, camera);
+    // The backdrop shader is concept-independent, so it always renders even when
+    // a concept poisons the main pass.
+    if (frame % CLOUD_EVERY === 0) {
+      renderer.setRenderTarget(cloudRT);
+      renderer.render(cloudScene, cloudCam);
+      renderer.setRenderTarget(null);
+    }
+    frame += 1;
+    try {
+      renderer.render(scene, camera);
+    } catch (err) {
+      if (!renderErrorLogged) {
+        renderErrorLogged = true;
+        console.error("[orb] main render threw (likely a concept node graph)", err);
+      }
+    }
   });
 
   return {
     setVariant(variant) {
       current.dispose();
-      current = VARIANT_BUILDERS[variant](THREE, TSL, U, contentGroup);
+      renderErrorLogged = false;
+      current = safeBuild(resolveBuild(variant), THREE, TSL, U, contentGroup);
     },
     setMode(next) {
       mode = next;
@@ -530,6 +635,10 @@ async function mountStage(
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
       U.uAspect.value = w / Math.max(1, h);
+      cloudRT.setSize(
+        Math.max(2, Math.round(w * CLOUD_SCALE)),
+        Math.max(2, Math.round(h * CLOUD_SCALE)),
+      );
       applyOrbScale(h);
     },
     dispose() {
@@ -537,6 +646,9 @@ async function mountStage(
       current.dispose();
       bgGeo.dispose();
       bgMat.dispose();
+      cloudRT.dispose();
+      cloudQuadGeo.dispose();
+      cloudQuadMat.dispose();
       glowGeo.dispose();
       glowMat.dispose();
       envTexture.dispose();
@@ -551,7 +663,7 @@ function ComparisonStage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<StageHandle | null>(null);
-  const [variant, setVariant] = useState<OrbVariant>("blob");
+  const [variant, setVariant] = useState<string>(DEFAULT_VARIANT);
   const [mode, setMode] = useState<VoiceWaveformMode>("responding");
 
   useEffect(() => {
@@ -565,7 +677,7 @@ function ComparisonStage() {
       canvas,
       Math.round(rect.width),
       Math.round(rect.height),
-      "blob",
+      DEFAULT_VARIANT,
       "responding",
       analyser,
     ).then((h) => {
@@ -610,31 +722,46 @@ function ComparisonStage() {
         style={{
           position: "absolute",
           left: "50%",
-          bottom: 28,
+          top: 16,
           transform: "translateX(-50%)",
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: 6,
           alignItems: "center",
+          maxWidth: "94vw",
         }}
       >
-        <div style={pillRowStyle}>
-          {ORB_VARIANTS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => setVariant(v.id)}
-              style={pillStyle(v.id === variant)}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
+        {SELECTOR_ROWS.map((row) => (
+          <div key={row.label} style={pillRowStyle}>
+            <span style={rowLabelStyle}>{row.label}</span>
+            {row.items.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                data-variant={it.id}
+                onClick={() => setVariant(it.id)}
+                style={pillStyle(it.id === variant)}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 28,
+          transform: "translateX(-50%)",
+        }}
+      >
         <div style={pillRowStyle}>
           {MODES.map((m) => (
             <button
               key={m}
               type="button"
+              data-mode={m}
               onClick={() => setMode(m)}
               style={pillStyle(m === mode)}
             >
@@ -649,11 +776,26 @@ function ComparisonStage() {
 
 const pillRowStyle: CSSProperties = {
   display: "flex",
-  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: 6,
   padding: 6,
   borderRadius: 12,
   background: "rgba(10,10,14,0.5)",
   backdropFilter: "blur(8px)",
+};
+
+const rowLabelStyle: CSSProperties = {
+  color: "rgba(255,255,255,0.4)",
+  fontFamily: "Poppins, system-ui, sans-serif",
+  fontWeight: 600,
+  fontSize: 10,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  padding: "0 4px",
+  minWidth: 48,
+  textAlign: "right",
 };
 
 function pillStyle(active: boolean): CSSProperties {
@@ -665,9 +807,9 @@ function pillStyle(active: boolean): CSSProperties {
     cursor: "pointer",
     fontFamily: "Poppins, system-ui, sans-serif",
     fontWeight: 600,
-    fontSize: 13,
-    letterSpacing: "0.03em",
-    padding: "8px 16px",
+    fontSize: 11,
+    letterSpacing: "0.02em",
+    padding: "5px 10px",
   };
 }
 

@@ -27,6 +27,15 @@ from cpu_ap_evidence_lib import (
 
 STALE_EVIDENCE_REPORT = ROOT / "build/reports/cpu_ap_stale_evidence.json"
 
+FALSE_CLAIM_FLAGS = {
+    "phone_2028_ap_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_capable_cpu_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "privileged_boot_claim_allowed": False,
+    "generated_cpu_ap_completion_claim_allowed": False,
+}
+
 TRANSCRIPT_MODE_BY_KEY = {
     "ap_benchmark_log": "ap-benchmarks",
     "isa_cache_mmu_log": "isa-cache-mmu",
@@ -424,8 +433,10 @@ def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str
         "current_generated_manifest_sha256": sha256_path(GENERATED_MANIFEST)
         if GENERATED_MANIFEST.is_file()
         else None,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
-            "release_ready": not blocked,
+            "evidence_current": not blocked,
+            "release_ready": False,
             "stale_transcript_count": len(stale),
             "missing_transcript_count": len(absent),
         },

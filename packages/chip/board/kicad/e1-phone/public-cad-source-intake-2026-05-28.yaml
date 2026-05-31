@@ -92,6 +92,47 @@ records:
       - choose plug/receptacle pair and plating/package suffixes for each interface
       - download and hash both mating STEP models from Hirose
       - regenerate KiCad connector footprints from official land pattern data
+  - id: hirose_bm28b0_6_50dp_2_0_35v_53
+    category: board_to_board_or_fpc_connector
+    exact_mpn: BM28B0.6-50DP/2-0.35V(53)
+    manufacturer: Hirose
+    board_footprints:
+      - BM28_CLASS_SPLIT_INTERCONNECT_DEV
+    local_candidate_refs:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.hirose.com/en/product/p/CL0480-0397-0-53
+        observed_evidence:
+          - exact_50_signal_contact_variant
+          - 3d_model_step
+          - product_drawing
+      - type: manufacturer_step_download
+        url: https://www.hirose.com/en/product/document?clcode=CL0480-0397-0-53&documentid=D166732_ja&documenttype=3DDrawing_STEP&lang=en&productname=BM28B0.6-50DP%2F2-0.35V%2853%29&series=BM28
+        observed_evidence:
+          - downloaded_step_zip
+          - extracted_step
+          - local_hash_recorded
+    public_step_or_3d_status: manufacturer_step_link_observed_downloaded_and_hashed
+    public_footprint_status: manufacturer_product_page_observed_land_pattern_not_verified
+    drawing_status: manufacturer_product_drawing_observed
+    local_download_status: downloaded_and_hashed
+    downloaded_artifacts:
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_53_STEP_D166732_ja.zip
+        kind: manufacturer_step_zip
+        bytes: 182247
+        sha256: cc407c9e92128e3ad0a7fbf3240010f50e07b395cbc83a8199789137a2d58b2b
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp
+        kind: extracted_step
+        bytes: 901993
+        sha256: 4e78ccf0ae735ce9bf91705ace6a4833387f9345f3c4590710ebacb033eaf5da
+    login_or_rfq_required: not_required_for_download_observed_terms_still_require_release_review
+    release_credit: false
+    required_next_actions:
+      - verify the Hirose license and supplier approval path before using this STEP in release CAD
+      - download and hash the exact mating receptacle or FPC side selected for the split interconnect
+      - regenerate KiCad footprint pads from the official drawing and compare to BM28_CLASS_SPLIT_INTERCONNECT_DEV
   - id: hirose_df40c_80dp_0_4v_51
     category: board_to_board_connector
     exact_mpn: DF40C-80DP-0.4V(51)
@@ -473,10 +514,10 @@ records:
       - download exact STEP/drawing files and hash them into supplier intake
       - validate compressed/free-height states in the enclosure clearance model
 summary:
-  record_count: 15
-  public_step_or_3d_observed_count: 5
-  public_footprint_or_eda_observed_count: 15
-  manufacturer_step_link_observed_count: 2
-  local_downloaded_hashed_count: 0
+  record_count: 16
+  public_step_or_3d_observed_count: 8
+  public_footprint_or_eda_observed_count: 16
+  manufacturer_step_link_observed_count: 3
+  local_downloaded_hashed_count: 1
   release_credit_record_count: 0
-  externally_blocked_record_count: 15
+  externally_blocked_record_count: 16

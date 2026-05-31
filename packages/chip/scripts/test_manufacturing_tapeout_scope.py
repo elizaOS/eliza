@@ -23,11 +23,18 @@ def expect_error(report: dict, token: str) -> None:
         raise AssertionError(f"expected {token!r} in {errors}")
 
 
+def assert_false_claim_flags(report: dict) -> None:
+    for key, expected in check_manufacturing_tapeout_scope.FALSE_CLAIM_FLAGS.items():
+        if report.get(key) is not expected:
+            raise AssertionError(f"{key} must be {expected!r}: {report.get(key)!r}")
+
+
 def test_valid_report_passes() -> None:
     report = check_manufacturing_tapeout_scope.build_report()
     errors = check_manufacturing_tapeout_scope.validate_report(report)
     if errors:
         raise AssertionError(errors)
+    assert_false_claim_flags(report)
     print("PASS valid manufacturing/tapeout scope report")
 
 
@@ -42,6 +49,9 @@ def test_release_claim_flip_fails() -> None:
     report = check_manufacturing_tapeout_scope.build_report()
     report["summary"]["release_claim_allowed"] = True
     expect_error(report, "release_claim_allowed")
+    report = check_manufacturing_tapeout_scope.build_report()
+    report["tapeout_ready_claim_allowed"] = True
+    expect_error(report, "tapeout_ready_claim_allowed")
     print("PASS release-claim flip rejected")
 
 

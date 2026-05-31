@@ -18,6 +18,15 @@ LOCK_DIR = ROOT / ".openlane-run.lock"
 REPORT = ROOT / "build/reports/openlane_run_preflight.json"
 RELEASE_REPORT = ROOT / "build/reports/openlane_run_release_preflight.json"
 REPORT_SCHEMA = "eliza.openlane_run_preflight.v1"
+CLAIM_BOUNDARY = "openlane_preflight_report_only_not_pd_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "openlane_run_claim_allowed": False,
+    "drc_lvs_antenna_sta_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 RELEASE_CONFIGS = (
     "pd/openlane/config.json",
     "pd/openlane/config.sky130.json",
@@ -160,19 +169,32 @@ def validate_openlane_config(config_path: Path, failures: list[str]) -> dict:
 
 
 def release_config_blockers(configs: dict[str, dict]) -> list[str]:
-    required_true = (
-        "QUIT_ON_TIMING_VIOLATIONS",
-        "QUIT_ON_MAGIC_DRC",
-        "QUIT_ON_LVS_ERROR",
-        "QUIT_ON_SLEW_VIOLATIONS",
-    )
+    def corners_fail_closed(*keys: str) -> bool:
+        for key in keys:
+            value = config.get(key)
+            if not isinstance(value, list) or "*" not in value:
+                return False
+        return True
+
     blockers: list[str] = []
     for config_name, config in configs.items():
         if config_name not in RELEASE_CONFIGS:
             continue
         if not isinstance(config, dict) or not config:
             continue
-        fail_open = [key for key in required_true if config.get(key) is not True]
+        fail_open: list[str] = []
+        if config.get("QUIT_ON_TIMING_VIOLATIONS") is not True and not corners_fail_closed(
+            "SETUP_VIOLATION_CORNERS", "HOLD_VIOLATION_CORNERS"
+        ):
+            fail_open.append("QUIT_ON_TIMING_VIOLATIONS or SETUP/HOLD_VIOLATION_CORNERS=['*']")
+        if config.get("QUIT_ON_MAGIC_DRC") is not True and config.get("ERROR_ON_MAGIC_DRC") is not True:
+            fail_open.append("QUIT_ON_MAGIC_DRC or ERROR_ON_MAGIC_DRC")
+        if config.get("QUIT_ON_LVS_ERROR") is not True and config.get("ERROR_ON_LVS_ERROR") is not True:
+            fail_open.append("QUIT_ON_LVS_ERROR or ERROR_ON_LVS_ERROR")
+        if config.get("QUIT_ON_SLEW_VIOLATIONS") is not True and not corners_fail_closed(
+            "MAX_SLEW_VIOLATION_CORNERS"
+        ):
+            fail_open.append("QUIT_ON_SLEW_VIOLATIONS or MAX_SLEW_VIOLATION_CORNERS=['*']")
         if fail_open:
             blockers.append(
                 f"{config_name} is exploratory for release; require true " + ", ".join(fail_open)
@@ -498,6 +520,8 @@ def write_report(
         "schema": REPORT_SCHEMA,
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "release_mode": release,
             "preflight_ready": status == "pass" and not release,
@@ -532,7 +556,6 @@ def write_report(
                 for category, count in sorted(blocker_category_counts(blockers).items())
             ],
         },
-        "claim_boundary": "openlane_preflight_report_only_not_pd_release_evidence",
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

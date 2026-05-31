@@ -57,6 +57,7 @@ const ROUTES: RouteSpec[] = [
   { path: "/bsc", slug: "bsc" },
   { path: "/blog", slug: "blog" },
   { path: "/sandbox-proxy", slug: "sandbox-proxy" },
+  { path: "/assistant-concepts", slug: "assistant-concepts" },
   { path: `/chat/${FIXTURE_ID}`, slug: "public-chat" },
 
   // Auth callbacks / shells
@@ -138,6 +139,11 @@ const ROUTES: RouteSpec[] = [
   },
   { path: "/dashboard/mcps", slug: "dashboard-mcps", auth: true },
   { path: "/dashboard/documents", slug: "dashboard-documents", auth: true },
+  {
+    path: "/dashboard/assistant-concepts",
+    slug: "dashboard-assistant-concepts",
+    auth: true,
+  },
   { path: "/dashboard/analytics", slug: "dashboard-analytics", auth: true },
   { path: "/dashboard/earnings", slug: "dashboard-earnings", auth: true },
   { path: "/dashboard/affiliates", slug: "dashboard-affiliates", auth: true },

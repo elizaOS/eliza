@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import os
@@ -113,18 +114,27 @@ def rel(path: Path) -> str:
 def choose_def() -> DefSource:
     runs = ROOT / "pd" / "openlane" / "runs"
     patterns = [
-        ("*/44-openroad-detailedrouting/e1_chip_top.def", "detailed_routing_full_soc"),
-        ("*/46-openroad-detailedrouting/e1_chip_top.def", "detailed_routing_full_soc"),
-        ("*/final/def/e1_chip_top.def", "final_full_soc"),
-        ("*/38-openroad-globalrouting/e1_chip_top.def", "global_routing_full_soc"),
-        ("*/final/def/*.def", "final_available_design"),
-        ("*/44-openroad-detailedrouting/*.def", "detailed_routing_available_design"),
-        ("*/46-openroad-detailedrouting/*.def", "detailed_routing_available_design"),
+        ("*/final/def/e1_chip_top.def", "final_full_soc", 80),
+        ("*/52-odb-cellfrequencytables/e1_chip_top.def", "post_fill_full_soc", 70),
+        ("*/51-openroad-fillinsertion/e1_chip_top.def", "post_fill_full_soc", 68),
+        ("*/43-openroad-detailedrouting/e1_chip_top.def", "detailed_routing_full_soc", 60),
+        ("*/44-openroad-detailedrouting/e1_chip_top.def", "detailed_routing_full_soc", 60),
+        ("*/46-openroad-detailedrouting/e1_chip_top.def", "detailed_routing_full_soc", 60),
+        ("*/38-openroad-globalrouting/e1_chip_top.def", "global_routing_full_soc", 40),
+        ("*/final/def/*.def", "final_available_design", 30),
+        ("*/52-odb-cellfrequencytables/*.def", "post_fill_available_design", 25),
+        ("*/51-openroad-fillinsertion/*.def", "post_fill_available_design", 24),
+        ("*/43-openroad-detailedrouting/*.def", "detailed_routing_available_design", 20),
+        ("*/44-openroad-detailedrouting/*.def", "detailed_routing_available_design", 20),
+        ("*/46-openroad-detailedrouting/*.def", "detailed_routing_available_design", 20),
     ]
-    for pattern, role in patterns:
-        matches = list(runs.glob(pattern))
-        if matches:
-            return DefSource(max(matches, key=lambda path: path.stat().st_mtime), role)
+    candidates: list[tuple[float, int, Path, str]] = []
+    for pattern, role, priority in patterns:
+        for path in runs.glob(pattern):
+            candidates.append((path.stat().st_mtime, priority, path, role))
+    if candidates:
+        _mtime, _priority, path, role = max(candidates, key=lambda item: (item[0], item[1], str(item[2])))
+        return DefSource(path, role)
     raise FileNotFoundError(f"no DEF files found under {runs}")
 
 
@@ -637,6 +647,141 @@ def collect_analysis(def_path: Path, design: str) -> dict[str, Any]:
     }
 
 
+def parse_mm_length(value: str) -> float | None:
+    text = value.strip().lower()
+    try:
+        if text.endswith("mm"):
+            return float(text[:-2]) * 1000.0
+        if text.endswith("um"):
+            return float(text[:-2])
+        return float(text)
+    except ValueError:
+        return None
+
+
+def collect_wirelengths(run: Path | None, limit: int = 40) -> dict[str, Any] | None:
+    if run is None:
+        return None
+    candidates = sorted(run.glob("**/wire_lengths.csv"), key=lambda path: path.stat().st_mtime)
+    if not candidates:
+        return None
+    path = candidates[-1]
+    nets: list[dict[str, Any]] = []
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                length = parse_mm_length(row.get("length_um", ""))
+                if length is None:
+                    continue
+                nets.append({"net": row.get("net", ""), "length_um": length})
+                if len(nets) >= limit:
+                    break
+    except OSError:
+        return None
+    return {"source": rel(path), "top_nets": nets, "count": len(nets)}
+
+
+def collect_route_iterations(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    iterations: list[dict[str, Any]] = []
+    for key, value in metrics.items():
+        match = re.match(r"route__drc_errors__iter:(\d+)$", key)
+        if not match or not isinstance(value, (int, float)):
+            continue
+        index = int(match.group(1))
+        iterations.append(
+            {
+                "iteration": index,
+                "drc_errors": value,
+                "wirelength": metrics.get(f"route__wirelength__iter:{index}"),
+            }
+        )
+    return sorted(iterations, key=lambda item: item["iteration"])
+
+
+def collect_ir_drop_bins(
+    run: Path | None,
+    diearea: list[int],
+    units_per_micron: int,
+    tile_count: int = 64,
+) -> dict[str, Any] | None:
+    if run is None:
+        return None
+    csv_paths = sorted(run.glob("**/net-*.csv"), key=lambda path: path.stat().st_mtime)
+    if not csv_paths:
+        return None
+    x0, y0, x1, y1 = diearea
+    die_width = max(1, x1 - x0)
+    die_height = max(1, y1 - y0)
+    nets: dict[str, Any] = {}
+    overall_worst = 0.0
+    for path in csv_paths:
+        net = path.stem.removeprefix("net-")
+        bins: dict[tuple[int, int], dict[str, Any]] = {}
+        nominal = 1.8 if net.upper().startswith("VP") else 0.0
+        try:
+            with path.open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    try:
+                        x = float(row["X location"]) * units_per_micron
+                        y = float(row["Y location"]) * units_per_micron
+                        voltage = float(row["Voltage"])
+                    except (KeyError, ValueError):
+                        continue
+                    tx = min(tile_count - 1, max(0, math.floor((x - x0) / die_width * tile_count)))
+                    ty = min(tile_count - 1, max(0, math.floor((y - y0) / die_height * tile_count)))
+                    drop = abs(nominal - voltage)
+                    overall_worst = max(overall_worst, drop)
+                    bucket = bins.setdefault(
+                        (tx, ty),
+                        {"x": tx, "y": ty, "count": 0, "drop_sum": 0.0, "drop_max": 0.0, "voltage_min": voltage, "voltage_max": voltage},
+                    )
+                    bucket["count"] += 1
+                    bucket["drop_sum"] += drop
+                    bucket["drop_max"] = max(bucket["drop_max"], drop)
+                    bucket["voltage_min"] = min(bucket["voltage_min"], voltage)
+                    bucket["voltage_max"] = max(bucket["voltage_max"], voltage)
+        except OSError:
+            continue
+        tiles = []
+        for bucket in bins.values():
+            count = max(1, bucket["count"])
+            tiles.append(
+                {
+                    "x": bucket["x"],
+                    "y": bucket["y"],
+                    "count": bucket["count"],
+                    "drop_avg": bucket["drop_sum"] / count,
+                    "drop_max": bucket["drop_max"],
+                    "voltage_min": bucket["voltage_min"],
+                    "voltage_max": bucket["voltage_max"],
+                }
+            )
+        nets[net] = {
+            "source": rel(path),
+            "tile_count": tile_count,
+            "tiles": sorted(tiles, key=lambda item: (item["y"], item["x"])),
+        }
+    if not nets:
+        return None
+    return {"schema": "eliza.chip_visualizer.measurements.ir_drop.v1", "worst_drop": overall_worst, "nets": nets}
+
+
+def collect_measurements(
+    def_path: Path,
+    diearea: list[int],
+    units_per_micron: int,
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
+    run = run_dir_for(def_path)
+    return {
+        "schema": "eliza.chip_visualizer.measurements.v1",
+        "run": rel(run) if run else None,
+        "route_iterations": collect_route_iterations(metrics),
+        "wirelengths": collect_wirelengths(run),
+        "ir_drop": collect_ir_drop_bins(run, diearea, units_per_micron),
+    }
+
+
 def collect_gds_near(def_path: Path) -> list[str]:
     run = next((parent for parent in def_path.parents if parent.name.startswith("RUN_")), None)
     if run is None:
@@ -820,6 +965,7 @@ def build_payload(
     overlay_tiles = None
     search_index = None
     density_tiles = make_tiles([*components, *routes], header["diearea"])
+    metrics, _metric_sources = choose_metrics(def_path, header["design"] or def_path.stem)
     if tile_overlays:
         overlay_tiles, density_tiles = write_overlay_tiles(
             components,
@@ -834,6 +980,12 @@ def build_payload(
         "generated_at": datetime.now(UTC).isoformat(),
         "source": {"def": rel(def_path), "role": role, "nearby_gds": collect_gds_near(def_path)},
         "analysis": collect_analysis(def_path, header["design"] or def_path.stem),
+        "measurements": collect_measurements(
+            def_path,
+            header["diearea"],
+            header["units_per_micron"],
+            metrics,
+        ),
         "silicon_image": make_silicon_image_metadata(def_path, gds_path, out_dir, render_gds, gds_size, tile_gds, tile_size),
         "design": header["design"] or def_path.stem,
         "units_per_micron": header["units_per_micron"],

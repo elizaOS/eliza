@@ -90,7 +90,7 @@ def test_build_payload_parses_full_viewer_contract() -> None:
     assert payload["tiles"]
 
 
-def test_choose_def_prefers_full_soc_before_newer_block_def() -> None:
+def test_choose_def_prefers_final_full_soc_before_newer_block_def() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         runs = root / "pd" / "openlane" / "runs"
@@ -114,8 +114,30 @@ def test_choose_def_prefers_full_soc_before_newer_block_def() -> None:
         finally:
             build_chip_visualizer.ROOT = original_root
 
-    assert source.path == detailed
-    assert source.role == "detailed_routing_full_soc"
+    assert source.path == full
+    assert source.role == "final_full_soc"
+
+
+def test_choose_def_finds_post_fill_openlane2_full_soc() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        runs = root / "pd" / "openlane" / "runs"
+        post_fill = runs / "RUN_new" / "52-odb-cellfrequencytables" / "e1_chip_top.def"
+        detailed = runs / "RUN_old" / "43-openroad-detailedrouting" / "e1_chip_top.def"
+        post_fill.parent.mkdir(parents=True)
+        detailed.parent.mkdir(parents=True)
+        detailed.write_text("DESIGN e1_chip_top ;\n")
+        post_fill.write_text("DESIGN e1_chip_top ;\n")
+
+        original_root = build_chip_visualizer.ROOT
+        build_chip_visualizer.ROOT = root
+        try:
+            source = build_chip_visualizer.choose_def()
+        finally:
+            build_chip_visualizer.ROOT = original_root
+
+    assert source.path == post_fill
+    assert source.role == "post_fill_full_soc"
 
 
 def test_choose_gds_finds_matching_design_in_run() -> None:
@@ -253,15 +275,48 @@ def test_run_metrics_aggregate_uses_selected_run_step_metrics() -> None:
     assert sources[-1].endswith("46-openroad-detailedrouting/or_metrics_out.json")
 
 
+def test_collect_measurements_adds_ir_drop_bins_and_wirelengths() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        run = root / "pd" / "openlane" / "runs" / "RUN_sample"
+        step = run / "55-openroad-irdropreport"
+        wires = run / "49-odb-reportwirelength"
+        step.mkdir(parents=True)
+        wires.mkdir(parents=True)
+        (step / "net-VPWR.csv").write_text(
+            "Instance,Terminal,Layer,X location,Y location,Voltage\n"
+            "u0,VPWR,li1,1.0,2.0,1.799\n"
+            "u1,VPWR,li1,9.0,8.0,1.790\n",
+            encoding="utf-8",
+        )
+        (wires / "wire_lengths.csv").write_text("net,length_um\nn0,1.5mm\n", encoding="utf-8")
+        def_path = run / "52-odb-cellfrequencytables" / "e1_chip_top.def"
+        def_path.parent.mkdir(parents=True)
+        def_path.write_text(SAMPLE_DEF, encoding="utf-8")
+
+        measurements = build_chip_visualizer.collect_measurements(
+            def_path,
+            [0, 0, 10000, 10000],
+            1000,
+            {"route__drc_errors__iter:1": 12, "route__wirelength__iter:1": 34},
+        )
+
+    assert measurements["route_iterations"] == [{"iteration": 1, "drc_errors": 12, "wirelength": 34}]
+    assert measurements["wirelengths"]["top_nets"][0]["length_um"] == 1500.0
+    assert measurements["ir_drop"]["nets"]["VPWR"]["tiles"]
+
+
 def main() -> int:
     test_build_payload_parses_full_viewer_contract()
-    test_choose_def_prefers_full_soc_before_newer_block_def()
+    test_choose_def_prefers_final_full_soc_before_newer_block_def()
+    test_choose_def_finds_post_fill_openlane2_full_soc()
     test_choose_gds_finds_matching_design_in_run()
     test_build_payload_records_unrendered_gds_source()
     test_tiled_overlays_move_def_geometry_out_of_main_payload()
     test_make_tile_pyramid_splits_rendered_image()
     test_summarize_metrics_records_qor_and_violations()
     test_run_metrics_aggregate_uses_selected_run_step_metrics()
+    test_collect_measurements_adds_ir_drop_bins_and_wirelengths()
     print("chip visualizer tests passed")
     return 0
 

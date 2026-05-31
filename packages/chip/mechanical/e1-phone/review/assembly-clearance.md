@@ -22,8 +22,3 @@ Status: targeted CAD clearance checks.
 - PASS: `front_camera_to_earpiece` actual 9.75 mm, required 1.0 mm
 - PASS: `rf_keepout_to_orange_shell` actual 5.4 mm, required 1.0 mm
 - PASS: `snap_hooks_to_internal_components` actual 1.35 mm, required 0.5 mm
-
-## Full-Assembly Boolean Check
-
-Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Overall: PASS. Scopes: 11/11 pass. Unintentional clash pairs: 0.

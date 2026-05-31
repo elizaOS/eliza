@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import subprocess
 import tempfile
 import unittest
@@ -53,6 +56,16 @@ class ProductStatusTests(unittest.TestCase):
         self.assertEqual(status.status, mvp.BLOCK)
         self.assertEqual(status.evidence_class, "release_blocker")
         self.assertIn("status timeout", status.evidence)
+
+    def test_json_status_rows_keep_claims_false(self) -> None:
+        rows = [mvp.Status("demo", mvp.PASS, "ok", "none", "command_pass")]
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            mvp.print_json(rows)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload[0]["subsystem"], "demo")
+        for claim_key in mvp.FALSE_CLAIM_FLAGS:
+            self.assertIs(payload[0][claim_key], False, claim_key)
 
 
 if __name__ == "__main__":

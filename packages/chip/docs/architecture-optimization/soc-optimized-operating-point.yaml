@@ -1,5 +1,12 @@
 schema: eliza.soc_optimized_operating_point_work_order.v1
 status: modeled_recommendation_release_blocked
+claim_allowed: false
+rtl_claim_allowed: false
+aosp_boot_claim_allowed: false
+linux_boot_claim_allowed: false
+silicon_claim_allowed: false
+release_claim_allowed: false
+phone_performance_claim_allowed: false
 claim_boundary: >
   This work order records the best local modeled CPU+NPU operating point found
   by the deterministic 14A sweep. It is not RTL, PDK, post-route, AOSP, silicon,

@@ -342,6 +342,16 @@ def test_npu_scale_parser_preserves_process_corner_metrics() -> None:
     )
     if result.returncode != 0:
         raise AssertionError(result.stdout)
+    report = json.loads(result.stdout)
+    for claim_key in (
+        "rtl_dma_claim_allowed",
+        "android_nnapi_claim_allowed",
+        "silicon_performance_claim_allowed",
+        "phone_class_throughput_claim_allowed",
+        "pdk_signoff_claim_allowed",
+        "release_claim_allowed",
+    ):
+        assert_equal(report[claim_key], False, claim_key)
     metrics = run_benchmarks.parse_eliza_npu_scale_sim(result.stdout)
     assert_equal(metrics["process_corner_count"], 4, "process corner count")
     if metrics["total_descriptors_required"] <= 0:
