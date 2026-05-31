@@ -87,7 +87,9 @@ export type GitHubIssueOpResult =
   | { op: "close"; number: number; title: string }
   | { op: "reopen"; number: number; title: string }
   | { op: "comment"; number: number; commentId: number; url: string }
-  | { op: "label"; number: number; labels: string[] };
+  | { op: "label"; number: number; labels: string[] }
+  | { requiresConfirmation: true; preview: string; awaitingUserInput: true }
+  | { cancelled: true };
 
 async function runCreate(
   resolved: ResolvedClient,
