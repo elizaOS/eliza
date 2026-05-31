@@ -165,6 +165,13 @@ const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 const buildWhisper =
   process.env.ELIZA_DESKTOP_BUILD_WHISPER !== "0" ||
   getBooleanArg(args, "build-whisper");
+// buildWhisper is default-on (env !== "0"), so the common dev case has it true
+// without the user asking. "Explicitly requested" is the narrower signal used to
+// decide whether missing native tooling is a hard failure (CI passes
+// --build-whisper on a tooled runner) or a graceful skip (out-of-box dev build).
+const whisperExplicitlyRequested =
+  getBooleanArg(args, "build-whisper") ||
+  process.env.ELIZA_DESKTOP_BUILD_WHISPER === "1";
 const whisperModelName =
   getArgValue(args, "whisper-model") ??
   process.env.ELIZA_DESKTOP_WHISPER_MODEL ??
@@ -222,6 +229,13 @@ function which(commandName) {
   }
 
   return null;
+}
+
+// Returns the list of required tools that are missing from PATH. A native build
+// stage uses this to decide between a hard failure (stage explicitly requested)
+// and a graceful skip (default-on stage on a machine without the toolchain).
+function missingTools(toolNames) {
+  return toolNames.filter((name) => !which(name));
 }
 
 function getArgValue(argvItems, name) {
@@ -722,6 +736,25 @@ function ensureRootRuntimeBundle() {
   fs.writeFileSync(path.join(distDir, "package.json"), '{"type":"module"}\n');
 }
 
+// The desktop build compiles the @elizaos/* workspace packages from source, so
+// it only works when those packages are present on disk (a workspace/local
+// checkout). In packages mode they are resolved from node_modules instead and
+// resolveWorkspacePackageDir() falls back to a non-existent ROOT/packages/* dir,
+// which previously surfaced deep in the build as a cryptic
+// "Expected @elizaos/core package not found". Detect this once, up front, with
+// an actionable message instead.
+function ensureWorkspaceCheckoutPresent() {
+  if (fs.existsSync(path.join(CORE_PACKAGE_DIR, "package.json"))) {
+    return;
+  }
+  fail(
+    "Desktop build requires the @elizaos/* workspace packages on disk, but " +
+      `none were found (looked for ${path.join(CORE_PACKAGE_DIR, "package.json")}).\n` +
+      "  Run the desktop build from a workspace checkout where packages/* (or " +
+      "eliza/packages/*) are present.",
+  );
+}
+
 function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   const packageJson = path.join(packageDir, "package.json");
   if (!fs.existsSync(packageJson)) {
@@ -980,6 +1013,7 @@ function copyRuntimeNodeModulesWithRetry() {
 }
 
 function stageDesktopBuild() {
+  ensureWorkspaceCheckoutPresent();
   ensureAppDirs();
 
   ensureRootRuntimeBundle();
@@ -998,7 +1032,21 @@ function stageDesktopBuild() {
   copyRuntimeNodeModulesWithRetry();
 
   if (buildWhisper) {
-    stageBundledWhisperRuntime();
+    const missingWhisperTools = missingTools(["bash", "cmake"]);
+    if (missingWhisperTools.length > 0) {
+      if (whisperExplicitlyRequested) {
+        fail(
+          `Whisper build was requested but required tooling is missing from PATH: ${missingWhisperTools.join(", ")}. ` +
+            "Install it, or build without --build-whisper / ELIZA_DESKTOP_BUILD_WHISPER=1.",
+        );
+      }
+      console.warn(
+        `[desktop-build] Skipping bundled Whisper ASR (missing tooling: ${missingWhisperTools.join(", ")}). ` +
+          "Request it explicitly with --build-whisper to make this a hard error.",
+      );
+    } else {
+      stageBundledWhisperRuntime();
+    }
   }
 
   // `bun install` for these workspaces can emit benign EEXIST errors when
@@ -1031,10 +1079,33 @@ function stageDesktopBuild() {
   });
 
   if (process.platform === "darwin") {
-    runBun(["run", "build:native-effects"], {
-      cwd: ELECTROBUN_DIR,
-      label: "Building native macOS effects dylib",
-    });
+    // build:native-effects shells to `xcrun clang++` (Xcode Command Line
+    // Tools). On a dev machine without the CLT the compile would hard-fail
+    // deep in the stage; skip gracefully unless the build was explicitly asked
+    // for the native bits (CI passes --build-whisper on a tooled runner).
+    const clangAvailable =
+      which("xcrun") &&
+      runCapture("xcrun", ["-f", "clang++"]).status === 0;
+    if (!clangAvailable) {
+      if (whisperExplicitlyRequested) {
+        fail(
+          "Native macOS effects build requires the Xcode Command Line Tools " +
+            "(xcrun clang++), which are missing. Install them with " +
+            "`xcode-select --install`, or omit --build-whisper / " +
+            "ELIZA_DESKTOP_BUILD_WHISPER=1.",
+        );
+      }
+      console.warn(
+        "[desktop-build] Skipping native macOS effects dylib — Xcode Command " +
+          "Line Tools (xcrun clang++) not found. Request the native build " +
+          "explicitly with --build-whisper to make this a hard error.",
+      );
+    } else {
+      runBun(["run", "build:native-effects"], {
+        cwd: ELECTROBUN_DIR,
+        label: "Building native macOS effects dylib",
+      });
+    }
   }
 }
 

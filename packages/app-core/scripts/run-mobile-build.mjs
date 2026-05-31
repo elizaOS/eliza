@@ -873,7 +873,12 @@ async function buildWeb(platform) {
     ...(iosRuntimeMode
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-          VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+          // A pre-set VITE_ELIZA_IOS_RUNTIME_MODE (the value Vite bakes into the
+          // renderer) wins over the policy default, mirroring ELIZA_BUILD_VARIANT
+          // above. Without this, spreading the policy object clobbered an
+          // explicitly chosen runtime mode.
+          VITE_ELIZA_IOS_RUNTIME_MODE:
+            process.env.VITE_ELIZA_IOS_RUNTIME_MODE || iosRuntimeMode,
         }
       : {}),
     ...(runtimeExecutionMode
@@ -3168,10 +3173,7 @@ function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
 }
 
 function isIosLlamaRequested(env = process.env) {
-  return (
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA)
-  );
+  return isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA);
 }
 
 function shouldIncludeIosLlama(env = process.env) {
@@ -3319,7 +3321,7 @@ function generatePodfile() {
   });
   if (!includeLlama) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
+      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA not set)",
     );
   }
   if (includeCompatBunRuntime && !includeFullBunEngine) {
@@ -4172,7 +4174,7 @@ async function ensureIosLlamaCppVendoredFramework({
   if (process.platform !== "darwin") {
     throw new Error(
       "[mobile-build] iOS llama.cpp xcframework build requires a macOS host with Xcode. " +
-        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
+        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA.",
     );
   }
 
@@ -4180,7 +4182,7 @@ async function ensureIosLlamaCppVendoredFramework({
   if (!packageDir) {
     throw new Error(
       "[mobile-build] llama-cpp-capacitor package not found in node_modules; " +
-        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
+        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA.",
     );
   }
 
@@ -6525,7 +6527,6 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   if (isIosAppStoreBuild()) {
     process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
-    process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
   } else {
     setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
   }
@@ -6545,7 +6546,6 @@ export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-  process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
   process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
 }
 

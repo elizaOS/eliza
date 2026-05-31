@@ -601,10 +601,22 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
+let trayActive = false;
 
 function requestAppQuit(): void {
   isQuitting = true;
   Utils.quit();
+}
+
+/**
+ * True for packaged desktop builds, false for the in-repo dev runtime.
+ * The compiled bundle no longer runs out of a `/src/` directory, so its
+ * absence is the dev/prod signal already used by loadTheAppEnvFilesForMain.
+ * Normalize Windows separators first so dev paths containing `\src\` are not
+ * misclassified as packaged (which would make dev builds fatal on Windows).
+ */
+function isPackagedDesktopBuild(): boolean {
+  return !import.meta.dir.replaceAll("\\", "/").includes("/src/");
 }
 
 const cleanupFns: Array<() => void | Promise<void>> = [];
@@ -898,8 +910,16 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   try {
     preload = readResolvedPreloadScript(import.meta.dir);
   } catch (err) {
+    // A missing/stale/empty preload means the main window has no API bridge —
+    // the renderer boots into a white screen. In packaged builds that is a
+    // fatal misbuild, so surface it (the error already names `build:preload`)
+    // instead of silently shipping a broken window. Keep the soft fallback in
+    // the dev runtime so an unbuilt preload doesn't block iterating on the UI.
+    if (isPackagedDesktopBuild()) {
+      throw err;
+    }
     logger.error(
-      `[Main] Failed to read preload script: ${err instanceof Error ? err.message : String(err)}`,
+      `[Main] Failed to read preload script (dev fallback): ${err instanceof Error ? err.message : String(err)}`,
     );
     preload = "// preload unavailable";
   }
@@ -1085,6 +1105,19 @@ function attachMainWindow(
       const closeEvent = event as { preventDefault?: () => void } | undefined;
       closeEvent?.preventDefault?.();
       logger.info("[Main] Kiosk window close blocked — staying fullscreen");
+      return;
+    }
+
+    // On Linux without an active tray icon, minimizing-to-tray (or running in
+    // the background) strands an invisible process: there is no dock reopen
+    // like macOS and no StatusNotifier item to restore from. Quit cleanly in
+    // that case so closing the last window can't leave the agent unreachable.
+    // macOS/Windows and the Linux-with-tray path keep their existing behavior.
+    if (!isQuitting && process.platform === "linux" && !trayActive) {
+      logger.info(
+        "[Main] Window close on Linux with no tray — quitting (no surface to restore from)",
+      );
+      requestAppQuit();
       return;
     }
 
@@ -2396,6 +2429,7 @@ async function main(): Promise<void> {
         tooltip: BRAND.appName,
         title: BRAND.appName,
       });
+      trayActive = true;
     } catch (err) {
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
