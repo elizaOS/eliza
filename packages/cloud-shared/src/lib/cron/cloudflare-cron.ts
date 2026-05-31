@@ -52,7 +52,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/process-stripe-queue",
     "/api/v1/cron/pool-replenish",
   ],
-  "0 */6 * * *": ["/api/cron/cleanup-anonymous-sessions"],
+  "0 */6 * * *": ["/api/cron/cleanup-anonymous-sessions", "/api/v1/cron/agent-backups"],
 };
 
 interface ScheduledEvent {
