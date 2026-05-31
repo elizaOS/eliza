@@ -12,6 +12,15 @@ import type {
 import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-search-address.js";
 import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
+  assertEvmTransferRecipientAuthorized,
+  assertWalletFinancialActionAllowed,
+} from "../security/wallet-context-safety.js";
+import {
+  gateWalletFinancialExecution,
+  requiresWalletFinancialConfirmation,
+  walletFinancialGateActionResult,
+} from "../security/wallet-financial-confirmation.js";
+import {
   WALLET_BACKEND_SERVICE_TYPE,
   type WalletBackendService,
 } from "../services/wallet-backend-service.js";
@@ -21,15 +30,6 @@ import type {
   WalletRouterResult,
   WalletRouterSubaction,
 } from "../types/wallet-router.js";
-import {
-  assertEvmTransferRecipientAuthorized,
-  assertWalletFinancialActionAllowed,
-} from "../security/wallet-context-safety.js";
-import {
-  gateWalletFinancialExecution,
-  requiresWalletFinancialConfirmation,
-  walletFinancialGateActionResult,
-} from "../security/wallet-financial-confirmation.js";
 import {
   isWalletRouterSubaction,
   parseWalletRouterParams,

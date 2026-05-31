@@ -324,9 +324,9 @@ export type {
 // Unified two-phase confirmation helper for destructive actions.
 export {
 	clearPendingConfirmation,
-	requireConfirmation,
 	gateDestructiveConfirmation,
 	llmConfirmedFlagIsAuthoritative,
+	requireConfirmation,
 } from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/description-compressed-lint";

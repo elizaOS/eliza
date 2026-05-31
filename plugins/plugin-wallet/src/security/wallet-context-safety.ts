@@ -10,8 +10,8 @@ function messageHasPromptInjectionFlag(message: Memory): boolean {
   return (
     typeof metadata === "object" &&
     metadata !== null &&
-    (metadata as { promptInjectionSuspected?: boolean }).promptInjectionSuspected ===
-      true
+    (metadata as { promptInjectionSuspected?: boolean })
+      .promptInjectionSuspected === true
   );
 }
 export const EVM_ADDRESS_PATTERN = /0x[a-fA-F0-9]{40}\b/g;

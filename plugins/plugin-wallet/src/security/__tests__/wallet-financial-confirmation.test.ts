@@ -36,9 +36,7 @@ function message(text: string): Memory {
 describe("wallet-financial-confirmation", () => {
   it("never treats LLM options.confirmed as authorization", () => {
     expect(isConfirmed({ confirmed: true })).toBe(false);
-    expect(
-      isConfirmed({ parameters: { confirmed: true } }),
-    ).toBe(false);
+    expect(isConfirmed({ parameters: { confirmed: true } })).toBe(false);
   });
 
   it("blocks first on-chain attempt until the user replies yes", async () => {

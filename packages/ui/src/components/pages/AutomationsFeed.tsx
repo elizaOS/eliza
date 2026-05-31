@@ -36,9 +36,9 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
-import { getCached, setCached } from "../../hooks/resource-cache";
 import { useTranslation } from "../../state/TranslationContext";
 import {
   type FeedFilter,
@@ -153,7 +153,8 @@ export function AutomationsFeed({
   const { t } = useTranslation();
   // Seed from the shared cache so a revisit paints the last-known automations
   // instantly and revalidates silently, instead of flashing a spinner.
-  const cachedAutomations = getCached<AutomationListResponse>("automations:list");
+  const cachedAutomations =
+    getCached<AutomationListResponse>("automations:list");
   const [data, setData] = useState<AutomationListResponse | null>(
     cachedAutomations?.data ?? null,
   );

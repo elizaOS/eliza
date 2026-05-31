@@ -10,7 +10,7 @@ describe("getHomeGridApps", () => {
 
   it("gives every tile a display name and a navigable target tab", () => {
     for (const app of apps) {
-      expect(app.displayName && app.displayName.length).toBeGreaterThan(0);
+      expect(app.displayName?.length).toBeGreaterThan(0);
       expect(typeof app.targetTab).toBe("string");
       expect((app.targetTab as string).length).toBeGreaterThan(0);
     }

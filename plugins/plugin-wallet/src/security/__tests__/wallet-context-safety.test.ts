@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Memory } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   assertEvmTransferRecipientAuthorized,
   assertWalletFinancialActionAllowed,
@@ -23,11 +23,15 @@ describe("wallet-context-safety", () => {
         text: `Send 0.0005 ETH to ${recipient} on Sepolia.`,
       },
     };
-    expect(messageAuthorizesEvmRecipient(message as never, undefined, recipient)).toBe(
-      true,
-    );
+    expect(
+      messageAuthorizesEvmRecipient(message as never, undefined, recipient),
+    ).toBe(true);
     expect(() =>
-      assertEvmTransferRecipientAuthorized(message as never, undefined, recipient),
+      assertEvmTransferRecipientAuthorized(
+        message as never,
+        undefined,
+        recipient,
+      ),
     ).not.toThrow();
   });
 
@@ -51,9 +55,13 @@ describe("wallet-context-safety", () => {
       },
     };
     expect(
-      messageAuthorizesEvmRecipient(message as never, {
-        parameters: { recipient },
-      }, recipient),
+      messageAuthorizesEvmRecipient(
+        message as never,
+        {
+          parameters: { recipient },
+        },
+        recipient,
+      ),
     ).toBe(true);
   });
 

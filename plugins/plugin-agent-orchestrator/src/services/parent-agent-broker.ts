@@ -975,8 +975,9 @@ function brokerConfirmationMemory(
     return request.message;
   }
   const metadata = request.session?.metadata;
-  const runtimeAgentId = (request.runtime as IAgentRuntime & { agentId?: string })
-    .agentId;
+  const runtimeAgentId = (
+    request.runtime as IAgentRuntime & { agentId?: string }
+  ).agentId;
   const entityId =
     normalizeString(metadata?.userId) ??
     normalizeString(metadata?.entityId) ??

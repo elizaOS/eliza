@@ -1,9 +1,9 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   gateWalletFinancialExecution,
   walletFinancialGateActionResult,
 } from "../../../security/wallet-financial-confirmation.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { buildSendTxParams, createEvmActionValidator } from "./helpers";
 
 const legacySpec = requireActionSpec("EVM_SWAP");
@@ -862,7 +862,7 @@ export const swapAction = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: Record<string, unknown>,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const walletProvider = await initWalletProvider(runtime);

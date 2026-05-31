@@ -2,10 +2,10 @@
  * GHSA-gh63-5vpj-39qp — wire external-content defenses into the live message path.
  */
 
-import type { IAgentRuntime } from "../types/runtime.ts";
 import type { Memory } from "../types/memory.ts";
 import type { PipelineHookSpec } from "../types/pipeline-hooks.ts";
 import type { ContentValue } from "../types/primitives.ts";
+import type { IAgentRuntime } from "../types/runtime.ts";
 import {
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
@@ -39,7 +39,9 @@ export type IncomingMessageSecurityMetadata = {
 	externalContentWrapped?: boolean;
 };
 
-function resolveExternalSource(source: string | undefined): ExternalContentSource {
+function resolveExternalSource(
+	source: string | undefined,
+): ExternalContentSource {
 	const normalized = (source ?? "").trim().toLowerCase();
 	if (normalized.includes("discord")) return "api";
 	if (normalized.includes("telegram")) return "api";

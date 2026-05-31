@@ -191,9 +191,15 @@ export async function clearPendingConfirmation(args: {
 }
 
 export type DestructiveConfirmationGateResult =
-	| { readonly status: "confirmed"; readonly metadata?: Record<string, unknown> }
+	| {
+			readonly status: "confirmed";
+			readonly metadata?: Record<string, unknown>;
+	  }
 	| { readonly status: "pending" }
-	| { readonly status: "cancelled"; readonly metadata?: Record<string, unknown> };
+	| {
+			readonly status: "cancelled";
+			readonly metadata?: Record<string, unknown>;
+	  };
 
 /**
  * Thin wrapper around {@link requireConfirmation} for destructive action handlers.

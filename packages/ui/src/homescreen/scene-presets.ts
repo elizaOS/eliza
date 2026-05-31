@@ -283,7 +283,7 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
     new T.MeshBasicMaterial({ map: faceTex }),
   );
   faceMesh.rotation.x = -Math.PI / 2; // lie flat, face up at the top-down camera
-  const FACE_Y = ORB_RADIUS * 0.40;
+  const FACE_Y = ORB_RADIUS * 0.4;
   faceMesh.position.y = FACE_Y;
   scene.add(faceMesh);
 
@@ -298,7 +298,7 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
     roughness: 0.06,
     transmission: 1,
     thickness: ORB_RADIUS * 0.7,
-    ior: 1.08,       // crystal — visible refraction without blowing out the edges
+    ior: 1.08, // crystal — visible refraction without blowing out the edges
     dispersion: 3,
     clearcoat: 0.6,
     clearcoatRoughness: 0.1,

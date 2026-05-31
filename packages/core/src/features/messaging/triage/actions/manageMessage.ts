@@ -1,5 +1,4 @@
 import { logger } from "../../../../logger.ts";
-import { requireConfirmation } from "../../../../utils/confirmation.ts";
 import type {
 	Action,
 	ActionExample,
@@ -10,6 +9,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { requireConfirmation } from "../../../../utils/confirmation.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { MANAGE_OPERATION_KINDS } from "../types.ts";

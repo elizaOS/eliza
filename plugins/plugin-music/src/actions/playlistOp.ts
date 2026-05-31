@@ -16,10 +16,7 @@ import {
   getSmartMusicFetchService,
   type MusicFetchProgress,
 } from "../utils/smartFetchService";
-import {
-  mergedOptions,
-  requireMusicConfirmation,
-} from "./confirmation";
+import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 
 type PlaylistOp = "save" | "load" | "delete" | "add";
 

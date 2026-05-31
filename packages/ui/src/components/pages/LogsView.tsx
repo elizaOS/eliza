@@ -6,7 +6,6 @@ import { formatTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { ListSkeleton } from "../ui/skeleton-layouts";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 
 /**
  * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout

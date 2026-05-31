@@ -16,10 +16,7 @@ import {
 import { classifyPlaybackTransportIntent } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { resolveMusicGuildIdForPlayback } from "../utils/resolveMusicGuildId";
-import {
-  mergedOptions,
-  requireMusicConfirmation,
-} from "./confirmation";
+import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 
 function formatFetchProgressDetails(details: unknown): string | undefined {
   if (details === undefined) return undefined;
@@ -272,7 +269,7 @@ async function handleSkip(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  options: Record<string, unknown>,
+  _options: Record<string, unknown>,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
   const musicService = runtime.getService(MUSIC_SERVICE_NAME) as MusicService;
@@ -332,7 +329,7 @@ async function handleStop(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  options: Record<string, unknown>,
+  _options: Record<string, unknown>,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
   const musicService = runtime.getService(MUSIC_SERVICE_NAME) as MusicService;

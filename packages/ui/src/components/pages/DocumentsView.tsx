@@ -358,7 +358,8 @@ export function DocumentsView({
   useEffect(() => {
     // Revalidate silently when cached documents are already on screen.
     loadData({
-      silent: getCached<DocumentRecord[]>(`documents:list:${scopeFilter}`) != null,
+      silent:
+        getCached<DocumentRecord[]>(`documents:list:${scopeFilter}`) != null,
     }).catch(() => {
       setLoading(false);
     });

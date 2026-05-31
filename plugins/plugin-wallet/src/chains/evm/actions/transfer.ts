@@ -10,6 +10,14 @@ import {
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
+import {
+  assertEvmTransferRecipientAuthorized,
+  assertWalletFinancialActionAllowed,
+} from "../../../security/wallet-context-safety.js";
+import {
+  gateWalletFinancialExecution,
+  walletFinancialGateActionResult,
+} from "../../../security/wallet-financial-confirmation.js";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
@@ -22,14 +30,6 @@ import {
   type Transaction,
   type TransferParams,
 } from "../types";
-import {
-  assertEvmTransferRecipientAuthorized,
-  assertWalletFinancialActionAllowed,
-} from "../../../security/wallet-context-safety.js";
-import {
-  gateWalletFinancialExecution,
-  walletFinancialGateActionResult,
-} from "../../../security/wallet-financial-confirmation.js";
 import { buildSendTxParams, createEvmActionValidator } from "./helpers";
 
 export class TransferAction {
@@ -179,17 +179,8 @@ export const transferAction: Action = {
     assertWalletFinancialActionAllowed(message, "transfer");
 
     const walletProvider = await initWalletProvider(runtime);
-    const paramOptions = await buildTransferDetails(
-      state,
-      message,
-      runtime,
-      walletProvider,
-    );
-    assertEvmTransferRecipientAuthorized(
-      message,
-      options,
-      paramOptions.toAddress,
-    );
+    const paramOptions = await buildTransferDetails(state, message, runtime, walletProvider);
+    assertEvmTransferRecipientAuthorized(message, options, paramOptions.toAddress);
 
     const gate = await gateWalletFinancialExecution({
       runtime,

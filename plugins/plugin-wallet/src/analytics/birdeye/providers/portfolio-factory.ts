@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { sanitizeWalletDisplayLabel } from "../../../security/wallet-context-safety.js";
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type {
   WalletPortfolioResponse,
@@ -8,7 +9,6 @@ import type {
   BirdeyeSupportedChain,
   GetCacheTimedOptions,
 } from "../types/shared";
-import { sanitizeWalletDisplayLabel } from "../../../security/wallet-context-safety.js";
 import { extractChain, formatJsonScalar, formatJsonTable } from "../utils";
 
 type PortfolioData = WalletPortfolioResponse["data"];

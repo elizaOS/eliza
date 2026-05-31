@@ -84,8 +84,12 @@ export function HomescreenCanvas({
       pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       pointerRef.current.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     };
-    const down = () => { pointerRef.current.down = true; };
-    const up = () => { pointerRef.current.down = false; };
+    const down = () => {
+      pointerRef.current.down = true;
+    };
+    const up = () => {
+      pointerRef.current.down = false;
+    };
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerdown", down);
     document.addEventListener("pointerup", up);
