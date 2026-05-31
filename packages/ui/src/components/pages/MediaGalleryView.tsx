@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
@@ -166,6 +167,96 @@ function collectStrings(obj: unknown, out: Set<string>) {
   }
 }
 
+function MediaFilterChip({
+  chip,
+  label,
+  isActive,
+  onSelect,
+}: {
+  chip: MediaType;
+  label: string;
+  isActive: boolean;
+  onSelect: (chip: MediaType) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `filter-${chip}`,
+    role: "tab",
+    label,
+    group: "media-filters",
+    status: isActive ? "active" : "inactive",
+    description: `Filter media by ${label}`,
+    onActivate: () => onSelect(chip),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="sm"
+      aria-current={isActive ? "page" : undefined}
+      className={`h-auto min-h-[2.25rem] rounded-sm border px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
+        isActive
+          ? "border-accent/35 bg-accent/14 text-txt-strong"
+          : "border-border/45 bg-bg/35 text-muted hover:border-border/60 hover:bg-bg-hover hover:text-txt"
+      }`}
+      onClick={() => onSelect(chip)}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function MediaListItem({
+  item,
+  index,
+  isActive,
+  typeLabel,
+  fallbackTitle,
+  onSelect,
+}: {
+  item: MediaItem;
+  index: number;
+  isActive: boolean;
+  typeLabel: string;
+  fallbackTitle: string;
+  onSelect: (url: string) => void;
+}) {
+  const title = item.filename || fallbackTitle;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `media-item-${index}`,
+    role: "list-item",
+    label: title,
+    group: "media-items",
+    status: isActive ? "active" : "inactive",
+    description: `Open ${title} (${typeLabel}) from ${item.source}`,
+    onActivate: () => onSelect(item.url),
+  });
+  return (
+    <SidebarContent.Item
+      ref={ref}
+      active={isActive}
+      aria-current={isActive ? "true" : undefined}
+      onClick={() => onSelect(item.url)}
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon active={isActive}>
+        {item.type.slice(0, 1).toUpperCase()}
+      </SidebarContent.ItemIcon>
+      <SidebarContent.ItemBody>
+        <SidebarContent.ItemTitle className="truncate">
+          {title}
+        </SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>
+          <span className="truncate">{item.source}</span>
+          <span className="rounded-full border border-border/45 px-2 py-0.5 uppercase tracking-[0.16em]">
+            {typeLabel}
+          </span>
+        </SidebarContent.ItemDescription>
+      </SidebarContent.ItemBody>
+    </SidebarContent.Item>
+  );
+}
+
 export function MediaGalleryView({
   leftNav,
   contentHeader,
@@ -180,6 +271,16 @@ export function MediaGalleryView({
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
+
+  const searchField = useAgentElement<HTMLInputElement>({
+    id: "search",
+    role: "text-input",
+    label: t("mediagalleryview.SearchMedia"),
+    group: "media-filters",
+    description: "Search media by filename or URL",
+    getValue: () => search,
+    onFill: (value) => setSearch(value),
+  });
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -321,32 +422,25 @@ export function MediaGalleryView({
 
         <div className="space-y-3 pt-4">
           <Input
+            ref={searchField.ref}
             type="search"
             placeholder={t("mediagalleryview.SearchMedia")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 rounded-sm border-border/40 bg-card/50 text-sm placeholder:text-muted/65 focus-visible:ring-accent/30"
+            {...searchField.agentProps}
           />
 
           <div className="grid grid-cols-2 gap-1.5">
-            {FILTER_CHIPS.map((chip) => {
-              const isActive = filter === chip;
-              return (
-                <Button
-                  key={chip}
-                  variant="ghost"
-                  size="sm"
-                  className={`h-auto min-h-[2.25rem] rounded-sm border px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
-                    isActive
-                      ? "border-accent/35 bg-accent/14 text-txt-strong"
-                      : "border-border/45 bg-bg/35 text-muted hover:border-border/60 hover:bg-bg-hover hover:text-txt"
-                  }`}
-                  onClick={() => setFilter(chip)}
-                >
-                  {mediaTypeLabel(t, chip)}
-                </Button>
-              );
-            })}
+            {FILTER_CHIPS.map((chip) => (
+              <MediaFilterChip
+                key={chip}
+                chip={chip}
+                label={mediaTypeLabel(t, chip)}
+                isActive={filter === chip}
+                onSelect={setFilter}
+              />
+            ))}
           </div>
         </div>
 
@@ -360,35 +454,20 @@ export function MediaGalleryView({
               {t("mediagalleryview.NoMediaFound")}
             </SidebarContent.EmptyState>
           ) : (
-            filtered.map((item, index) => {
-              const isActive = selectedItem?.url === item.url;
-              return (
-                <SidebarContent.Item
-                  active={isActive}
-                  // biome-ignore lint/suspicious/noArrayIndexKey: stable url plus index tiebreaker
-                  key={`${item.url}-${index}`}
-                  onClick={() => setSelectedMediaUrl(item.url)}
-                >
-                  <SidebarContent.ItemIcon active={isActive}>
-                    {item.type.slice(0, 1).toUpperCase()}
-                  </SidebarContent.ItemIcon>
-                  <SidebarContent.ItemBody>
-                    <SidebarContent.ItemTitle className="truncate">
-                      {item.filename ||
-                        t("mediagalleryview.MediaItem", {
-                          defaultValue: "Media item",
-                        })}
-                    </SidebarContent.ItemTitle>
-                    <SidebarContent.ItemDescription>
-                      <span className="truncate">{item.source}</span>
-                      <span className="rounded-full border border-border/45 px-2 py-0.5 uppercase tracking-[0.16em]">
-                        {mediaTypeLabel(t, item.type)}
-                      </span>
-                    </SidebarContent.ItemDescription>
-                  </SidebarContent.ItemBody>
-                </SidebarContent.Item>
-              );
-            })
+            filtered.map((item, index) => (
+              <MediaListItem
+                // biome-ignore lint/suspicious/noArrayIndexKey: stable url plus index tiebreaker
+                key={`${item.url}-${index}`}
+                item={item}
+                index={index}
+                isActive={selectedItem?.url === item.url}
+                typeLabel={mediaTypeLabel(t, item.type)}
+                fallbackTitle={t("mediagalleryview.MediaItem", {
+                  defaultValue: "Media item",
+                })}
+                onSelect={setSelectedMediaUrl}
+              />
+            ))
           )}
         </SidebarScrollRegion>
       </SidebarPanel>

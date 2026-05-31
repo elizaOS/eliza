@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type * as Three from "three";
+import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -1125,6 +1126,102 @@ export function VectorBrowserView({
   // Show connection error state prominently
   const isConnectionError = error?.includes("agent is running");
 
+  const tableSelect = useAgentElement<HTMLButtonElement>({
+    id: "vector-table",
+    role: "select",
+    label: t("common.vectors", { defaultValue: "Vectors" }),
+    group: "vector-browser-toolbar",
+    description: "Select which vector/memory table to browse",
+    getValue: () => selectedTable,
+    options: tables.map((table) => table.name),
+    onFill: (value) => {
+      setSelectedTable(value);
+      setPage(0);
+      setSearch("");
+      setSearchInput("");
+      setSelectedMemory(null);
+    },
+  });
+
+  const listTab = useAgentElement<HTMLButtonElement>({
+    id: "vector-view-list",
+    role: "tab",
+    label: t("vectorbrowserview.List"),
+    group: "vector-browser-views",
+    status: viewMode === "list" ? "active" : "inactive",
+    description: "Show vectors as a list",
+    onActivate: () => setViewMode("list"),
+  });
+
+  const graph2dTab = useAgentElement<HTMLButtonElement>({
+    id: "vector-view-2d",
+    role: "tab",
+    label: t("vectorbrowserview.2D", { defaultValue: "2D" }),
+    group: "vector-browser-views",
+    status: viewMode === "graph" ? "active" : "inactive",
+    description: "Show vectors as a 2D projection graph",
+    onActivate: () => setViewMode("graph"),
+  });
+
+  const graph3dTab = useAgentElement<HTMLButtonElement>({
+    id: "vector-view-3d",
+    role: "tab",
+    label: t("vectorbrowserview.3D", { defaultValue: "3D" }),
+    group: "vector-browser-views",
+    status: viewMode === "3d" ? "active" : "inactive",
+    description: "Show vectors as a 3D projection graph",
+    onActivate: () => setViewMode("3d"),
+  });
+
+  const searchField = useAgentElement<HTMLInputElement>({
+    id: "vector-search",
+    role: "text-input",
+    label: t("vectorbrowserview.SearchContent"),
+    group: "vector-browser-toolbar",
+    description: "Search memory content",
+    getValue: () => searchInput,
+    onFill: (value) => setSearchInput(value),
+  });
+
+  const searchButton = useAgentElement<HTMLButtonElement>({
+    id: "vector-search-run",
+    role: "button",
+    label: t("common.search"),
+    group: "vector-browser-toolbar",
+    description: "Run the content search",
+    onActivate: handleSearch,
+  });
+
+  const prevPageButton = useAgentElement<HTMLButtonElement>({
+    id: "vector-page-prev",
+    role: "button",
+    label: t("common.prev"),
+    group: "vector-browser-pagination",
+    description: "Go to the previous page of memories",
+    onActivate: () => setPage((p) => p - 1),
+  });
+
+  const nextPageButton = useAgentElement<HTMLButtonElement>({
+    id: "vector-page-next",
+    role: "button",
+    label: t("common.next"),
+    group: "vector-browser-pagination",
+    description: "Go to the next page of memories",
+    onActivate: () => setPage((p) => p + 1),
+  });
+
+  const retryButton = useAgentElement<HTMLButtonElement>({
+    id: "vector-retry-connection",
+    role: "button",
+    label: t("vectorbrowserview.RetryConnection"),
+    group: "vector-browser-toolbar",
+    description: "Retry connecting to the database",
+    onActivate: () => {
+      setError("");
+      loadTables();
+    },
+  });
+
   const vectorSidebar = (
     <AppPageSidebar
       testId="vector-sidebar"
@@ -1194,7 +1291,11 @@ export function VectorBrowserView({
                   setSelectedMemory(null);
                 }}
               >
-                <SelectTrigger className="w-full h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent">
+                <SelectTrigger
+                  ref={tableSelect.ref}
+                  {...tableSelect.agentProps}
+                  className="w-full h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1209,6 +1310,9 @@ export function VectorBrowserView({
 
             <div className="grid grid-cols-3 gap-1.5">
               <Button
+                ref={listTab.ref}
+                {...listTab.agentProps}
+                aria-current={viewMode === "list" ? "true" : undefined}
                 variant="ghost"
                 size="sm"
                 className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
@@ -1221,6 +1325,9 @@ export function VectorBrowserView({
                 {t("vectorbrowserview.List")}
               </Button>
               <Button
+                ref={graph2dTab.ref}
+                {...graph2dTab.agentProps}
+                aria-current={viewMode === "graph" ? "true" : undefined}
                 variant="ghost"
                 size="sm"
                 className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
@@ -1233,6 +1340,9 @@ export function VectorBrowserView({
                 {t("vectorbrowserview.2D", { defaultValue: "2D" })}
               </Button>
               <Button
+                ref={graph3dTab.ref}
+                {...graph3dTab.agentProps}
+                aria-current={viewMode === "3d" ? "true" : undefined}
                 variant="ghost"
                 size="sm"
                 className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
@@ -1249,6 +1359,8 @@ export function VectorBrowserView({
             {viewMode === "list" ? (
               <div className="flex gap-1.5">
                 <Input
+                  ref={searchField.ref}
+                  {...searchField.agentProps}
                   type="search"
                   placeholder={t("vectorbrowserview.SearchContent")}
                   value={searchInput}
@@ -1256,7 +1368,13 @@ export function VectorBrowserView({
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="flex-1 h-10 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
                 />
-                <Button variant="default" size="sm" onClick={handleSearch}>
+                <Button
+                  ref={searchButton.ref}
+                  {...searchButton.agentProps}
+                  variant="default"
+                  size="sm"
+                  onClick={handleSearch}
+                >
                   {t("common.search")}
                 </Button>
               </div>
@@ -1350,6 +1468,8 @@ export function VectorBrowserView({
         {viewMode === "list" && totalPages > 1 ? (
           <div className="mt-3 flex items-center justify-between gap-2 pt-3">
             <Button
+              ref={prevPageButton.ref}
+              {...prevPageButton.agentProps}
               variant="outline"
               size="sm"
               disabled={page === 0}
@@ -1361,6 +1481,8 @@ export function VectorBrowserView({
               {t("vectorbrowserview.Page")} {page + 1} / {totalPages}
             </span>
             <Button
+              ref={nextPageButton.ref}
+              {...nextPageButton.agentProps}
               variant="outline"
               size="sm"
               disabled={page >= totalPages - 1}
@@ -1392,6 +1514,8 @@ export function VectorBrowserView({
               {t("vectorbrowserview.StartTheAgentToB")}
             </div>
             <Button
+              ref={retryButton.ref}
+              {...retryButton.agentProps}
               variant="default"
               size="sm"
               className="mt-5"

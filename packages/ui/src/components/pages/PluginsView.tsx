@@ -25,6 +25,7 @@ import {
 
 export { paramsToSchema } from "./plugin-list-utils";
 
+import { useAgentElement } from "../../agent-surface";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
 import { PagePanel } from "../composites/page-panel";
@@ -40,6 +41,67 @@ import {
 } from "./plugin-view-connectors";
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
+
+/* ── Subgroup filter nav item (agent-addressable) ──────────────────── */
+
+interface PluginSubgroupNavItemProps {
+  tag: { id: string; label: string; count: number };
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  availableCountLabel: string;
+}
+
+/**
+ * Desktop sidebar entry for one plugin subgroup filter. Registered with the
+ * agent surface as a tab so the agent can switch plugin categories by voice.
+ */
+function PluginSubgroupNavItem({
+  tag,
+  isActive,
+  onSelect,
+  availableCountLabel,
+}: PluginSubgroupNavItemProps) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `subgroup-${tag.id}`,
+    role: "tab",
+    label: tag.label,
+    group: "plugin-subgroups",
+    status: isActive ? "active" : "inactive",
+    description: `Filter plugins by ${tag.label}`,
+    onActivate: () => onSelect(tag.id),
+  });
+  const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
+  return (
+    <SidebarContent.Item
+      ref={ref}
+      as="button"
+      onClick={() => onSelect(tag.id)}
+      aria-current={isActive ? "page" : undefined}
+      active={isActive}
+      className="items-center"
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon active={isActive}>
+        <Icon className="h-4 w-4" />
+      </SidebarContent.ItemIcon>
+      <SidebarContent.ItemBody>
+        <SidebarContent.ItemTitle className="whitespace-nowrap break-normal [overflow-wrap:normal]">
+          {tag.label}
+        </SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>
+          {availableCountLabel}
+        </SidebarContent.ItemDescription>
+      </SidebarContent.ItemBody>
+      <PagePanel.Meta
+        compact
+        tone={isActive ? "accent" : "default"}
+        className="text-2xs font-bold tracking-[0.16em]"
+      >
+        {tag.count}
+      </PagePanel.Meta>
+    </SidebarContent.Item>
+  );
+}
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -316,38 +378,17 @@ function PluginListView({
     ) => {
       const isActive = subgroupFilter === tag.id;
       if (options?.sidebar) {
-        const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
         return (
-          <SidebarContent.Item
+          <PluginSubgroupNavItem
             key={tag.id}
-            as="button"
-            onClick={() => setSubgroupFilter(tag.id)}
-            aria-current={isActive ? "page" : undefined}
-            active={isActive}
-            className="items-center"
-          >
-            <SidebarContent.ItemIcon active={isActive}>
-              <Icon className="h-4 w-4" />
-            </SidebarContent.ItemIcon>
-            <SidebarContent.ItemBody>
-              <SidebarContent.ItemTitle className="whitespace-nowrap break-normal [overflow-wrap:normal]">
-                {tag.label}
-              </SidebarContent.ItemTitle>
-              <SidebarContent.ItemDescription>
-                {t("pluginsview.AvailableCount", {
-                  count: tag.count,
-                  defaultValue: "{{count}} available",
-                })}
-              </SidebarContent.ItemDescription>
-            </SidebarContent.ItemBody>
-            <PagePanel.Meta
-              compact
-              tone={isActive ? "accent" : "default"}
-              className="text-2xs font-bold tracking-[0.16em]"
-            >
-              {tag.count}
-            </PagePanel.Meta>
-          </SidebarContent.Item>
+            tag={tag}
+            isActive={isActive}
+            onSelect={setSubgroupFilter}
+            availableCountLabel={t("pluginsview.AvailableCount", {
+              count: tag.count,
+              defaultValue: "{{count}} available",
+            })}
+          />
         );
       }
 
@@ -845,6 +886,16 @@ function PluginListView({
     localStorage.removeItem("pluginOrder");
   }, []);
 
+  const { ref: resetOrderRef, agentProps: resetOrderAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "reset-plugin-order",
+      role: "button",
+      label: t("pluginsview.ResetOrder"),
+      group: "plugin-actions",
+      description: "Reset the custom plugin ordering to the default sort",
+      onActivate: handleResetOrder,
+    });
+
   const renderResolvedIcon = useCallback(
     (
       plugin: PluginInfo,
@@ -1296,11 +1347,13 @@ function PluginListView({
                   <div className="mb-4 flex flex-wrap items-center gap-3">
                     {allowCustomOrder && pluginOrder.length > 0 && (
                       <Button
+                        ref={resetOrderRef}
                         variant="outline"
                         size="sm"
                         className="h-9 rounded-sm px-4 text-xs-tight font-bold tracking-[0.12em]"
                         onClick={handleResetOrder}
                         title={t("pluginsview.ResetToDefaultSor")}
+                        {...resetOrderAgentProps}
                       >
                         {t("pluginsview.ResetOrder")}
                       </Button>
