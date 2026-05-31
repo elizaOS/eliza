@@ -171,6 +171,18 @@ function shouldInstallStewardPlugin(
   );
 }
 
+export function requiresHeadscaleRoute(
+  env: Partial<
+    Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>
+  > = process.env,
+): boolean {
+  if (!env.HEADSCALE_API_KEY?.trim()) return false;
+  return !(
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
+  );
+}
+
 function buildStewardRefreshCommand(
   containerName: string,
   agentId: string,
@@ -840,6 +852,19 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    const meta: ContainerMeta = {
+      nodeId,
+      hostname,
+      containerName,
+      bridgePort,
+      webUiPort,
+      agentId,
+      sshPort,
+      sshUser,
+      hostKeyFingerprint,
+    };
+    this.containers.set(containerName, meta);
+
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
@@ -860,19 +885,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // 9. Store metadata in in-memory cache (includes SSH details for stop/runCommand)
-    const meta: ContainerMeta = {
-      nodeId,
-      hostname,
-      containerName,
-      bridgePort,
-      webUiPort,
-      agentId,
-      sshPort,
-      sshUser,
-      hostKeyFingerprint,
-    };
-    this.containers.set(containerName, meta);
+    if (requiresHeadscaleRoute() && !headscaleIp) {
+      const errorMessage =
+        "Headscale VPN is configured, but the sandbox did not register a headscale_ip. " +
+        "Refusing to mark the agent running without a routable internal ingress; " +
+        "set AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1 only for legacy public-host routing.";
+      logger.error(`[docker-sandbox] ${errorMessage}`, {
+        agentId,
+        containerName,
+        nodeId,
+      });
+      await this.stop(containerName).catch((cleanupErr) => {
+        const cleanupMessage =
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        logger.warn(
+          `[docker-sandbox] Cleanup after missing Headscale registration failed for ${containerName}: ${cleanupMessage}`,
+        );
+      });
+      throw new Error(errorMessage);
+    }
 
     // 10. Return handle with strongly-typed metadata
     const targetHost = headscaleIp || hostname;

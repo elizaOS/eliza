@@ -3288,21 +3288,32 @@ export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
 	runtimeContext?: {
-		actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
 	},
 ): MessageHandlerResult {
-	const contexts = Array.isArray(result.contexts)
+	const rawContexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const candidateActions = Array.isArray(result.candidateActionNames)
+	const rawCandidateActions = Array.isArray(result.candidateActionNames)
 		? result.candidateActionNames
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	const currentMessageText = runtimeContext?.messageText ?? "";
+	const candidateBackstop = applyCodingCandidateBackstop({
+		candidateActions: rawCandidateActions,
+		actions: runtimeContext?.actions ?? [],
+		messageText: currentMessageText,
+	});
+	const candidateActions = candidateBackstop.candidateActions;
+	const contexts =
+		candidateBackstop.forceCodeContext &&
+		!rawContexts.some((context) => context.toLowerCase() === "code")
+			? ["code", ...rawContexts]
+			: rawContexts;
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
-	const currentMessageText = runtimeContext?.messageText ?? "";
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -3479,6 +3490,63 @@ export function messageHandlerFromFieldResult(
 		thought: fieldRun?.preempt?.reason ?? "",
 		plan,
 		...(extract ? { extract } : {}),
+	};
+}
+
+const LIFEOPS_SCHEDULED_TASK_ACTIONS = new Set(
+	[
+		"SCHEDULED_TASKS",
+		"SCHEDULED_TASKS_ACKNOWLEDGE",
+		"SCHEDULED_TASKS_CANCEL",
+		"SCHEDULED_TASKS_COMPLETE",
+		"SCHEDULED_TASKS_CREATE",
+		"SCHEDULED_TASKS_DISMISS",
+		"SCHEDULED_TASKS_GET",
+		"SCHEDULED_TASKS_HISTORY",
+		"SCHEDULED_TASKS_LIST",
+		"SCHEDULED_TASKS_REOPEN",
+		"SCHEDULED_TASKS_SKIP",
+		"SCHEDULED_TASKS_SNOOZE",
+		"SCHEDULED_TASKS_UPDATE",
+	].map(normalizeActionIdentifier),
+);
+
+function applyCodingCandidateBackstop(args: {
+	candidateActions: readonly string[];
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+	messageText: string;
+}): { candidateActions: string[]; forceCodeContext: boolean } {
+	if (args.candidateActions.length === 0) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+	if (!looksLikeCodingWorkRequest(args.messageText)) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+	const codingAction = findCodingDelegationActionName(args.actions);
+	if (!codingAction) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+
+	const filtered = args.candidateActions.filter(
+		(name) =>
+			!LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+	);
+	if (filtered.length === args.candidateActions.length) {
+		return { candidateActions: filtered, forceCodeContext: false };
+	}
+
+	return {
+		candidateActions: uniqueActionNames([codingAction, ...filtered]),
+		forceCodeContext: true,
 	};
 }
 

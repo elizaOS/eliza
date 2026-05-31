@@ -259,6 +259,7 @@ import {
   PGLITE_ERROR_CODES,
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
@@ -4688,6 +4689,14 @@ export async function startEliza(
     // their actions; the initial pass after the essential boot only saw the
     // core message-handler actions.
     installActionAliases(runtime);
+    // Same timing reason: validate the intent→action map only once the deferred
+    // plugins have registered. Run during blocking init it would warn about
+    // actions like TASKS (agent-orchestrator) and PLAY_EMOTE (companion) that
+    // simply hadn't loaded yet.
+    validateIntentActionMap(
+      runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
     bootTimer.lap("deferred:complete");
   };
 

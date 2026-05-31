@@ -1788,6 +1788,41 @@ android smoke model works`,
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
+	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["update website"],
+				replyText: "On it.",
+				candidateActionNames: ["SCHEDULED_TASKS"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS" },
+				],
+				messageText: "update the website, add some fixes",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
 	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {
 		const routed = messageHandlerFromFieldResult(
 			{
