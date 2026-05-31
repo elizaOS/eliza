@@ -22,6 +22,11 @@ import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
+import {
+  classifyCreditBalance,
+  emitWaifuCreditWebhook,
+  resolveWaifuWebhookTarget,
+} from "./waifu-webhook";
 
 // ============================================================================
 // Constants
@@ -552,8 +557,53 @@ export class CreditsService {
         this.queueLowCreditsEmail(organizationId, result.newBalance).catch((error) => {
           logger.error("[CreditsService] Failed to queue low credits email:", error);
         });
+
+        // Notify waifu so a hosted agent can downgrade or pause itself when it
+        // runs low / out of credits. Fire-and-forget: a webhook delivery
+        // problem must never block the billing path.
+        this.notifyWaifuCredits(organizationId, result.newBalance, metadata).catch((error) => {
+          logger.error("[CreditsService] Failed to notify waifu credit webhook:", error);
+        });
       }
       return result;
+    });
+  }
+
+  /**
+   * Emit a credit-state transition to waifu when a hosted agent crosses the
+   * low / depleted thresholds. No-ops cleanly when the waifu webhook is not
+   * configured (resolveWaifuWebhookTarget returns null), so non-waifu orgs and
+   * local/dev environments are unaffected.
+   */
+  private async notifyWaifuCredits(
+    organizationId: string,
+    newBalance: number,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    const target = resolveWaifuWebhookTarget();
+    if (!target) {
+      return;
+    }
+
+    const threshold = parseInt(process.env.LOW_CREDITS_THRESHOLD || "1000", 10);
+    const status = classifyCreditBalance(newBalance, threshold);
+    if (!status) {
+      return;
+    }
+
+    const cloudAgentId =
+      typeof metadata?.agent_id === "string"
+        ? metadata.agent_id
+        : typeof metadata?.agentId === "string"
+          ? metadata.agentId
+          : undefined;
+
+    await emitWaifuCreditWebhook({
+      status,
+      organizationId,
+      newBalance,
+      threshold,
+      ...(cloudAgentId ? { cloudAgentId } : {}),
     });
   }
 

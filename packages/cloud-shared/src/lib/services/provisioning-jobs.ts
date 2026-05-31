@@ -30,6 +30,11 @@ import { logger } from "../utils/logger";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
+import {
+  isWaifuWebhookTargetUrl,
+  resolveWaifuWebhookTarget,
+  signWaifuWebhook,
+} from "./waifu-webhook";
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -1648,17 +1653,59 @@ export class ProvisioningJobService {
     try {
       const safeWebhookUrl = await assertSafeOutboundUrl(job.webhook_url);
 
-      const response = await fetch(safeWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Only the waifu receiver gets the signed waifu envelope. Other webhook
+      // consumers keep the original unsigned payload shape and never see the
+      // shared HMAC signature, so we cannot break or leak anything to a
+      // non-waifu callback URL.
+      const completedAt = new Date().toISOString();
+      const waifuTarget = resolveWaifuWebhookTarget();
+      const isWaifuTarget =
+        waifuTarget != null && isWaifuWebhookTargetUrl(safeWebhookUrl, waifuTarget);
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      let rawBody: string;
+
+      if (isWaifuTarget && waifuTarget) {
+        // Match the waifu signed-webhook envelope so the receiver accepts the
+        // delivery instead of rejecting it as unsigned. Waifu verifies an
+        // HMAC-SHA256 over `${timestamp}.${rawBody}` and requires a stable
+        // idempotencyKey. Without this the provision-complete callback was
+        // silently 401'd by waifu.
+        const agentId = typeof result.cloudAgentId === "string" ? result.cloudAgentId : null;
+        rawBody = JSON.stringify({
+          event: "job.completed",
+          timestamp: completedAt,
+          agentId,
+          idempotencyKey: `job:${job.id}`,
+          data: {
+            jobId: job.id,
+            type: job.type,
+            status: "completed",
+            result,
+            completedAt,
+          },
+        });
+        headers["X-Waifu-Webhook-Signature"] = signWaifuWebhook(
+          rawBody,
+          completedAt,
+          waifuTarget.secret,
+        );
+      } else {
+        // Preserve the original payload shape for non-waifu consumers.
+        rawBody = JSON.stringify({
           event: "job.completed",
           jobId: job.id,
           type: job.type,
           status: "completed",
           result,
-          completedAt: new Date().toISOString(),
-        }),
+          completedAt,
+        });
+      }
+
+      const response = await fetch(safeWebhookUrl, {
+        method: "POST",
+        headers,
+        body: rawBody,
         signal: AbortSignal.timeout(10_000),
       });
 

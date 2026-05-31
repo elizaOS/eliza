@@ -5437,8 +5437,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				});
 				// Regeneration is an enhancement (terse fragment -> fuller reply).
 				// If it yields nothing usable, keep only terse-but-valid originals
-				// such as numeric answers. Known junk/scaffold triggers must not leak
-				// to users just because the cleanup pass failed.
+				// such as numeric answers (e.g. "144" to a math question) so they are
+				// never dropped to an empty message. Known junk/scaffold triggers must
+				// not leak to users just because the cleanup pass failed.
 				if (regenerated.trim().length > 0) {
 					reply = regenerated;
 				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
