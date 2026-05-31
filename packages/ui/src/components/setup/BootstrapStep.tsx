@@ -23,6 +23,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
+import { startFreshFirstRunReload } from "../../platform";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -324,7 +325,17 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       </div>
 
       {/* Footer */}
-      <div className={cn(setupFooterClass, "justify-end")}>
+      <div className={cn(setupFooterClass, "justify-between")}>
+        {/* Escape hatch: without a valid token this screen is otherwise a hard
+            dead end (no back/cancel). Let the user abandon bootstrap and start
+            over on a local agent instead of being trapped. */}
+        <button
+          type="button"
+          onClick={() => startFreshFirstRunReload()}
+          className="text-sm underline underline-offset-2 text-[var(--first-run-text-muted)] transition-opacity hover:opacity-80"
+        >
+          {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
+        </button>
         <button
           type="submit"
           disabled={isSubmitting || !token.trim()}
