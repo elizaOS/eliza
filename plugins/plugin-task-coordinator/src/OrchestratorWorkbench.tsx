@@ -10,7 +10,6 @@ import {
   type CodingAgentTaskThreadDetail,
   type CodingAgentTaskUsageSummary,
   client,
-  EmptyWidgetState,
   useApp,
 } from "@elizaos/ui";
 import {
@@ -34,7 +33,6 @@ import {
   Gauge,
   GitFork,
   Layers,
-  ListTodo,
   type LucideIcon,
   OctagonX,
   PanelRightOpen,
@@ -680,38 +678,32 @@ function renderCost(
     : value;
 }
 
-function StatChip({
-  label,
+/** A vertical hairline divider between header summary segments (the token kit
+ * has no Separator export, so this is a thin local primitive). */
+function HeaderDivider() {
+  return <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />;
+}
+
+/** One labeled count in the header summary — a baseline-aligned number + tiny
+ * uppercase label, no pill/border (replaces the old cryptic icon chips). */
+function HeaderStat({
   value,
-  tone = "neutral",
-  icon,
+  label,
+  toneClass = "text-txt-strong",
 }: {
-  label: string;
   value: string;
-  tone?: "neutral" | "ok" | "warn" | "danger" | "accent";
-  icon?: ReactNode;
+  label: string;
+  toneClass?: string;
 }) {
-  const toneClass =
-    tone === "ok"
-      ? "text-ok"
-      : tone === "warn"
-        ? "text-warn"
-        : tone === "danger"
-          ? "text-danger"
-          : tone === "accent"
-            ? "text-accent"
-            : "text-txt";
   return (
-    <div
-      className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1"
-      title={label}
-      aria-label={label}
-    >
-      {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
-      <span className={`text-xs font-semibold tabular-nums ${toneClass}`}>
+    <span className="inline-flex shrink-0 items-baseline gap-1" title={label}>
+      <span className={`text-sm font-semibold tabular-nums ${toneClass}`}>
         {value}
       </span>
-    </div>
+      <span className="text-2xs uppercase tracking-[0.08em] text-muted">
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -759,61 +751,71 @@ function WorkbenchHeader({
   const title = (
     <div className="flex shrink-0 items-center gap-2">
       <Layers className="h-4 w-4 text-accent" />
-      <span className="text-sm font-semibold text-txt">
+      <span className="text-sm font-semibold tracking-tight text-txt-strong">
         {t("orchestrator.title", { defaultValue: "Orchestrator" })}
       </span>
     </div>
   );
-  const chips = (
+  // Calm labeled summary: total tasks always, then only the non-zero semantic
+  // counts — reads "12 tasks · 1 active · 3 done", not a six-pill debug strip.
+  const summary = (
     <div
-      className="flex items-center gap-1.5"
-      style={
-        isMobile ? { overflowX: "auto" } : { flex: "1 1 0%", flexWrap: "wrap" }
-      }
+      className="flex min-w-0 items-center gap-2.5 overflow-x-auto"
+      style={isMobile ? undefined : { flex: "1 1 0%" }}
     >
-      <StatChip
-        label={t("orchestrator.stat.tasks", { defaultValue: "Tasks" })}
-        value={String(status?.taskCount ?? 0)}
-        icon={<ListTodo className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.active", { defaultValue: "Active" })}
-        value={String(status?.activeTaskCount ?? 0)}
-        tone="ok"
-        icon={<CirclePlay className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.blocked", { defaultValue: "Blocked" })}
-        value={String(status?.blockedTaskCount ?? 0)}
-        tone="warn"
-        icon={<OctagonX className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.validating", {
-          defaultValue: "Validating",
-        })}
-        value={String(status?.validatingTaskCount ?? 0)}
-        tone="accent"
-        icon={<CircleDashed className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.agents", { defaultValue: "Agents" })}
-        value={`${status?.activeSessionCount ?? 0}/${status?.sessionCount ?? 0}`}
-        icon={<Bot className="h-3 w-3" />}
-      />
-      {status ? (
-        <StatChip
-          label={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
-          value={
-            isMobile
-              ? renderTokens(status.usage, t, locale)
-              : `${renderTokens(status.usage, t, locale)} · ${renderCost(status.usage, t, locale)}`
-          }
-          icon={<Gauge className="h-3 w-3" />}
-        />
+      <HeaderStat value={String(status?.taskCount ?? 0)} label="tasks" />
+      {status?.activeTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.activeTaskCount)}
+            label="active"
+            toneClass="text-ok"
+          />
+        </>
+      ) : null}
+      {status?.blockedTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.blockedTaskCount)}
+            label="blocked"
+            toneClass="text-warn"
+          />
+        </>
+      ) : null}
+      {status?.validatingTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.validatingTaskCount)}
+            label="validating"
+            toneClass="text-accent"
+          />
+        </>
+      ) : null}
+      {status?.activeSessionCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={`${status.activeSessionCount}/${status.sessionCount}`}
+            label="agents"
+          />
+        </>
       ) : null}
     </div>
   );
+  const usageReadout = status ? (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted"
+      title={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
+    >
+      <Gauge className="h-3 w-3 text-muted/70" />
+      {renderTokens(status.usage, t, locale)}
+      <span className="text-muted/50">·</span>
+      {renderCost(status.usage, t, locale)}
+    </span>
+  ) : null;
   const pauseAllLabel = t("orchestrator.action.pauseAll", {
     defaultValue: "Pause all",
   });
@@ -853,32 +855,37 @@ function WorkbenchHeader({
         size="sm"
         disabled={busy}
         onClick={onNewTask}
-        className="h-7 w-7 p-0"
+        className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
         aria-label={newTaskLabel}
         title={newTaskLabel}
         data-testid="orchestrator-new-task"
       >
         <Plus className="h-3.5 w-3.5" />
+        {newTaskLabel}
       </Button>
     </div>
   );
 
   if (isMobile) {
     return (
-      <header className="flex flex-col gap-2 border-b border-border/60 bg-bg px-3 py-2">
+      <header className="flex flex-col gap-2 border-b border-border/50 bg-bg px-4 py-2.5">
         <div className="flex items-center gap-2">
           {title}
           {actions}
         </div>
-        {chips}
+        <div className="flex items-center justify-between gap-2">
+          {summary}
+          {usageReadout}
+        </div>
       </header>
     );
   }
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-bg px-3 py-2">
+    <header className="flex items-center gap-3 border-b border-border/50 bg-bg px-4 py-2.5">
       {title}
-      {chips}
+      {summary}
+      {usageReadout}
       {actions}
     </header>
   );
@@ -946,23 +953,37 @@ function TaskRailItem({
           locale,
           t("orchestrator.unknown", { defaultValue: "—" }),
         );
+  // A left accent bar surfaces in-progress/selected at a glance without parsing
+  // the small status glyph. Idle rows are borderless (hover-fill only) so the
+  // rail reads as a list, not a stack of boxes.
+  const barTone = selected
+    ? "before:bg-accent"
+    : thread.status === "active"
+      ? "before:bg-ok"
+      : thread.status === "validating"
+        ? "before:bg-accent"
+        : thread.status === "blocked" || thread.status === "waiting_on_user"
+          ? "before:bg-warn"
+          : "before:bg-transparent";
   return (
     <div
-      className={`rounded-lg border transition-colors ${
-        selected
-          ? "border-accent/50 bg-bg-hover/70"
-          : "border-border/50 bg-bg-accent/30 hover:bg-bg-hover/40"
+      className={`relative rounded-sm transition-colors before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:content-[''] ${barTone} ${
+        selected ? "bg-accent-subtle" : "hover:bg-surface"
       }`}
       data-testid="orchestrator-task-item"
     >
       <button
         type="button"
         onClick={() => onSelect(thread.id)}
-        className="flex w-full flex-col gap-1 p-2.5 text-left"
+        className="flex w-full flex-col gap-0.5 px-2.5 py-2 pl-3 text-left"
       >
         <div className="flex items-center gap-1.5">
           <StatusGlyph status={thread.status} paused={thread.paused} t={t} />
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
+          <span
+            className={`min-w-0 flex-1 truncate text-xs-tight font-medium ${
+              selected ? "text-txt-strong" : "text-txt"
+            }`}
+          >
             {thread.title}
           </span>
           {thread.paused ? (
@@ -970,13 +991,10 @@ function TaskRailItem({
           ) : null}
           <PriorityGlyph priority={thread.priority} t={t} />
         </div>
-        <div className="flex items-center gap-2.5 text-2xs text-muted">
+        <div className="flex items-center gap-2 text-2xs text-muted">
           <span className="flex items-center gap-0.5">
             <Bot className="h-3 w-3" />
             {thread.activeSessionCount}/{thread.sessionCount}
-          </span>
-          <span className="tabular-nums">
-            {renderTokens(thread.usage, t, locale)}
           </span>
           <span className="ml-auto truncate">{lastActivity}</span>
         </div>
@@ -1195,7 +1213,7 @@ function UsageSection({
 }
 
 const FIELD_CLASS =
-  "w-full rounded-md border border-border/50 bg-bg px-2 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50";
+  "w-full rounded-sm border border-border bg-bg px-2.5 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent/30";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -2328,12 +2346,24 @@ export function OrchestratorWorkbench() {
                   })}
                 </p>
               ) : (
-                <EmptyWidgetState
-                  icon={<Activity className="h-8 w-8" />}
-                  title={t("orchestrator.empty.title", {
-                    defaultValue: "No tasks yet",
-                  })}
-                />
+                <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+                  <Activity className="h-7 w-7 text-muted/50" />
+                  <p className="text-xs text-muted">
+                    {t("orchestrator.empty.title", {
+                      defaultValue: "No tasks yet",
+                    })}
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("orchestrator.action.newTask", {
+                      defaultValue: "New task",
+                    })}
+                  </Button>
+                </div>
               )
             ) : (
               tasks.map((thread) => (
@@ -2371,7 +2401,7 @@ export function OrchestratorWorkbench() {
               <div
                 ref={listRef}
                 onScroll={handleListScroll}
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
+                className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
                 data-testid="orchestrator-message-list"
               >
                 {messageCursor ? (
@@ -2431,7 +2461,7 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 p-2.5">
+              <div className="border-t border-border/50 bg-bg px-4 py-3">
                 <div className="flex items-end gap-2">
                   <textarea
                     value={composer}
@@ -2498,13 +2528,31 @@ export function OrchestratorWorkbench() {
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <EmptyWidgetState
-                icon={<Layers className="h-8 w-8" />}
-                title={t("orchestrator.noSelection", {
-                  defaultValue: "Select a task to inspect its room",
-                })}
-              />
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent-subtle">
+                <Layers className="h-6 w-6 text-accent" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-txt-strong">
+                  {t("orchestrator.noSelection.title", {
+                    defaultValue: "No task open",
+                  })}
+                </p>
+                <p className="max-w-xs text-xs leading-relaxed text-muted">
+                  {t("orchestrator.noSelection.hint", {
+                    defaultValue:
+                      "Pick a task from the list to inspect its room — or start a new coding task.",
+                  })}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setCreateOpen(true)}
+                className="h-8 gap-1.5 px-3 text-xs-tight font-semibold"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("orchestrator.action.newTask", { defaultValue: "New task" })}
+              </Button>
             </div>
           )}
         </main>
