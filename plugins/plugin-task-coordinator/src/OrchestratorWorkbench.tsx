@@ -2116,6 +2116,38 @@ export function OrchestratorWorkbench() {
     });
   }, [composer, runMutation, t]);
 
+  // Stop every still-running coding agent on the open task — the prominent
+  // in-conversation interrupt (parity with Claude Code / Codex / opencode),
+  // also bound to Esc below.
+  const handleStopActive = useCallback(() => {
+    const current = detail;
+    if (!current) return;
+    const targets = current.sessions.filter(
+      (session) =>
+        session.sessionId &&
+        session.stoppedAt == null &&
+        session.status !== "completed",
+    );
+    if (targets.length === 0) return;
+    void runMutation(async () => {
+      for (const session of targets) {
+        await client.stopOrchestratorAgent(current.id, session.sessionId);
+      }
+    });
+  }, [detail, runMutation]);
+
+  // Esc interrupts the running turn from anywhere in the workbench. A ref keeps
+  // the document listener stable while always calling the latest handler.
+  const stopActiveRef = useRef(handleStopActive);
+  stopActiveRef.current = handleStopActive;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") stopActiveRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   const handleCreate = useCallback(
     (input: {
       title: string;
@@ -2344,6 +2376,32 @@ export function OrchestratorWorkbench() {
                   ))
                 )}
               </div>
+              {detail.activeSessionCount > 0 ? (
+                <div
+                  className="flex items-center justify-between gap-2 border-t border-border/50 bg-warn/5 px-3 py-1.5"
+                  data-testid="orchestrator-running-bar"
+                >
+                  <span className="flex items-center gap-1.5 text-2xs font-medium text-warn">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
+                    {t("orchestrator.agentsWorking", {
+                      defaultValue: "Agent working…",
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleStopActive}
+                    disabled={mutating}
+                    className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                    data-testid="orchestrator-stop-active"
+                  >
+                    <CircleStop className="h-3 w-3" />
+                    {t("orchestrator.action.stop", { defaultValue: "Stop" })}
+                    <kbd className="ml-0.5 rounded bg-bg-hover/60 px-1 text-[0.9em] text-muted">
+                      Esc
+                    </kbd>
+                  </button>
+                </div>
+              ) : null}
               <div className="border-t border-border/50 p-2.5">
                 <div className="flex items-end gap-2">
                   <textarea
