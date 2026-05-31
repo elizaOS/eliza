@@ -11,6 +11,12 @@ type RuntimeRouteOptions = {
   runtime: AgentRuntime | null | undefined;
 };
 
+// Builtin views are registered once at startup (server.ts). The per-request
+// path below is a safety net for the case where the first /api/views request
+// arrives before startup registration completes; gate it so it runs at most
+// once instead of on every (hot) nav request.
+let builtinViewsRegistered = false;
+
 function routeContext(args: readonly unknown[]): RouteContext | null {
   const value = args[0];
   if (!value || typeof value !== "object") return null;
@@ -624,11 +630,11 @@ export async function handleViewsRoutes(
 ): ReturnType<ViewsRoutesModule["handleViewsRoutes"]> {
   const ctx = routeContext(args);
   if (!ctx?.pathname.startsWith("/api/views")) return false;
-  const [{ registerBuiltinViews }, { handleViewsRoutes }] = await Promise.all([
-    import("./views-registry.ts"),
-    import("./views-routes.ts"),
-  ]);
-  registerBuiltinViews();
+  const { handleViewsRoutes } = await import("./views-routes.ts");
+  if (!builtinViewsRegistered) {
+    (await import("./views-registry.ts")).registerBuiltinViews();
+    builtinViewsRegistered = true;
+  }
   return handleViewsRoutes(...args);
 }
 
