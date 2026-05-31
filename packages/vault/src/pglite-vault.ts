@@ -76,6 +76,63 @@ export interface PgliteVaultOptions {
   readonly logger?: VaultLogger;
 }
 
+/**
+ * Outcome of inspecting a PGlite data dir's `postmaster.pid`. `cleared-*`
+ * means a provably-stale lock was removed and the open may be retried;
+ * `active` means a live process owns the dir; `missing` / `unconfirmed` mean
+ * there is nothing safe to remove.
+ */
+export type PglitePidStatus =
+  | "missing"
+  | "cleared-stale"
+  | "cleared-malformed"
+  | "active"
+  | "unconfirmed";
+
+/**
+ * Inspect (and remove, if provably stale) a PGlite data dir's
+ * `postmaster.pid`. An unclean exit (crash, OOM, SIGKILL, power loss) leaves
+ * the lock behind; if its owner is gone the file is stale and safe to remove
+ * so the dir can be reopened. A live owner (`active`) or an unprovable owner
+ * (`unconfirmed` — e.g. EPERM) is left untouched.
+ */
+export async function reconcileStalePglitePid(
+  dataDir: string,
+): Promise<PglitePidStatus> {
+  const pidPath = join(dataDir, "postmaster.pid");
+  let content: string;
+  try {
+    content = await fs.readFile(pidPath, "utf8");
+  } catch {
+    return "missing";
+  }
+  // Mobile embedded modes are single-tenant — each app launch is a fresh
+  // process, so any leftover pid is stale and the process.kill heuristic below
+  // false-positives (reused host PID / EPERM). Clear unconditionally.
+  if (
+    process.env.ELIZA_IOS_LOCAL_BACKEND === "1" ||
+    process.env.ELIZA_ANDROID_LOCAL_BACKEND === "1"
+  ) {
+    await fs.unlink(pidPath).catch(() => {});
+    return "cleared-stale";
+  }
+  const pid = Number.parseInt(content.split("\n")[0]?.trim() ?? "", 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    await fs.unlink(pidPath).catch(() => {});
+    return "cleared-malformed";
+  }
+  try {
+    process.kill(pid, 0); // signal 0 probes liveness; throws ESRCH if gone
+    return "active";
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ESRCH") {
+      await fs.unlink(pidPath).catch(() => {});
+      return "cleared-stale";
+    }
+    return "unconfirmed"; // EPERM etc. — can't prove it's dead; leave it
+  }
+}
+
 export class PgliteVaultImpl implements Vault {
   private cachedKey: Buffer | null = null;
   private dbPromise: Promise<PGlite> | null = null;
@@ -308,7 +365,16 @@ export class PgliteVaultImpl implements Vault {
         );
       }
       const masterKey = await this.loadMasterKey();
-      return decrypt(masterKey, row.ciphertext, key);
+      try {
+        return decrypt(masterKey, row.ciphertext, key);
+      } catch (err) {
+        throw new Error(
+          `vault: failed to decrypt ${JSON.stringify(key)} (wrong master key or corrupt ciphertext): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          { cause: err },
+        );
+      }
     }
     if (
       (row.ref_source !== "1password" && row.ref_source !== "protonpass") ||
@@ -326,13 +392,30 @@ export class PgliteVaultImpl implements Vault {
 
   private async loadMasterKey(): Promise<Buffer> {
     if (this.cachedKey) return this.cachedKey;
-    this.cachedKey = await this.opts.masterKey.load();
+    try {
+      this.cachedKey = await this.opts.masterKey.load();
+    } catch (err) {
+      // Without the master key every secret read/write fails — surface a
+      // clear remediation path instead of a bare resolver error.
+      throw new Error(
+        `vault: master key unavailable (${this.opts.masterKey.describe()}): ${
+          err instanceof Error ? err.message : String(err)
+        }. On a desktop session ensure the OS keychain (gnome-keyring / kwallet / Keychain) is reachable; on a headless host set ELIZA_VAULT_PASSPHRASE (≥12 chars) and restart.`,
+        { cause: err },
+      );
+    }
     return this.cachedKey;
   }
 
   private async db(): Promise<PGlite> {
     if (!this.dbPromise) {
-      this.dbPromise = this.openDb();
+      // Never cache a rejected open: a transient failure (e.g. a stale lock a
+      // later attempt can clear) must not brick the vault for the rest of the
+      // process lifetime. Drop the cache on failure so callers can retry.
+      this.dbPromise = this.openDb().catch((err) => {
+        this.dbPromise = null;
+        throw err;
+      });
     }
     return this.dbPromise;
   }
@@ -340,12 +423,49 @@ export class PgliteVaultImpl implements Vault {
   private async openDb(): Promise<PGlite> {
     const dataDir = this.opts.dataDir ?? defaultPgliteVaultDataDir();
     await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
-    const db = await PGlite.create(dataDir);
+    const db = await this.createPglite(dataDir);
     await db.exec(SCHEMA_SETUP);
     if (this.opts.legacyStorePath) {
       await this.maybeMigrateFromFile(db, this.opts.legacyStorePath);
     }
     return db;
+  }
+
+  /**
+   * Open the PGlite data dir, self-healing a stale lock left by an unclean
+   * shutdown. An abrupt exit (crash, OOM, SIGKILL, power loss) leaves a
+   * `postmaster.pid` behind; PGlite then refuses — or WASM-aborts — the next
+   * open. Because the vault opens early at startup (wallet-key hydration),
+   * that would brick the agent at boot. If the leftover lock is provably
+   * stale we remove it and retry once; a live owner or a persistent failure
+   * surfaces a clear, actionable error. Parallels plugin-sql's
+   * PGliteClientManager reconciliation (the runtime DB already self-heals).
+   */
+  private async createPglite(dataDir: string): Promise<PGlite> {
+    try {
+      return await PGlite.create(dataDir);
+    } catch (initErr) {
+      const status = await reconcileStalePglitePid(dataDir);
+      if (status === "active") {
+        throw new Error(
+          `vault: PGlite data dir ${dataDir} is in use by another live Eliza process. Stop it, then retry.`,
+          { cause: initErr },
+        );
+      }
+      if (status !== "cleared-stale" && status !== "cleared-malformed") {
+        throw new Error(
+          `vault: failed to open ${dataDir} (no stale lock to clear): ${
+            initErr instanceof Error ? initErr.message : String(initErr)
+          }. If this persists the dir may be corrupt — stop Eliza, then move or remove ${dataDir} and restart.`,
+          { cause: initErr },
+        );
+      }
+      this.opts.logger?.warn(
+        "vault: cleared a stale PGlite lock left by an unclean shutdown; retrying open",
+        { dataDir, status },
+      );
+      return await PGlite.create(dataDir);
+    }
   }
 
   /**

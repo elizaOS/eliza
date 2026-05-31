@@ -5,13 +5,17 @@
  * isolated tmp directory + in-memory master key, so concurrent tests
  * never collide on the PGlite single-writer constraint.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encrypt, generateMasterKey } from "../src/crypto.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
-import { PgliteVaultImpl } from "../src/pglite-vault.js";
+import {
+  PgliteVaultImpl,
+  reconcileStalePglitePid,
+} from "../src/pglite-vault.js";
 import { VaultMissError } from "../src/vault.js";
 import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
@@ -315,5 +319,57 @@ describe("PgliteVaultImpl", () => {
       await rm(pgDir, { recursive: true, force: true });
       await rm(legacyDir, { recursive: true, force: true });
     });
+  });
+});
+
+describe("reconcileStalePglitePid (unclean-shutdown self-heal)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "vault-pid-"));
+    await mkdir(dir, { recursive: true });
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const pidPath = () => join(dir, "postmaster.pid");
+  const exists = async (p: string) =>
+    access(p).then(
+      () => true,
+      () => false,
+    );
+
+  it("returns 'missing' when there is no postmaster.pid", async () => {
+    expect(await reconcileStalePglitePid(dir)).toBe("missing");
+  });
+
+  it("clears a malformed pid file", async () => {
+    await writeFile(pidPath(), "not-a-pid\n/data\n", "utf8");
+    expect(await reconcileStalePglitePid(dir)).toBe("cleared-malformed");
+    expect(await exists(pidPath())).toBe(false);
+  });
+
+  it("leaves an active pid (owned by a live process) untouched", async () => {
+    // process.pid is alive (this test runner) → must be treated as active.
+    await writeFile(pidPath(), `${process.pid}\n/data\n`, "utf8");
+    expect(await reconcileStalePglitePid(dir)).toBe("active");
+    expect(await exists(pidPath())).toBe(true);
+  });
+
+  it("clears a stale pid whose owning process has exited", async () => {
+    // Spawn a child, capture its pid, kill it, and wait for the OS to reap it
+    // so the pid is provably dead (process.kill(pid, 0) → ESRCH).
+    const child = spawn(process.execPath, [
+      "-e",
+      "setTimeout(() => {}, 60000)",
+    ]);
+    const pid = child.pid as number;
+    await new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+      child.kill("SIGKILL");
+    });
+    await writeFile(pidPath(), `${pid}\n/data\n`, "utf8");
+    expect(await reconcileStalePglitePid(dir)).toBe("cleared-stale");
+    expect(await exists(pidPath())).toBe(false);
   });
 });
