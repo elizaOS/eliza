@@ -178,17 +178,18 @@ export async function listDirectory(
   if (!check.allowed || !check.resolvedPath) {
     return { success: false, error: check.reason ?? "Path not allowed." };
   }
+  const resolvedPath = check.resolvedPath;
 
   try {
-    const entries = await fs.readdir(check.resolvedPath, { withFileTypes: true });
+    const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
     const items: FileEntry[] = entries.map((entry) => ({
       name: entry.name,
       type: entry.isDirectory() ? "directory" : "file",
-      path: path.join(check.resolvedPath, entry.name),
+      path: path.join(resolvedPath, entry.name),
     }));
     return {
       success: true,
-      path: check.resolvedPath,
+      path: resolvedPath,
       items,
       count: items.length,
     };

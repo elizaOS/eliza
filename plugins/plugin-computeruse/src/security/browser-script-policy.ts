@@ -13,7 +13,7 @@ export class BrowserExecuteDisabledError extends Error {
   }
 }
 
-export function assertBrowserExecuteAllowed(): asserts never {
+export function assertBrowserExecuteAllowed(): never {
   throw new BrowserExecuteDisabledError();
 }
 
