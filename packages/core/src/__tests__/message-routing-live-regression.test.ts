@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseActionParams } from "../actions";
-import type { ActionResult, IAgentRuntime } from "../index";
+import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
@@ -162,6 +162,19 @@ describe("live routing regressions", () => {
 		// generic failure. Genuine shell requests route via looksLikeLocalShellRequest.
 		expect(findWebLookupActionName([{ name: "SHELL" }])).toBeUndefined();
 		expect(findWebLookupActionName([])).toBeUndefined();
+	});
+
+	it("resolves the keyless WEB_FETCH action as a web-lookup", () => {
+		// WEB_FETCH gives non-Anthropic runtimes an inline live-info capability,
+		// so the router must treat it as a valid web-lookup (by canonical name).
+		expect(findWebLookupActionName([{ name: "WEB_FETCH" }])).toBe("WEB_FETCH");
+		// And it routes via its LOOKUP_WEB simile (a canonical lookup name) with
+		// no core change even under a different canonical action name.
+		const simileAction: Pick<Action, "name" | "similes"> = {
+			name: "SOME_FETCH",
+			similes: ["LOOKUP_WEB"],
+		};
+		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
 	});
 
 	it("promotes explicit reply to direct shell/search action aliases", () => {

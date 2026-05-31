@@ -4390,6 +4390,24 @@ export async function startEliza(
     }
   };
 
+  // Keyless inline live-info fetch for every runtime (not just Anthropic).
+  // Opt out with ELIZA_WEB_FETCH=0, mirroring ELIZA_WEB_SEARCH.
+  const registerWebFetchActionIfEnabled = async (): Promise<void> => {
+    if (process.env.ELIZA_WEB_FETCH === "0") {
+      logger.info("[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0");
+      return;
+    }
+    try {
+      const { webFetch } = await import("./actions/web-fetch.ts");
+      runtime.registerAction(webFetch);
+      logger.info("[eliza] Registered keyless WEB_FETCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_FETCH action registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const isAutonomyEnabled = (): boolean =>
     ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
@@ -4604,6 +4622,7 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installAnthropicWebSearchIfAvailable();
+    await registerWebFetchActionIfEnabled();
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();

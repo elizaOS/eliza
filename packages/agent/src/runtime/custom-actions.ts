@@ -502,6 +502,83 @@ async function fetchWithPinnedTarget(
   });
 }
 
+/** Hard cap on the response body we read from a guarded GET. */
+const GUARDED_GET_MAX_BYTES = 256 * 1024;
+
+export interface GuardedHttpGetOptions {
+  /** Request timeout in milliseconds. Defaults to the custom-action cap. */
+  timeoutMs?: number;
+  /** Maximum number of body bytes to read. Defaults to {@link GUARDED_GET_MAX_BYTES}. */
+  maxBytes?: number;
+  /** Optional extra request headers (e.g. Accept). */
+  headers?: Record<string, string>;
+}
+
+export interface GuardedHttpGetResult {
+  /** True when the host passed the SSRF guard and the request completed. */
+  ok: boolean;
+  /** HTTP status code, or 0 when the request was blocked before sending. */
+  status: number;
+  /** Truncated response body text (empty when blocked). */
+  text: string;
+  /** True when the URL was rejected by the SSRF / scheme guard. */
+  blocked: boolean;
+}
+
+/**
+ * SSRF-guarded, https-only, GET-only HTTP fetch shared by custom actions and
+ * the built-in WEB_FETCH action.
+ *
+ * Reuses {@link resolveUrlSafety} (DNS-pinned private/link-local IP blocking via
+ * the security network policy) and {@link fetchWithPinnedTarget}. Enforces an
+ * https scheme, rejects redirects, and caps both the timeout and the number of
+ * body bytes read.
+ */
+export async function performGuardedHttpGet(
+  url: string,
+  opts: GuardedHttpGetOptions = {},
+): Promise<GuardedHttpGetResult> {
+  const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
+  const maxBytes = opts.maxBytes ?? GUARDED_GET_MAX_BYTES;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+  if (parsed.protocol !== "https:") {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+
+  const safety = await resolveUrlSafety(url);
+  if (safety.blocked) {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+
+  const fetchOpts: RequestInit = {
+    method: "GET",
+    headers: opts.headers,
+    redirect: "manual",
+  };
+
+  const response = safety.target
+    ? await fetchWithPinnedTarget(safety.target, fetchOpts, timeoutMs)
+    : await fetch(url, fetchOpts);
+
+  if (response.status >= 300 && response.status < 400) {
+    return { ok: false, status: response.status, text: "", blocked: true };
+  }
+
+  const body = await response.text();
+  return {
+    ok: response.ok,
+    status: response.status,
+    text: body.slice(0, maxBytes),
+    blocked: false,
+  };
+}
+
 function buildHandler(
   handler: CustomActionHandler,
   paramDefs: CustomActionDef["parameters"],

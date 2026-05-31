@@ -3880,6 +3880,7 @@ export function findWebLookupActionName(
 		"INTERNET_SEARCH",
 		"SEARCH_INTERNET",
 		"LOOKUP_WEB",
+		"WEB_FETCH",
 		"GOOGLE",
 	]);
 }
