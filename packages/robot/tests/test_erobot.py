@@ -27,13 +27,20 @@ def built() -> dict:
 
 def test_spec_is_full_size_humanoid() -> None:
     spec = build_spec()
-    assert spec.dof == 27  # 25 direct joints + 2 tendon-driven toes
+    # 24 DoF: 2 legs x (hip pitch/roll/yaw, knee, ankle pitch/roll, toe) = 14,
+    # 2-DOF waist (yaw + pitch), 2 arms x (shoulder pitch/roll/yaw, elbow) = 8.
+    # Head, neck, and hands/wrists are intentionally removed.
+    assert spec.dof == 24
     assert spec.profile_id == "erobot"
-    assert 1.5 <= spec.standing_height_m <= 1.9
+    assert 1.4 <= spec.standing_height_m <= 1.9
     idx = sorted(j.index for j in spec.joints)
-    assert idx == list(range(27))
-    assert len({j.name for j in spec.joints}) == 27
+    assert idx == list(range(24))
+    assert len({j.name for j in spec.joints}) == 24
     assert sum(j.tendon_driven for j in spec.joints) == 2  # the toes
+    names = {j.name for j in spec.joints}
+    assert not any("neck" in n or "wrist" in n for n in names)
+    assert {"waist_yaw_joint", "waist_pitch_joint"} <= names
+    assert {b.name for b in spec.bodies}.isdisjoint({"head", "neck", "left_wrist_yaw"})
 
 
 def test_mass_budget_is_lightweight() -> None:
@@ -45,7 +52,7 @@ def test_mass_budget_is_lightweight() -> None:
 def test_profile_validates_against_schema(built: dict) -> None:
     prof = load_profile("erobot")
     assert isinstance(prof, RobotProfile)
-    assert prof.kinematics.dof == 27
+    assert prof.kinematics.dof == 24
     assert prof.gait.controller == "rl"
     for j in prof.kinematics.joints:
         assert j.actuator_torque_nm > 0 and j.velocity_max_rad_s > 0
@@ -69,8 +76,8 @@ def test_urdf_is_wellformed(built: dict) -> None:
     import xml.etree.ElementTree as ET
 
     root = ET.parse(built["artifacts"]["urdf"]).getroot()
-    assert len(root.findall("link")) == 28
-    assert len(root.findall("joint")) == 27
+    assert len(root.findall("link")) == 25
+    assert len(root.findall("joint")) == 24
 
 
 def test_all_proofs_pass(built: dict) -> None:

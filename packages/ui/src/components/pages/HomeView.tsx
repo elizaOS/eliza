@@ -25,6 +25,7 @@ import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 import type {
   FrequencyAnalyser,
   VoiceWaveformMode,
@@ -322,6 +323,65 @@ function DefaultApps({
   );
 }
 
+// Agent-activity feed below the crystal ball. Surfaces notable agent lifecycle
+// state (starting / restarting / stopped / error); a healthy running agent
+// shows nothing so the home stays clean. No new backend — reads agentStatus.
+function HomeNotifications(): React.JSX.Element | null {
+  const { agentStatus } = useApp();
+  const { t } = useTranslation();
+  const state = agentStatus?.state ?? null;
+
+  if (!state || state === "running" || state === "not_started") return null;
+
+  const busy = state === "starting" || state === "restarting";
+  const label =
+    state === "starting"
+      ? t("homeview.notifications.starting", {
+          defaultValue: "Starting Eliza…",
+        })
+      : state === "restarting"
+        ? t("homeview.notifications.restarting", {
+            defaultValue: "Restarting Eliza…",
+          })
+        : state === "stopped"
+          ? t("homeview.notifications.stopped", {
+              defaultValue: "Eliza is stopped",
+            })
+          : t("homeview.notifications.error", {
+              defaultValue: "Eliza hit a problem starting up",
+            });
+
+  return (
+    <div
+      data-testid="home-notifications"
+      data-state={state}
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "flex max-w-md items-center gap-2 rounded-md border bg-bg/55 px-3 py-2 text-xs font-medium backdrop-blur",
+        state === "error"
+          ? "border-danger/40 text-danger"
+          : state === "stopped"
+            ? "border-warn/40 text-warn"
+            : "border-accent/40 text-txt",
+      )}
+    >
+      {busy ? (
+        <Spinner size={14} className="shrink-0 opacity-90" aria-hidden />
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-full",
+            state === "error" ? "bg-danger" : "bg-warn",
+          )}
+        />
+      )}
+      <span className="leading-snug">{label}</span>
+    </div>
+  );
+}
+
 function NoLlmConnectionPanel({
   onOpenSettings,
 }: {
@@ -478,10 +538,6 @@ function ModelRecoveryPanel({
       </div>
     </div>
   );
-}
-
-function HomeNotifications(): React.JSX.Element | null {
-  return null;
 }
 
 // Distinguishes a quick tap from a press-and-hold on the mic. A press shorter
@@ -667,7 +723,7 @@ function HomeComposer({
           })}
           data-testid="home-chat-input"
           style={{ outline: "none" }}
-          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-white placeholder:text-white/60 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
         {hasDraft ? (
           <Button

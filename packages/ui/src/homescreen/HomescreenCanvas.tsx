@@ -160,21 +160,31 @@ export function HomescreenCanvas({
         const dt = advance ? (now - last) / 1000 : 0;
         last = now;
 
-        // Refresh live inputs in place (scenes treat as read-only).
+        // Refresh live inputs in place (scenes treat as read-only). Mutating the
+        // band/pointer sub-objects rather than reallocating them avoids per-frame
+        // GC churn in this hot loop and keeps any scene that captured the
+        // reference once reading live values.
         const live = liveRef.current;
-        const summary = summarizeLevels(
-          sampleFrequencyLevels(live.analyser, BANDS),
-        );
-        const isUser = live.phase === "listening";
-        inputs.audioUser = isUser ? summary.energy : 0;
-        inputs.audioAssistant = live.phase === "speaking" ? summary.energy : 0;
+        if (live.analyser) {
+          const summary = summarizeLevels(
+            sampleFrequencyLevels(live.analyser, BANDS),
+          );
+          inputs.audioUser = live.phase === "listening" ? summary.energy : 0;
+          inputs.audioAssistant =
+            live.phase === "speaking" ? summary.energy : 0;
+          inputs.bands.low = summary.low;
+          inputs.bands.mid = summary.mid;
+          inputs.bands.high = summary.high;
+        } else {
+          // No audio source (onboarding backdrop, idle home): skip the FFT
+          // sampling allocations entirely — every band is silent.
+          inputs.audioUser = 0;
+          inputs.audioAssistant = 0;
+          inputs.bands.low = 0;
+          inputs.bands.mid = 0;
+          inputs.bands.high = 0;
+        }
         inputs.energy = Math.max(inputs.audioUser, inputs.audioAssistant);
-        // Mutate the band/pointer sub-objects in place rather than reallocating
-        // them every frame: avoids per-frame GC churn in this hot loop and keeps
-        // any scene that captured the reference once reading live values.
-        inputs.bands.low = summary.low;
-        inputs.bands.mid = summary.mid;
-        inputs.bands.high = summary.high;
         inputs.pointer.x = pointerRef.current.x;
         inputs.pointer.y = pointerRef.current.y;
         inputs.pointer.down = pointerRef.current.down;

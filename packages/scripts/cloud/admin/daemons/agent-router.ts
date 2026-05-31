@@ -96,10 +96,12 @@ export function resolveSandboxRouting(
 
   let bridgePort: number | null = null;
   let bridgeHost: string | null = null;
-  if (options.allowBridgeHostFallback && sandbox.bridge_url) {
+  if (sandbox.bridge_url) {
     try {
       const parsed = new URL(sandbox.bridge_url);
-      bridgeHost = parsed.hostname || null;
+      bridgeHost = options.allowBridgeHostFallback
+        ? parsed.hostname || null
+        : null;
       bridgePort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
     } catch {
       bridgeHost = null;

@@ -6,6 +6,9 @@
  *
  * Implemented endpoints:
  *   GET    /api/health
+ *   GET    /api/local-inference/installed
+ *   GET    /api/local-inference/hub
+ *   POST   /api/local-inference/downloads { modelId } -> { job }
  *   POST   /api/local-inference/active   { modelId } -> ActiveModelState
  *   DELETE /api/local-inference/active   -> ActiveModelState
  *   POST   /api/conversations            { title? } -> { conversation }

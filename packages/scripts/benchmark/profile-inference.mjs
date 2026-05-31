@@ -42,6 +42,12 @@
  *   DELETE /api/conversations/:id
  *   GET    /api/health
  *
+ * When --ensure-models is set, the harness also uses:
+ *
+ *   GET    /api/local-inference/installed
+ *   POST   /api/local-inference/downloads { modelId }
+ *   GET    /api/local-inference/hub       (optional failure-state polling)
+ *
  * Per-call cache type / drafter pairing override:
  *   The current /api/local-inference/active endpoint reads cacheTypeK,
  *   cacheTypeV, and the mtp drafter pairing from the catalog entry's
@@ -461,10 +467,7 @@ async function downloadJobForModel(client, modelId) {
   try {
     const body = await client.json("GET", "/api/local-inference/hub");
     const downloads = Array.isArray(body?.downloads) ? body.downloads : [];
-    return (
-      downloads.find((job) => job && job.modelId === modelId) ??
-      null
-    );
+    return downloads.find((job) => job && job.modelId === modelId) ?? null;
   } catch {
     return null;
   }
@@ -491,9 +494,7 @@ async function ensureModelInstalled(client, modelId, { downloadTimeoutMs }) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < downloadTimeoutMs) {
     if ((await installedModelIds(client)).has(modelId)) {
-      process.stdout.write(
-        `[profile-inference] model ${modelId} installed\n`,
-      );
+      process.stdout.write(`[profile-inference] model ${modelId} installed\n`);
       return;
     }
     const job = await downloadJobForModel(client, modelId);

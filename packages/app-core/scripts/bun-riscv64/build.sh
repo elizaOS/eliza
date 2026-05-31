@@ -117,6 +117,11 @@ SRC_ROOT="${SRC_ROOT:-/work/src}"
 mkdir -p "$SRC_ROOT"
 cd "$SRC_ROOT"
 
+# Robust git transport for the multi-GB bun + WebKit fetches below: HTTP/1.1
+# (avoids HTTP/2 mid-stream "curl 92 CANCEL" resets) + a large send/recv buffer.
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 1048576000
+
 # ──────────────────────────────────────────────────────────────────────────
 # Stage 1: clone WebKit fork at the pinned commit and apply riscv64 patches.
 # ──────────────────────────────────────────────────────────────────────────
@@ -130,8 +135,21 @@ if [ ! -d "$SRC_ROOT/WebKit" ]; then
     # commit (via `git fetch <sha>`), this stays under ~1.5 GB.
     git init --initial-branch=main "$SRC_ROOT/WebKit"
     git -C "$SRC_ROOT/WebKit" remote add origin "https://github.com/${WEBKIT_FORK}.git"
-    git -C "$SRC_ROOT/WebKit" fetch --depth=1 --filter=blob:none origin "${WEBKIT_COMMIT}"
-    git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"
+    # Multi-GB partial clones over HTTP/2 intermittently fail mid-stream with
+    # "curl 92 ... CANCEL" / "early EOF" / "could not fetch ... from promisor
+    # remote". Pin HTTP/1.1, enlarge the buffer, and retry fetch+checkout (the
+    # blob:none checkout lazily pulls blobs, so it can flake independently).
+    git -C "$SRC_ROOT/WebKit" config http.version HTTP/1.1
+    git -C "$SRC_ROOT/WebKit" config http.postBuffer 1048576000
+    for attempt in 1 2 3 4 5; do
+        if git -C "$SRC_ROOT/WebKit" fetch --depth=1 --filter=blob:none origin "${WEBKIT_COMMIT}" \
+           && git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"; then
+            break
+        fi
+        [ "$attempt" -eq 5 ] && die "WebKit fetch/checkout failed after 5 attempts (network) @ ${WEBKIT_COMMIT}"
+        log "WebKit fetch attempt ${attempt} failed (network); retrying in $((attempt * 10))s…"
+        sleep $((attempt * 10))
+    done
 fi
 git -C "$SRC_ROOT/WebKit" reset --hard "${WEBKIT_COMMIT}" >/dev/null
 

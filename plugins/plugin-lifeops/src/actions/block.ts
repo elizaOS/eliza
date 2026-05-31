@@ -277,6 +277,8 @@ export const blockAction: Action & {
     // CALENDAR.create_event, not BLOCK. Names like FOCUS_BLOCK /
     // AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that suggest scheduling a calendar
     // block are intentionally NOT similes here.
+    "APP_BLOCK",
+    "WEBSITE_BLOCK",
     "SELFCONTROL",
     "SITE_BLOCKER",
     "HOSTS_BLOCK",
