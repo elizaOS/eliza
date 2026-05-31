@@ -5,6 +5,7 @@
 import type { IAgentRuntime } from "../types/runtime.ts";
 import type { Memory } from "../types/memory.ts";
 import type { PipelineHookSpec } from "../types/pipeline-hooks.ts";
+import type { ContentValue } from "../types/primitives.ts";
 import {
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
@@ -66,12 +67,10 @@ function hasFinancialCommandLanguage(text: string): boolean {
 	return FINANCIAL_COMMAND_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-function readMessageMetadata(
-	message: Memory,
-): Record<string, unknown> & IncomingMessageSecurityMetadata {
+function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
 	const existing = message.content.metadata;
 	if (typeof existing === "object" && existing !== null) {
-		return existing as Record<string, unknown> & IncomingMessageSecurityMetadata;
+		return existing as IncomingMessageSecurityMetadata;
 	}
 	return {};
 }
@@ -108,7 +107,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
 		metadata.externalContentWrapped = true;
 	}
 
-	message.content.metadata = metadata;
+	message.content.metadata = metadata as { [key: string]: ContentValue };
 }
 
 /** Redact secret-shaped substrings before persisting user text to memory. */
