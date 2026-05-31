@@ -51,6 +51,25 @@ RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
 #       (services/plugin-compiler via workbench routes), and isomorphic-git
 #       (services/vfs-git). All of these load at module-eval time when
 #       server.js is imported, so a missing one is a hard boot crash.
+#   (c) @elizaos/core + @elizaos/shared (+ @elizaos/contracts) are linked
+#       into /app/node_modules so they resolve when imported eagerly on
+#       boot. @elizaos/shared/dist is transpiled (tsc, NOT bundled), so its
+#       own third-party deps stay as bare imports. Its package barrel eagerly
+#       loads terminal/theme.js -> `chalk`, so a missing chalk crashes the
+#       container the same way zod did (verified: "Cannot find package
+#       'chalk' imported from /app/packages/shared/dist/terminal/theme.js").
+#       chalk is the only EAGER third-party the linked shared graph adds that
+#       was not already covered above (its other bare specifiers are either
+#       type-only (drizzle-orm/pg-core), dynamic + optional (phonemizer,
+#       which has a built-in fallback), or already present (zod, yaml)).
+#       file-type is added PROACTIVELY: @elizaos/core dynamically imports it
+#       (media/mime.js, `await import("file-type")`) for MIME sniffing. It is
+#       lazy (not on the boot path) but commonly hit once the agent handles
+#       any media, so including it now avoids a later crash layer; it is
+#       cheap relative to the cost of another build/test loop.
+# chalk@5.6.2 / file-type@22.0.1 are the versions the workspace lockfile
+# resolves for @elizaos/shared (chalk ^5.3.0) and @elizaos/core
+# (file-type ^22.0.0) respectively.
 # zod@4.4.3 matches packages/core/package.json (^4.4.3) and provides the
 # ./v3 + ./v4 subpath exports core imports. Versions below track the
 # declarations in packages/agent/package.json + packages/core/package.json.
@@ -81,6 +100,8 @@ RUN mkdir -p /tmp/docker-runtime-deps \
     isomorphic-git@1.37.8 \
     @noble/curves@2.2.0 \
     @noble/hashes@2.2.0 \
+    chalk@5.6.2 \
+    file-type@22.0.1 \
   && mkdir -p /app/node_modules \
   && rm -rf \
     /app/node_modules/@electric-sql/pglite \
@@ -101,6 +122,8 @@ RUN mkdir -p /tmp/docker-runtime-deps \
     /app/node_modules/isomorphic-git \
     /app/node_modules/@noble/curves \
     /app/node_modules/@noble/hashes \
+    /app/node_modules/chalk \
+    /app/node_modules/file-type \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 
