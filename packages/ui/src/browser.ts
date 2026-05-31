@@ -14,10 +14,15 @@ export {
   setRestartHandler,
 } from "@elizaos/shared";
 export { App } from "./App.tsx";
+export * from "./agent-surface/index.ts";
 export * from "./api/android-native-agent-transport.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
 export { sendJson, sendJsonError } from "./api/response.ts";
+export {
+  type AgentElementHandle,
+  useAgentElement,
+} from "./agent-surface/useAgentElement.ts";
 export { registerAppShellPage } from "./app-shell-registry.ts";
 export * from "./bridge/index.ts";
 export * from "./chat/index.ts";
