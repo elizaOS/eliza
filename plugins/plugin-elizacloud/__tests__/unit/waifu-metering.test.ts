@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelUsageEventPayload } from "../../src/utils/events";
 import {
   buildInferenceSpentPayload,
+  CLOUD_INFERENCE_SOURCE,
   createWaifuMeteringHandler,
+  deriveInferenceUrlFromCredits,
   estimateUsd,
   postInferenceSpent,
+  resolveInferenceWebhookUrl,
   resolveWaifuMeteringConfig,
   signWaifuWebhook,
   type WaifuMeteringConfig,
@@ -74,13 +77,58 @@ describe("resolveWaifuMeteringConfig", () => {
     expect(resolved?.usdPer1kOutput).toBeGreaterThan(0);
   });
 
-  it("falls back to WAIFU_WEBHOOK_URL when inference url not set", () => {
+  it("never reuses the credits URL for inference; derives the /inference sibling instead", () => {
     const runtime = makeRuntime({
       WAIFU_WEBHOOK_URL: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",
       WAIFU_WEBHOOK_SECRET: CONFIG.secret,
       WAIFU_AGENT_ID: CONFIG.agentId,
     });
-    expect(resolveWaifuMeteringConfig(runtime)?.webhookUrl).toContain("/credits");
+    const resolved = resolveWaifuMeteringConfig(runtime);
+    expect(resolved?.webhookUrl).not.toContain("/credits");
+    expect(resolved?.webhookUrl).toBe(
+      "https://api.waifu.fun/v2/webhooks/eliza-cloud/inference"
+    );
+  });
+
+  it("returns null when only a non-credits WAIFU_WEBHOOK_URL is present (cannot safely derive)", () => {
+    const runtime = makeRuntime({
+      WAIFU_WEBHOOK_URL: "https://api.waifu.fun/v2/webhooks/eliza-cloud/something-else",
+      WAIFU_WEBHOOK_SECRET: CONFIG.secret,
+      WAIFU_AGENT_ID: CONFIG.agentId,
+    });
+    expect(resolveWaifuMeteringConfig(runtime)).toBeNull();
+  });
+});
+
+describe("resolveInferenceWebhookUrl / deriveInferenceUrlFromCredits", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("prefers the explicit inference URL", () => {
+    const runtime = makeRuntime({
+      WAIFU_INFERENCE_WEBHOOK_URL: CONFIG.webhookUrl,
+      WAIFU_WEBHOOK_URL: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",
+    });
+    expect(resolveInferenceWebhookUrl(runtime)).toBe(CONFIG.webhookUrl);
+  });
+
+  it("derives the /inference URL from a /credits URL, preserving host and query", () => {
+    expect(
+      deriveInferenceUrlFromCredits("https://api.waifu.fun/v2/webhooks/eliza-cloud/credits")
+    ).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference");
+    expect(
+      deriveInferenceUrlFromCredits("https://api.waifu.fun/v2/webhooks/eliza-cloud/credits?x=1")
+    ).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference?x=1");
+  });
+
+  it("returns undefined for a URL that is not a /credits receiver", () => {
+    expect(
+      deriveInferenceUrlFromCredits("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference")
+    ).toBeUndefined();
+    expect(deriveInferenceUrlFromCredits("https://api.waifu.fun/v2/webhooks/foo")).toBeUndefined();
+  });
+
+  it("returns undefined when no URL env is present", () => {
+    expect(resolveInferenceWebhookUrl(makeRuntime({}))).toBeUndefined();
   });
 });
 
@@ -181,7 +229,7 @@ describe("createWaifuMeteringHandler", () => {
     expect(fakeFetch).not.toHaveBeenCalled();
   });
 
-  it("posts when metering env is present", async () => {
+  it("posts when metering env is present and source is the cloud gateway", async () => {
     const fakeFetch = vi.fn(
       async () => ({ ok: true, status: 202 }) as Response
     ) as unknown as typeof fetch;
@@ -191,7 +239,44 @@ describe("createWaifuMeteringHandler", () => {
       WAIFU_WEBHOOK_SECRET: CONFIG.secret,
       WAIFU_AGENT_ID: CONFIG.agentId,
     });
-    await handler(makePayload({ prompt: 100, completion: 50 }, { runtime }));
+    await handler(
+      makePayload({ prompt: 100, completion: 50 }, { runtime, source: CLOUD_INFERENCE_SOURCE })
+    );
     expect(fakeFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT meter local-ai inference even with metering env present", async () => {
+    const fakeFetch = vi.fn(
+      async () => ({ ok: true, status: 202 }) as Response
+    ) as unknown as typeof fetch;
+    const handler = createWaifuMeteringHandler(fakeFetch);
+    const runtime = makeRuntime({
+      WAIFU_INFERENCE_WEBHOOK_URL: CONFIG.webhookUrl,
+      WAIFU_WEBHOOK_SECRET: CONFIG.secret,
+      WAIFU_AGENT_ID: CONFIG.agentId,
+    });
+    // plugin-local-inference emits MODEL_USED with source "local-ai" and real
+    // token counts but no costUsd. It is free CPU inference and must not be
+    // billed as cloud burn.
+    await handler(
+      makePayload({ prompt: 100, completion: 50 }, { runtime, source: "local-ai" })
+    );
+    expect(fakeFetch).not.toHaveBeenCalled();
+  });
+
+  it("does NOT meter other cloud providers (e.g. openrouter)", async () => {
+    const fakeFetch = vi.fn(
+      async () => ({ ok: true, status: 202 }) as Response
+    ) as unknown as typeof fetch;
+    const handler = createWaifuMeteringHandler(fakeFetch);
+    const runtime = makeRuntime({
+      WAIFU_INFERENCE_WEBHOOK_URL: CONFIG.webhookUrl,
+      WAIFU_WEBHOOK_SECRET: CONFIG.secret,
+      WAIFU_AGENT_ID: CONFIG.agentId,
+    });
+    await handler(
+      makePayload({ prompt: 100, completion: 50 }, { runtime, source: "openrouter" })
+    );
+    expect(fakeFetch).not.toHaveBeenCalled();
   });
 });

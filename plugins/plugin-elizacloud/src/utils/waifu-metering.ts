@@ -33,6 +33,18 @@ import type { ModelUsageEventPayload } from "./events";
 const DEFAULT_USD_PER_1K_INPUT = 0.003;
 const DEFAULT_USD_PER_1K_OUTPUT = 0.015;
 
+/**
+ * The MODEL_USED event `source` set by the Eliza Cloud metered inference path
+ * (see ./events.ts emitModelUsageEvent). ElizaOS event dispatch is global: every
+ * MODEL_USED handler receives every MODEL_USED event regardless of which plugin
+ * emitted it. Only inference that actually went through the cloud metered
+ * gateway debits real credits, so we must meter only those events. Other model
+ * providers (e.g. plugin-local-inference emits source "local-ai" for free CPU
+ * inference, plugin-openrouter emits "openrouter", etc.) must never be metered
+ * as cloud burn.
+ */
+export const CLOUD_INFERENCE_SOURCE = "elizacloud";
+
 export interface WaifuMeteringConfig {
   webhookUrl: string;
   secret: string;
@@ -70,8 +82,7 @@ function readNumberEnv(
 export function resolveWaifuMeteringConfig(
   runtime: IAgentRuntime
 ): WaifuMeteringConfig | null {
-  const webhookUrl =
-    readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_URL") ?? readEnv(runtime, "WAIFU_WEBHOOK_URL");
+  const webhookUrl = resolveInferenceWebhookUrl(runtime);
   const secret =
     readEnv(runtime, "WAIFU_WEBHOOK_SECRET") ?? readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_SECRET");
   const agentId = readEnv(runtime, "WAIFU_AGENT_ID") ?? readEnv(runtime, "WAIFU_CORE_AGENT_ID");
@@ -91,6 +102,57 @@ export function resolveWaifuMeteringConfig(
       DEFAULT_USD_PER_1K_OUTPUT
     ),
   };
+}
+
+/**
+ * Resolve the inference webhook URL from the container environment.
+ *
+ * Prefers the explicit WAIFU_INFERENCE_WEBHOOK_URL. If that is absent but a
+ * credits webhook URL (WAIFU_WEBHOOK_URL) is present, derive the sibling
+ * `/inference` receiver path from the known `/credits` path. We NEVER post
+ * inference events to the credits receiver: the credits mapper defaults unknown
+ * payloads to `credits.topped_up`, which would corrupt credit state. If we
+ * cannot safely derive an inference URL, return undefined so the bridge stays
+ * a no-op.
+ */
+export function resolveInferenceWebhookUrl(runtime: IAgentRuntime): string | undefined {
+  const explicit = readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_URL");
+  if (explicit) return explicit;
+
+  const creditsUrl = readEnv(runtime, "WAIFU_WEBHOOK_URL");
+  if (!creditsUrl) return undefined;
+
+  // Only derive when the credits URL ends in a recognizable `/credits` segment.
+  // Replacing the trailing `/credits` with `/inference` keeps the same host,
+  // base path, and query string. Anything we cannot confidently map is treated
+  // as unsafe and skipped, never reused as-is for inference.
+  const derived = deriveInferenceUrlFromCredits(creditsUrl);
+  if (derived) return derived;
+
+  return undefined;
+}
+
+/**
+ * Map a known `/credits` webhook URL to its sibling `/inference` URL. Returns
+ * undefined when the input does not contain a `/credits` path segment, so we
+ * never accidentally post inference to a non-inference endpoint.
+ */
+export function deriveInferenceUrlFromCredits(creditsUrl: string): string | undefined {
+  try {
+    const url = new URL(creditsUrl);
+    if (!/\/credits\/?$/.test(url.pathname)) {
+      return undefined;
+    }
+    url.pathname = url.pathname.replace(/\/credits(\/?)$/, "/inference$1");
+    return url.toString();
+  } catch {
+    // Fall back to a string replacement for non-absolute URLs, still requiring
+    // an explicit `/credits` segment so we cannot mis-route.
+    if (/\/credits\/?$/.test(creditsUrl)) {
+      return creditsUrl.replace(/\/credits(\/?)$/, "/inference$1");
+    }
+    return undefined;
+  }
 }
 
 /**
@@ -216,6 +278,11 @@ export function createWaifuMeteringHandler(
   return async (payload: ModelUsageEventPayload): Promise<void> => {
     const runtime = payload?.runtime;
     if (!runtime) return;
+    // ElizaOS dispatches MODEL_USED globally to every registered handler, so we
+    // also receive events from other model providers (local-ai, openrouter,
+    // etc.). Only cloud-metered inference debits real credits; meter only that
+    // source so we never bill free/local inference as cloud burn.
+    if (payload?.source !== CLOUD_INFERENCE_SOURCE) return;
     const config = resolveWaifuMeteringConfig(runtime);
     if (!config) return;
     const spent = buildInferenceSpentPayload(config, payload);
