@@ -2,14 +2,18 @@ import { describe, expect, test } from "vitest";
 import type { AgentBackupStateData } from "../../db/schemas/agent-sandboxes";
 import {
   applyBackupDelta,
+  type BackupChainNode,
   computeStateHash,
   diffBackupState,
   emptyBackupState,
   estimateDeltaBytes,
   estimateStateBytes,
+  incrementalChainDepth,
   isEmptyDelta,
   planIncrementalBackup,
   reconstructFromChain,
+  resolveBackupChain,
+  selectPrunableBackupIds,
 } from "./agent-backup-diff";
 
 function state(overrides: Partial<AgentBackupStateData> = {}): AgentBackupStateData {
@@ -187,5 +191,68 @@ describe("planIncrementalBackup", () => {
     expect(planIncrementalBackup({ base, next, chainDepth: 20, maxChainDepth: 20 }).kind).toBe(
       "full",
     );
+  });
+});
+
+describe("backup chains", () => {
+  // full(f0) <- inc(i1) <- inc(i2) ; plus a newer standalone full(f3)
+  const nodes: BackupChainNode[] = [
+    { id: "f0", backupKind: "full", parentBackupId: null, createdAtMs: 100 },
+    { id: "i1", backupKind: "incremental", parentBackupId: "f0", createdAtMs: 200 },
+    { id: "i2", backupKind: "incremental", parentBackupId: "i1", createdAtMs: 300 },
+    { id: "f3", backupKind: "full", parentBackupId: null, createdAtMs: 400 },
+  ];
+
+  test("resolveBackupChain returns base→target oldest-first", () => {
+    expect(resolveBackupChain(nodes, "i2")).toEqual(["f0", "i1", "i2"]);
+    expect(resolveBackupChain(nodes, "f3")).toEqual(["f3"]);
+    expect(resolveBackupChain(nodes, "f0")).toEqual(["f0"]);
+  });
+
+  test("incrementalChainDepth counts incrementals above the base", () => {
+    expect(incrementalChainDepth(nodes, "i2")).toBe(2);
+    expect(incrementalChainDepth(nodes, "f3")).toBe(0);
+  });
+
+  test("resolveBackupChain throws on a broken chain", () => {
+    const broken: BackupChainNode[] = [
+      { id: "x", backupKind: "incremental", parentBackupId: "missing", createdAtMs: 1 },
+    ];
+    expect(() => resolveBackupChain(broken, "x")).toThrow(/missing/);
+  });
+
+  test("resolveBackupChain throws on a cycle", () => {
+    const cyclic: BackupChainNode[] = [
+      { id: "a", backupKind: "incremental", parentBackupId: "b", createdAtMs: 1 },
+      { id: "b", backupKind: "incremental", parentBackupId: "a", createdAtMs: 2 },
+    ];
+    expect(() => resolveBackupChain(cyclic, "a")).toThrow(/cycle/);
+  });
+
+  test("selectPrunableBackupIds keeps ancestors of a retained incremental", () => {
+    // Chain-only set: f0 <- i1 <- i2. keep=1 retains the newest (i2), which
+    // needs i1 + f0, so nothing is prunable even though keep=1.
+    const chain: BackupChainNode[] = [
+      { id: "f0", backupKind: "full", parentBackupId: null, createdAtMs: 100 },
+      { id: "i1", backupKind: "incremental", parentBackupId: "f0", createdAtMs: 200 },
+      { id: "i2", backupKind: "incremental", parentBackupId: "i1", createdAtMs: 300 },
+    ];
+    expect(selectPrunableBackupIds(chain, 1)).toEqual([]);
+  });
+
+  test("selectPrunableBackupIds prunes an old standalone full a retained chain doesn't need", () => {
+    // f3 is the newest restore point; the i2/i1/f0 chain is independent of it.
+    const prunable = selectPrunableBackupIds(nodes, 1).sort();
+    expect(prunable).toEqual(["f0", "i1", "i2"]);
+  });
+
+  test("selectPrunableBackupIds never strands an incremental's base", () => {
+    // keep=2: newest two are f3(400), i2(300). i2 needs i1 + f0 → all kept.
+    const prunable = selectPrunableBackupIds(nodes, 2);
+    expect(prunable).toEqual([]);
+  });
+
+  test("selectPrunableBackupIds returns nothing when under the keep count", () => {
+    expect(selectPrunableBackupIds(nodes, 10)).toEqual([]);
   });
 });

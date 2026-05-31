@@ -216,4 +216,84 @@ export function planIncrementalBackup(params: {
   return { kind: "full" };
 }
 
+// ---------------------------------------------------------------------------
+// Chain resolution + chain-safe pruning (pure; the repo layer supplies rows)
+// ---------------------------------------------------------------------------
+
+import type { AgentBackupKind } from "../../db/schemas/agent-sandboxes";
+
+/** Minimal view of a backup row needed to reason about chains. */
+export interface BackupChainNode {
+  id: string;
+  backupKind: AgentBackupKind;
+  parentBackupId: string | null;
+  createdAtMs: number;
+}
+
+/**
+ * Resolve the ordered id chain (oldest full → … → target) needed to
+ * reconstruct `targetId`. Walks `parentBackupId` until a `full` node. Throws if
+ * the chain is broken (a referenced parent is missing or a cycle is detected),
+ * because silently restoring a partial chain would corrupt agent state.
+ */
+export function resolveBackupChain(nodes: BackupChainNode[], targetId: string): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = targetId;
+  while (cursor) {
+    if (seen.has(cursor)) throw new Error(`Backup chain cycle at ${cursor}`);
+    seen.add(cursor);
+    const node = byId.get(cursor);
+    if (!node) throw new Error(`Backup chain references missing backup ${cursor}`);
+    chain.push(node.id);
+    if (node.backupKind === "full") {
+      chain.reverse();
+      return chain;
+    }
+    if (!node.parentBackupId) {
+      throw new Error(`Incremental backup ${node.id} has no parent`);
+    }
+    cursor = node.parentBackupId;
+  }
+  throw new Error(`Backup ${targetId} not found`);
+}
+
+/**
+ * Depth of the incremental chain that would sit on top of `targetId` if a new
+ * incremental were appended (i.e. how many incrementals precede the next one,
+ * back to and excluding the base full). Used to cap chain length.
+ */
+export function incrementalChainDepth(nodes: BackupChainNode[], targetId: string): number {
+  return resolveBackupChain(nodes, targetId).length - 1;
+}
+
+/**
+ * Choose which backups to delete while keeping the newest `keep` restore points
+ * AND every ancestor any retained backup still needs. The kept set is
+ * downward-closed under the parent relation, so pruning can never strand an
+ * incremental without its base. Returns the deletable ids.
+ */
+export function selectPrunableBackupIds(nodes: BackupChainNode[], keep: number): string[] {
+  if (nodes.length <= keep) return [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const newestFirst = [...nodes].sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+  const keepSet = new Set<string>();
+  for (const node of newestFirst.slice(0, Math.max(0, keep))) keepSet.add(node.id);
+
+  // Pull every ancestor of a kept node into the keep set.
+  for (const id of [...keepSet]) {
+    let cursor: string | null = id;
+    while (cursor) {
+      const node = byId.get(cursor);
+      if (!node || node.backupKind === "full") break;
+      cursor = node.parentBackupId;
+      if (cursor) keepSet.add(cursor);
+    }
+  }
+
+  return newestFirst.filter((n) => !keepSet.has(n.id)).map((n) => n.id);
+}
+
 export const __testing = { canonicalize, stableStringify, sharedMemoryPrefix, EMPTY_STATE };

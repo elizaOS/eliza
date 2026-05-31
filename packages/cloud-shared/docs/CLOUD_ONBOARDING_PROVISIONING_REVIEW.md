@@ -118,22 +118,36 @@ A true cold suspend distinct from `suspend`/`resume`:
 - **e2e:** `tests/scheduled-backup.spec.ts` proves the sweep enqueues + produces
   a backup, and that a recently-backed-up agent is skipped.
 
-## 7. NEW — Incremental / diff backups (implemented + unit-verified)
+## 7. NEW — Incremental / diff backups (implemented + wired + unit-verified)
 
 - `lib/services/agent-backup-diff.ts`: pure `diffBackupState`,
   `applyBackupDelta`, `reconstructFromChain`, `computeStateHash`,
-  `planIncrementalBackup` (size/chain-depth aware). Round-trip and chain
-  reconstruction are exact.
+  `planIncrementalBackup` (size/chain-depth aware), plus chain helpers
+  `resolveBackupChain`, `incrementalChainDepth`, `selectPrunableBackupIds`.
 - Schema: `agent_sandbox_backups.backup_kind` (`full|incremental`),
   `parent_backup_id`, `content_hash` (migration `0136`, also in the idempotent
   test-path schema guard).
-- **unit:** `agent-backup-diff.test.ts` — 21 cases (append/rebase/truncate,
+- **Wired into the live path:** `snapshot()` reconstructs the latest backup's
+  full state, then `planIncrementalBackup` decides full vs delta (small change
+  on a big base → incremental; otherwise full). `restore()` and provision's
+  auto-restore go through `getReconstructedBackupState()`, which replays the
+  parent chain to the nearest full — incrementals are materialized
+  transparently. `pruneBackups()` is now chain-safe: it never deletes an
+  ancestor a retained incremental still needs.
+- **Safety:** the full-backup branch is byte-identical to the pre-incremental
+  behaviour, so existing flows (and the mock-stack e2e, which stores fulls) are
+  unaffected — confirmed by the green full suite after the wiring.
+- **unit:** `agent-backup-diff.test.ts` — 29 cases (append/rebase/truncate,
   file add/change/remove, config diff, chain replay, hash stability,
-  full-vs-incremental planning).
+  full-vs-incremental planning, chain resolution, cycle/broken-chain guards,
+  chain-safe prune).
 
 The diff format is field-oriented (workspaceFiles map diff + config key diff +
 append-only memory log with rebase fallback), so deltas are compact and
-restores replay a short chain back to the nearest full backup.
+restores replay a short chain back to the nearest full backup. The live
+incremental decision is exercised by unit tests; the mock-stack e2e covers the
+full-backup round-trip (the mock writes fulls directly, so it does not trip the
+incremental planner).
 
 ## 8. Verification status (honest)
 
@@ -155,9 +169,12 @@ real-infra path is the remaining step for 100% production confidence and needs
 
 ## 9. Remaining / follow-ups
 
-- Wire incremental backups into the live `snapshot()`/`restore()` path with a
-  chain-safe pruning rule (library + schema are ready).
-- Desktop/mobile onboarding info-only agent during first-run.
-- Hetzner image-snapshot "frozen VM" base image for sub-warm-pool cold starts.
+- Desktop/mobile onboarding info-only agent during first-run (cloud web already
+  has this).
+- Hetzner image-snapshot "frozen VM" base image for sub-warm-pool cold starts
+  (the warm pool already gives fast claims; this would shorten node cold-start).
+- An e2e that exercises the **live incremental** decision (the mock writes full
+  backups directly, so it never trips the planner; the planner + chain logic are
+  covered by unit tests).
 - Run the live `hetzner-e2e` workflow with real credentials to confirm the real
-  provider end-to-end.
+  Hetzner/Neon/R2 provider path end-to-end.

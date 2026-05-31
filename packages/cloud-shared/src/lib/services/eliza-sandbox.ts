@@ -20,6 +20,7 @@ import {
   type AgentBackupStateData,
   agentSandboxBackups,
   agentSandboxes,
+  type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
@@ -33,6 +34,12 @@ import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
+import {
+  computeStateHash,
+  estimateDeltaBytes,
+  incrementalChainDepth,
+  planIncrementalBackup,
+} from "./agent-backup-diff";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
@@ -802,12 +809,15 @@ export class ElizaSandboxService {
 
         await this.ensureRuntimeAgentStarted(runtimeRec);
 
-        // 4. Restore from backup
+        // 4. Restore from backup (reconstructs incrementals back to a full).
         const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
-        if (backup)
-          await this.pushState(handle.bridgeUrl, backup.state_data as AgentBackupStateData, {
-            trusted: true,
-          });
+        if (backup) {
+          const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
+            backup.id,
+          );
+          if (restoreState)
+            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+        }
 
         // 5. Mark running + persist provider-specific metadata
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
@@ -2536,12 +2546,9 @@ export class ElizaSandboxService {
 
     const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
 
-    const backup = await agentSandboxesRepository.createBackup({
-      sandbox_record_id: rec.id,
-      snapshot_type: type,
-      state_data: stateData,
-      size_bytes: sizeBytes,
-    });
+    const backup = await agentSandboxesRepository.createBackup(
+      await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
+    );
 
     await agentSandboxesRepository.update(rec.id, {
       last_backup_at: new Date(),
@@ -2550,9 +2557,70 @@ export class ElizaSandboxService {
     logger.info("[agent-sandbox] Backup created", {
       agentId,
       type,
+      kind: backup.backup_kind,
       bytes: backup.size_bytes,
     });
     return { success: true, backup };
+  }
+
+  /**
+   * Decide whether a new snapshot of `stateData` is stored as a full backup or
+   * an incremental delta against the latest backup, and build the insert row.
+   * Falls back to a full backup whenever there is no parent, the parent chain
+   * can't be reconstructed, or the delta isn't worth it (see
+   * `planIncrementalBackup`). Full-backup behaviour is byte-identical to the
+   * pre-incremental path, so existing flows are unaffected.
+   */
+  private async buildBackupInput(
+    sandboxRecordId: string,
+    type: AgentBackupSnapshotType,
+    stateData: AgentBackupStateData,
+    sizeBytes: number,
+  ): Promise<NewAgentSandboxBackup> {
+    const contentHash = computeStateHash(stateData);
+    const latest = await agentSandboxesRepository.getLatestBackup(sandboxRecordId);
+    if (latest) {
+      try {
+        const baseState =
+          await agentSandboxesRepository.getReconstructedBackupState(latest.id);
+        if (baseState) {
+          const all = await agentSandboxesRepository.listBackups(sandboxRecordId, 1000);
+          const nodes = all.map((b) => ({
+            id: b.id,
+            backupKind: b.backup_kind,
+            parentBackupId: b.parent_backup_id,
+            createdAtMs: b.created_at.getTime(),
+          }));
+          const chainDepth = incrementalChainDepth(nodes, latest.id);
+          const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
+          if (plan.kind === "incremental") {
+            return {
+              sandbox_record_id: sandboxRecordId,
+              snapshot_type: type,
+              // The state_data jsonb holds a BackupDelta for incremental rows.
+              state_data: plan.delta as unknown as AgentBackupStateData,
+              size_bytes: estimateDeltaBytes(plan.delta),
+              backup_kind: "incremental",
+              parent_backup_id: latest.id,
+              content_hash: contentHash,
+            };
+          }
+        }
+      } catch (error) {
+        logger.warn("[agent-sandbox] Incremental planning failed; storing full backup", {
+          sandboxRecordId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return {
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: type,
+      state_data: stateData,
+      size_bytes: sizeBytes,
+      backup_kind: "full",
+      content_hash: contentHash,
+    };
   }
 
   async restore(agentId: string, orgId: string, backupId?: string): Promise<SnapshotResult> {
@@ -2580,7 +2648,10 @@ export class ElizaSandboxService {
     }
 
     if (rec.status === "running" && rec.bridge_url) {
-      await this.pushState(rec, backup.state_data as AgentBackupStateData);
+      const restoreState =
+        (await agentSandboxesRepository.getReconstructedBackupState(backup.id)) ??
+        (backup.state_data as AgentBackupStateData);
+      await this.pushState(rec, restoreState);
       return { success: true, backup };
     }
 
