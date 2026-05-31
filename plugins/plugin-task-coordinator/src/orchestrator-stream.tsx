@@ -22,6 +22,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { DiffView } from "./orchestrator-diff";
 import { formatClockTime, stripAnsi } from "./view-format";
 
 // The orchestrator room renders a coding-agent session the way Claude Code /
@@ -316,7 +317,11 @@ export function buildConversation(
     // `in_progress`. Once the owning session has finished, a still-"running"
     // tool has in fact completed, so reflect that instead of a perpetual spinner.
     const sessionId = list[0].sessionId;
-    if (tool.status === "running" && sessionId && finishedSessionIds.has(sessionId)) {
+    if (
+      tool.status === "running" &&
+      sessionId &&
+      finishedSessionIds.has(sessionId)
+    ) {
       tool.status = "done";
     }
     atoms.push({
@@ -602,54 +607,30 @@ function clamp(text: string): { body: string; truncated: boolean } {
   return { body: text.slice(0, MAX_BODY_CHARS), truncated: true };
 }
 
-function DiffLines({
-  text,
-  sign,
-}: {
-  text: string;
-  sign: "+" | "-";
-}): ReactNode {
-  const tone = sign === "+" ? "bg-ok/10 text-ok" : "bg-danger/10 text-danger";
-  // One block per side (all removals, then all additions), each line prefixed
-  // with its sign — rendered as a single <pre> so there are no per-line keys to
-  // collide and the column stays aligned.
-  const body = text
-    .split("\n")
-    .map((line) => `${sign} ${line}`)
-    .join("\n");
+function TruncatedNote(): ReactNode {
   return (
-    <pre className={`whitespace-pre-wrap break-words px-2 ${tone}`}>{body}</pre>
+    <div className="px-1 text-2xs text-muted/70">… (truncated for display)</div>
   );
 }
 
-/** The expandable body of a tool card: a +/- diff for edits, the new content
- * for writes, the command + output for shells, and the raw output otherwise. */
+/** The expandable body of a tool card: an interleaved diff for edits, the new
+ * content for writes, the command + output for shells, and the raw output
+ * otherwise. */
 function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   const blocks: ReactNode[] = [];
 
   if (tool.oldText !== undefined && tool.newText !== undefined) {
+    const before = clamp(tool.oldText);
+    const after = clamp(tool.newText);
     blocks.push(
-      <div
-        key="diff"
-        className="overflow-auto rounded-md border border-border/40 bg-bg/60 py-1 font-mono text-2xs leading-relaxed"
-        style={{ maxHeight: "18rem" }}
-      >
-        <DiffLines text={clamp(tool.oldText).body} sign="-" />
-        <DiffLines text={clamp(tool.newText).body} sign="+" />
-      </div>,
+      <DiffView key="diff" oldText={before.body} newText={after.body} />,
     );
+    if (before.truncated || after.truncated)
+      blocks.push(<TruncatedNote key="diff-trunc" />);
   } else if (tool.newText !== undefined) {
     const { body, truncated } = clamp(tool.newText);
-    blocks.push(
-      <pre
-        key="content"
-        className="overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt"
-        style={{ maxHeight: "18rem" }}
-      >
-        {body}
-        {truncated ? "\n… (truncated)" : ""}
-      </pre>,
-    );
+    blocks.push(<DiffView key="content" newText={body} />);
+    if (truncated) blocks.push(<TruncatedNote key="content-trunc" />);
   }
 
   if (tool.command) {
