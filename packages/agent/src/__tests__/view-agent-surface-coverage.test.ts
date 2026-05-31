@@ -101,6 +101,40 @@ function wrapsInShellBridge(pageFile: string): boolean {
   }
 }
 
+/**
+ * Additional standalone shell views. Each is either wrapped in the bridge or —
+ * when it is a child rendered inside an already-wrapped parent — registers its
+ * controls into the ancestor registry via useAgentElement (controls-only mode).
+ */
+const CONVERTED_SHELL_PAGES = [
+  "pages/HomeView",
+  "pages/AppsPageView",
+  "pages/ElizaOsAppsView",
+  "pages/RelationshipsView",
+  "pages/RuntimeView",
+  "pages/SkillsView",
+  "pages/StreamView",
+  "pages/TasksPageView",
+  "pages/BrowserWorkspaceView",
+  "pages/SecretsView",
+  "pages/ReleaseCenterView",
+  "pages/HeartbeatsView",
+  "pages/DocumentsView",
+  "pages/ConfigPageView",
+] as const;
+
+function isAgentControllable(pageFile: string): boolean {
+  const file = path.join(UI_COMPONENTS_DIR, `${pageFile}.tsx`);
+  try {
+    const src = readFileSync(file, "utf8");
+    return (
+      src.includes("ShellViewAgentSurface") || src.includes("useAgentElement")
+    );
+  } catch {
+    return false;
+  }
+}
+
 describe("agent-surface view coverage", () => {
   it.each(
     CONVERTED_PLUGINS,
@@ -112,6 +146,12 @@ describe("agent-surface view coverage", () => {
     CONVERTED_BUILTIN_PAGES,
   )("builtin %s is wrapped in the agent-surface bridge", (page) => {
     expect(wrapsInShellBridge(page)).toBe(true);
+  });
+
+  it.each(
+    CONVERTED_SHELL_PAGES,
+  )("shell view %s is agent-controllable (bridge or registered controls)", (page) => {
+    expect(isAgentControllable(page)).toBe(true);
   });
 
   it("does not silently leave pending views uncounted", () => {
