@@ -40,10 +40,11 @@ const CONVERTED_PLUGINS = [
   "plugin-training",
   "plugin-trajectory-logger",
   "plugin-vincent",
+  "plugin-lifeops",
 ] as const;
 
 /** Views not yet converted — must be empty for the ratchet to be satisfied. */
-const PENDING_PLUGINS = ["plugin-lifeops"] as const;
+const PENDING_PLUGINS: readonly string[] = [];
 
 function walkTsx(dir: string): string[] {
   const out: string[] = [];
@@ -154,9 +155,7 @@ describe("agent-surface view coverage", () => {
     expect(isAgentControllable(page)).toBe(true);
   });
 
-  it("does not silently leave pending views uncounted", () => {
-    // This documents the known gap. When lifeops is converted, move it into
-    // CONVERTED_PLUGINS and drop it here — the assertion then enforces 0 debt.
-    expect(PENDING_PLUGINS.length).toBeLessThanOrEqual(1);
+  it("has zero unconverted plugin views (lifeops now included)", () => {
+    expect(PENDING_PLUGINS).toHaveLength(0);
   });
 });
