@@ -1823,6 +1823,39 @@ android smoke model works`,
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
+	it("keeps scheduled coding-related reminders on LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["create scheduled task"],
+				replyText: "I'll schedule that.",
+				candidateActionNames: ["SCHEDULED_TASKS_CREATE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS_CREATE" },
+				],
+				messageText: "create a scheduled task to fix the app tomorrow",
+			},
+		);
+
+		expect(routed.plan.contexts).not.toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["SCHEDULED_TASKS_CREATE"]);
+	});
+
 	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {
 		const routed = messageHandlerFromFieldResult(
 			{

@@ -3528,6 +3528,18 @@ function applyCodingCandidateBackstop(args: {
 			forceCodeContext: false,
 		};
 	}
+	const hasLifeOpsScheduledCandidate = args.candidateActions.some((name) =>
+		LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+	);
+	if (
+		hasLifeOpsScheduledCandidate &&
+		looksLikeLifeOpsScheduledTaskRequest(args.messageText)
+	) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
 	const codingAction = findCodingDelegationActionName(args.actions);
 	if (!codingAction) {
 		return {
@@ -6976,13 +6988,31 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
 		) ||
-		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeLifeOpsScheduledTaskRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+	return (
+		/\b(?:remind\s+me|reminder|scheduled\s+task|scheduled\s+item|lifeops|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:schedule|create|make|add|set\s+up)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:tomorrow|tonight|later|next\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|every\s+(?:day|week|month|morning|evening))\b/iu.test(
+			normalized,
+		)
+	);
 }
 
 function looksLikeExplicitDelegationRequest(text: string): boolean {
