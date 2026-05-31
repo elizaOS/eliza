@@ -51,6 +51,7 @@ import {
 import {
   type CSSProperties,
   type ReactNode,
+  type UIEvent,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -59,12 +60,14 @@ import {
   useState,
 } from "react";
 import {
-  formatClockTime,
+  buildConversation,
+  ConversationBlockView,
+} from "./orchestrator-stream";
+import {
   formatCompactNumber,
   formatIsoRelative,
   formatRelativeTime,
   formatUsd,
-  stripAnsi,
 } from "./view-format";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -78,6 +81,9 @@ const fallbackTranslate: Translate = (key, vars) =>
 const TASK_LIST_LIMIT = 100;
 const TIMELINE_PAGE_LIMIT = 50;
 const POLL_INTERVAL_MS = 5_000;
+/** While a task has a working agent, poll its room fast so the conversation,
+ * tool calls, and tokens stream in near-live instead of lurching every 5s. */
+const ACTIVE_POLL_INTERVAL_MS = 1_500;
 
 const STATUS_ICON: Record<TaskStatus, LucideIcon> = {
   open: Circle,
@@ -325,13 +331,19 @@ function VerificationGlyph({
       aria-label={label}
       role="img"
     >
-      <Icon className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`} aria-hidden />
+      <Icon
+        className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`}
+        aria-hidden
+      />
     </span>
   );
 }
 
 function PlanStepGlyph({ status, t }: { status: string; t: Translate }) {
-  const key = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const key = status
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   const Icon = PLAN_STEP_ICON[key] ?? Circle;
   const tone = PLAN_STEP_TONE[key] ?? "text-muted";
   const label = t(`orchestrator.planStatus.${key}`, {
@@ -756,9 +768,7 @@ function WorkbenchHeader({
     <div
       className="flex items-center gap-1.5"
       style={
-        isMobile
-          ? { overflowX: "auto" }
-          : { flex: "1 1 0%", flexWrap: "wrap" }
+        isMobile ? { overflowX: "auto" } : { flex: "1 1 0%", flexWrap: "wrap" }
       }
     >
       <StatChip
@@ -975,83 +985,6 @@ function TaskRailItem({
   );
 }
 
-function MessageEntry({
-  message,
-  senderName,
-  locale,
-}: {
-  message: CodingAgentTaskMessageRecord;
-  senderName: string;
-  locale?: string;
-}) {
-  const text = stripAnsi(message.content);
-  if (!text) return null;
-  const isUser = message.senderKind === "user";
-  // Your own messages read as "yours" by color + right-alignment, so the
-  // explicit "You" label is redundant; everyone else keeps their name.
-  const tone = isUser
-    ? "bg-accent/20"
-    : message.senderKind === "orchestrator"
-      ? "bg-bg-accent/60"
-      : "bg-bg-hover/60";
-  return (
-    <div
-      className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
-      data-testid="orchestrator-message"
-    >
-      <div
-        className={`rounded-lg px-2.5 py-1.5 ${tone}`}
-        style={{ maxWidth: "88%" }}
-      >
-        <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-          {isUser ? null : (
-            <span className="font-semibold tracking-tight text-txt/90">
-              {senderName}
-            </span>
-          )}
-          <span className="tabular-nums">
-            {formatClockTime(message.timestamp, locale)}
-          </span>
-        </div>
-        <pre className="whitespace-pre-wrap break-words font-sans text-xs text-txt">
-          {text}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function EventEntry({
-  event,
-  locale,
-}: {
-  event: CodingAgentTaskEventRecord;
-  locale?: string;
-}) {
-  // Show the specific summary as the single line; the event type (e.g.
-  // "agent spawned") only restates what the summary already says ("token-
-  // exchange spawned"), so it's dropped unless there is no summary.
-  const text = event.summary?.trim() || event.eventType.replace(/_/g, " ");
-  return (
-    <div
-      className="flex items-center gap-2 px-1 text-2xs text-muted"
-      data-testid="orchestrator-event"
-    >
-      <span className="h-px flex-1 bg-border/40" />
-      <span
-        className="min-w-0 shrink truncate font-medium"
-        style={{ maxWidth: "72%" }}
-      >
-        {text}
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {formatClockTime(event.timestamp, locale)}
-      </span>
-      <span className="h-px flex-1 bg-border/40" />
-    </div>
-  );
-}
-
 function SubAgentCard({
   session,
   busy,
@@ -1103,12 +1036,7 @@ function SubAgentCard({
           <span className="truncate text-warn">{session.activeTool}</span>
         ) : null}
         <span className="ml-auto tabular-nums">
-          {formatTokenCount(
-            session.usageState,
-            session.totalTokens,
-            t,
-            locale,
-          )}
+          {formatTokenCount(session.usageState, session.totalTokens, t, locale)}
         </span>
       </div>
       <div className="mt-0.5 truncate text-2xs text-muted/80">{workspace}</div>
@@ -1196,10 +1124,7 @@ function ArtifactSection({
               <span className="min-w-0 flex-1 truncate font-medium text-txt">
                 {artifact.title}
               </span>
-              <VerificationGlyph
-                status={artifact.verificationStatus}
-                t={t}
-              />
+              <VerificationGlyph status={artifact.verificationStatus} t={t} />
             </div>
             <div className="truncate text-muted">
               {artifact.artifactType}
@@ -2023,6 +1948,17 @@ export function OrchestratorWorkbench() {
   const selectedIdRef = useRef<string | null>(selectedId);
   selectedIdRef.current = selectedId;
 
+  // The conversation sticks to the newest entry, but only while the reader is
+  // already near the bottom — scrolling up to read history is never yanked by
+  // a streaming update.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+  const handleListScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
   const fetchTasksAndStatus = useCallback(
     async (silent: boolean) => {
       if (!silent) setLoading(true);
@@ -2064,7 +2000,10 @@ export function OrchestratorWorkbench() {
       client.listOrchestratorTaskMessages(id, { limit: TIMELINE_PAGE_LIMIT }),
       client.listOrchestratorTaskEvents(id, { limit: TIMELINE_PAGE_LIMIT }),
     ]);
-    if (token !== detailReqRef.current) return;
+    // Discard if a newer fetch superseded this one, or if the selection moved on
+    // while in flight — otherwise a non-reset poll/refresh could merge one task's
+    // transcript into another task's room (cross-task contamination).
+    if (token !== detailReqRef.current || id !== selectedIdRef.current) return;
     setDetail(nextDetail);
     if (reset) {
       setMessages(mergeById([], messagePage.items));
@@ -2085,11 +2024,21 @@ export function OrchestratorWorkbench() {
     return () => window.clearInterval(timer);
   }, [fetchTasksAndStatus]);
 
+  const detailPollMs =
+    detail !== null &&
+    (detail.activeSessionCount > 0 ||
+      detail.status === "active" ||
+      detail.status === "validating")
+      ? ACTIVE_POLL_INTERVAL_MS
+      : POLL_INTERVAL_MS;
+
   useEffect(() => {
     // Reset transient per-task UI (mobile inspector drawer, add-agent form)
-    // whenever the selection changes so a freshly opened task starts clean.
+    // and load the room whenever the selection changes, so a freshly opened
+    // task starts clean and scrolled to its latest activity.
     setInspectorOpen(false);
     setAddAgentOpen(false);
+    stickToBottomRef.current = true;
     if (!selectedId) {
       setDetail(null);
       setMessages([]);
@@ -2098,12 +2047,19 @@ export function OrchestratorWorkbench() {
       return;
     }
     void fetchDetail(selectedId, true).catch(() => {});
+  }, [selectedId, fetchDetail]);
+
+  useEffect(() => {
+    // Poll the open task's room — fast while a working agent is live, slow when
+    // idle. Kept separate from the selection effect so a cadence change never
+    // forces a full reload of the conversation.
+    if (!selectedId) return;
     const timer = window.setInterval(
       () => void fetchDetail(selectedId, false).catch(() => {}),
-      POLL_INTERVAL_MS,
+      detailPollMs,
     );
     return () => window.clearInterval(timer);
-  }, [selectedId, fetchDetail]);
+  }, [selectedId, detailPollMs, fetchDetail]);
 
   const runMutation = useCallback(
     async (fn: () => Promise<unknown>) => {
@@ -2151,7 +2107,8 @@ export function OrchestratorWorkbench() {
       if (!delivered) {
         throw new Error(
           t("orchestrator.messageDeliveryFailed", {
-            defaultValue: "Message was recorded, but no active agent accepted it.",
+            defaultValue:
+              "Message was recorded, but no active agent accepted it.",
           }),
         );
       }
@@ -2182,20 +2139,6 @@ export function OrchestratorWorkbench() {
     void copyToClipboard(url);
   }, [copyToClipboard]);
 
-  const timeline = useMemo(() => {
-    const items: Array<
-      | { kind: "message"; at: number; message: CodingAgentTaskMessageRecord }
-      | { kind: "event"; at: number; event: CodingAgentTaskEventRecord }
-    > = [];
-    for (const message of messages) {
-      items.push({ kind: "message", at: message.timestamp, message });
-    }
-    for (const event of events) {
-      items.push({ kind: "event", at: event.timestamp, event });
-    }
-    return items.sort((a, b) => a.at - b.at);
-  }, [messages, events]);
-
   const sessionLabelById = useMemo(() => {
     const map = new Map<string, string>();
     for (const session of detail?.sessions ?? []) {
@@ -2204,6 +2147,39 @@ export function OrchestratorWorkbench() {
     }
     return map;
   }, [detail?.sessions]);
+
+  const finishedSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const session of detail?.sessions ?? []) {
+      if (
+        session.sessionId &&
+        (session.stoppedAt != null || session.status === "completed")
+      ) {
+        ids.add(session.sessionId);
+      }
+    }
+    return ids;
+  }, [detail?.sessions]);
+
+  const conversation = useMemo(
+    () =>
+      buildConversation(
+        messages,
+        events,
+        (message) =>
+          resolveSenderName(message, sessionLabelById, mainAgentName, t),
+        finishedSessionIds,
+      ),
+    [messages, events, sessionLabelById, mainAgentName, finishedSessionIds, t],
+  );
+
+  // Re-pin to the newest entry whenever the conversation grows (subject to the
+  // near-bottom guard); `conversation` is the change trigger, not read here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only dep
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [conversation]);
 
   const viewState = JSON.stringify({
     selectedId,
@@ -2332,6 +2308,8 @@ export function OrchestratorWorkbench() {
                 t={t}
               />
               <div
+                ref={listRef}
+                onScroll={handleListScroll}
                 className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
                 data-testid="orchestrator-message-list"
               >
@@ -2350,34 +2328,20 @@ export function OrchestratorWorkbench() {
                     </button>
                   </div>
                 ) : null}
-                {timeline.length === 0 ? (
+                {conversation.length === 0 ? (
                   <p className="p-4 text-center text-xs text-muted">
                     {t("orchestrator.noMessages", {
                       defaultValue: "No messages yet.",
                     })}
                   </p>
                 ) : (
-                  timeline.map((item) =>
-                    item.kind === "message" ? (
-                      <MessageEntry
-                        key={item.message.id}
-                        message={item.message}
-                        senderName={resolveSenderName(
-                          item.message,
-                          sessionLabelById,
-                          mainAgentName,
-                          t,
-                        )}
-                        locale={locale}
-                      />
-                    ) : (
-                      <EventEntry
-                        key={item.event.id}
-                        event={item.event}
-                        locale={locale}
-                      />
-                    ),
-                  )
+                  conversation.map((block) => (
+                    <ConversationBlockView
+                      key={block.key}
+                      block={block}
+                      locale={locale}
+                    />
+                  ))
                 )}
               </div>
               <div className="border-t border-border/50 p-2.5">
