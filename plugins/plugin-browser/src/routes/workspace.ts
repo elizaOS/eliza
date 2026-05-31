@@ -295,13 +295,13 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "script is required" }, 400);
         return true;
       }
-      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
         tabId,
         body,
         "evaluate browser workspace tab",
       );
+      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       json(res, {
         result: await evaluateBrowserWorkspaceTab({
           id: tabId,
