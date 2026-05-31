@@ -733,6 +733,17 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
     }
   }
 
+  // A full reset must also drop the provider-specific default model env vars
+  // that applyDefaultModelNames stamps (ANTHROPIC_LARGE_MODEL, OPENAI_SMALL_MODEL,
+  // CEREBRAS_MODEL, …); otherwise a stale model id from a prior provider survives
+  // into the next fresh first-run.
+  for (const { smallKey, largeKey } of Object.values(PROVIDER_DEFAULT_MODELS)) {
+    for (const envKey of new Set([smallKey, largeKey])) {
+      clearPersistedEnvValue(config, envKey);
+      delete process.env[envKey];
+    }
+  }
+
   delete process.env.ELIZAOS_CLOUD_API_KEY;
   delete process.env.ELIZAOS_CLOUD_ENABLED;
   delete process.env.ELIZAOS_CLOUD_NANO_MODEL;

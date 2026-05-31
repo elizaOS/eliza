@@ -67,9 +67,17 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     "ELIZAOS_CLOUD_MEGA_MODEL",
   ] as const;
 
+  const MODEL_ENV_KEYS = [
+    "ANTHROPIC_LARGE_MODEL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+    "CEREBRAS_MODEL",
+    "GROQ_LARGE_MODEL",
+  ] as const;
+
   afterEach(() => {
     delete process.env.OPENAI_API_KEY;
-    for (const key of CLOUD_ENV_KEYS) {
+    for (const key of [...CLOUD_ENV_KEYS, ...MODEL_ENV_KEYS]) {
       delete process.env[key];
     }
   });
@@ -120,6 +128,16 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
 
     expect(config.env).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("clears provider-specific default model env vars (no stale model leaks)", () => {
+    for (const key of MODEL_ENV_KEYS) process.env[key] = "stale-model";
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+
+    for (const key of MODEL_ENV_KEYS) {
+      expect(process.env[key]).toBeUndefined();
+    }
   });
 
   it("strips Eliza Cloud env keys so a fresh boot does not re-link cloud", () => {
