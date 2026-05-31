@@ -236,6 +236,44 @@ async function dispatchOrchestratorRoutes(
       return true;
     }
 
+    // GET /tasks/:taskId/stream — Server-Sent Events. Pushes a lightweight
+    // "change" ping whenever the task's room mutates (a message, tool event,
+    // status, or usage write), so the workbench refreshes live instead of
+    // polling. The client refetches the room tail on each ping.
+    if (method === "GET" && sub === "stream" && segments.length === 2) {
+      const task = await service.getTask(taskId);
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      const send = (payload: Record<string, unknown>) => {
+        if (!res.writableEnded)
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      };
+      send({ type: "ready", at: Date.now() });
+      const unsubscribe = service.subscribeTaskChanges(taskId, () =>
+        send({ type: "change", at: Date.now() }),
+      );
+      // Comment heartbeat keeps the connection alive through proxies/idle.
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(": ping\n\n");
+      }, 20_000);
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+        if (!res.writableEnded) res.end();
+      };
+      req.on("close", cleanup);
+      req.on("error", cleanup);
+      return true;
+    }
+
     // PATCH /tasks/:taskId
     if (method === "PATCH" && segments.length === 1) {
       const body = await parseBody(req).catch(() => null);

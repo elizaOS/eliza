@@ -320,6 +320,43 @@ export class OrchestratorTaskService extends Service {
     this.started = false;
   }
 
+  // ---- live change bus ---------------------------------------------------
+  // A lightweight per-task pub/sub so the SSE stream route can push the
+  // workbench a "something changed" ping the instant a message/event/usage/
+  // status is written — replacing poll latency with near-live updates. The
+  // payload is intentionally coarse (just a ping); the client refetches the
+  // room tail, which keeps this decoupled from the record shapes.
+  private readonly changeListeners = new Map<string, Set<() => void>>();
+
+  /** Subscribe to change pings for a task. Returns an unsubscribe function. */
+  subscribeTaskChanges(taskId: string, listener: () => void): () => void {
+    let listeners = this.changeListeners.get(taskId);
+    if (!listeners) {
+      listeners = new Set();
+      this.changeListeners.set(taskId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      const set = this.changeListeners.get(taskId);
+      if (!set) return;
+      set.delete(listener);
+      if (set.size === 0) this.changeListeners.delete(taskId);
+    };
+  }
+
+  private emitChange(taskId: string): void {
+    const listeners = this.changeListeners.get(taskId);
+    if (!listeners) return;
+    for (const listener of listeners) {
+      // A broken subscriber must never break a write path.
+      try {
+        listener();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   // ---- event bridge ------------------------------------------------------
 
   private async onSessionEvent(
@@ -341,6 +378,7 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.applySessionEvent(taskId, sessionId, event, data);
+      this.emitChange(taskId);
     } catch (err) {
       this.log("warn", "failed to record session event", {
         sessionId,
@@ -511,6 +549,7 @@ export class OrchestratorTaskService extends Service {
       metadata: input.metadata ?? {},
       createdAt: nowIso(),
     });
+    this.emitChange(taskId);
   }
 
   private async resolveTaskId(sessionId: string): Promise<string | undefined> {
