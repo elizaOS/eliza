@@ -3,39 +3,13 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { copyDir } from "./safe-copy-dir.ts";
 
 const PACKAGE_DIR = import.meta.dir;
 const DIST_DIR = path.join(PACKAGE_DIR, "dist");
 const LEGACY_TEMPLATE_SOURCE_DIR = path.resolve(PACKAGE_DIR, "..", "templates");
 const TEMPLATE_DIR = path.join(PACKAGE_DIR, "templates");
 const MANIFEST_PATH = path.join(PACKAGE_DIR, "templates-manifest.json");
-const SKIP_ENTRIES = new Set([
-  ".DS_Store",
-  ".git",
-  ".turbo",
-  ".vite",
-  "artifacts",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
-
-function copyDir(src: string, dest: string): void {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (SKIP_ENTRIES.has(entry.name)) continue;
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDir(srcPath, destPath);
-      continue;
-    }
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(srcPath, destPath);
-  }
-}
-
 function resolveTemplateSourceDir(): string {
   if (fs.existsSync(LEGACY_TEMPLATE_SOURCE_DIR)) {
     return LEGACY_TEMPLATE_SOURCE_DIR;

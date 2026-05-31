@@ -19,6 +19,7 @@ import type {
   BrowserTab,
   ClickableElement,
 } from "../types.js";
+import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
 import { currentPlatform } from "./helpers.js";
 import { assertScreenshotBase64NotBlank } from "./screenshot-quality.js";
 
@@ -435,24 +436,10 @@ export async function screenshotBrowser(): Promise<string> {
   return buffer as string;
 }
 
-// ── Execute JavaScript ──────────────────────────────────────────────────────
+// ── Execute JavaScript (disabled — GHSA-rcvr-766c-4phv) ─────────────────────
 
-export async function executeBrowser(code: string): Promise<string> {
-  const page = await ensureBrowser();
-  try {
-    const result = await page.evaluate(async (script) => {
-      const AsyncFunction = Object.getPrototypeOf(async function placeholder() {
-        // noop
-      }).constructor as new (
-        ...args: string[]
-      ) => (...fnArgs: unknown[]) => Promise<unknown>;
-      const fn = new AsyncFunction(script);
-      return await fn();
-    }, code);
-    return renderPlainData(result);
-  } catch (err) {
-    throw err instanceof Error ? err : new Error(String(err));
-  }
+export async function executeBrowser(_code: string): Promise<string> {
+  assertBrowserExecuteAllowed();
 }
 
 function renderPlainData(value: unknown, indent = 0): string {

@@ -100,6 +100,13 @@
           "legacy"
         ],
         "sensitive": false
+      },
+      "BROWSER_EXECUTE_DISABLED": {
+        "type": "boolean",
+        "description": "browser_execute / executeBrowser always fail closed (GHSA-rcvr-766c-4phv). Use DOM, clickables, click, type, navigate, and screenshot instead.",
+        "required": false,
+        "default": true,
+        "sensitive": false
       }
     }
   },

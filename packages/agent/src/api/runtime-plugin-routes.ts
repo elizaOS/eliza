@@ -12,7 +12,11 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
-import { readJsonBody } from "@elizaos/shared";
+import {
+  isJsonObjectBody,
+  readRequestBodyBuffer,
+  writeJsonError,
+} from "@elizaos/core";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -190,12 +194,47 @@ async function attachJsonBodyIfPresent(
   if (!requestMayHaveJsonBody(req, method)) {
     return true;
   }
-  const body = await readJsonBody(req, res, { requireObject: true });
-  if (body === null) {
+  try {
+    const buffer = await readRequestBodyBuffer(req, {
+      returnNullOnError: true,
+      returnNullOnTooLarge: true,
+      destroyOnTooLarge: true,
+    });
+    if (buffer === null) {
+      await writeJsonError(res, "Failed to read request body", 400);
+      return false;
+    }
+    const rawBody = buffer.toString("utf8");
+    const augmented = req as IncomingMessage & {
+      body?: unknown;
+      rawBody?: string;
+    };
+    augmented.rawBody = rawBody;
+    const trimmed = rawBody.trim();
+    if (!trimmed) {
+      return true;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      await writeJsonError(res, "Invalid JSON body", 400);
+      return false;
+    }
+    if (!isJsonObjectBody(parsed)) {
+      await writeJsonError(res, "JSON body must be an object", 400);
+      return false;
+    }
+    augmented.body = parsed;
+    return true;
+  } catch (error) {
+    await writeJsonError(
+      res,
+      error instanceof Error ? error.message : "Failed to read request body",
+      400,
+    );
     return false;
   }
-  (req as IncomingMessage & { body?: unknown }).body = body;
-  return true;
 }
 
 /**

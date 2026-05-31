@@ -4,6 +4,7 @@ import type {
   Logger,
   Memory,
 } from "@elizaos/core";
+import { requireConfirmation } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import type { SessionInfo } from "./types.js";
 
@@ -22,7 +23,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require explicit `confirmed:true` after parent/user approval.',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`).',
 } as const;
 
 type ParentAgentMode =
@@ -54,7 +55,6 @@ interface ParentAgentBrokerArgs {
   limit: number;
   command?: string;
   params?: Record<string, unknown>;
-  confirmed: boolean;
 }
 
 interface RuntimeWithActions {
@@ -629,6 +629,8 @@ export interface ParentAgentBrokerRequest {
   runtime: IAgentRuntime;
   sessionId: string;
   session?: SessionInfo;
+  /** User message for two-phase confirmation (Cloud mutating commands). */
+  message?: Memory;
   args: unknown;
 }
 
@@ -676,7 +678,6 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
     return {
       mode: "ask",
       limit: ACTION_LIST_LIMIT_DEFAULT,
-      confirmed: false,
     };
   }
   const record = raw as Record<string, unknown>;
@@ -700,7 +701,6 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
       normalizeString(record.action) ??
       normalizeString(record.cloudCommand),
     params,
-    confirmed: record.confirmed === true || record.confirm === true,
   };
 }
 
@@ -785,7 +785,7 @@ function listCloudCommands(query: string | undefined, limit: number): string {
         `- ${definition.command} [${definition.risk}] ${definition.method} ${definition.path}: ${definition.description}`,
     ),
     "",
-    'Use `mode:"cloud-command"` with `command` and optional `params`. Mutating, paid, and destructive commands require `confirmed:true` after parent/user approval.',
+    'Use `mode:"cloud-command"` with `command` and optional `params`. Mutating, paid, and destructive commands require a user yes on a follow-up turn.',
   ].join("\n");
 }
 
@@ -965,11 +965,42 @@ async function responsePayload(response: Response): Promise<unknown> {
   return text;
 }
 
+function brokerConfirmationMemory(
+  request: Pick<
+    ParentAgentBrokerRequest,
+    "message" | "sessionId" | "session" | "runtime"
+  >,
+): Memory {
+  if (request.message) {
+    return request.message;
+  }
+  const metadata = request.session?.metadata;
+  const runtimeAgentId = (request.runtime as IAgentRuntime & { agentId?: string })
+    .agentId;
+  const entityId =
+    normalizeString(metadata?.userId) ??
+    normalizeString(metadata?.entityId) ??
+    `child-session:${request.sessionId}`;
+  const roomId =
+    normalizeString(metadata?.roomId) ??
+    normalizeString(metadata?.threadId) ??
+    normalizeString(runtimeAgentId) ??
+    `child-session:${request.sessionId}`;
+  const worldId = normalizeString(metadata?.worldId);
+  return {
+    content: { text: "", source: "parent-agent-broker" },
+    entityId,
+    roomId,
+    ...(worldId ? { worldId } : {}),
+    createdAt: Date.now(),
+  } as Memory;
+}
+
 async function runCloudCommand(args: {
   runtime: IAgentRuntime;
   command: string | undefined;
   params?: Record<string, unknown>;
-  confirmed: boolean;
+  confirmationMessage: Memory;
 }): Promise<{
   success: boolean;
   text: string;
@@ -1004,21 +1035,33 @@ async function runCloudCommand(args: {
     definition.risk === "mutating" ||
     definition.risk === "paid" ||
     definition.risk === "destructive";
-  if (needsConfirmation && !args.confirmed) {
-    return {
-      success: false,
-      text: [
-        `confirmation_required: ${definition.command} is a ${definition.risk} Cloud command.`,
-        "Ask the parent/user to approve the exact operation, budget/spend if any, and target account. Re-run with `confirmed:true` only after approval.",
-      ].join("\n"),
-      data: {
-        actionName: PARENT_AGENT_BROKER_SLUG,
-        mode: "cloud-command",
-        command: definition.command,
-        risk: definition.risk,
-        confirmationRequired: true,
-      },
-    };
+  if (needsConfirmation) {
+    const preview = `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
+    const decision = await requireConfirmation({
+      runtime: args.runtime,
+      message: args.confirmationMessage,
+      actionName: "PARENT_AGENT_CLOUD_COMMAND",
+      pendingKey: `${definition.command}:${JSON.stringify(args.params ?? {})}`,
+      prompt: preview,
+    });
+    if (decision.status !== "confirmed") {
+      return {
+        success: decision.status === "pending",
+        text:
+          decision.status === "pending"
+            ? `${preview} Reply yes to confirm or no to cancel.`
+            : "Cloud command cancelled.",
+        data: {
+          actionName: PARENT_AGENT_BROKER_SLUG,
+          mode: "cloud-command",
+          command: definition.command,
+          risk: definition.risk,
+          confirmationRequired: decision.status === "pending",
+          awaitingUserInput: decision.status === "pending",
+          cancelled: decision.status === "cancelled",
+        },
+      };
+    }
   }
 
   const apiKey = resolveCloudApiKey(args.runtime);
@@ -1229,7 +1272,7 @@ export async function runParentAgentBroker(
         runtime: request.runtime,
         command: args.command,
         params: args.params,
-        confirmed: args.confirmed,
+        confirmationMessage: brokerConfirmationMemory(request),
       });
     } catch (error) {
       const message =

@@ -6,6 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  requireConfirmation,
 } from "@elizaos/core";
 import { BlockRuleWriter } from "../block-rule-service.js";
 
@@ -124,7 +125,7 @@ export const releaseBlockAction: Action = {
   },
   handler: async (
     runtime: IAgentRuntime,
-    _message,
+    message: Memory,
     _state,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
@@ -136,10 +137,25 @@ export const releaseBlockAction: Action = {
         text: "RELEASE_BLOCK requires a ruleId.",
       };
     }
-    if (!coerceBoolean(params.confirmed)) {
+    const releasePrompt = `Release website block rule ${ruleId}?`;
+    const decision = await requireConfirmation({
+      runtime,
+      message,
+      actionName: "RELEASE_BLOCK",
+      pendingKey: `release:${ruleId}`,
+      prompt: releasePrompt,
+    });
+    if (decision.status !== "confirmed") {
       return {
-        success: false,
-        text: "RELEASE_BLOCK requires confirmed:true to release the rule.",
+        success: decision.status === "pending",
+        text:
+          decision.status === "pending"
+            ? `${releasePrompt} Reply yes to confirm or no to cancel.`
+            : "Release cancelled.",
+        data: {
+          requiresConfirmation: decision.status === "pending",
+          ruleId,
+        },
       };
     }
     const reason = coerceString(params.reason) ?? "user_confirmed";

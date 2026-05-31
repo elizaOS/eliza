@@ -5,7 +5,7 @@
  *
  *   GET  /api/bluebubbles/chats        list chats via the BlueBubbles client
  *   GET  /api/bluebubbles/messages     read messages for a chat
- *   POST /webhooks/bluebubbles         public webhook receiver (no auth)
+ *   POST /webhooks/bluebubbles         webhook receiver (X-BlueBubbles-Webhook-Secret)
  *
  * Each handler pulls the BlueBubblesService instance off the runtime via
  * `runtime.getService("bluebubbles")` and calls public methods. If the
@@ -19,6 +19,7 @@ import type {
 	RouteRequest,
 	RouteResponse,
 } from "@elizaos/core";
+import { isBlueBubblesWebhookAuthorized } from "./webhook-auth.js";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
@@ -193,6 +194,13 @@ async function handleWebhook(
 			);
 		return;
 	}
+
+	// GHSA-vhvq-g4mq-vq62: require operator-configured shared secret on every POST.
+	if (!isBlueBubblesWebhookAuthorized(runtime, req)) {
+		res.status(401).json(setupError("unauthorized", "Unauthorized"));
+		return;
+	}
+
 	const payload = req.body as BlueBubblesWebhookPayload | undefined;
 	if (
 		!payload ||

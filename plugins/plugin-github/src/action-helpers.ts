@@ -116,10 +116,11 @@ export function splitRepo(
   return { owner: parts[0], name: parts[1] };
 }
 
+/** @deprecated LLM `confirmed` is never authoritative — use {@link requireConfirmation}. */
 export function isConfirmed(
-  options: Record<string, unknown> | undefined,
+  _options: Record<string, unknown> | undefined,
 ): boolean {
-  return options?.confirmed === true;
+  return false;
 }
 
 export function needsClientError(selection: GitHubAccountSelection): string {

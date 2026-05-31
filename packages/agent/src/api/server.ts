@@ -1504,6 +1504,9 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
+  // Webhook exemptions: handlers MUST authenticate callers (see plugin handlers).
+  // WhatsApp: X-Hub-Signature-256 HMAC (WHATSAPP_APP_SECRET).
+  // BlueBubbles: X-BlueBubbles-Webhook-Secret (BLUEBUBBLES_WEBHOOK_SECRET).
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
   let blueBubblesWebhookPath =
     pathname === "/webhooks/bluebubbles" ? "/webhooks/bluebubbles" : null;

@@ -23,11 +23,14 @@ import {
   type TransferParams,
 } from "../types";
 import {
-  buildSendTxParams,
-  confirmationRequired,
-  createEvmActionValidator,
-  isConfirmed,
-} from "./helpers";
+  assertEvmTransferRecipientAuthorized,
+  assertWalletFinancialActionAllowed,
+} from "../../../security/wallet-context-safety.js";
+import {
+  gateWalletFinancialExecution,
+  walletFinancialGateActionResult,
+} from "../../../security/wallet-financial-confirmation.js";
+import { buildSendTxParams, createEvmActionValidator } from "./helpers";
 
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}
@@ -134,7 +137,7 @@ export const transferAction: Action = {
   descriptionCompressed: spec.descriptionCompressed,
   contexts: ["finance", "crypto", "wallet", "payments"],
   contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "ADMIN" },
   parameters: [
     {
       name: "amount",
@@ -160,12 +163,6 @@ export const transferAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "confirmed",
-      description: "Set true after preview confirmation to submit.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
   ],
 
   handler: async (
@@ -179,18 +176,37 @@ export const transferAction: Action = {
       state = (await runtime.composeState(message)) as State;
     }
 
-    const walletProvider = await initWalletProvider(runtime);
-    const paramOptions = await buildTransferDetails(state, message, runtime, walletProvider);
+    assertWalletFinancialActionAllowed(message, "transfer");
 
-    if (!isConfirmed(options)) {
-      const tokenLabel = paramOptions.token?.trim() || "native token";
-      const preview = `Review EVM transfer before submitting: ${paramOptions.amount} ${tokenLabel} on ${paramOptions.fromChain} to ${paramOptions.toAddress}. Re-invoke ${spec.name} with confirmed: true to submit.`;
-      return confirmationRequired({
-        actionName: spec.name,
-        preview,
-        parameters: paramOptions,
-        callback,
-      });
+    const walletProvider = await initWalletProvider(runtime);
+    const paramOptions = await buildTransferDetails(
+      state,
+      message,
+      runtime,
+      walletProvider,
+    );
+    assertEvmTransferRecipientAuthorized(
+      message,
+      options,
+      paramOptions.toAddress,
+    );
+
+    const gate = await gateWalletFinancialExecution({
+      runtime,
+      message,
+      params: {
+        subaction: "transfer",
+        chain: paramOptions.fromChain,
+        amount: paramOptions.amount,
+        recipient: paramOptions.toAddress,
+        fromToken: paramOptions.token,
+        mode: "execute",
+        dryRun: false,
+      },
+      callback,
+    });
+    if (!gate.proceed) {
+      return walletFinancialGateActionResult(gate);
     }
 
     const action = new TransferAction(walletProvider);

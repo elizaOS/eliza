@@ -5,7 +5,7 @@ import {
   executeBrowserWorkspaceCommand,
   listBrowserWorkspaceTabs,
   resolveBrowserWorkspaceConnectorPartition,
-} from "./browser-workspace.js";
+} from "../browser-workspace.js";
 
 describe("browser workspace connector auth sessions", () => {
   const webEnv: NodeJS.ProcessEnv = {};
