@@ -224,6 +224,125 @@ describe("runPollingBackend", () => {
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
+
+  it("recovers to local when a fresh first-run dead-ends on a remote with auth required + pairing disabled", async () => {
+    // Regression: a stale cloud active-server (control plane) left from an
+    // aborted cloud sign-in returns required:true + pairingEnabled:false. With
+    // no token and no prior first-run the user can neither pair nor sign in —
+    // the "Pairing is not enabled on this server" dead end. Must recover to the
+    // local origin instead of stranding them on the pairing gate.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://api.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockResolvedValueOnce({
+        required: true,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      })
+      .mockResolvedValue({
+        required: false,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+    const staleCloud = {
+      id: "cloud:api.elizacloud.ai",
+      kind: "cloud" as const,
+      label: "Eliza Cloud",
+      apiBase: "https://api.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleCloud,
+      restoredActiveServer: staleCloud,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
+  it("does NOT auto-recover a returning user's remote (still shows the pairing gate)", async () => {
+    // Guard: the recovery must not hijack a returning user's intentional remote
+    // setup (hadPriorFirstRun) — that user gets the auth/pairing gate as before.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://my-remote.example");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    const remote = {
+      id: "remote:my",
+      kind: "remote" as const,
+      label: "my-remote",
+      apiBase: "https://my-remote.example",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: remote,
+      restoredActiveServer: remote,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+  });
 });
 
 describe("shouldFallBackToLocalOrigin", () => {

@@ -71,12 +71,29 @@ export function shouldFallBackToLocalOrigin(args: {
   pageProtocol: string | null;
   isNativeMobile: boolean;
 }): boolean {
+  // A structured HTTP status means the server responded — not a wedge.
+  if (typeof asApiLikeError(args.error)?.status === "number") return false;
+  return isRecoverableRemoteBase(args);
+}
+
+/**
+ * True when the client is currently pinned to a base we could abandon in favour
+ * of the local same-origin backend: a non-empty, non-loopback host that isn't
+ * this page's own origin, on an http(s) page, and not native mobile (where the
+ * remote IS the agent). This is the location half of the recovery checks —
+ * {@link shouldFallBackToLocalOrigin} adds the connection-level-error condition,
+ * while the auth-required dead-end path adds a pairing-disabled condition.
+ */
+export function isRecoverableRemoteBase(args: {
+  clientBaseUrl: string;
+  pageOrigin: string | null;
+  pageProtocol: string | null;
+  isNativeMobile: boolean;
+}): boolean {
   if (args.isNativeMobile) return false;
   if (args.pageProtocol !== "http:" && args.pageProtocol !== "https:") {
     return false;
   }
-  // A structured HTTP status means the server responded — not a wedge.
-  if (typeof asApiLikeError(args.error)?.status === "number") return false;
   const base = args.clientBaseUrl.trim();
   if (!base) return false; // already same-origin / local
   try {
@@ -236,6 +253,31 @@ export async function runPollingBackend(
     expiresAt: null as number | null,
   };
 
+  const recoveryEnv = () => ({
+    clientBaseUrl: client.getBaseUrl(),
+    pageOrigin: typeof window !== "undefined" ? window.location.origin : null,
+    pageProtocol:
+      typeof window !== "undefined" ? window.location.protocol : null,
+    isNativeMobile: isCapacitorNative() || isAndroid || isIOS,
+  });
+
+  // One-shot: clear the stale saved server, re-point at the local origin, and
+  // reset the budget so the loop re-polls localhost. Used both when the saved
+  // server is unreachable and when it dead-ends on an unpassable auth gate.
+  const recoverToLocalOrigin = (why: string) => {
+    fellBackToLocal = true;
+    logger.warn(
+      { staleBase: client.getBaseUrl(), reason: why },
+      "[startup-phase-poll] abandoning the saved server; falling back to the local origin",
+    );
+    clearPersistedActiveServer();
+    client.setBaseUrl(null);
+    client.setToken(null);
+    deadline = Date.now() + policy.backendTimeoutMs;
+    attempts = 0;
+    lastErr = null;
+  };
+
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       deps.setStartupError(describeBackendFailure(lastErr, true));
@@ -255,6 +297,22 @@ export async function runPollingBackend(
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
+        }
+        // A fresh first-run pinned to a stale remote that requires auth but has
+        // pairing DISABLED is a dead end: the user can neither pair nor sign in
+        // here (this is the "Pairing is not enabled on this server" screen).
+        // Recover to the local origin instead of stranding them. Returning users
+        // (hadPriorFirstRun) and pairing-enabled remotes still get the gate.
+        if (
+          !fellBackToLocal &&
+          !auth.pairingEnabled &&
+          !ctx?.hadPriorFirstRun &&
+          isRecoverableRemoteBase(recoveryEnv())
+        ) {
+          recoverToLocalOrigin(
+            "auth required but pairing disabled on a fresh first-run",
+          );
+          continue;
         }
         deps.setAuthRequired(true);
         deps.setPairingEnabled(auth.pairingEnabled);
@@ -459,29 +517,9 @@ export async function runPollingBackend(
       }
       if (
         !fellBackToLocal &&
-        shouldFallBackToLocalOrigin({
-          error: err,
-          clientBaseUrl: client.getBaseUrl(),
-          pageOrigin:
-            typeof window !== "undefined" ? window.location.origin : null,
-          pageProtocol:
-            typeof window !== "undefined" ? window.location.protocol : null,
-          isNativeMobile: isCapacitorNative() || isAndroid || isIOS,
-        })
+        shouldFallBackToLocalOrigin({ error: err, ...recoveryEnv() })
       ) {
-        fellBackToLocal = true;
-        logger.warn(
-          { staleBase: client.getBaseUrl() },
-          "[startup-phase-poll] persisted active server is unreachable; clearing it and falling back to the local origin",
-        );
-        clearPersistedActiveServer();
-        client.setBaseUrl(null);
-        client.setToken(null);
-        // Reset the budget — time burned on the dead remote must not count
-        // against reaching the local backend.
-        deadline = Date.now() + policy.backendTimeoutMs;
-        attempts = 0;
-        lastErr = null;
+        recoverToLocalOrigin("saved server unreachable");
         continue;
       }
       lastErr = err;
