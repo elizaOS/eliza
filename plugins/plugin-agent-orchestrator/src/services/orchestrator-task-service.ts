@@ -51,7 +51,10 @@ import {
   type UsageState,
 } from "./orchestrator-task-types.js";
 import type { ApprovalPreset } from "./types.js";
-import { resolveAllowedWorkdir } from "./workdir-validation.js";
+import {
+  ensureTaskWorkdir,
+  resolveAllowedWorkdir,
+} from "./workdir-validation.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -755,6 +758,21 @@ export class OrchestratorTaskService extends Service {
           });
         }
       }
+    } else if (acp) {
+      // No active coding agent — auto-spawn one to work on the message so
+      // messaging the orchestrator "just works" (parity with claude/codex):
+      // the default framework (opencode + Cerebras) into a per-task workdir.
+      try {
+        await this.spawnAgentForTask(taskId, {
+          task: content,
+          workdir: await ensureTaskWorkdir(taskId),
+        });
+        forwardedTo.push("auto-spawned");
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        failedTo.push({ sessionId: "(auto-spawn)", error });
+        this.log("warn", "auto-spawn on user message failed", { error });
+      }
     }
     return { recorded: true, forwardedTo, failedTo };
   }
@@ -817,7 +835,10 @@ export class OrchestratorTaskService extends Service {
     });
 
     const result = await acp.spawnSession({
-      agentType: opts.framework ?? policy.preferredFramework,
+      // Default the orchestrator's coding agent to the vendored opencode
+      // backend (auto-detects the user's Cerebras key) rather than the
+      // unimplemented "elizaos" native default, which has no ACP command.
+      agentType: opts.framework ?? policy.preferredFramework ?? "opencode",
       workdir,
       initialTask: goalPrompt,
       model: opts.model ?? policy.model,
