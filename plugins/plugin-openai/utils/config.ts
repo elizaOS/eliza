@@ -97,6 +97,33 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
   return false;
 }
 
+/**
+ * True when server-side web search injection is enabled for this process.
+ *
+ * Mirrors the agent-level `ELIZA_WEB_SEARCH` gate (the injector lives in
+ * `@elizaos/agent`, which the plugin must not import) so the plugin can decide
+ * whether routing text through the Responses API is worthwhile.
+ */
+export function isWebSearchEnabled(): boolean {
+  const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
+
+/**
+ * True only when text generation can safely use the OpenAI Responses API.
+ *
+ * The Responses API — and its server-side tools like web search — is
+ * OpenAI-only. Cerebras, browser proxy mode, and any custom `OPENAI_BASE_URL`
+ * (local servers, OpenRouter, etc.) are OpenAI-compatible *Chat Completions*
+ * endpoints that do not implement Responses, so those stay on chat.
+ */
+export function supportsResponsesApi(runtime: IAgentRuntime): boolean {
+  if (isBrowser()) return false;
+  if (isProxyMode(runtime)) return false;
+  if (isCerebrasMode(runtime)) return false;
+  return /(^|\.)openai\.com(\/|$)/i.test(getBaseURL(runtime));
+}
+
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   // Cerebras serves an OpenAI-compatible API. When the runtime is pointed at
   // Cerebras (either via `ELIZA_PROVIDER=cerebras` or an `OPENAI_BASE_URL`
