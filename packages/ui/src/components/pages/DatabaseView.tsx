@@ -16,6 +16,7 @@ import {
   type TableInfo,
   type TableRowsResponse,
 } from "../../api";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
@@ -28,6 +29,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SegmentedControl } from "../ui/segmented-control";
+import { TableSkeleton } from "../ui/skeleton-layouts";
 import {
   CellPopover,
   type DbView,
@@ -59,8 +61,14 @@ export function DatabaseView({
   // would wipe a freshly-set errorMessage before it ever paints).
   const tRef = useRef(t);
   tRef.current = t;
-  const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
-  const [tables, setTables] = useState<TableInfo[]>([]);
+  // Seed status + table list from the shared cache so a revisit paints the
+  // last-known database shape instantly and revalidates silently.
+  const cachedStatus = getCached<DatabaseStatus>("db:status");
+  const cachedTables = getCached<TableInfo[]>("db:tables");
+  const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(
+    cachedStatus?.data ?? null,
+  );
+  const [tables, setTables] = useState<TableInfo[]>(cachedTables?.data ?? []);
   const [selectedTable, setSelectedTable] = useState("");
   const [tableData, setTableData] = useState<TableRowsResponse | null>(null);
   const [columnMeta, setColumnMeta] = useState<Map<string, ColumnInfo>>(
@@ -95,6 +103,7 @@ export function DatabaseView({
     try {
       const status = await client.getDatabaseStatus();
       setDbStatus(status);
+      setCached("db:status", status);
       setStatusLoadError("");
       return status;
     } catch (err) {
@@ -111,12 +120,14 @@ export function DatabaseView({
     }
   }, []);
 
-  const loadTables = useCallback(async () => {
-    setLoading(true);
+  const loadTables = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setErrorMessage("");
     try {
       const { tables: t } = await client.getDatabaseTables();
-      setTables(Array.isArray(t) ? t : []);
+      const next = Array.isArray(t) ? t : [];
+      setTables(next);
+      setCached("db:tables", next);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "error";
       // Don't show error if database is simply not connected (cloud mode, agent not running)
@@ -252,6 +263,16 @@ export function DatabaseView({
 
   useEffect(() => {
     const init = async () => {
+      const seededStatus = getCached<DatabaseStatus>("db:status");
+      const seededTables = getCached<TableInfo[]>("db:tables");
+      // Warm revisit: we already know the connection is up and have a table
+      // list on screen, so the two revalidations are independent — run them in
+      // parallel and silently (no spinner) instead of re-walking the waterfall.
+      if (seededStatus?.data.connected && seededTables) {
+        await Promise.all([loadStatus(), loadTables({ silent: true })]);
+        return;
+      }
+      // Cold load: status gates tables (don't fetch tables when disconnected).
       const status = await loadStatus();
       if (status?.connected) {
         await loadTables();
@@ -523,9 +544,9 @@ export function DatabaseView({
               ) : loading && !tableData ? (
                 <PagePanel
                   variant="surface"
-                  className="flex flex-1 items-center justify-center px-6 py-10 text-sm font-medium italic text-muted"
+                  className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden p-3"
                 >
-                  {t("appsview.Loading")}
+                  <TableSkeleton rows={10} columns={5} />
                 </PagePanel>
               ) : tableData ? (
                 <>

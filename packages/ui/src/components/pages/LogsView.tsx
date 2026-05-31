@@ -6,6 +6,7 @@ import { formatTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import {
   Select,
   SelectContent,
@@ -238,13 +239,7 @@ function LogsViewBody() {
         className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-sm"
       >
         {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
-          <PagePanel.Loading
-            variant="panel"
-            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60"
-            heading={t("logsview.LoadingLogs", {
-              defaultValue: "Loading logs…",
-            })}
-          />
+          <ListSkeleton className="m-1" rows={8} rowClassName="h-10" />
         ) : filteredLogs.length === 0 ? (
           <PagePanel.Empty
             variant="panel"

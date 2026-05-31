@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
@@ -228,12 +229,10 @@ export function SecretsView({
     });
   };
 
-  if (loading) {
+  if (loading && allSecrets.length === 0) {
     return (
       <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className="rounded-sm border border-border/50 bg-card/92 py-8 text-center text-sm italic text-muted">
-          {t("secretsview.LoadingSecrets")}
-        </div>
+        <ListSkeleton rows={6} />
       </ContentLayout>
     );
   }

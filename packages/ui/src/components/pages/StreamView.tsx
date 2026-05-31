@@ -10,6 +10,7 @@ import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
 import { StatusBar } from "../stream/StatusBar";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
 
 type StreamStatus = Awaited<ReturnType<typeof client.streamStatus>>;
 
@@ -122,13 +123,8 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
 
       <div className="flex flex-1 min-h-0 items-center justify-center">
         {initialLoading && streamAvailable && !statusError ? (
-          <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
-            <div className="mx-auto mb-4 h-3 w-3 animate-pulse rounded-full bg-muted" />
-            <h2 className="text-lg font-semibold text-txt">
-              {t("streamview.LoadingStatus", {
-                defaultValue: "Checking stream status…",
-              })}
-            </h2>
+          <div className="w-full max-w-md rounded-sm border border-border/60 bg-card/94 p-6 backdrop-blur-xl">
+            <DetailSkeleton />
           </div>
         ) : statusError && streamAvailable ? (
           <div
