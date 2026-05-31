@@ -3,6 +3,7 @@ import type { FirstRunOptions } from "../api";
 import { scanProviderCredentials } from "../bridge";
 import { clearPersistedActiveServer } from "./persistence";
 import {
+  isRecoverableRemoteBase,
   type PollingBackendDeps,
   runPollingBackend,
   shouldFallBackToLocalOrigin,
@@ -362,6 +363,74 @@ describe("runPollingBackend", () => {
     });
   });
 
+  it("recovers from a loopback base pinned at the agent's raw port (dev-in-browser 401 dead-end)", async () => {
+    // The user's exact case: pinned to 127.0.0.1:31337 (the agent's raw port),
+    // which 401s the cross-origin browser request -> required:true +
+    // pairingEnabled:false. Loopback bases were previously skipped by
+    // isRecoverableRemoteBase; the auth-walled path now recovers (allowLoopback)
+    // to the same-origin proxy that actually serves this page.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockResolvedValueOnce({
+        required: true,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      })
+      .mockResolvedValue({
+        required: false,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+    const rawPort = {
+      id: "remote:raw-agent-port",
+      kind: "remote" as const,
+      label: "Raw agent port",
+      apiBase: "http://127.0.0.1:31337",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: rawPort,
+      restoredActiveServer: rawPort,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
   it("does NOT auto-recover when pairing is ENABLED (the user can actually pair)", async () => {
     // Guard: recovery is only for the pairing-DISABLED dead end. When pairing is
     // enabled there is a real way forward (pair this device), so keep the gate
@@ -586,5 +655,44 @@ describe("runPollingBackend cancellation during options fetch", () => {
       type: "BACKEND_REACHED",
       firstRunComplete: false,
     });
+  });
+});
+
+describe("isRecoverableRemoteBase — allowLoopback", () => {
+  const base = {
+    pageOrigin: "http://localhost:2138",
+    pageProtocol: "http:" as string | null,
+    isNativeMobile: false,
+  };
+
+  it("leaves a loopback base alone by default (connection-error path: local agent still booting)", () => {
+    expect(
+      isRecoverableRemoteBase({
+        ...base,
+        clientBaseUrl: "http://127.0.0.1:31337",
+      }),
+    ).toBe(false);
+  });
+
+  it("recovers from a cross-port loopback base when allowLoopback (auth-walled raw agent port)", () => {
+    // The dev-in-browser case: pinned to the agent's raw 127.0.0.1:31337 which
+    // 401s the browser cross-origin; the same-origin proxy escapes it.
+    expect(
+      isRecoverableRemoteBase({
+        ...base,
+        clientBaseUrl: "http://127.0.0.1:31337",
+        allowLoopback: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("never recovers to the page's own origin, even with allowLoopback (no self-loop)", () => {
+    expect(
+      isRecoverableRemoteBase({
+        ...base,
+        clientBaseUrl: "http://localhost:2138",
+        allowLoopback: true,
+      }),
+    ).toBe(false);
   });
 });

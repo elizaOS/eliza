@@ -89,6 +89,16 @@ export function isRecoverableRemoteBase(args: {
   pageOrigin: string | null;
   pageProtocol: string | null;
   isNativeMobile: boolean;
+  /**
+   * Allow recovering from a loopback base that is NOT this page's origin.
+   * The connection-error path leaves loopback alone (a loopback that won't
+   * connect is the local agent still booting). The auth-walled path passes
+   * true: a loopback agent that *answered* with a pairing-disabled gate is a
+   * real dead end — e.g. dev-in-browser pinned to the agent's raw port
+   * (127.0.0.1:31337) which the agent 401s as a cross-origin request, while
+   * the same-origin proxy serving this page reaches it with localAccess.
+   */
+  allowLoopback?: boolean;
 }): boolean {
   if (args.isNativeMobile) return false;
   if (args.pageProtocol !== "http:" && args.pageProtocol !== "https:") {
@@ -98,10 +108,13 @@ export function isRecoverableRemoteBase(args: {
   if (!base) return false; // already same-origin / local
   try {
     const url = new URL(base);
+    // Never recover to where we already are (no pointless self-recovery loop).
     if (args.pageOrigin && url.origin === args.pageOrigin) return false;
-    const host = url.hostname.toLowerCase();
-    if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
-      return false;
+    if (!args.allowLoopback) {
+      const host = url.hostname.toLowerCase();
+      if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
+        return false;
+      }
     }
   } catch {
     return false;
@@ -306,14 +319,16 @@ export async function runPollingBackend(
         // user can do on this server. Recover to the local origin instead of
         // stranding them, whether or not they completed a prior first-run — a
         // returning user who lost their token re-connects through onboarding,
-        // which is strictly better than a wall. `isRecoverableRemoteBase` still
-        // guards against same-origin/loopback bases (no pointless self-recovery
-        // loop), and pairing-ENABLED remotes keep the pairing gate so users can
-        // actually pair.
+        // which is strictly better than a wall. allowLoopback: a base pinned at
+        // the agent's raw loopback port (e.g. dev-in-browser at 127.0.0.1:31337)
+        // 401s the browser cross-origin and lands here too — recover to the
+        // same-origin proxy that serves this page. `isRecoverableRemoteBase`
+        // still refuses to recover to the page's own origin (no self-loop), and
+        // pairing-ENABLED remotes keep the pairing gate so users can pair.
         if (
           !fellBackToLocal &&
           !auth.pairingEnabled &&
-          isRecoverableRemoteBase(recoveryEnv())
+          isRecoverableRemoteBase({ ...recoveryEnv(), allowLoopback: true })
         ) {
           recoverToLocalOrigin(
             "saved remote requires auth but pairing is disabled (dead end)",
