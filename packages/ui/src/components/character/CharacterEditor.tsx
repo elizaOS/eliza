@@ -1,4 +1,5 @@
 import { getStylePresets } from "@elizaos/shared";
+import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
 import {
@@ -34,6 +35,7 @@ import {
   getFirstRunPresetStyles,
   shouldApplyPresetDefaults,
 } from "./character-editor-helpers";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { resolveCharacterGreetingAnimation } from "./character-greeting";
 import {
   buildVoiceConfigForCharacterEntry,
@@ -75,6 +77,9 @@ const UploadIcon = ({ className }: { className?: string }) => (
 
 import {
   type ChangeEvent,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -147,6 +152,99 @@ function hasValidMessageExamplesShape(value: unknown): boolean {
       );
     });
   });
+}
+
+/* ── Agent-surface control wrappers ────────────────────────────────── */
+
+/**
+ * Wraps a tab button so the agent can select editor pages by id. Mirrors the
+ * SettingsNavButton pattern: the hook lives at the top level of a tiny child
+ * component (never inside the parent's `.map()`), and activation routes through
+ * the same `onActivate` handler the click uses.
+ */
+function CharacterPageTabButton({
+  page,
+  label,
+  isActive,
+  agentLabel,
+  onSelect,
+  children,
+  className,
+  style,
+  onKeyDown,
+}: {
+  page: CharacterEditorPage;
+  label: string;
+  isActive: boolean;
+  agentLabel: string;
+  onSelect: (page: CharacterEditorPage) => void;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tab-${page}`,
+    role: "tab",
+    label: agentLabel,
+    group: "character-pages",
+    status: isActive ? "active" : "inactive",
+    description: `Open the ${label} editor section`,
+    onActivate: () => onSelect(page),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      id={`character-editor-tab-${page}`}
+      role="tab"
+      aria-selected={isActive}
+      aria-current={isActive ? "page" : undefined}
+      aria-controls={`character-editor-panel-${page}`}
+      tabIndex={isActive ? 0 : -1}
+      className={className}
+      style={style}
+      onClick={() => onSelect(page)}
+      onKeyDown={onKeyDown}
+      {...agentProps}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Wraps a composite `<Button>` action so the agent can activate it by id. The
+ * hook runs at the top level here (not inside the parent render function that
+ * conditionally emits the button row), and activation reuses the same handler
+ * as the click.
+ */
+function CharacterAgentButton({
+  agentId,
+  agentLabel,
+  agentGroup,
+  agentDescription,
+  agentStatus,
+  onActivate,
+  ...buttonProps
+}: {
+  agentId: string;
+  agentLabel: string;
+  agentGroup?: string;
+  agentDescription?: string;
+  agentStatus?: string;
+  onActivate: () => void;
+} & ComponentPropsWithoutRef<typeof Button>) {
+  const { agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group: agentGroup,
+    description: agentDescription,
+    status: agentStatus,
+    onActivate,
+  });
+  return <Button {...buttonProps} {...agentProps} />;
 }
 
 /* ── Component ─────────────────────────────────────────────────────── */
@@ -947,11 +1045,16 @@ export function CharacterEditor({
 
   const renderContentActionButtons = (uploadInputId: string) => (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Button
+      <CharacterAgentButton
+        agentId="action-upload-vrm"
+        agentLabel={t("aria.upload", { defaultValue: "Upload VRM" })}
+        agentGroup="character-actions"
+        agentDescription="Upload a custom VRM avatar file"
         type="button"
         variant="outline"
         size="icon"
         className="h-9 w-9 rounded-sm"
+        onActivate={() => document.getElementById(uploadInputId)?.click()}
         onClick={() => document.getElementById(uploadInputId)?.click()}
         title={t("aria.upload", {
           defaultValue: "Upload VRM",
@@ -961,12 +1064,19 @@ export function CharacterEditor({
         })}
       >
         <UploadIcon className="h-4 w-4" />
-      </Button>
-      <Button
+      </CharacterAgentButton>
+      <CharacterAgentButton
+        agentId="action-export-json"
+        agentLabel={t("charactereditor.ExportJSON", {
+          defaultValue: "Export JSON",
+        })}
+        agentGroup="character-actions"
+        agentDescription="Download the current character as a JSON file"
         type="button"
         variant="outline"
         size="icon"
         className="h-9 w-9 rounded-sm"
+        onActivate={handleExportCharacter}
         onClick={handleExportCharacter}
         disabled={!currentCharacter}
         title={t("charactereditor.ExportJSON", {
@@ -977,12 +1087,17 @@ export function CharacterEditor({
         })}
       >
         <DownloadIcon className="h-4 w-4" />
-      </Button>
-      <Button
+      </CharacterAgentButton>
+      <CharacterAgentButton
+        agentId="action-reset"
+        agentLabel={t("common.reset", { defaultValue: "Reset" })}
+        agentGroup="character-actions"
+        agentDescription="Reset this character to its default values"
         type="button"
         variant="outline"
         size="sm"
         className="h-9 rounded-sm px-4 text-xs-tight font-semibold"
+        onActivate={handleResetToDefaults}
         onClick={handleResetToDefaults}
         disabled={!activeCharacterRosterEntry || !currentCharacter}
         title={t("charactereditor.ResetToDefaults", {
@@ -990,8 +1105,13 @@ export function CharacterEditor({
         })}
       >
         {t("common.reset", { defaultValue: "Reset" })}
-      </Button>
-      <Button
+      </CharacterAgentButton>
+      <CharacterAgentButton
+        agentId="action-save"
+        agentLabel={t("common.save", { defaultValue: "Save" })}
+        agentGroup="character-actions"
+        agentDescription="Save character and voice settings"
+        agentStatus={hasPendingChanges ? "active" : "inactive"}
         size="sm"
         className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
         style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
@@ -1001,12 +1121,13 @@ export function CharacterEditor({
           !hasPendingChanges ||
           !currentCharacter
         }
+        onActivate={() => void handleSaveAll()}
         onClick={() => void handleSaveAll()}
       >
         {characterSaving || voiceSaving
           ? t("charactereditor.Saving", { defaultValue: "saving..." })
           : t("common.save", { defaultValue: "Save" })}
-      </Button>
+      </CharacterAgentButton>
     </div>
   );
 
@@ -1100,6 +1221,7 @@ export function CharacterEditor({
 
   /* ── Render ─────────────────────────────────────────────────────── */
   return (
+    <ShellViewAgentSurface viewId="character">
     <div
       className={
         sceneOverlay
@@ -1148,54 +1270,9 @@ export function CharacterEditor({
                   defaultValue: "Character editor sections",
                 })}
               >
-                {CHARACTER_EDITOR_PAGES.map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    id={`character-editor-tab-${page}`}
-                    role="tab"
-                    aria-selected={activePage === page}
-                    aria-controls={`character-editor-panel-${page}`}
-                    tabIndex={activePage === page ? 0 : -1}
-                    className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
-                    style={
-                      activePage === page ? accentGradientStyle : undefined
-                    }
-                    onClick={() => requestPageChange(page)}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key !== "ArrowRight" &&
-                        event.key !== "ArrowLeft" &&
-                        event.key !== "Home" &&
-                        event.key !== "End"
-                      ) {
-                        return;
-                      }
-                      event.preventDefault();
-                      const currentIndex =
-                        CHARACTER_EDITOR_PAGES.indexOf(activePage);
-                      const nextIndex =
-                        event.key === "Home"
-                          ? 0
-                          : event.key === "End"
-                            ? CHARACTER_EDITOR_PAGES.length - 1
-                            : event.key === "ArrowRight"
-                              ? (currentIndex + 1) %
-                                CHARACTER_EDITOR_PAGES.length
-                              : (currentIndex -
-                                  1 +
-                                  CHARACTER_EDITOR_PAGES.length) %
-                                CHARACTER_EDITOR_PAGES.length;
-                      const nextPage = CHARACTER_EDITOR_PAGES[nextIndex];
-                      requestPageChange(nextPage);
-                      requestAnimationFrame(() => {
-                        globalThis.document
-                          ?.getElementById(`character-editor-tab-${nextPage}`)
-                          ?.focus();
-                      });
-                    }}
-                  >
-                    {page === "personality"
+                {CHARACTER_EDITOR_PAGES.map((page) => {
+                  const pageLabel =
+                    page === "personality"
                       ? t("charactereditor.TabPersonality", {
                           defaultValue: "Personality",
                         })
@@ -1209,9 +1286,56 @@ export function CharacterEditor({
                             })
                           : t("nav.documents", {
                               defaultValue: "Knowledge",
-                            })}
-                  </button>
-                ))}
+                            });
+                  return (
+                    <CharacterPageTabButton
+                      key={page}
+                      page={page}
+                      label={pageLabel}
+                      agentLabel={pageLabel}
+                      isActive={activePage === page}
+                      onSelect={requestPageChange}
+                      className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
+                      style={
+                        activePage === page ? accentGradientStyle : undefined
+                      }
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== "ArrowRight" &&
+                          event.key !== "ArrowLeft" &&
+                          event.key !== "Home" &&
+                          event.key !== "End"
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        const currentIndex =
+                          CHARACTER_EDITOR_PAGES.indexOf(activePage);
+                        const nextIndex =
+                          event.key === "Home"
+                            ? 0
+                            : event.key === "End"
+                              ? CHARACTER_EDITOR_PAGES.length - 1
+                              : event.key === "ArrowRight"
+                                ? (currentIndex + 1) %
+                                  CHARACTER_EDITOR_PAGES.length
+                                : (currentIndex -
+                                    1 +
+                                    CHARACTER_EDITOR_PAGES.length) %
+                                  CHARACTER_EDITOR_PAGES.length;
+                        const nextPage = CHARACTER_EDITOR_PAGES[nextIndex];
+                        requestPageChange(nextPage);
+                        requestAnimationFrame(() => {
+                          globalThis.document
+                            ?.getElementById(`character-editor-tab-${nextPage}`)
+                            ?.focus();
+                        });
+                      }}
+                    >
+                      {pageLabel}
+                    </CharacterPageTabButton>
+                  );
+                })}
               </div>
               {activePage !== "documents" && (
                 <div className="ml-auto">
@@ -1338,12 +1462,32 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
-            <Button
+            <CharacterAgentButton
+              agentId="action-toggle-customize"
+              agentLabel={
+                customizing
+                  ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
+                  : t("charactereditor.CustomizeBtn", {
+                      defaultValue: "Customize",
+                    })
+              }
+              agentGroup="character-actions"
+              agentDescription="Toggle between the character roster and the customize editor"
+              agentStatus={customizing ? "active" : "inactive"}
               type="button"
               variant="default"
               size="sm"
               className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
               style={accentGradientStyle}
+              onActivate={() => {
+                if (customizing) {
+                  setCustomizing(false);
+                  setTab("character-select");
+                } else {
+                  setCustomizing(true);
+                  setTab("character");
+                }
+              }}
               onClick={() => {
                 if (customizing) {
                   setCustomizing(false);
@@ -1359,7 +1503,7 @@ export function CharacterEditor({
                 : t("charactereditor.CustomizeBtn", {
                     defaultValue: "Customize",
                   })}
-            </Button>
+            </CharacterAgentButton>
           </div>
         </div>
       )}
@@ -1481,6 +1625,7 @@ export function CharacterEditor({
         </DialogContent>
       </Dialog>
     </div>
+    </ShellViewAgentSurface>
   );
 }
 
