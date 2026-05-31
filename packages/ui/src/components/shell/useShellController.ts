@@ -30,6 +30,12 @@ export interface ShellController {
   startRecording: () => void;
   /** End capture unconditionally. Used by push-to-talk release. */
   stopRecording: () => void;
+  /** True while the mic is muted (paused) but the voice session stays open. */
+  muted: boolean;
+  /** Pause/resume the mic without ending the voice session. */
+  toggleMute: () => void;
+  /** Live interim transcription of the current utterance ("" when none). */
+  transcript: string;
 }
 
 /**
@@ -56,6 +62,8 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [muted, setMuted] = React.useState(false);
+  const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
 
@@ -74,11 +82,12 @@ export function useShellController(): ShellController {
 
   const send = React.useCallback(
     (text: string) => {
+      if (!ready) return;
       const trimmed = text.trim();
       if (!trimmed) return;
       void sendChatText(trimmed);
     },
-    [sendChatText],
+    [ready, sendChatText],
   );
 
   const stopCapture = React.useCallback(() => {
@@ -90,14 +99,21 @@ export function useShellController(): ShellController {
     }
     setAnalyser(null);
     setRecording(false);
+    setTranscript("");
   }, []);
 
   const startCapture = React.useCallback(() => {
+    if (!ready) return;
     if (captureRef.current) return;
     const handle = createVoiceCapture({
       onTranscript: (segment) => {
-        if (!segment.final) return;
         const text = segment.text.trim();
+        if (!segment.final) {
+          // Surface the interim best-guess as live transcription.
+          setTranscript(text);
+          return;
+        }
+        setTranscript("");
         if (text) send(text);
       },
       onStateChange: (state: VoiceCaptureState) => {
@@ -118,12 +134,24 @@ export function useShellController(): ShellController {
         setAnalyser(null);
         setRecording(false);
       });
-  }, [send]);
+  }, [ready, send]);
 
   const toggleRecording = React.useCallback(() => {
     if (recording) stopCapture();
     else startCapture();
   }, [recording, startCapture, stopCapture]);
+
+  // Mute = pause the mic but keep the voice session (overlay) open; unmute
+  // resumes capture. Modeled as a stop/restart of the capture handle.
+  const toggleMute = React.useCallback(() => {
+    if (muted) {
+      setMuted(false);
+      startCapture();
+    } else {
+      setMuted(true);
+      if (captureRef.current) stopCapture();
+    }
+  }, [muted, startCapture, stopCapture]);
 
   React.useEffect(() => stopCapture, [stopCapture]);
 
@@ -132,6 +160,7 @@ export function useShellController(): ShellController {
   }, [ready]);
   const close = React.useCallback(() => {
     setIsOpen(false);
+    setMuted(false);
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
@@ -175,5 +204,8 @@ export function useShellController(): ShellController {
     toggleRecording,
     startRecording: startCapture,
     stopRecording: stopCapture,
+    muted,
+    toggleMute,
+    transcript,
   };
 }

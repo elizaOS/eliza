@@ -81,6 +81,12 @@ afterEach(() => {
   backgroundRenders.count = 0;
 });
 
+function openHomeChatPanel() {
+  const pill = screen.getByTestId("home-chat-pill");
+  fireEvent.pointerDown(pill, { clientY: 100 });
+  fireEvent.pointerUp(pill, { clientY: 100 });
+}
+
 describe("HomeView", () => {
   it("renders the homescreen canvas, concise assistant transcript, and the home composer", () => {
     render(<HomeView />);
@@ -89,11 +95,13 @@ describe("HomeView", () => {
     expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
       "I can open any view and keep the conversation moving.",
     );
+    openHomeChatPanel();
     expect(screen.getByTestId("home-chat-input")).toBeTruthy();
   });
 
   it("shows recent chats while typing and submits through the shared shell controller", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.focus(input);
@@ -113,6 +121,7 @@ describe("HomeView", () => {
     render(<HomeView />);
 
     expect(backgroundRenders.count).toBe(1);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.focus(input);
@@ -163,6 +172,7 @@ describe("HomeView", () => {
     controllerMock.value.canSend = false;
 
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello" } });
@@ -214,6 +224,7 @@ describe("HomeView", () => {
 
   it("renders the mic as the trailing control and opens voice on a quick tap", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input");
     const mic = screen.getByRole("button", { name: "Start voice input" });
@@ -234,6 +245,7 @@ describe("HomeView", () => {
     vi.useFakeTimers();
     try {
       render(<HomeView />);
+      openHomeChatPanel();
       const mic = screen.getByRole("button", { name: "Start voice input" });
 
       fireEvent.pointerDown(mic, { pointerId: 1, button: 0 });
@@ -252,6 +264,7 @@ describe("HomeView", () => {
 
   it("morphs the mic into a send button once the user types", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
 

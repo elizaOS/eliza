@@ -78,7 +78,7 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   width: auto;
   height: min(220px, calc(100% - 20px));
   transform: none;
-  border-radius: 18px;
+  border-radius: var(--radius-xs);
 }
 
 body.native {

@@ -74,6 +74,30 @@ export function HomescreenCanvas({
   // Pointer position in normalized device coords (-1..1).
   const pointerRef = useRef({ x: 0, y: 0, down: false });
 
+  // Track pointer globally so drag-starting on overlaid elements (e.g. the
+  // orb hit-target button) still reaches the scene inputs.
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerRef.current.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+    };
+    const down = () => { pointerRef.current.down = true; };
+    const up = () => { pointerRef.current.down = false; };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", up);
+    return () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerdown", down);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", up);
+    };
+  }, []);
+
   // The active scene document, read by the swap effect.
   const sceneRef = useRef(scene);
 

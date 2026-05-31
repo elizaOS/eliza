@@ -4,8 +4,10 @@ import {
   Cloud,
   HardDrive,
   Loader2,
+  Mic,
   MicOff,
   Network,
+  Settings2,
   Volume2,
 } from "lucide-react";
 import * as React from "react";
@@ -16,6 +18,7 @@ import {
   type FirstRunStep,
   normalizeFirstRunName,
 } from "../../first-run/first-run";
+import type { MicrophonePermissionController } from "../../first-run/use-microphone-permission";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -46,6 +49,7 @@ export interface FirstRunShellProps {
     transcript: string;
     error: string | null;
   };
+  microphone: MicrophonePermissionController;
   primaryLabel: string;
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
@@ -384,6 +388,84 @@ function FirstRunStatus(props: {
   );
 }
 
+function FirstRunMicrophonePermission(props: {
+  microphone: MicrophonePermissionController;
+  t: TranslateFn;
+}) {
+  const { microphone, t } = props;
+  const { status, canRequest, requesting } = microphone;
+
+  if (status === "granted") {
+    return (
+      <div className="flex min-h-[2.75rem] items-center justify-center">
+        <StatusBadge
+          label={t("firstrunshell.micGranted", {
+            defaultValue: "Microphone ready",
+          })}
+          variant="success"
+          icon={<Mic />}
+          withDot
+        />
+      </div>
+    );
+  }
+
+  // `not-applicable` means the renderer has no microphone API at all (e.g. a
+  // headless surface) — there is nothing actionable to show.
+  if (status === "not-applicable") {
+    return null;
+  }
+
+  const denied =
+    status === "denied" || status === "restricted" || canRequest === false;
+
+  return (
+    <div className="flex min-h-[2.75rem] w-full flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          void (denied ? microphone.openSettings() : microphone.request());
+        }}
+        disabled={requesting}
+        data-testid={
+          denied
+            ? "first-run-microphone-open-settings"
+            : "first-run-microphone-request"
+        }
+        className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-45 ${GLASS_INTERACTIVE}`}
+      >
+        {requesting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : denied ? (
+          <Settings2 className="h-4 w-4" />
+        ) : (
+          <Mic className="h-4 w-4" />
+        )}
+        {requesting
+          ? t("firstrunshell.micRequesting", { defaultValue: "Requesting…" })
+          : denied
+            ? t("firstrunshell.micOpenSettings", {
+                defaultValue: "Open Settings",
+              })
+            : t("firstrunshell.micEnable", {
+                defaultValue: "Enable microphone",
+              })}
+      </button>
+      <p className="max-w-[24rem] text-center text-xs text-[var(--first-run-text-muted)]">
+        {denied
+          ? t("firstrunshell.micDeniedHelp", {
+              defaultValue:
+                "Microphone access is blocked. Grant it in settings to talk to your assistant.",
+            })
+          : t("firstrunshell.micHelp", {
+              defaultValue:
+                "Your assistant is voice-first. Enable the microphone to talk to it.",
+            })}
+      </p>
+    </div>
+  );
+}
+
 function FirstRunVoiceControl(props: {
   voice: FirstRunShellProps["voice"];
   toggleVoice: () => Promise<void>;
@@ -600,6 +682,7 @@ export function FirstRunShell({
   error,
   cloudError,
   voice,
+  microphone,
   primaryLabel,
   canBack,
   updateDraft,
@@ -674,6 +757,9 @@ export function FirstRunShell({
                 finishRuntime={finishRuntime}
                 t={t}
               />
+            ) : null}
+            {promptComplete && step === "runtime" ? (
+              <FirstRunMicrophonePermission microphone={microphone} t={t} />
             ) : null}
             {promptComplete ? (
               <FirstRunVoiceControl

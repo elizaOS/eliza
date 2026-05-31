@@ -204,4 +204,13 @@ describe("App pre-agent cloud wiring", () => {
       'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
   });
+
+  it("renders the home shell while a completed agent is still starting", () => {
+    expect(APP_TSX).toContain("function canRenderStartupHome");
+    expect(APP_TSX).toContain('phase === "starting-runtime"');
+    expect(APP_TSX).toContain('phase === "hydrating"');
+    expect(APP_TSX).toContain("!renderStartupHome");
+    expect(APP_TSX).toContain('data-testid="pre-agent-home-shell"');
+    expect(APP_TSX).toContain("<HomeShellContent />");
+  });
 });

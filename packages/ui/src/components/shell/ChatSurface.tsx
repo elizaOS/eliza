@@ -44,7 +44,7 @@ export function ChatSurface({
 
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto py-2">
         {messages.length === 0 ? (
           <p className="text-sm text-muted">
             {greeting ??
@@ -68,7 +68,7 @@ export function ChatSurface({
                 <li
                   key={message.id}
                   className={cn(
-                    "max-w-[80%] rounded-sm px-3 py-2 text-sm",
+                    "max-w-[80%] rounded-xs px-3 py-2 text-sm",
                     message.role === "user"
                       ? "self-end bg-accent/20 text-txt"
                       : "self-start bg-card/60 text-txt",
@@ -143,7 +143,7 @@ export function ChatSurface({
             aria-label={t("chatsurface.messageLabel", {
               defaultValue: "Message Eliza",
             })}
-            className="flex-1 rounded-full border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
+            className="flex-1 rounded-xs border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
           />
           <button
             type="button"
