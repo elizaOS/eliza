@@ -145,13 +145,14 @@ paths = [
 
 # Robot engineering material identifiers such as PA6_GF30, PC_ABS, and
 # TPU_SHORE_A95 are mechanical/material codes, not credentials. Keep this scoped
-# to the material fields that gitleaks' generic-api-key rule misclassifies.
+# to the robot material files and exact extracted token values that gitleaks'
+# generic-api-key rule misclassifies.
 [[allowlists]]
 description = "Robot material identifiers (not credentials)"
 paths = [
   '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
 ]
-regexTarget = "match"
+regexTarget = "secret"
 regexes = [
-  '''\b(?:material_key\s*=\s*|key\s*==\s*|key\s*=\s*)"(?:PA6_GF30|PC_ABS|TPU_SHORE_A95)"''',
+  '''^(PA6_GF30|PC_ABS|TPU_SHORE_A95)$''',
 ]
