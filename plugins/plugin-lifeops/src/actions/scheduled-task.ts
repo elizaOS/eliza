@@ -51,6 +51,7 @@ import type {
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
+import { OWNER_OPERATION_VALIDATE } from "./life.js";
 
 const SUBACTIONS = [
   "list",
@@ -638,10 +639,17 @@ export const scheduledTaskAction: Action & {
     "LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
   routingHint:
     'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
-  contexts: ["reminders", "followups", "calendar", "productivity"],
+  contexts: [
+    "tasks",
+    "automation",
+    "reminders",
+    "followups",
+    "calendar",
+    "productivity",
+  ],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  validate: OWNER_OPERATION_VALIDATE,
   parameters: [
     {
       name: "action",

@@ -164,7 +164,9 @@ describe("LifeOps plugin action gating", () => {
     const scheduledTasks = findAction("SCHEDULED_TASKS");
 
     expect(scheduledTasks.similes ?? []).not.toContain("TASKS");
-    expect(scheduledTasks.contexts ?? []).not.toContain("tasks");
+    expect(scheduledTasks.contexts ?? []).toEqual(
+      expect.arrayContaining(["tasks", "automation"]),
+    );
     expect(scheduledTasks.tags ?? []).toEqual(
       expect.arrayContaining([
         "domain:lifeops",
