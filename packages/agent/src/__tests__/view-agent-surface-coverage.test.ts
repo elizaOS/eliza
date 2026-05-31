@@ -73,11 +73,41 @@ function registersAgentElement(pluginDir: string): boolean {
   );
 }
 
+const UI_PAGES_DIR = path.resolve(here, "../../../ui/src/components/pages");
+
+/**
+ * Builtin shell views, made controllable via ShellViewAgentSurface (rather than
+ * the bundle loader). Each must wrap its body in the bridge.
+ */
+const CONVERTED_BUILTIN_PAGES = [
+  "SettingsView",
+  "PluginsPageView",
+  "TrajectoriesView",
+  "MemoryViewerView",
+  "DatabasePageView",
+  "LogsView",
+] as const;
+
+function wrapsInShellBridge(pageFile: string): boolean {
+  const file = path.join(UI_PAGES_DIR, `${pageFile}.tsx`);
+  try {
+    return readFileSync(file, "utf8").includes("ShellViewAgentSurface");
+  } catch {
+    return false;
+  }
+}
+
 describe("agent-surface view coverage", () => {
   it.each(
     CONVERTED_PLUGINS,
   )("%s registers at least one agent-surface element", (plugin) => {
     expect(registersAgentElement(plugin)).toBe(true);
+  });
+
+  it.each(
+    CONVERTED_BUILTIN_PAGES,
+  )("builtin %s is wrapped in the agent-surface bridge", (page) => {
+    expect(wrapsInShellBridge(page)).toBe(true);
   });
 
   it("does not silently leave pending views uncounted", () => {
