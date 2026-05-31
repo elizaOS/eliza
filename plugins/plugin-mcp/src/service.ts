@@ -128,17 +128,15 @@ export class McpService extends Service {
   }
 
   private async filterValidatedServerConfigs(
-    serverConfigs: Readonly<Record<string, McpServerConfig>>,
+    serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<Record<string, McpServerConfig>> {
     const validated: Record<string, McpServerConfig> = {};
     for (const [name, config] of Object.entries(serverConfigs)) {
-      const rejection = await validateMcpServerConfig(
-        config as unknown as Record<string, unknown>,
-      );
+      const rejection = await validateMcpServerConfig(config as unknown as Record<string, unknown>);
       if (rejection) {
         logger.error(
           { server: name, rejection },
-          "Skipping MCP server with invalid or unsafe config",
+          "Skipping MCP server with invalid or unsafe config"
         );
         continue;
       }
@@ -367,9 +365,7 @@ export class McpService extends Service {
       timeoutInMillis: config.timeoutInMillis,
     });
     if (rejection) {
-      throw new Error(
-        `MCP stdio server "${name}" rejected at spawn: ${rejection}`,
-      );
+      throw new Error(`MCP stdio server "${name}" rejected at spawn: ${rejection}`);
     }
 
     return new StdioClientTransport({
@@ -397,9 +393,7 @@ export class McpService extends Service {
       url: config.url,
     });
     if (rejection) {
-      throw new Error(
-        `MCP remote server "${name}" rejected at connect: ${rejection}`,
-      );
+      throw new Error(`MCP remote server "${name}" rejected at connect: ${rejection}`);
     }
 
     return new SSEClientTransport(new URL(config.url));

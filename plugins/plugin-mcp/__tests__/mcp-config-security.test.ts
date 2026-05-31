@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { validateMcpServerConfig } from "@elizaos/agent/security/mcp-server-config";
+import { describe, expect, it } from "vitest";
 
 describe("MCP spawn-time validation", () => {
   it("rejects env-channel package manager config before stdio spawn", async () => {

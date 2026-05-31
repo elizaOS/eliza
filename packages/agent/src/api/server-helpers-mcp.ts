@@ -3,11 +3,11 @@
  */
 
 import type http from "node:http";
+import { validateMcpServerConfig } from "../security/mcp-server-config.ts";
 import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
 import type { TerminalRunRejection } from "./server-helpers-auth.ts";
 import { resolveTerminalRunRejection } from "./server-helpers-auth.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
-import { validateMcpServerConfig } from "../security/mcp-server-config.ts";
 
 export { validateMcpServerConfig } from "../security/mcp-server-config.ts";
 

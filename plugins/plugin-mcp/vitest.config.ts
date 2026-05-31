@@ -9,12 +9,9 @@ export default defineConfig({
     alias: {
       "@elizaos/agent/security/mcp-server-config": path.resolve(
         rootDir,
-        "../../packages/agent/src/security/mcp-server-config.ts",
+        "../../packages/agent/src/security/mcp-server-config.ts"
       ),
-      "@elizaos/core": path.resolve(
-        rootDir,
-        "../../packages/core/src/index.node.ts",
-      ),
+      "@elizaos/core": path.resolve(rootDir, "../../packages/core/src/index.node.ts"),
     },
   },
   test: {

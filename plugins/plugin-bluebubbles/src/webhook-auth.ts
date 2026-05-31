@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
 
-export const BLUEBUBBLES_WEBHOOK_SECRET_HEADER =
-	"X-BlueBubbles-Webhook-Secret";
+export const BLUEBUBBLES_WEBHOOK_SECRET_HEADER = "X-BlueBubbles-Webhook-Secret";
 
 export function resolveBlueBubblesWebhookSecret(
 	runtime: IAgentRuntime,
@@ -25,10 +24,7 @@ export function readRouteHeader(
 	const headers = req.headers;
 	if (!headers) return undefined;
 	const key = name.toLowerCase();
-	const value =
-		headers[key] ??
-		headers[name] ??
-		headers[name.toUpperCase()];
+	const value = headers[key] ?? headers[name] ?? headers[name.toUpperCase()];
 	if (Array.isArray(value)) {
 		return value[0];
 	}

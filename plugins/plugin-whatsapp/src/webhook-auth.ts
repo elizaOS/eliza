@@ -3,9 +3,7 @@ import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
 
 const SIGNATURE_HEADER = "x-hub-signature-256";
 
-export function resolveWhatsAppAppSecret(
-  runtime: IAgentRuntime,
-): string | null {
+export function resolveWhatsAppAppSecret(runtime: IAgentRuntime): string | null {
   const fromSetting = runtime.getSetting("WHATSAPP_APP_SECRET");
   if (typeof fromSetting === "string" && fromSetting.trim()) {
     return fromSetting.trim();
@@ -24,22 +22,15 @@ export function resolveWhatsAppAppSecret(
 export function verifyWhatsAppWebhookSignature(
   appSecret: string,
   signatureHeader: string | undefined,
-  rawBody: string,
+  rawBody: string
 ): boolean {
-  if (
-    !signatureHeader ||
-    !appSecret ||
-    !signatureHeader.startsWith("sha256=")
-  ) {
+  if (!signatureHeader || !appSecret || !signatureHeader.startsWith("sha256=")) {
     return false;
   }
 
   try {
     const expectedSignature = signatureHeader.slice("sha256=".length);
-    const computedSignature = crypto
-      .createHmac("sha256", appSecret)
-      .update(rawBody)
-      .digest("hex");
+    const computedSignature = crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
     const expectedBuffer = Buffer.from(expectedSignature, "hex");
     const computedBuffer = Buffer.from(computedSignature, "hex");
     if (expectedBuffer.length !== computedBuffer.length) {
@@ -51,17 +42,11 @@ export function verifyWhatsAppWebhookSignature(
   }
 }
 
-export function readRouteHeader(
-  req: RouteRequest,
-  name: string,
-): string | undefined {
+export function readRouteHeader(req: RouteRequest, name: string): string | undefined {
   const headers = req.headers;
   if (!headers) return undefined;
   const key = name.toLowerCase();
-  const value =
-    headers[key] ??
-    headers[name] ??
-    headers[name.toUpperCase()];
+  const value = headers[key] ?? headers[name] ?? headers[name.toUpperCase()];
   if (Array.isArray(value)) {
     return value[0];
   }
@@ -75,10 +60,7 @@ export function readWebhookRawBody(req: RouteRequest): string | null {
   return null;
 }
 
-export function isWhatsAppWebhookAuthorized(
-  runtime: IAgentRuntime,
-  req: RouteRequest,
-): boolean {
+export function isWhatsAppWebhookAuthorized(runtime: IAgentRuntime, req: RouteRequest): boolean {
   const rawBody = readWebhookRawBody(req);
   if (rawBody === null) {
     return false;
@@ -87,9 +69,5 @@ export function isWhatsAppWebhookAuthorized(
   if (!appSecret) {
     return false;
   }
-  return verifyWhatsAppWebhookSignature(
-    appSecret,
-    readRouteHeader(req, SIGNATURE_HEADER),
-    rawBody,
-  );
+  return verifyWhatsAppWebhookSignature(appSecret, readRouteHeader(req, SIGNATURE_HEADER), rawBody);
 }
