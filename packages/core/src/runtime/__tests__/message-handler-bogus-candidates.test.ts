@@ -619,6 +619,58 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
 	});
 
+	it("does not treat scheduled-item actions as coding delegation tasks", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					makeAction("SCHEDULED_TASKS", ["SCHEDULED_TASK", "REMINDER_TASK"]),
+				],
+				messageText: "spawn a task agent to fix the bug in this repo",
+			},
+		);
+
+		expect(handler.plan.candidateActions).toBeUndefined();
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.simple).toBe(true);
+	});
+
+	it("prefers tagged coding delegation actions over legacy TASKS names", () => {
+		const codingDelegate = {
+			...makeAction("ORCHESTRATE_CODE"),
+			tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+		};
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [codingDelegate],
+				messageText: "spawn a coding agent to implement the feature",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.candidateActions).toEqual(["ORCHESTRATE_CODE"]);
+	});
+
 	it("does not add shell as a lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

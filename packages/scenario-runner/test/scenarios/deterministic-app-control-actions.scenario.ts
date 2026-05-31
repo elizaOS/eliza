@@ -638,6 +638,23 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "reset homescreen scene",
+      text: "Reset the homescreen to default",
+      actionName: "HOMESCREEN",
+      options: { op: "reset" },
+      responseIncludesAny: ["Reset the homescreen to the default crystal ball"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "HOMESCREEN",
+          parameters: { op: "reset" },
+          responseText: "Reset the homescreen to the default crystal ball.",
+          resultFields: {
+            "values.mode": "reset",
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "list installed apps",
       text: "List installed and running apps",
       actionName: "APP",
@@ -976,6 +993,13 @@ export default scenario({
           },
           {
             body: { type: "wallet:refresh", payload: { source: "scenario" } },
+            method: "POST",
+            pathname: "/api/views/events/broadcast",
+            response: { body: { ok: true, delivered: 2 }, status: 200 },
+            search: "",
+          },
+          {
+            body: { type: "homescreen:apply", payload: { op: "reset" } },
             method: "POST",
             pathname: "/api/views/events/broadcast",
             response: { body: { ok: true, delivered: 2 }, status: 200 },

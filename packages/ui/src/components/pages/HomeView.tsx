@@ -8,7 +8,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type * as React from "react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Homescreen } from "../../homescreen/Homescreen";
 import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
@@ -25,6 +25,7 @@ import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 import type {
   FrequencyAnalyser,
   VoiceWaveformMode,
@@ -39,6 +40,14 @@ function phaseForMode(mode: VoiceWaveformMode): HomescreenPhase {
   return "idle";
 }
 
+// There is no on-screen edit button. Edit mode is entered by typing "/edit" or
+// by asking (typed or voiced) to "edit the homescreen". Matches both phrasings.
+function editCommandMatches(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "/edit") return true;
+  return /edit (the )?home\s?screen/.test(normalized);
+}
+
 // The home hero background: the editable WebGL homescreen canvas. Memoized on
 // its inputs so the renderer never re-renders on the composer's keystroke/focus
 // churn — only when the voice phase, audio source, or transcripts change.
@@ -48,12 +57,14 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   userText,
   assistantText,
   onEditModeChange,
+  editRequestNonce,
 }: {
   mode: VoiceWaveformMode;
   analyser: FrequencyAnalyser | null;
   userText: string;
   assistantText: string;
   onEditModeChange: (editing: boolean) => void;
+  editRequestNonce: number;
 }): React.JSX.Element {
   return (
     <Homescreen
@@ -62,6 +73,7 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
       userText={userText}
       assistantText={assistantText}
       onEditModeChange={onEditModeChange}
+      editRequestNonce={editRequestNonce}
     />
   );
 });
@@ -129,6 +141,8 @@ export function HomeView(): React.JSX.Element {
     modelStatus.kind !== "ready";
 
   const [editingHome, setEditingHome] = useState(false);
+  const [editRequestNonce, setEditRequestNonce] = useState(0);
+  const requestEdit = useCallback(() => setEditRequestNonce((n) => n + 1), []);
 
   const latestAssistant = useMemo(
     () =>
@@ -164,6 +178,17 @@ export function HomeView(): React.JSX.Element {
     return words.join(" ");
   }, [latestAssistant]);
 
+  // Enter edit mode when the latest user message (typically a voice
+  // transcription) asks to edit the homescreen. Typed "/edit" is intercepted
+  // in the composer before it ever becomes a message.
+  const lastEditUserText = useRef("");
+  useEffect(() => {
+    if (latestUserText && latestUserText !== lastEditUserText.current) {
+      lastEditUserText.current = latestUserText;
+      if (editCommandMatches(latestUserText)) requestEdit();
+    }
+  }, [latestUserText, requestEdit]);
+
   return (
     <div className="relative h-full w-full overflow-hidden">
       <HomeVoiceBackground
@@ -172,6 +197,7 @@ export function HomeView(): React.JSX.Element {
         userText={latestUserText}
         assistantText={latestAssistant?.content ?? ""}
         onEditModeChange={setEditingHome}
+        editRequestNonce={editRequestNonce}
       />
       <div
         data-testid="home-view"
@@ -184,8 +210,13 @@ export function HomeView(): React.JSX.Element {
       >
         <HomeHeader onNavigate={setTab} />
 
-        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
+        {/* Apps sit above the crystal ball; the flex spacer leaves the centre
+            of the screen open for the sphere; the status/help text and
+            notifications sit below it. */}
+        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-5">
           <DefaultApps onLaunch={setTab} />
+
+          <div className="flex-1" aria-hidden />
 
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -206,9 +237,11 @@ export function HomeView(): React.JSX.Element {
                 })}
             </p>
           )}
+
+          <HomeNotifications />
         </div>
 
-        <HomeComposer />
+        <HomeComposer onRequestEdit={requestEdit} />
       </div>
     </div>
   );
@@ -286,6 +319,65 @@ function DefaultApps({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Agent-activity feed below the crystal ball. Surfaces notable agent lifecycle
+// state (starting / restarting / stopped / error); a healthy running agent
+// shows nothing so the home stays clean. No new backend — reads agentStatus.
+function HomeNotifications(): React.JSX.Element | null {
+  const { agentStatus } = useApp();
+  const { t } = useTranslation();
+  const state = agentStatus?.state ?? null;
+
+  if (!state || state === "running" || state === "not_started") return null;
+
+  const busy = state === "starting" || state === "restarting";
+  const label =
+    state === "starting"
+      ? t("homeview.notifications.starting", {
+          defaultValue: "Starting Eliza…",
+        })
+      : state === "restarting"
+        ? t("homeview.notifications.restarting", {
+            defaultValue: "Restarting Eliza…",
+          })
+        : state === "stopped"
+          ? t("homeview.notifications.stopped", {
+              defaultValue: "Eliza is stopped",
+            })
+          : t("homeview.notifications.error", {
+              defaultValue: "Eliza hit a problem starting up",
+            });
+
+  return (
+    <div
+      data-testid="home-notifications"
+      data-state={state}
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "flex max-w-md items-center gap-2 rounded-md border bg-bg/55 px-3 py-2 text-xs font-medium backdrop-blur",
+        state === "error"
+          ? "border-danger/40 text-danger"
+          : state === "stopped"
+            ? "border-warn/40 text-warn"
+            : "border-accent/40 text-txt",
+      )}
+    >
+      {busy ? (
+        <Spinner size={14} className="shrink-0 opacity-90" aria-hidden />
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-full",
+            state === "error" ? "bg-danger" : "bg-warn",
+          )}
+        />
+      )}
+      <span className="leading-snug">{label}</span>
     </div>
   );
 }
@@ -548,20 +640,30 @@ function MicButton({
 // Owns the volatile draft/focus state so keystrokes re-render only the composer
 // — never HomeView or the memoized background behind it. The trailing control is
 // a microphone until the user types, then it morphs into a send button.
-function HomeComposer(): React.JSX.Element {
+function HomeComposer({
+  onRequestEdit,
+}: {
+  onRequestEdit: () => void;
+}): React.JSX.Element {
   const controller = useShellControllerContext();
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
   const trimmed = draft.trim();
   const hasDraft = trimmed.length > 0;
-  const canSend = Boolean(controller?.canSend && hasDraft);
+  const isEditCommand = editCommandMatches(trimmed);
+  const canSend = Boolean(hasDraft && (isEditCommand || controller?.canSend));
   const recentMessages = useMemo(
     () => controller?.messages.slice(-4) ?? [],
     [controller?.messages],
   );
 
   function sendDraft() {
+    if (isEditCommand) {
+      onRequestEdit();
+      setDraft("");
+      return;
+    }
     if (!canSend || !controller) return;
     controller.send(trimmed);
     setDraft("");
@@ -621,7 +723,7 @@ function HomeComposer(): React.JSX.Element {
           })}
           data-testid="home-chat-input"
           style={{ outline: "none" }}
-          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-white placeholder:text-white/60 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
         {hasDraft ? (
           <Button

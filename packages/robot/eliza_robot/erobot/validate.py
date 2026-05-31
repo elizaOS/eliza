@@ -329,6 +329,98 @@ def range_of_motion_proof(spec: RobotSpec | None = None, *, samples: int = 13) -
 
 
 # ---------------------------------------------------------------------------
+# 2c. Range-of-motion requirements (achieved vs anthropomorphic targets)
+# ---------------------------------------------------------------------------
+
+# Required usable range per joint type, total degrees (functional humanoid minima).
+ROM_TARGETS_DEG: dict[str, float] = {
+    "hip_pitch": 100.0, "hip_roll": 30.0, "hip_yaw": 50.0, "knee": 115.0,
+    "ankle_pitch": 40.0, "ankle_roll": 20.0, "toe": 15.0, "waist_yaw": 45.0,
+    "shoulder_pitch": 120.0, "shoulder_roll": 75.0, "shoulder_yaw": 55.0,
+    "elbow": 110.0, "wrist_yaw": 80.0, "neck_yaw": 40.0, "neck_pitch": 25.0,
+}
+
+
+def _joint_suffix(name: str) -> str:
+    return name.replace("left_", "").replace("right_", "").replace("_joint", "")
+
+
+def rom_requirements_proof(spec: RobotSpec | None = None) -> dict:
+    """Drive each joint to its limits (gravity off, lifted, others held home) and
+    check the achieved range meets the anthropomorphic requirement."""
+    import mujoco
+
+    spec = spec or build_spec()
+    model = mujoco.MjModel.from_xml_path(str(write_models(spec)["scene"]))
+    model.opt.gravity[:] = 0.0
+    data = mujoco.MjData(model)
+
+    def drive(actuator: str, qadr: int, target: float) -> float:
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        data.qpos[2] += 0.5
+        home = data.ctrl.copy()
+        data.ctrl[:] = home
+        data.ctrl[model.actuator(actuator).id] = target
+        for _ in range(500):
+            mujoco.mj_step(model, data)
+        return float(data.qpos[qadr])
+
+    rows: list[dict] = []
+    fails: list[str] = []
+    for j in sorted(spec.joints, key=lambda j: j.index):
+        suffix = _joint_suffix(j.name)
+        required = ROM_TARGETS_DEG.get(suffix, 0.0)
+        qadr = model.joint(j.name).qposadr[0]
+        commanded = math.degrees(j.upper_rad - j.lower_rad)
+        if j.tendon_driven:
+            tcc = characterize_toe_drive_for_rom(model, data, j, qadr)
+            achieved = tcc
+        else:
+            aid_name = j.name.replace("_joint", "_act")
+            lo, hi = model.actuator_ctrlrange[model.actuator(aid_name).id]
+            a_lo = drive(aid_name, qadr, lo)
+            a_hi = drive(aid_name, qadr, hi)
+            achieved = math.degrees(abs(a_hi - a_lo))
+        meets = achieved >= required - 1.0
+        rows.append({
+            "joint": j.name, "type": suffix,
+            "required_deg": required, "commanded_deg": round(commanded, 1),
+            "achieved_deg": round(achieved, 1), "meets_requirement": meets,
+            "tendon_driven": j.tendon_driven,
+        })
+        if not meets:
+            fails.append(j.name)
+
+    return {
+        "schema": "erobot-rom-requirements-v1",
+        "ok": not fails,
+        "method": "drive each joint actuator to both limits (gravity off, foot lifted, "
+                  "others held at home); toes via the cable winch sweep",
+        "failures": fails,
+        "joints": rows,
+    }
+
+
+def characterize_toe_drive_for_rom(model, data, joint, qadr: int) -> float:
+    """Achieved toe range (deg) over the winch command window."""
+    import mujoco
+
+    side = "left" if joint.name.startswith("left") else "right"
+    aid = model.actuator(f"{side}_toe_act").id
+    lo, hi = model.actuator_ctrlrange[aid]
+    angs = []
+    for c in (lo, hi):
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        data.qpos[2] += 0.5
+        data.ctrl[:] = data.ctrl.copy()
+        data.ctrl[aid] = c
+        for _ in range(500):
+            mujoco.mj_step(model, data)
+        angs.append(float(data.qpos[qadr]))
+    return math.degrees(abs(angs[1] - angs[0]))
+
+
+# ---------------------------------------------------------------------------
 # 3. Mass reconciliation
 # ---------------------------------------------------------------------------
 
@@ -461,6 +553,7 @@ def run_all(spec: RobotSpec | None = None) -> dict:
         "tendon-actuation": tendon_actuation_proof(spec),
         "joint-sweep": joint_sweep_proof(spec),
         "range-of-motion": range_of_motion_proof(spec),
+        "rom-requirements": rom_requirements_proof(spec),
         "mass-reconciliation": mass_reconciliation_proof(spec),
         "structural-sanity": structural_sanity_proof(spec),
     }

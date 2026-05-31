@@ -32,13 +32,16 @@ your change can reach via shared layout/theme/components).
 ## LifeOps app + plugin-health
 
 LifeOps (`@elizaos/plugin-lifeops`) and the health plugin
-(`@elizaos/plugin-health`) follow a single architecture:
+(`@elizaos/plugin-health`) follow a single scheduled-item architecture:
 
-- **One task primitive: `ScheduledTask`.** Reminders, check-ins,
-  follow-ups, watchers, recaps, approvals, and outputs are all
+- **One LifeOps scheduled-item record: `ScheduledTask`.** Reminders,
+  check-ins, follow-ups, watchers, recaps, approvals, and outputs are
   `ScheduledTask` records routed through one runner at
-  `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.ts`. Do not
-  add a parallel mechanism.
+  `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.ts`. This is
+  not the repository-wide task primitive: core runtime tasks, coding-agent
+  tasks, project tasks, and feature tasks stay outside LifeOps and may be
+  integrated through plugins/services instead of becoming LifeOps internals.
+  Do not add a parallel LifeOps scheduling mechanism.
 - **Behavior is structural, not textual.** The runner pattern-matches on
   `kind`, `trigger`, `shouldFire`, `completionCheck`, `pipeline`,
   `output`, `subject`, `priority`, and `respectsGlobalPause`. It never
@@ -79,7 +82,7 @@ instead and follow the same registration shape.
 
 ### What NOT to add
 
-- A second task primitive.
+- A second LifeOps scheduled-item mechanism.
 - A second knowledge-graph store. Use `EntityStore` and
   `RelationshipStore`; cadence lives on the relationship edge.
 - Behavior driven by `promptInstructions` string content.

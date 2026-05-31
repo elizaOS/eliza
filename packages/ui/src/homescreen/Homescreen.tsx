@@ -1,6 +1,6 @@
-import { Copy, Pencil, Redo2, RotateCcw, Trash2, Undo2, X } from "lucide-react";
+import { Copy, Redo2, RotateCcw, Trash2, Undo2, X } from "lucide-react";
 import type * as React from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import type { FrequencyAnalyser } from "../components/voice/VoiceWaveform";
 import { cn } from "../lib/utils";
@@ -15,6 +15,12 @@ export interface HomescreenProps {
   assistantText?: string;
   /** Notified when edit mode flips, so the host can collapse the chat overlay. */
   onEditModeChange?: (editing: boolean) => void;
+  /**
+   * Bumped by the host to enter edit mode from a chat command ("/edit") or a
+   * voiced request ("I want to edit the homescreen"). There is no on-screen
+   * edit button; this is the only way in besides an agent scene edit.
+   */
+  editRequestNonce?: number;
   className?: string;
 }
 
@@ -34,6 +40,7 @@ export function Homescreen({
   userText = "",
   assistantText = "",
   onEditModeChange,
+  editRequestNonce = 0,
   className,
 }: HomescreenProps): React.JSX.Element {
   const hs = useHomescreen();
@@ -43,6 +50,18 @@ export function Homescreen({
     hs.setEditMode(on);
     onEditModeChange?.(on);
   };
+
+  // Enter edit mode when the host bumps the nonce (chat "/edit" or voice).
+  const lastEditNonce = useRef(editRequestNonce);
+  useEffect(() => {
+    if (editRequestNonce !== lastEditNonce.current) {
+      lastEditNonce.current = editRequestNonce;
+      if (editRequestNonce > 0) {
+        hs.setEditMode(true);
+        onEditModeChange?.(true);
+      }
+    }
+  }, [editRequestNonce, hs, onEditModeChange]);
 
   return (
     <div className={cn("absolute inset-0", className)}>
@@ -65,20 +84,10 @@ export function Homescreen({
         </div>
       ) : null}
 
-      {/* Edit toggle — bottom-right, out of the way of the composer. */}
-      {!hs.editMode ? (
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="surface"
-          data-testid="homescreen-edit-toggle"
-          aria-label="Edit homescreen"
-          className="absolute right-3 top-3 z-20 backdrop-blur"
-          onClick={() => setEditMode(true)}
-        >
-          <Pencil />
-        </Button>
-      ) : (
+      {/* No on-screen edit button: edit mode is entered via the "/edit" chat
+          command, a voiced request, or an agent scene edit. The toolbar only
+          appears once editing is active. */}
+      {hs.editMode ? (
         <div
           data-testid="homescreen-edit-toolbar"
           className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md bg-card/80 p-1 backdrop-blur"
@@ -140,7 +149,7 @@ export function Homescreen({
             <X />
           </Button>
         </div>
-      )}
+      ) : null}
 
       {hs.error ? (
         <div

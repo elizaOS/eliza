@@ -44,6 +44,10 @@ _MATERIAL_RGBA = {
     "TPU_SHORE_A95": "0.07 0.07 0.08 1",  # black sole
 }
 
+# Toe cable winch (position-controlled length servo on the tendon)
+_TOE_WINCH_KP = 6000.0
+_TOE_WINCH_FMAX = 300.0
+
 
 def _fmt(*vals: float) -> str:
     return " ".join(f"{float(v):.6g}" for v in vals)
@@ -51,12 +55,20 @@ def _fmt(*vals: float) -> str:
 
 def _add_assets(root: ET.Element) -> None:
     asset = ET.SubElement(root, "asset")
+    # molded-plastic look: glossy cosmetic PC-ABS, satin structural nylon, matte sole
+    finish = {
+        "PA6_GF30": {"reflectance": "0.25", "specular": "0.4", "shininess": "0.4"},
+        "PC_ABS": {"reflectance": "0.3", "specular": "0.6", "shininess": "0.6"},
+        "TPU_SHORE_A95": {"reflectance": "0.05", "specular": "0.1", "shininess": "0.1"},
+    }
     for key, rgba in _MATERIAL_RGBA.items():
-        reflect = "0.3" if key == "PA6_GF30" else ("0.1" if key == "TPU_SHORE_A95" else "0.2")
-        ET.SubElement(asset, "material", {"name": key, "rgba": rgba, "reflectance": reflect})
+        ET.SubElement(asset, "material", {"name": key, "rgba": rgba, **finish[key]})
 
 
-def _geom_elem(g: Geom, collision: bool) -> ET.Element:
+def _geom_elem(g: Geom, collision: bool, mesh_name: str | None = None) -> ET.Element:
+    if not collision and mesh_name is not None:
+        return ET.Element("geom", {"name": g.name, "class": "visual", "type": "mesh",
+                                   "mesh": mesh_name, "material": g.material_key})
     cls = "collision" if collision else "visual"
     attrs: dict[str, str] = {"name": g.name + ("_col" if collision else ""),
                              "class": cls, "material": g.material_key}
@@ -92,7 +104,8 @@ def _inertial_elem(bm: BodyMass) -> ET.Element:
 
 
 def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
-               *, all_collision: bool, extra_mass: dict[str, float]) -> None:
+               *, all_collision: bool, extra_mass: dict[str, float],
+               visual_meshes: dict[str, str] | None = None) -> None:
     elem = ET.SubElement(parent_elem, "body", {
         "name": body.name, "pos": _fmt(*body.pos),
     })
@@ -122,15 +135,17 @@ def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
             "frictionloss": f"{td['frictionloss']:g}",
         }
         if j.tendon_driven:
-            # toe: a return spring extends it; the cable can only pull it flexed
-            jattr["stiffness"] = "3.0"
+            # toe: a light preload spring keeps the cable taut; the position-
+            # controlled winch sets the toe angle by spooling the tendon.
+            jattr["stiffness"] = "1.0"
             jattr["springref"] = "0.0"
             jattr["damping"] = "0.3"
         ET.SubElement(elem, "joint", jattr)
 
     for g in body.geoms:
-        # visual shell
-        elem.append(_geom_elem(g, collision=False))
+        # visual shell (mesh if a refined visual mesh exists, else primitive)
+        mesh_name = g.name if (visual_meshes and g.name in visual_meshes) else None
+        elem.append(_geom_elem(g, collision=False, mesh_name=mesh_name))
         # collision: soles always; everything else only in the collision variant
         if g.role == "sole" or all_collision:
             elem.append(_geom_elem(g, collision=True))
@@ -139,7 +154,8 @@ def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
 
     for child in spec.bodies:
         if child.parent == body.name:
-            _emit_body(elem, child, spec, all_collision=all_collision, extra_mass=extra_mass)
+            _emit_body(elem, child, spec, all_collision=all_collision,
+                       extra_mass=extra_mass, visual_meshes=visual_meshes)
 
 
 def _foot_pos_z(spec: RobotSpec) -> float:
@@ -221,10 +237,14 @@ def _spawn_height(spec: RobotSpec) -> float:
     return spec.pelvis_height_m - lowest
 
 
-def build_mjcf(spec: RobotSpec | None = None, *, all_collision: bool = False) -> ET.ElementTree:
+def build_mjcf(spec: RobotSpec | None = None, *, all_collision: bool = False,
+               visual_meshes: dict[str, str] | None = None) -> ET.ElementTree:
     spec = spec or build_spec()
     root = ET.Element("mujoco", {"model": "erobot"})
-    ET.SubElement(root, "compiler", {"angle": "radian", "autolimits": "true"})
+    compiler = {"angle": "radian", "autolimits": "true"}
+    if visual_meshes:
+        compiler["meshdir"] = "../mesh"
+    ET.SubElement(root, "compiler", compiler)
     ET.SubElement(root, "option", {"timestep": "0.002", "integrator": "implicitfast"})
 
     default = ET.SubElement(root, "default")
@@ -236,13 +256,18 @@ def build_mjcf(spec: RobotSpec | None = None, *, all_collision: bool = False) ->
                                 "condim": "3", "friction": "1.0 0.02 0.001", "density": "0"})
 
     _add_assets(root)
+    if visual_meshes:
+        asset = root.find("asset")
+        for geom_name, fn in sorted(visual_meshes.items()):
+            ET.SubElement(asset, "mesh", {"name": geom_name, "file": fn})
 
     worldbody = ET.SubElement(root, "worldbody")
     pelvis = next(b for b in spec.bodies if b.is_floating_base)
     extra_mass = _electronics_distribution()
     spawn_z = _spawn_height(spec)
     _emit_body(worldbody, _with_spawn(pelvis, spawn_z), spec,
-               all_collision=all_collision, extra_mass=extra_mass)
+               all_collision=all_collision, extra_mass=extra_mass,
+               visual_meshes=visual_meshes)
 
     _emit_tendons(root, spec)
     _emit_actuators(root, spec)
@@ -259,11 +284,8 @@ def _with_spawn(pelvis: Body, spawn_z: float) -> Body:
 
 
 def _electronics_distribution() -> dict[str, float]:
-    # battery + compute + PDB ride in the torso; sensors split torso/head
-    return {
-        "torso": ELECTRONICS_KG_TOTAL - 0.082,  # all but head sensors
-        "head": 0.082,                           # camera + a little wiring
-    }
+    # battery + compute + PDB + camera all ride in the torso (head removed)
+    return {"torso": ELECTRONICS_KG_TOTAL}
 
 
 def _emit_actuators(root: ET.Element, spec: RobotSpec) -> None:
@@ -279,21 +301,29 @@ def _emit_actuators(root: ET.Element, spec: RobotSpec) -> None:
             "ctrlrange": _fmt(j.lower_rad, j.upper_rad),
             "forcerange": _fmt(-j.torque_nm, j.torque_nm),
         })
-    # tendon (cable-over-pulley) actuators — tension only, cables cannot push
+    # cable-over-pulley winch: a POSITION actuator on the tendon. Commanding a
+    # target tendon length spools the shank winch and sets the toe position.
+    # ctrlrange (the achievable length window) is calibrated in write_models.
     for side in ("left", "right"):
         if any(j.tendon_driven and j.name.startswith(side) for j in spec.joints):
-            ET.SubElement(act, "motor", {
+            ET.SubElement(act, "position", {
                 "name": f"{side}_toe_act", "tendon": f"{side}_toe_tendon",
-                "ctrlrange": "0 60", "gear": "1"})
+                "kp": f"{_TOE_WINCH_KP:g}", "ctrlrange": "0 1",
+                "forcerange": _fmt(-_TOE_WINCH_FMAX, _TOE_WINCH_FMAX)})
 
 
-def _ctrl_defaults(spec: RobotSpec) -> list[float]:
-    """Default ctrl vector in actuator order (joint position acts, then tendons)."""
+def _ctrl_defaults(spec: RobotSpec, toe_home: dict[str, float] | None = None) -> list[float]:
+    """Default ctrl vector in actuator order (joint position acts, then winches).
+
+    Toe winch defaults are tendon lengths (target spool length at the home pose),
+    filled from ``toe_home`` once calibrated, else a placeholder.
+    """
     ctrl = [j.home_rad for j in sorted(spec.joints, key=lambda j: j.index)
             if not j.tendon_driven]
+    toe_home = toe_home or {}
     for side in ("left", "right"):
         if any(j.tendon_driven and j.name.startswith(side) for j in spec.joints):
-            ctrl.append(0.0)
+            ctrl.append(toe_home.get(side, 0.5))
     return ctrl
 
 
@@ -316,15 +346,62 @@ def _emit_keyframe(root: ET.Element, spec: RobotSpec, spawn_z: float) -> None:
     ET.SubElement(kf, "key", {"name": "home", "qpos": _fmt(*qpos), "ctrl": _fmt(*ctrl)})
 
 
-def write_models(spec: RobotSpec | None = None) -> dict[str, Path]:
+def _calibrate_toe_winches(robot_path: Path, spec: RobotSpec) -> dict[str, tuple[float, float, float]]:
+    """Measure each toe tendon's length at the joint limits + home (lo, hi, home)."""
+    import mujoco
+
+    model = mujoco.MjModel.from_xml_path(str(robot_path))
+    data = mujoco.MjData(model)
+    out: dict[str, tuple[float, float, float]] = {}
+    for side in ("left", "right"):
+        try:
+            tid = model.tendon(f"{side}_toe_tendon").id
+            jid = model.joint(f"{side}_toe_joint").id
+        except KeyError:
+            continue
+        qadr = model.jnt_qposadr[jid]
+        lo, hi = model.jnt_range[jid]
+        lens = {}
+        for tag, ang in (("lo", lo), ("hi", hi), ("home", 0.0)):
+            mujoco.mj_resetData(model, data)
+            data.qpos[qadr] = ang
+            mujoco.mj_forward(model, data)
+            lens[tag] = float(data.ten_length[tid])
+        out[side] = (min(lens["lo"], lens["hi"]), max(lens["lo"], lens["hi"]), lens["home"])
+    return out
+
+
+def write_models(spec: RobotSpec | None = None, *, visual_meshes: bool = True) -> dict[str, Path]:
     spec = spec or build_spec()
     MJCF_DIR.mkdir(parents=True, exist_ok=True)
     (ASSETS_DIR / "mesh").mkdir(parents=True, exist_ok=True)
     (ASSETS_DIR / "mesh" / ".gitkeep").touch()
 
-    tree = build_mjcf(spec)
+    mesh_map = None
+    if visual_meshes:
+        from eliza_robot.erobot.meshlib import export_visual_meshes
+        mesh_map = export_visual_meshes(spec, ASSETS_DIR / "mesh")
+
+    tree = build_mjcf(spec, visual_meshes=mesh_map)
     robot_path = MJCF_DIR / "erobot.xml"
     tree.write(robot_path, encoding="utf-8", xml_declaration=False)
+
+    # calibrate the toe winch length window + home spool length, patch + rewrite
+    winch = _calibrate_toe_winches(robot_path, spec)
+    if winch:
+        root = tree.getroot()
+        # command window is the taut range [home, max]: a single cable + return
+        # spring controls position over its pull (dorsiflexion) range.
+        for side, (_lo, hi, home) in winch.items():
+            act = root.find(f".//actuator/position[@name='{side}_toe_act']")
+            if act is not None:
+                act.set("ctrlrange", _fmt(home, hi))
+        toe_home = {side: home for side, (_lo, _hi, home) in winch.items()}
+        key = root.find(".//keyframe/key[@name='home']")
+        if key is not None:
+            key.set("ctrl", _fmt(*_ctrl_defaults(spec, toe_home)))
+        ET.indent(root, space="  ")
+        tree.write(robot_path, encoding="utf-8", xml_declaration=False)
 
     scene_path = MJCF_DIR / "scene.xml"
     scene_path.write_text(_scene_xml(), encoding="utf-8")
