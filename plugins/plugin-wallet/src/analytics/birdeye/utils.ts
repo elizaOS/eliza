@@ -510,8 +510,8 @@ export const formatTokenInfo = (
     ? `${Math.floor((Date.now() - new Date(token.creation_time).getTime()) / (1000 * 60 * 60 * 24))}d`
     : "N/A";
 
-  const safeName = sanitizeWalletDisplayLabel(token.name);
-  const safeSymbol = sanitizeWalletDisplayLabel(token.symbol);
+  const safeName = sanitizeWalletDisplayLabel(token.name || "unknown");
+  const safeSymbol = sanitizeWalletDisplayLabel(token.symbol || "unknown");
 
   let output =
     `🪙 ${safeName} @ ${safeSymbol}\n` +
