@@ -768,6 +768,19 @@ export class ElizaSandboxService {
             ...((rec.environment_vars as Record<string, string>) ?? {}),
             DATABASE_URL: dbUri,
           },
+          // Path A: pass the persisted character so the container boots AS
+          // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
+          // injection + packages/agent/src/runtime/sandbox-character.ts).
+          agentConfig:
+            rec.agent_config &&
+            typeof rec.agent_config === "object" &&
+            !Array.isArray(rec.agent_config)
+              ? (rec.agent_config as Record<string, unknown>)
+              : undefined,
+          // Path A: the gateways route by character_id, so the container must
+          // register under, and answer as, that id (see
+          // SANDBOX_ROUTE_AGENT_ID injection).
+          routeAgentId: rec.character_id ?? undefined,
           snapshotId: rec.snapshot_id ?? undefined,
           dockerImage: rec.docker_image ?? undefined,
         });

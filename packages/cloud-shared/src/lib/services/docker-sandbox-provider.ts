@@ -151,6 +151,64 @@ function resolveStewardRefreshServiceToken(): string {
   return "";
 }
 
+/**
+ * Strip secret-bearing fields from a persisted character before it is injected
+ * into the container as ELIZA_AGENT_CHARACTER_JSON. The container receives the
+ * actual connector tokens / API keys via dedicated env vars; embedding them in
+ * the character JSON would expose them via /proc/<pid>/environ and crash
+ * diagnostics for no benefit. Redacts:
+ *   - top-level `secrets`
+ *   - `settings.secrets`
+ *   - per-connector `token` / `botToken` / `apiToken` under `connectors.*`
+ * Persona + connector POLICY fields (dmPolicy, messagePrefix, enabled, etc.)
+ * are preserved so the runtime still loads the right character + behaviour.
+ */
+function redactCharacterSecrets(character: Record<string, unknown>): Record<string, unknown> {
+  // Deep clone so we never mutate the caller's DB-derived object.
+  const clone = JSON.parse(JSON.stringify(character)) as Record<string, unknown>;
+  delete clone.secrets;
+  if (clone.settings && typeof clone.settings === "object") {
+    delete (clone.settings as Record<string, unknown>).secrets;
+  }
+  const connectors = clone.connectors;
+  if (connectors && typeof connectors === "object") {
+    for (const value of Object.values(connectors as Record<string, unknown>)) {
+      if (value && typeof value === "object") {
+        const c = value as Record<string, unknown>;
+        delete c.token;
+        delete c.botToken;
+        delete c.apiToken;
+      }
+    }
+  }
+  return clone;
+}
+
+/**
+ * Resolve the AGENT_SERVER_SHARED_SECRET to inject into a provisioned
+ * container so it can validate the X-Server-Token the cloud gateways attach to
+ * forwarded platform messages. Precedence:
+ *   1. An explicit per-deployment value in the sandbox's environment_vars.
+ *   2. The daemon's own AGENT_SERVER_SHARED_SECRET (the same value the
+ *      gateways read), so both ends share one secret with no extra config.
+ * Returns an empty object when neither is set, leaving the container's
+ * X-Server-Token path disabled (no regression).
+ */
+function resolveServerSharedSecretEnv(
+  environmentVars: Record<string, string>,
+): Record<string, string> {
+  const explicit = environmentVars.AGENT_SERVER_SHARED_SECRET;
+  if (typeof explicit === "string" && explicit.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: explicit.trim() };
+  }
+  const env = getCloudAwareEnv();
+  const daemonSecret = env.AGENT_SERVER_SHARED_SECRET;
+  if (typeof daemonSecret === "string" && daemonSecret.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: daemonSecret.trim() };
+  }
+  return {};
+}
+
 function resolveStewardElizaPluginPackage(): string {
   const env = getCloudAwareEnv();
   return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
@@ -466,7 +524,8 @@ export class DockerSandboxProvider implements SandboxProvider {
    * method wraps this in a retry loop to handle port collisions automatically.
    */
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
-    const { agentId, agentName, environmentVars, organizationId } = config;
+    const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
+      config;
 
     // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -590,6 +649,20 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...proxyEnv,
       AGENT_NAME: agentName,
       ELIZA_CLOUD_PROVISIONED: "1",
+      // Path A: inject the character so the container boots AS this agent
+      // (e.g. "Nyx") instead of the bundled default "Eliza" preset. Consumed
+      // by packages/agent/src/runtime/sandbox-character.ts. Secret-bearing
+      // fields (connector tokens, secrets, settings.secrets) are redacted
+      // first — the runtime receives connector tokens via dedicated env vars
+      // (DISCORD_API_TOKEN, TELEGRAM_BOT_TOKEN) and never needs them embedded
+      // in the character JSON, which would otherwise be visible via
+      // /proc/<pid>/environ and crash diagnostics. Omitted when the caller has
+      // no agent_config (the runtime keeps its default-character behaviour).
+      ...(agentConfig && typeof agentConfig === "object"
+        ? {
+            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
+          }
+        : {}),
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
       // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
@@ -603,6 +676,17 @@ export class DockerSandboxProvider implements SandboxProvider {
       JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
       // Allow the agent subdomain origin so the browser can call the API.
       ELIZA_ALLOWED_ORIGINS: `https://${agentId}.${getAgentBaseDomain()}`,
+      // Shared service-to-service secret the cloud gateways attach as the
+      // X-Server-Token header when they forward inbound platform messages to
+      // this container's /agents/:id/message endpoint. The container's auth
+      // path (packages/agent server-helpers-auth isAuthorized) accepts this
+      // header when it matches, so a gateway can route a message without
+      // knowing the per-agent inbound API token. Sourced from the daemon's own
+      // AGENT_SERVER_SHARED_SECRET (the same value the gateways read); both
+      // ends must share it. An explicit per-deployment value in
+      // environmentVars wins. Omitted entirely when neither is set, which
+      // simply leaves the X-Server-Token path disabled in the container.
+      ...resolveServerSharedSecretEnv(environmentVars),
     };
 
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
@@ -708,6 +792,10 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
               SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
               SANDBOX_AGENT_ID: agentId,
+              // The gateways route by the platform character_id, so the
+              // container must register under (and answer as) that id, not
+              // the sandbox id. Injected only when the caller provides it.
+              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
               SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
