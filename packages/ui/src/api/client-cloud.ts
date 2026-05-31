@@ -1130,7 +1130,11 @@ declare module "./client-base" {
       name: string;
       bio?: string[];
       onProgress?: (status: string, detail?: string) => void;
-    }): Promise<{ bridgeUrl: string; agentId: string }>;
+    }): Promise<{
+      bridgeUrl: string;
+      agentId: string;
+      webUiUrl?: string | null;
+    }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -2498,9 +2502,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     data?: {
       jobId?: string;
       bridgeUrl?: string | null;
+      webUiUrl?: string | null;
     };
     jobId?: string;
     bridgeUrl?: string | null;
+    webUiUrl?: string | null;
   }>(`${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`, {
     method: "POST",
     headers,
@@ -2512,9 +2518,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const provisionData = provisionRes.data;
   const immediateBridgeUrl =
     provisionData.data?.bridgeUrl ?? provisionData.bridgeUrl ?? null;
+  const immediateWebUiUrl =
+    provisionData.data?.webUiUrl ?? provisionData.webUiUrl ?? null;
   if (immediateBridgeUrl) {
     onProgress?.("ready", "Sandbox ready!");
-    return { bridgeUrl: immediateBridgeUrl, agentId };
+    return { bridgeUrl: immediateBridgeUrl, agentId, webUiUrl: immediateWebUiUrl };
   }
   const jobId = provisionData.data?.jobId ?? provisionData.jobId;
   if (!jobId) {
@@ -2529,11 +2537,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     const jobRes = await directCloudJsonResponse<{
       data?: {
         status?: string;
-        result?: { bridgeUrl?: string };
+        result?: { bridgeUrl?: string; webUiUrl?: string | null };
         error?: string;
       };
       status?: string;
-      result?: { bridgeUrl?: string };
+      result?: { bridgeUrl?: string; webUiUrl?: string | null };
       error?: string;
     }>(`${resolvedCloudApiBase}/api/v1/jobs/${jobId}`, { headers });
     if (!jobRes.ok) continue;
@@ -2545,7 +2553,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
 
     if (status === "completed" && result?.bridgeUrl) {
       onProgress?.("ready", "Sandbox ready!");
-      return { bridgeUrl: result.bridgeUrl as string, agentId };
+      return {
+        bridgeUrl: result.bridgeUrl as string,
+        agentId,
+        webUiUrl: result.webUiUrl ?? null,
+      };
     }
 
     if (status === "failed") {

@@ -648,6 +648,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             agentId: provisionedAgent.agentId,
             cloudApiBase,
             bridgeUrl: provisionedAgent.bridgeUrl,
+            webUiUrl: provisionedAgent.webUiUrl,
           });
           client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
