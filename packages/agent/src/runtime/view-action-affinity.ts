@@ -111,3 +111,22 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
     "Prefer acting directly on the view over describing what the user should click.",
   ].join("\n");
 }
+
+/**
+ * Inject the active-view awareness block into a planner prompt. Idempotent
+ * (skips if the block is already present) and a no-op when no view is active.
+ * Placed just before the "# Available Actions" header so view context sits next
+ * to the tool catalogue; falls back to prepending when that header is absent.
+ */
+export function applyActiveViewAwareness(
+  prompt: string,
+  view: ActiveViewContext | null | undefined,
+): string {
+  if (!view) return prompt;
+  if (prompt.includes("# Active View")) return prompt;
+  const block = renderActiveViewContextBlock(view);
+  const header = "\n# Available Actions";
+  const idx = prompt.indexOf(header);
+  if (idx === -1) return `${block}\n\n${prompt}`;
+  return `${prompt.slice(0, idx)}\n\n${block}\n${prompt.slice(idx + 1)}`;
+}

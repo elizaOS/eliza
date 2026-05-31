@@ -4,6 +4,7 @@ import {
   compactActionsForIntent,
 } from "./prompt-compaction.ts";
 import {
+  applyActiveViewAwareness,
   clearActiveViewContext,
   getActiveViewContext,
   renderActiveViewContextBlock,
@@ -12,6 +13,13 @@ import {
   validateViewActionMap,
   viewScopedActionNames,
 } from "./view-action-affinity.ts";
+
+const AWARE_VIEW = {
+  viewId: "wallet",
+  viewLabel: "Wallet",
+  viewType: "gui" as const,
+  viewPath: "/wallet",
+};
 
 afterEach(() => clearActiveViewContext());
 
@@ -112,5 +120,36 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     expect(out).toContain("emote: string, intensity: number");
     // The unrelated action is still stubbed.
     expect(out).not.toContain("foo: string");
+  });
+});
+
+describe("applyActiveViewAwareness", () => {
+  const PROMPT = "intro text\n\n# Available Actions\n- REPLY: respond\n";
+
+  it("injects the awareness block just before # Available Actions", () => {
+    const out = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
+    expect(out).toContain("# Active View");
+    expect(out.indexOf("# Active View")).toBeLessThan(
+      out.indexOf("# Available Actions"),
+    );
+    // Original content is preserved.
+    expect(out).toContain("- REPLY: respond");
+    expect(out).toContain("intro text");
+  });
+
+  it("is a no-op when no view is active", () => {
+    expect(applyActiveViewAwareness(PROMPT, null)).toBe(PROMPT);
+  });
+
+  it("is idempotent", () => {
+    const once = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
+    const twice = applyActiveViewAwareness(once, AWARE_VIEW);
+    expect(twice).toBe(once);
+  });
+
+  it("prepends when there is no actions header", () => {
+    const out = applyActiveViewAwareness("just a prompt", AWARE_VIEW);
+    expect(out.startsWith("# Active View")).toBe(true);
+    expect(out).toContain("just a prompt");
   });
 });

@@ -55,6 +55,7 @@ import {
   toText,
 } from "./trajectory-internals.ts";
 import {
+  applyActiveViewAwareness,
   getActiveViewContext,
   validateViewActionMap,
   viewScopedActionNames,
@@ -1446,6 +1447,18 @@ export function installPromptOptimizations(
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(
           `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
+        );
+      }
+
+      // Tell the planner which view the user is looking at and how to drive it.
+      const beforeViewAwareness = workingPrompt;
+      workingPrompt = applyActiveViewAwareness(
+        workingPrompt,
+        getActiveViewContext(),
+      );
+      if (workingPrompt !== beforeViewAwareness) {
+        promptOptimizationTelemetry.transformations.push(
+          `active-view-awareness:${beforeViewAwareness.length}->${workingPrompt.length}`,
         );
       }
 
