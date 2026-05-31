@@ -12,6 +12,7 @@ import {
   type RuntimeOrderItem,
   type RuntimeServiceOrderItem,
 } from "../../api";
+import { useAgentElement } from "../../agent-surface";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
@@ -24,6 +25,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type RuntimeSectionKey =
   | "summary"
@@ -370,6 +372,42 @@ function RuntimeSummaryCard(props: {
   );
 }
 
+function RuntimeSectionNavButton(props: {
+  sectionKey: RuntimeSectionKey;
+  label: string;
+  icon: string;
+  meta: string;
+  count: string | null;
+  active: boolean;
+  onSelect: (key: RuntimeSectionKey) => void;
+}) {
+  const { sectionKey, label, icon, meta, count, active, onSelect } = props;
+  const { agentProps } = useAgentElement({
+    id: `section-${sectionKey}`,
+    role: "tab",
+    label,
+    group: "runtime-sections",
+    status: active ? "active" : "inactive",
+    description: `Open the ${label} runtime section`,
+    onActivate: () => onSelect(sectionKey),
+  });
+  return (
+    <SidebarContent.Item
+      active={active}
+      onClick={() => onSelect(sectionKey)}
+      aria-current={active ? "page" : undefined}
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon active={active}>{icon}</SidebarContent.ItemIcon>
+      <span className="min-w-0 flex-1 text-left">
+        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>{meta}</SidebarContent.ItemDescription>
+      </span>
+      {count ? <MetaPill compact>{count}</MetaPill> : null}
+    </SidebarContent.Item>
+  );
+}
+
 export function RuntimeView({
   contentHeader,
 }: {
@@ -440,6 +478,71 @@ export function RuntimeView({
     });
   }, []);
 
+  const depthAgent = useAgentElement<HTMLInputElement>({
+    id: "depth-input",
+    role: "number-input",
+    label: t("runtimeview.depth"),
+    group: "runtime-snapshot-controls",
+    description: "Maximum tree depth for the runtime snapshot",
+    getValue: () => depth,
+    onFill: (value) => setDepth(Math.max(1, Math.min(24, Number(value) || 1))),
+  });
+  const arrayCapAgent = useAgentElement<HTMLInputElement>({
+    id: "array-cap-input",
+    role: "number-input",
+    label: t("runtimeview.arrayCap"),
+    group: "runtime-snapshot-controls",
+    description: "Maximum array length captured in the runtime snapshot",
+    getValue: () => maxArrayLength,
+    onFill: (value) =>
+      setMaxArrayLength(Math.max(1, Math.min(5000, Number(value) || 1))),
+  });
+  const objectCapAgent = useAgentElement<HTMLInputElement>({
+    id: "object-cap-input",
+    role: "number-input",
+    label: t("runtimeview.objectCap"),
+    group: "runtime-snapshot-controls",
+    description: "Maximum object entries captured in the runtime snapshot",
+    getValue: () => maxObjectEntries,
+    onFill: (value) =>
+      setMaxObjectEntries(Math.max(1, Math.min(5000, Number(value) || 1))),
+  });
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "refresh-snapshot",
+    role: "button",
+    label: t("common.refresh"),
+    group: "runtime-snapshot-controls",
+    description: "Reload the runtime snapshot",
+    status: loading ? "active" : "inactive",
+    onActivate: () => void loadSnapshot(),
+  });
+  const expandTopSidebarAgent = useAgentElement<HTMLButtonElement>({
+    id: "expand-top-sidebar",
+    role: "button",
+    label: t("runtimeview.ExpandTop"),
+    group: "runtime-snapshot-controls",
+    description: "Expand the top level of the active section tree",
+    onActivate: () =>
+      setExpandedPaths(buildInitialExpanded(rootPath, sectionData)),
+  });
+  const collapseTreeAgent = useAgentElement<HTMLButtonElement>({
+    id: "collapse-tree",
+    role: "button",
+    label: t("common.collapse"),
+    group: "runtime-tree-controls",
+    description: "Collapse the active section tree to its root",
+    onActivate: () => setExpandedPaths(new Set([rootPath])),
+  });
+  const expandTopTreeAgent = useAgentElement<HTMLButtonElement>({
+    id: "expand-top-tree",
+    role: "button",
+    label: t("runtimeview.ExpandTop"),
+    group: "runtime-tree-controls",
+    description: "Expand the top level of the active section tree",
+    onActivate: () =>
+      setExpandedPaths(buildInitialExpanded(rootPath, sectionData)),
+  });
+
   const sectionMeta: Record<RuntimeSectionKey, string> = {
     summary: snapshot
       ? `${snapshot.meta.pluginCount + snapshot.meta.providerCount + snapshot.meta.evaluatorCount} signals`
@@ -507,6 +610,8 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.depth")}</span>
             <Input
+              ref={depthAgent.ref}
+              {...depthAgent.agentProps}
               id={depthInputId}
               type="number"
               min={1}
@@ -527,6 +632,8 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.arrayCap")}</span>
             <Input
+              ref={arrayCapAgent.ref}
+              {...arrayCapAgent.agentProps}
               id={arrayCapInputId}
               type="number"
               min={1}
@@ -547,6 +654,8 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.objectCap")}</span>
             <Input
+              ref={objectCapAgent.ref}
+              {...objectCapAgent.agentProps}
               id={objectCapInputId}
               type="number"
               min={1}
@@ -563,6 +672,8 @@ export function RuntimeView({
 
           <div className="grid grid-cols-2 gap-1.5 pt-0.5">
             <Button
+              ref={refreshAgent.ref}
+              {...refreshAgent.agentProps}
               variant="outline"
               size="sm"
               type="button"
@@ -577,6 +688,8 @@ export function RuntimeView({
               {loading ? t("common.refreshing") : t("common.refresh")}
             </Button>
             <Button
+              ref={expandTopSidebarAgent.ref}
+              {...expandTopSidebarAgent.agentProps}
               variant="outline"
               size="sm"
               type="button"
@@ -596,34 +709,22 @@ export function RuntimeView({
         </SidebarContent.SectionLabel>
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1.5">
-            {filteredSections.map((section) => {
-              const active = section.key === activeSection;
-              return (
-                <SidebarContent.Item
-                  key={section.key}
-                  active={active}
-                  onClick={() => setActiveSection(section.key)}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <SidebarContent.ItemIcon active={active}>
-                    {section.key === "summary"
-                      ? "Σ"
-                      : t(section.i18nKey).charAt(0).toUpperCase()}
-                  </SidebarContent.ItemIcon>
-                  <span className="min-w-0 flex-1 text-left">
-                    <SidebarContent.ItemTitle>
-                      {t(section.i18nKey)}
-                    </SidebarContent.ItemTitle>
-                    <SidebarContent.ItemDescription>
-                      {sectionMeta[section.key]}
-                    </SidebarContent.ItemDescription>
-                  </span>
-                  {getSectionCount(section.key) ? (
-                    <MetaPill compact>{getSectionCount(section.key)}</MetaPill>
-                  ) : null}
-                </SidebarContent.Item>
-              );
-            })}
+            {filteredSections.map((section) => (
+              <RuntimeSectionNavButton
+                key={section.key}
+                sectionKey={section.key}
+                label={t(section.i18nKey)}
+                icon={
+                  section.key === "summary"
+                    ? "Σ"
+                    : t(section.i18nKey).charAt(0).toUpperCase()
+                }
+                meta={sectionMeta[section.key]}
+                count={getSectionCount(section.key)}
+                active={section.key === activeSection}
+                onSelect={setActiveSection}
+              />
+            ))}
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
@@ -631,11 +732,12 @@ export function RuntimeView({
   );
 
   return (
-    <PageLayout
-      sidebar={runtimeSidebar}
-      contentHeader={contentHeader}
-      data-testid="runtime-view"
-    >
+    <ShellViewAgentSurface viewId="runtime">
+      <PageLayout
+        sidebar={runtimeSidebar}
+        contentHeader={contentHeader}
+        data-testid="runtime-view"
+      >
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         {error ? (
           <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -703,6 +805,8 @@ export function RuntimeView({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
+                    ref={collapseTreeAgent.ref}
+                    {...collapseTreeAgent.agentProps}
                     variant="outline"
                     size="sm"
                     type="button"
@@ -712,6 +816,8 @@ export function RuntimeView({
                     {t("common.collapse")}
                   </Button>
                   <Button
+                    ref={expandTopTreeAgent.ref}
+                    {...expandTopTreeAgent.agentProps}
                     variant="outline"
                     size="sm"
                     type="button"
@@ -789,6 +895,7 @@ export function RuntimeView({
           </>
         )}
       </div>
-    </PageLayout>
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }

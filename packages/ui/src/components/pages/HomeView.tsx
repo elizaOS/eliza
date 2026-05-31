@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
+import type { RegistryAppInfo } from "../../api";
 import { Homescreen } from "../../homescreen/Homescreen";
 import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
@@ -29,6 +31,7 @@ import type {
   FrequencyAnalyser,
   VoiceWaveformMode,
 } from "../voice/VoiceWaveform";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 // The voice waveform speaks in three modes; the homescreen scene contract has a
 // richer four-phase vocabulary. Map the one onto the other at the boundary so
@@ -165,52 +168,54 @@ export function HomeView(): React.JSX.Element {
   }, [latestAssistant]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
-      <HomeVoiceBackground
-        mode={mode}
-        analyser={controller?.analyser ?? null}
-        userText={latestUserText}
-        assistantText={latestAssistant?.content ?? ""}
-        onEditModeChange={setEditingHome}
-      />
-      <div
-        data-testid="home-view"
-        className={cn(
-          "relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt transition-opacity duration-200",
-          // In edit mode the foreground collapses to a peekable overlay so the
-          // canvas — and its edit toolbar — own the screen while customizing.
-          editingHome && "pointer-events-none opacity-0",
-        )}
-      >
-        <HomeHeader onNavigate={setTab} />
-
-        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
-          <DefaultApps onLaunch={setTab} />
-
-          {showModelStatus && modelStatus ? (
-            <ModelStatusPanel
-              status={modelStatus}
-              onOpenSettings={() => setTab("settings")}
-            />
-          ) : noLlmConnection ? (
-            <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
-          ) : (
-            <p
-              className="min-h-6 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
-              aria-live="polite"
-              data-testid="home-assistant-transcript"
-            >
-              {latestAssistantWords ??
-                t("homeview.assistant.prompt", {
-                  defaultValue: "How can I help?",
-                })}
-            </p>
+    <ShellViewAgentSurface viewId="home">
+      <div className="relative h-full w-full overflow-hidden">
+        <HomeVoiceBackground
+          mode={mode}
+          analyser={controller?.analyser ?? null}
+          userText={latestUserText}
+          assistantText={latestAssistant?.content ?? ""}
+          onEditModeChange={setEditingHome}
+        />
+        <div
+          data-testid="home-view"
+          className={cn(
+            "relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt transition-opacity duration-200",
+            // In edit mode the foreground collapses to a peekable overlay so the
+            // canvas — and its edit toolbar — own the screen while customizing.
+            editingHome && "pointer-events-none opacity-0",
           )}
-        </div>
+        >
+          <HomeHeader onNavigate={setTab} />
 
-        <HomeComposer />
+          <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
+            <DefaultApps onLaunch={setTab} />
+
+            {showModelStatus && modelStatus ? (
+              <ModelStatusPanel
+                status={modelStatus}
+                onOpenSettings={() => setTab("settings")}
+              />
+            ) : noLlmConnection ? (
+              <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
+            ) : (
+              <p
+                className="min-h-6 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
+                aria-live="polite"
+                data-testid="home-assistant-transcript"
+              >
+                {latestAssistantWords ??
+                  t("homeview.assistant.prompt", {
+                    defaultValue: "How can I help?",
+                  })}
+              </p>
+            )}
+          </div>
+
+          <HomeComposer />
+        </div>
       </div>
-    </div>
+    </ShellViewAgentSurface>
   );
 }
 
@@ -225,23 +230,51 @@ function HomeHeader({
       data-testid="home-header"
       className="flex w-full max-w-3xl shrink-0 items-center justify-center gap-1 pt-[calc(var(--safe-area-top,0px)+0.5rem)] pb-2"
     >
-      {HEADER_NAV.map(({ tab, labelKey, defaultLabel, icon: Icon }) => {
-        const label = t(labelKey, { defaultValue: defaultLabel });
-        return (
-          <button
-            key={tab}
-            type="button"
-            aria-label={label}
-            title={label}
-            onClick={() => onNavigate(tab)}
-            className="flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white/90 transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none"
-          >
-            <Icon className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        );
-      })}
+      {HEADER_NAV.map(({ tab, labelKey, defaultLabel, icon: Icon }) => (
+        <HomeNavButton
+          key={tab}
+          tab={tab}
+          icon={Icon}
+          label={t(labelKey, { defaultValue: defaultLabel })}
+          onNavigate={onNavigate}
+        />
+      ))}
     </header>
+  );
+}
+
+function HomeNavButton({
+  tab,
+  icon: Icon,
+  label,
+  onNavigate,
+}: {
+  tab: Tab;
+  icon: typeof MessageSquare;
+  label: string;
+  onNavigate: (tab: Tab) => void;
+}): React.JSX.Element {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `nav-${tab}`,
+    role: "button",
+    label,
+    group: "home-nav",
+    description: `Navigate to the ${label} view`,
+    onActivate: () => onNavigate(tab),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => onNavigate(tab)}
+      className="flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white/90 transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none"
+      {...agentProps}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
 }
 
@@ -265,28 +298,51 @@ function DefaultApps({
       className="mx-auto grid w-full max-w-xs grid-cols-4 place-items-center gap-3"
       data-testid="home-default-apps"
     >
-      {apps.map((app) => {
-        const target = getInternalToolAppTargetTab(app.name);
-        const displayName = app.displayName ?? app.name;
-        return (
-          <button
-            key={app.name}
-            type="button"
-            title={displayName}
-            aria-label={t("homeview.apps.openApp", {
-              name: displayName,
-              defaultValue: "Open {{name}}",
-            })}
-            onClick={() => {
-              if (target) onLaunch(target);
-            }}
-            className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
-          >
-            <AppIdentityTile app={app} size="md" glyph />
-          </button>
-        );
-      })}
+      {apps.map((app) => (
+        <DefaultAppButton key={app.name} app={app} onLaunch={onLaunch} />
+      ))}
     </div>
+  );
+}
+
+function DefaultAppButton({
+  app,
+  onLaunch,
+}: {
+  app: RegistryAppInfo;
+  onLaunch: (tab: Tab) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const target = getInternalToolAppTargetTab(app.name);
+  const displayName = app.displayName ?? app.name;
+  const openLabel = t("homeview.apps.openApp", {
+    name: displayName,
+    defaultValue: "Open {{name}}",
+  });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `app-${app.name}`,
+    role: "button",
+    label: openLabel,
+    group: "home-apps",
+    description: `Open ${displayName}`,
+    onActivate: () => {
+      if (target) onLaunch(target);
+    },
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={displayName}
+      aria-label={openLabel}
+      onClick={() => {
+        if (target) onLaunch(target);
+      }}
+      className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
+      {...agentProps}
+    >
+      <AppIdentityTile app={app} size="md" glyph />
+    </button>
   );
 }
 
@@ -475,6 +531,16 @@ function MicButton({
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdActive = useRef(false);
 
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "voice-mic",
+    role: "button",
+    label: recording ? stopLabel : startLabel,
+    group: "home-composer",
+    description: "Toggle voice input",
+    status: recording ? "active" : "inactive",
+    onActivate: onTap,
+  });
+
   const clearHoldTimer = useCallback(() => {
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
@@ -520,12 +586,14 @@ function MicButton({
 
   return (
     <Button
+      ref={ref}
       type="button"
       size="icon"
       variant="ghost"
       data-testid="home-mic"
       aria-label={recording ? stopLabel : startLabel}
       aria-pressed={recording}
+      {...agentProps}
       onPointerDown={beginPress}
       onPointerUp={endPress}
       onPointerCancel={cancelPress}
@@ -567,6 +635,27 @@ function HomeComposer(): React.JSX.Element {
     setDraft("");
   }
 
+  const input = useAgentElement<HTMLInputElement>({
+    id: "composer-input",
+    role: "text-input",
+    label: t("homeview.composer.messageLabel", {
+      defaultValue: "Message Eliza",
+    }),
+    group: "home-composer",
+    description: "Draft a message to Eliza",
+    getValue: () => draft,
+    onFill: (value) => setDraft(value),
+  });
+
+  const send = useAgentElement<HTMLButtonElement>({
+    id: "composer-send",
+    role: "button",
+    label: t("homeview.composer.send", { defaultValue: "Send message" }),
+    group: "home-composer",
+    description: "Send the drafted message",
+    onActivate: sendDraft,
+  });
+
   const showRecent = focused || hasDraft;
 
   return (
@@ -602,8 +691,10 @@ function HomeComposer(): React.JSX.Element {
 
       <div className="flex items-center gap-1.5 rounded-full border border-white/30 bg-white/12 p-2 text-txt shadow-[0_6px_28px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-colors focus-within:border-white/50 focus-within:bg-white/20">
         <Input
+          ref={input.ref}
           type="text"
           value={draft}
+          {...input.agentProps}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onChange={(event) => setDraft(event.target.value)}
@@ -625,6 +716,7 @@ function HomeComposer(): React.JSX.Element {
         />
         {hasDraft ? (
           <Button
+            ref={send.ref}
             type="button"
             size="icon"
             aria-label={t("homeview.composer.send", {
@@ -633,6 +725,7 @@ function HomeComposer(): React.JSX.Element {
             disabled={!canSend}
             onClick={sendDraft}
             className="shrink-0 rounded-full text-bg disabled:opacity-45"
+            {...send.agentProps}
           >
             <Send className="h-4 w-4" aria-hidden />
           </Button>

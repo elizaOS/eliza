@@ -12,8 +12,10 @@ import {
   type WalletRpcSelections,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -318,7 +320,55 @@ export function ConfigPageView({
     options: readonly RpcProviderOption<T>[],
   ) => options.filter((o) => o.id !== "eliza-cloud");
 
+  const cloudModeEl = useAgentElement<HTMLButtonElement>({
+    id: "rpc-mode-cloud",
+    role: "tab",
+    label: t("common.elizaCloud", { defaultValue: "Eliza Cloud" }),
+    group: "rpc-mode",
+    status: rpcMode === "cloud" ? "active" : "inactive",
+    description: "Use Eliza Cloud managed RPC for all chains",
+    onActivate: () => handleModeChange("cloud"),
+  });
+  const customModeEl = useAgentElement<HTMLButtonElement>({
+    id: "rpc-mode-custom",
+    role: "tab",
+    label: t("configpageview.CustomModeTitle", { defaultValue: "Custom RPC" }),
+    group: "rpc-mode",
+    status: rpcMode === "custom" ? "active" : "inactive",
+    description: "Configure custom RPC providers per chain",
+    onActivate: () => handleModeChange("custom"),
+  });
+  const cloudConnectEl = useAgentElement<HTMLButtonElement>({
+    id: "cloud-connect",
+    role: "button",
+    label: t("elizaclouddashboard.ConnectElizaCloud", {
+      defaultValue: "Connect to Eliza Cloud",
+    }),
+    group: "rpc-config",
+    description: "Sign in to Eliza Cloud to use managed RPC",
+    onActivate: () => void handleCloudLogin(preOpenWindow()),
+  });
+  const saveEl = useAgentElement<HTMLButtonElement>({
+    id: "wallet-rpc-save",
+    role: "button",
+    label: t("common.save"),
+    group: "rpc-config",
+    description: "Save the wallet RPC provider configuration",
+    onActivate: () => {
+      void handleWalletSaveAll();
+    },
+  });
+  const secretsEl = useAgentElement<HTMLButtonElement>({
+    id: "open-secrets",
+    role: "button",
+    label: t("configpageview.Secrets", { defaultValue: "Secrets" }),
+    group: "rpc-config",
+    description: "Open the secrets vault to manage API keys",
+    onActivate: () => setSecretsOpen(true),
+  });
+
   return (
+    <ShellViewAgentSurface viewId="config">
     <div>
       {!embedded && (
         <>
@@ -336,8 +386,10 @@ export function ConfigPageView({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
         <Button
+          ref={cloudModeEl.ref}
           variant="ghost"
           data-testid="wallet-rpc-mode-cloud"
+          {...cloudModeEl.agentProps}
           onClick={() => handleModeChange("cloud")}
           className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
             rpcMode === "cloud"
@@ -384,7 +436,9 @@ export function ConfigPageView({
         </Button>
 
         <Button
+          ref={customModeEl.ref}
           variant="ghost"
+          {...customModeEl.agentProps}
           onClick={() => handleModeChange("custom")}
           className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
             rpcMode === "custom"
@@ -505,9 +559,11 @@ export function ConfigPageView({
                 </p>
               </div>
               <Button
+                ref={cloudConnectEl.ref}
                 variant="default"
                 size="sm"
                 className="text-xs font-bold"
+                {...cloudConnectEl.agentProps}
                 onClick={() => void handleCloudLogin(preOpenWindow())}
                 disabled={elizaCloudLoginBusy}
               >
@@ -529,10 +585,12 @@ export function ConfigPageView({
 
           <div className="flex justify-end mt-4">
             <Button
+              ref={saveEl.ref}
               variant="default"
               size="sm"
               data-testid="wallet-rpc-save"
               className="text-xs-tight"
+              {...saveEl.agentProps}
               onClick={() => {
                 void handleWalletSaveAll();
               }}
@@ -556,8 +614,10 @@ export function ConfigPageView({
               })}
             </div>
             <Button
+              ref={secretsEl.ref}
               variant="outline"
               className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+              {...secretsEl.agentProps}
               onClick={() => setSecretsOpen(true)}
             >
               <svg
@@ -653,10 +713,12 @@ export function ConfigPageView({
 
           <div className="flex justify-end mt-4">
             <Button
+              ref={saveEl.ref}
               variant="default"
               size="sm"
               data-testid="wallet-rpc-save"
               className="text-xs-tight"
+              {...saveEl.agentProps}
               onClick={() => {
                 void handleWalletSaveAll();
               }}
@@ -713,5 +775,6 @@ export function ConfigPageView({
         </DialogContent>
       </Dialog>
     </div>
+    </ShellViewAgentSurface>
   );
 }

@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
@@ -43,6 +45,10 @@ type GroupedSecrets = {
 
 const fallbackTranslate: TranslateFn = (key, vars) =>
   typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
+
+function slugifyKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 function groupSecretsByCategory(secrets: SecretInfo[]): GroupedSecrets[] {
   const grouped = new Map<string, SecretInfo[]>();
@@ -220,40 +226,77 @@ export function SecretsView({
     });
   };
 
+  const retryAgent = useAgentElement<HTMLButtonElement>({
+    id: "retry",
+    role: "button",
+    label: t("common.retry"),
+    group: "secrets-actions",
+    description: "Retry loading the secrets vault",
+    onActivate: load,
+  });
+  const addSecretAgent = useAgentElement<HTMLButtonElement>({
+    id: "add-secret",
+    role: "button",
+    label: t("secretsview.AddSecret"),
+    group: "secrets-actions",
+    description: "Open the picker to add a secret to the vault",
+    onActivate: () => {
+      setPickerOpen(true);
+      setPickerSearch("");
+    },
+  });
+  const saveAgent = useAgentElement<HTMLButtonElement>({
+    id: "save-secrets",
+    role: "button",
+    label: t("common.save"),
+    group: "secrets-actions",
+    status: dirtyKeys.length === 0 || saving ? "inactive" : "active",
+    description: "Save pending secret changes",
+    onActivate: handleSave,
+  });
+
   if (loading) {
     return (
-      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className="rounded-sm border border-border/50 bg-card/92 py-8 text-center text-sm italic text-muted">
-          {t("secretsview.LoadingSecrets")}
-        </div>
-      </ContentLayout>
+      <ShellViewAgentSurface viewId="secrets">
+        <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+          <div className="rounded-sm border border-border/50 bg-card/92 py-8 text-center text-sm italic text-muted">
+            {t("secretsview.LoadingSecrets")}
+          </div>
+        </ContentLayout>
+      </ShellViewAgentSurface>
     );
   }
 
   if (error) {
     return (
-      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className="rounded-sm border border-border/50 bg-card/92 px-4 py-8 text-center">
-          <div className="mb-2 text-sm text-danger">{error}</div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-3 text-sm"
-            onClick={load}
-          >
-            {t("common.retry")}
-          </Button>
-        </div>
-      </ContentLayout>
+      <ShellViewAgentSurface viewId="secrets">
+        <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+          <div className="rounded-sm border border-border/50 bg-card/92 px-4 py-8 text-center">
+            <div className="mb-2 text-sm text-danger">{error}</div>
+            <Button
+              ref={retryAgent.ref}
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-sm"
+              onClick={load}
+              {...retryAgent.agentProps}
+            >
+              {t("common.retry")}
+            </Button>
+          </div>
+        </ContentLayout>
+      </ShellViewAgentSurface>
     );
   }
 
   return (
-    <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+    <ShellViewAgentSurface viewId="secrets">
+      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
       <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="m-0 max-w-2xl text-sm leading-6 text-muted" />
           <Button
+            ref={addSecretAgent.ref}
             variant="default"
             size="sm"
             className="h-9 flex-shrink-0 px-3 text-sm "
@@ -261,6 +304,7 @@ export function SecretsView({
               setPickerOpen(true);
               setPickerSearch("");
             }}
+            {...addSecretAgent.agentProps}
           >
             {t("secretsview.AddSecret")}
           </Button>
@@ -289,23 +333,13 @@ export function SecretsView({
         {/* Vault secrets grouped by category */}
         {grouped.map(({ category, label, secrets: catSecrets }) => (
           <section key={category} className="space-y-3">
-            <Button
-              variant="ghost"
-              className="mb-3 h-auto w-full items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
-              onClick={() => toggleCollapse(category)}
-              aria-expanded={!collapsed.has(category)}
-            >
-              <ChevronDown
-                className="h-3 w-3 select-none text-muted transition-transform"
-                style={{
-                  transform: collapsed.has(category)
-                    ? "rotate(-90deg)"
-                    : "rotate(0deg)",
-                }}
-              />
-              <span className="text-sm font-semibold text-txt">{label}</span>
-              <span className="text-xs text-muted">({catSecrets.length})</span>
-            </Button>
+            <CategoryToggleButton
+              category={category}
+              label={label}
+              count={catSecrets.length}
+              collapsed={collapsed.has(category)}
+              onToggle={() => toggleCollapse(category)}
+            />
 
             {!collapsed.has(category) && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -332,11 +366,13 @@ export function SecretsView({
         {vaultSecrets.length > 0 && (
           <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center">
             <Button
+              ref={saveAgent.ref}
               variant="default"
               size="sm"
               className="h-9 px-4 text-sm font-medium transition-colors"
               disabled={dirtyKeys.length === 0 || saving}
               onClick={handleSave}
+              {...saveAgent.agentProps}
             >
               {saving
                 ? t("common.saving", {
@@ -356,7 +392,53 @@ export function SecretsView({
           </div>
         )}
       </div>
-    </ContentLayout>
+      </ContentLayout>
+    </ShellViewAgentSurface>
+  );
+}
+
+/* ── Category Toggle ────────────────────────────────────────────────── */
+
+function CategoryToggleButton({
+  category,
+  label,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  category: string;
+  label: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `category-${slugifyKey(category)}`,
+    role: "button",
+    label,
+    group: "secrets-categories",
+    status: collapsed ? "inactive" : "active",
+    description: `Toggle the ${label} secrets category`,
+    onActivate: onToggle,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      className="mb-3 h-auto w-full items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      {...agentProps}
+    >
+      <ChevronDown
+        className="h-3 w-3 select-none text-muted transition-transform"
+        style={{
+          transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+        }}
+      />
+      <span className="text-sm font-semibold text-txt">{label}</span>
+      <span className="text-xs text-muted">({count})</span>
+    </Button>
   );
 }
 
@@ -382,6 +464,24 @@ function SecretPicker({
     return groupSecretsByCategory(available);
   }, [available]);
 
+  const searchAgent = useAgentElement<HTMLInputElement>({
+    id: "picker-search",
+    role: "text-input",
+    label: t("secretsview.SearchByKeyDescr"),
+    group: "secrets-picker",
+    description: "Search available secrets to add to the vault",
+    getValue: () => search,
+    onFill: onSearchChange,
+  });
+  const closePickerAgent = useAgentElement<HTMLButtonElement>({
+    id: "picker-close",
+    role: "button",
+    label: t("common.close"),
+    group: "secrets-picker",
+    description: "Close the add-secret picker",
+    onActivate: onClose,
+  });
+
   return (
     <Dialog
       open
@@ -403,16 +503,19 @@ function SecretPicker({
             </DialogDescription>
           </div>
           <Button
+            ref={closePickerAgent.ref}
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-sm text-base text-muted hover:text-txt"
             onClick={onClose}
             aria-label={t("common.close")}
+            {...closePickerAgent.agentProps}
           >
             x
           </Button>
         </DialogHeader>
         <Input
+          ref={searchAgent.ref}
           type="text"
           className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none focus-visible:ring-0 font-body"
           placeholder={t("secretsview.SearchByKeyDescr")}
@@ -420,6 +523,7 @@ function SecretPicker({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           autoFocus
+          {...searchAgent.agentProps}
         />
         <div className="flex-1 overflow-y-auto p-3">
           {available.length === 0 ? (
@@ -463,14 +567,11 @@ function SecretPicker({
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="px-2.5 py-1 h-7 text-xs flex-shrink-0"
-                        onClick={() => onAdd(s.key)}
-                      >
-                        {t("common.add")}
-                      </Button>
+                      <SecretPickerAddButton
+                        secretKey={s.key}
+                        label={t("common.add")}
+                        onAdd={onAdd}
+                      />
                     </div>
                   );
                 })}
@@ -480,6 +581,37 @@ function SecretPicker({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SecretPickerAddButton({
+  secretKey,
+  label,
+  onAdd,
+}: {
+  secretKey: string;
+  label: string;
+  onAdd: (key: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `picker-add-${slugifyKey(secretKey)}`,
+    role: "button",
+    label: `Add ${secretKey}`,
+    group: "secrets-picker",
+    description: `Add the ${secretKey} secret to the vault`,
+    onActivate: () => onAdd(secretKey),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="default"
+      size="sm"
+      className="px-2.5 py-1 h-7 text-xs flex-shrink-0"
+      onClick={() => onAdd(secretKey)}
+      {...agentProps}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -513,6 +645,35 @@ function SecretCard({
   // Only show "Required" if an enabled plugin actually requires it
   const showRequired = secret.required && enabledPlugins.length > 0;
 
+  const slug = slugifyKey(secret.key);
+  const valueAgent = useAgentElement<HTMLInputElement>({
+    id: `secret-${slug}-value`,
+    role: "text-input",
+    label: secret.key,
+    group: "secrets-fields",
+    status: secret.isSet ? "active" : "inactive",
+    description: `Enter a new value for the ${secret.key} secret`,
+    getValue: () => draftValue,
+    onFill: onDraftChange,
+  });
+  const visibilityAgent = useAgentElement<HTMLButtonElement>({
+    id: `secret-${slug}-visibility`,
+    role: "toggle",
+    label: `${secret.key} value visibility`,
+    group: "secrets-fields",
+    status: isVisible ? "active" : "inactive",
+    description: `Show or hide the ${secret.key} value`,
+    onActivate: onToggleVisible,
+  });
+  const removeAgent = useAgentElement<HTMLButtonElement>({
+    id: `secret-${slug}-remove`,
+    role: "button",
+    label: `Remove ${secret.key}`,
+    group: "secrets-fields",
+    description: `Remove the ${secret.key} secret from the vault`,
+    onActivate: onRemove,
+  });
+
   return (
     <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 p-4">
       {/* Header row */}
@@ -539,11 +700,13 @@ function SecretCard({
           {/* Remove from vault — only if not set (set secrets always show) or if explicitly pinned */}
           {isPinned && !secret.isSet && (
             <Button
+              ref={removeAgent.ref}
               variant="ghost"
               size="sm"
               className="h-7 rounded-sm px-2 text-xs-tight text-muted hover:bg-danger/10 hover:text-danger"
               onClick={onRemove}
               title={t("secretsview.RemoveFromVault")}
+              {...removeAgent.agentProps}
             >
               x
             </Button>
@@ -571,6 +734,7 @@ function SecretCard({
       {/* Input */}
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Input
+          ref={valueAgent.ref}
           type={isVisible ? "text" : "password"}
           className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/30"
           placeholder={
@@ -578,13 +742,16 @@ function SecretCard({
           }
           value={draftValue}
           onChange={(e) => onDraftChange(e.target.value)}
+          {...valueAgent.agentProps}
         />
         <Button
+          ref={visibilityAgent.ref}
           variant="outline"
           size="sm"
           className="h-9 px-3 text-xs text-muted-strong hover:text-txt"
           onClick={onToggleVisible}
           title={isVisible ? "Hide" : "Show"}
+          {...visibilityAgent.agentProps}
         >
           {isVisible ? "Hide" : "Show"}
         </Button>

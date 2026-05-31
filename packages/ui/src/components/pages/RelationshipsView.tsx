@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { RelationshipsWorkspaceView } from "./relationships/RelationshipsWorkspaceView";
 
 export function RelationshipsView({
@@ -6,5 +7,9 @@ export function RelationshipsView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  return <RelationshipsWorkspaceView contentHeader={contentHeader} />;
+  return (
+    <ShellViewAgentSurface viewId="relationships">
+      <RelationshipsWorkspaceView contentHeader={contentHeader} />
+    </ShellViewAgentSurface>
+  );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
@@ -9,6 +10,7 @@ import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
 import { StatusBar } from "../stream/StatusBar";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const { agentStatus, t } = useApp();
@@ -88,96 +90,116 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     }
   }, [isElectrobun, streamLive]);
 
-  return (
-    <div
-      data-stream-view
-      className={`flex flex-col text-txt font-body ${
-        inModal ? "bg-transparent" : "bg-bg"
-      } h-full w-full`}
-    >
-      <StatusBar
-        agentName={agentName}
-        streamAvailable={streamAvailable}
-        streamLive={streamLive}
-        streamLoading={streamLoading}
-        onToggleStream={toggleStream}
-        uptime={uptime}
-        frameCount={frameCount}
-      />
+  useAgentElement<HTMLButtonElement>({
+    id: "stream-toggle",
+    role: "button",
+    label: streamLive ? "Stop Stream" : "Go Live",
+    group: "stream",
+    description: streamAvailable
+      ? "Start or stop the agent live stream"
+      : "Streaming plugin unavailable",
+    status: streamAvailable ? (streamLive ? "active" : "inactive") : "disabled",
+    onActivate: () => {
+      if (!streamAvailable || streamLoading) return;
+      void toggleStream();
+    },
+  });
 
-      <div className="flex flex-1 min-h-0 items-center justify-center">
-        {initialLoading && streamAvailable && !statusError ? (
-          <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
-            <div className="mx-auto mb-4 h-3 w-3 animate-pulse rounded-full bg-muted" />
-            <h2 className="text-lg font-semibold text-txt">
-              {t("streamview.LoadingStatus", {
-                defaultValue: "Checking stream status…",
-              })}
-            </h2>
-          </div>
-        ) : statusError && streamAvailable ? (
-          <div
-            role="alert"
-            className="max-w-lg rounded-sm border border-danger/45 bg-danger/8 p-6 text-center backdrop-blur-xl"
-          >
-            <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
-              {t("streamview.StatusError", {
-                defaultValue: "Stream status error",
-              })}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-danger">{statusError}</p>
-          </div>
-        ) : !streamAvailable ? (
-          <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
-            <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
-              {t("streamview.StreamingUnavailabl")}
-            </p>
-            <h2 className="mt-2 text-xl font-semibold text-txt">
-              {t("streamview.EnableTheStreaming")}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-muted">
-              {t("streamview.CouldNotRea")}{" "}
-              <code className="rounded-sm border border-border/45 bg-bg-hover px-1.5 py-0.5 text-xs text-txt-strong">
-                {t("streamview.streamingBase")}
-              </code>{" "}
-              {t("streamview.pluginThenReload")}
-            </p>
-            <p className="mt-4 text-xs text-muted">
-              {t("streamview.IfThePluginIsAlr")}
-            </p>
-          </div>
-        ) : (
-          <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+  return (
+    <ShellViewAgentSurface viewId="stream">
+      <div
+        data-stream-view
+        className={`flex flex-col text-txt font-body ${
+          inModal ? "bg-transparent" : "bg-bg"
+        } h-full w-full`}
+      >
+        <StatusBar
+          agentName={agentName}
+          streamAvailable={streamAvailable}
+          streamLive={streamLive}
+          streamLoading={streamLoading}
+          onToggleStream={toggleStream}
+          uptime={uptime}
+          frameCount={frameCount}
+        />
+
+        <div className="flex flex-1 min-h-0 items-center justify-center">
+          {initialLoading && streamAvailable && !statusError ? (
+            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+              <div className="mx-auto mb-4 h-3 w-3 animate-pulse rounded-full bg-muted" />
+              <h2 className="text-lg font-semibold text-txt">
+                {t("streamview.LoadingStatus", {
+                  defaultValue: "Checking stream status…",
+                })}
+              </h2>
+            </div>
+          ) : statusError && streamAvailable ? (
             <div
-              className={`mx-auto mb-4 h-3 w-3 rounded-full ${
-                streamLive
-                  ? "bg-danger ring-4 ring-danger/20 animate-pulse"
-                  : "bg-muted"
-              }`}
-            />
-            <h2 className="text-lg font-semibold text-txt">
-              {streamLive
-                ? t("streamview.StreamIsLive", {
-                    defaultValue: "Stream is Live",
-                  })
-                : t("streamview.StreamReady", {
-                    defaultValue: "Stream Ready",
-                  })}
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              {streamLive
-                ? t("streamview.StreamLiveStatus", {
-                    uptime: formatUptime(uptime),
-                    frameCount: frameCount.toLocaleString(),
-                    defaultValue: "Uptime: {{uptime}} · {{frameCount}} frames",
-                  })
-                : t("streamview.GoLiveHint", {
-                    defaultValue: "Press Go Live to start streaming.",
-                  })}
-            </p>
-          </div>
-        )}
+              role="alert"
+              className="max-w-lg rounded-sm border border-danger/45 bg-danger/8 p-6 text-center backdrop-blur-xl"
+            >
+              <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
+                {t("streamview.StatusError", {
+                  defaultValue: "Stream status error",
+                })}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-danger">
+                {statusError}
+              </p>
+            </div>
+          ) : !streamAvailable ? (
+            <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+              <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
+                {t("streamview.StreamingUnavailabl")}
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-txt">
+                {t("streamview.EnableTheStreaming")}
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                {t("streamview.CouldNotRea")}{" "}
+                <code className="rounded-sm border border-border/45 bg-bg-hover px-1.5 py-0.5 text-xs text-txt-strong">
+                  {t("streamview.streamingBase")}
+                </code>{" "}
+                {t("streamview.pluginThenReload")}
+              </p>
+              <p className="mt-4 text-xs text-muted">
+                {t("streamview.IfThePluginIsAlr")}
+              </p>
+            </div>
+          ) : (
+            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+              <div
+                className={`mx-auto mb-4 h-3 w-3 rounded-full ${
+                  streamLive
+                    ? "bg-danger ring-4 ring-danger/20 animate-pulse"
+                    : "bg-muted"
+                }`}
+              />
+              <h2 className="text-lg font-semibold text-txt">
+                {streamLive
+                  ? t("streamview.StreamIsLive", {
+                      defaultValue: "Stream is Live",
+                    })
+                  : t("streamview.StreamReady", {
+                      defaultValue: "Stream Ready",
+                    })}
+              </h2>
+              <p className="mt-2 text-sm text-muted">
+                {streamLive
+                  ? t("streamview.StreamLiveStatus", {
+                      uptime: formatUptime(uptime),
+                      frameCount: frameCount.toLocaleString(),
+                      defaultValue:
+                        "Uptime: {{uptime}} · {{frameCount}} frames",
+                    })
+                  : t("streamview.GoLiveHint", {
+                      defaultValue: "Press Go Live to start streaming.",
+                    })}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </ShellViewAgentSurface>
   );
 }
