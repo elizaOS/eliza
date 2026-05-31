@@ -87,11 +87,11 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
   },
   release: {
     description:
-      "Release a managed website block rule by id. Requires confirmed:true. harsh_no_bypass rules cannot be released through this path — they must wait for gate fulfillment.",
+      "Release a managed website block rule by id. Asks the user to confirm on a follow-up turn (reply yes) before releasing — an LLM-supplied confirmed flag is never authoritative. harsh_no_bypass rules cannot be released through this path — they must wait for gate fulfillment.",
     descriptionCompressed:
-      "release managed-block-rule(id) confirmed-true; harsh_no_bypass not releasable",
-    required: ["ruleId", "confirmed"],
-    optional: ["reason"],
+      "release managed-block-rule(id) two-turn-confirm; harsh_no_bypass not releasable",
+    required: ["ruleId"],
+    optional: ["reason", "confirmed"],
   },
   list_active: {
     description:
@@ -828,6 +828,16 @@ async function handleRelease(
     return {
       success: false,
       text: "BLOCK action=release requires a ruleId.",
+    };
+  }
+  // harsh_no_bypass rules can never be released by confirmation — reject up
+  // front so we don't offer a confirmation prompt that could never succeed.
+  const rule = await new BlockRuleReader(runtime).getBlockRuleById(ruleId);
+  if (rule?.gateType === "harsh_no_bypass") {
+    return {
+      success: false,
+      text: `Block rule ${ruleId} is harsh_no_bypass and cannot be released by confirmation — it must wait for gate fulfillment.`,
+      data: { actionName: ACTION_NAME, subaction: "release", ruleId },
     };
   }
   const releasePrompt = `Release website block rule ${ruleId}?`;
