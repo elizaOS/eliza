@@ -31,11 +31,14 @@ grep -Fq 'staged_bun_sha256' "${PROVENANCE}" ||
 
 mkdir -p "${INSTALL}/app" "${INSTALL}/bin" "${INSTALL}/app/node_modules"
 cp -a "${ARTIFACT_ROOT}/elizaos-app/." "${INSTALL}/app/"
-sha256sum -c "${ARTIFACT_ROOT}/elizaos-app.sha256"
+# elizaos-app.sha256 lists files relative to elizaos-app/ (e.g. ./agent-bundle.js,
+# ./musl-runtime/bun) — verify from inside that dir, not the hook's cwd.
+( cd "${ARTIFACT_ROOT}/elizaos-app" && sha256sum -c "${ARTIFACT_ROOT}/elizaos-app.sha256" )
 
 if [ -s "${ARTIFACT_ROOT}/bun" ]; then
     require_file "${ARTIFACT_ROOT}/bun.sha256"
-    sha256sum -c "${ARTIFACT_ROOT}/bun.sha256"
+    # bun.sha256 lists the path relative to the artifact root (elizaos-app/musl-runtime/bun).
+    ( cd "${ARTIFACT_ROOT}" && sha256sum -c "${ARTIFACT_ROOT}/bun.sha256" )
     install -m 0755 "${ARTIFACT_ROOT}/bun" "${INSTALL}/bin/bun"
 fi
 
