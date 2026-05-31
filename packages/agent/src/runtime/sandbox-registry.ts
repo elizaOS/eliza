@@ -188,7 +188,11 @@ export function buildSandboxRegistryFromEnv(
 ): SandboxRegistry | null {
   const redisUrl = env.SANDBOX_REGISTRY_REDIS_URL?.trim();
   const redisToken = env.SANDBOX_REGISTRY_REDIS_TOKEN?.trim();
-  const agentId = env.SANDBOX_AGENT_ID?.trim();
+  // The routing key MUST be the platform character_id (SANDBOX_ROUTE_AGENT_ID)
+  // so it matches what the gateways resolve. Fall back to the sandbox id only
+  // when the route id is not injected (older provisioner).
+  const agentId =
+    env.SANDBOX_ROUTE_AGENT_ID?.trim() || env.SANDBOX_AGENT_ID?.trim();
   const serverName = env.SANDBOX_SERVER_NAME?.trim();
   const serverUrl = env.SANDBOX_PUBLIC_URL?.trim();
 

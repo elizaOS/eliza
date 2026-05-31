@@ -777,6 +777,10 @@ export class ElizaSandboxService {
             !Array.isArray(rec.agent_config)
               ? (rec.agent_config as Record<string, unknown>)
               : undefined,
+          // Path A: the gateways route by character_id, so the container must
+          // register under, and answer as, that id (see
+          // SANDBOX_ROUTE_AGENT_ID injection).
+          routeAgentId: rec.character_id ?? undefined,
           snapshotId: rec.snapshot_id ?? undefined,
           dockerImage: rec.docker_image ?? undefined,
         });

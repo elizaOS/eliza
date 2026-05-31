@@ -452,7 +452,8 @@ export class DockerSandboxProvider implements SandboxProvider {
    * method wraps this in a retry loop to handle port collisions automatically.
    */
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
-    const { agentId, agentName, environmentVars, organizationId, agentConfig } = config;
+    const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
+      config;
 
     // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -702,6 +703,10 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
               SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
               SANDBOX_AGENT_ID: agentId,
+              // The gateways route by the platform character_id, so the
+              // container must register under (and answer as) that id, not
+              // the sandbox id. Injected only when the caller provides it.
+              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
               SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }

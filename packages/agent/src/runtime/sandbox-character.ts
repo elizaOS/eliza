@@ -16,7 +16,8 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { AgentConfig, ElizaConfig } from "../config/config.ts";
+import type { AgentConfig } from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.ts";
 
 /** Raw character shape as stored in `agent_sandboxes.agent_config`. */
 interface SandboxCharacterJson {
@@ -43,6 +44,21 @@ function asStringArray(value: unknown): string[] | undefined {
   }
   if (typeof value === "string" && value.trim()) return [value];
   return undefined;
+}
+
+/**
+ * Resolve the routing agent id for this container: the id the gateways use to
+ * resolve `agent:<id>:server` and to address `/agents/<id>/message`. This MUST
+ * be the platform `character_id` (the same value the gateway's
+ * `discord_connections.character_id` carries), not the sandbox id. The
+ * provisioner injects it as SANDBOX_ROUTE_AGENT_ID. Falls back to null when
+ * absent (non-provisioned runtime), in which case the runtime keeps its
+ * name-derived agent id.
+ */
+export function resolveSandboxRouteAgentId(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  return env.SANDBOX_ROUTE_AGENT_ID?.trim() || null;
 }
 
 /**
@@ -79,8 +95,12 @@ export function applySandboxCharacterFromEnv(
     return config;
   }
 
-  // A stable id keeps memory/rooms consistent across container restarts.
+  // The id MUST be the routing character_id so the runtime's agentId matches
+  // what the gateways resolve (`agent:<id>:server`) and address
+  // (`/agents/<id>/message`). Fall back to the embedded character id, then
+  // the sandbox id, then a name-derived slug.
   const id =
+    resolveSandboxRouteAgentId(env) ||
     (typeof parsed.id === "string" && parsed.id.trim()) ||
     env.SANDBOX_AGENT_ID?.trim() ||
     name.toLowerCase().replace(/\s+/g, "-");

@@ -3600,13 +3600,23 @@ export async function startEliza(
   // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
   // container boots AS that character (e.g. "Nyx") instead of the bundled
   // default preset. No-op when the env var is absent.
+  let sandboxRouteAgentId: string | null = null;
   {
-    const { applySandboxCharacterFromEnv } = await import(
-      "./sandbox-character.ts"
-    );
+    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
+      await import("./sandbox-character.ts");
     applySandboxCharacterFromEnv(config);
+    sandboxRouteAgentId = resolveSandboxRouteAgentId();
   }
   const character = buildCharacterFromConfig(config);
+
+  // Pin the runtime agent id to the platform character_id so the gateways can
+  // resolve `agent:<id>:server` and address `/agents/<id>/message` against
+  // this container. Without this the runtime would derive an id from the
+  // character name (stringToUuid(name)) which the gateway does not know.
+  // Scoped to provisioned containers via the route-id env var.
+  if (sandboxRouteAgentId) {
+    character.id = sandboxRouteAgentId as UUID;
+  }
 
   const primaryModel = resolvePrimaryModel(config);
   const preferredProviderId = resolvePreferredProviderId(config);
