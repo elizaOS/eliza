@@ -18,6 +18,8 @@ const shouldInstallGeneratedFullstack =
 const shouldSmokeEject = process.env.ELIZAOS_SMOKE_EJECT === "1";
 const shouldUseRemoteUpstream =
   process.env.ELIZAOS_SMOKE_REMOTE_UPSTREAM === "1";
+const shouldSkipGlobalInstall =
+  process.env.ELIZAOS_SMOKE_SKIP_GLOBAL_INSTALL === "1";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
 const elizaosBinName = process.platform === "win32" ? "elizaos.cmd" : "elizaos";
@@ -81,6 +83,31 @@ function installCliPackage(smokeDir, tarballPath) {
   run(bunCommand, ["add", tarballPath], { cwd: smokeDir });
 }
 
+function installCliPackageGlobally(prefixDir, tarballPath) {
+  if (commandExists(npmCommand)) {
+    run(npmCommand, [
+      "install",
+      "--global",
+      "--prefix",
+      prefixDir,
+      "--no-audit",
+      "--no-fund",
+      tarballPath,
+    ]);
+    return;
+  }
+
+  if (!commandExists(bunCommand)) {
+    throw new Error(
+      "Neither npm nor bun is available for global packaged smoke test",
+    );
+  }
+
+  run(bunCommand, ["add", "--global", tarballPath], {
+    env: { ...process.env, BUN_INSTALL: prefixDir },
+  });
+}
+
 function getTarballName(output) {
   const lines = output
     .split(/\r?\n/)
@@ -99,6 +126,14 @@ function getInstalledCli(smokeDir) {
   return path.join(smokeDir, "node_modules", ".bin", elizaosBinName);
 }
 
+function getGloballyInstalledCli(prefixDir) {
+  const binPath =
+    process.platform === "win32"
+      ? elizaosBinName
+      : path.join("bin", elizaosBinName);
+  return path.join(prefixDir, binPath);
+}
+
 function assertPathExists(targetPath) {
   if (!fs.existsSync(targetPath)) {
     throw new Error(`Expected path to exist: ${targetPath}`);
@@ -115,6 +150,20 @@ function runCli(smokeDir, cwd, args) {
   return run(getInstalledCli(smokeDir), args, { cwd, env: cliEnv });
 }
 
+function runGlobalCli(prefixDir, cwd, args) {
+  return run(getGloballyInstalledCli(prefixDir), args, { cwd, env: cliEnv });
+}
+
+function smokeGlobalInstall(tarballPath) {
+  const prefixDir = path.join(tmpRoot, "global");
+  fs.mkdirSync(prefixDir, { recursive: true });
+  installCliPackageGlobally(prefixDir, tarballPath);
+
+  const globalCli = getGloballyInstalledCli(prefixDir);
+  assertPathExists(globalCli);
+  runGlobalCli(prefixDir, tmpRoot, ["--version"]);
+}
+
 function main() {
   let passed = false;
 
@@ -126,6 +175,11 @@ function main() {
     const tarballPath = path.isAbsolute(tarballName)
       ? tarballName
       : path.join(tmpRoot, tarballName);
+
+    if (!shouldSkipGlobalInstall) {
+      smokeGlobalInstall(tarballPath);
+    }
+
     const smokeDir = path.join(tmpRoot, "smoke");
     fs.mkdirSync(smokeDir, { recursive: true });
     fs.writeFileSync(
