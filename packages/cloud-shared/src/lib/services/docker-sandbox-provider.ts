@@ -172,9 +172,11 @@ function shouldInstallStewardPlugin(
 }
 
 export function requiresHeadscaleRoute(
-  env: Partial<
-    Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>
-  > = process.env,
+  env: Partial<Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>> = {
+    HEADSCALE_API_KEY: getCloudAwareEnv().HEADSCALE_API_KEY,
+    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
+      getCloudAwareEnv().AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+  },
 ): boolean {
   if (!env.HEADSCALE_API_KEY?.trim()) return false;
   return !(
@@ -895,6 +897,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         nodeId,
       });
+      await ssh
+        .exec(
+          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          DOCKER_CMD_TIMEOUT_MS,
+        )
+        .then(() => {
+          logger.info(
+            `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
+          );
+        })
+        .catch((cleanupErr) => {
+          logger.warn(
+            `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        });
       await this.stop(containerName).catch((cleanupErr) => {
         const cleanupMessage =
           cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
