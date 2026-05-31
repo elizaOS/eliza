@@ -97,26 +97,26 @@ def build_components(spec: RobotSpec | None = None) -> list[Component]:
     # --- trunk electronics (inside the torso cavity, stacked along z) ---
     comps += [
         Component("battery_pack", "torso", "battery", "box",
-                  (0.075, 0.050, 0.030), {"pos": (0.0, 0.0, 0.055)}, 2.2,
-                  "custom 13S Li-ion ~400 Wh"),
+                  (0.075, 0.050, 0.030), {"pos": (0.0, 0.0, 0.110)}, 2.2,
+                  "custom 13S Li-ion ~400 Wh, above the waist-pitch motor"),
         Component("compute_jetson", "torso", "compute", "box",
-                  (0.050, 0.040, 0.015), {"pos": (0.0, 0.0, 0.150)}, 0.18,
+                  (0.050, 0.040, 0.015), {"pos": (0.0, 0.0, 0.200)}, 0.18,
                   "Jetson Orin Nano + carrier"),
         Component("power_distribution", "torso", "pdb", "box",
-                  (0.050, 0.040, 0.012), {"pos": (0.0, 0.0, 0.210)}, 0.30,
+                  (0.050, 0.040, 0.012), {"pos": (0.0, 0.0, 0.270)}, 0.30,
                   "PDB + DC-DC buck stages"),
         Component("spine_harness", "torso", "harness", "cylinder",
-                  (0.015,), {"fromto": (0.0, 0.10, 0.020, 0.0, 0.10, 0.380)}, 0.60,
+                  (0.015,), {"fromto": (0.0, 0.10, 0.060, 0.0, 0.10, 0.400)}, 0.60,
                   "main wiring bundle routed up the left side, clear of the battery stack"),
     ]
     # IMU at the pelvis origin (matches the MJCF imu_site)
     comps.append(Component("imu_bmi088", "pelvis", "imu", "box",
                            (0.011, 0.008, 0.004), {"pos": (0.0, 0.0, 0.0)}, 0.01,
                            "Bosch BMI088 on a small PCB"))
-    # head camera at the front of the head shell
-    comps.append(Component("head_camera", "head", "camera", "box",
-                           (0.038, 0.012, 0.012), {"pos": (0.040, 0.0, 0.085)}, 0.072,
-                           "Intel RealSense D435i behind the face"))
+    # depth camera at the upper front of the torso (head removed)
+    comps.append(Component("torso_camera", "torso", "camera", "box",
+                           (0.030, 0.012, 0.012), {"pos": (0.050, 0.0, 0.340)}, 0.072,
+                           "Intel RealSense D435i in the upper chest"))
 
     # --- toe cable drive: winch in the shank, pulley at the ankle (per foot) ---
     for side in ("left", "right"):

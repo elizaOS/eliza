@@ -3,9 +3,9 @@
   "ok": true,
   "method": "closed-form: tube von Mises + Euler buckling, box beam bending, housing wall shear, bearing static rating, cable tension, bolt-circle shear",
   "loads": {
-    "robot_weight_n": 274.2,
+    "robot_weight_n": 266.8,
     "dynamic_load_factor": 2.5,
-    "single_leg_axial_n": 685.5
+    "single_leg_axial_n": 666.9
   },
   "min_safety_factor": 4.8,
   "worst_part": "high",
@@ -43,12 +43,12 @@
       "wall_mm": 3.0,
       "length_mm": 420.0,
       "bending_mpa": 0.76,
-      "axial_mpa": 0.63,
+      "axial_mpa": 0.61,
       "torsion_mpa": 0.11,
-      "von_mises_mpa": 1.4,
+      "von_mises_mpa": 1.38,
       "allowable_mpa": 55.0,
-      "buckling_sf": 1425.8,
-      "safety_factor": 39.34,
+      "buckling_sf": 1465.5,
+      "safety_factor": 39.82,
       "pass": true
     },
     {
@@ -72,12 +72,12 @@
       "wall_mm": 3.0,
       "length_mm": 420.0,
       "bending_mpa": 5.53,
-      "axial_mpa": 0.76,
+      "axial_mpa": 0.74,
       "torsion_mpa": 0.83,
-      "von_mises_mpa": 6.45,
+      "von_mises_mpa": 6.43,
       "allowable_mpa": 55.0,
-      "buckling_sf": 808.2,
-      "safety_factor": 8.53,
+      "buckling_sf": 830.7,
+      "safety_factor": 8.56,
       "pass": true
     },
     {
@@ -161,12 +161,12 @@
       "wall_mm": 3.0,
       "length_mm": 420.0,
       "bending_mpa": 0.76,
-      "axial_mpa": 0.63,
+      "axial_mpa": 0.61,
       "torsion_mpa": 0.11,
-      "von_mises_mpa": 1.4,
+      "von_mises_mpa": 1.38,
       "allowable_mpa": 55.0,
-      "buckling_sf": 1425.8,
-      "safety_factor": 39.34,
+      "buckling_sf": 1465.5,
+      "safety_factor": 39.82,
       "pass": true
     },
     {
@@ -190,12 +190,12 @@
       "wall_mm": 3.0,
       "length_mm": 420.0,
       "bending_mpa": 5.53,
-      "axial_mpa": 0.76,
+      "axial_mpa": 0.74,
       "torsion_mpa": 0.83,
-      "von_mises_mpa": 6.45,
+      "von_mises_mpa": 6.43,
       "allowable_mpa": 55.0,
-      "buckling_sf": 808.2,
-      "safety_factor": 8.53,
+      "buckling_sf": 830.7,
+      "safety_factor": 8.56,
       "pass": true
     },
     {
@@ -244,6 +244,30 @@
       "bending_mpa": 0.39,
       "allowable_mpa": 55.0,
       "safety_factor": 139.33,
+      "pass": true
+    },
+    {
+      "part": "spine_shell",
+      "class": "housing",
+      "material": "PA6_GF30",
+      "radius_mm": 50.0,
+      "wall_mm": 3.0,
+      "torque_nm": 24.0,
+      "wall_shear_mpa": 0.51,
+      "shear_allowable_mpa": 31.7,
+      "safety_factor": 62.31,
+      "pass": true
+    },
+    {
+      "part": "torso_pitch_shell",
+      "class": "housing",
+      "material": "PA6_GF30",
+      "radius_mm": 50.0,
+      "wall_mm": 3.0,
+      "torque_nm": 24.0,
+      "wall_shear_mpa": 0.51,
+      "shear_allowable_mpa": 31.7,
+      "safety_factor": 62.31,
       "pass": true
     },
     {
@@ -317,30 +341,6 @@
       "pass": true
     },
     {
-      "part": "left_wrist_shell",
-      "class": "housing",
-      "material": "PC_ABS",
-      "radius_mm": 44.0,
-      "wall_mm": 2.5,
-      "torque_nm": 10.0,
-      "wall_shear_mpa": 0.33,
-      "shear_allowable_mpa": 10.4,
-      "safety_factor": 31.58,
-      "pass": true
-    },
-    {
-      "part": "left_hand_shell",
-      "class": "box",
-      "group": "ARM",
-      "material": "PC_ABS",
-      "wall_mm": 2.5,
-      "applied_moment_nm": 10.0,
-      "bending_mpa": 0.56,
-      "allowable_mpa": 18.0,
-      "safety_factor": 32.4,
-      "pass": true
-    },
-    {
       "part": "right_shoulder_shell",
       "class": "housing",
       "material": "PC_ABS",
@@ -397,63 +397,15 @@
       "buckling_sf": Infinity,
       "safety_factor": 7.39,
       "pass": true
-    },
-    {
-      "part": "right_wrist_shell",
-      "class": "housing",
-      "material": "PC_ABS",
-      "radius_mm": 44.0,
-      "wall_mm": 2.5,
-      "torque_nm": 10.0,
-      "wall_shear_mpa": 0.33,
-      "shear_allowable_mpa": 10.4,
-      "safety_factor": 31.58,
-      "pass": true
-    },
-    {
-      "part": "right_hand_shell",
-      "class": "box",
-      "group": "ARM",
-      "material": "PC_ABS",
-      "wall_mm": 2.5,
-      "applied_moment_nm": 10.0,
-      "bending_mpa": 0.56,
-      "allowable_mpa": 18.0,
-      "safety_factor": 32.4,
-      "pass": true
-    },
-    {
-      "part": "neck_shell",
-      "class": "housing",
-      "material": "PC_ABS",
-      "radius_mm": 40.0,
-      "wall_mm": 2.5,
-      "torque_nm": 10.0,
-      "wall_shear_mpa": 0.4,
-      "shear_allowable_mpa": 10.4,
-      "safety_factor": 26.1,
-      "pass": true
-    },
-    {
-      "part": "head_shell",
-      "class": "housing",
-      "material": "PC_ABS",
-      "radius_mm": 115.0,
-      "wall_mm": 2.5,
-      "torque_nm": 10.0,
-      "wall_shear_mpa": 0.05,
-      "shear_allowable_mpa": 10.4,
-      "safety_factor": 215.76,
-      "pass": true
     }
   ],
   "bearings": {
     "part": "crossed_roller_bearings",
     "class": "bearing",
     "count": 6,
-    "load_n": 342.8,
+    "load_n": 333.5,
     "static_rating_n": 10000.0,
-    "safety_factor": 29.2,
+    "safety_factor": 30.0,
     "pass": true
   },
   "tendons": {

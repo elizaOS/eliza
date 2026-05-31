@@ -123,6 +123,7 @@ class Dimensions:
     thigh_length: float = 0.42          # knee -> hip
     hip_half_width: float = 0.105       # pelvis center -> hip joint (y)
     pelvis_to_waist: float = 0.06       # hip line -> waist yaw joint
+    spine_length: float = 0.12          # waist yaw -> waist pitch (torso) joint
     waist_to_shoulder: float = 0.44     # waist -> shoulder line
     shoulder_half_width: float = 0.21   # spine -> shoulder joint (y); wider than chest so arms clear
     shoulder_to_neck: float = 0.07      # shoulder line -> neck base
@@ -258,8 +259,9 @@ class RobotSpec:
 
     @property
     def standing_height_m(self) -> float:
-        head = self.body("head")
-        return head.world_pos[2] + self.dims.head_radii[2]
+        # head removed; the shoulder line is the top of the torso assembly
+        torso = self.body("torso")
+        return torso.world_pos[2] + self.dims.waist_to_shoulder
 
     @property
     def pelvis_height_m(self) -> float:
@@ -282,13 +284,11 @@ _RANGES: dict[str, tuple[float, float, float]] = {
     "ankle_roll": (-0.3, 0.3, 0.0),
     "toe": (-0.6, 0.2, 0.0),
     "waist_yaw": (-1.0, 1.0, 0.0),
+    "waist_pitch": (-0.5, 0.8, 0.0),
     "shoulder_pitch": (-3.0, 1.5, 0.0),
     "shoulder_roll": (-1.6, 1.6, 0.0),
     "shoulder_yaw": (-1.6, 1.6, 0.0),
     "elbow": (0.0, 2.5, 0.3),
-    "wrist_yaw": (-2.0, 2.0, 0.0),
-    "neck_yaw": (-1.2, 1.2, 0.0),
-    "neck_pitch": (-0.6, 0.6, 0.0),
 }
 
 _AXES: dict[str, Vec3] = {
@@ -308,13 +308,11 @@ _TIER: dict[str, ActuatorTier] = {
     "ankle_pitch": "mid",
     "ankle_roll": "mid",
     "waist_yaw": "mid",
+    "waist_pitch": "mid",
     "shoulder_pitch": "mid",
     "shoulder_roll": "mid",
     "shoulder_yaw": "mid",
     "elbow": "mid",
-    "wrist_yaw": "low",
-    "neck_yaw": "low",
-    "neck_pitch": "low",
     "toe": "low",
 }
 
@@ -549,21 +547,6 @@ def build_spec(dims: Dimensions = DIMENSIONS) -> RobotSpec:
             ),
         ))
         idx += 1
-        bodies.append(Body(
-            name=f"{side}_wrist_yaw",
-            parent=f"{side}_elbow",
-            pos=(0.0, 0.0, -0.26),
-            group="ARM",
-            joint=_joint(f"{side}_wrist_yaw_joint", idx, "wrist_yaw", "ARM"),
-            actuator_tier="low",
-            geoms=(
-                _housing(f"{side}_wrist_shell", d, "low", "PC_ABS", wall),
-                Geom(name=f"{side}_hand_shell", type="box",
-                     material_key="PC_ABS", wall_mm=wall, size=d.hand_half,
-                     pos=(0.0, 0.0, -0.085)),
-            ),
-        ))
-        idx += 1
 
     # --- floating base: pelvis ---
     bodies.append(Body(
@@ -580,50 +563,37 @@ def build_spec(dims: Dimensions = DIMENSIONS) -> RobotSpec:
     leg("left", +1.0)
     leg("right", -1.0)
 
-    # --- torso via waist yaw (index 12) ---
+    # --- waist: 2-DOF spine separating the torso from the pelvis ---
+    # pelvis -> waist_yaw (spine link, twist) -> waist_pitch (torso, lean)
     bodies.append(Body(
-        name="torso",
+        name="spine",
         parent="pelvis",
         pos=(0.0, 0.0, d.pelvis_to_waist),
         group="TORSO",
         joint=_joint("waist_yaw_joint", idx, "waist_yaw", "TORSO"),
         actuator_tier="mid",
-        geoms=(Geom(name="torso_shell", type="box", material_key="PA6_GF30",
-                    wall_mm=d.load_wall_mm, size=d.torso_half,
-                    pos=(0.0, 0.0, d.torso_half[2])),),
+        geoms=(_housing("spine_shell", d, "mid", "PA6_GF30", d.load_wall_mm),),
+    ))
+    idx += 1
+    bodies.append(Body(
+        name="torso",
+        parent="spine",
+        pos=(0.0, 0.0, d.spine_length),
+        group="TORSO",
+        joint=_joint("waist_pitch_joint", idx, "waist_pitch", "TORSO"),
+        actuator_tier="mid",
+        geoms=(
+            _housing("torso_pitch_shell", d, "mid", "PA6_GF30", d.load_wall_mm),
+            Geom(name="torso_shell", type="box", material_key="PA6_GF30",
+                 wall_mm=d.load_wall_mm, size=d.torso_half,
+                 pos=(0.0, 0.0, d.torso_half[2])),
+        ),
     ))
     idx += 1
 
-    # --- arms (indices 13..22) ---
+    # --- arms attach to the torso ---
     arm("left", +1.0)
     arm("right", -1.0)
-
-    # --- head via neck (indices 23,24) ---
-    neck_z = d.waist_to_shoulder + d.shoulder_to_neck
-    bodies.append(Body(
-        name="neck",
-        parent="torso",
-        pos=(0.0, 0.0, neck_z),
-        group="HEAD",
-        joint=_joint("neck_yaw_joint", idx, "neck_yaw", "HEAD"),
-        actuator_tier="low",
-        geoms=(Geom(name="neck_shell", type="cylinder", material_key="PC_ABS",
-                    wall_mm=d.shell_wall_mm, size=(d.neck_radius,),
-                    fromto=(0.0, 0.0, 0.0, 0.0, 0.0, d.neck_length)),),
-    ))
-    idx += 1
-    bodies.append(Body(
-        name="head",
-        parent="neck",
-        pos=(0.0, 0.0, d.neck_length),
-        group="HEAD",
-        joint=_joint("neck_pitch_joint", idx, "neck_pitch", "HEAD"),
-        actuator_tier="low",
-        geoms=(Geom(name="head_shell", type="ellipsoid", material_key="PC_ABS",
-                    wall_mm=d.shell_wall_mm, size=d.head_radii,
-                    pos=(0.0, 0.0, d.head_radii[2])),),
-    ))
-    idx += 1
 
     # --- compute world positions by walking the tree ---
     by_name = {b.name: b for b in bodies}

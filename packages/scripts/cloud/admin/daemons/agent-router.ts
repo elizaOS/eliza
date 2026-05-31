@@ -3,7 +3,10 @@
  * Agent Router daemon.
  *
  * Resolves agent id → headscale IP / bridge port / web UI port for the nginx
- * Lua subdomain router.
+ * Lua subdomain router. Routing requires a persisted headscale_ip by default;
+ * legacy bridge-host fallback is opt-in because public host + dynamic port
+ * metadata is not a reliable ingress target after the Hetzner/control-plane
+ * split.
  *
  * Usage:
  *   npx tsx packages/scripts/daemons/agent-router.ts
@@ -79,8 +82,13 @@ interface SandboxRoutingFields {
   web_ui_port?: number | null;
 }
 
+interface SandboxRoutingOptions {
+  allowBridgeHostFallback?: boolean;
+}
+
 export function resolveSandboxRouting(
   sandbox: SandboxRoutingFields | null | undefined,
+  options: SandboxRoutingOptions = {},
 ): RoutingResponse | null {
   if (!sandbox || sandbox.status !== "running" || !sandbox.web_ui_port) {
     return null;
@@ -88,7 +96,7 @@ export function resolveSandboxRouting(
 
   let bridgePort: number | null = null;
   let bridgeHost: string | null = null;
-  if (sandbox.bridge_url) {
+  if (options.allowBridgeHostFallback && sandbox.bridge_url) {
     try {
       const parsed = new URL(sandbox.bridge_url);
       bridgeHost = parsed.hostname || null;
@@ -114,12 +122,23 @@ export function resolveSandboxRouting(
   };
 }
 
+export function isBridgeHostFallbackEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
+  );
+}
+
 export async function resolveAgentRouting(
   agentId: string,
 ): Promise<RoutingResponse | null> {
   const { agentSandboxesRepository } = await loadDeps();
   const sandbox = await agentSandboxesRepository.findById(agentId);
-  return resolveSandboxRouting(sandbox);
+  return resolveSandboxRouting(sandbox, {
+    allowBridgeHostFallback: isBridgeHostFallbackEnabled(),
+  });
 }
 
 const AGENT_ID_RE =

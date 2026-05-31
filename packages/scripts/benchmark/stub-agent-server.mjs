@@ -15,17 +15,20 @@
  *
  * Usage:
  *   node packages/scripts/benchmark/stub-agent-server.mjs [--port 31337]
+ *     [--require-installed-models]
  */
 
 import http from "node:http";
 import process from "node:process";
 
 function parseArgs(argv) {
-  const out = { port: 31337 };
+  const out = { port: 31337, requireInstalledModels: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--port") {
       out.port = Number(argv[i + 1]);
       i += 1;
+    } else if (argv[i] === "--require-installed-models") {
+      out.requireInstalledModels = true;
     }
   }
   return out;
@@ -36,6 +39,8 @@ function sleep(ms) {
 }
 
 const conversations = new Map();
+const installedModels = new Map();
+const downloads = new Map();
 let activeModel = null;
 
 async function readJson(req) {
@@ -66,6 +71,37 @@ function syntheticReply(prompt) {
   return `[stub reply] echo of ${prompt.length}-char prompt: ${prompt.slice(0, 40)}... (${len} synthetic chars)`;
 }
 
+function installedModel(modelId) {
+  return {
+    id: modelId,
+    displayName: modelId,
+    path: `/stub/models/${modelId}.gguf`,
+    source: "eliza-download",
+    installedAt: new Date().toISOString(),
+  };
+}
+
+function installModel(modelId) {
+  const model = installedModel(modelId);
+  installedModels.set(modelId, model);
+  return model;
+}
+
+function completedDownload(modelId) {
+  const now = new Date().toISOString();
+  return {
+    jobId: `stub-download:${modelId}`,
+    modelId,
+    state: "completed",
+    received: 1024,
+    total: 1024,
+    bytesPerSec: 0,
+    etaMs: 0,
+    startedAt: now,
+    updatedAt: now,
+  };
+}
+
 const args = parseArgs(process.argv.slice(2));
 
 const server = http.createServer(async (req, res) => {
@@ -78,11 +114,41 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { status: "ok" });
     }
 
+    if (method === "GET" && pathname === "/api/local-inference/installed") {
+      return sendJson(res, 200, {
+        models: Array.from(installedModels.values()),
+      });
+    }
+
+    if (method === "GET" && pathname === "/api/local-inference/hub") {
+      return sendJson(res, 200, {
+        catalog: [],
+        installed: Array.from(installedModels.values()),
+        downloads: Array.from(downloads.values()),
+        active: activeModel,
+      });
+    }
+
+    if (method === "POST" && pathname === "/api/local-inference/downloads") {
+      const body = await readJson(req);
+      const modelId = body?.modelId;
+      if (typeof modelId !== "string") {
+        return sendJson(res, 400, { error: "modelId required" });
+      }
+      installModel(modelId);
+      const job = completedDownload(modelId);
+      downloads.set(modelId, job);
+      return sendJson(res, 202, { job });
+    }
+
     if (method === "POST" && pathname === "/api/local-inference/active") {
       const body = await readJson(req);
       const modelId = body?.modelId;
       if (typeof modelId !== "string") {
         return sendJson(res, 400, { error: "modelId required" });
+      }
+      if (args.requireInstalledModels && !installedModels.has(modelId)) {
+        return sendJson(res, 404, { error: `Model not installed: ${modelId}` });
       }
       // Simulate variable model load times.
       await sleep(modelId.includes("8b") ? 350 : 120);

@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from eliza_robot.erobot.components import build_components
-from eliza_robot.erobot.meshlib import component_mesh, primitive_mesh
+from eliza_robot.erobot.meshlib import component_mesh, primitive_mesh, visual_mesh_for
 from eliza_robot.erobot.mjcf import _MATERIAL_RGBA, write_models
 from eliza_robot.erobot.spec import RobotSpec, build_spec
 
@@ -62,7 +62,7 @@ def render_parts_grid(spec: RobotSpec, out: Path) -> Path:
     fig = plt.figure(figsize=(cols * 2.0, rows * 2.0))
     for i, g in enumerate(shells):
         ax = fig.add_subplot(rows, cols, i + 1, projection="3d")
-        mesh = primitive_mesh(g)
+        mesh = visual_mesh_for(g)
         _mesh_polys(ax, mesh, _rgba(g.material_key), alpha=1.0, edge="#222222")
         _equal_box(ax, mesh.bounds)
         ax.set_title(g.name.replace("_shell", "").replace("_", " "), fontsize=5)
@@ -76,7 +76,7 @@ def render_parts_grid(spec: RobotSpec, out: Path) -> Path:
 
 def _placed(spec: RobotSpec, g, body, explode: float = 0.0):
     """Mesh placed at the body's world origin, optionally exploded radially."""
-    mesh = primitive_mesh(g).copy()
+    mesh = visual_mesh_for(g).copy()
     wp = np.array(body.world_pos)
     if explode:
         direction = wp - np.array([0.0, 0.0, wp[2]])  # radial in xy
@@ -114,7 +114,8 @@ def render_internals(spec: RobotSpec, out: Path) -> Path:
     for c in build_components(spec):
         comps_by_body.setdefault(c.body, []).append(c)
 
-    show = ["torso", "left_hip_pitch", "left_knee", "left_ankle_roll", "left_toe", "head"]
+    show = ["torso", "left_hip_pitch", "left_knee", "left_ankle_roll", "left_toe",
+            "left_shoulder_pitch"]
     fig = plt.figure(figsize=(len(show) * 2.4, 3.0))
     for i, body_name in enumerate(show):
         body = spec.body(body_name)
@@ -195,15 +196,52 @@ def render_rom_filmstrip(spec: RobotSpec, out: Path) -> Path:
     return out
 
 
+def render_views(spec: RobotSpec, out: Path) -> Path:
+    """Front / three-quarter / side studio views of the assembled robot."""
+    import mujoco
+
+    model = mujoco.MjModel.from_xml_path(str(write_models(spec)["scene"]))
+    data = mujoco.MjData(model)
+    mujoco.mj_resetDataKeyframe(model, data, 0)
+    for _ in range(500):
+        mujoco.mj_step(model, data)
+    renderer = mujoco.Renderer(model, height=900, width=520)
+
+    def shot(az: float, el: float) -> np.ndarray:
+        cam = mujoco.MjvCamera()
+        cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        cam.lookat[:] = [0.0, 0.0, 0.85]
+        cam.distance = 3.2
+        cam.azimuth = az
+        cam.elevation = el
+        renderer.update_scene(data, camera=cam)
+        return renderer.render()
+
+    views = [("front", shot(90, -8)), ("three-quarter", shot(140, -10)), ("side", shot(180, -8))]
+    fig, axes = plt.subplots(1, 3, figsize=(9, 5.5))
+    for ax, (label, img) in zip(axes, views, strict=True):
+        ax.imshow(img)
+        ax.set_title(label, fontsize=9)
+        ax.axis("off")
+    fig.suptitle("erobot — tapered limbs, rounded shells, molded-plastic finish", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out, dpi=120)
+    plt.close(fig)
+    return out
+
+
 def render_all(spec: RobotSpec | None = None) -> dict[str, Path]:
     matplotlib.use("Agg")  # headless mesh rendering
     spec = spec or build_spec()
     VISUAL_ROOT.mkdir(parents=True, exist_ok=True)
+    from eliza_robot.erobot.transmission import render_characterization
     out = {
+        "views": render_views(spec, VISUAL_ROOT / "erobot_views.png"),
         "parts_grid": render_parts_grid(spec, VISUAL_ROOT / "parts_grid.png"),
         "exploded": render_exploded(spec, VISUAL_ROOT / "exploded.png"),
         "internals": render_internals(spec, VISUAL_ROOT / "internals.png"),
         "rom_filmstrip": render_rom_filmstrip(spec, VISUAL_ROOT / "rom_filmstrip.png"),
+        "transmission": render_characterization(spec, VISUAL_ROOT / "transmission.png"),
     }
     return out
 

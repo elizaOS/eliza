@@ -8,7 +8,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type * as React from "react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Homescreen } from "../../homescreen/Homescreen";
 import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
@@ -39,6 +39,14 @@ function phaseForMode(mode: VoiceWaveformMode): HomescreenPhase {
   return "idle";
 }
 
+// There is no on-screen edit button. Edit mode is entered by typing "/edit" or
+// by asking (typed or voiced) to "edit the homescreen". Matches both phrasings.
+function editCommandMatches(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "/edit") return true;
+  return /edit (the )?home\s?screen/.test(normalized);
+}
+
 // The home hero background: the editable WebGL homescreen canvas. Memoized on
 // its inputs so the renderer never re-renders on the composer's keystroke/focus
 // churn — only when the voice phase, audio source, or transcripts change.
@@ -48,12 +56,14 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   userText,
   assistantText,
   onEditModeChange,
+  editRequestNonce,
 }: {
   mode: VoiceWaveformMode;
   analyser: FrequencyAnalyser | null;
   userText: string;
   assistantText: string;
   onEditModeChange: (editing: boolean) => void;
+  editRequestNonce: number;
 }): React.JSX.Element {
   return (
     <Homescreen
@@ -62,6 +72,7 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
       userText={userText}
       assistantText={assistantText}
       onEditModeChange={onEditModeChange}
+      editRequestNonce={editRequestNonce}
     />
   );
 });
@@ -129,6 +140,8 @@ export function HomeView(): React.JSX.Element {
     modelStatus.kind !== "ready";
 
   const [editingHome, setEditingHome] = useState(false);
+  const [editRequestNonce, setEditRequestNonce] = useState(0);
+  const requestEdit = useCallback(() => setEditRequestNonce((n) => n + 1), []);
 
   const latestAssistant = useMemo(
     () =>
@@ -164,6 +177,17 @@ export function HomeView(): React.JSX.Element {
     return words.join(" ");
   }, [latestAssistant]);
 
+  // Enter edit mode when the latest user message (typically a voice
+  // transcription) asks to edit the homescreen. Typed "/edit" is intercepted
+  // in the composer before it ever becomes a message.
+  const lastEditUserText = useRef("");
+  useEffect(() => {
+    if (latestUserText && latestUserText !== lastEditUserText.current) {
+      lastEditUserText.current = latestUserText;
+      if (editCommandMatches(latestUserText)) requestEdit();
+    }
+  }, [latestUserText, requestEdit]);
+
   return (
     <div className="relative h-full w-full overflow-hidden">
       <HomeVoiceBackground
@@ -172,6 +196,7 @@ export function HomeView(): React.JSX.Element {
         userText={latestUserText}
         assistantText={latestAssistant?.content ?? ""}
         onEditModeChange={setEditingHome}
+        editRequestNonce={editRequestNonce}
       />
       <div
         data-testid="home-view"
@@ -184,8 +209,13 @@ export function HomeView(): React.JSX.Element {
       >
         <HomeHeader onNavigate={setTab} />
 
-        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
+        {/* Apps sit above the crystal ball; the flex spacer leaves the centre
+            of the screen open for the sphere; the status/help text and
+            notifications sit below it. */}
+        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-5">
           <DefaultApps onLaunch={setTab} />
+
+          <div className="flex-1" aria-hidden />
 
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -206,9 +236,11 @@ export function HomeView(): React.JSX.Element {
                 })}
             </p>
           )}
+
+          <HomeNotifications />
         </div>
 
-        <HomeComposer />
+        <HomeComposer onRequestEdit={requestEdit} />
       </div>
     </div>
   );
@@ -448,6 +480,10 @@ function ModelRecoveryPanel({
   );
 }
 
+function HomeNotifications(): React.JSX.Element | null {
+  return null;
+}
+
 // Distinguishes a quick tap from a press-and-hold on the mic. A press shorter
 // than this is "open voice" (toggle continuous capture); a longer press is
 // push-to-talk (capture for the duration of the hold).
@@ -548,20 +584,30 @@ function MicButton({
 // Owns the volatile draft/focus state so keystrokes re-render only the composer
 // — never HomeView or the memoized background behind it. The trailing control is
 // a microphone until the user types, then it morphs into a send button.
-function HomeComposer(): React.JSX.Element {
+function HomeComposer({
+  onRequestEdit,
+}: {
+  onRequestEdit: () => void;
+}): React.JSX.Element {
   const controller = useShellControllerContext();
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
   const trimmed = draft.trim();
   const hasDraft = trimmed.length > 0;
-  const canSend = Boolean(controller?.canSend && hasDraft);
+  const isEditCommand = editCommandMatches(trimmed);
+  const canSend = Boolean(hasDraft && (isEditCommand || controller?.canSend));
   const recentMessages = useMemo(
     () => controller?.messages.slice(-4) ?? [],
     [controller?.messages],
   );
 
   function sendDraft() {
+    if (isEditCommand) {
+      onRequestEdit();
+      setDraft("");
+      return;
+    }
     if (!canSend || !controller) return;
     controller.send(trimmed);
     setDraft("");

@@ -21,8 +21,9 @@ const DEFAULT_SCENE = createDefaultScene();
  * Renders the default fresnel-crystal-ball scene (white sphere over brand
  * orange) behind its children. The wrapper is painted brand orange so the
  * surface is on-brand even before WebGL initializes or when it is unavailable
- * (reduced-motion, jsdom, SSR) — the canvas simply layers the 3D sphere on top
- * once it can.
+ * (jsdom, SSR) — the canvas simply layers the 3D sphere on top once it can.
+ * Under prefers-reduced-motion the sphere renders as a single static frame
+ * rather than animating.
  */
 export function HomescreenBackdrop({
   children,

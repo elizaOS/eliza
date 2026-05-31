@@ -21,6 +21,7 @@ from eliza_robot.erobot import (
     mating,
     mjcf,
     profile,
+    transmission,
     urdf,
     validate,
 )
@@ -46,6 +47,8 @@ def build_all(*, visual: bool = True) -> dict:
     mating.write_mate_verification(spec)
     mech = analysis.mechanical_analysis(spec)
     analysis.write_analysis(spec)
+    trans = transmission.transmission_proof(spec)
+    transmission.write_proof(spec)
 
     # physical (MuJoCo) proofs + kinematic tree
     physical = validate.run_all(spec)
@@ -55,6 +58,7 @@ def build_all(*, visual: bool = True) -> dict:
         "internal-collision": internal["ok"],
         "mate-verification": mate["ok"],
         "mechanical-analysis": mech["ok"],
+        "transmission": trans["ok"],
         **physical["proofs"],
     }
 
