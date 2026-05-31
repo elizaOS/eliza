@@ -3777,8 +3777,21 @@ function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
 	);
 }
 
-function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+/**
+ * Resolve the action that satisfies a web / live-info lookup, or undefined when
+ * the runtime has no real search backend registered.
+ *
+ * A web lookup needs a search action — not a shell. The earlier fallback to a
+ * shell action conflated the two: on a runtime with shell but no search, a
+ * live-info ask ("what's the current price of X") was force-routed to SHELL as
+ * a required tool. A shell is the wrong instrument for that, a weak planner
+ * cannot drive it, and the resulting required-tool loop surfaced a generic
+ * failure instead of an honest "I don't have live access" reply. Returning
+ * undefined lets the model answer directly. Genuine shell requests still route
+ * to a shell action via the separate looksLikeLocalShellRequest path.
+ */
+export function findWebLookupActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
 ): string | undefined {
 	return findAvailableActionName(actions, [
 		"SEARCH",
