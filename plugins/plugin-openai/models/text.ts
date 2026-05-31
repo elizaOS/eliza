@@ -945,10 +945,10 @@ async function generateTextByModelType(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  // Use chat() instead of languageModel() to use the Chat Completions API
-  // which has better compatibility than the Responses API
-  // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
-  // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
+  // Chat Completions is the default: broadest compatibility, and it works
+  // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
+  // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
+  //
   const model = openai.chat(modelName);
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools, {

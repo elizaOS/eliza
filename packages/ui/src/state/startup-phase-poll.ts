@@ -432,6 +432,10 @@ export async function runPollingBackend(
                 );
               }
             }
+            // scanProviderCredentials is a second in-flight await: the effect
+            // may have been torn down while it ran. Bail before mutating state
+            // or dispatching, matching the guard after the Promise.all above.
+            if (cancelled.current) return;
             applyFirstRunResumeFields(rf, deps);
             deps.setSetupStep(
               inferSetupResumeStep({

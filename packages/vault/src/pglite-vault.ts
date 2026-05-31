@@ -464,7 +464,16 @@ export class PgliteVaultImpl implements Vault {
         "vault: cleared a stale PGlite lock left by an unclean shutdown; retrying open",
         { dataDir, status },
       );
-      return await PGlite.create(dataDir);
+      try {
+        return await PGlite.create(dataDir);
+      } catch (retryErr) {
+        throw new Error(
+          `vault: PGlite initialization failed after clearing a stale lock: ${
+            retryErr instanceof Error ? retryErr.message : String(retryErr)
+          }. If this persists the dir may be corrupt — stop Eliza, then move or remove ${dataDir} and restart.`,
+          { cause: retryErr },
+        );
+      }
     }
   }
 

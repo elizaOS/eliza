@@ -26,6 +26,11 @@ const localPackages = [
   "eliza/packages/core",
   "eliza/packages/contracts",
   "eliza/packages/cloud-routing",
+  // @elizaos/agent's remote-plugin-bridge imports the `./error` subpath of
+  // plugin-worker-runtime eagerly at boot. Without linking it here its
+  // node_modules entry is never established, so boot crashes with
+  // "Cannot find module .../@elizaos/plugin-worker-runtime/dist/error.js".
+  "eliza/packages/plugin-worker-runtime",
   "eliza/plugins/plugin-companion",
   "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",

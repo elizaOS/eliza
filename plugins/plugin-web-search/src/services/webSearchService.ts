@@ -104,7 +104,7 @@ export class WebSearchService extends IWebSearchService {
             this.configured = false;
             logger.warn(
                 { src: "plugin-web-search" },
-                "TAVILY_API_KEY not set — web search is inert until a key is provided",
+                "TAVILY_API_KEY not set — web search is inert until a key is provided"
             );
             return;
         }
@@ -114,9 +114,7 @@ export class WebSearchService extends IWebSearchService {
 
     async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
         if (!this.configured || !this.tavilyClient) {
-            throw new Error(
-                "Web search is not configured: set TAVILY_API_KEY to enable it.",
-            );
+            throw new Error("Web search is not configured: set TAVILY_API_KEY to enable it.");
         }
         try {
             const response = await this.tavilyClient.search(query, {

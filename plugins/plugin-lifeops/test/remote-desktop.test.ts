@@ -70,17 +70,21 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
     }
   });
 
-  it("start without confirmed returns CONFIRMATION_REQUIRED", async () => {
+  it("start requests confirmation on the first turn even with the LLM confirmed flag set", async () => {
+    // Security gate (GHSA-rqm7 class): an LLM-supplied `confirmed: true` is
+    // NOT authoritative. The first turn always asks the user to confirm; the
+    // action only authorizes after a real user yes on a follow-up turn. The
+    // pending request is itself a success (accepted, awaiting user input).
     const runtime = createMinimalRuntimeStub();
     const result = await remoteDesktopAction.handler?.(
       runtime,
       ownerMessage(runtime.agentId, "start a remote session"),
       undefined,
-      { parameters: { subaction: "start", confirmed: false } },
+      { parameters: { subaction: "start", confirmed: true } },
       undefined,
       [],
     );
-    expect(result?.success).toBe(false);
+    expect(result?.success).toBe(true);
     const values = result?.values as {
       error?: string;
       requiresConfirmation?: boolean;
@@ -89,20 +93,34 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
     expect(values.requiresConfirmation).toBe(true);
   });
 
-  it("start with confirmed:true in local mode authorizes a session", async () => {
+  it("start authorizes a session after the user confirms on a follow-up turn", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = await remoteDesktopAction.handler?.(
+    // First turn seeds the pending confirmation.
+    const pending = await remoteDesktopAction.handler?.(
       runtime,
-      ownerMessage(runtime.agentId, "start"),
+      ownerMessage(runtime.agentId, "start a remote session"),
       undefined,
       { parameters: { subaction: "start", confirmed: true } },
       undefined,
       [],
     );
-    // In local mode without a data plane, ingressUrl is null and the action
-    // surfaces DATA_PLANE_NOT_CONFIGURED — that's the real, expected failure
-    // shape and the action result must carry the sessionId so the user can
-    // diagnose / retry.
+    expect(
+      (pending?.values as { requiresConfirmation?: boolean })
+        .requiresConfirmation,
+    ).toBe(true);
+    // Second turn: the user replies "yes" — confirmation resolves and the
+    // action authorizes. In local mode without a data plane, ingressUrl is
+    // null and the action surfaces DATA_PLANE_NOT_CONFIGURED — that's the
+    // real, expected failure shape and the result must carry the sessionId
+    // so the user can diagnose / retry.
+    const result = await remoteDesktopAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "yes"),
+      undefined,
+      { parameters: { subaction: "start", confirmed: true } },
+      undefined,
+      [],
+    );
     const values = result?.values as {
       success?: boolean;
       error?: string;

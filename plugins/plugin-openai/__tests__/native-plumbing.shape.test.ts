@@ -290,7 +290,9 @@ describe("OpenAI native text plumbing", () => {
     expect(call.providerOptions).toEqual({
       cerebras: { promptCacheKey: "v5:abc", prompt_cache_key: "v5:abc" },
       gateway: { caching: "auto" },
-      openai: { promptCacheKey: "v5:abc" },
+      // Cerebras mode defaults reasoningEffort to "low" (gpt-oss-120b returns
+      // empty content when reasoning runs unbounded); see resolveReasoningEffort.
+      openai: { promptCacheKey: "v5:abc", reasoningEffort: "low" },
     });
   });
 
