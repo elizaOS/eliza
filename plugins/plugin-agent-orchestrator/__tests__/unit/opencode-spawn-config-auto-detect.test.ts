@@ -99,4 +99,23 @@ describe("buildOpencodeSpawnConfig", () => {
     expect(result?.model).toBe("anthropic/claude-sonnet-4-5");
     expect(result?.smallModel).toBe("openai/gpt-4.1-mini");
   });
+
+  it("allows the read-only webfetch permission for a provider config", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      CEREBRAS_API_KEY: "csk-test",
+    });
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.permission?.webfetch).toBe("allow");
+    // write/exec permissions stay gated by the approval preset, not granted here.
+    expect(config.permission?.bash).toBeUndefined();
+    expect(config.permission?.edit).toBeUndefined();
+  });
+
+  it("allows the read-only webfetch permission for a user-configured opencode.json", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_MODEL_POWERFUL: "anthropic/claude-sonnet-4-5",
+    });
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.permission?.webfetch).toBe("allow");
+  });
 });

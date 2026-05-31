@@ -11,6 +11,16 @@ const OPENCODE_CEREBRAS_NPM = "@ai-sdk/cerebras";
 const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b";
 
+// `webfetch` is a read-only HTTP GET (opencode caps the response at 5MB and
+// never mutates the workspace). opencode defaults its permission to "ask", so
+// under the acpx "standard" approval preset (which answers non-interactive
+// permission prompts with "deny") a spawned sub-agent's web fetch is silently
+// denied — and the model, unable to reach the network, tends to confabulate an
+// answer instead of fetching live data. Allowing the read-only fetch lets
+// sub-agents retrieve real live data on any provider without granting
+// write/exec (`bash`, `edit`) permissions, which stay gated by the preset.
+const OPENCODE_SPAWN_PERMISSION = { webfetch: "allow" } as const;
+
 type RuntimeLike = Pick<IAgentRuntime, "getSetting">;
 
 export interface OpencodeSpawnConfig {
@@ -75,6 +85,7 @@ function providerConfig(
     ...(fast && fast !== powerful
       ? { small_model: `${providerId}/${fast}` }
       : {}),
+    permission: OPENCODE_SPAWN_PERMISSION,
   };
   return {
     configContent: JSON.stringify(config),
@@ -178,6 +189,7 @@ export function buildOpencodeSpawnConfig(
     $schema: "https://opencode.ai/config.json",
     model: powerful,
     ...(fast ? { small_model: fast } : {}),
+    permission: OPENCODE_SPAWN_PERMISSION,
   };
   return {
     configContent: JSON.stringify(config),
