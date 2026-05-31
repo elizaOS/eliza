@@ -180,9 +180,10 @@ export function createSceneInputs(): SceneInputs {
  * host to surface. The default preset must be registered for the fallback to
  * succeed; if it isn't, the error is propagated and no factory is returned.
  */
-export function resolveSceneFactoryOrDefault(
-  background: SceneBackground,
-): { factory: SceneFactory | null; error: string | null } {
+export function resolveSceneFactoryOrDefault(background: SceneBackground): {
+  factory: SceneFactory | null;
+  error: string | null;
+} {
   const direct = resolveSceneFactory(background);
   if (direct.ok) return { factory: direct.factory, error: null };
   const fallback = resolveSceneFactory(createDefaultScene().background);

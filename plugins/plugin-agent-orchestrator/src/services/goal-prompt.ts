@@ -25,6 +25,9 @@ export const DEFAULT_GOAL_CAPABILITIES: readonly string[] = [
 ];
 
 export interface GoalPromptInput {
+  /** The distinct person-name this sub-agent is given on spawn, so it knows its
+   * own identity within the swarm (the way the main agent is named). */
+  agentName: string;
   /** The durable objective the worker owns until it is met or blocked. */
   goal: string;
   /** The concrete first instruction. Defaults to {@link GoalPromptInput.goal}. */
@@ -80,7 +83,7 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
   ];
   const sections: string[] = [
     "--- Goal ---",
-    "You are a named coding sub-agent working a durable orchestrator task. Keep working until the goal is met or you are genuinely blocked.",
+    `You are ${input.agentName.trim()}, an autonomous coding sub-agent working as part of a swarm on a durable orchestrator task. Keep working until the goal is met or you are genuinely blocked.`,
     input.goal.trim(),
   ];
 

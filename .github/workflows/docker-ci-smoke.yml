@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      BUN_VERSION: "1.3.14"
+      BUN_VERSION: "canary"
       DOCKER_IMAGE: elizaos/agent:docker-smoke
       SMOKE_TIMEOUT_SEC: "420"
       SMOKE_PORT: "32138"

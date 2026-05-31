@@ -1,6 +1,6 @@
-import { Database } from "bun:sqlite";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -396,6 +396,55 @@ interface BrowserCookieResult {
   expiresUtc: number;
 }
 
+// Read-only SQLite opener resolved at runtime: Bun exposes `bun:sqlite`
+// (Database, with `.query()`); Node ≥22.5 exposes `node:sqlite` (DatabaseSync,
+// with `.prepare()`). Neither runtime ships both, so resolve whichever is
+// present and normalize to the `.query(sql).all(...)` surface used below.
+interface CookieDbStatement {
+  all(...params: unknown[]): unknown[];
+}
+interface CookieDb {
+  query(sql: string): CookieDbStatement;
+  close(): void;
+}
+type CookieDbOpener = (filename: string) => CookieDb;
+
+const runtimeRequire = createRequire(import.meta.url);
+let cookieDbOpenerCached: CookieDbOpener | null | undefined;
+
+function resolveCookieDbOpener(): CookieDbOpener | null {
+  if (cookieDbOpenerCached !== undefined) return cookieDbOpenerCached;
+  try {
+    const { Database } = runtimeRequire("bun:sqlite") as {
+      Database: new (
+        filename: string,
+        options?: { readonly?: boolean },
+      ) => CookieDb;
+    };
+    cookieDbOpenerCached = (filename) =>
+      new Database(filename, { readonly: true });
+    return cookieDbOpenerCached;
+  } catch {
+    // Not Bun — try Node's built-in.
+  }
+  try {
+    const { DatabaseSync } = runtimeRequire("node:sqlite") as {
+      DatabaseSync: new (
+        filename: string,
+        options?: { readOnly?: boolean },
+      ) => { prepare(sql: string): CookieDbStatement; close(): void };
+    };
+    cookieDbOpenerCached = (filename) => {
+      const db = new DatabaseSync(filename, { readOnly: true });
+      return { query: (sql) => db.prepare(sql), close: () => db.close() };
+    };
+    return cookieDbOpenerCached;
+  } catch {
+    cookieDbOpenerCached = null;
+  }
+  return cookieDbOpenerCached;
+}
+
 /**
  * Read specific cookies from Chromium-based browsers on macOS.
  * Decrypts using the Safe Storage key from Keychain.
@@ -406,6 +455,9 @@ export async function readChromiumCookies(
   cookieNames: string[],
 ): Promise<BrowserCookieResult[]> {
   if (process.platform !== "darwin") return [];
+
+  const openDb = resolveCookieDbOpener();
+  if (!openDb) return [];
 
   const appSupport = path.join(os.homedir(), "Library", "Application Support");
 
@@ -427,7 +479,7 @@ export async function readChromiumCookies(
       );
       fs.copyFileSync(dbPath, tmpDb);
 
-      const db = new Database(tmpDb, { readonly: true });
+      const db = openDb(tmpDb);
       const nameParams = cookieNames.map(() => "?").join(", ");
       const rows = db
         .query(

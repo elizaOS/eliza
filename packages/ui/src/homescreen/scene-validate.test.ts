@@ -27,7 +27,10 @@ describe("validateScene", () => {
 
   it("accepts a script document", () => {
     const result = validateScene({
-      background: { kind: "script", code: "return { update(){}, dispose(){} };" },
+      background: {
+        kind: "script",
+        code: "return { update(){}, dispose(){} };",
+      },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -52,11 +55,15 @@ describe("validateScene", () => {
     const result = validateScene({ background: { kind: "video", src: "x" } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errors.some((e) => e.startsWith("background.kind"))).toBe(true);
+    expect(result.errors.some((e) => e.startsWith("background.kind"))).toBe(
+      true,
+    );
   });
 
   it("hard-fails on an empty script body", () => {
-    const result = validateScene({ background: { kind: "script", code: "   " } });
+    const result = validateScene({
+      background: { kind: "script", code: "   " },
+    });
     expect(result.ok).toBe(false);
   });
 
@@ -78,7 +85,9 @@ describe("validateScene", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.scene.theme.accent).toEqual(createDefaultScene().theme.accent);
+    expect(result.scene.theme.accent).toEqual(
+      createDefaultScene().theme.accent,
+    );
   });
 
   it("normalizes block layout anchors and rejects unknown anchors", () => {

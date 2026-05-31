@@ -59,7 +59,7 @@
   "author": "@stwd / 0xSolace",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

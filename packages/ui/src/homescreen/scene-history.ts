@@ -14,10 +14,7 @@
  *   - A `commit` past the cursor truncates the redo tail (standard linear undo).
  */
 
-import {
-  createDefaultScene,
-  type HomescreenScene,
-} from "./scene-types";
+import { createDefaultScene, type HomescreenScene } from "./scene-types";
 
 export interface SceneHistory {
   entries: HomescreenScene[];

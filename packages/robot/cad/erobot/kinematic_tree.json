@@ -1,0 +1,707 @@
+{
+  "robot": "erobot",
+  "dof": 25,
+  "standing_height_m": 1.665,
+  "links": [
+    {
+      "name": "pelvis",
+      "parent": null,
+      "world_pos": [
+        0.0,
+        0.0,
+        0.91
+      ],
+      "joint": null,
+      "joint_axis": null,
+      "group": "TORSO",
+      "primitives": [
+        {
+          "name": "pelvis_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_hip_pitch",
+      "parent": "pelvis",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.91
+      ],
+      "joint": "left_hip_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_hip_pitch_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_hip_roll",
+      "parent": "left_hip_pitch",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.91
+      ],
+      "joint": "left_hip_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_hip_roll_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_hip_yaw",
+      "parent": "left_hip_roll",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.91
+      ],
+      "joint": "left_hip_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_thigh_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_knee",
+      "parent": "left_hip_yaw",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.49
+      ],
+      "joint": "left_knee_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_knee_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        },
+        {
+          "name": "left_shank_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_ankle_pitch",
+      "parent": "left_knee",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.07
+      ],
+      "joint": "left_ankle_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_ankle_pitch_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_ankle_roll",
+      "parent": "left_ankle_pitch",
+      "world_pos": [
+        0.0,
+        0.105,
+        0.07
+      ],
+      "joint": "left_ankle_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_ankle_roll_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        },
+        {
+          "name": "left_foot_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "left_foot_sole",
+          "type": "box",
+          "role": "sole",
+          "material": "TPU_SHORE_A95",
+          "wall_mm": 8.0
+        }
+      ]
+    },
+    {
+      "name": "right_hip_pitch",
+      "parent": "pelvis",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.91
+      ],
+      "joint": "right_hip_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_hip_pitch_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "right_hip_roll",
+      "parent": "right_hip_pitch",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.91
+      ],
+      "joint": "right_hip_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_hip_roll_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "right_hip_yaw",
+      "parent": "right_hip_roll",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.91
+      ],
+      "joint": "right_hip_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_thigh_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "right_knee",
+      "parent": "right_hip_yaw",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.49
+      ],
+      "joint": "right_knee_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_knee_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        },
+        {
+          "name": "right_shank_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "right_ankle_pitch",
+      "parent": "right_knee",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.07
+      ],
+      "joint": "right_ankle_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_ankle_pitch_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "right_ankle_roll",
+      "parent": "right_ankle_pitch",
+      "world_pos": [
+        0.0,
+        -0.105,
+        0.07
+      ],
+      "joint": "right_ankle_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_ankle_roll_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        },
+        {
+          "name": "right_foot_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "right_foot_sole",
+          "type": "box",
+          "role": "sole",
+          "material": "TPU_SHORE_A95",
+          "wall_mm": 8.0
+        }
+      ]
+    },
+    {
+      "name": "torso",
+      "parent": "pelvis",
+      "world_pos": [
+        0.0,
+        0.0,
+        0.97
+      ],
+      "joint": "waist_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "TORSO",
+      "primitives": [
+        {
+          "name": "torso_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 3.0
+        }
+      ]
+    },
+    {
+      "name": "left_shoulder_pitch",
+      "parent": "torso",
+      "world_pos": [
+        0.0,
+        0.21,
+        1.41
+      ],
+      "joint": "left_shoulder_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "left_shoulder_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "left_shoulder_roll",
+      "parent": "left_shoulder_pitch",
+      "world_pos": [
+        0.0,
+        0.21,
+        1.41
+      ],
+      "joint": "left_shoulder_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": []
+    },
+    {
+      "name": "left_shoulder_yaw",
+      "parent": "left_shoulder_roll",
+      "world_pos": [
+        0.0,
+        0.21,
+        1.41
+      ],
+      "joint": "left_shoulder_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "left_upper_arm_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "left_elbow",
+      "parent": "left_shoulder_yaw",
+      "world_pos": [
+        0.0,
+        0.21,
+        1.13
+      ],
+      "joint": "left_elbow_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "left_elbow_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "left_forearm_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "left_wrist_yaw",
+      "parent": "left_elbow",
+      "world_pos": [
+        0.0,
+        0.21,
+        0.87
+      ],
+      "joint": "left_wrist_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "left_wrist_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "left_hand_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "right_shoulder_pitch",
+      "parent": "torso",
+      "world_pos": [
+        0.0,
+        -0.21,
+        1.41
+      ],
+      "joint": "right_shoulder_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "right_shoulder_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "right_shoulder_roll",
+      "parent": "right_shoulder_pitch",
+      "world_pos": [
+        0.0,
+        -0.21,
+        1.41
+      ],
+      "joint": "right_shoulder_roll_joint",
+      "joint_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": []
+    },
+    {
+      "name": "right_shoulder_yaw",
+      "parent": "right_shoulder_roll",
+      "world_pos": [
+        0.0,
+        -0.21,
+        1.41
+      ],
+      "joint": "right_shoulder_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "right_upper_arm_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "right_elbow",
+      "parent": "right_shoulder_yaw",
+      "world_pos": [
+        0.0,
+        -0.21,
+        1.13
+      ],
+      "joint": "right_elbow_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "right_elbow_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "right_forearm_shell",
+          "type": "capsule",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "right_wrist_yaw",
+      "parent": "right_elbow",
+      "world_pos": [
+        0.0,
+        -0.21,
+        0.87
+      ],
+      "joint": "right_wrist_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "ARM",
+      "primitives": [
+        {
+          "name": "right_wrist_shell",
+          "type": "sphere",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "right_hand_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "neck",
+      "parent": "torso",
+      "world_pos": [
+        0.0,
+        0.0,
+        1.48
+      ],
+      "joint": "neck_yaw_joint",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "group": "HEAD",
+      "primitives": [
+        {
+          "name": "neck_shell",
+          "type": "cylinder",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "world_pos": [
+        0.0,
+        0.0,
+        1.55
+      ],
+      "joint": "neck_pitch_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "HEAD",
+      "primitives": [
+        {
+          "name": "head_shell",
+          "type": "ellipsoid",
+          "role": "shell",
+          "material": "PC_ABS",
+          "wall_mm": 2.5
+        }
+      ]
+    }
+  ]
+}

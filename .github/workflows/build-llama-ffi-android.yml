@@ -42,7 +42,7 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
   ANDROID_API: "26"
   # Pinned to the NDK r26d-equivalent the rest of the app builds against;
   # bumping this requires syncing with `packages/app/electrobun/android/`.

@@ -6,8 +6,21 @@ import {
 } from "../../src/services/goal-prompt.ts";
 
 describe("buildGoalPrompt", () => {
+  it("tells the agent its assigned name in the goal section", () => {
+    const out = buildGoalPrompt({
+      agentName: "Sakuya",
+      goal: "Fix the flaky login test",
+    });
+    expect(out).toContain(
+      "You are Sakuya, an autonomous coding sub-agent working as part of a swarm",
+    );
+  });
+
   it("wraps the task in goal, capability fence, and completion contract", () => {
-    const out = buildGoalPrompt({ goal: "Fix the flaky login test" });
+    const out = buildGoalPrompt({
+      agentName: "Reimu",
+      goal: "Fix the flaky login test",
+    });
     expect(out).toContain("--- Goal ---");
     expect(out).toContain("Fix the flaky login test");
     expect(out).toContain("--- Capabilities ---");
@@ -20,7 +33,10 @@ describe("buildGoalPrompt", () => {
   });
 
   it("defaults the concrete task to the goal when omitted", () => {
-    const out = buildGoalPrompt({ goal: "Ship the orchestrator view" });
+    const out = buildGoalPrompt({
+      agentName: "Marisa",
+      goal: "Ship the orchestrator view",
+    });
     const taskIdx = out.indexOf("--- Task ---");
     expect(taskIdx).toBeGreaterThan(-1);
     expect(out.slice(taskIdx)).toContain("Ship the orchestrator view");
@@ -28,6 +44,7 @@ describe("buildGoalPrompt", () => {
 
   it("uses the explicit task as the first concrete instruction", () => {
     const out = buildGoalPrompt({
+      agentName: "Youmu",
       goal: "Keep the build green",
       task: "Start by running the typecheck",
     });
@@ -38,6 +55,7 @@ describe("buildGoalPrompt", () => {
 
   it("emits acceptance criteria, workspace, and room sections when provided", () => {
     const out = buildGoalPrompt({
+      agentName: "Yukari",
       goal: "Add pagination",
       acceptanceCriteria: ["cursor-based", "stable ordering"],
       workdir: "/work/repo",
@@ -57,7 +75,7 @@ describe("buildGoalPrompt", () => {
   });
 
   it("omits optional sections when their inputs are absent", () => {
-    const out = buildGoalPrompt({ goal: "Minimal goal" });
+    const out = buildGoalPrompt({ agentName: "Koakuma", goal: "Minimal goal" });
     expect(out).not.toContain("--- Acceptance Criteria ---");
     expect(out).not.toContain("--- Workspace ---");
     expect(out).not.toContain("--- Rooms ---");
@@ -65,6 +83,7 @@ describe("buildGoalPrompt", () => {
 
   it("honours a custom capability fence", () => {
     const out = buildGoalPrompt({
+      agentName: "Reisen",
       goal: "Audit deps",
       allowedCapabilities: ["read files only"],
     });

@@ -292,7 +292,7 @@ jobs:
 
       - name: Setup Bun
         run: |
-          curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+          curl -fsSL https://bun.sh/install | bash -s "canary"
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.bun/bin:$PATH"
           bun --version

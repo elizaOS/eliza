@@ -987,25 +987,28 @@ function MessageEntry({
   const text = stripAnsi(message.content);
   if (!text) return null;
   const isUser = message.senderKind === "user";
-  const tone =
-    message.senderKind === "user"
-      ? "border-accent/30 bg-accent/10"
-      : message.senderKind === "orchestrator"
-        ? "border-border/50 bg-bg-accent/40"
-        : "border-border/40 bg-bg-hover/40";
+  // Your own messages read as "yours" by color + right-alignment, so the
+  // explicit "You" label is redundant; everyone else keeps their name.
+  const tone = isUser
+    ? "bg-accent/20"
+    : message.senderKind === "orchestrator"
+      ? "bg-bg-accent/60"
+      : "bg-bg-hover/60";
   return (
     <div
       className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
       data-testid="orchestrator-message"
     >
       <div
-        className={`rounded-lg border px-2.5 py-1.5 ${tone}`}
+        className={`rounded-lg px-2.5 py-1.5 ${tone}`}
         style={{ maxWidth: "88%" }}
       >
         <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-          <span className="font-semibold tracking-tight text-txt/90">
-            {senderName}
-          </span>
+          {isUser ? null : (
+            <span className="font-semibold tracking-tight text-txt/90">
+              {senderName}
+            </span>
+          )}
           <span className="tabular-nums">
             {formatClockTime(message.timestamp, locale)}
           </span>
@@ -1025,25 +1028,22 @@ function EventEntry({
   event: CodingAgentTaskEventRecord;
   locale?: string;
 }) {
-  const typeLabel = event.eventType.replace(/_/g, " ");
-  const normalize = (value: string) =>
-    value.toLowerCase().replace(/[\s_]+/g, " ").trim();
-  const summary = event.summary?.trim();
-  // Drop the summary when it merely echoes the humanized event type
-  // (e.g. type "task_created" + summary "Task created").
-  const showSummary = summary && normalize(summary) !== normalize(typeLabel);
+  // Show the specific summary as the single line; the event type (e.g.
+  // "agent spawned") only restates what the summary already says ("token-
+  // exchange spawned"), so it's dropped unless there is no summary.
+  const text = event.summary?.trim() || event.eventType.replace(/_/g, " ");
   return (
     <div
       className="flex items-center gap-2 px-1 text-2xs text-muted"
       data-testid="orchestrator-event"
     >
       <span className="h-px flex-1 bg-border/40" />
-      <span className="shrink-0 font-medium">{typeLabel}</span>
-      {showSummary ? (
-        <span className="truncate" style={{ maxWidth: "50%" }}>
-          {summary}
-        </span>
-      ) : null}
+      <span
+        className="min-w-0 shrink truncate font-medium"
+        style={{ maxWidth: "72%" }}
+      >
+        {text}
+      </span>
       <span className="shrink-0 tabular-nums">
         {formatClockTime(event.timestamp, locale)}
       </span>

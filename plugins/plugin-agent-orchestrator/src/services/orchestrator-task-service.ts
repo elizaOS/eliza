@@ -20,6 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { assignAgentName } from "./agent-name-assignment.js";
 import {
   buildGoalFollowUp,
   buildGoalPrompt,
@@ -211,6 +212,17 @@ function describeEvent(event: string, data: unknown): string {
     default:
       return event;
   }
+}
+
+/** Labels of sessions still live on a task — the names a newly spawned sibling
+ * must not collide with. Terminal sessions free their name for reuse. */
+function activeSessionNames(
+  sessions: readonly OrchestratorTaskSession[],
+): string[] {
+  return sessions
+    .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
+    .map((session) => session.label)
+    .filter((label): label is string => label.length > 0);
 }
 
 export class OrchestratorTaskService extends Service {
@@ -753,7 +765,17 @@ export class OrchestratorTaskService extends Service {
       : undefined;
 
     const policy = doc.task.providerPolicy ?? {};
+    // Give every sub-agent a distinct person-name. An explicit caller label
+    // wins; otherwise pick a pooled name unique among the task's live sibling
+    // sessions and distinct from the running agent. The same name is used as the
+    // session label AND woven into the goal prompt so the agent knows who it is.
+    const agentName = assignAgentName({
+      explicitLabel: opts.label,
+      activeNames: activeSessionNames(doc.sessions),
+      mainAgentName: this.runtime.character?.name,
+    });
     const goalPrompt = buildGoalPrompt({
+      agentName,
       goal: doc.task.goal,
       task: opts.task ?? doc.task.goal,
       acceptanceCriteria: doc.task.acceptanceCriteria,
@@ -771,7 +793,7 @@ export class OrchestratorTaskService extends Service {
       metadata: {
         taskId,
         roomId: doc.task.taskRoomId ?? doc.task.roomId,
-        label: opts.label,
+        label: agentName,
         source: "orchestrator",
         // Orchestrator sessions outlive their first prompt so follow-ups and
         // validation re-dispatch can reuse them.
@@ -787,7 +809,7 @@ export class OrchestratorTaskService extends Service {
       framework: result.agentType,
       providerSource: opts.providerSource ?? policy.providerSource,
       model: opts.model ?? policy.model,
-      label: opts.label ?? `${result.agentType} agent`,
+      label: agentName,
       originalTask: opts.task ?? doc.task.goal,
       goalPrompt,
       workdir: result.workdir,

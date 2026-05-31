@@ -337,72 +337,72 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, margin=0.0015, n_ang=64, dz=0.0
     if len(L) < 2:
         return None
     R = np.array(R); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
-    # SIZE/SHAPE separation for genuinely clean industrial lines:
-    #  * shape  = ONE clean low-harmonic cross-section (the mean normalised ring)
-    #             -> smooth-curve sections, identical along the shaft (no wobble)
-    #  * size   = a low-order POLYNOMIAL taper of the radius along the axis
-    #             -> clean straight/gently-curved profile lines (no organic waviness)
-    rmean = R.mean(axis=1)
-    rmean[rmean < 1e-6] = 1e-6
-    shape = (R / rmean[:, None]).mean(axis=0)            # avg normalised section
+    R0 = R.copy()                                        # ORIGINAL sections (for the ends)
+    rmean = R.mean(axis=1); rmean[rmean < 1e-6] = 1e-6
+    # ONE clean low-harmonic section (smooth curves), scaled by a STRONGLY smoothed
+    # radius (clean straight-ish taper, no organic waviness):
+    shape = (R / rmean[:, None]).mean(axis=0)
     Fs = np.fft.rfft(shape); Fs[4:] = 0.0
-    shape = np.fft.irfft(Fs, n_ang)                      # clean low-harmonic shape
-    # STRONGLY smoothed radius -> a clean monotonic taper (no organic waviness),
-    # CLAMPED to the original so it never balloons past the joint (no funnel).
-    rsm = np.minimum(gaussian_filter1d(rmean, 12, mode="nearest"), rmean)
-    C0 = gaussian_filter1d(C0, 6, mode="nearest")
-    C1 = gaussian_filter1d(C1, 6, mode="nearest")
-    # FLARE to the original joint radius at each joint boundary so the slim shaft
-    # meets the joint flush (no gap/ledge); `slim` only through the mid-shaft.
-    zlo_j, zhi_j = L[0] + 0.014, L[-1] - 0.014
-    flare = np.clip(np.minimum(L - zlo_j, zhi_j - L) / 0.025, 0.0, 1.0)  # 0 at joint, 1 mid
-    sfac = slim + (1.0 - slim) * (1.0 - flare)
-    taper = np.minimum(rsm * sfac, rmean) + margin
+    shape = np.fft.irfft(Fs, n_ang)
+    rsm = gaussian_filter1d(rmean, 12, mode="nearest")
+    cx_s = gaussian_filter1d(C0, 8, mode="nearest"); cy_s = gaussian_filter1d(C1, 8, mode="nearest")
     cosb, sinb = np.cos(bins), np.sin(bins)
+    # Blend ORIGINAL section at the joint ends -> CLEAN slim section in the mid, so
+    # the tube ends EXACTLY match the joint cross-section (flush, no gap/funnel/disc)
+    # while the visible mid-shaft is clean and slim.
+    zlo_j, zhi_j = L[0] + 0.014, L[-1] - 0.014
+    fw = np.clip(np.minimum(L - zlo_j, zhi_j - L) / 0.030, 0.0, 1.0)
+    fw = fw * fw * (3 - 2 * fw)
     verts = []
     for i in range(len(L)):
-        ring = taper[i] * shape
+        clean = (rsm[i] * slim + margin) * shape
+        cxx = C0[i] + (cx_s[i] - C0[i]) * fw[i]
+        cyy = C1[i] + (cy_s[i] - C1[i]) * fw[i]
+        rx_o = C0[i] + R0[i] * cosb; ry_o = C1[i] + R0[i] * sinb     # original ring (ends)
+        rx_c = cxx + clean * cosb;   ry_c = cyy + clean * sinb       # clean ring (mid)
         p = np.zeros((n_ang, 3))
-        p[:, pd[0]] = C0[i] + ring * cosb
-        p[:, pd[1]] = C1[i] + ring * sinb
+        p[:, pd[0]] = rx_o * (1 - fw[i]) + rx_c * fw[i]
+        p[:, pd[1]] = ry_o * (1 - fw[i]) + ry_c * fw[i]
         p[:, ai] = L[i]
         verts.append(p)
     return _loft_rings(np.array(verts))
 
 
-def _hybrid_part(mesh, link, slim, joint_margin=0.030):
-    """Smooth slim mid-shaft sleeve laid OVER the full original (slimmed) part.
+def _hybrid_part(mesh, link, slim, joint_margin=0.034):
+    """ONE continuous mesh: PRISTINE joints + an in-place slimmed/smoothed shaft.
 
-    The original is kept intact (its real clevis/condyle joints articulate exactly
-    like the source); a clean smooth tube sleeve covers the cosmetic mid-shaft and
-    tapers into each joint so there is no cut, no open boundary, no tear. Short
-    connectors (reserved levels closer than 2*joint_margin) get no sleeve and stay
-    fully mechanical."""
+    The joints (outside [z_lo,z_hi]) are the untouched original (round bores/
+    condyles intact). The mid-shaft vertices are scaled inward (slim) and Laplacian-
+    smoothed IN PLACE, ramped to zero at the joints. Because it is one mesh there is
+    no tube<->joint boundary -> no gap, ledge, funnel or collar."""
     spine = C.LINKS[link]["spine"]
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
-    # The JOINTS stay PRISTINE (unwarped original) so their round bores / bolt
-    # circles / condyles are not distorted. Only the featureless mid-shaft is
-    # slimmed and covered by a clean smooth tube.
     base = mesh.copy()
     res = sorted(C.reserved_levels(link))
     z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
     if z_hi - z_lo < 0.03:
-        return base  # too short for a shaft -> keep the pristine mechanism
-    tube = _smooth_tube(base, ai, pd, z_lo - 0.014, z_hi + 0.014, slim, margin=0.0)
-    if tube is None:
-        return base
-    # Keep only the PRISTINE joint caps (cut in the simple-cross-section shaft, not
-    # through the joint detail) and let the clean tube be the shaft -> no original
-    # shaft to poke through, joint round features untouched.
-    nrm_hi = np.zeros(3); nrm_hi[ai] = 1.0
-    nrm_lo = np.zeros(3); nrm_lo[ai] = -1.0
-    o_hi = np.zeros(3); o_hi[ai] = z_hi
-    o_lo = np.zeros(3); o_lo[ai] = z_lo
-    top = trimesh.intersections.slice_mesh_plane(base, plane_normal=nrm_hi, plane_origin=o_hi, cap=True)
-    bot = trimesh.intersections.slice_mesh_plane(base, plane_normal=nrm_lo, plane_origin=o_lo, cap=True)
-    parts = [p for p in (top, bot, tube) if p is not None and len(p.faces) > 0]
-    return trimesh.util.concatenate(parts)
+        return base  # too short for a shaft -> pristine mechanism
+    V = base.vertices.copy()
+    t = V[:, ai]
+    # shaft weight: 1 in the mid-shaft, smoothly 0 at each joint (ramp ~24mm)
+    w = np.clip((t - z_lo) / 0.024, 0, 1) * np.clip((z_hi - t) / 0.024, 0, 1)
+    w = w * w * (3 - 2 * w)
+    # 1) slim the shaft cross-section inward about its centreline
+    levels, cx, cy = _centerline_xy(V, ai, pd)
+    c0 = np.interp(t, levels, cx); c1 = np.interp(t, levels, cy)
+    f = 1.0 + (slim - 1.0) * w
+    V[:, pd[0]] = c0 + (V[:, pd[0]] - c0) * f
+    V[:, pd[1]] = c1 + (V[:, pd[1]] - c1) * f
+    base.vertices = V
+    # 2) heavy Laplacian smoothing of the WHOLE mesh, then keep it only where the
+    #    shaft weight is high -> clean smooth shaft, untouched (sharp) joints.
+    import pyvista as pv
+    fpv = np.hstack([np.full((len(base.faces), 1), 3), base.faces]).ravel()
+    sm = pv.PolyData(base.vertices, fpv).smooth_taubin(n_iter=60, pass_band=0.05)
+    Vs = np.asarray(sm.points)
+    base.vertices = V * (1 - w[:, None]) + Vs * w[:, None]
+    return base
 
 
 def _loft_rings(rings):

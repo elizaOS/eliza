@@ -5,7 +5,7 @@ inputs:
   bun-version:
     description: Bun version to install (pinned to avoid GitHub API rate-limit flakes).
     required: false
-    default: "1.3.13"
+    default: "canary"
   setup-db:
     description: Start PGlite TCP server and run migrations.
     required: false

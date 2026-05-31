@@ -108,6 +108,7 @@ export function perfTick(
 export function perfLabel(state: PerfState): string {
   const fps = Math.round(state.fps);
   if (state.warning) return `${fps} fps · reducing detail`;
-  if (state.tier < 1) return `${fps} fps · ${Math.round(state.tier * 100)}% detail`;
+  if (state.tier < 1)
+    return `${fps} fps · ${Math.round(state.tier * 100)}% detail`;
   return `${fps} fps`;
 }
