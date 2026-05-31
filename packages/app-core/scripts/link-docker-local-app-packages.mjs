@@ -14,6 +14,18 @@ const { workspaceDirs } = collectWorkspaceMaps(
   rootPkg.workspaces ?? [],
 );
 const localPackages = [
+  // Foundational workspace packages. These build to ./dist/ but keep their
+  // package.json at the package root (no dist/package.json), so they are
+  // linked package-root -> package-root here rather than via
+  // relink-workspace-packages-to-dist.mjs (which targets <pkg>/dist and
+  // requires a dist/package.json). @elizaos/shared declares @elizaos/core as
+  // a runtime dep and shared/dist/api/http-helpers.js imports it eagerly, so
+  // node_modules/@elizaos/core MUST exist or boot crashes with
+  // "Cannot find package '@elizaos/core'". Listed first so they link before
+  // any per-package side effects (e.g. the app-core argon2/jose linking).
+  "eliza/packages/core",
+  "eliza/packages/contracts",
+  "eliza/packages/cloud-routing",
   "eliza/plugins/plugin-companion",
   "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",
