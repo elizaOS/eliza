@@ -956,9 +956,7 @@ async function generateTextByModelType(
   // web search is enabled, route text through Responses so the agent-level
   // injector (see @elizaos/agent web-search-tools) can attach `web_search`.
   const useResponses = isWebSearchEnabled() && supportsResponsesApi(runtime);
-  const model = useResponses
-    ? openai.responses(modelName)
-    : openai.chat(modelName);
+  const model = useResponses ? openai.responses(modelName) : openai.chat(modelName);
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools, {
     cerebrasMode,
