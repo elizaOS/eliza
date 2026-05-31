@@ -317,9 +317,7 @@ test.describe("assistant home app flow", () => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
     await openAppPath(page, "/");
-    await expect(
-      page.getByRole("heading", { name: /^Where (should|is)\b/ }),
-    ).toBeVisible();
+    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
