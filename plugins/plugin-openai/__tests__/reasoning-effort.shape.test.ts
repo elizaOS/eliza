@@ -71,6 +71,47 @@ describe("OPENAI_REASONING_EFFORT env-var forwarding", () => {
   });
 });
 
+describe("Cerebras default reasoning effort", () => {
+  // CEREBRAS_API_KEY set with no OPENAI_API_KEY / OPENAI_BASE_URL ⇒ Cerebras mode.
+  it("defaults to 'low' in Cerebras mode when OPENAI_REASONING_EFFORT is unset", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("low");
+  });
+
+  it("lets an explicit valid OPENAI_REASONING_EFFORT override the Cerebras default", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" });
+    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("high");
+  });
+
+  it("falls back to the Cerebras default 'low' when the explicit value is invalid", () => {
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-test",
+      OPENAI_REASONING_EFFORT: "extreme",
+    });
+    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("low");
+  });
+
+  it("lets caller-supplied providerOptions.openai.reasoningEffort beat the Cerebras default", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi", providerOptions: { openai: { reasoningEffort: "medium" } } } as never,
+      runtime
+    );
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("medium");
+  });
+});
+
 describe("strip reasoning-content from outbound assistant messages", () => {
   it("drops `type: reasoning` parts from a content array (tool-call branch)", () => {
     const normalized = __INTERNAL_normalizeNativeMessages([
