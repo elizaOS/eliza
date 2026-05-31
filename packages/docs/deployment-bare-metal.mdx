@@ -8,7 +8,8 @@ The Docker-based deployment in [Deployment Guide](/deployment) is the
 right default for most operators. Bare-metal systemd is the better fit
 when:
 
-- You run **one bot on one VPS** against a personal Claude Max
+- You run **one bot on one always-on Linux host** — a VPS *or* a local
+  machine (home server, workstation) — against a personal Claude Max
   subscription (the Anthropic plan that includes `claude` CLI access),
   and you want the bot to use the same OAuth credentials the `claude`
   CLI creates when you log in.
@@ -17,6 +18,11 @@ when:
 
 For multi-tenant hosts, managed cloud containers (ECS, Cloud Run), or
 API-key-first deployments, stay with Docker.
+
+These are systemd **user** services and depend on nothing VPS-specific, so the
+same bundle runs on a local Linux box. See
+[Running on a local Linux machine](#running-on-a-local-linux-machine-not-a-vps)
+below for the one or two things that differ from a VPS.
 
 ## What the bundle installs
 
@@ -63,6 +69,24 @@ On first install it also copies `eliza.env.example` to
 `~/.config/eliza/env`. Edit that file to change port, log path, or the
 OAuth refresh threshold — the bot and helpers read from it on every
 start.
+
+## Running on a local Linux machine (not a VPS)
+
+The bundle is distro-agnostic systemd **user** services, so the install steps
+above are identical on a laptop, workstation, or home server. Only two things
+differ from a VPS:
+
+- **Reach it at `localhost`.** A local install listens on
+  `http://127.0.0.1:$ELIZA_API_PORT` (default 31337). You don't need a public
+  IP, a domain, or an open firewall port unless you specifically want to reach
+  the bot from another device.
+- **Linger is optional on a workstation.** `install.sh` enables
+  `loginctl enable-linger` so the services start at boot and survive logout
+  (what you want on a VPS). On a personal machine you can skip it
+  (`loginctl disable-linger "$USER"`) if you'd rather the bot run only while
+  you're logged in.
+
+Everything else — OAuth refresh, the health probe, logs — behaves identically.
 
 ## OAuth refresh behavior
 
