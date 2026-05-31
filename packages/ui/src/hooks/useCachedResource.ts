@@ -41,10 +41,16 @@ export interface CachedResourceOptions {
   persist?: boolean;
 }
 
-export interface UseCachedResourceResult<T> extends UseFetchDataResult<T> {
+// `UseFetchDataResult<T>` resolves to a discriminated union (`FetchState<T>`
+// intersected with the refetch/mutate helpers), and a TS interface cannot
+// extend a union — doing so silently drops every inherited member, so
+// callers lose `status`/`data`/`error`/`refetch`. Model it as a type-alias
+// intersection instead, which distributes `isValidating` across the union
+// and keeps the discriminant narrowing intact.
+export type UseCachedResourceResult<T> = UseFetchDataResult<T> & {
   /** True while a background revalidation is running over cached data. */
   isValidating: boolean;
-}
+};
 
 const DEFAULT_STALE_TIME_MS = 30_000;
 
