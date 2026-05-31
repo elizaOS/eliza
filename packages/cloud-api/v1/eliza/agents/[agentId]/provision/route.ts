@@ -5,6 +5,7 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -124,6 +125,7 @@ async function __hono_POST(
             status: existing.status,
             bridgeUrl: existing.bridge_url,
             healthUrl: existing.health_url,
+            webUiUrl: getElizaAgentPublicWebUiUrl(existing),
           },
         }),
         CORS_METHODS,
@@ -185,6 +187,7 @@ async function __hono_POST(
                 status: claimed.status,
                 bridgeUrl: claimed.bridge_url,
                 healthUrl: claimed.health_url,
+                webUiUrl: getElizaAgentPublicWebUiUrl(claimed),
               },
               source: "warm_pool",
             }),
@@ -238,6 +241,7 @@ async function __hono_POST(
             status: result.sandboxRecord.status,
             bridgeUrl: result.bridgeUrl,
             healthUrl: result.healthUrl,
+            webUiUrl: getElizaAgentPublicWebUiUrl(result.sandboxRecord),
           },
         }),
         CORS_METHODS,

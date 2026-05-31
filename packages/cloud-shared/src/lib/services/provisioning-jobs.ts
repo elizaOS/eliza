@@ -16,6 +16,7 @@
 import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import {
   hydrateJob,
   type Job,
@@ -110,6 +111,8 @@ export interface AgentProvisionJobResult {
   status: string;
   bridgeUrl?: string;
   healthUrl?: string;
+  /** Reachable per-agent HTTPS gateway URL (https://<agentId>.<domain>). */
+  webUiUrl?: string | null;
   error?: string;
 }
 
@@ -1560,6 +1563,7 @@ export class ProvisioningJobService {
       status: provResult.sandboxRecord.status,
       bridgeUrl: provResult.bridgeUrl,
       healthUrl: provResult.healthUrl,
+      webUiUrl: getElizaAgentPublicWebUiUrl(provResult.sandboxRecord),
     };
 
     await jobsRepository.updateStatus(job.id, "completed", {
