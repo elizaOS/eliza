@@ -2026,6 +2026,11 @@ export class AgentRuntime implements IAgentRuntime {
 		// Initialize message service
 		this.messageService = new DefaultMessageService();
 
+		const { registerCoreIncomingMessageSecurityHook } = await import(
+			"./security/incoming-message-security.js"
+		);
+		registerCoreIncomingMessageSecurityHook(this);
+
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
 		if (skipMigrations) {

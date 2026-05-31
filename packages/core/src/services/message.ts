@@ -5439,7 +5439,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				// If it yields nothing usable, keep only terse-but-valid originals
 				// such as numeric answers. Known junk/scaffold triggers must not leak
 				// to users just because the cleanup pass failed.
-				if (typeof regenerated === "string" && regenerated.trim().length > 0) {
+				if (regenerated.trim().length > 0) {
 					reply = regenerated;
 				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
 					reply = "I'm not sure how to answer that.";

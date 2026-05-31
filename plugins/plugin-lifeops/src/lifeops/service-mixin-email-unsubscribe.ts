@@ -293,8 +293,11 @@ export function withEmailUnsubscribe<
         request.senderEmail,
         "senderEmail",
       ).toLowerCase();
-      if (request.confirmed !== true) {
-        fail(409, "Email unsubscribe requires confirmed=true.");
+      if (request.userAuthorization !== true) {
+        fail(
+          409,
+          "Email unsubscribe requires explicit user authorization (two-phase confirmation).",
+        );
       }
 
       const grant = await this.requireGoogleGmailGrant(requestUrl);

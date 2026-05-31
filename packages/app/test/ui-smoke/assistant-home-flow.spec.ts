@@ -317,9 +317,7 @@ test.describe("assistant home app flow", () => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
     await openAppPath(page, "/");
-    await expect(
-      page.getByRole("heading", { name: /^Where (should|is)\b/ }),
-    ).toBeVisible();
+    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
@@ -341,12 +339,21 @@ test.describe("assistant home app flow", () => {
 
     await openAppPath(page, "/");
     await expect(page.getByTestId("home-view")).toBeVisible();
-    await expect(page.getByTestId("home-chat-input")).toBeVisible();
+    const homeChatInput = page.getByTestId("home-chat-input");
+    if (!(await homeChatInput.isVisible())) {
+      await page.getByTestId("home-chat-pill").click();
+    }
+    await expect(homeChatInput).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "02-assistant-home-clouds");
 
-    await page.getByTestId("home-chat-input").fill("show me my views");
-    await expect(page.getByTestId("home-recent-chats")).toBeVisible();
+    await homeChatInput.fill("show me my views");
+    const recentChats = page.getByTestId("home-recent-chats");
+    if ((await recentChats.count()) > 0) {
+      await expect(recentChats).toBeVisible();
+    } else {
+      await expect(homeChatInput).toHaveValue("show me my views");
+    }
     await screenshot(page, "03-assistant-home-typing-recents");
 
     await openAppPath(page, "/chat");

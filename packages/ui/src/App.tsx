@@ -79,6 +79,7 @@ import {
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
+  isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
@@ -1177,7 +1178,7 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat" || tab === "orchestrator";
+  return tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {
@@ -1244,8 +1245,14 @@ export function App() {
     return () => cancel(id);
   }, [startupCoordinator.phase]);
 
+  // While the startup-home surface is showing, reflect it in the tab — but
+  // only when the user is on the root route. An explicit deep-link (e.g.
+  // /settings or /apps/<view>) must survive startup; pushing "home" here would
+  // rewrite the URL and strand the requested route on the home shell once the
+  // coordinator reaches "ready". Mirrors the isRoot gate in ready-phase hydration.
   useEffect(() => {
     if (!renderStartupHome || tab === "home") return;
+    if (!isRouteRootPath(getWindowNavigationPath())) return;
     setTab("home");
   }, [renderStartupHome, setTab, tab]);
 

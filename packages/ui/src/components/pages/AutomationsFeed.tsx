@@ -36,9 +36,9 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
-import { getCached, setCached } from "../../hooks/resource-cache";
 import { useTranslation } from "../../state/TranslationContext";
 import {
   type FeedFilter,
@@ -48,6 +48,7 @@ import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { TaskEditor } from "./TaskEditor";
@@ -152,7 +153,8 @@ export function AutomationsFeed({
   const { t } = useTranslation();
   // Seed from the shared cache so a revisit paints the last-known automations
   // instantly and revalidates silently, instead of flashing a spinner.
-  const cachedAutomations = getCached<AutomationListResponse>("automations:list");
+  const cachedAutomations =
+    getCached<AutomationListResponse>("automations:list");
   const [data, setData] = useState<AutomationListResponse | null>(
     cachedAutomations?.data ?? null,
   );
@@ -384,9 +386,7 @@ export function AutomationsFeed({
       {/* Feed */}
       <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
         {loading && !data ? (
-          <div className="flex items-center justify-center p-8">
-            <Spinner className="h-5 w-5" />
-          </div>
+          <ListSkeleton rows={6} className="p-3" />
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
             <ListChecks className="h-6 w-6" aria-hidden />

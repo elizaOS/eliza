@@ -15,11 +15,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, requireConfirmation } from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
-  isConfirmed,
   optionalStringArray,
   type ResolvedClient,
   requireNumber,
@@ -416,15 +415,31 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    if (!isConfirmed(options)) {
-      const preview = buildPreview(
-        op,
-        repo,
-        describeSelection(selection),
-        options,
-      );
-      await callback?.({ text: preview });
-      return { success: false, requiresConfirmation: true, preview };
+    const preview = buildPreview(
+      op,
+      repo,
+      describeSelection(selection),
+      options,
+    );
+    const decision = await requireConfirmation({
+      runtime,
+      message,
+      actionName: "GITHUB_ISSUE_OP",
+      pendingKey: `${op}:${repo}`,
+      prompt: `${preview} Reply yes to confirm or no to cancel.`,
+      callback,
+    });
+    if (decision.status === "pending") {
+      return {
+        success: true,
+        text: preview,
+        data: { requiresConfirmation: true, preview, awaitingUserInput: true },
+      };
+    }
+    if (decision.status === "cancelled") {
+      const cancelMessage = "GitHub issue operation cancelled.";
+      await callback?.({ text: cancelMessage });
+      return { success: true, text: cancelMessage, data: { cancelled: true } };
     }
 
     const resolved = buildResolvedClient(runtime, selection);

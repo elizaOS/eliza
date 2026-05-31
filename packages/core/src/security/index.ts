@@ -20,6 +20,13 @@ export {
 } from "./external-content.js";
 
 export {
+	hardenIncomingUserMessage,
+	type IncomingMessageSecurityMetadata,
+	messageHasPromptInjectionFlag,
+	registerCoreIncomingMessageSecurityHook,
+	scrubIncomingMessageTextForStorage,
+} from "./incoming-message-security.js";
+export {
 	createSecretsRedactor,
 	// Pattern-based redaction
 	getDefaultRedactPatterns,
@@ -33,3 +40,7 @@ export {
 	// Secrets-based redaction
 	type SecretsRedactOptions,
 } from "./redact.js";
+export {
+	isBlockedSpawnEnvKey,
+	sanitizeSpawnEnv,
+} from "./spawn-env-policy.js";

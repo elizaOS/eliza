@@ -87,17 +87,28 @@ const compatibilityFiles = [
 ];
 
 async function writeIfMissing(file, content) {
-  const existing = await readFile(file, "utf8").catch((error) => {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  });
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await readFile(file, "utf8").catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
 
-  if (existing !== null) return;
+    if (existing !== null) return;
 
-  await mkdir(path.dirname(file), { recursive: true });
-  const tempFile = `${file}.${process.pid}.tmp`;
-  await writeFile(tempFile, content);
-  await rename(tempFile, file);
+    try {
+      await mkdir(path.dirname(file), { recursive: true });
+      const tempFile = `${file}.${process.pid}.${attempt}.tmp`;
+      await writeFile(tempFile, content);
+      await rename(tempFile, file);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw lastError;
 }
 
 async function writeCompatibilityFiles() {

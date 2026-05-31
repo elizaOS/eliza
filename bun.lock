@@ -2658,6 +2658,13 @@
         "vitest": "^4.0.0",
       },
     },
+    "packages/sweagent": {
+      "name": "@elizaos/sweagent-root",
+      "version": "2.0.0-alpha.28-security",
+      "devDependencies": {
+        "vitest": "4.1.7",
+      },
+    },
     "packages/test/cloud-e2e": {
       "name": "@elizaos/cloud-e2e",
       "version": "0.0.0",
@@ -3960,6 +3967,7 @@
       "name": "@elizaos/plugin-mcp",
       "version": "2.0.3-beta.0",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "ajv": "^8.17.1",
@@ -6430,6 +6438,8 @@
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
 
     "@elizaos/soc2-verify": ["@elizaos/soc2-verify@workspace:packages/soc2-verify"],
+
+    "@elizaos/sweagent-root": ["@elizaos/sweagent-root@workspace:packages/sweagent"],
 
     "@elizaos/three-agent-dialogue": ["@elizaos/three-agent-dialogue@workspace:packages/benchmarks/three-agent-dialogue"],
 

@@ -139,22 +139,27 @@ async function submitFirstRun(): Promise<void> {
   }
 }
 
+function seedCompletedFirstRunStorageForOrigin(apiBase: string): void {
+  localStorage.setItem("eliza:first-run-complete", "1");
+  localStorage.setItem("eliza:setup:step", "activate");
+  localStorage.setItem("eliza:ui-shell-mode", "native");
+  localStorage.setItem("eliza:chat:voiceMuted", "true");
+  localStorage.setItem(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: `remote:${apiBase}`,
+      kind: "remote",
+      label: "Dev smoke API",
+      apiBase,
+    }),
+  );
+}
+
 async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
-  await page.addInitScript((apiBase) => {
-    localStorage.setItem("eliza:first-run-complete", "1");
-    localStorage.setItem("eliza:setup:step", "activate");
-    localStorage.setItem("eliza:ui-shell-mode", "native");
-    localStorage.setItem("eliza:chat:voiceMuted", "true");
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: `remote:${apiBase}`,
-        kind: "remote",
-        label: "Dev smoke API",
-        apiBase,
-      }),
-    );
-  }, API_BASE);
+  await page.addInitScript(seedCompletedFirstRunStorageForOrigin, API_BASE);
+  if (page.url() !== "about:blank") {
+    await page.evaluate(seedCompletedFirstRunStorageForOrigin, API_BASE);
+  }
 }
 
 test.describe("bun run dev onboarding chat smoke", () => {
@@ -186,6 +191,8 @@ test.describe("bun run dev onboarding chat smoke", () => {
       (health) => health.ready === true,
     );
 
+    await seedCompletedFirstRunStorage(page);
+    await page.goto("/");
     await seedCompletedFirstRunStorage(page);
     await page.goto("/chat");
     await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({

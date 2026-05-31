@@ -263,3 +263,61 @@ export function resolveBrowserWorkspaceCommandElementRefs(
 export function buildBrowserWorkspaceCssStringLiteral(value: string): string {
   return JSON.stringify(value);
 }
+
+/** GHSA-mhhr-9ph9-64j7 / elizaOS/eliza#6767 — arbitrary script must not run in Node (JSDOM). */
+export const BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN =
+  "Browser workspace arbitrary script execution is disabled in the JSDOM (web) backend because it runs in the Node.js agent process via unsafe eval patterns (GHSA-mhhr-9ph9-64j7). Use structured subactions (click, fill, get, wait on selector/url/text) or desktop browser workspace mode instead.";
+
+export const BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN =
+  "Browser workspace arbitrary user script is disabled (GHSA-mhhr-9ph9-64j7). Use structured browser workspace subactions instead.";
+
+export function isBrowserWorkspaceUserScriptAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const flag = normalizeEnvValue(
+    env.ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT,
+  )?.toLowerCase();
+  return flag === "1" || flag === "true" || flag === "yes";
+}
+
+export function assertBrowserWorkspaceUserScriptAllowed(
+  script: string | undefined,
+  context: "eval" | "wait",
+  mode: BrowserWorkspaceMode,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!script?.trim()) {
+    return;
+  }
+  if (mode === "web") {
+    throw createBrowserWorkspaceJsdomScriptExecutionError(context);
+  }
+  if (!isBrowserWorkspaceUserScriptAllowed(env)) {
+    const suffix =
+      context === "eval"
+        ? "Eval subactions with a user `script` are disabled by default."
+        : "Wait conditions with a user `script` are disabled by default.";
+    throw new Error(
+      `${BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN} ${suffix} Set ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT=1 only on trusted single-user hosts.`,
+    );
+  }
+}
+
+export function createBrowserWorkspaceJsdomScriptExecutionError(
+  context: "eval" | "wait",
+): Error {
+  const suffix =
+    context === "eval"
+      ? "Eval subactions are not supported on the web backend."
+      : "Wait conditions with `script` are not supported on the web backend.";
+  return new Error(`${BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN} ${suffix}`);
+}
+
+export function assertBrowserWorkspaceJsdomScriptNotRequested(
+  script: string | undefined,
+  context: "eval" | "wait",
+): void {
+  if (script?.trim()) {
+    throw createBrowserWorkspaceJsdomScriptExecutionError(context);
+  }
+}

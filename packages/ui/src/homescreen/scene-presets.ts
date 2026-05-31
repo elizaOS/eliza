@@ -215,16 +215,22 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   // Eased assistant-voice level, shared by the water ripples and the face's jaw.
   let speak = 0;
 
-  // The live Eliza face rig, rasterised onto a dark card suspended inside the
-  // orb. The negative-space face wants a dark backdrop, so the card is a deep
-  // brand orange; the glass refracts and lightly dispersion-splits it. The rig
-  // blinks and idles on its own and lip-syncs its jaw to the assistant voice.
-  const RIG_TEX = 320;
+  // Smoothed tilt of the face card — follows pointer drag to pivot the lens.
+  let tiltX = 0; // left/right tilt (drives faceMesh rotation.z)
+  let tiltY = 0; // forward/back tilt (drives faceMesh rotation.x offset)
+
+  // The live Eliza face rig, rasterised as a pure-white glow on a black canvas
+  // and blended additively so only the luminous face strokes show through the
+  // glass. Black pixels add nothing; white pixels shine. The dark background
+  // card is gone — the glass itself provides depth.
+  const RIG_TEX = 512;
   const faceCanvas = document.createElement("canvas");
   faceCanvas.width = RIG_TEX;
   faceCanvas.height = RIG_TEX;
   const fg = faceCanvas.getContext("2d");
-  const cardBg = `#${sky.clone().multiplyScalar(0.12).getHexString()}`;
+  // Background matches the sky so the disk blends into the refracted
+  // environment — the face reads as a glowing mark, not a dark card.
+  const cardBg = `#${sky.clone().multiplyScalar(0.9).getHexString()}`;
   const paintFaceCard = (): void => {
     if (!fg) return;
     fg.fillStyle = cardBg;
@@ -269,11 +275,15 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   };
 
   const faceMesh = new T.Mesh(
-    new T.CircleGeometry(ORB_RADIUS * 0.82, 48),
+    // Stay safely inside the sphere at this height — at y=0.40×R the orb
+    // cross-section radius is ~0.92×R, so 0.84×R gives comfortable clearance.
+    new T.CircleGeometry(ORB_RADIUS * 0.84, 64),
+    // Opaque so it renders BEFORE the transmission background capture and is
+    // correctly refracted/distorted by the glass above it.
     new T.MeshBasicMaterial({ map: faceTex }),
   );
   faceMesh.rotation.x = -Math.PI / 2; // lie flat, face up at the top-down camera
-  const FACE_Y = ORB_RADIUS * 0.35;
+  const FACE_Y = ORB_RADIUS * 0.4;
   faceMesh.position.y = FACE_Y;
   scene.add(faceMesh);
 
@@ -285,14 +295,14 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   const orbMat = new T.MeshPhysicalMaterial({
     color: new T.Color(0xffffff),
     metalness: 0,
-    roughness: 0.02,
+    roughness: 0.06,
     transmission: 1,
-    thickness: ORB_RADIUS * 0.35,
-    ior: 1.05,
-    dispersion: 8,
-    clearcoat: 1,
-    clearcoatRoughness: 0.04,
-    envMapIntensity: 0.85,
+    thickness: ORB_RADIUS * 0.7,
+    ior: 1.08, // crystal — visible refraction without blowing out the edges
+    dispersion: 3,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.1,
+    envMapIntensity: 0.9,
     transparent: true,
   });
   const orb = new T.Mesh(orbGeo, orbMat);
@@ -331,6 +341,23 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
       waterUniforms.uTime.value = time;
       waterUniforms.uSpeak.value = speak;
       (waterUniforms.uCam.value as THREE.Vector3).copy(camera.position);
+
+      // Pivot the face card toward the pointer — creates a parallax lens-shift
+      // so dragging the orb dynamically changes how the glass refracts the face.
+      // pointer.x/y are NDC (-1..1); scale to a gentle max tilt in radians.
+      const MAX_TILT = 0.28;
+      const px = ctx.inputs.pointer.x;
+      const py = ctx.inputs.pointer.y;
+      // While the pointer is down, chase it; when released, spring back to
+      // a subtle ambient drift so the orb never looks fully static.
+      const drag = ctx.inputs.pointer.down;
+      const targetX = drag ? px * MAX_TILT : Math.sin(time * 0.31) * 0.04;
+      const targetY = drag ? py * MAX_TILT : Math.cos(time * 0.23) * 0.03;
+      const ease = Math.min(1, dt * (drag ? 7 : 2.5));
+      tiltX += (targetX - tiltX) * ease;
+      tiltY += (targetY - tiltY) * ease;
+      faceMesh.rotation.set(-Math.PI / 2 + tiltY, 0, tiltX);
+
       // A faint bob while speaking; the face rides with the orb so it stays
       // centred inside the glass.
       const bob = Math.sin(time * 1.6) * ORB_RADIUS * 0.1 * speak;
@@ -341,7 +368,7 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
     optimize(tier) {
       waterUniforms.uQuality.value = tier;
       orbMat.transmission = tier < 0.4 ? 0 : 1;
-      orbMat.dispersion = tier < 0.6 ? 0 : 5;
+      orbMat.dispersion = tier < 0.4 ? 0 : tier < 0.6 ? 1 : 3;
       const next = Math.max(16, Math.round(16 + tier * 40));
       if (next !== segments) {
         segments = next;

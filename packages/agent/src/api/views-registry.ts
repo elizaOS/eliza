@@ -216,7 +216,7 @@ export async function registerPluginViews(
           existingPlugin: existing.pluginName,
           incomingPlugin: plugin.name,
         },
-        `[ViewRegistry] View id "${entry.id}" from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+        `View id "${entry.id}" from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
       );
       continue;
     }
@@ -229,7 +229,7 @@ export async function registerPluginViews(
         pluginName: entry.pluginName,
         available: entry.available,
       },
-      `[ViewRegistry] Registered view "${entry.id}" from plugin "${plugin.name}"`,
+      `Registered view "${entry.id}" from plugin "${plugin.name}"`,
     );
   }
 
@@ -254,7 +254,7 @@ export function unregisterPluginViews(pluginName: string): void {
       viewSearchIndex.removeView(entry.id, entry.viewType);
       logger.debug(
         { src: "ViewRegistry", viewId: entry.id, pluginName },
-        `[ViewRegistry] Unregistered view "${entry.id}" from plugin "${pluginName}"`,
+        `Unregistered view "${entry.id}" from plugin "${pluginName}"`,
       );
     }
   }
@@ -310,7 +310,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   if (registered.length > 0) {
     logger.info(
       { src: "ViewRegistry", count: registered.length },
-      `[ViewRegistry] Registered ${registered.length} built-in views`,
+      `Registered ${registered.length} built-in views`,
     );
   }
 
@@ -434,13 +434,13 @@ async function buildEntry(
                 viewType: normalizedViewType,
                 sizeKb: sizeKb.toFixed(0),
               },
-              `[ViewRegistry] View ${registryKey} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
+              `View ${registryKey} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
             );
           }
         } else if (stat) {
           logger.debug(
             { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(1) },
-            `[ViewRegistry] Registered view ${view.id} — bundle: ${sizeKb.toFixed(1)}KB`,
+            `Registered view ${view.id} — bundle: ${sizeKb.toFixed(1)}KB`,
           );
         }
       }

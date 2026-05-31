@@ -60,19 +60,24 @@ function toHonoPath(path: string): string {
 async function readBodyForDispatch(
   request: Request,
   method: string,
-): Promise<unknown> {
-  if (method === "GET" || method === "HEAD") return undefined;
+): Promise<{ body: unknown; rawBody?: string }> {
+  if (method === "GET" || method === "HEAD") {
+    return { body: undefined };
+  }
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const text = await request.text();
-    if (!text.trim()) return undefined;
+    if (!text.trim()) {
+      return { body: undefined, rawBody: text };
+    }
     try {
-      return JSON.parse(text);
+      return { body: JSON.parse(text), rawBody: text };
     } catch {
-      return text;
+      return { body: text, rawBody: text };
     }
   }
-  return request.text();
+  const text = await request.text();
+  return { body: text, rawBody: text };
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {
@@ -126,7 +131,10 @@ export function mountRoutesOnHono(
       const request = ctx.req.raw;
       const url = new URL(request.url);
       const params = ctx.req.param();
-      const body = await readBodyForDispatch(request, request.method);
+      const { body, rawBody } = await readBodyForDispatch(
+        request,
+        request.method,
+      );
       const result: RouteHandlerResult | null = await dispatchRoute({
         runtime,
         method: request.method,
@@ -134,6 +142,7 @@ export function mountRoutesOnHono(
         headers: headersToRecord(request.headers),
         query: searchParamsToQuery(url),
         body,
+        rawBody,
         inProcess: false,
         isAuthorized: () => options.isAuthorized(request),
       }).catch(

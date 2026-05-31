@@ -1,11 +1,10 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
-  buildSendTxParams,
-  confirmationRequired,
-  createEvmActionValidator,
-  isConfirmed,
-} from "./helpers";
+  gateWalletFinancialExecution,
+  walletFinancialGateActionResult,
+} from "../../../security/wallet-financial-confirmation.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+import { buildSendTxParams, createEvmActionValidator } from "./helpers";
 
 const legacySpec = requireActionSpec("EVM_SWAP");
 const spec = { ...legacySpec, name: "WALLET" };
@@ -831,7 +830,7 @@ export const swapAction = {
   descriptionCompressed: spec.descriptionCompressed,
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "ADMIN" },
   parameters: [
     {
       name: "fromToken",
@@ -857,19 +856,13 @@ export const swapAction = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "confirmed",
-      description: "Set true after preview confirmation to submit.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
   ],
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: Record<string, unknown>,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const walletProvider = await initWalletProvider(runtime);
@@ -880,14 +873,22 @@ export const swapAction = {
 
     const swapOptions = await buildSwapDetails(state, message, runtime, walletProvider);
 
-    if (!isConfirmed(options)) {
-      const preview = `Review EVM swap before submitting: ${swapOptions.amount} ${swapOptions.fromToken} to ${swapOptions.toToken} on ${swapOptions.chain}. Re-invoke ${spec.name} with confirmed: true to submit.`;
-      return confirmationRequired({
-        actionName: spec.name,
-        preview,
-        parameters: swapOptions,
-        callback,
-      });
+    const gate = await gateWalletFinancialExecution({
+      runtime,
+      message,
+      params: {
+        subaction: "swap",
+        chain: swapOptions.chain,
+        amount: swapOptions.amount,
+        fromToken: swapOptions.fromToken,
+        toToken: swapOptions.toToken,
+        mode: "execute",
+        dryRun: false,
+      },
+      callback,
+    });
+    if (!gate.proceed) {
+      return walletFinancialGateActionResult(gate);
     }
 
     const action = new SwapAction(walletProvider);

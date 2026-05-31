@@ -44,6 +44,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -590,10 +591,7 @@ export function TrajectoriesView({
       ) : null}
 
       {loading && trajectories.length === 0 ? (
-        <PagePanel.Loading
-          variant="surface"
-          heading={t("trajectoriesview.LoadingTrajectories")}
-        />
+        <ListSkeleton rows={8} />
       ) : !loading && trajectories.length === 0 ? (
         <PagePanel.FeatureEmpty
           className="rounded-sm"

@@ -9,6 +9,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { requireConfirmation } from "../../../../utils/confirmation.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { MANAGE_OPERATION_KINDS } from "../types.ts";
@@ -112,7 +113,7 @@ export const manageMessageAction: Action = {
 
 	handler: async (
 		runtime: IAgentRuntime,
-		_message: Memory,
+		message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
@@ -130,6 +131,39 @@ export const manageMessageAction: Action = {
 			logger.warn(`[ManageMessage] ${text}`);
 			return { success: false, text, error: text };
 		}
+
+		if (parsed.operation.kind === "unsubscribe") {
+			const preview = `Unsubscribe from the sender of message ${messageId}?`;
+			const decision = await requireConfirmation({
+				runtime,
+				message,
+				actionName: "MESSAGE_UNSUBSCRIBE",
+				pendingKey: `unsubscribe:${messageId}`,
+				prompt: preview,
+				callback,
+			});
+			if (decision.status !== "confirmed") {
+				const text =
+					decision.status === "pending"
+						? `${preview} Reply yes to confirm or no to cancel.`
+						: "Unsubscribe cancelled.";
+				if (callback) {
+					await callback({ text, action: "MESSAGE" });
+				}
+				return {
+					success: decision.status === "pending",
+					text,
+					data: {
+						requiresConfirmation: decision.status === "pending",
+						awaitingUserInput: decision.status === "pending",
+						cancelled: decision.status === "cancelled",
+						messageId,
+						operation: "unsubscribe",
+					},
+				};
+			}
+		}
+
 		const result = await service.manage(runtime, messageId, parsed.operation, {
 			source: parsed.source,
 		});

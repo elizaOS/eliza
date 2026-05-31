@@ -1761,7 +1761,7 @@ export async function autoFetchCloudGithubToken(
     if (!res.ok) {
       // 404 = no GitHub connection for this agent, which is fine
       if (res.status !== 404) {
-        logger.info(
+        logger.debug(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
@@ -2110,7 +2110,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
     if (Number.isNaN(pid) || pid <= 0) {
       // Malformed pid file — remove it
       unlinkSync(pidPath);
-      logger.info(`[eliza] Removed malformed PGlite postmaster.pid`);
+      logger.debug(`[eliza] Removed malformed PGlite postmaster.pid`);
       return "cleared-malformed";
     }
 
@@ -2127,7 +2127,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
       if (code === "ESRCH") {
         // Process doesn't exist — stale pid file, safe to remove
         unlinkSync(pidPath);
-        logger.info(
+        logger.debug(
           `[eliza] Removed stale PGlite postmaster.pid (process ${pid} not running)`,
         );
         return "cleared-stale";

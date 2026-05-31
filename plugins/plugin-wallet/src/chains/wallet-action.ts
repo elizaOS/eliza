@@ -12,6 +12,15 @@ import type {
 import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-search-address.js";
 import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
+  assertEvmTransferRecipientAuthorized,
+  assertWalletFinancialActionAllowed,
+} from "../security/wallet-context-safety.js";
+import {
+  gateWalletFinancialExecution,
+  requiresWalletFinancialConfirmation,
+  walletFinancialGateActionResult,
+} from "../security/wallet-financial-confirmation.js";
+import {
   WALLET_BACKEND_SERVICE_TYPE,
   type WalletBackendService,
 } from "../services/wallet-backend-service.js";
@@ -189,7 +198,7 @@ function normalizeRawParams(
     amount: raw.amount,
     recipient: raw.recipient ?? raw.toAddress ?? raw.to,
     slippageBps: raw.slippageBps ?? raw.slippage,
-    mode: raw.mode ?? (raw.confirmed === true ? "execute" : undefined),
+    mode: raw.mode,
     dryRun: raw.dryRun ?? raw.dry_run,
     op,
     governor: raw.governor,
@@ -326,6 +335,7 @@ async function runWalletRouter(
   let params: WalletRouterParams;
   try {
     params = await parseRouterParams(message, state, options);
+    assertWalletFinancialActionAllowed(message, params.subaction);
   } catch (error) {
     const text = `Invalid wallet parameters: ${
       error instanceof Error ? error.message : String(error)
@@ -336,6 +346,30 @@ async function runWalletRouter(
       text,
       data: { error: "INVALID_PARAMS" },
     };
+  }
+
+  if (
+    params.subaction === "transfer" &&
+    params.recipient &&
+    /^0x[a-fA-F0-9]{40}$/.test(params.recipient)
+  ) {
+    try {
+      assertEvmTransferRecipientAuthorized(
+        message,
+        options as Record<string, unknown> | undefined,
+        params.recipient,
+      );
+    } catch (error) {
+      const text = `Invalid wallet transfer recipient: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      await callback?.({ text, content: { error: "INVALID_PARAMS" } });
+      return {
+        success: false,
+        text,
+        data: { error: "INVALID_PARAMS" },
+      };
+    }
   }
 
   const service = serviceFromRuntime(runtime);
@@ -349,7 +383,38 @@ async function runWalletRouter(
     };
   }
 
-  const routed = await service.routeWalletAction(params);
+  const preflightFailure = service.preflightWalletAction(params);
+  if (preflightFailure) {
+    const text = formatFailure(preflightFailure);
+    const data = toProviderRecord({
+      error: preflightFailure.error,
+      detail: preflightFailure.detail,
+      candidates: preflightFailure.candidates,
+    });
+    await callback?.({ text, content: { success: false, ...data } });
+    return {
+      success: false,
+      text,
+      data,
+    };
+  }
+
+  const confirmationGate = await gateWalletFinancialExecution({
+    runtime,
+    message,
+    params,
+    callback,
+  });
+  if (!confirmationGate.proceed) {
+    return walletFinancialGateActionResult(confirmationGate);
+  }
+
+  const executionParams: WalletRouterParams = {
+    ...params,
+    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
+  };
+
+  const routed = await service.routeWalletAction(executionParams);
   const text = resultText(routed);
   const data = toProviderRecord(
     routed.ok
@@ -398,7 +463,7 @@ export const walletRouterAction: Action = {
     "WALLET transfer|swap|bridge|gov|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "SWAP",
     "SWAP_SOLANA",
@@ -485,7 +550,8 @@ export const walletRouterAction: Action = {
     },
     {
       name: "mode",
-      description: "Prepare without submitting, or execute the operation.",
+      description:
+        "Prepare without submitting, or request execution. On-chain submission still requires the user to reply yes on a follow-up turn (LLM cannot authorize via mode or confirmed flags).",
       required: false,
       schema: {
         type: "string",

@@ -189,3 +189,36 @@ export async function clearPendingConfirmation(args: {
 	const cacheKey = buildCacheKey(args.userId, args.actionName, args.pendingKey);
 	await args.runtime.deleteCache(cacheKey);
 }
+
+export type DestructiveConfirmationGateResult =
+	| {
+			readonly status: "confirmed";
+			readonly metadata?: Record<string, unknown>;
+	  }
+	| { readonly status: "pending" }
+	| {
+			readonly status: "cancelled";
+			readonly metadata?: Record<string, unknown>;
+	  };
+
+/**
+ * Thin wrapper around {@link requireConfirmation} for destructive action handlers.
+ * Never consult LLM `confirmed` params — only user yes/no on a follow-up turn.
+ */
+export async function gateDestructiveConfirmation(
+	args: RequireConfirmationArgs,
+): Promise<DestructiveConfirmationGateResult> {
+	const decision = await requireConfirmation(args);
+	if (decision.status === "confirmed") {
+		return { status: "confirmed", metadata: decision.metadata };
+	}
+	if (decision.status === "pending") {
+		return { status: "pending" };
+	}
+	return { status: "cancelled", metadata: decision.metadata };
+}
+
+/** LLM `confirmed: true` must not authorize destructive ops (GHSA-rqm7 class). */
+export function llmConfirmedFlagIsAuthoritative(_value: unknown): boolean {
+	return false;
+}
