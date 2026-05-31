@@ -1,0 +1,21 @@
+[Unit]
+Description=elizaOS real-hardware evidence collector (post-kiosk capture)
+# Inert unless the user provisioned a partition labeled ELIZAOS-EVIDENCE on
+# the live USB after flashing. Runs after the kiosk so we can capture the
+# rendered Xorg surface. No effect on machines without the labeled partition.
+After=elizaos-kiosk.service
+Wants=elizaos-kiosk.service
+ConditionPathExists=/usr/local/lib/elizaos/collect-real-hw-evidence
+
+[Service]
+Type=oneshot
+# Long timeout: the script captures for ~5 minutes, then exits.
+TimeoutStartSec=600
+ExecStart=/usr/local/lib/elizaos/collect-real-hw-evidence
+RemainAfterExit=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=elizaos-evidence
+
+[Install]
+WantedBy=graphical.target
