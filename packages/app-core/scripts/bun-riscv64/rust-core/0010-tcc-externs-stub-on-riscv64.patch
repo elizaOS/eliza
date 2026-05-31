@@ -1,0 +1,62 @@
+Subject: [PATCH] riscv64 Rust-core bun: stub TinyCC externs on riscv64 (link fix)
+
+config.ts disables TinyCC for riscv64 (`cfg.tinycc = !(... || riscv64)`), so
+libtcc.a is not built/linked. But two Rust sites declare the `tcc_*` externs
+gated on `not(any(android, freebsd, windows-aarch64))` — a list that OMITS
+riscv64 — so on riscv64 the real `extern "C"` block is emitted and the symbols
+are referenced (via the FFI compile path reachable from JS bindings), failing
+the final link:
+
+    ld.lld: error: undefined symbol: tcc_new / tcc_compile_string / tcc_relocate / ...
+
+Both sites carry a comment to "keep this predicate in sync with `cfg.tinycc`";
+0001 added riscv64 to cfg.tinycc but missed these. Add `target_arch = "riscv64"`
+to both the `not(any(...))` (real externs) and the `any(...)` (unreachable!()
+stub definitions) so riscv64 links against the stubs. The runtime ENABLE_TINYCC
+early-returns in bun_runtime::ffi keep callers off the stubs, and the
+`unreachable!()` makes any future gate regression loud.
+
+diff --git a/src/runtime/ffi/mod.rs b/src/runtime/ffi/mod.rs
+index 940a6a56..c6dde965 100644
+--- a/src/runtime/ffi/mod.rs
++++ b/src/runtime/ffi/mod.rs
+@@ -123,7 +123,8 @@ mod TCC {
+     #[cfg(not(any(
+         target_os = "android",
+         target_os = "freebsd",
+-        all(windows, target_arch = "aarch64")
++        all(windows, target_arch = "aarch64"),
++        target_arch = "riscv64"
+     )))]
+     unsafe extern "C" {
+         pub(super) fn tcc_delete(s: *mut State);
+@@ -131,7 +132,8 @@ mod TCC {
+     #[cfg(any(
+         target_os = "android",
+         target_os = "freebsd",
+-        all(windows, target_arch = "aarch64")
++        all(windows, target_arch = "aarch64"),
++        target_arch = "riscv64"
+     ))]
+     pub(super) unsafe fn tcc_delete(_s: *mut State) {
+         unreachable!("tcc_delete: TinyCC not built on this target (cfg.tinycc = false)");
+diff --git a/src/tcc_sys/tcc.rs b/src/tcc_sys/tcc.rs
+index 66257f51..3bebe865 100644
+--- a/src/tcc_sys/tcc.rs
++++ b/src/tcc_sys/tcc.rs
+@@ -31,13 +31,13 @@ pub type ErrorFunc<Ctx> = unsafe extern "C" fn(ctx: *mut Ctx, msg: *const c_char
+ // Keep this predicate in sync with `cfg.tinycc` in `scripts/build/config.ts`.
+ macro_rules! tcc_externs {
+     ($($(#[$attr:meta])* fn $name:ident($($arg:ident: $ty:ty),* $(,)?) $(-> $ret:ty)?;)*) => {
+-        #[cfg(not(any(target_os = "android", target_os = "freebsd", all(windows, target_arch = "aarch64"))))]
++        #[cfg(not(any(target_os = "android", target_os = "freebsd", all(windows, target_arch = "aarch64"), target_arch = "riscv64")))]
+         // TODO(port): move to tcc_sys (already in *_sys crate — verify crate layout)
+         unsafe extern "C" {
+             $($(#[$attr])* fn $name($($arg: $ty),*) $(-> $ret)?;)*
+         }
+         $(
+-            #[cfg(any(target_os = "android", target_os = "freebsd", all(windows, target_arch = "aarch64")))]
++            #[cfg(any(target_os = "android", target_os = "freebsd", all(windows, target_arch = "aarch64"), target_arch = "riscv64"))]
+             #[allow(unused_variables, clippy::missing_safety_doc)]
+             unsafe extern "C" fn $name($($arg: $ty),*) $(-> $ret)? {
+                 unreachable!(concat!(
