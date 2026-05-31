@@ -30,100 +30,47 @@ ARG APP_DIR
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
 
-# Some relinked local packages expect selected runtime dependencies to be
-# resolvable from root node_modules. Host node_modules is excluded from the
-# Docker context (see .dockerignore: **/node_modules), so install this
-# runtime set in-image.
+# Some relinked local packages expect their third-party (non-@elizaos) runtime
+# dependencies to be resolvable from /app/node_modules. Host node_modules is
+# excluded from the Docker context (see .dockerignore: **/node_modules), so
+# install that runtime set in-image.
 #
-# IMPORTANT: this list is hand-maintained and BRITTLE. The packages here
-# are the bare third-party imports that survive into the shipped dist bundles
-# and are resolved at runtime (not inlined). Two distinct sources require
-# them:
-#   (a) packages/core/dist/node/index.node.js externalises `zod` (+ subpaths
-#       zod/v3, zod/v4) and `dotenv` (build.ts nodeExternals). zod is the
-#       FIRST eager import on boot, so a missing zod crashes the container
-#       before any agent code runs.
-#   (b) packages/agent/dist is transpiled (tsc, NOT bundled), so every bare
-#       import stays third-party. The eager boot path (runtime/eliza.js ->
-#       dynamic import api/server.js, whose static graph is loaded eagerly)
-#       pulls in: hono (api/hono-adapter), json5 (config/config),
-#       @noble/curves + ethers (api/wallet), esbuild
-#       (services/plugin-compiler via workbench routes), and isomorphic-git
-#       (services/vfs-git). All of these load at module-eval time when
-#       server.js is imported, so a missing one is a hard boot crash.
-#   (c) @elizaos/core + @elizaos/shared (+ @elizaos/contracts) are linked
-#       into /app/node_modules so they resolve when imported eagerly on
-#       boot. @elizaos/shared/dist is transpiled (tsc, NOT bundled), so its
-#       own third-party deps stay as bare imports. Its package barrel eagerly
-#       loads terminal/theme.js -> `chalk`, so a missing chalk crashes the
-#       container the same way zod did (verified: "Cannot find package
-#       'chalk' imported from /app/packages/shared/dist/terminal/theme.js").
-#       chalk is the only EAGER third-party the linked shared graph adds that
-#       was not already covered above (its other bare specifiers are either
-#       type-only (drizzle-orm/pg-core), dynamic + optional (phonemizer,
-#       which has a built-in fallback), or already present (zod, yaml)).
-#       file-type is added PROACTIVELY: @elizaos/core dynamically imports it
-#       (media/mime.js, `await import("file-type")`) for MIME sniffing. It is
-#       lazy (not on the boot path) but commonly hit once the agent handles
-#       any media, so including it now avoids a later crash layer; it is
-#       cheap relative to the cost of another build/test loop.
-# chalk@5.6.2 / file-type@22.0.1 are the versions the workspace lockfile
-# resolves for @elizaos/shared (chalk ^5.3.0) and @elizaos/core
-# (file-type ^22.0.0) respectively.
-# zod@4.4.3 matches packages/core/package.json (^4.4.3) and provides the
-# ./v3 + ./v4 subpath exports core imports. Versions below track the
-# declarations in packages/agent/package.json + packages/core/package.json.
-# FOLLOW-UP: derive this list from the workspace dist third-partys instead of
-# hand-maintaining it (see audit notes in the PR).
+# The set is DERIVED, not hand-maintained: collect-docker-runtime-deps.mjs
+# reads the declared `dependencies` of every workspace package that gets
+# linked into the image (see link-docker-local-app-packages.mjs +
+# relink-workspace-packages-to-dist.mjs), drops the @elizaos/* workspace
+# entries (those are linked, not installed), and emits the union pinned to
+# the versions the workspace lockfile resolves. `npm install` then pulls the
+# full transitive closure automatically.
+#
+# This replaces the previous hand-maintained allowlist, which had to be
+# extended by hand every time a newly-linked package introduced a new
+# third-party dependency. Each omission was a hard boot crash of the form
+# "Cannot find package '<dep>' imported from /app/packages/<pkg>/dist/..."
+# (zod, then @elizaos/core, then chalk, ...). Deriving the closure removes
+# that whole class of build/test loops: every dependency a linked package
+# declares is present, so the image boots and any character config can load
+# any bundled plugin without a missing-module crash.
+#
+# Pure browser/UI packages (notably @elizaos/ui and its radix/three/recharts
+# tree) are excluded inside the script: they are linked for resolution
+# integrity but never imported by the headless server runtime, so installing
+# their frontend deps would only bloat the image.
 RUN mkdir -p /tmp/docker-runtime-deps \
   && cd /tmp/docker-runtime-deps \
   && npm init -y >/dev/null \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" \
+       > /tmp/docker-runtime-deps/deps.txt \
+  && echo "Installing $(wc -l < /tmp/docker-runtime-deps/deps.txt) derived runtime deps" \
   && npm install --omit=dev --ignore-scripts --no-package-lock \
+    --legacy-peer-deps \
     --fetch-retries=5 \
     --fetch-retry-mintimeout=20000 \
     --fetch-retry-maxtimeout=120000 \
-    @electric-sql/pglite@0.4.5 \
-    @neondatabase/serverless@1.1.0 \
-    @node-rs/argon2@2.0.2 \
-    dotenv@17.2.3 \
-    drizzle-orm@0.45.2 \
-    jose@6.2.2 \
-    pg@8.20.0 \
-    uuid@14.0.0 \
-    ws@8.20.0 \
-    yaml@2.8.2 \
-    zod@4.4.3 \
-    hono@4.12.18 \
-    json5@2.2.3 \
-    ethers@6.16.0 \
-    esbuild@0.25.10 \
-    isomorphic-git@1.37.8 \
-    @noble/curves@2.2.0 \
-    @noble/hashes@2.2.0 \
-    chalk@5.6.2 \
-    file-type@22.0.1 \
+    $(cat /tmp/docker-runtime-deps/deps.txt) \
   && mkdir -p /app/node_modules \
-  && rm -rf \
-    /app/node_modules/@electric-sql/pglite \
-    /app/node_modules/@neondatabase/serverless \
-    /app/node_modules/@node-rs/argon2 \
-    /app/node_modules/dotenv \
-    /app/node_modules/drizzle-orm \
-    /app/node_modules/jose \
-    /app/node_modules/pg \
-    /app/node_modules/uuid \
-    /app/node_modules/ws \
-    /app/node_modules/yaml \
-    /app/node_modules/zod \
-    /app/node_modules/hono \
-    /app/node_modules/json5 \
-    /app/node_modules/ethers \
-    /app/node_modules/esbuild \
-    /app/node_modules/isomorphic-git \
-    /app/node_modules/@noble/curves \
-    /app/node_modules/@noble/hashes \
-    /app/node_modules/chalk \
-    /app/node_modules/file-type \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" --names \
+     | while IFS= read -r dep; do [ -n "$dep" ] && rm -rf "/app/node_modules/$dep"; done \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 
