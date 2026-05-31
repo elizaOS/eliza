@@ -3,6 +3,7 @@
 // (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
 export { resolveAppBranding } from "@elizaos/shared";
+export * from "./agent-surface";
 export * from "./App";
 export type {
   AppLaunchDiagnostic,
