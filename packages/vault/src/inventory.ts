@@ -110,10 +110,9 @@ export function categorizeKey(key: string): VaultEntryCategory {
   ) {
     return "wallet";
   }
-  if (/_API_KEY$/.test(key)) {
-    if (PROVIDER_KEY_PATTERNS.some((rx) => rx.test(key))) return "provider";
-    return "plugin";
-  }
+  // PROVIDER_KEY_TO_ID (via PROVIDER_EXACT_KEYS) is the single source of truth
+  // for which env vars are first-party provider credentials. Anything else that
+  // looks like a key (e.g. WORKFLOW_API_KEY) is a plugin-provided secret.
   if (PROVIDER_EXACT_KEYS.has(key)) return "provider";
   return "plugin";
 }
@@ -142,6 +141,7 @@ const PROVIDER_KEY_TO_ID: Readonly<Record<string, string>> = {
   Z_AI_API_KEY: "zai",
   MOONSHOT_API_KEY: "moonshot",
   KIMI_API_KEY: "moonshot",
+  CEREBRAS_API_KEY: "cerebras",
   MISTRAL_API_KEY: "mistral",
   TOGETHER_API_KEY: "together",
   GOOGLE_GENERATIVE_AI_API_KEY: "gemini",
@@ -153,22 +153,6 @@ const PROVIDER_KEY_TO_ID: Readonly<Record<string, string>> = {
 const PROVIDER_EXACT_KEYS: ReadonlySet<string> = new Set(
   Object.keys(PROVIDER_KEY_TO_ID),
 );
-
-const PROVIDER_KEY_PATTERNS: ReadonlyArray<RegExp> = [
-  /^OPENAI_API_KEY$/,
-  /^ANTHROPIC_API_KEY$/,
-  /^OPENROUTER_API_KEY$/,
-  /^GROQ_API_KEY$/,
-  /^XAI_API_KEY$/,
-  /^DEEPSEEK_API_KEY$/,
-  /^Z_?AI_API_KEY$/,
-  /^(?:MOONSHOT|KIMI)_API_KEY$/,
-  /^MISTRAL_API_KEY$/,
-  /^TOGETHER_API_KEY$/,
-  /^GOOGLE_(?:GENERATIVE_AI_)?API_KEY$/,
-  /^GEMINI_API_KEY$/,
-  /^PERPLEXITY_API_KEY$/,
-];
 
 // ── Default labels ─────────────────────────────────────────────────
 
@@ -189,9 +173,8 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
 };
 
 function defaultLabel(key: string, providerId: string | null): string {
-  if (providerId && PROVIDER_LABELS[providerId])
-    return PROVIDER_LABELS[providerId]!;
-  return key;
+  const label = providerId ? PROVIDER_LABELS[providerId] : undefined;
+  return label ?? key;
 }
 
 // ── Public API ─────────────────────────────────────────────────────

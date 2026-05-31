@@ -155,6 +155,10 @@ function providerDisplayName(
       return t("accounts.provider.moonshotApi", {
         defaultValue: "Kimi / Moonshot API",
       });
+    case "cerebras-api":
+      return t("accounts.provider.cerebrasApi", {
+        defaultValue: "Cerebras API",
+      });
     default:
       return providerId;
   }

@@ -423,6 +423,18 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeKey: "GROQ_LARGE_MODEL",
     largeVal: "openai/gpt-oss-120b",
   },
+  // Cerebras runs through the OpenAI plugin's Cerebras mode, which reads a
+  // single `CEREBRAS_MODEL` knob for every model role. Without it the plugin
+  // falls back to OpenAI ids (`gpt-5.4-mini` / `gpt-5`) that 404 on
+  // api.cerebras.ai, so a switched-in Cerebras agent would fail every call.
+  // small/large intentionally share the key+value: the `if (!process.env[key])`
+  // guard in applyDefaultModelNames makes the second write a no-op.
+  cerebras: {
+    smallKey: "CEREBRAS_MODEL",
+    smallVal: "gpt-oss-120b",
+    largeKey: "CEREBRAS_MODEL",
+    largeVal: "gpt-oss-120b",
+  },
   nearai: {
     smallKey: "NEARAI_SMALL_MODEL",
     smallVal: "Qwen/Qwen3.6-35B-A3B-FP8",
@@ -698,6 +710,7 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
   const signalProviders = [
     "anthropic",
     "anthropic-subscription",
+    "cerebras",
     "deepseek",
     "gemini",
     "grok",
@@ -715,6 +728,17 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
 
   for (const providerId of signalProviders) {
     for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
+      clearPersistedEnvValue(config, envKey);
+      delete process.env[envKey];
+    }
+  }
+
+  // A full reset must also drop the provider-specific default model env vars
+  // that applyDefaultModelNames stamps (ANTHROPIC_LARGE_MODEL, OPENAI_SMALL_MODEL,
+  // CEREBRAS_MODEL, …); otherwise a stale model id from a prior provider survives
+  // into the next fresh first-run.
+  for (const { smallKey, largeKey } of Object.values(PROVIDER_DEFAULT_MODELS)) {
+    for (const envKey of new Set([smallKey, largeKey])) {
       clearPersistedEnvValue(config, envKey);
       delete process.env[envKey];
     }

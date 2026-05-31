@@ -105,7 +105,33 @@ async function resolveService(
  * Handle `/api/orchestrator/*` routes. Returns true when the path was matched
  * (whether it succeeded or errored), false to let the dispatcher continue.
  */
+/**
+ * Single error boundary for every orchestrator endpoint. A thrown service call
+ * (DB / file / session failure) becomes a 500 instead of an unhandled promise
+ * rejection that leaves the request hanging forever. Paths outside the
+ * orchestrator prefix return false (not handled) untouched.
+ */
 export async function handleOrchestratorRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  ctx: RouteContext,
+): Promise<boolean> {
+  try {
+    return await dispatchOrchestratorRoutes(req, res, pathname, ctx);
+  } catch (error) {
+    if (!res.headersSent) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Orchestrator request failed",
+        500,
+      );
+    }
+    return true;
+  }
+}
+
+async function dispatchOrchestratorRoutes(
   req: IncomingMessage,
   res: ServerResponse,
   pathname: string,

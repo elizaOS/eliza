@@ -24,6 +24,15 @@ describe("inventory — categorization heuristics", () => {
     expect(categorizeKey("GOOGLE_GENERATIVE_AI_API_KEY")).toBe("provider");
     expect(categorizeKey("GEMINI_API_KEY")).toBe("provider");
     expect(categorizeKey("PERPLEXITY_API_KEY")).toBe("provider");
+    // OpenAI-compatible + previously-unpatterned providers must also classify
+    // as first-party providers (regression guard: CEREBRAS/NEARAI were missing
+    // from the old pattern list and fell through to "plugin").
+    expect(categorizeKey("CEREBRAS_API_KEY")).toBe("provider");
+    expect(categorizeKey("MOONSHOT_API_KEY")).toBe("provider");
+    expect(categorizeKey("KIMI_API_KEY")).toBe("provider");
+    expect(categorizeKey("NEARAI_API_KEY")).toBe("provider");
+    expect(categorizeKey("ZAI_API_KEY")).toBe("provider");
+    expect(inferProviderId("CEREBRAS_API_KEY")).toBe("cerebras");
   });
 
   it("classifies generic _API_KEY suffixes as plugin", () => {
