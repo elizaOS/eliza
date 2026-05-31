@@ -73,23 +73,27 @@ function registersAgentElement(pluginDir: string): boolean {
   );
 }
 
-const UI_PAGES_DIR = path.resolve(here, "../../../ui/src/components/pages");
+const UI_COMPONENTS_DIR = path.resolve(here, "../../../ui/src/components");
 
 /**
  * Builtin shell views, made controllable via ShellViewAgentSurface (rather than
- * the bundle loader). Each must wrap its body in the bridge.
+ * the bundle loader). Paths are relative to packages/ui/src/components. Each
+ * must wrap its body in the bridge. (chat is intentionally absent — it is the
+ * in-view-chat removal target, not a conversion.)
  */
 const CONVERTED_BUILTIN_PAGES = [
-  "SettingsView",
-  "PluginsPageView",
-  "TrajectoriesView",
-  "MemoryViewerView",
-  "DatabasePageView",
-  "LogsView",
+  "pages/SettingsView",
+  "pages/PluginsPageView",
+  "pages/TrajectoriesView",
+  "pages/MemoryViewerView",
+  "pages/DatabasePageView",
+  "pages/LogsView",
+  "pages/AutomationsFeed",
+  "character/CharacterEditor",
 ] as const;
 
 function wrapsInShellBridge(pageFile: string): boolean {
-  const file = path.join(UI_PAGES_DIR, `${pageFile}.tsx`);
+  const file = path.join(UI_COMPONENTS_DIR, `${pageFile}.tsx`);
   try {
     return readFileSync(file, "utf8").includes("ShellViewAgentSurface");
   } catch {
