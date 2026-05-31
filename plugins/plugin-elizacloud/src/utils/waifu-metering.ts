@@ -228,9 +228,13 @@ export function buildInferenceSpentPayload(
   };
 }
 
+const POST_TIMEOUT_MS = 10000;
+
 /**
  * POST a signed `inference.spent` webhook to waifu. Best-effort: failures are
  * logged but never thrown, so metering never blocks or breaks an agent reply.
+ * A 10s AbortSignal bounds the request so a stuck receiver can never leave a
+ * background fetch hanging.
  */
 export async function postInferenceSpent(
   config: WaifuMeteringConfig,
@@ -245,9 +249,9 @@ export async function postInferenceSpent(
       headers: {
         "content-type": "application/json",
         "X-Waifu-Webhook-Signature": signature,
-        "X-Waifu-Signature": signature,
       },
       body,
+      signal: AbortSignal.timeout(POST_TIMEOUT_MS),
     });
     if (!res.ok) {
       logger.warn(
@@ -260,8 +264,14 @@ export async function postInferenceSpent(
     );
     return { ok: true, status: res.status };
   } catch (err) {
+    const aborted = err instanceof Error && err.name === "TimeoutError";
+    const detail = aborted
+      ? `timed out after ${POST_TIMEOUT_MS}ms`
+      : err instanceof Error
+        ? err.message
+        : String(err);
     logger.warn(
-      `[waifu-metering] inference.spent POST failed: ${err instanceof Error ? err.message : String(err)}`
+      `[waifu-metering] inference.spent POST failed for agent ${config.agentId}: ${detail}`
     );
     return { ok: false };
   }

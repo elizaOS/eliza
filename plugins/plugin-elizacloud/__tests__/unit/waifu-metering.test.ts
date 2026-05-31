@@ -85,9 +85,7 @@ describe("resolveWaifuMeteringConfig", () => {
     });
     const resolved = resolveWaifuMeteringConfig(runtime);
     expect(resolved?.webhookUrl).not.toContain("/credits");
-    expect(resolved?.webhookUrl).toBe(
-      "https://api.waifu.fun/v2/webhooks/eliza-cloud/inference"
-    );
+    expect(resolved?.webhookUrl).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference");
   });
 
   it("returns null when only a non-credits WAIFU_WEBHOOK_URL is present (cannot safely derive)", () => {
@@ -205,7 +203,32 @@ describe("postInferenceSpent", () => {
     const headers = calls[0].init.headers as Record<string, string>;
     const expectedSig = signWaifuWebhook(sentBody, payload!.timestamp, CONFIG.secret);
     expect(headers["X-Waifu-Webhook-Signature"]).toBe(expectedSig);
-    expect(headers["X-Waifu-Signature"]).toBe(expectedSig);
+    // Only the canonical header is sent; the legacy duplicate is dropped.
+    expect(headers["X-Waifu-Signature"]).toBeUndefined();
+  });
+
+  it("sends an abort signal so a stuck webhook cannot hang forever", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fakeFetch = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return { ok: true, status: 202 } as Response;
+    }) as unknown as typeof fetch;
+
+    const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 10, completion: 5 }));
+    await postInferenceSpent(CONFIG, payload!, fakeFetch);
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("never throws when the request times out", async () => {
+    const fakeFetch = vi.fn(async () => {
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      throw err;
+    }) as unknown as typeof fetch;
+    const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 1, completion: 1 }));
+    await expect(postInferenceSpent(CONFIG, payload!, fakeFetch)).resolves.toMatchObject({
+      ok: false,
+    });
   });
 
   it("never throws on fetch failure", async () => {
@@ -258,9 +281,7 @@ describe("createWaifuMeteringHandler", () => {
     // plugin-local-inference emits MODEL_USED with source "local-ai" and real
     // token counts but no costUsd. It is free CPU inference and must not be
     // billed as cloud burn.
-    await handler(
-      makePayload({ prompt: 100, completion: 50 }, { runtime, source: "local-ai" })
-    );
+    await handler(makePayload({ prompt: 100, completion: 50 }, { runtime, source: "local-ai" }));
     expect(fakeFetch).not.toHaveBeenCalled();
   });
 
@@ -274,9 +295,7 @@ describe("createWaifuMeteringHandler", () => {
       WAIFU_WEBHOOK_SECRET: CONFIG.secret,
       WAIFU_AGENT_ID: CONFIG.agentId,
     });
-    await handler(
-      makePayload({ prompt: 100, completion: 50 }, { runtime, source: "openrouter" })
-    );
+    await handler(makePayload({ prompt: 100, completion: 50 }, { runtime, source: "openrouter" }));
     expect(fakeFetch).not.toHaveBeenCalled();
   });
 });
