@@ -87,8 +87,8 @@ interface EyeClip {
   rx: number;
   ry: number;
 }
-const EYE_CLIP_NEAR: EyeClip = { cx: 258, cy: 150, rx: 36, ry: 34 };
-const EYE_CLIP_FAR: EyeClip = { cx: 340, cy: 184, rx: 23, ry: 18 };
+const EYE_CLIP_NEAR: EyeClip = { cx: 263, cy: 153, rx: 28, ry: 23 };
+const EYE_CLIP_FAR: EyeClip = { cx: 333, cy: 184, rx: 18, ry: 16 };
 const clipEllipse = (c: EyeClip): string =>
   `<ellipse cx="${c.cx}" cy="${c.cy}" rx="${c.rx}" ry="${c.ry}"/>`;
 

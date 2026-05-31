@@ -76,7 +76,7 @@ function RuntimeCard(props: {
       className={[
         "w-full rounded-md border text-left transition",
         props.active
-          ? "border-accent bg-[var(--first-run-card-bg-hover)]"
+          ? "border-[#0B35F1] bg-[var(--first-run-card-bg-hover)]"
           : GLASS_INTERACTIVE,
       ].join(" ")}
     >
@@ -94,7 +94,7 @@ function RuntimeCard(props: {
           className={[
             "mt-0.5 shrink-0",
             muted ? "h-4 w-4 text-[var(--first-run-text-muted)]" : "h-5 w-5",
-            props.active ? "text-accent" : "",
+            props.active ? "text-[#0B35F1]" : "",
           ].join(" ")}
         />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -124,7 +124,7 @@ function RuntimeCard(props: {
                     variant="muted"
                     className={
                       props.emphasis === "primary"
-                        ? "border-accent/40 bg-accent/10 text-accent"
+                        ? "border-[#0B35F1]/40 bg-[#0B35F1]/10 text-[#0B35F1]"
                         : undefined
                     }
                   />
@@ -193,7 +193,7 @@ function LocalInferenceChoice(props: {
             className={[
               "flex cursor-pointer flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
               active
-                ? "border-accent bg-accent/10"
+                ? "border-[#0B35F1] bg-[#0B35F1]/10"
                 : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
             ].join(" ")}
           >
@@ -234,7 +234,7 @@ function GlassButton(props: {
       className={[
         "inline-flex min-h-[3rem] min-w-[7rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-45",
         props.variant === "primary"
-          ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
+          ? "border-[#0B35F1] bg-[#0B35F1] text-white hover:bg-[#082ed6]"
           : GLASS_INTERACTIVE,
       ].join(" ")}
     >
@@ -276,7 +276,7 @@ function BareInput(props: {
       }}
       placeholder={props.placeholder}
       className={[
-        "w-full border-0 border-b-2 border-border bg-transparent px-2 pb-3 text-center font-medium text-txt outline-none placeholder:text-muted focus:border-accent",
+        "w-full border-0 border-b-2 border-border bg-transparent px-2 pb-3 text-center font-medium text-txt outline-none placeholder:text-muted focus:border-[#0B35F1]",
         props.compact ? "text-2xl" : "text-4xl",
       ].join(" ")}
     />
@@ -407,17 +407,14 @@ function FirstRunVoiceControl(props: {
                 defaultValue: "Start voice input",
               })
         }
-        className="inline-flex min-h-11 items-center justify-center rounded-full bg-transparent px-1 py-2 transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="inline-flex min-h-11 items-center justify-center rounded-full bg-transparent px-1 py-2 transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B35F1]"
       >
         <StatusBadge
           label={label}
           variant={state === "listening" ? "success" : "muted"}
-          // App surface is orange-accent only (no blue). Render the transient
-          // "speaking" state in the brand accent rather than the shared "info"
-          // (blue) variant so it stays distinct from listening/idle.
           className={
             state === "speaking"
-              ? "border-accent/35 bg-accent/12 text-accent"
+              ? "border-[#0B35F1]/35 bg-[#0B35F1]/10 text-[#0B35F1]"
               : undefined
           }
           pulse={state === "listening"}
@@ -617,7 +614,7 @@ export function FirstRunShell({
   return (
     <div
       data-testid="first-run-shell"
-      className="first-run-screen relative flex min-h-[100dvh] w-full overflow-hidden bg-bg text-txt"
+      className="first-run-screen relative flex min-h-[100dvh] w-full overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
     >
       <div className="relative z-10 flex min-h-[100dvh] w-full flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="flex h-12 items-center">

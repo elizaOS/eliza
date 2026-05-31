@@ -15,7 +15,12 @@
  */
 
 import type * as THREE from "three";
-import { resolveAppAssetUrl } from "../utils/asset-url";
+import {
+  applyParams,
+  createDirector,
+  type Director,
+  RIG_SVG,
+} from "./face-rig/rigRuntime";
 import { registerPreset } from "./scene-runtime";
 import {
   BUILTIN_PRESETS,
@@ -31,11 +36,16 @@ const BRAND_ORANGE = 0xff5800;
 
 // A small glass marble set into the water. Half-submerged at the origin, small
 // enough that the water reads as a full, open sheet around it.
-const ORB_RADIUS = 0.18;
+const ORB_RADIUS = 0.13;
 
 // Height of the straight-down camera above the water. Lower = the orb (and the
-// mark refracted inside it) reads larger; higher = more open water around it.
+// face inside it) reads larger; higher = more open water around it.
 const CAM_HEIGHT = 2.5;
+
+// How far the orb sits below screen-centre, in world units. The camera looks
+// straight down at a point this far in front of the orb, so the orb (at the
+// origin) drops toward the lower third of the screen.
+const ORB_DROP = 0.42;
 
 const WATER_VERT = /* glsl */ `
   varying vec3 vWorld;
@@ -152,8 +162,8 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   // ripples read as clean concentric rings. `up` must be re-aimed first — it
   // can't stay +Y, which is now the view axis.
   camera.up.set(0, 0, -1);
-  camera.position.set(0, CAM_HEIGHT, 0);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0, CAM_HEIGHT, -ORB_DROP);
+  camera.lookAt(0, 0, -ORB_DROP);
 
   // Generative environment: an orange sky gradient with a white sun, baked into
   // a prefiltered env map so the glass orb reflects something with structure.
@@ -202,67 +212,70 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   const ambient = new T.AmbientLight(0xffffff, 0.35);
   scene.add(ambient);
 
-  // The Eliza mark, painted (white) onto a brand-orange card that sits just
-  // inside the orb facing the camera. The card is opaque so the glass refracts
-  // it; dispersion then rainbow-splits it — the mark reads as projected and
-  // diffracted through the marble. The SVG loads async; until then the card is
-  // plain orange and simply blends into the water.
-  const logoCanvas = document.createElement("canvas");
-  logoCanvas.width = 256;
-  logoCanvas.height = 256;
-  const lg = logoCanvas.getContext("2d");
-  const paintLogoCard = () => {
-    if (!lg) return;
-    lg.fillStyle = `#${new T.Color(BRAND_ORANGE).getHexString()}`;
-    lg.fillRect(0, 0, 256, 256);
+  // Eased assistant-voice level, shared by the water ripples and the face's jaw.
+  let speak = 0;
+
+  // The live Eliza face rig, rasterised onto a dark card suspended inside the
+  // orb. The negative-space face wants a dark backdrop, so the card is a deep
+  // brand orange; the glass refracts and lightly dispersion-splits it. The rig
+  // blinks and idles on its own and lip-syncs its jaw to the assistant voice.
+  const RIG_TEX = 320;
+  const faceCanvas = document.createElement("canvas");
+  faceCanvas.width = RIG_TEX;
+  faceCanvas.height = RIG_TEX;
+  const fg = faceCanvas.getContext("2d");
+  const cardBg = `#${sky.clone().multiplyScalar(0.12).getHexString()}`;
+  const paintFaceCard = (): void => {
+    if (!fg) return;
+    fg.fillStyle = cardBg;
+    fg.fillRect(0, 0, RIG_TEX, RIG_TEX);
   };
-  paintLogoCard();
-  const logoTex = new T.CanvasTexture(logoCanvas);
-  logoTex.colorSpace = T.SRGBColorSpace;
-  const logoImg = new Image();
-  logoImg.crossOrigin = "anonymous";
-  logoImg.onload = () => {
-    if (!lg) return;
-    const s = 256 * 0.66;
-    const o = (256 - s) / 2;
-    // Bake a chromatic-aberration split into the mark (red/blue fringes) so it
-    // reads as diffracted even at a small orb size, on top of whatever extra
-    // dispersion the glass itself contributes.
-    const channel = (tint: string, dx: number): HTMLCanvasElement => {
-      const c = document.createElement("canvas");
-      c.width = 256;
-      c.height = 256;
-      const cx = c.getContext("2d");
-      if (cx) {
-        cx.drawImage(logoImg, o + dx, o, s, s);
-        cx.globalCompositeOperation = "source-in";
-        cx.fillStyle = tint;
-        cx.fillRect(0, 0, 256, 256);
-      }
-      return c;
-    };
-    const mark = document.createElement("canvas");
-    mark.width = 256;
-    mark.height = 256;
-    const mx = mark.getContext("2d");
-    if (mx) {
-      mx.globalCompositeOperation = "lighter";
-      mx.drawImage(channel("#ff4040", -6), 0, 0);
-      mx.drawImage(channel("#40ff40", 0), 0, 0);
-      mx.drawImage(channel("#4040ff", 6), 0, 0);
+  paintFaceCard();
+  const faceTex = new T.CanvasTexture(faceCanvas);
+  faceTex.colorSpace = T.SRGBColorSpace;
+
+  // A detached rig DOM we drive each tick and serialise to an <img> for the
+  // canvas. Throttled to ~15fps — plenty for a face and cheap on the frame.
+  const rigEl = new DOMParser().parseFromString(RIG_SVG, "image/svg+xml")
+    .documentElement as unknown as SVGSVGElement;
+  rigEl.setAttribute("width", "423");
+  rigEl.setAttribute("height", "423");
+  const director: Director = createDirector();
+  const rigImg = new Image();
+  let rigBusy = false;
+  let rigClock = 0;
+  rigImg.onload = (): void => {
+    if (fg) {
+      paintFaceCard();
+      fg.drawImage(rigImg, 0, 0, RIG_TEX, RIG_TEX);
+      faceTex.needsUpdate = true;
     }
-    paintLogoCard();
-    lg.drawImage(mark, 0, 0);
-    logoTex.needsUpdate = true;
+    rigBusy = false;
   };
-  logoImg.src = resolveAppAssetUrl("/brand/logos/logo_white_nobg.svg");
-  const logoMesh = new T.Mesh(
-    new T.CircleGeometry(ORB_RADIUS * 0.78, 48),
-    new T.MeshBasicMaterial({ map: logoTex }),
+  rigImg.onerror = (): void => {
+    rigBusy = false;
+  };
+  const driveFace = (dt: number): void => {
+    rigClock += dt;
+    if (rigBusy || rigClock < 1 / 15) return;
+    const frame = director.tick(rigClock, { blink: true, idle: true });
+    frame.jaw = Math.max(frame.jaw, speak); // lip-sync the jaw to the voice
+    rigClock = 0;
+    applyParams(rigEl, frame);
+    rigBusy = true;
+    rigImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+      new XMLSerializer().serializeToString(rigEl),
+    )}`;
+  };
+
+  const faceMesh = new T.Mesh(
+    new T.CircleGeometry(ORB_RADIUS * 0.82, 48),
+    new T.MeshBasicMaterial({ map: faceTex }),
   );
-  logoMesh.rotation.x = -Math.PI / 2; // lie flat, face up at the top-down camera
-  logoMesh.position.y = ORB_RADIUS * 0.45;
-  scene.add(logoMesh);
+  faceMesh.rotation.x = -Math.PI / 2; // lie flat, face up at the top-down camera
+  const FACE_Y = ORB_RADIUS * 0.35;
+  faceMesh.position.y = FACE_Y;
+  scene.add(faceMesh);
 
   // The glass orb, centered at the origin so the water plane (y=0) bisects it.
   // Full transmission + dispersion makes a clear marble that refracts and
@@ -309,8 +322,6 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   water.rotation.x = -Math.PI / 2;
   scene.add(water);
 
-  let speak = 0;
-
   return {
     update(dt, time) {
       // Ease ripple strength toward the assistant's voice so rings build and
@@ -320,12 +331,12 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
       waterUniforms.uTime.value = time;
       waterUniforms.uSpeak.value = speak;
       (waterUniforms.uCam.value as THREE.Vector3).copy(camera.position);
-      // A slow spin keeps the reflections moving; a faint bob while speaking.
-      // The mark rides with the orb so it stays centred inside the glass.
-      orb.rotation.y = time * 0.12;
+      // A faint bob while speaking; the face rides with the orb so it stays
+      // centred inside the glass.
       const bob = Math.sin(time * 1.6) * ORB_RADIUS * 0.1 * speak;
       orb.position.y = bob;
-      logoMesh.position.y = ORB_RADIUS * 0.45 + bob;
+      faceMesh.position.y = FACE_Y + bob;
+      driveFace(dt);
     },
     optimize(tier) {
       waterUniforms.uQuality.value = tier;
@@ -342,14 +353,17 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
       return tier;
     },
     dispose() {
-      scene.remove(orb, water, keyLight, ambient, logoMesh);
+      scene.remove(orb, water, keyLight, ambient, faceMesh);
       orbGeo.dispose();
       orbMat.dispose();
       water.geometry.dispose();
       waterMat.dispose();
-      logoMesh.geometry.dispose();
-      (logoMesh.material as THREE.Material).dispose();
-      logoTex.dispose();
+      faceMesh.geometry.dispose();
+      (faceMesh.material as THREE.Material).dispose();
+      faceTex.dispose();
+      rigImg.onload = null;
+      rigImg.onerror = null;
+      rigImg.src = "";
       envRT.dispose();
       scene.environment = null;
       camera.position.copy(camPos0);

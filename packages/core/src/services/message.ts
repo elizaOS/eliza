@@ -3288,21 +3288,32 @@ export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
 	runtimeContext?: {
-		actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
 	},
 ): MessageHandlerResult {
-	const contexts = Array.isArray(result.contexts)
+	const rawContexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const candidateActions = Array.isArray(result.candidateActionNames)
+	const rawCandidateActions = Array.isArray(result.candidateActionNames)
 		? result.candidateActionNames
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	const currentMessageText = runtimeContext?.messageText ?? "";
+	const candidateBackstop = applyCodingCandidateBackstop({
+		candidateActions: rawCandidateActions,
+		actions: runtimeContext?.actions ?? [],
+		messageText: currentMessageText,
+	});
+	const candidateActions = candidateBackstop.candidateActions;
+	const contexts =
+		candidateBackstop.forceCodeContext &&
+		!rawContexts.some((context) => context.toLowerCase() === "code")
+			? ["code", ...rawContexts]
+			: rawContexts;
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
-	const currentMessageText = runtimeContext?.messageText ?? "";
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -3479,6 +3490,75 @@ export function messageHandlerFromFieldResult(
 		thought: fieldRun?.preempt?.reason ?? "",
 		plan,
 		...(extract ? { extract } : {}),
+	};
+}
+
+const LIFEOPS_SCHEDULED_TASK_ACTIONS = new Set(
+	[
+		"SCHEDULED_TASKS",
+		"SCHEDULED_TASKS_ACKNOWLEDGE",
+		"SCHEDULED_TASKS_CANCEL",
+		"SCHEDULED_TASKS_COMPLETE",
+		"SCHEDULED_TASKS_CREATE",
+		"SCHEDULED_TASKS_DISMISS",
+		"SCHEDULED_TASKS_GET",
+		"SCHEDULED_TASKS_HISTORY",
+		"SCHEDULED_TASKS_LIST",
+		"SCHEDULED_TASKS_REOPEN",
+		"SCHEDULED_TASKS_SKIP",
+		"SCHEDULED_TASKS_SNOOZE",
+		"SCHEDULED_TASKS_UPDATE",
+	].map(normalizeActionIdentifier),
+);
+
+function applyCodingCandidateBackstop(args: {
+	candidateActions: readonly string[];
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+	messageText: string;
+}): { candidateActions: string[]; forceCodeContext: boolean } {
+	if (args.candidateActions.length === 0) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+	if (!looksLikeCodingWorkRequest(args.messageText)) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+	const hasLifeOpsScheduledCandidate = args.candidateActions.some((name) =>
+		LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+	);
+	if (
+		hasLifeOpsScheduledCandidate &&
+		looksLikeLifeOpsScheduledTaskRequest(args.messageText)
+	) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+	const codingAction = findCodingDelegationActionName(args.actions);
+	if (!codingAction) {
+		return {
+			candidateActions: [...args.candidateActions],
+			forceCodeContext: false,
+		};
+	}
+
+	const filtered = args.candidateActions.filter(
+		(name) =>
+			!LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+	);
+	if (filtered.length === args.candidateActions.length) {
+		return { candidateActions: filtered, forceCodeContext: false };
+	}
+
+	return {
+		candidateActions: uniqueActionNames([codingAction, ...filtered]),
+		forceCodeContext: true,
 	};
 }
 
@@ -6908,13 +6988,31 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
 		) ||
-		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeLifeOpsScheduledTaskRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+	return (
+		/\b(?:remind\s+me|reminder|scheduled\s+task|scheduled\s+item|lifeops|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:schedule|create|make|add|set\s+up)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:tomorrow|tonight|later|next\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|every\s+(?:day|week|month|morning|evening))\b/iu.test(
+			normalized,
+		)
+	);
 }
 
 function looksLikeExplicitDelegationRequest(text: string): boolean {

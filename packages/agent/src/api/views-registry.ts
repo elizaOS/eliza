@@ -58,6 +58,9 @@ function viewRegistryKey(id: string, viewType: ViewType): string {
 /** Module-level registry storage. Keyed by view type + view id. */
 const registry = new Map<string, ViewRegistryEntry>();
 
+/** View ids already warned about for oversized bundles — warn once per process. */
+const warnedLargeBundles = new Set<string>();
+
 /**
  * Attempt to resolve the package root dir for a plugin by name using
  * `require.resolve`. Returns `undefined` when the package is not reachable
@@ -301,10 +304,15 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
     registry.set(key, entry);
     registered.push(entry);
   }
-  logger.info(
-    { src: "ViewRegistry", count: BUILTIN_VIEWS.length },
-    `[ViewRegistry] Registered ${BUILTIN_VIEWS.length} built-in views`,
-  );
+  // Called on every /api/views request and again during deferred startup, but
+  // registration is idempotent — only the first call adds entries. Stay silent
+  // on the no-op re-calls so the boot log isn't spammed with the same line.
+  if (registered.length > 0) {
+    logger.info(
+      { src: "ViewRegistry", count: registered.length },
+      `[ViewRegistry] Registered ${registered.length} built-in views`,
+    );
+  }
 
   // Queue embedding computation in the background — non-blocking.
   if (runtime && registered.length > 0) {
@@ -410,15 +418,24 @@ async function buildEntry(
         if (hash) bundleHash = hash;
         if (stat) bundleSize = stat.size;
 
-        // Log bundle size; warn when it exceeds 500 KB.
+        // buildEntry runs on every (re-)registration, so a plugin loaded into
+        // multiple runtimes logs this repeatedly. Keep the per-view size at
+        // debug and warn at most once per view id about oversized bundles.
         const sizeKb = stat ? stat.size / 1024 : 0;
         if (stat && stat.size > 512 * 1024) {
-          logger.warn(
-            { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(0) },
-            `[ViewRegistry] View ${view.id} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
-          );
+          if (!warnedLargeBundles.has(view.id)) {
+            warnedLargeBundles.add(view.id);
+            logger.warn(
+              {
+                src: "ViewRegistry",
+                viewId: view.id,
+                sizeKb: sizeKb.toFixed(0),
+              },
+              `[ViewRegistry] View ${view.id} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
+            );
+          }
         } else if (stat) {
-          logger.info(
+          logger.debug(
             { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(1) },
             `[ViewRegistry] Registered view ${view.id} — bundle: ${sizeKb.toFixed(1)}KB`,
           );

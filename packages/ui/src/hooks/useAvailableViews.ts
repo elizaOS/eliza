@@ -10,9 +10,10 @@
  * plugins are installed or uninstalled at runtime.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getFrontendPlatform } from "../platform/platform-guards";
+import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
   /** Stable unique identifier for the view, e.g. "wallet.inventory". */
@@ -118,55 +119,31 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
   return [...merged.values()];
 }
 
+const VIEWS_CACHE_KEY = "views:available";
+
 export function useAvailableViews(): UseAvailableViewsResult {
-  const [views, setViews] = useState<ViewRegistryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const requestSeqRef = useRef(0);
-  const mountedRef = useRef(true);
+  // All mounts share one cache slot, so the router and the desktop-tab consumer
+  // (which both mount this hook) issue a single request and paint instantly on
+  // revisit instead of each re-fetching cold.
+  const resource = useCachedResource<ViewRegistryEntry[]>(
+    VIEWS_CACHE_KEY,
+    () => fetchViews(),
+    { staleTime: POLL_INTERVAL_MS },
+  );
 
-  const load = useCallback(async () => {
-    const requestSeq = requestSeqRef.current + 1;
-    requestSeqRef.current = requestSeq;
-    if (!mountedRef.current) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchViews();
-      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
-      setViews(result);
-    } catch (err) {
-      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
-      // /api/views does not exist yet — this is expected during development.
-      // Silence 404s; surface other errors.
-      const e = err instanceof Error ? err : new Error(String(err));
-      if (!e.message.includes("404")) {
-        setError(e);
-      }
-      setViews([]);
-    } finally {
-      if (mountedRef.current && requestSeq === requestSeqRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  const refresh = useCallback(() => {
-    void load();
-  }, [load]);
-
-  // Initial load + polling.
+  // Runtime plugin install/uninstall changes the registry; keep a background
+  // poll so the list stays live. Shared in-flight de-dup means overlapping
+  // ticks from multiple mounts collapse to one network request.
+  const { refetch } = resource;
   useEffect(() => {
-    mountedRef.current = true;
-    void load();
-    const id = setInterval(() => {
-      void load();
-    }, POLL_INTERVAL_MS);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(id);
-    };
-  }, [load]);
+    const id = setInterval(refetch, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refetch]);
 
-  return { views, loading, error, refresh };
+  return {
+    views: resource.status === "success" ? resource.data : [],
+    loading: resource.status === "loading",
+    error: resource.status === "error" ? resource.error : null,
+    refresh: refetch,
+  };
 }
