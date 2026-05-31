@@ -50,3 +50,16 @@ done
 
 chown -R elizaos:elizaos "${INSTALL}" 2>/dev/null || true
 chmod 0755 "${INSTALL}" "${INSTALL}/app" "${INSTALL}/bin"
+
+# Enable the agent + first-boot units so systemd actually starts them at boot.
+# Both ship [Install] WantedBy=multi-user.target but nothing enabled them after
+# the e9ee362ee9 integration deleted the wiring — so the agent never ran on a
+# booted image (run-agent.sh + wait-agent-health.sh never fired, hence no
+# elizaos-firstboot-ready / elizaos-curl-health-ready / elizaos-agent-ready
+# markers). Enable them here, right after install.
+for unit in elizaos-first-boot.service elizaos-agent.service; do
+    if [ -e "/etc/systemd/system/${unit}" ]; then
+        systemctl enable "${unit}" >/dev/null 2>&1 ||
+            echo "WARNING: could not enable ${unit}" >&2
+    fi
+done
