@@ -576,9 +576,12 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     home: <HomeView />,
-    chat: <ChatView />,
+    // Static-router chat/companion fall back to the info landing — chat is the
+    // global floating pill, not an in-view page. (The dedicated chat-workspace
+    // shell still renders the full conversation for the active chat tab.)
+    chat: <HomeView />,
     browser: <BrowserWorkspaceView />,
-    companion: <ChatView />,
+    companion: <HomeView />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
