@@ -1,0 +1,117 @@
+diff --git a/src/bun_core/env.rs b/src/bun_core/env.rs
+index 85fe5aa..32754b2 100644
+--- a/src/bun_core/env.rs
++++ b/src/bun_core/env.rs
+@@ -41,6 +41,7 @@ pub(crate) const IS_FREEBSD: bool = cfg!(target_os = "freebsd");
+ pub const IS_KQUEUE: bool = IS_MAC || IS_FREEBSD;
+ pub(crate) const IS_AARCH64: bool = cfg!(target_arch = "aarch64");
+ pub(crate) const IS_X64: bool = cfg!(target_arch = "x86_64");
++pub(crate) const IS_RISCV64: bool = cfg!(target_arch = "riscv64");
+ pub const IS_MUSL: bool = cfg!(target_env = "musl");
+ pub const IS_ANDROID: bool = cfg!(target_os = "android");
+ pub const ALLOW_ASSERT: bool = IS_DEBUG || IS_TEST || build_options::RELEASE_SAFE;
+@@ -206,6 +207,7 @@ pub const OS_NAME_NPM: &str = OS.npm_name();
+ pub enum Architecture {
+     X64,
+     Arm64,
++    Riscv64,
+     Wasm,
+ }
+ 
+@@ -215,6 +217,7 @@ impl Architecture {
+         match self {
+             Self::X64 => "x64",
+             Self::Arm64 => "aarch64",
++            Self::Riscv64 => "riscv64",
+             Self::Wasm => "wasm",
+         }
+     }
+@@ -225,6 +228,7 @@ impl Architecture {
+         b"amd64" => Architecture::X64,
+         b"aarch64" => Architecture::Arm64,
+         b"arm64" => Architecture::Arm64,
++        b"riscv64" => Architecture::Riscv64,
+         b"wasm" => Architecture::Wasm,
+     };
+ }
+@@ -235,6 +239,8 @@ pub const ARCH: Architecture = if IS_WASM {
+     Architecture::X64
+ } else if IS_AARCH64 {
+     Architecture::Arm64
++} else if IS_RISCV64 {
++    Architecture::Riscv64
+ } else {
+     panic!("Please add your architecture to the Architecture enum")
+ };
+diff --git a/src/crash_handler/CPUFeatures.rs b/src/crash_handler/CPUFeatures.rs
+index c9deab1..48ad070 100644
+--- a/src/crash_handler/CPUFeatures.rs
++++ b/src/crash_handler/CPUFeatures.rs
+@@ -48,7 +48,24 @@ bitflags::bitflags! {
+     }
+ }
+ 
+-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++// riscv64: `bun_cpu_features()` (CPUFeatures.cpp, CPU(RISCV64)) returns 0 — no
++// feature bits are surfaced in crash diagnostics — so only the NONE sentinel is
++// modeled. Keeps `get()`'s padding assert valid (raw == 0).
++#[cfg(target_arch = "riscv64")]
++bitflags::bitflags! {
++    #[repr(transparent)]
++    #[derive(Copy, Clone)]
++    pub struct Flags: u8 {
++        const NONE = 1 << 0;
++        // bits 1..=7 = padding
++    }
++}
++
++#[cfg(not(any(
++    target_arch = "x86_64",
++    target_arch = "aarch64",
++    target_arch = "riscv64"
++)))]
+ compile_error!("CPUFeatures: unsupported target architecture");
+ 
+ // Zig `inline for (@typeInfo(Flags).@"struct".fields)` — comptime reflection over
+@@ -72,6 +89,9 @@ const NAMED_FLAGS: &[(&str, Flags)] = &[
+     ("sve", Flags::SVE),
+ ];
+ 
++#[cfg(target_arch = "riscv64")]
++const NAMED_FLAGS: &[(&str, Flags)] = &[];
++
+ impl fmt::Display for CPUFeatures {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let mut is_first = true;
+diff --git a/src/perf/hw_timer.rs b/src/perf/hw_timer.rs
+index 736ff3f..a7820b8 100644
+--- a/src/perf/hw_timer.rs
++++ b/src/perf/hw_timer.rs
+@@ -57,7 +57,26 @@ pub fn read_counter() -> u64 {
+         }
+         return ((hi as u64) << 32) | (lo as u64);
+     }
+-    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
++    #[cfg(target_arch = "riscv64")]
++    {
++        let ret: u64;
++        // SAFETY: the `time` CSR (rdtime) is a side-effect-free, userspace-readable
++        // fixed-frequency counter on riscv64 Linux — the direct analog of aarch64's
++        // CNTVCT_EL0. (`rdcycle` is privileged on many kernels; `time` is not.)
++        unsafe {
++            core::arch::asm!(
++                "rdtime {ret}",
++                ret = out(reg) ret,
++                options(nomem, nostack, preserves_flags),
++            );
++        }
++        return ret;
++    }
++    #[cfg(not(any(
++        target_arch = "aarch64",
++        target_arch = "x86_64",
++        target_arch = "riscv64"
++    )))]
+     compile_error!("hw_timer::read_counter: unsupported architecture");
+ }
+ 
