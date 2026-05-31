@@ -96,6 +96,46 @@ interface RuntimeDebugSerializeOptions {
   maxStringLength: number;
 }
 
+/**
+ * /api/runtime serializes the entire runtime object graph (six deep reflective
+ * walks). RuntimeView re-requests on depth/cap changes and may revalidate
+ * repeatedly, so the snapshot is memoized for a short window keyed by the
+ * serialize options and guarded by runtime identity — a restart swaps the
+ * runtime reference and forces a fresh build.
+ */
+const RUNTIME_DEBUG_SNAPSHOT_TTL_MS = 2_500;
+
+interface RuntimeDebugSnapshotCacheEntry {
+  payload: unknown;
+  builtAt: number;
+  runtime: object;
+}
+
+const runtimeDebugSnapshotCache = new Map<
+  string,
+  RuntimeDebugSnapshotCacheEntry
+>();
+
+function getCachedRuntimeDebugSnapshot<T>(
+  runtime: object,
+  options: RuntimeDebugSerializeOptions,
+  build: () => T,
+): T {
+  const key = `${options.maxDepth}:${options.maxArrayLength}:${options.maxObjectEntries}:${options.maxStringLength}`;
+  const existing = runtimeDebugSnapshotCache.get(key);
+  const now = Date.now();
+  if (
+    existing &&
+    existing.runtime === runtime &&
+    now - existing.builtAt < RUNTIME_DEBUG_SNAPSHOT_TTL_MS
+  ) {
+    return existing.payload as T;
+  }
+  const payload = build();
+  runtimeDebugSnapshotCache.set(key, { payload, builtAt: now, runtime });
+  return payload;
+}
+
 interface RuntimeOrderItem {
   index: number;
   name: string;
@@ -582,61 +622,75 @@ export async function handleHealthRoutes(
     }
 
     try {
-      const servicesMap = runtime.services as Map<string, unknown[]>;
-      const serviceCount = Array.from(servicesMap.values()).reduce(
-        (sum, entries) => sum + (Array.isArray(entries) ? entries.length : 0),
-        0,
-      );
-      const orderServices = describeRuntimeServiceOrder(servicesMap);
-      const orderPlugins = describeRuntimeOrder(runtime.plugins, "plugin");
-      const orderActions = describeRuntimeOrder(runtime.actions, "action");
-      const orderProviders = describeRuntimeOrder(
-        runtime.providers,
-        "provider",
-      );
-      const orderEvaluators = describeRuntimeOrder(
-        runtime.evaluators,
-        "evaluator",
-      );
-
-      json(res, {
-        runtimeAvailable: true,
-        generatedAt,
-        settings: serializeOptions,
-        meta: {
-          agentId: runtime.agentId,
-          agentState: state.agentState,
-          agentName: runtime.character.name ?? state.agentName,
-          model: state.model ?? null,
-          pluginCount: runtime.plugins.length,
-          actionCount: runtime.actions.length,
-          providerCount: runtime.providers.length,
-          evaluatorCount: runtime.evaluators.length,
-          serviceTypeCount: servicesMap.size,
-          serviceCount,
-        },
-        order: {
-          plugins: orderPlugins,
-          actions: orderActions,
-          providers: orderProviders,
-          evaluators: orderEvaluators,
-          services: orderServices,
-        },
-        sections: {
-          runtime: serializeForRuntimeDebug(runtime, serializeOptions),
-          plugins: serializeForRuntimeDebug(runtime.plugins, serializeOptions),
-          actions: serializeForRuntimeDebug(runtime.actions, serializeOptions),
-          providers: serializeForRuntimeDebug(
+      const payload = getCachedRuntimeDebugSnapshot(
+        runtime,
+        serializeOptions,
+        () => {
+          const servicesMap = runtime.services as Map<string, unknown[]>;
+          const serviceCount = Array.from(servicesMap.values()).reduce(
+            (sum, entries) =>
+              sum + (Array.isArray(entries) ? entries.length : 0),
+            0,
+          );
+          const orderServices = describeRuntimeServiceOrder(servicesMap);
+          const orderPlugins = describeRuntimeOrder(runtime.plugins, "plugin");
+          const orderActions = describeRuntimeOrder(runtime.actions, "action");
+          const orderProviders = describeRuntimeOrder(
             runtime.providers,
-            serializeOptions,
-          ),
-          evaluators: serializeForRuntimeDebug(
+            "provider",
+          );
+          const orderEvaluators = describeRuntimeOrder(
             runtime.evaluators,
-            serializeOptions,
-          ),
-          services: serializeForRuntimeDebug(servicesMap, serializeOptions),
+            "evaluator",
+          );
+
+          return {
+            runtimeAvailable: true,
+            generatedAt,
+            settings: serializeOptions,
+            meta: {
+              agentId: runtime.agentId,
+              agentState: state.agentState,
+              agentName: runtime.character.name ?? state.agentName,
+              model: state.model ?? null,
+              pluginCount: runtime.plugins.length,
+              actionCount: runtime.actions.length,
+              providerCount: runtime.providers.length,
+              evaluatorCount: runtime.evaluators.length,
+              serviceTypeCount: servicesMap.size,
+              serviceCount,
+            },
+            order: {
+              plugins: orderPlugins,
+              actions: orderActions,
+              providers: orderProviders,
+              evaluators: orderEvaluators,
+              services: orderServices,
+            },
+            sections: {
+              runtime: serializeForRuntimeDebug(runtime, serializeOptions),
+              plugins: serializeForRuntimeDebug(
+                runtime.plugins,
+                serializeOptions,
+              ),
+              actions: serializeForRuntimeDebug(
+                runtime.actions,
+                serializeOptions,
+              ),
+              providers: serializeForRuntimeDebug(
+                runtime.providers,
+                serializeOptions,
+              ),
+              evaluators: serializeForRuntimeDebug(
+                runtime.evaluators,
+                serializeOptions,
+              ),
+              services: serializeForRuntimeDebug(servicesMap, serializeOptions),
+            },
+          };
         },
-      });
+      );
+      json(res, payload);
     } catch (err) {
       error(
         res,
