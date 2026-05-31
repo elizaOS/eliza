@@ -40,7 +40,6 @@ import { ConversationsSidebar } from "./components/conversations/ConversationsSi
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
-import { ChatView } from "./components/pages/ChatView";
 import { HomeView } from "./components/pages/HomeView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
@@ -927,7 +926,10 @@ function MobileChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
             className="mb-3"
             onOpenTask={props.handleDeferredTaskOpen}
           />
-          <ChatView />
+          {/* In-view chat removed — the global floating pill is the chat
+              interface. The chat tab shows the info landing; composing/voice
+              happen in the pill on top of every view. */}
+          <HomeView />
         </>
       )}
     </div>
@@ -943,7 +945,8 @@ function DesktopChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
           className="mx-3 mb-3 mt-3 xl:mx-5"
           onOpenTask={props.handleDeferredTaskOpen}
         />
-        <ChatView key="chat-view-desktop" />
+        {/* In-view chat removed — chat is the global floating pill. */}
+        <HomeView key="chat-view-desktop" />
       </div>
       {props.isChat ? (
         <TasksEventsPanel
