@@ -56,6 +56,7 @@
   "accounts.priority.tooltip": "Lower priority value runs first",
   "accounts.provider.anthropicApi": "Anthropic API",
   "accounts.provider.anthropicSubscription": "Anthropic Claude subscription",
+  "accounts.provider.cerebrasApi": "Cerebras API",
   "accounts.provider.deepseekApi": "DeepSeek API",
   "accounts.provider.deepseekCoding": "DeepSeek coding subscription",
   "accounts.provider.geminiCli": "Gemini CLI subscription",

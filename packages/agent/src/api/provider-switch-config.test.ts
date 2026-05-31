@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  DIRECT_ACCOUNT_PROVIDER_IDS,
+} from "../auth/types";
 import type { ElizaConfig } from "../config/types.eliza";
 import {
+  applyFirstRunConnectionConfig,
   applySubscriptionProviderConfig,
   clearPersistedFirstRunConfig,
   clearSubscriptionProviderConfig,
@@ -218,5 +223,75 @@ describe("openAiBaseUrlIsThirdParty", () => {
   it("is case-insensitive on the hostname", () => {
     process.env.OPENAI_BASE_URL = "https://API.OpenAI.COM/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+});
+
+describe("Cerebras direct-account wiring", () => {
+  it("maps the cerebras-api account to CEREBRAS_API_KEY", () => {
+    expect(DIRECT_ACCOUNT_PROVIDER_IDS).toContain("cerebras-api");
+    expect(DIRECT_ACCOUNT_PROVIDER_ENV["cerebras-api"]).toBe(
+      "CEREBRAS_API_KEY",
+    );
+  });
+});
+
+describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
+  const CEREBRAS_ENV = [
+    "CEREBRAS_API_KEY",
+    "CEREBRAS_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+  ] as const;
+
+  beforeEach(() => {
+    for (const key of CEREBRAS_ENV) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of CEREBRAS_ENV) delete process.env[key];
+  });
+
+  it("sets CEREBRAS_API_KEY + a valid CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
+    const config: Partial<ElizaConfig> = {};
+
+    await applyFirstRunConnectionConfig(config, {
+      kind: "local-provider",
+      provider: "cerebras",
+      apiKey: "csk-test-123",
+    });
+
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.CEREBRAS_API_KEY).toBe("csk-test-123");
+    // Without a valid Cerebras model the OpenAI plugin would fall back to
+    // gpt-5* ids that 404 on api.cerebras.ai — this is the load-bearing default.
+    expect(vars?.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    // Setting any OPENAI_* var here would knock the plugin out of Cerebras
+    // mode (isCerebrasMode requires no OPENAI_API_KEY / OPENAI_BASE_URL).
+    expect(vars?.OPENAI_API_KEY).toBeUndefined();
+    expect(vars?.OPENAI_BASE_URL).toBeUndefined();
+    expect(vars?.OPENAI_SMALL_MODEL).toBeUndefined();
+    expect(vars?.OPENAI_LARGE_MODEL).toBeUndefined();
+    // Same values land in process.env so a hot-reloaded runtime picks them up.
+    expect(process.env.CEREBRAS_API_KEY).toBe("csk-test-123");
+    expect(process.env.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    // The agent routes its text inference at Cerebras.
+    expect(config.serviceRouting?.llmText?.backend).toBe("cerebras");
+    expect(config.serviceRouting?.llmText?.transport).toBe("direct");
+  });
+
+  it("clears the persisted Cerebras key on a full reset", () => {
+    process.env.CEREBRAS_API_KEY = "csk-stale";
+    const config: Partial<ElizaConfig> = {
+      env: { vars: { CEREBRAS_API_KEY: "csk-stale" } },
+    } as Partial<ElizaConfig>;
+
+    clearPersistedFirstRunConfig(config);
+
+    expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.CEREBRAS_API_KEY).toBeUndefined();
   });
 });

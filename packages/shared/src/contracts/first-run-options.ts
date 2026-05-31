@@ -57,6 +57,7 @@ export interface StylePreset {
 
 export type FirstRunProviderFamily =
   | "anthropic"
+  | "cerebras"
   | "deepseek"
   | "elizacloud"
   | "gemini"
@@ -75,6 +76,7 @@ export type FirstRunProviderFamily =
 export type FirstRunProviderId =
   | "anthropic"
   | "anthropic-subscription"
+  | "cerebras"
   | "deepseek"
   | "deepseek-coding-subscription"
   | "elizacloud"
@@ -425,6 +427,20 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     order: 100,
   },
   {
+    id: "cerebras",
+    name: "Cerebras",
+    envKey: "CEREBRAS_API_KEY",
+    // Cerebras serves an OpenAI-compatible API, so it runs through the
+    // OpenAI plugin's Cerebras mode (CEREBRAS_API_KEY → api.cerebras.ai).
+    pluginName: "@elizaos/plugin-openai",
+    keyPrefix: "csk-",
+    description: "Fast inference for open models via Cerebras.",
+    family: "cerebras",
+    authMode: "api-key",
+    group: "local",
+    order: 105,
+  },
+  {
     id: "deepseek",
     name: "DeepSeek",
     envKey: "DEEPSEEK_API_KEY",
@@ -518,6 +534,7 @@ export const DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER = {
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",
+  cerebras: "cerebras-api",
 } as const satisfies Partial<
   Record<FirstRunProviderId, LinkedAccountProviderId>
 >;

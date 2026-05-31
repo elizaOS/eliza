@@ -122,6 +122,7 @@ const SUPPORTED_PROVIDER_IDS = [
   "deepseek-api",
   "zai-api",
   "moonshot-api",
+  "cerebras-api",
 ] as const satisfies readonly LinkedAccountProviderId[];
 
 const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
@@ -130,6 +131,7 @@ const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
   "deepseek-api",
   "zai-api",
   "moonshot-api",
+  "cerebras-api",
 ]);
 
 function asSubscriptionProvider(
@@ -412,6 +414,10 @@ function directProviderBaseUrl(providerId: DirectAccountProvider): string {
         process.env.MOONSHOT_BASE_URL?.trim() ||
         process.env.KIMI_BASE_URL?.trim() ||
         "https://api.moonshot.ai/v1"
+      );
+    case "cerebras-api":
+      return (
+        process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1"
       );
   }
 }
