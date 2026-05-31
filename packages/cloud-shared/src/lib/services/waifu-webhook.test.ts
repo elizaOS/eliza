@@ -105,6 +105,55 @@ describe("emitWaifuWebhook signing + delivery", () => {
     expect(calls[0].url).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference");
   });
 
+  // Regression guard for the money-path misroute: when WAIFU_WEBHOOK_URL is a
+  // full /credits receiver path, an inference event MUST still be routed to the
+  // sibling /inference receiver, never reused as-is against /credits (the
+  // credits mapper would corrupt credit state). Routing is driven by `kind`.
+  test("credits-path target + inference kind re-derives the /inference receiver", async () => {
+    const { fetchImpl, calls } = captureFetch();
+    await emitWaifuWebhook({
+      kind: "inference",
+      idempotencyKey: "inf-2",
+      target: {
+        baseUrl: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",
+        secret: "x".repeat(48),
+      },
+      fetchImpl,
+      payload: { event: "inference.spent", usd: 0.02 },
+    });
+    expect(calls[0].url).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference");
+  });
+
+  test("inference-path target + credits kind re-derives the /credits receiver", async () => {
+    const { fetchImpl, calls } = captureFetch();
+    await emitWaifuWebhook({
+      kind: "credits",
+      idempotencyKey: "cred-2",
+      target: {
+        baseUrl: "https://api.waifu.fun/v2/webhooks/eliza-cloud/inference",
+        secret: "x".repeat(48),
+      },
+      fetchImpl,
+      payload: { event: "credits.low", balance: 1 },
+    });
+    expect(calls[0].url).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/credits");
+  });
+
+  test("credits-path target + credits kind is preserved (no spurious swap)", async () => {
+    const { fetchImpl, calls } = captureFetch();
+    await emitWaifuWebhook({
+      kind: "credits",
+      idempotencyKey: "cred-3",
+      target: {
+        baseUrl: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",
+        secret: "x".repeat(48),
+      },
+      fetchImpl,
+      payload: { event: "credits.low", balance: 1 },
+    });
+    expect(calls[0].url).toBe("https://api.waifu.fun/v2/webhooks/eliza-cloud/credits");
+  });
+
   test("no-ops cleanly when target is not configured", async () => {
     const { fetchImpl, calls } = captureFetch();
     const result = await emitWaifuWebhook({
@@ -151,6 +200,17 @@ describe("isWaifuWebhookTargetUrl (signed-envelope gating)", () => {
   });
   test("false for a malformed url", () => {
     expect(isWaifuWebhookTargetUrl("not a url", TARGET)).toBe(false);
+  });
+  // Origin-only gating was too broad: a same-origin callback that is NOT a
+  // webhook receiver must not be handed the signed waifu envelope. Require the
+  // /v2/webhooks/ path prefix in addition to the origin match.
+  test("false for a same-origin url that is not a /v2/webhooks/ receiver", () => {
+    expect(isWaifuWebhookTargetUrl("https://api.waifu.fun/internal/job-done", TARGET)).toBe(false);
+  });
+  test("true for a same-origin /v2/webhooks/ inference receiver", () => {
+    expect(
+      isWaifuWebhookTargetUrl("https://api.waifu.fun/v2/webhooks/eliza-cloud/inference", TARGET),
+    ).toBe(true);
   });
 });
 

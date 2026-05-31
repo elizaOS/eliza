@@ -81,13 +81,59 @@ export function resolveWaifuWebhookTarget(): WaifuWebhookTarget | null {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), secret };
 }
 
+/** Webhook receiver path prefix that identifies a waifu signed receiver. */
+const WAIFU_WEBHOOK_PATH_PREFIX = "/v2/webhooks/";
+
+/**
+ * Resolve the receiver URL for a given event `kind`. Routing is driven BY KIND,
+ * never by blindly trusting whatever path `WAIFU_WEBHOOK_URL` happens to carry.
+ *
+ * This is a money-path guard. The credits receiver maps unknown payloads to
+ * `credits.topped_up`, so an inference event delivered to `/credits` would
+ * corrupt credit state (and vice versa). We therefore:
+ *
+ *   - bare origin / base (no `/v2/webhooks/` segment): append the canonical
+ *     `/v2/webhooks/eliza-cloud/{credits|inference}` for the requested kind.
+ *   - full receiver path (contains `/v2/webhooks/`): re-derive the sibling path
+ *     for the requested kind by swapping the trailing
+ *     `/credits` <-> `/inference` segment, so a configured `/credits` URL with
+ *     `kind: "inference"` routes to `/inference`, never `/credits`.
+ *
+ * Mirrors the deliberate safe derivation in
+ * plugins/plugin-elizacloud/src/utils/waifu-metering.ts.
+ */
 function receiverPath(baseUrl: string, kind: WaifuWebhookKind): string {
-  // Allow WAIFU_WEBHOOK_URL to be either the bare origin or a full receiver
-  // path. If it already points at a /v2/webhooks/... endpoint we respect it.
-  if (/\/v2\/webhooks\//.test(baseUrl)) {
-    return baseUrl;
+  const other: WaifuWebhookKind = kind === "credits" ? "inference" : "credits";
+
+  // Bare origin / base: build the canonical receiver path for this kind.
+  if (!baseUrl.includes(WAIFU_WEBHOOK_PATH_PREFIX)) {
+    return `${baseUrl}/v2/webhooks/eliza-cloud/${kind}`;
   }
-  return `${baseUrl}/v2/webhooks/eliza-cloud/${kind}`;
+
+  // Full receiver path: re-derive the sibling path that matches `kind` so we
+  // never reuse, say, a `/credits` URL for an inference event.
+  try {
+    const url = new URL(baseUrl);
+    const trailing = new RegExp(`/${other}(/?)$`);
+    if (trailing.test(url.pathname)) {
+      url.pathname = url.pathname.replace(trailing, `/${kind}$1`);
+    } else if (!new RegExp(`/${kind}(/?)$`).test(url.pathname)) {
+      // Path is under /v2/webhooks/ but does not end in either kind segment.
+      // Normalize to the canonical eliza-cloud receiver for this kind.
+      url.pathname = `/v2/webhooks/eliza-cloud/${kind}`;
+    }
+    return url.toString();
+  } catch {
+    // Non-absolute URL fallback: only swap an explicit trailing kind segment.
+    const trailing = new RegExp(`/${other}(/?)$`);
+    if (trailing.test(baseUrl)) {
+      return baseUrl.replace(trailing, `/${kind}$1`);
+    }
+    if (new RegExp(`/${kind}(/?)$`).test(baseUrl)) {
+      return baseUrl;
+    }
+    return `${baseUrl}/v2/webhooks/eliza-cloud/${kind}`;
+  }
 }
 
 export function signWaifuWebhook(rawBody: string, timestamp: string, secret: string): string {
@@ -95,10 +141,16 @@ export function signWaifuWebhook(rawBody: string, timestamp: string, secret: str
 }
 
 /**
- * True when `candidateUrl` points at the same origin as the resolved waifu
- * webhook target. Used to gate the signed waifu envelope so we never apply the
- * waifu shape or leak the shared HMAC signature to arbitrary webhook consumers
- * (for example a per-job callback URL that is not waifu).
+ * True when `candidateUrl` is a waifu signed-webhook receiver: it must share
+ * the resolved target's origin AND sit under the known `/v2/webhooks/` path
+ * prefix. Used to gate the signed waifu envelope so we only ever apply the
+ * waifu shape (and the shared HMAC signature) to actual waifu receivers.
+ *
+ * Origin alone is not enough: a same-origin per-job callback URL that is not a
+ * webhook receiver (for example `https://api.waifu.fun/internal/job-done`)
+ * would otherwise be handed the signed waifu envelope, silently changing the
+ * payload shape for that consumer. Requiring the `/v2/webhooks/` path prefix
+ * keeps the signed envelope scoped to the receivers that actually verify it.
  */
 export function isWaifuWebhookTargetUrl(
   candidateUrl: string | URL,
@@ -107,7 +159,10 @@ export function isWaifuWebhookTargetUrl(
   try {
     const candidate = new URL(candidateUrl.toString());
     const expected = new URL(target.baseUrl);
-    return candidate.origin === expected.origin;
+    if (candidate.origin !== expected.origin) {
+      return false;
+    }
+    return candidate.pathname.includes(WAIFU_WEBHOOK_PATH_PREFIX);
   } catch {
     return false;
   }
