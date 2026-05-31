@@ -36,6 +36,15 @@ ROOT = btg.ROOT
 COVERAGE_PATH = btg.TRACEABILITY_DIR / "coverage.json"
 COVERAGE_SCHEMA = "eliza.traceability_coverage.v1"
 CLAIM_BOUNDARY = "traceability_closure_is_structural_completeness_not_silicon_or_signoff"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 # Dimensions that count toward per-requirement structural closure.
 CLOSURE_DIMENSIONS = ("rtl", "tests", "pd_evidence", "gates")
@@ -187,6 +196,7 @@ def build_coverage(
         "schema": COVERAGE_SCHEMA,
         "as_of": today.isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "requirements": len(requirements),
             "waived": waived,

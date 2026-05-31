@@ -59,6 +59,16 @@ REQUIRED_GATES = {
     "make manufacturing-artifacts-check",
     "make no-hardware-action-check",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "tapeout_claim_allowed",
+    "scan_insertion_claim_allowed",
+    "atpg_coverage_claim_allowed",
+    "mbist_claim_allowed",
+    "manufacturing_test_readiness_claim_allowed",
+    "netlist_mutation_claim_allowed",
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -98,6 +108,9 @@ def main() -> int:
             fail(errors, "unsafe claim boundary")
         if policy.get("status") != "DRAFT_CAPTURE_ONLY":
             fail(errors, "status must be DRAFT_CAPTURE_ONLY")
+        for key in REQUIRED_FALSE_CLAIM_FLAGS:
+            if policy.get(key) is not False:
+                fail(errors, f"{key} must be false")
         require_set(
             policy.get("blocked_actions"),
             "blocked_actions",

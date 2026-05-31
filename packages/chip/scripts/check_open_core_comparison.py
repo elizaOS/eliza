@@ -42,6 +42,13 @@ VALID_CLAIM_LEVELS = {
     "L6_COMPLETE_PHONE",
 }
 VALID_VERDICTS = {"win", "parity", "loss", "unproven"}
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "silicon_performance_claim_allowed",
+    "tapeout_claim_allowed",
+    "phone_performance_claim_allowed",
+}
 
 
 def iter_evidence_paths(evidence: Any) -> Iterator[str]:
@@ -105,6 +112,9 @@ def check(comparison_path: Path) -> list[str]:
 
     if data.get("schema") != "eliza.open_riscv_core_comparison.v1":
         errors.append(f"unexpected schema: {data.get('schema')!r}")
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if data.get(key) is not False:
+            errors.append(f"{key} must be false")
 
     cores = data.get("cores")
     if not isinstance(cores, dict) or not cores:

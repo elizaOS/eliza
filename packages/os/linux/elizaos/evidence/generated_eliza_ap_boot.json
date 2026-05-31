@@ -1,11 +1,11 @@
 {
   "boot_completed": false,
   "claim_boundary": "generated_eliza_ap_chip_emulator_boot_evidence_blocked",
-  "generated_utc": "2026-05-28T19:58:42Z",
+  "generated_utc": "2026-05-31T00:47:46Z",
   "provenance": "generated_eliza_ap",
   "schema": "eliza.os.linux.chip_boot.v1",
   "status": "blocked",
-  "transcript_path": "packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "transcript_path": "/home/shaw/milady/eliza/packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
   "validation": {
     "problems": [
       "boot transcript missing marker group: elizaos-firstboot-ready"

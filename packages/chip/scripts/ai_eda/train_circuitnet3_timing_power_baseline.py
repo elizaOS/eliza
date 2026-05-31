@@ -17,6 +17,14 @@ DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/circuitnet3_surrogate"
 CLAIM_BOUNDARY = (
     "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 TARGETS = ("min_slack", "mean_slack", "max_at", "mean_delay", "mean_slew", "total_power")
 FEATURES = (
     "instance_count",
@@ -114,6 +122,7 @@ def mean_model(train_samples: list[dict[str, Any]]) -> dict[str, Any]:
         "schema": "eliza.ai_eda.circuitnet3_surrogate_model.v1",
         "model_type": "train_split_mean_baseline",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "targets": {target: mean(values) for target, values in target_values.items() if values},
         "feature_means": {
             feature: mean(values) for feature, values in feature_values.items() if values
@@ -174,6 +183,7 @@ def main() -> int:
     metrics = {
         "schema": "eliza.ai_eda.circuitnet3_surrogate_metrics.v1",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "splits": evaluations,
         "release_use_allowed": False,
     }
@@ -183,6 +193,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "record_dirs": [rel(path) for path in record_dirs],
         "sample_count": len(samples),
         "split_counts": {split: len(rows) for split, rows in splits.items()},

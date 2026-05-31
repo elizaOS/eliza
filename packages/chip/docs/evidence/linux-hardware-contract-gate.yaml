@@ -112,6 +112,12 @@ checker:
   - rtl/interrupts/e1_interrupt_controller.sv
   - rtl/memory/e1_axi_lite_dram.sv
 claim_boundary: local_rtl_scaffold_is_not_linux_boot_evidence
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+linux_boot_claim_allowed: false
+hardware_boot_claim_allowed: false
+silicon_evidence_claim_allowed: false
 claim_rules:
 - Passing this local gate only proves that the scaffold is still marked Linux-boot
   blocked.

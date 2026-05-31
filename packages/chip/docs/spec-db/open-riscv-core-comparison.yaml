@@ -18,6 +18,11 @@
 #   No silicon performance numbers are asserted for E1: it has no silicon.
 schema: eliza.open_riscv_core_comparison.v1
 generated_at_utc: "2026-05-21T16:30:00Z"
+claim_allowed: false
+release_claim_allowed: false
+silicon_performance_claim_allowed: false
+tapeout_claim_allowed: false
+phone_performance_claim_allowed: false
 
 description: >-
   E1 is a heterogeneous 1+3+4 cluster that ADOPTS best-in-class open RISC-V

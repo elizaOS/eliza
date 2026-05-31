@@ -6,6 +6,13 @@ from pathlib import Path
 import yaml
 
 VECTOR_PIN_RE = re.compile(r"^(DBG_ADDR|DBG_WDATA|DBG_RDATA|GPIO)(\d+)$")
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "fpga_bitstream_release_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "e1_chip_rtl_claim_allowed",
+}
 
 
 def parse_ports(path: Path) -> set[str]:
@@ -44,6 +51,14 @@ def main() -> int:
 
     if cfg.get("rtl_top") != "e1_chip_top":
         print("FPGA target must name rtl_top e1_chip_top")
+        return 1
+    missing_false_flags = [
+        key for key in sorted(REQUIRED_FALSE_CLAIM_FLAGS) if cfg.get(key) is not False
+    ]
+    if missing_false_flags:
+        print("FPGA scaffold must keep claim flags false:")
+        for name in missing_false_flags:
+            print(f"  - {name}")
         return 1
 
     required = {

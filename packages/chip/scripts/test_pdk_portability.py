@@ -53,6 +53,20 @@ def test_portability_index_has_all_required_lanes() -> None:
         raise AssertionError(f"missing lanes: {sorted(missing)}")
 
 
+def test_portability_report_false_claim_flags_are_declared(tmp_path: Path) -> None:
+    report = tmp_path / "pdk-portability.json"
+    checker.write_report([], [])
+    original = checker.REPORT.read_text(encoding="utf-8")
+    try:
+        checker.REPORT.write_text(original, encoding="utf-8")
+        data = json.loads(checker.REPORT.read_text(encoding="utf-8"))
+    finally:
+        if report.exists():
+            report.unlink()
+    for key in checker.FALSE_CLAIM_FLAGS:
+        assert data.get(key) is False, key
+
+
 def test_advanced_nodes_are_blocked() -> None:
     data = load_index()
     configs = data.get("configs")

@@ -35,6 +35,15 @@ RESULT_XML = CHIP_ROOT / "verify/cocotb/results" / f"{COCOTB_TOP}_{COCOTB_MOD}.x
 REPORT_PATH = CHIP_ROOT / "build/reports/otp_rtl_check.json"
 GATE = "otp-rtl-check"
 BLOCKER_ID = "otp_rtl_check_failed"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_otp_claim_allowed": False,
+    "efuse_macro_claim_allowed": False,
+    "provisioning_claim_allowed": False,
+    "secure_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 EVIDENCE_PATHS = [
     "rtl/security/otp/e1_otp_map.sv",
@@ -115,6 +124,7 @@ def main() -> int:
             "status": "BLOCKED",
             "blocker_id": BLOCKER_ID,
             "blocker_reason": f"missing RTL {RTL.relative_to(CHIP_ROOT)}",
+            **FALSE_CLAIM_FLAGS,
             "evidence_paths": [],
             "as_of": now,
             "subsystem": "security",
@@ -161,6 +171,7 @@ def main() -> int:
             "majority, §4 write authorization) over the partition layout in "
             "docs/spec-db/tee-otp-fuse-map.json."
         ),
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),

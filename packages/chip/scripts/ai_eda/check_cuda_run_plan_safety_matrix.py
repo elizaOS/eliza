@@ -35,6 +35,14 @@ RISKY_STAGES = {
     "replay": "--allow-replay",
     "alphachip": "--allow-alphachip",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "command_execution_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "eda_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -88,6 +96,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if not args.plan.is_file():
+        print(f"STATUS: FAIL ai_eda.cuda_run_plan_safety_matrix missing_plan {rel(args.plan)}")
+        return 1
     plan = load_json(args.plan)
     commands = plan.get("required_remote_commands")
     if not isinstance(commands, list) or not all(isinstance(command, str) for command in commands):
@@ -219,6 +230,12 @@ def main() -> int:
         "run_id": args.run_id,
         "plan": rel(args.plan),
         "claim_boundary": CLAIM_BOUNDARY,
+        "claim_allowed": False,
+        "release_claim_allowed": False,
+        "command_execution_claim_allowed": False,
+        "training_claim_allowed": False,
+        "inference_claim_allowed": False,
+        "eda_signoff_claim_allowed": False,
         "policy": {
             "runs_commands": False,
             "runs_training": False,

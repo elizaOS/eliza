@@ -28,7 +28,7 @@
     "height": 0.4500002,
     "width": 3.2000002000000003
   },
-  "local_discrete_step_bytes": 15551,
+  "local_discrete_step_bytes": 15576,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 2.4,
     "height": 0.45,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "8a46abb6f407790b51cb3a52a76a6db9e3f3890e2aaef48c2488ef94ea7e0201",
+  "local_discrete_step_sha256": "053d2c21c4a72fda98e4d5862b8b013d835c0323b97ca33f432abc6152ffa21a",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -125,7 +125,7 @@
   "supplier_step_intake_bytes": 15640,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "322ff386b0f214b286af12ff4c1ab004891f2ea18986581d46ed4c104cb1004a",
+  "supplier_step_intake_sha256": "f9be567cdc0e483d38392a34612bafea265bd924e038e4ae9fc9de19aaf98f32",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 5,

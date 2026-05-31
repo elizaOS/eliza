@@ -173,6 +173,8 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             )
         )
         command_ids = {item["id"] for item in report["next_command_plan"]}
+        self.assertIn("derive_generated_ap_boot_command", command_ids)
+        self.assertIn("capture_generated_ap_boot_and_agent", command_ids)
         self.assertIn("write_blocked_boot_evidence_from_real_transcript", command_ids)
         self.assertIn("write_blocked_agent_live_evidence_from_real_transcript", command_ids)
         self.assertIn("target_agent_live_probe_transcript", command_ids)
@@ -192,6 +194,19 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             blocked_boot["claim_boundary"],
             "diagnostic_blocked_evidence_only_not_live_capture_proof",
         )
+        generated_ap_capture = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "capture_generated_ap_boot_and_agent"
+        )
+        self.assertIn("capture-generated-ap-chip-evidence.sh", generated_ap_capture["command"])
+        self.assertIn("ELIZA_GENERATED_AP_CHIP_BOOT_CMD", generated_ap_capture["command"])
+        derive = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "derive_generated_ap_boot_command"
+        )
+        self.assertIn("wire_cpu_ap_capture_commands.py --format json", derive["command"])
         assert_no_product_claims(report)
 
     def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:

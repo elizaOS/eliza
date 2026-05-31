@@ -16,6 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BENCH_DIR = ROOT / "external/datasets/openabc-d/payload/bench_openabcd"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openabc_d"
 CLAIM_BOUNDARY = "openabc_d_conversion_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 ASSIGNMENT_RE = re.compile(r"^([^\s=]+)\s*=\s*([^\s(]+)\((.*)\)$")
 PINNED_REVISION = "ecd7dde67740556eaf842ccab4dc941c348ad8f6"
@@ -145,6 +153,7 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "schema": "eda.design_bundle.v1",
         "id": f"{record_prefix}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": design_name,
             "revision": PINNED_REVISION,
@@ -167,6 +176,7 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-logic-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "node_features": parsed["node_features"],
             "edge_features": parsed["edge_features"],
@@ -193,6 +203,7 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": ["OpenABC-D public BENCH export"],
             "version_capture": "external/datasets/openabc-d/manifest.yaml",
@@ -273,6 +284,7 @@ def main() -> int:
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
+        **FALSE_CLAIM_FLAGS,
         "bench_dir": rel(args.bench_dir),
         "available_bench_count": len(available_benches),
         "converted_bench_count": len(benches),

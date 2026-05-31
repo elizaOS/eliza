@@ -1,6 +1,14 @@
 schema: eliza.product_arch_security_radio_sensors_optimization.v1
 status: fail_closed_product_work_order
 date: 2026-05-17
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+android_compatibility_claim_allowed: false
+certification_claim_allowed: false
+secure_boot_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
 claim_boundary: >
   This is an optimization and verification work order for product architecture,
   security, radio/connectivity, sensors, USB/storage/update, battery/charging,

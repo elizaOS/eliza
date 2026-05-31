@@ -107,6 +107,21 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             "capture_launcher_runtime_evidence.py",
             " ".join(report["next_command_plan"][0]["commands"]),
         )
+        capture_command = report["next_command_plan"][0]["commands"][1]
+        self.assertIn("--adb-connect 127.0.0.1:6520", capture_command)
+        self.assertIn("--adb-connect 127.0.0.1:5555", capture_command)
+        self.assertIn(
+            "--output packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+            capture_command,
+        )
+        self.assertIn(
+            "--logcat packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+            capture_command,
+        )
+        self.assertIn(
+            "--transcript packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
+            capture_command,
+        )
 
     def test_incomplete_evidence_reports_runtime_blockers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -26,6 +26,16 @@ QOS_CLASS_WEIGHTS = {
     "normal": 2,
     "best_effort": 1,
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "rtl_iommu_claim_allowed": False,
+    "lpddr_claim_allowed": False,
+    "android_dmabuf_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 @dataclass
@@ -252,6 +262,7 @@ def build_report() -> dict[str, Any]:
             "not LPDDR controller or PHY, not coherent fabric, not Android dma-buf, "
             "not silicon or phone-class memory evidence."
         ),
+        **FALSE_CLAIM_FLAGS,
         "source_spec": "docs/spec-db/memory-2028-target.yaml",
         "config": {
             "deny_by_default": bool((spec.get("iommu") or {}).get("deny_by_default")),

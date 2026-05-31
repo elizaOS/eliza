@@ -1,5 +1,10 @@
 target: e1_demo_fpga
 status: scaffold
+claim_allowed: false
+release_claim_allowed: false
+fpga_bitstream_release_claim_allowed: false
+hardware_boot_claim_allowed: false
+e1_chip_rtl_claim_allowed: false
 rtl_top: e1_chip_top
 family: ecp5
 flow:

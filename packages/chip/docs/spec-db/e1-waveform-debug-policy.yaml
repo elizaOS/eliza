@@ -1,6 +1,13 @@
 schema: eliza.waveform_debug_policy.v1
 claim_boundary: waveform_debug_policy_only_no_ai_root_cause_or_fix_claim
 status: DRAFT_CAPTURE_ONLY
+claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+ai_root_cause_claim_allowed: false
+ai_fix_claim_allowed: false
+coverage_closure_claim_allowed: false
+production_readiness_claim_allowed: false
 
 description: >-
   Governs how a future automated debug agent may read simulation waveforms

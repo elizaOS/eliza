@@ -15,6 +15,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/post_silicon_validation_targets"
 CLAIM_BOUNDARY = "post_silicon_validation_target_capture_only_no_silicon_or_lab_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 INPUT_ARTIFACTS = (
     "verify/riscv-arch-tests/manifest.json",
@@ -119,6 +128,7 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_POST_SILICON_OR_LAB_CLAIM",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_ids": [
             "symbolic-qed",
             "soc-trace-protocol-debug",

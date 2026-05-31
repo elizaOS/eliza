@@ -20,6 +20,14 @@ LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.cuda_training_payload_report.v1"
 EXPECTED_PLAN_SCHEMA = "eliza.ai_eda.cuda_training_payload.v1"
 EXPECTED_CLAIM_BOUNDARY = "cuda_training_payload_metadata_only_no_dataset_weights_or_training_claim"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_optimization_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 CRITICAL_FETCH_ASSETS = {
     "abc-rl",
@@ -675,6 +683,9 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
         errors.append("run plan schema mismatch")
     if plan.get("claim_boundary") != EXPECTED_CLAIM_BOUNDARY:
         errors.append("run plan claim_boundary mismatch")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if plan.get(field) is not False:
+            errors.append(f"run plan {field} must be false")
     policy = plan.get("policy")
     if not isinstance(policy, dict):
         errors.append("run plan policy must be a mapping")
@@ -684,6 +695,7 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
             "contains_model_weights",
             "contains_foundry_confidential_files",
             "release_use_allowed",
+            *REQUIRED_FALSE_CLAIM_FLAGS,
         ):
             if policy.get(field) is not False:
                 errors.append(f"run plan policy.{field} must be false")
@@ -756,6 +768,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report claim_boundary mismatch")
     if report.get("release_use_allowed") is not False:
         errors.append("release_use_allowed must be false")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if report.get(field) is not False:
+            errors.append(f"{field} must be false")
     payload = report.get("payload")
     run_plan = report.get("run_plan")
     runbook = report.get("runbook")

@@ -33,6 +33,14 @@ REQUIRED_CAPTURE_WORK_ORDERS = {
     "package_vendor_review_capture",
     "si_pi_current_thermal_capture",
 }
+REQUIRED_CLAIM_POLICY_FALSE_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "tapeout_claim_allowed",
+    "board_fabrication_claim_allowed",
+    "physical_signoff_claim_allowed",
+    "lab_validation_claim_allowed",
+}
 
 
 def load_yaml(path: Path) -> dict:
@@ -169,6 +177,9 @@ def main() -> int:
     if not isinstance(claim_policy, dict):
         failures.append("work order must define claim_policy")
     else:
+        for key in REQUIRED_CLAIM_POLICY_FALSE_FLAGS:
+            if claim_policy.get(key) is not False:
+                failures.append(f"claim_policy.{key} must be false")
         allowed = validate_text_list(
             "claim_policy.allowed_local_claims",
             claim_policy.get("allowed_local_claims"),

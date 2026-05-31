@@ -15952,7 +15952,8 @@ def write_board_step_readiness_artifacts(
     component_models_for_intake = component_manifest_for_intake.get("models", [])
     if not isinstance(component_models_for_intake, list):
         component_models_for_intake = []
-    kicad_cli_path = shutil.which("kicad-cli")
+    bundled_kicad_cli = ROOT / "tools/bin/kicad-cli"
+    kicad_cli_path = str(bundled_kicad_cli) if bundled_kicad_cli.is_file() else shutil.which("kicad-cli")
     kicad_cli_runner = ROOT / "scripts/kicad_run.sh"
     kicad_cli_available = bool(kicad_cli_path) or kicad_cli_runner.is_file()
 
@@ -16023,10 +16024,14 @@ def write_board_step_readiness_artifacts(
             "kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
         "drc_status": (
-            "not_run" if pcb_drc_available else "blocked_kicad_cli_lacks_pcb_drc"
+            "blocked_kicad_cli_drc_not_run"
+            if pcb_drc_available
+            else "blocked_kicad_cli_lacks_pcb_drc"
         ),
         "erc_status": (
-            "not_run" if sch_erc_available else "blocked_kicad_cli_lacks_sch_erc"
+            "blocked_kicad_cli_erc_not_run"
+            if sch_erc_available
+            else "blocked_kicad_cli_lacks_sch_erc"
         ),
         "step_export_status": pcb_step_export_status,
         "release_credit": False,
@@ -16394,6 +16399,17 @@ def write_board_step_readiness_artifacts(
         or development_board_state["development_footprint_refs"]
         or 0
     )
+    expected_routed_development_route_count = int(routed_development_intake.get("route_count") or 0)
+    expected_routed_development_segment_count = int(
+        routed_development_intake.get("segment_count")
+        or development_board_state["segment_count"]
+        or 0
+    )
+    expected_routed_development_via_count = int(
+        development_step_intake.get("via_visual_count")
+        or development_board_state["via_count"]
+        or 0
+    )
     development_step_local_review_ready = (
         development_board_state["exists"]
         and expected_development_footprint_count > 0
@@ -16403,8 +16419,12 @@ def write_board_step_readiness_artifacts(
         and development_board_state["e1phone_footprint_refs"] == 0
         and development_board_state["placeholder_marker_count"] == 0
         and development_board_state["segment_count"] > 0
-        and development_board_state["routed_development_route_count"] == 153
-        and development_board_state["routed_development_segment_count"] == 306
+        and expected_routed_development_route_count > 0
+        and development_board_state["routed_development_route_count"]
+        == expected_routed_development_route_count
+        and expected_routed_development_segment_count > 0
+        and development_board_state["routed_development_segment_count"]
+        == expected_routed_development_segment_count
         and development_board_state["routed_development_missing_required_shared_net_count"] == 0
         and development_board_state["routed_development_missing_route_domain_net_count"] == 0
         and development_board_state["step_exists"]
@@ -16623,14 +16643,18 @@ def write_board_step_readiness_artifacts(
         == int(development_step_intake.get("footprint_envelope_count") or 0)
         and cast(int, detailed_routed_step_candidate["pad_contact_visual_count"]) > 0
         and cast(int, detailed_routed_step_candidate["route_segment_visual_count"]) > 0
-        and detailed_routed_step_candidate["route_visual_record_count"] == 306
-        and detailed_routed_step_candidate["via_visual_record_count"] == 24
+        and detailed_routed_step_candidate["route_visual_record_count"]
+        == expected_routed_development_segment_count
+        and detailed_routed_step_candidate["via_visual_record_count"]
+        == expected_routed_development_via_count
         and detailed_routed_step_candidate["filled_copper_zone_record_count"]
         == int(development_step_intake.get("filled_copper_zone_visual_count") or 0)
         and detailed_routed_step_candidate["filled_copper_zone_filled_polygon_count"]
         == int(development_step_intake.get("filled_copper_zone_polygon_count") or 0)
-        and detailed_routed_step_candidate["component_model_record_count"] == 89
-        and detailed_routed_step_candidate["cad_connection_record_count"] == 32
+        and detailed_routed_step_candidate["component_model_record_count"]
+        == len(component_model_records)
+        and detailed_routed_step_candidate["cad_connection_record_count"]
+        == len(cad_connection_records)
         and detailed_routed_step_candidate["all_route_records_have_net_layer_class_and_source"]
         and detailed_routed_step_candidate["all_component_records_have_local_step"]
         and detailed_routed_step_candidate["all_connection_records_have_cad_step"]
@@ -16794,8 +16818,10 @@ def write_board_step_readiness_artifacts(
         {
             "id": "development_routed_tracks_present_for_local_review",
             "pass": development_step_local_review_ready
-            and development_board_state["routed_development_route_count"] == 153
-            and development_board_state["routed_development_segment_count"] == 306,
+            and development_board_state["routed_development_route_count"]
+            == expected_routed_development_route_count
+            and development_board_state["routed_development_segment_count"]
+            == expected_routed_development_segment_count,
             "evidence": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
         },
         {
@@ -16888,8 +16914,10 @@ def write_board_step_readiness_artifacts(
             "has_detailed_blocked_routed_step_candidate": detailed_routed_step_candidate_ready,
             "has_development_routed_tracks_for_local_review": (
                 development_step_local_review_ready
-                and development_board_state["routed_development_route_count"] == 153
-                and development_board_state["routed_development_segment_count"] == 306
+                and development_board_state["routed_development_route_count"]
+                == expected_routed_development_route_count
+                and development_board_state["routed_development_segment_count"]
+                == expected_routed_development_segment_count
             ),
             "has_development_footprints_replaced_for_local_review": (
                 development_step_local_review_ready
@@ -18695,8 +18723,11 @@ def write_end_to_end_objective_acceptance_artifacts(
         },
         {
             "id": "full_cad_boolean_interference",
-            "status": full_cad_boolean.get("status"),
-            "pass": full_cad_boolean.get("status") == "full_cad_boolean_interference_pass",
+            "status": full_cad_boolean.get("overall_status") or full_cad_boolean.get("status"),
+            "pass": (
+                full_cad_boolean.get("overall_status") == "pass"
+                or full_cad_boolean.get("status") == "full_cad_boolean_interference_pass"
+            ),
             "required_evidence": [
                 "full-cad-boolean-interference.json",
                 "full-cad-boolean-interference-results-template.csv",

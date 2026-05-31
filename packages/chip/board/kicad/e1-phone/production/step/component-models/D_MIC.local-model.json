@@ -28,7 +28,7 @@
     "height": 0.5500002,
     "width": 2.4000002
   },
-  "local_discrete_step_bytes": 15547,
+  "local_discrete_step_bytes": 15572,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.0,
     "height": 0.55,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "a25443a8a03b3dbdb34c65d3154bd835d6bba0ddc24f7ab3597ea887db436a7a",
+  "local_discrete_step_sha256": "f81ae83802162af3c33f54371e63b3fedd66e7837edfba52e812433e8ae17a1a",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -133,7 +133,7 @@
   "supplier_step_intake_bytes": 15716,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "d73dc798e0692cbde23e259c215aea53ad6f2fb2653f700cdc269ff44f792b33",
+  "supplier_step_intake_sha256": "c7399ae4788a32f2dd98bdf4b29ab3f427b6dfe2e15f929beaa10a6e7dac9f0f",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 6,

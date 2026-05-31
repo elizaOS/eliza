@@ -28,7 +28,7 @@
     "height": 0.9000002,
     "width": 4.0000002
   },
-  "local_discrete_step_bytes": 15461,
+  "local_discrete_step_bytes": 15486,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 4.0,
     "height": 0.9,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "b585325ae350e05cb762c8d44adec4375c257a36b0629990c5b44aa1725ea59b",
+  "local_discrete_step_sha256": "e9d1fb49d28d0d565a1af1110a8861ea01b58750b40a85ed85b1f0f08e14de87",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

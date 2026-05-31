@@ -28,7 +28,7 @@
     "height": 0.9000002,
     "width": 9.0000002
   },
-  "local_discrete_step_bytes": 15513,
+  "local_discrete_step_bytes": 15538,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 9.0,
     "height": 0.9,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "8aeea48f714eed3f49277672ed4553e927ace50c966c3d81bc2cd67397139c15",
+  "local_discrete_step_sha256": "59ea13b1e3125718b597ca9291ea63ee46fe948ada76153ac49aa53b1dceb861",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -557,7 +557,7 @@
   "supplier_step_intake_bytes": 15538,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "7b9905e0da4c790f17e1428d2b0c4fc9f3f6655403af49711f966b694ef6469e",
+  "supplier_step_intake_sha256": "d69a2ee55d18cf3606b2c63ce6df894c38484daa64ca08e68c917ad7bac71b76",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 59,

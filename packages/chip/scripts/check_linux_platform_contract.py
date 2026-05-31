@@ -29,6 +29,14 @@ CHIPYARD_GENERATED_CHECK = ROOT / "scripts/check_chipyard_generated_linux_contra
 CVA6_CLONE = ROOT / "scripts/clone_cva6.sh"
 CPU_WORK_ORDER = ROOT / "docs/project/cpu-ap-integration-work-order-2026-05-17.yaml"
 LINUX_GATE = ROOT / "docs/evidence/linux-hardware-contract-gate.yaml"
+REQUIRED_LINUX_GATE_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "linux_boot_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "silicon_evidence_claim_allowed",
+}
 
 
 def read(path: Path) -> str:
@@ -236,6 +244,14 @@ def check_handoffs(errors: list[str]) -> None:
                 f"{path.relative_to(ROOT)} missing handoff/fail-closed token {token}",
                 errors,
             )
+    import yaml
+
+    gate = yaml.safe_load(read(LINUX_GATE))
+    if not isinstance(gate, dict):
+        errors.append(f"{LINUX_GATE.relative_to(ROOT)} must be a YAML mapping")
+        return
+    for key in REQUIRED_LINUX_GATE_FALSE_CLAIM_FLAGS:
+        require(gate.get(key) is False, f"{LINUX_GATE.relative_to(ROOT)} {key} must be false", errors)
 
 
 def main() -> int:

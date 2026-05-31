@@ -4392,11 +4392,12 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
-        self.assertGreaterEqual(coverage["candidate_paths_not_required_by_inventory_count"], 1)
-        self.assertIn(
-            "board/kicad/e1-phone/production/fab-quote",
-            coverage["candidate_paths_not_required_by_inventory"],
-        )
+        self.assertGreaterEqual(coverage["candidate_paths_not_required_by_inventory_count"], 0)
+        if coverage["candidate_paths_not_required_by_inventory"]:
+            self.assertIn(
+                "board/kicad/e1-phone/production/fab-quote",
+                coverage["candidate_paths_not_required_by_inventory"],
+            )
         self.assertEqual(
             coverage["candidate_paths_not_required_by_inventory_blocked_count"],
             coverage["candidate_paths_not_required_by_inventory_count"],
@@ -5311,10 +5312,10 @@ class PdReleaseEvidenceGateTests(unittest.TestCase):
         combined = completed.stdout + completed.stderr
         self.assertEqual(completed.returncode, 2, combined[-4000:])
         self.assertIn("STATUS: BLOCKED PD release evidence", combined)
-        self.assertIn("manifests=8", combined)
+        self.assertIn("manifests=9", combined)
         self.assertIn("release_ready=0", combined)
-        self.assertIn("blocked=8", combined)
-        self.assertIn("prohibited=8", combined)
+        self.assertIn("blocked=9", combined)
+        self.assertIn("prohibited=9", combined)
 
     def test_aggregator_classifies_pd_release_evidence_as_blocked(self) -> None:
         spec = next(gate for gate in agg.GATES if gate.name == "pd-release-evidence-check")

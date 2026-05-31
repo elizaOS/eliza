@@ -21,6 +21,14 @@ source_policy:
     - RoHS/REACH, battery UN38.3/MSDS, and radio regulatory/certification scope
     - lifecycle statement and approved alternate strategy
 
+successor_public_refresh:
+  path: board/kicad/e1-phone/supplier-bom-public-evidence-refresh-2026-05-31.yaml
+  status: public_supplier_bom_refresh_not_avl_or_release_evidence
+  note: >
+    2026-05-31 refresh adds current public source URLs, MOQ/price-break
+    observations, STEP/3D availability notes, and 100/1000/10000/100000/1000000
+    unit cost ranges for purchasable off-the-shelf phone component classes.
+
 public_sources_observed:
   display_meta_055wu01_alibaba:
     url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html

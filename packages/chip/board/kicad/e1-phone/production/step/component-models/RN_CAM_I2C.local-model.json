@@ -28,7 +28,7 @@
     "height": 0.3500002,
     "width": 1.0000002
   },
-  "local_discrete_step_bytes": 15573,
+  "local_discrete_step_bytes": 15598,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 0.5,
     "height": 0.35,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "313b0cff950f23ac180a4745df11917841f54c1545e9b27c1c8f7ea31c903426",
+  "local_discrete_step_sha256": "290aa4de8f6003b806224bde2d4b68ec9046c224b5a020e60a70e2ac6df23be9",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

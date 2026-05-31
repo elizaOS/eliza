@@ -53,6 +53,8 @@ LINKED_EVIDENCE_REPORTS = (
 
 
 def load_yaml(path: Path):
+    if not path.is_file():
+        raise SystemExit(f"missing required artifact: {path.relative_to(ROOT)}")
     with path.open() as handle:
         return yaml.safe_load(handle)
 
@@ -13485,6 +13487,51 @@ def check_post_route_validation_binding() -> None:
     if state["validation_allowed"] is not False:
         raise SystemExit("post-route validation must remain blocked before routed outputs")
 
+    routed_candidate = binding.get("local_routed_candidate_validation_state")
+    if not isinstance(routed_candidate, dict):
+        raise SystemExit("post-route validation missing local routed candidate state")
+    for rel_path_key in [
+        "board_file",
+        "real_footprint_board_file",
+        "real_footprint_binding",
+        "source_binding",
+    ]:
+        require_path(ROOT / routed_candidate[rel_path_key])
+    routed_candidate_path = ROOT / routed_candidate["board_file"]
+    real_footprint_path = ROOT / routed_candidate["real_footprint_board_file"]
+    routed_candidate_bytes = routed_candidate_path.read_bytes()
+    real_footprint_bytes = real_footprint_path.read_bytes()
+    routed_candidate_text = routed_candidate_bytes.decode("utf-8")
+    expected_routed_candidate_state = {
+        "board_sha256": hashlib.sha256(routed_candidate_bytes).hexdigest(),
+        "real_footprint_board_sha256": hashlib.sha256(real_footprint_bytes).hexdigest(),
+        "matches_real_footprint_board": routed_candidate_bytes == real_footprint_bytes,
+        "footprint_count": routed_candidate_text.count('(footprint "'),
+        "legacy_e1phone_footprint_ref_count": routed_candidate_text.count('(footprint "E1Phone:'),
+        "placeholder_marker_count": routed_candidate_text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "segment_count": routed_candidate_text.count("\n  (segment "),
+        "via_count": routed_candidate_text.count("\n  (via "),
+        "zone_count": routed_candidate_text.count("\n  (zone "),
+        "filled_zone_count": routed_candidate_text.count("(filled_polygon"),
+        "has_tracks": routed_candidate_text.count("\n  (segment ") > 0,
+        "has_filled_zones": routed_candidate_text.count("(filled_polygon") > 0,
+        "has_production_outputs": False,
+        "validation_allowed": False,
+        "release_credit": False,
+        "release_state": "blocked_local_routed_real_footprint_candidate_not_release",
+    }
+    for key, expected in expected_routed_candidate_state.items():
+        if routed_candidate.get(key) != expected:
+            raise SystemExit(f"post-route validation local routed candidate state stale: {key}")
+    if (
+        int(routed_candidate["segment_count"]) <= 0
+        or int(routed_candidate["via_count"]) <= 0
+        or int(routed_candidate["filled_zone_count"]) <= 0
+    ):
+        raise SystemExit("post-route validation local routed candidate lacks route evidence")
+
     outputs = binding["required_validation_outputs"]
     present_outputs = [
         name for name, rel_path in outputs.items() if is_release_artifact_present(ROOT / rel_path)
@@ -14856,7 +14903,7 @@ def check_release_gates_fail_closed(manifest: dict) -> None:
         raise SystemExit("enclosure local candidate evidence cannot grant release credit")
     if (
         enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status")
-        != "blocked_boolean_interference_incomplete"
+        != "pass"
     ):
         raise SystemExit("enclosure release gate full CAD boolean status stale")
     print("release gates ok: fabrication/enclosure readiness remains fail-closed")
@@ -15056,6 +15103,42 @@ def write_board_package_report(manifest: dict) -> None:
                 "next_step": (
                     "Collect real routed PCB, fabrication, supplier, enclosure, first-article, "
                     "and factory release evidence before claiming fabrication readiness."
+                ),
+            }
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_board_package_failure_report(message: object) -> None:
+    report = {
+        "schema": "eliza.e1_phone_board_package_report.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "status": "blocked",
+        "claim_boundary": "board_package_structural_check_only_not_fabrication_release_evidence",
+        "summary": {
+            "structural_package_checks": "blocked",
+            "fabrication_ready": False,
+            "release_evidence_complete": False,
+            "failure_message": str(message),
+        },
+        "source_inputs": [
+            "board/kicad/e1-phone/artifact-manifest.yaml",
+            "scripts/check_e1_phone_board_package.py",
+        ],
+        "validation_commands": ["python3 scripts/check_e1_phone_board_package.py"],
+        "next_unblock_commands": ["python3 scripts/check_e1_phone_board_package.py"],
+        "findings": [
+            {
+                "severity": "blocker",
+                "code": "e1_phone_board_package_structural_check_blocked",
+                "evidence": "python3 scripts/check_e1_phone_board_package.py",
+                "message": str(message),
+                "next_step": (
+                    "Refresh or repair the stale board, routed STEP, CAD, sourcing, or "
+                    "release-intake dependency named by this failure, then rerun the board "
+                    "package checker."
                 ),
             }
         ],
@@ -15300,6 +15383,9 @@ def check_objective_completion_trace_manifests() -> None:
 def check_development_pattern_pinout_step_coverage() -> None:
     board_path = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
     routed_board_path = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+    real_footprint_binding_path = (
+        ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
+    )
     step_intake_path = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
     routed_intake_path = ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
     component_manifest_path = ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
@@ -15311,6 +15397,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
     for path in [
         board_path,
         routed_board_path,
+        real_footprint_binding_path,
         step_intake_path,
         routed_intake_path,
         component_manifest_path,
@@ -15323,6 +15410,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
 
     board_text = board_path.read_text(encoding="utf-8")
     routed_board_text = routed_board_path.read_text(encoding="utf-8")
+    real_footprint_binding = load_yaml(real_footprint_binding_path)
     step_intake = load_yaml(step_intake_path)
     routed_intake = load_yaml(routed_intake_path)
     component_manifest = load_yaml(component_manifest_path)
@@ -15331,6 +15419,19 @@ def check_development_pattern_pinout_step_coverage() -> None:
     public_cad_intake = load_yaml(public_cad_intake_path)
     public_bom_cost = load_yaml(public_bom_cost_path)
     trace_summary = traceability.get("summary", {})
+    source_board_path = ROOT / real_footprint_binding["source_board"]
+    output_board_path = ROOT / real_footprint_binding["output_board"]
+    require_path(source_board_path)
+    require_path(output_board_path)
+    expected_binding_hashes = {
+        "source_board_sha256": hashlib.sha256(source_board_path.read_bytes()).hexdigest(),
+        "output_board_sha256": hashlib.sha256(output_board_path.read_bytes()).hexdigest(),
+    }
+    for key, expected in expected_binding_hashes.items():
+        if real_footprint_binding.get(key) != expected:
+            raise SystemExit(f"real-footprint development board binding hash stale: {key}")
+    if output_board_path != board_path:
+        raise SystemExit("real-footprint development board binding output path diverges")
     if not isinstance(trace_summary, dict):
         raise SystemExit("KiCad/CAD traceability summary missing")
     if public_cad_intake.get("schema") != "eliza.e1_phone_public_cad_source_intake.v1":
@@ -16280,13 +16381,11 @@ def check_routed_board_step_intake_template() -> None:
         "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
         "tool": "kicad-cli",
         "available": True,
-        "sch_erc_available": False,
-        "pcb_drc_available": False,
+        "sch_erc_available": True,
+        "pcb_drc_available": True,
         "pcb_step_export_available": True,
-        "required_release_commands_available": False,
-        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
-        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
-        "step_export_status": "blocked_kicad_cli_7_cannot_open_current_board",
+        "required_release_commands_available": True,
+        "step_export_status": "available_not_release_validated",
         "release_credit": False,
     }
     for field, expected in expected_preflight.items():
@@ -16295,6 +16394,16 @@ def check_routed_board_step_intake_template() -> None:
                 f"routed-board KiCad CLI preflight stale: {field} "
                 f"expected {expected!r} got {kicad_preflight.get(field)!r}"
             )
+    if kicad_preflight.get("drc_status") not in {
+        "blocked_kicad_cli_drc_violations",
+        "blocked_kicad_cli_drc_not_run",
+    }:
+        raise SystemExit("routed-board KiCad CLI preflight stale: drc_status")
+    if kicad_preflight.get("erc_status") not in {
+        "blocked_kicad_cli_erc_violations",
+        "blocked_kicad_cli_erc_not_run",
+    }:
+        raise SystemExit("routed-board KiCad CLI preflight stale: erc_status")
 
     visual_detail = candidate_manifest.get("routed_step_visual_detail", {})
     if not isinstance(visual_detail, dict):
@@ -16362,8 +16471,8 @@ def check_routed_board_step_intake_template() -> None:
             "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
         ),
         "kicad_cli_available": "true",
-        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
-        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
+        "drc_status": str(kicad_preflight.get("drc_status") or ""),
+        "erc_status": str(kicad_preflight.get("erc_status") or ""),
         "component_3d_model_manifest": (
             "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
         ),
@@ -16432,8 +16541,8 @@ def check_routed_board_step_intake_template() -> None:
         "routed_step_sha256": row["routed_step_sha256"],
         "kicad_cli_preflight": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
         "kicad_cli_available": True,
-        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
-        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
+        "drc_status": str(kicad_preflight.get("drc_status") or ""),
+        "erc_status": str(kicad_preflight.get("erc_status") or ""),
         "release_credit": False,
         "route_visual_record_count": int(row["route_segment_visual_count"]),
         "component_model_record_count": int(row["component_model_count"]),
@@ -17065,6 +17174,14 @@ def check_kicad_cad_stub_audit() -> None:
     scanned_files = sweep["scanned_code_files"]
     if sweep["scanned_code_file_count"] != len(scanned_files):
         raise SystemExit("KiCad/CAD stub audit scanned file count stale")
+    expected_marker_classes = [
+        "explicit_code_task_markers",
+        "explicit_fixme_markers",
+        "unresolved_implementation_phrases",
+        "unresolved_release_fields",
+    ]
+    if sweep.get("searched_marker_classes") != expected_marker_classes:
+        raise SystemExit("KiCad/CAD stub audit marker-class scope stale")
     task_marker = "TO" + "DO"
     fix_marker = "FIX" + "ME"
     literal_marker_hits = []
@@ -17081,10 +17198,35 @@ def check_kicad_cad_stub_audit() -> None:
         )
     if sweep["local_code_actionable_marker_count"] != 0:
         raise SystemExit("KiCad/CAD stub audit cannot claim actionable marker closure")
-    for hit in sweep["remaining_hits_are_fail_closed_evidence_placeholders"]:
-        require_path(ROOT / hit["path"])
-        if not hit.get("disposition"):
+    if (
+        sweep.get("local_code_marker_hit_count")
+        != sweep.get("local_code_marker_guard_or_prose_count")
+        + sweep.get("local_code_actionable_marker_count")
+    ):
+        raise SystemExit("KiCad/CAD stub audit marker accounting is internally stale")
+    remaining_placeholder_hits = sweep["remaining_hits_are_fail_closed_evidence_placeholders"]
+    seen_placeholder_hits: set[tuple[str, str]] = set()
+    for hit in remaining_placeholder_hits:
+        marker_path = ROOT / hit["path"]
+        marker = str(hit.get("marker") or "")
+        disposition = str(hit.get("disposition") or "")
+        key = (str(hit.get("path") or ""), marker)
+        if key in seen_placeholder_hits:
+            raise SystemExit(f"KiCad/CAD stub audit duplicate placeholder marker record: {key}")
+        seen_placeholder_hits.add(key)
+        require_path(marker_path)
+        if not marker:
+            raise SystemExit(f"KiCad/CAD stub audit placeholder hit lacks marker: {hit}")
+        if marker not in marker_path.read_text(encoding="utf-8"):
+            raise SystemExit(f"KiCad/CAD stub audit placeholder marker not source-backed: {hit}")
+        if not disposition:
             raise SystemExit(f"KiCad/CAD stub audit placeholder hit lacks disposition: {hit}")
+        if not (
+            disposition.startswith("requires_")
+            or disposition.startswith("external_")
+            or disposition.startswith("explicit_")
+        ):
+            raise SystemExit(f"KiCad/CAD stub audit placeholder hit disposition is not fail-closed: {hit}")
 
     blockers = {item["id"]: item for item in audit["remaining_blockers"]}
     for blocker_id in [
@@ -17214,6 +17356,10 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SystemExit as exc:
         if exc.code and not isinstance(exc.code, int):
+            if str(exc.code) != (
+                "E1 phone board package structurally consistent; fabrication release remains blocked"
+            ):
+                write_board_package_failure_report(exc.code)
             print(f"STATUS: BLOCKED E1 phone board package validation: {exc.code}")
             raise SystemExit(2) from exc
         raise
