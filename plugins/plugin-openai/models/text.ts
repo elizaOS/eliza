@@ -45,8 +45,6 @@ import {
   getResponseHandlerModel,
   getSmallModel,
   isCerebrasMode,
-  isWebSearchEnabled,
-  supportsResponsesApi,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -951,12 +949,7 @@ async function generateTextByModelType(
   // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
   // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
   //
-  // The Responses API is OpenAI-only but is the *only* surface that runs
-  // server-side tools like web search. When the endpoint is genuine OpenAI and
-  // web search is enabled, route text through Responses so the agent-level
-  // injector (see @elizaos/agent web-search-tools) can attach `web_search`.
-  const useResponses = isWebSearchEnabled() && supportsResponsesApi(runtime);
-  const model = useResponses ? openai.responses(modelName) : openai.chat(modelName);
+  const model = openai.chat(modelName);
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools, {
     cerebrasMode,
