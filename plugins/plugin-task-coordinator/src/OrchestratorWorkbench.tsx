@@ -2050,9 +2050,8 @@ export function OrchestratorWorkbench() {
   }, [selectedId, fetchDetail]);
 
   useEffect(() => {
-    // Poll the open task's room — fast while a working agent is live, slow when
-    // idle. Kept separate from the selection effect so a cadence change never
-    // forces a full reload of the conversation.
+    // Reconcile poll — the safety net. The SSE stream below drives near-live
+    // updates; this only covers a dropped/absent stream (reconnect fallback).
     if (!selectedId) return;
     const timer = window.setInterval(
       () => void fetchDetail(selectedId, false).catch(() => {}),
@@ -2060,6 +2059,36 @@ export function OrchestratorWorkbench() {
     );
     return () => window.clearInterval(timer);
   }, [selectedId, detailPollMs, fetchDetail]);
+
+  // Coalesce a burst of change pings into one tail refetch per ~150ms window,
+  // so live token streaming doesn't trigger a fetch storm.
+  const refetchTimerRef = useRef<number | null>(null);
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimerRef.current != null) return;
+    refetchTimerRef.current = window.setTimeout(() => {
+      refetchTimerRef.current = null;
+      const current = selectedIdRef.current;
+      if (current) void fetchDetail(current, false).catch(() => {});
+    }, 150);
+  }, [fetchDetail]);
+
+  useEffect(() => {
+    // Live push: subscribe to the task's SSE stream; each "change" ping
+    // schedules a debounced tail refetch, so messages/tool-calls/status appear
+    // ~instantly instead of on the poll boundary.
+    if (!selectedId) return;
+    const unsubscribe = client.streamOrchestratorTask(
+      selectedId,
+      scheduleRefetch,
+    );
+    return () => {
+      unsubscribe();
+      if (refetchTimerRef.current != null) {
+        window.clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
+    };
+  }, [selectedId, scheduleRefetch]);
 
   const runMutation = useCallback(
     async (fn: () => Promise<unknown>) => {

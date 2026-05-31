@@ -995,6 +995,12 @@ declare module "./client-base" {
       taskId: string,
       options?: { cursor?: string; limit?: number },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskEventRecord>>;
+    /**
+     * Subscribe to a task's live change stream (SSE). Invokes `onChange` each
+     * time the task room mutates so the caller can refetch the tail. Returns an
+     * unsubscribe function. No-op (returns a noop) where EventSource is absent.
+     */
+    streamOrchestratorTask(taskId: string, onChange: () => void): () => void;
     updateOrchestratorTask(
       taskId: string,
       input: CodingAgentUpdateTaskInput,
@@ -3743,6 +3749,29 @@ ElizaClient.prototype.listOrchestratorTaskEvents = function (
   return this.fetch<CodingAgentTaskPage<CodingAgentTaskEventRecord>>(
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/events${qs ? `?${qs}` : ""}`,
   );
+};
+
+ElizaClient.prototype.streamOrchestratorTask = function (
+  this: ElizaClient,
+  taskId,
+  onChange,
+) {
+  if (typeof EventSource === "undefined") return () => {};
+  const url = `${this.baseUrl || ""}/api/orchestrator/tasks/${encodeURIComponent(
+    taskId,
+  )}/stream`;
+  const source = new EventSource(url);
+  source.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      // The stream pings `{type:"change"}` on every room mutation; the caller
+      // refetches the tail. `ready` and heartbeat comments are ignored.
+      if (data && data.type === "change") onChange();
+    } catch {
+      // ignore non-JSON frames
+    }
+  };
+  return () => source.close();
 };
 
 ElizaClient.prototype.pauseAllOrchestratorTasks = async function (
