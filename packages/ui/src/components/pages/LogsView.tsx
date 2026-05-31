@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /**
  * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout
@@ -101,8 +103,71 @@ function LogsViewBody() {
     normalizedSearch !== "",
   ].filter(Boolean).length;
 
+  const searchField = useAgentElement<HTMLInputElement>({
+    id: "input-search",
+    role: "text-input",
+    label: t("logsview.SearchLogs"),
+    group: "logs-filters",
+    description: "Filter log entries by free-text search",
+    getValue: () => searchQuery,
+    onFill: (value) => setSearchQuery(value),
+  });
+
+  const levelSelect = useAgentElement<HTMLButtonElement>({
+    id: "select-level",
+    role: "select",
+    label: t("logsview.Level"),
+    group: "logs-filters",
+    description: "Filter log entries by severity level",
+    options: ["all", "debug", "info", "warn", "error"],
+    getValue: () => (logLevelFilter === "" ? "all" : logLevelFilter),
+    onFill: (value) => setState("logLevelFilter", value === "all" ? "" : value),
+  });
+
+  const sourceSelect = useAgentElement<HTMLButtonElement>({
+    id: "select-source",
+    role: "select",
+    label: t("logsview.Source"),
+    group: "logs-filters",
+    description: "Filter log entries by source",
+    options: ["all", ...logSources],
+    getValue: () => (logSourceFilter === "" ? "all" : logSourceFilter),
+    onFill: (value) =>
+      setState("logSourceFilter", value === "all" ? "" : value),
+  });
+
+  const tagSelect = useAgentElement<HTMLButtonElement>({
+    id: "select-tag",
+    role: "select",
+    label: t("logsview.Tags"),
+    group: "logs-filters",
+    description: "Filter log entries by tag",
+    options: ["all", ...logTags],
+    getValue: () => (logTagFilter === "" ? "all" : logTagFilter),
+    onFill: (value) => setState("logTagFilter", value === "all" ? "" : value),
+  });
+
+  const clearFilters = useAgentElement<HTMLButtonElement>({
+    id: "action-clear-filters",
+    role: "button",
+    label: t("logsview.ClearFilters"),
+    group: "logs-filters",
+    description: "Reset all active log filters",
+    onActivate: handleClearFilters,
+  });
+
+  const refresh = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: t("common.refresh"),
+    group: "logs-actions",
+    description: "Reload the log entries",
+    onActivate: () => void loadLogs(),
+  });
+
   return (
-    <div className="flex h-full flex-col gap-3" data-testid="logs-view">
+    <ShellViewAgentSurface viewId="logs">
+      <div className="flex h-full flex-col gap-3" data-testid="logs-view">
       {/* Filters row — filters left, refresh right */}
       <PagePanel variant="surface" className="space-y-3 p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3">
@@ -115,12 +180,14 @@ function LogsViewBody() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
+            ref={searchField.ref}
             type="text"
             className="min-w-[15rem] flex-1 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("logsview.SearchLogs")}
             aria-label={t("aria.searchLogs")}
+            {...searchField.agentProps}
           />
 
           <Select
@@ -129,7 +196,11 @@ function LogsViewBody() {
               setState("logLevelFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+            <SelectTrigger
+              ref={levelSelect.ref}
+              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              {...levelSelect.agentProps}
+            >
               <SelectValue placeholder={t("logsview.AllLevels")} />
             </SelectTrigger>
             <SelectContent>
@@ -147,7 +218,11 @@ function LogsViewBody() {
               setState("logSourceFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+            <SelectTrigger
+              ref={sourceSelect.ref}
+              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              {...sourceSelect.agentProps}
+            >
               <SelectValue placeholder={t("logsview.AllSources")} />
             </SelectTrigger>
             <SelectContent>
@@ -167,7 +242,11 @@ function LogsViewBody() {
                 setState("logTagFilter", val === "all" ? "" : val);
               }}
             >
-              <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+              <SelectTrigger
+                ref={tagSelect.ref}
+                className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+                {...tagSelect.agentProps}
+              >
                 <SelectValue placeholder={t("logsview.AllTags")} />
               </SelectTrigger>
               <SelectContent>
@@ -183,20 +262,24 @@ function LogsViewBody() {
 
           {hasActiveFilters && (
             <Button
+              ref={clearFilters.ref}
               variant="outline"
               size="sm"
               className="logs-toolbar-button"
               onClick={handleClearFilters}
+              {...clearFilters.agentProps}
             >
               {t("logsview.ClearFilters")}
             </Button>
           )}
 
           <Button
+            ref={refresh.ref}
             variant="outline"
             size="sm"
             className="logs-toolbar-button ml-auto"
             onClick={() => void loadLogs()}
+            {...refresh.agentProps}
           >
             {t("common.refresh")}
           </Button>
@@ -346,6 +429,7 @@ function LogsViewBody() {
           </PagePanel>
         )}
       </PagePanel>
-    </div>
+      </div>
+    </ShellViewAgentSurface>
   );
 }

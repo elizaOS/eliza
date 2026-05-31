@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
@@ -16,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   TrajectoryListResult,
@@ -37,6 +39,7 @@ import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sid
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,6 +90,73 @@ function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   return parts.join(" • ");
 }
 
+/**
+ * Export dropdown trigger. The trigger is a composite (`DropdownMenuTrigger`
+ * clones a `Button` via Radix `Slot`), so it registers with `onActivate` —
+ * which opens the menu — rather than relying on a forwarded DOM ref.
+ */
+function TrajectoriesExportTrigger({
+  disabled,
+  label,
+  onOpen,
+}: {
+  disabled: boolean;
+  label: string;
+  onOpen: () => void;
+}) {
+  const { agentProps } = useAgentElement({
+    id: "action-export",
+    role: "button",
+    label,
+    group: "trajectories-actions",
+    description: "Open the trajectory export menu",
+    onActivate: onOpen,
+  });
+  return (
+    <DropdownMenuTrigger asChild>
+      <Button
+        variant="outline"
+        size="icon"
+        type="button"
+        className="h-7 w-7 rounded-full"
+        disabled={disabled}
+        title={label}
+        {...agentProps}
+      >
+        <Download className="h-3 w-3" />
+      </Button>
+    </DropdownMenuTrigger>
+  );
+}
+
+/**
+ * Agent-addressable wrapper for a `ConfirmDeleteControl`. The control is a
+ * composite that doesn't forward a DOM ref, so it registers with `onActivate`
+ * (which runs the confirmed action directly).
+ */
+function TrajectoriesDeleteControl({
+  id,
+  label,
+  description,
+  onActivate,
+  ...controlProps
+}: {
+  id: string;
+  label: string;
+  description: string;
+  onActivate: () => void;
+} & ComponentProps<typeof ConfirmDeleteControl>) {
+  useAgentElement({
+    id,
+    role: "button",
+    label,
+    group: "trajectories-actions",
+    description,
+    onActivate,
+  });
+  return <ConfirmDeleteControl {...controlProps} />;
+}
+
 interface TrajectoriesViewProps {
   contentHeader?: ReactNode;
   selectedTrajectoryId?: string | null;
@@ -116,6 +186,7 @@ export function TrajectoriesView({
   const previousSearchQueryRef = useRef(searchQuery);
 
   const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [deletingTrajectoryId, setDeletingTrajectoryId] = useState<
     string | null
   >(null);
@@ -347,6 +418,43 @@ export function TrajectoriesView({
     }
   }, [onSelectTrajectory, setActionNotice, t]);
 
+  const searchAgent = useAgentElement<HTMLInputElement>({
+    id: "input-search",
+    role: "text-input",
+    label: t("trajectoriesview.Search"),
+    group: "trajectories-filters",
+    description: "Filter trajectories by search text",
+    getValue: () => searchQuery,
+    onFill: (value) => {
+      setSearchQuery(value);
+      setPage(0);
+    },
+  });
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: t("common.refresh"),
+    group: "trajectories-actions",
+    description: "Reload the trajectory list",
+    onActivate: () => void loadTrajectories(),
+  });
+  const prevPageAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-prev-page",
+    role: "button",
+    label: t("common.prev"),
+    group: "trajectories-pagination",
+    description: "Go to the previous page of trajectories",
+    onActivate: () => setPage((current) => Math.max(0, current - 1)),
+  });
+  const nextPageAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-next-page",
+    role: "button",
+    label: t("common.next"),
+    group: "trajectories-pagination",
+    description: "Go to the next page of trajectories",
+    onActivate: () => setPage((current) => current + 1),
+  });
+
   const trajectoriesSidebar = (
     <AppPageSidebar
       testId="trajectories-sidebar"
@@ -369,6 +477,7 @@ export function TrajectoriesView({
             },
             placeholder: t("trajectoriesview.Search"),
             "aria-label": t("trajectoriesview.Search"),
+            ...searchAgent.agentProps,
           }}
         />
       }
@@ -383,6 +492,7 @@ export function TrajectoriesView({
             </SidebarContent.SectionLabel>
             <SidebarContent.ToolbarActions>
               <Button
+                ref={refreshAgent.ref}
                 variant="outline"
                 size="icon"
                 type="button"
@@ -390,24 +500,21 @@ export function TrajectoriesView({
                 onClick={() => void loadTrajectories()}
                 disabled={loading}
                 title={t("common.refresh")}
+                {...refreshAgent.agentProps}
               >
                 <RefreshCw
                   className={`h-3 w-3${loading ? " animate-spin" : ""}`}
                 />
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    type="button"
-                    className="h-7 w-7 rounded-full"
-                    disabled={exporting || trajectories.length === 0}
-                    title={t("common.export")}
-                  >
-                    <Download className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
+              <DropdownMenu
+                open={exportMenuOpen}
+                onOpenChange={setExportMenuOpen}
+              >
+                <TrajectoriesExportTrigger
+                  disabled={exporting || trajectories.length === 0}
+                  label={t("common.export")}
+                  onOpen={() => setExportMenuOpen(true)}
+                />
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => handleExport("json", true)}>
                     {t("trajectoriesview.JSONWithPrompts")}
@@ -430,7 +537,17 @@ export function TrajectoriesView({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <ConfirmDeleteControl
+              <TrajectoriesDeleteControl
+                id="action-delete-current"
+                label={t("trajectoriesview.DeleteCurrent", {
+                  defaultValue: "Delete current",
+                })}
+                description="Delete the currently selected trajectory"
+                onActivate={() => {
+                  if (detailTrajectoryId) {
+                    void handleDeleteTrajectory(detailTrajectoryId);
+                  }
+                }}
                 triggerVariant="outline"
                 triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
                 confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -452,7 +569,15 @@ export function TrajectoriesView({
                   }
                 }}
               />
-              <ConfirmDeleteControl
+              <TrajectoriesDeleteControl
+                id="action-clear-all"
+                label={t("trajectoriesview.ClearAll", {
+                  defaultValue: "Clear all",
+                })}
+                description="Delete all trajectories"
+                onActivate={() => {
+                  void handleClearAllTrajectories();
+                }}
                 triggerVariant="outline"
                 triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
                 confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -533,22 +658,26 @@ export function TrajectoriesView({
               </span>
               <div className="flex gap-1.5">
                 <Button
+                  ref={prevPageAgent.ref}
                   variant="outline"
                   size="sm"
                   type="button"
                   className="h-8 rounded-full px-3 text-xs-tight"
                   onClick={() => setPage((current) => Math.max(0, current - 1))}
                   disabled={page === 0}
+                  {...prevPageAgent.agentProps}
                 >
                   {t("common.prev")}
                 </Button>
                 <Button
+                  ref={nextPageAgent.ref}
                   variant="outline"
                   size="sm"
                   type="button"
                   className="h-8 rounded-full px-3 text-xs-tight"
                   onClick={() => setPage((current) => current + 1)}
                   disabled={page >= totalPages - 1}
+                  {...nextPageAgent.agentProps}
                 >
                   {t("common.next")}
                 </Button>
@@ -561,37 +690,39 @@ export function TrajectoriesView({
   );
 
   return (
-    <PageLayout
-      sidebar={trajectoriesSidebar}
-      contentHeader={contentHeader}
-      contentInnerClassName="mx-auto w-full max-w-[76rem]"
-      data-testid="trajectories-view"
-    >
-      {error ? (
-        <PagePanel.Notice tone="danger" className="mb-4">
-          {error}
-        </PagePanel.Notice>
-      ) : null}
+    <ShellViewAgentSurface viewId="trajectories">
+      <PageLayout
+        sidebar={trajectoriesSidebar}
+        contentHeader={contentHeader}
+        contentInnerClassName="mx-auto w-full max-w-[76rem]"
+        data-testid="trajectories-view"
+      >
+        {error ? (
+          <PagePanel.Notice tone="danger" className="mb-4">
+            {error}
+          </PagePanel.Notice>
+        ) : null}
 
-      {loading && trajectories.length === 0 ? (
-        <PagePanel.Loading
-          variant="surface"
-          heading={t("trajectoriesview.LoadingTrajectories")}
-        />
-      ) : !loading && trajectories.length === 0 ? (
-        <PagePanel.FeatureEmpty
-          className="rounded-sm"
-          features={TRAJECTORY_EMPTY_FEATURES}
-          icon={Route}
-          title={
-            hasActiveFilters
-              ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
-              : t("trajectoriesview.NoTrajectoriesYet")
-          }
-        />
-      ) : detailTrajectoryId ? (
-        <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
-      ) : null}
-    </PageLayout>
+        {loading && trajectories.length === 0 ? (
+          <PagePanel.Loading
+            variant="surface"
+            heading={t("trajectoriesview.LoadingTrajectories")}
+          />
+        ) : !loading && trajectories.length === 0 ? (
+          <PagePanel.FeatureEmpty
+            className="rounded-sm"
+            features={TRAJECTORY_EMPTY_FEATURES}
+            icon={Route}
+            title={
+              hasActiveFilters
+                ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
+                : t("trajectoriesview.NoTrajectoriesYet")
+            }
+          />
+        ) : detailTrajectoryId ? (
+          <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
+        ) : null}
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }
