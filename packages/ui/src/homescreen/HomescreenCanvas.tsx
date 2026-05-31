@@ -6,12 +6,7 @@ import {
   sampleFrequencyLevels,
   summarizeLevels,
 } from "../components/voice/VoiceWaveform";
-import {
-  createPerfState,
-  type PerfState,
-  perfLabel,
-  perfTick,
-} from "./scene-perf";
+import { createPerfState, type PerfState, perfTick } from "./scene-perf";
 import { registerBuiltinPresets } from "./scene-presets";
 import {
   createSceneInputs,
@@ -37,8 +32,6 @@ export interface HomescreenCanvasProps {
   phase?: HomescreenPhase;
   userText?: string;
   assistantText?: string;
-  /** Notified with a human-readable perf label (e.g. "58 fps · 80% detail"). */
-  onPerfLabel?: (label: string, state: PerfState) => void;
   className?: string;
 }
 
@@ -65,7 +58,6 @@ export function HomescreenCanvas({
   phase = "idle",
   userText = "",
   assistantText = "",
-  onPerfLabel,
   className,
 }: HomescreenCanvasProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -76,9 +68,8 @@ export function HomescreenCanvas({
     phase,
     userText,
     assistantText,
-    onPerfLabel,
   });
-  liveRef.current = { analyser, phase, userText, assistantText, onPerfLabel };
+  liveRef.current = { analyser, phase, userText, assistantText };
 
   // Pointer position in normalized device coords (-1..1).
   const pointerRef = useRef({ x: 0, y: 0, down: false });
@@ -140,7 +131,6 @@ export function HomescreenCanvas({
       let perf: PerfState = createPerfState();
       let last = performance.now();
       let rafId = 0;
-      let lastPerfLabel = "";
 
       // Honor prefers-reduced-motion: hold the crystal ball as a single static
       // frame instead of a continuous pulse/ripple loop. Mirrors the rest of
@@ -200,13 +190,6 @@ export function HomescreenCanvas({
           perf = tick.state;
           if (tick.retarget !== null && current.optimize) {
             current.optimize(tick.retarget);
-          }
-          if (live.onPerfLabel) {
-            const label = perfLabel(perf);
-            if (label !== lastPerfLabel) {
-              lastPerfLabel = label;
-              live.onPerfLabel(label, perf);
-            }
           }
         }
 

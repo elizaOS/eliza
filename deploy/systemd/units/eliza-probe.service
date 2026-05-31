@@ -1,0 +1,9 @@
+[Unit]
+Description=Eliza — active health probe
+Documentation=https://github.com/elizaOS/eliza
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/eliza/env
+ExecStart=%h/bin/eliza-health-probe.sh
+SyslogIdentifier=eliza-probe
