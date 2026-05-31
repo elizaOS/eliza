@@ -7,7 +7,7 @@
     "rationale": "bun-v1.3.14 is the LAST Zig release of Bun. It is the last-validated riscv64 build (bun-patches/ series) and the safe fallback. Bun's core was rewritten Zig->Rust (oven-sh/bun PR #30412, merged 2026-05-14); see rust_core_port below for the in-progress migration of the riscv64 cross-build onto the Rust core. Keep this pinned to match stage-android-agent.mjs:BUN_VERSION until the Rust-core riscv64 cross-build is green."
   },
   "rust_core_port": {
-    "status": "scaffolded + second-wave source gaps fixed (0002); build-system tsc-clean, rdtime asm validated; full WebKit C_LOOP + cargo cross-build + link NOT yet run",
+    "status": "patch series 0001+0002+0003 all apply clean to target_commit; webkit-patches refreshed against 963f8758 (0007 reduced to the one still-needed JSModuleLoader include); Dockerfile pre-bakes the rust_channel nightly + riscv64 std; build.sh cargo-prefetch made non-fatal (vendored path-deps populate in stage 5). Build driven via ./run-build.sh --rust-core: stages 0-3 green; WebKit C_LOOP compile + bun cargo build + link + QEMU smoke = in progress / iterating.",
     "target_commit": "9d000561c937b8e00569519ba1c7973e4b967fb5",
     "target_ref": "main (Rust-core; language=Rust, no build.zig)",
     "rust_channel": "nightly-2026-05-06",
@@ -17,9 +17,10 @@
     "webkit_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@9d000561 (verified 2026-05-30) — distinct from the Zig-era 5488984d; webkit-patches/ must be refreshed against it.",
     "patch_series": [
       "rust-core/0001-riscv64-rust-core-port.patch (31 files: build-system Arch/target + C++ C_LOOP guards; applies clean + tsc-clean)",
-      "rust-core/0002-second-wave-riscv64-source-gaps.patch (4 files: env.rs Architecture::Riscv64/process.arch, Global.rs arch_name, CPUFeatures.rs riscv64 Flags, hw_timer.rs rdtime CSR — fixes the compile_error! hard-stops; rdtime asm validated via rustc)"
+      "rust-core/0002-second-wave-riscv64-source-gaps.patch (4 files: env.rs Architecture::Riscv64/process.arch, Global.rs arch_name, CPUFeatures.rs riscv64 Flags, hw_timer.rs rdtime CSR — fixes the compile_error! hard-stops; rdtime asm validated via rustc)",
+      "rust-core/0003-third-wave-riscv64-crash-handler-gaps.patch (1 file, src/crash_handler/lib.rs: Platform::CURRENT riscv64 arm b'r' — the HARD compile error, a cfg-matrix const with no catch-all; fault_context_from_ucontext riscv64 ucontext arm reading __gregs[0]/[8] (pc/fp) + not(any) exclusion; ARCH_DISPLAY_STRING -> riscv64; applies clean on top of 0001+0002)"
     ],
-    "remaining": "Run `./run-build.sh --rust-core` (multi-hour): WebKit C_LOOP build @ webkit_commit (refresh webkit-patches/ if they fail to apply), cargo build --target riscv64gc-unknown-linux-musl, link, QEMU smoke. Expect a further wave of Rust-source cfg gaps beyond 0002 (ffi_body.rs FFI-callback trampolines need riscv64 asm; crash_handler register-dump needs a riscv64 ucontext arm) + the ICU icudt74l.dat packaging fix. Triage compile errors into a 0003 hunk.",
+    "remaining": "WebKit C_LOOP compile (stage 4) + bun cargo build (stage 5, populates vendored path-deps via scripts/build/deps/*.ts then builds the riscv64gc-unknown-linux-musl staticlib) + link + QEMU smoke. Possible further Rust-source cfg gaps beyond 0003 surface only during the cargo build (e.g. ffi_body.rs FFI-callback trampolines may need a riscv64 asm arm) — triage into a 0004; and the ICU icudt74l.dat packaging fix (NFKC/NFKD). Webkit patches 0004/0005/0006 apply via direct application (blob:none clone blocks 3-way); 0007 refreshed to JSModuleLoader-only.",
     "rationale": "Upstream scoped the Rust rewrite to linux-x64-glibc; this port teaches bun's Rust build system (config.ts/rust.ts) the riscv64gc-unknown-linux-musl target, rebases the riscv64 C_LOOP/source guards onto main (0001), and fixes the compile-stop source gaps (0002). Activate with `./run-build.sh --rust-core` (sets BUN_RISCV64_RUST_CORE=1 → build.sh uses target_commit + rust_channel + webkit_commit and mounts rust-core/ as the patch series)."
   },
   "webkit": {
