@@ -1470,7 +1470,20 @@ if (!existsSync(bundlePath)) {
 //      are populated). It reassigns the dedup'd alias to point at the
 //      now-bound original where one exists. No-op when the original
 //      isn't there either.
-const bundleSrc = await Bun.file(bundlePath).text();
+let bundleSrc = await Bun.file(bundlePath).text();
+// Bun.build (1.3.14+) injects its `createRequire` ESM shim at the very top of
+// the output — ABOVE the entry's `#!/usr/bin/env node` — so the shebang lands
+// on ~line 4. A shebang anywhere but line 1 is a SyntaxError when Node loads
+// the file as an ES module (compileSourceTextModule), which crash-loops the
+// agent at boot. run-agent.sh always launches the bundle via an explicit
+// `node <bundle>` (never executed directly), so the shebang is dead weight —
+// strip the first shebang line outright. The downstream `startsWith("#!")`
+// branch then correctly takes the no-shebang path.
+const __shebangStripped = bundleSrc.replace(/^#![^\n]*\r?\n/m, "");
+if (__shebangStripped !== bundleSrc) {
+  console.log("[build-mobile] stripped embedded shebang (ESM-incompatible)");
+  bundleSrc = __shebangStripped;
+}
 
 function initSourceComment(src, initName, searchOffset) {
   const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
