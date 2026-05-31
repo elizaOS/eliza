@@ -116,24 +116,7 @@ import {
   type AppShellPageRegistration,
   listAppShellPages,
 } from "./app-shell-components";
-// Static imports for views that AppWindowRenderer (and DetachedShellRoot)
-// also import statically. WHY not lazy here: a `lazy()` for a module that
-// any other importer pulls eagerly is folded back into the main chunk by
-// Rollup with a warning, since the dynamic boundary can't actually defer
-// load. Going all-static makes the load path honest. If you want true
-// route-level splitting back, lift `lazy()` to a single owning call site.
-import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
-import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { LogsView } from "./components/pages/LogsView";
-import { MemoryViewerView } from "./components/pages/MemoryViewerView";
-import { PluginsPageView } from "./components/pages/PluginsPageView";
-import { RelationshipsView } from "./components/pages/RelationshipsView";
-import { RuntimeView } from "./components/pages/RuntimeView";
-import { SkillsView } from "./components/pages/SkillsView";
-import { TasksPageView } from "./components/pages/TasksPageView";
-import { TrajectoriesView } from "./components/pages/TrajectoriesView";
-import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
   useAvailableViews,
@@ -141,6 +124,57 @@ import {
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
+
+// Dev/admin pages and the character editor render only inside ViewRouter's
+// `LazyViewBoundary` Suspense, so they are lazy here to keep them out of the
+// initial entry chunk. They are also re-exported through `app-shell-components`
+// / `components/index` barrels and imported eagerly by the desktop shells
+// (AppWindowRenderer / DetachedShellRoot); vite `manualChunks` splits those
+// shared modules into their own async chunks so the boundary stays honest.
+const CharacterEditor = lazyNamedView(
+  () => import("./components/character/CharacterEditor"),
+  "CharacterEditor",
+);
+const DatabasePageView = lazyNamedView(
+  () => import("./components/pages/DatabasePageView"),
+  "DatabasePageView",
+);
+const LogsView = lazyNamedView(
+  () => import("./components/pages/LogsView"),
+  "LogsView",
+);
+const MemoryViewerView = lazyNamedView(
+  () => import("./components/pages/MemoryViewerView"),
+  "MemoryViewerView",
+);
+const PluginsPageView = lazyNamedView(
+  () => import("./components/pages/PluginsPageView"),
+  "PluginsPageView",
+);
+const RelationshipsView = lazyNamedView(
+  () => import("./components/pages/RelationshipsView"),
+  "RelationshipsView",
+);
+const RuntimeView = lazyNamedView(
+  () => import("./components/pages/RuntimeView"),
+  "RuntimeView",
+);
+const SkillsView = lazyNamedView(
+  () => import("./components/pages/SkillsView"),
+  "SkillsView",
+);
+const TasksPageView = lazyNamedView(
+  () => import("./components/pages/TasksPageView"),
+  "TasksPageView",
+);
+const TrajectoriesView = lazyNamedView(
+  () => import("./components/pages/TrajectoriesView"),
+  "TrajectoriesView",
+);
+const FineTuningView = lazyNamedView(
+  () => import("./components/training/injected"),
+  "FineTuningView",
+);
 
 const ViewManagerPage = lazyNamedView(
   () => import("./components/pages/ViewManagerPage"),

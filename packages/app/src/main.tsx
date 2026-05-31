@@ -530,12 +530,10 @@ function initializeAppModules(): Promise<void> {
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),
-    ]);
-    await Promise.all(
-      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
+      ...SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
         importSideEffectAppModule(key, load),
       ),
-    );
+    ]);
 
     companionModule.registerCompanionApp();
     lifeOpsModule.registerLifeOpsApp();
