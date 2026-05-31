@@ -1,5 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// The harness seeds users (and encrypts their API keys) directly in the
+// Playwright runner process — not in a spawned subprocess — so the env block
+// in `src/fixtures/env.ts` does not cover this code path. Pin the test
+// defaults here, before cloud-shared crypto is first imported, so KMS resolves
+// to the in-memory adapter regardless of the developer's ambient shell.
+// Without this, `createKmsClient()` falls through to the `steward` backend and
+// `seedTestUser()` throws "ELIZA_KMS_BACKEND=steward requires steward.{...}".
+process.env.NODE_ENV ??= "test";
+process.env.ELIZA_KMS_BACKEND ??= "memory";
+
 const frontendUrl = process.env.E2E_FRONTEND_URL ?? "http://127.0.0.1:0";
 
 export default defineConfig({

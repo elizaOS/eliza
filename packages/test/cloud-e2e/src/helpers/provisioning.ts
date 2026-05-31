@@ -88,6 +88,78 @@ export async function tickCleanupStuck(
   });
 }
 
+export async function agentLifecycleAction(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+  action: "sleep" | "wake" | "suspend" | "resume",
+  acceptable: number[] = [200, 202, 409],
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/${action}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  );
+  const text = await res.text();
+  let body: unknown = text;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  expect(
+    acceptable,
+    `agent ${action} returned ${res.status}: ${text}`,
+  ).toContain(res.status);
+  return { status: res.status, body };
+}
+
+export interface BackupSummary {
+  id: string;
+  snapshotType: string;
+  backupKind?: string;
+  parentBackupId?: string | null;
+  sizeBytes?: number | null;
+  createdAt?: string;
+}
+
+export async function listBackups(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+): Promise<BackupSummary[]> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/backups`,
+    { headers: { Authorization: `Bearer ${apiKey}` } },
+  );
+  expect(res.status, `backups list returned ${res.status}`).toBe(200);
+  const body = (await res.json()) as { data?: BackupSummary[] };
+  return body.data ?? [];
+}
+
+export async function runScheduledBackups(
+  endpoints: ProvisioningEndpoints,
+  opts: { intervalMs?: number } = {},
+): Promise<{ scanned: number; enqueued: number }> {
+  const intervalMs = opts.intervalMs ?? 0;
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/cron/agent-backups?intervalMs=${intervalMs}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CRON_SECRET}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+  expect(
+    res.status,
+    `scheduled backups cron returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(200);
+  const body = (await res.json()) as { scanned?: number; enqueued?: number };
+  return { scanned: body.scanned ?? 0, enqueued: body.enqueued ?? 0 };
+}
+
 export async function getSandboxState(
   endpoints: ProvisioningEndpoints,
   apiKey: string,

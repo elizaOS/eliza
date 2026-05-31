@@ -5,6 +5,12 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
+interface MemoryAgentState {
+  memories: Array<{ role: string; text: string; timestamp: number }>;
+  config: Record<string, unknown>;
+  workspaceFiles: Record<string, string>;
+}
+
 interface MemorySandbox {
   handle: SandboxHandle;
   runtimeAgent: {
@@ -14,6 +20,19 @@ interface MemorySandbox {
   };
   server: Server;
   sockets: Set<Socket>;
+  /** Mutable agent state, so /api/snapshot and /api/restore round-trip. */
+  state: MemoryAgentState;
+}
+
+async function readJsonBody(req: import("node:http").IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  if (chunks.length === 0) return undefined;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return undefined;
+  }
 }
 
 function json(body: unknown, status = 200): Response {
@@ -49,10 +68,40 @@ export class MemorySandboxProvider implements SandboxProvider {
       status: "active" as const,
     };
 
+    // Each fresh container boots with empty state; /api/restore hydrates it.
+    const state: MemoryAgentState = { memories: [], config: {}, workspaceFiles: {} };
+
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (req.method === "GET" && url.pathname === "/api/health") {
         const response = json({ success: true, status: "ok" });
+        res.writeHead(response.status, Object.fromEntries(response.headers));
+        res.end(await response.text());
+        return;
+      }
+
+      // Snapshot: return the agent's current state (used by sleep/snapshot).
+      if (req.method === "POST" && url.pathname === "/api/snapshot") {
+        const response = json(state);
+        res.writeHead(response.status, Object.fromEntries(response.headers));
+        res.end(await response.text());
+        return;
+      }
+
+      // Restore: overwrite the agent's state (used by wake/resume restore).
+      if (req.method === "POST" && url.pathname === "/api/restore") {
+        const body = await readJsonBody(req);
+        if (body && typeof body === "object") {
+          const incoming = body as Partial<MemoryAgentState>;
+          state.memories = Array.isArray(incoming.memories) ? incoming.memories : [];
+          state.config =
+            incoming.config && typeof incoming.config === "object" ? incoming.config : {};
+          state.workspaceFiles =
+            incoming.workspaceFiles && typeof incoming.workspaceFiles === "object"
+              ? incoming.workspaceFiles
+              : {};
+        }
+        const response = json({ success: true });
         res.writeHead(response.status, Object.fromEntries(response.headers));
         res.end(await response.text());
         return;
@@ -110,7 +159,7 @@ export class MemorySandboxProvider implements SandboxProvider {
         agentId: config.agentId,
       },
     };
-    this.sandboxes.set(sandboxId, { handle, runtimeAgent, server, sockets });
+    this.sandboxes.set(sandboxId, { handle, runtimeAgent, server, sockets, state });
     return handle;
   }
 

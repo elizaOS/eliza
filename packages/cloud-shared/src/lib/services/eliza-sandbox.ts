@@ -2829,6 +2829,168 @@ export class ElizaSandboxService {
   }
 
   /**
+   * Daemon-side handler for the `agent_sleep` job — deep, cold suspend.
+   *
+   * Unlike `agent_suspend` (which keeps the container + node slot for a fast
+   * `docker start`), sleep frees the compute entirely:
+   *   1. Capture a durable backup. A live `/api/snapshot` pull when the agent
+   *      is reachable, otherwise the agent's persisted config, otherwise the
+   *      latest existing backup — a restore point ALWAYS exists before we
+   *      destroy compute, so sleep never loses recoverable state.
+   *   2. Stop + drop the container (the provider `stop` removes it from the
+   *      node).
+   *   3. Clear the compute identity (`sandbox_id`, `node_id`, `container_name`,
+   *      ports, bridge/health URLs) so the slot is freed; the node autoscaler
+   *      reclaims a now-empty Hetzner box on its next pass. The Neon DB,
+   *      `environment_vars`, and `docker_image` are retained for wake.
+   *   4. Flip status to `sleeping`. No compute cost accrues while sleeping.
+   *
+   * The inverse is `executeWake`.
+   */
+  async executeSleep(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    containerRemoved: boolean;
+    backupId?: string;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
+    if (rec.status === "sleeping") return { success: true, containerRemoved: true };
+    if (rec.status === "provisioning") {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent provisioning is in progress",
+      };
+    }
+
+    // 1. Durable backup before compute is freed.
+    let backupId: string | undefined;
+    if (rec.status === "running" && rec.bridge_url) {
+      try {
+        const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
+        const backup = await agentSandboxesRepository.createBackup({
+          sandbox_record_id: rec.id,
+          snapshot_type: "pre-shutdown",
+          state_data: stateData,
+          size_bytes: sizeBytes,
+        });
+        backupId = backup.id;
+      } catch (error) {
+        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; using fallback", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (!backupId) {
+      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+      if (existing) {
+        backupId = existing.id;
+      } else {
+        const fallback: AgentBackupStateData = {
+          memories: [],
+          config: (rec.agent_config as Record<string, unknown> | null) ?? {},
+          workspaceFiles: {},
+        };
+        const backup = await agentSandboxesRepository.createBackup({
+          sandbox_record_id: rec.id,
+          snapshot_type: "pre-shutdown",
+          state_data: fallback,
+          size_bytes: Buffer.byteLength(JSON.stringify(fallback), "utf-8"),
+        });
+        backupId = backup.id;
+      }
+    }
+
+    // 2. Tear down compute.
+    let containerRemoved = false;
+    if (rec.sandbox_id) {
+      try {
+        await (await this.getProvider()).stop(rec.sandbox_id);
+        containerRemoved = true;
+      } catch (e) {
+        if (this.isIgnorableSandboxStopError(e)) {
+          containerRemoved = true;
+          logger.info("[agent-sandbox] Sandbox already absent during sleep", {
+            sandboxId: rec.sandbox_id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        } else {
+          return {
+            success: false,
+            containerRemoved: false,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      }
+    } else {
+      containerRemoved = true;
+    }
+
+    // 3. Free the slot; retain DB + env + image for wake.
+    await agentSandboxesRepository.update(rec.id, {
+      status: "sleeping",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      node_id: null,
+      container_name: null,
+      bridge_port: null,
+      web_ui_port: null,
+      last_backup_at: new Date(),
+    });
+    await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS).catch((error) => {
+      logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    logger.info("[agent-sandbox] Sleep complete", { agentId, backupId, containerRemoved });
+    return { success: true, containerRemoved, backupId };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_wake` job — the inverse of sleep.
+   *
+   * Provisions a fresh container (claiming a warm-pool slot when available)
+   * and relies on `provision()`'s built-in latest-backup restoration to
+   * rehydrate the agent's state. Idempotent: waking an already-running agent
+   * is a no-op.
+   */
+  async executeWake(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    reprovisioned: boolean;
+    restoredBackupId?: string;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) return { success: false, reprovisioned: false, error: "Agent not found" };
+    if (rec.status === "running" && rec.bridge_url) {
+      return { success: true, reprovisioned: false };
+    }
+
+    const latest = await agentSandboxesRepository.getLatestBackup(rec.id);
+    const provisionResult = await this.provision(agentId, orgId);
+    if (!provisionResult.success) {
+      return { success: false, reprovisioned: true, error: provisionResult.error };
+    }
+
+    logger.info("[agent-sandbox] Wake complete", {
+      agentId,
+      restoredBackupId: latest?.id,
+    });
+    return { success: true, reprovisioned: true, restoredBackupId: latest?.id };
+  }
+
+  /**
    * Daemon-side handler for the `agent_restart` job. Runs `shutdown()`
    * (SSH stop + DB to stopped) and then `provision()` (recreate
    * container + restore URLs). Replaces the Worker-side sequence which
