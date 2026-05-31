@@ -34,7 +34,9 @@ function VoiceOrbDemo() {
   const analyser = useMemo(makeOscillatingAnalyser, []);
   return (
     <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
-      <VoiceWaveform mode={mode} analyser={analyser} size={220} />
+      <div style={{ width: 260, height: 260, position: "relative" }}>
+        <VoiceWaveform mode={mode} analyser={analyser} />
+      </div>
       <div style={{ display: "flex", gap: 6 }}>
         {MODES.map((m) => (
           <button
@@ -67,7 +69,7 @@ export const voiceStories: StoryDefinition[] = [
     importPath:
       'import { VoiceWaveform } from "@elizaos/ui/components/voice/VoiceWaveform"',
     description:
-      "Audio-reactive WebGPU/three.js voice avatar: a noise-displaced iridescent plasma core inside a fresnel glow halo, wrapped in a particle swarm. Toggle the mode to compare idle / listening / responding. Accent follows --accent-rgb per surface.",
+      "Audio-reactive WebGPU/three.js voice avatar: a prismatic glass orb refracting a volumetric raymarched cloudscape, with an accent rim glow. Toggle the mode to compare idle / listening / responding. Accent follows --accent-rgb per surface.",
     render: () => <VoiceOrbDemo />,
   },
 ];

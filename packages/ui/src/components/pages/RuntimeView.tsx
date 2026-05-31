@@ -12,6 +12,7 @@ import {
   type RuntimeOrderItem,
   type RuntimeServiceOrderItem,
 } from "../../api";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
@@ -24,6 +25,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
 
 type RuntimeSectionKey =
   | "summary"
@@ -376,16 +378,23 @@ export function RuntimeView({
   contentHeader?: ReactNode;
 } = {}) {
   const { t } = useApp();
-  const [snapshot, setSnapshot] = useState<RuntimeDebugSnapshot | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [depth, setDepth] = useState(10);
+  const [maxArrayLength, setMaxArrayLength] = useState(1000);
+  const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
+  // Seed from the shared cache so a revisit paints the last-known snapshot
+  // instantly and revalidates silently, instead of flashing a spinner. The key
+  // carries every fetch parameter so distinct depth/cap combos don't collide.
+  const snapshotCacheKey = `runtime-snapshot:${depth}:${maxArrayLength}:${maxObjectEntries}`;
+  const cachedSnapshot = getCached<RuntimeDebugSnapshot>(snapshotCacheKey);
+  const [snapshot, setSnapshot] = useState<RuntimeDebugSnapshot | null>(
+    cachedSnapshot?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] =
     useState<RuntimeSectionKey>("summary");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [depth, setDepth] = useState(10);
-  const [maxArrayLength, setMaxArrayLength] = useState(1000);
-  const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
   const snapshotRequestIdRef = useRef(0);
   const depthInputId = useId();
   const arrayCapInputId = useId();
@@ -398,34 +407,43 @@ export function RuntimeView({
   const rootPath =
     activeSection === "summary" ? "$runtime" : `$${activeSection}`;
 
-  const loadSnapshot = useCallback(async () => {
-    const requestId = snapshotRequestIdRef.current + 1;
-    snapshotRequestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await client.getRuntimeSnapshot({
-        depth,
-        maxArrayLength,
-        maxObjectEntries,
-      });
-      if (snapshotRequestIdRef.current !== requestId) return;
-      setSnapshot(next);
-    } catch (err) {
-      if (snapshotRequestIdRef.current !== requestId) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to load runtime snapshot",
-      );
-    } finally {
-      if (snapshotRequestIdRef.current === requestId) {
-        setLoading(false);
+  const loadSnapshot = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const requestId = snapshotRequestIdRef.current + 1;
+      snapshotRequestIdRef.current = requestId;
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      try {
+        const next = await client.getRuntimeSnapshot({
+          depth,
+          maxArrayLength,
+          maxObjectEntries,
+        });
+        if (snapshotRequestIdRef.current !== requestId) return;
+        setSnapshot(next);
+        setCached(snapshotCacheKey, next);
+      } catch (err) {
+        if (snapshotRequestIdRef.current !== requestId) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load runtime snapshot",
+        );
+      } finally {
+        if (snapshotRequestIdRef.current === requestId) {
+          setLoading(false);
+        }
       }
-    }
-  }, [depth, maxArrayLength, maxObjectEntries]);
+    },
+    [depth, maxArrayLength, maxObjectEntries, snapshotCacheKey],
+  );
 
   useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot]);
+    // Revalidate silently when this snapshot is already cached on screen.
+    void loadSnapshot({
+      silent: getCached<RuntimeDebugSnapshot>(snapshotCacheKey) != null,
+    });
+  }, [loadSnapshot, snapshotCacheKey]);
 
   useEffect(() => {
     setExpandedPaths(buildInitialExpanded(rootPath, sectionData));
@@ -643,16 +661,14 @@ export function RuntimeView({
           </div>
         ) : null}
 
-        {!snapshot ? (
+        {loading && !snapshot ? (
+          <DetailSkeleton className="min-h-[24rem]" />
+        ) : !snapshot ? (
           <PagePanel.Empty
             variant="panel"
             className="min-h-[24rem]"
             description={t("runtimeview.loadingDescription")}
-            title={
-              loading
-                ? t("runtimeview.loadingSnapshot")
-                : t("runtimeview.noSnapshotAvailable")
-            }
+            title={t("runtimeview.noSnapshotAvailable")}
           />
         ) : !snapshot.runtimeAvailable ? (
           <PagePanel.Empty

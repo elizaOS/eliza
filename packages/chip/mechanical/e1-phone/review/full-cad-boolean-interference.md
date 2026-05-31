@@ -1,6 +1,7 @@
 # E1 Phone Full CAD Boolean Interference Acceptance
 
 Status: PASS.
+Release: BLOCKED. This is local concept-envelope B-rep evidence only; release credit requires rerun against routed board STEP and supplier B-rep models.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.

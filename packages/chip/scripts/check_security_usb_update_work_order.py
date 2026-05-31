@@ -87,6 +87,16 @@ AOSP_README_TERMS = [
     "bad signatures",
     "unauthorized flashing",
 ]
+FALSE_CLAIM_FLAGS = {
+    "secure_boot_claim_allowed": False,
+    "usb_c_pd_claim_allowed": False,
+    "storage_claim_allowed": False,
+    "avb_claim_allowed": False,
+    "ab_ota_claim_allowed": False,
+    "recovery_claim_allowed": False,
+    "fastboot_security_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -131,6 +141,9 @@ def check_work_order(data: dict, gap_ids: set[str], failures: list[str]) -> None
         failures.append("security/USB/update work order has wrong schema")
     if data.get("status") != "fail_closed_work_order":
         failures.append("security/USB/update work order must remain fail_closed_work_order")
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if data.get(flag) is not expected:
+            failures.append(f"{flag} must be false")
     boundary = data.get("claim_boundary")
     if (
         not isinstance(boundary, str)

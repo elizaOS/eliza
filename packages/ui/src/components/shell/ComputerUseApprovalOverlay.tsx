@@ -104,7 +104,10 @@ export function ComputerUseApprovalOverlay() {
     };
   }, [refresh]);
 
-  const visibleApprovals = snapshot.pendingApprovals;
+  // Defensive: the snapshot can be partially populated during reconnect/
+  // recovery windows, so `pendingApprovals` may be momentarily undefined.
+  // Never crash the whole app on it — render no cards until it's an array.
+  const visibleApprovals = snapshot.pendingApprovals ?? [];
   const approvalCards = useMemo(
     () =>
       visibleApprovals.map((approval) => ({

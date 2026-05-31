@@ -5,7 +5,13 @@ import {
   type RateLimitConfig,
 } from "@elizaos/agent";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  requireConfirmation,
+  type UUID,
+} from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -85,6 +91,7 @@ import {
 } from "../lifeops/browser-extension-store.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -198,6 +205,25 @@ const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
 const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
 const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
+const routeSchemaBootstraps = new WeakMap<AgentRuntime, Promise<void>>();
+
+async function ensureRouteSchema(runtime: AgentRuntime | null): Promise<void> {
+  if (!runtime) return;
+  const adapter = runtime.adapter;
+  if (!adapter || typeof adapter.runPluginMigrations !== "function") return;
+  if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
+    return;
+  }
+  let bootstrap = routeSchemaBootstraps.get(runtime);
+  if (!bootstrap) {
+    bootstrap = LifeOpsRepository.bootstrapSchema(runtime).catch((error) => {
+      routeSchemaBootstraps.delete(runtime);
+      throw error;
+    });
+    routeSchemaBootstraps.set(runtime, bootstrap);
+  }
+  await bootstrap;
+}
 
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
@@ -695,6 +721,9 @@ async function runRoute(
     return true;
   }
   try {
+    // Routes can be served before a startup hook migrates the LifeOps DB;
+    // bootstrap the schema here (memoized per runtime) before any handler runs.
+    await ensureRouteSchema(ctx.state.runtime);
     await fn(service);
     span.success({
       statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
@@ -1599,6 +1628,7 @@ export async function handleLifeOpsRoutes(
     const service = getService(ctx);
     if (!service) return true;
     try {
+      await ensureRouteSchema(ctx.state.runtime);
       const status = await service.completeHealthConnectorCallback(url);
       if (status.provider !== provider) {
         throw new LifeOpsServiceError(
@@ -2324,6 +2354,7 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, {
         signals: await service.listActivitySignals({
           sinceAt: parseOptionalIsoQuery(
@@ -2348,6 +2379,7 @@ export async function handleLifeOpsRoutes(
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, { signal: await service.captureActivitySignal(body) }, 201);
     });
   }
@@ -3007,16 +3039,61 @@ export async function handleLifeOpsRoutes(
       senderEmail: string;
       blockAfter?: boolean;
       trashExisting?: boolean;
-      confirmed?: boolean;
+      /** User reply for two-phase confirmation (e.g. "yes"). */
+      userConfirmationText?: string;
     }>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      const runtime = ctx.state.runtime;
+      if (!runtime) {
+        error(res, "Agent runtime is not available", 503);
+        return;
+      }
+      const senderEmail = body.senderEmail?.trim();
+      if (!senderEmail) {
+        error(res, "senderEmail is required", 400);
+        return;
+      }
+      const entityId = String(ctx.state.adminEntityId ?? "lifeops-owner");
+      const confirmMessage = {
+        entityId,
+        roomId: entityId,
+        content: {
+          text:
+            typeof body.userConfirmationText === "string"
+              ? body.userConfirmationText
+              : "",
+          source: "lifeops-api",
+        },
+        createdAt: Date.now(),
+      } as Memory;
+      const preview = `Unsubscribe from ${senderEmail}?`;
+      const decision = await requireConfirmation({
+        runtime,
+        message: confirmMessage,
+        actionName: "EMAIL_UNSUBSCRIBE",
+        pendingKey: senderEmail.toLowerCase(),
+        prompt: preview,
+      });
+      if (decision.status !== "confirmed") {
+        json(
+          res,
+          {
+            requiresConfirmation: decision.status === "pending",
+            awaitingUserInput: decision.status === "pending",
+            cancelled: decision.status === "cancelled",
+            preview: `${preview} Reply yes to confirm or no to cancel.`,
+          },
+          decision.status === "pending" ? 409 : 200,
+        );
+        return;
+      }
       const requestUrl = ctx.url;
       const result = await service.unsubscribeEmailSender(requestUrl, {
-        senderEmail: body.senderEmail,
+        senderEmail,
         blockAfter: body.blockAfter ?? false,
         trashExisting: body.trashExisting ?? false,
-        confirmed: body.confirmed ?? false,
+        userAuthorization: true,
       });
       json(res, result);
     });

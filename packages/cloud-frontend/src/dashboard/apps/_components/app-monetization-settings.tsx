@@ -264,7 +264,7 @@ export function AppMonetizationSettings({
                 >
                   {t("cloud.monetization.earned", {
                     amount: settings.totalCreatorEarnings.toFixed(2),
-                    defaultValue: "${{amount}} earned",
+                    defaultValue: "$" + "{{amount}}" + " earned",
                   })}
                   <ChevronRight className="h-3 w-3" />
                 </button>
@@ -408,7 +408,7 @@ export function AppMonetizationSettings({
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white disabled:bg-white/5 disabled:text-white/30"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:bg-white/5 disabled:text-white/30"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -491,7 +491,7 @@ export function AppMonetizationSettings({
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white px-6"
+                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white px-6"
               >
                 {t("cloud.monetization.startEarning", {
                   defaultValue: "Start Earning",
@@ -534,7 +534,7 @@ function SelfHostCTA() {
           <div className="flex flex-wrap gap-2">
             <Link
               to="/dashboard/agents"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               {t("cloud.monetization.deployAgent", {

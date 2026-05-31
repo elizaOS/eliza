@@ -125,6 +125,15 @@ REQUIRED_POWER_THERMAL_ARTIFACTS = {
     "calibration_record",
 }
 
+FALSE_TEMPLATE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "sustained_performance_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
+
 
 def h(value: str) -> int:
     return int(value.replace("_", ""), 16)
@@ -167,6 +176,9 @@ def check_template_statuses(
     boundary = template.get("claim_boundary", "")
     if "template_only" not in boundary or "evidence" not in boundary:
         errors.append(f"{name} template must state a template-only evidence boundary")
+    for flag, expected in FALSE_TEMPLATE_CLAIM_FLAGS.items():
+        if template.get(flag) is not expected:
+            errors.append(f"{name} template must keep {flag}=false")
 
     statuses = template.get("required_statuses", {})
     if not isinstance(statuses, dict):

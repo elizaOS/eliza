@@ -8,6 +8,11 @@ claim_boundary: >
   process nodes, and the signoff corners that a vendor or PDK-bundled PLL must
   satisfy. Makes no jitter, lock-time, or phase-noise claim: those stay blocked
   on Spectre/AMS jitter signoff with the vendor model.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
 
 supply_rails:
   - rail: VDD_PLL_ANA

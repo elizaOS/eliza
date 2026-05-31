@@ -4,6 +4,12 @@ acceptance_thresholds:
   per_rail_operating_points_max: 16
   per_rail_operating_points_min: 2
 check_command: python3 scripts/check_dvfs_tables.py
+claim_allowed: false
+release_claim_allowed: false
+silicon_sta_claim_allowed: false
+dvfs_signoff_claim_allowed: false
+production_voltage_claim_allowed: false
+pmic_programming_claim_allowed: false
 claim_boundary: 'Fail-closed gate for per-corner DVFS tables. Requires SS / TT / FF
   YAMLs at 0 / 25 / 85 / 105 C (12 total) under docs/pd/dvfs-tables/, generated from
   silicon STA corner sweep at pd/signoff/sta/<corner>/<temp>c/. Today placeholders

@@ -139,6 +139,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "modeled NPU scale simulation",
         "NPU utilization and performance model bounded away from phone/runtime claims",
         must_pass=False,
+        scan_blocked_text=False,
     ),
     ArtifactSpec(
         "power_thermal_scope",

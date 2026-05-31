@@ -37,6 +37,17 @@ from scripts.generate_e1x3d_stacked_thermal import (  # noqa: E402
 
 REPORT = ROOT / "build/reports/e1x3d_stacked_thermal.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "electrothermal_signoff_claim_allowed": False,
+    "package_thermal_claim_allowed": False,
+    "foundry_leakage_model_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "phone_thermal_margin_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+}
+
 # Real stacked electrothermal signoff is commercial-only and has no open path;
 # this dependency is recorded on every run, PASS or BLOCKED, so the planning
 # verdict never masquerades as signoff.
@@ -139,6 +150,7 @@ def main() -> int:
         "schema": "eliza.gate_status.v1",
         "gate": "e1x3d-stacked-thermal",
         "status": "PASS" if not failures else "BLOCKED",
+        **FALSE_CLAIM_FLAGS,
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "subsystem": "e1x3d",

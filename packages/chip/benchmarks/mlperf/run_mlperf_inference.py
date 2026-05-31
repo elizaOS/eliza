@@ -50,6 +50,15 @@ from benchmarks.mlperf.sut import E1NpuSut  # noqa: E402
 
 SCHEMA = "eliza.mlperf_inference.v1"
 CLAIM_BOUNDARY = "modeled_preSilicon_not_official_submission_and_not_measured_power"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "official_mlcommons_submission_claim_allowed": False,
+    "measured_power_claim_allowed": False,
+    "silicon_performance_claim_allowed": False,
+    "phone_class_throughput_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 FIDELITY = {
     "loadgen": "reimplemented_python_scheduler_not_mlcommons_loadgen_binary",
@@ -174,6 +183,7 @@ def build_report(query_count: int, config_name: str) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "claim_level": "L2_ARCH_SIM",
         "provenance": "simulator",
         "date_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

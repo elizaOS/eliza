@@ -5,6 +5,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { requireConfirmation } from "@elizaos/core";
 import {
   detectRemoteDesktopBackend,
   endRemoteSession as endStoredRemoteSession,
@@ -89,27 +90,40 @@ function formatLegacySession(session: RemoteDesktopSession): string {
 }
 
 async function handleStart(
+  runtime: IAgentRuntime,
   message: Memory,
   params: RemoteParams,
 ): Promise<ActionResult> {
-  const confirmed = params.confirmed === true;
-  if (!confirmed) {
-    const backend = await detectRemoteDesktopBackend();
+  const backend = await detectRemoteDesktopBackend();
+  const startPrompt =
+    `Starting a remote desktop session will expose this machine to the network via ${backend}.`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: ACTION_NAME,
+    pendingKey: `remote-start:${backend}`,
+    prompt: startPrompt,
+  });
+  if (decision.status !== "confirmed") {
     return {
       text:
-        `Starting a remote desktop session will expose this machine to the network via ${backend}. ` +
-        `Re-issue with confirmed: true to proceed.`,
-      success: false,
+        decision.status === "pending"
+          ? `${startPrompt} Reply yes to confirm or no to cancel.`
+          : "Remote desktop start cancelled.",
+      success: decision.status === "pending",
       values: {
         success: false,
-        error: "CONFIRMATION_REQUIRED",
-        requiresConfirmation: true,
+        error:
+          decision.status === "pending"
+            ? "CONFIRMATION_REQUIRED"
+            : "CANCELLED",
+        requiresConfirmation: decision.status === "pending",
         backend,
       },
       data: {
         actionName: ACTION_NAME,
         subaction: "start",
-        requiresConfirmation: true,
+        requiresConfirmation: decision.status === "pending",
         backend,
         intent: params.intent ?? null,
       },
@@ -463,7 +477,7 @@ export const remoteDesktopAction: Action & {
     const { subaction, params } = resolved;
     switch (subaction) {
       case "start":
-        return handleStart(message, params);
+        return handleStart(runtime, message, params);
       case "status":
         return handleStatus(params);
       case "end":

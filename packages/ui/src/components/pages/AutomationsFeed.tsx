@@ -36,6 +36,7 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
 import { useTranslation } from "../../state/TranslationContext";
@@ -47,6 +48,7 @@ import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { TaskEditor } from "./TaskEditor";
@@ -149,8 +151,14 @@ export function AutomationsFeed({
   connectedCredTypes,
 }: AutomationsFeedProps = {}) {
   const { t } = useTranslation();
-  const [data, setData] = useState<AutomationListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the shared cache so a revisit paints the last-known automations
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedAutomations =
+    getCached<AutomationListResponse>("automations:list");
+  const [data, setData] = useState<AutomationListResponse | null>(
+    cachedAutomations?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [chooser, setChooser] = useState<ChooserState>("closed");
@@ -187,27 +195,32 @@ export function AutomationsFeed({
     [setLink],
   );
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await client.listAutomations();
-      setData(res);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : t("automationsfeed.loadError", {
-              defaultValue: "Failed to load automations.",
-            }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      try {
+        const res = await client.listAutomations();
+        setData(res);
+        setCached("automations:list", res);
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : t("automationsfeed.loadError", {
+                defaultValue: "Failed to load automations.",
+              }),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
-    void refresh();
+    // Revalidate silently when cached automations are already on screen.
+    void refresh({ silent: getCached("automations:list") != null });
   }, [refresh]);
 
   const automations = useMemo(
@@ -373,9 +386,7 @@ export function AutomationsFeed({
       {/* Feed */}
       <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
         {loading && !data ? (
-          <div className="flex items-center justify-center p-8">
-            <Spinner className="h-5 w-5" />
-          </div>
+          <ListSkeleton rows={6} className="p-3" />
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
             <ListChecks className="h-6 w-6" aria-hidden />

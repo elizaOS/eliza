@@ -338,12 +338,17 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   if (pkg === "@elizaos/plugin-app-control") {
     const mod = (await import(
       "../../../plugins/plugin-app-control/src/index.ts"
-    )) as { appAction?: Action; viewsAction?: Action };
-    if (!mod.appAction || !mod.viewsAction) return null;
+    )) as {
+      appAction?: Action;
+      homescreenAction?: Action;
+      viewsAction?: Action;
+    };
+    if (!mod.appAction || !mod.homescreenAction || !mod.viewsAction)
+      return null;
     return {
       name: "app-control",
       description: "App control deterministic scenario actions",
-      actions: [mod.appAction, mod.viewsAction],
+      actions: [mod.appAction, mod.homescreenAction, mod.viewsAction],
     };
   }
 

@@ -245,6 +245,19 @@ describe("InMemoryTaskStore", () => {
     expect(await store.updateTask("missing", { status: "done" })).toBeNull();
   });
 
+  it("ignores undefined patch values instead of erasing task fields", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(createInput());
+    const updated = await store.updateTask(task.id, {
+      title: undefined,
+      goal: undefined,
+      summary: "real update",
+    });
+    expect(updated?.title).toBe(task.title);
+    expect(updated?.goal).toBe(task.goal);
+    expect(updated?.summary).toBe("real update");
+  });
+
   it("adds, finds, replaces, and updates sessions", async () => {
     const store = new InMemoryTaskStore();
     const { task } = await store.createTask(createInput());

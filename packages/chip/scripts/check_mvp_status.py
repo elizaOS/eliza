@@ -26,6 +26,14 @@ PROVENANCE_SANITIZE_ROOTS = (
     ROOT / "docs/evidence",
     ROOT.parent / "os/linux/elizaos/evidence",
 )
+FALSE_CLAIM_FLAGS = {
+    "mvp_release_claim_allowed": False,
+    "phone_product_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+}
 
 
 @dataclass
@@ -716,6 +724,7 @@ def print_json(statuses: list[Status]) -> None:
             "evidence": item.evidence,
             "evidence_class": item.evidence_class,
             "next_step": item.next_step,
+            **FALSE_CLAIM_FLAGS,
         }
         for item in statuses
     ]

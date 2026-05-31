@@ -2,7 +2,7 @@
 # via upstream oven/bun. For linux/riscv64 (no upstream image — oven-sh/bun#6266,
 # #21923), build a local Bun image via packages/app-core/scripts/bun-riscv64/build.sh
 # and pass --build-arg BUN_BASE=<local-tag>.
-ARG BUN_BASE=oven/bun:1.3.13-alpine
+ARG BUN_BASE=oven/bun:canary-alpine
 
 FROM ${BUN_BASE} AS deps
 WORKDIR /app

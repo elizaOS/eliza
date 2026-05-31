@@ -47,6 +47,14 @@ export interface CapacitySummary {
 export interface NodeSelectionOptions {
   /** Docker image platform the selected node must be able to run. */
   requiredPlatform?: string | null;
+  /**
+   * Skip this node when picking a target. Used by the fleet-upgrade handler
+   * to force a blue/green swap onto a *different* node than the one the
+   * agent is currently on, because Docker container names are unique per
+   * docker daemon and the deterministic name `agent-${id}` would collide
+   * if the blue landed on the same node as the old.
+   */
+  excludeNodeId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +114,7 @@ export class DockerNodeManager {
       )
     )
       .filter((candidate) => candidate.available > 0)
+      .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
       .sort((a, b) => b.available - a.available);
 
     for (const candidate of candidates) {

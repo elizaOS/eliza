@@ -18,9 +18,9 @@ summary:
   missing_required_output_path_count: 0
   candidate_present_blocked_required_output_path_count: 44
   truly_missing_required_output_path_count: 0
-  candidate_manifest_cad_connection_assembly_manifest_part_count: 222
-  candidate_manifest_cad_connection_assembly_manifest_terminal_marker_count: 42
-  candidate_manifest_cad_connection_assembly_manifest_solid_step_part_count: 63
+  candidate_manifest_cad_connection_assembly_manifest_part_count: 258
+  candidate_manifest_cad_connection_assembly_manifest_terminal_marker_count: 64
+  candidate_manifest_cad_connection_assembly_manifest_solid_step_part_count: 96
   candidate_manifest_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
   manufacturing_closure_has_production_outputs: false
   manufacturing_closure_release_output_count: 0

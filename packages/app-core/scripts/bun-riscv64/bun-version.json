@@ -4,7 +4,23 @@
   "bun": {
     "tag": "bun-v1.3.14",
     "channel": "canary",
-    "rationale": "Pinned to match stage-android-agent.mjs:BUN_VERSION + DEFAULT_BUN_CHANNEL so the resulting binary stays compatible with the rest of the Android agent matrix. Canary tracks the same 1.3.14+ fix train as the arm64/x64 artifacts that staging downloads."
+    "rationale": "bun-v1.3.14 is the LAST Zig release of Bun. It is the last-validated riscv64 build (bun-patches/ series) and the safe fallback. Bun's core was rewritten Zig->Rust (oven-sh/bun PR #30412, merged 2026-05-14); see rust_core_port below for the in-progress migration of the riscv64 cross-build onto the Rust core. Keep this pinned to match stage-android-agent.mjs:BUN_VERSION until the Rust-core riscv64 cross-build is green."
+  },
+  "rust_core_port": {
+    "status": "scaffolded + second-wave source gaps fixed (0002); build-system tsc-clean, rdtime asm validated; full WebKit C_LOOP + cargo cross-build + link NOT yet run",
+    "target_commit": "9d000561c937b8e00569519ba1c7973e4b967fb5",
+    "target_ref": "main (Rust-core; language=Rust, no build.zig)",
+    "rust_channel": "nightly-2026-05-06",
+    "rust_channel_source": "rust-toolchain.toml on oven-sh/bun@main (verified 2026-05-29)",
+    "rust_target": "riscv64gc-unknown-linux-musl",
+    "webkit_commit": "963f8758c29e965471c191668d5776a1a1b014b6",
+    "webkit_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@9d000561 (verified 2026-05-30) — distinct from the Zig-era 5488984d; webkit-patches/ must be refreshed against it.",
+    "patch_series": [
+      "rust-core/0001-riscv64-rust-core-port.patch (31 files: build-system Arch/target + C++ C_LOOP guards; applies clean + tsc-clean)",
+      "rust-core/0002-second-wave-riscv64-source-gaps.patch (4 files: env.rs Architecture::Riscv64/process.arch, Global.rs arch_name, CPUFeatures.rs riscv64 Flags, hw_timer.rs rdtime CSR — fixes the compile_error! hard-stops; rdtime asm validated via rustc)"
+    ],
+    "remaining": "Run `./run-build.sh --rust-core` (multi-hour): WebKit C_LOOP build @ webkit_commit (refresh webkit-patches/ if they fail to apply), cargo build --target riscv64gc-unknown-linux-musl, link, QEMU smoke. Expect a further wave of Rust-source cfg gaps beyond 0002 (ffi_body.rs FFI-callback trampolines need riscv64 asm; crash_handler register-dump needs a riscv64 ucontext arm) + the ICU icudt74l.dat packaging fix. Triage compile errors into a 0003 hunk.",
+    "rationale": "Upstream scoped the Rust rewrite to linux-x64-glibc; this port teaches bun's Rust build system (config.ts/rust.ts) the riscv64gc-unknown-linux-musl target, rebases the riscv64 C_LOOP/source guards onto main (0001), and fixes the compile-stop source gaps (0002). Activate with `./run-build.sh --rust-core` (sets BUN_RISCV64_RUST_CORE=1 → build.sh uses target_commit + rust_channel + webkit_commit and mounts rust-core/ as the patch series)."
   },
   "webkit": {
     "fork": "oven-sh/WebKit",

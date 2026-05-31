@@ -272,7 +272,7 @@ release_gates:
         board/kicad/e1-phone/layout-utilization.yaml.
     release_allowed: false
   enclosure:
-    status: blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article
+    status: blocked_local_cad_incomplete_and_release_requires_supplier_models_routed_clearance_and_first_article
     source_artifacts:
       - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
       - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml

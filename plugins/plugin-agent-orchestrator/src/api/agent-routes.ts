@@ -13,13 +13,19 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
-import type { AgentType, ApprovalPreset } from "../services/types.js";
+import {
+  type AgentType,
+  type ApprovalPreset,
+  type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
+} from "../services/types.js";
+import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
@@ -34,6 +40,22 @@ function shouldAutoPreflight(): boolean {
 
 function isPathInside(parent: string, candidate: string): boolean {
   return candidate === parent || candidate.startsWith(`${parent}${path.sep}`);
+}
+
+/** Names taken by live sessions — the names a newly spawned sub-agent must not
+ * collide with. The display name is `metadata.label` (set at spawn), falling
+ * back to the raw session name. Terminal sessions free their name for reuse. */
+function activeSessionNames(sessions: readonly SessionInfo[]): string[] {
+  return sessions
+    .filter((session) => !TERMINAL_SESSION_STATUSES.has(session.status))
+    .map((session) =>
+      typeof session.metadata?.label === "string"
+        ? session.metadata.label
+        : session.name,
+    )
+    .filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
 }
 
 async function resolveSafeVenvPath(
@@ -273,12 +295,40 @@ export async function handleAgentRoutes(
   }
 
   // GET /api/coding-agents/metrics
+  // Intentionally empty: there is no per-ACP-session metrics source. The real
+  // usage/cost/status rollup lives in OrchestratorTaskService.getStatus()/
+  // getUsage() and is served at GET /api/orchestrator/status and
+  // GET /api/orchestrator/tasks/:id/usage, which the UI consumes. No client
+  // calls this route; it is retained only as a 200-stub for legacy probes.
   if (method === "GET" && pathname === "/api/coding-agents/metrics") {
     if (!ctx.acpService) {
       sendError(res, "ACP service not available", 503);
       return true;
     }
-    sendJson(res, {});
+    try {
+      const sessions = await ctx.acpService.listSessions();
+      const byStatus: Record<string, number> = {};
+      const byAgentType: Record<string, number> = {};
+      for (const session of sessions) {
+        byStatus[session.status] = (byStatus[session.status] ?? 0) + 1;
+        byAgentType[session.agentType] =
+          (byAgentType[session.agentType] ?? 0) + 1;
+      }
+      sendJson(res, {
+        sessionCount: sessions.length,
+        activeSessionCount: sessions.filter(
+          (session) => !TERMINAL_SESSION_STATUSES.has(session.status),
+        ).length,
+        byStatus,
+        byAgentType,
+      });
+    } catch (error) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Failed to load metrics",
+        500,
+      );
+    }
     return true;
   }
 
@@ -355,6 +405,11 @@ export async function handleAgentRoutes(
         return true;
       }
 
+      // No backing source: this route keys off agentType, not a session or
+      // workdir, and CodingWorkspaceService exposes no file-listing method.
+      // Returns an empty manifest by contract. Unconsumed by the current UI; do
+      // not add filesystem traversal here without a real session-scoped workdir
+      // input (and path-escape hardening).
       sendJson(res, {
         agentType,
         memoryFilePath: null,
@@ -487,37 +542,18 @@ export async function handleAgentRoutes(
             ? initialTask
             : undefined;
 
-      // Validate workdir: must be within workspace base dir or cwd
-      const workspaceBaseDir = path.join(os.homedir(), ".eliza", "workspaces");
-      const workspaceBaseDirResolved = path.resolve(workspaceBaseDir);
-      const cwdResolved = path.resolve(process.cwd());
-      const workspaceBaseDirReal = await realpath(
-        workspaceBaseDirResolved,
-      ).catch(() => workspaceBaseDirResolved);
-      const cwdReal = await realpath(cwdResolved).catch(() => cwdResolved);
-      const allowedPrefixes = [workspaceBaseDirReal, cwdReal];
       let workdir = rawWorkdir as string | undefined;
       if (workdir) {
-        const resolved = path.resolve(workdir);
-        const resolvedReal = await realpath(resolved).catch(() => null);
-        if (!resolvedReal) {
-          sendError(res, "workdir must exist", 403);
-          return true;
-        }
-        const isAllowed = allowedPrefixes.some(
-          (prefix) =>
-            resolvedReal === prefix ||
-            resolvedReal.startsWith(prefix + path.sep),
-        );
-        if (!isAllowed) {
+        try {
+          workdir = await resolveAllowedWorkdir(workdir);
+        } catch (error) {
           sendError(
             res,
-            "workdir must be within workspace base directory or cwd",
+            error instanceof Error ? error.message : "invalid workdir",
             403,
           );
           return true;
         }
-        workdir = resolvedReal;
       }
 
       // Check concurrency limit before spawning
@@ -563,11 +599,26 @@ export async function handleAgentRoutes(
           ? callerMetadata.worktreeRoomId
           : undefined;
 
+      // Give the sub-agent a distinct person-name. An explicit caller label
+      // wins; otherwise pick a pooled name unique among the live sessions (the
+      // concurrency snapshot above) and distinct from the running agent. The
+      // same name is the session label AND the identity woven into the prompt.
+      const explicitLabel =
+        typeof callerMetadata.label === "string" && callerMetadata.label.trim()
+          ? callerMetadata.label.trim()
+          : undefined;
+      const agentName = assignAgentName({
+        explicitLabel,
+        activeNames: activeSessionNames(activeSessions),
+        mainAgentName: ctx.runtime.character?.name,
+      });
+
       // Every direct-API spawn passes through the same goal wrapper the
       // orchestrator and planner action emit, so worker behaviour is identical
       // regardless of entry point.
       const goalPrompt = taskText
         ? buildGoalPrompt({
+            agentName,
             goal: taskText,
             workdir,
             taskRoomId,
@@ -588,6 +639,7 @@ export async function handleAgentRoutes(
         metadata: {
           requestedType: agentStr,
           ...callerMetadata,
+          label: agentName,
           // Persist the bare goal so follow-up sends can re-anchor through
           // buildGoalFollowUp instead of parsing it out of the wrapped prompt.
           ...(taskText ? { goal: taskText } : {}),

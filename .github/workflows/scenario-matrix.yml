@@ -42,7 +42,7 @@ concurrency:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
   NODE_VERSION: "24.15.0"
   NODE_OPTIONS: "--max-old-space-size=8192"
   ELIZA_LIVE_TEST: "1"
@@ -98,7 +98,7 @@ jobs:
             globs: "packages/test/scenarios/personality/**/*.scenario.ts packages/test/scenarios/personality/shut_up/*.scenario.ts packages/test/scenarios/payments/*.scenario.ts packages/test/scenarios/payments/**/*.scenario.ts packages/test/scenarios/lifeops.payments/*.scenario.ts packages/test/scenarios/lifeops.payments/**/*.scenario.ts packages/test/scenarios/lifeops.morning-brief/*.scenario.ts"
           - name: cross-cutting-gateway
             runs-on: ubuntu-24.04
-            globs: "packages/test/scenarios/cross-cutting/**/*.scenario.ts packages/test/scenarios/gateway/**/*.scenario.ts packages/test/scenarios/remote/**/*.scenario.ts packages/test/scenarios/lifeops.*/**/*.scenario.ts packages/test/scenarios/lifeops.sleep/*.scenario.ts packages/test/scenarios/lifeops.travel-buffer/*.scenario.ts packages/test/scenarios/lifeops.travel/*.scenario.ts packages/test/scenarios/lifeops.workflow-events/*.scenario.ts packages/test/scenarios/goals/**/*.scenario.ts packages/test/scenarios/convo/**/*.scenario.ts"
+            globs: "packages/test/scenarios/cross-cutting/**/*.scenario.ts packages/test/scenarios/gateway/**/*.scenario.ts packages/test/scenarios/remote/**/*.scenario.ts packages/test/scenarios/lifeops.*/*.scenario.ts packages/test/scenarios/lifeops.*/**/*.scenario.ts packages/test/scenarios/lifeops.sleep/*.scenario.ts packages/test/scenarios/lifeops.travel-buffer/*.scenario.ts packages/test/scenarios/lifeops.travel/*.scenario.ts packages/test/scenarios/lifeops.workflow-events/*.scenario.ts packages/test/scenarios/goals/**/*.scenario.ts packages/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
             root: plugins/plugin-lifeops/test/scenarios

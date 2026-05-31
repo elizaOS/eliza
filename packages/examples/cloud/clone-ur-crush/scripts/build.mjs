@@ -87,17 +87,28 @@ const compatibilityFiles = [
 ];
 
 async function writeIfMissing(file, content) {
-  const existing = await readFile(file, "utf8").catch((error) => {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  });
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await readFile(file, "utf8").catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
 
-  if (existing !== null) return;
+    if (existing !== null) return;
 
-  await mkdir(path.dirname(file), { recursive: true });
-  const tempFile = `${file}.${process.pid}.tmp`;
-  await writeFile(tempFile, content);
-  await rename(tempFile, file);
+    try {
+      await mkdir(path.dirname(file), { recursive: true });
+      const tempFile = `${file}.${process.pid}.${attempt}.tmp`;
+      await writeFile(tempFile, content);
+      await rename(tempFile, file);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw lastError;
 }
 
 async function writeCompatibilityFiles() {
@@ -128,7 +139,12 @@ await refreshCompatibilityFiles();
 async function runNextBuild(args) {
   await refreshCompatibilityFiles();
 
-  return await new Promise((resolve) => {
+  const keepCompatibilityFilesPresent = setInterval(() => {
+    void refreshCompatibilityFiles();
+  }, 250);
+  keepCompatibilityFilesPresent.unref?.();
+
+  const exitCode = await new Promise((resolve) => {
     const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
       cwd: packageRoot,
       env: {
@@ -142,6 +158,10 @@ async function runNextBuild(args) {
       resolve(code ?? 1);
     });
   });
+
+  clearInterval(keepCompatibilityFilesPresent);
+  await refreshCompatibilityFiles();
+  return exitCode;
 }
 
 // Next 15 can hang indefinitely in the default monolithic build mode for this

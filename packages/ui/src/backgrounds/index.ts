@@ -7,6 +7,8 @@ export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
 export type { CloudVideoBackgroundProps } from "./CloudVideoBackground";
 export { CloudVideoBackground } from "./CloudVideoBackground";
+export type { HomescreenBackdropProps } from "./HomescreenBackdrop";
+export { HomescreenBackdrop } from "./HomescreenBackdrop";
 export {
   getActiveBackground,
   getBackground,

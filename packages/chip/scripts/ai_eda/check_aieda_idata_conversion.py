@@ -13,6 +13,14 @@ DEFAULT_REPORT = ROOT / "build/ai_eda/aieda_idata/validation/conversion_report.j
 CLAIM_BOUNDARY = "aieda_idata_conversion_training_only_no_e1_signoff_or_release_claim"
 REQUIRED_SCHEMAS = {"eda.design_bundle.v1", "eda.graph_sample.v1", "eda.flow_run.v1"}
 LABEL_STATUS = "public_aieda_idata_routing_demand_training_only_not_e1_signoff"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -40,6 +48,14 @@ def positive_number(value: Any) -> bool:
 
 def positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
 
 
 def validate_source(record: Any, label: str) -> list[str]:
@@ -106,6 +122,7 @@ def validate_design(record: dict[str, Any], path: Path) -> list[str]:
     record_id = record.get("id", rel(path))
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     sources = record.get("sources")
     if not isinstance(sources, dict):
         return [f"{record_id}: sources must be a mapping"]
@@ -125,6 +142,7 @@ def validate_graph(record: dict[str, Any], path: Path) -> tuple[list[str], dict[
     record_id = record.get("id", rel(path))
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     graph = record.get("graph")
     labels = record.get("labels")
     if not isinstance(graph, dict):
@@ -164,6 +182,7 @@ def validate_flow(record: dict[str, Any], path: Path) -> list[str]:
     record_id = record.get("id", rel(path))
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     errors.extend(validate_stats(record.get("metrics"), record_id))
     status = record.get("status")
     blockers = status.get("blockers") if isinstance(status, dict) else None
@@ -183,6 +202,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report schema must be eliza.ai_eda.aieda_idata_conversion_report.v1")
     if report.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("report claim_boundary is missing or incorrect")
+    errors.extend(validate_false_claim_flags(report, "report"))
     if report.get("release_use_allowed") is not False:
         errors.append("release_use_allowed must be false")
     converted_count = report.get("converted_map_count")

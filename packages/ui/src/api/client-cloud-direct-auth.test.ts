@@ -809,7 +809,10 @@ describe("ElizaClient direct Cloud auth on native", () => {
             success: true,
             data: {
               status: "completed",
-              result: { bridgeUrl: "https://sandbox-agent.example.test" },
+              result: {
+                bridgeUrl: "https://sandbox-agent.example.test",
+                webUiUrl: "https://sandbox-agent.elizacloud.ai",
+              },
             },
           },
         };
@@ -833,6 +836,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     await expect(resultPromise).resolves.toEqual({
       agentId: "sandbox-agent",
       bridgeUrl: "https://sandbox-agent.example.test",
+      webUiUrl: "https://sandbox-agent.elizacloud.ai",
     });
     expect(capacitorMocks.request).toHaveBeenCalledTimes(3);
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(

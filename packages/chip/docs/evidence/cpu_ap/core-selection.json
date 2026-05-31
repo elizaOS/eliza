@@ -1,7 +1,7 @@
 {
   "schema": "eliza.cpu_ap_core_selection_evidence.v1",
-  "generated_utc": "2026-05-29T07:04:40Z",
-  "generated_at": "2026-05-29T07:04:40Z",
+  "generated_utc": "2026-05-31T00:36:40Z",
+  "generated_at": "2026-05-31T00:36:40Z",
   "claim_boundary": "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence",
   "manifest_dir": "generators/chipyard",
   "target_topology": "1_ultra_3_premium_4_pro",

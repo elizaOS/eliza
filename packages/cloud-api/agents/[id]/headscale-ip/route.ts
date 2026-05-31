@@ -3,7 +3,9 @@
  *
  * Internal-only endpoint consumed by the nginx Lua router.
  * Returns { headscale_ip, web_ui_port, status } so nginx can proxy_pass to
- * the correct container.
+ * the correct container. This route deliberately does not fall back to
+ * health_url / bridge_url hostnames: the reverse proxy needs the persisted
+ * Headscale route, not public Docker host + dynamic port metadata.
  *
  * Access is restricted with a shared internal token (HEADSCALE_INTERNAL_TOKEN)
  * injected by the trusted reverse proxy. Do not expose this endpoint publicly.
@@ -57,6 +59,46 @@ function constantTimeEqual(a: string, b: string): boolean {
 
 const app = new Hono<AppEnv>();
 
+export interface HeadscaleLookupSandbox {
+  status: string;
+  headscale_ip?: string | null;
+  web_ui_port?: number | null;
+}
+
+export function resolveHeadscaleLookupPayload(sandbox: HeadscaleLookupSandbox):
+  | {
+      ok: true;
+      payload: {
+        headscale_ip: string;
+        web_ui_port: number;
+        status: string;
+      };
+    }
+  | { ok: false; status: 503; error: string } {
+  const ip = sandbox.headscale_ip?.trim() || null;
+  if (!ip) {
+    return {
+      ok: false,
+      status: 503,
+      error: "agent has no routable Headscale IP",
+    };
+  }
+
+  const webUiPort = sandbox.web_ui_port ?? 0;
+  if (!webUiPort) {
+    return { ok: false, status: 503, error: "agent has no web UI port" };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      headscale_ip: ip,
+      web_ui_port: webUiPort,
+      status: sandbox.status,
+    },
+  };
+}
+
 app.get("/", async (c) => {
   const agentId = c.req.param("id") ?? "";
 
@@ -80,25 +122,9 @@ app.get("/", async (c) => {
     const sandbox = await agentSandboxesRepository.findById(agentId);
     if (!sandbox) return c.json({ error: "agent not found" }, 404);
 
-    let ip = sandbox.headscale_ip || null;
-    if (!ip && sandbox.health_url) {
-      try {
-        const parsed = new URL(sandbox.health_url);
-        ip = parsed.hostname;
-      } catch {
-        // health_url not parseable
-      }
-    }
-
-    if (!ip) return c.json({ error: "agent has no routable IP" }, 503);
-    const webUiPort = sandbox.web_ui_port ?? 0;
-    if (!webUiPort) return c.json({ error: "agent has no web UI port" }, 503);
-
-    return c.json({
-      headscale_ip: ip,
-      web_ui_port: webUiPort,
-      status: sandbox.status,
-    });
+    const resolved = resolveHeadscaleLookupPayload(sandbox);
+    if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status);
+    return c.json(resolved.payload);
   } catch (err) {
     logger.error("[headscale-ip] lookup error", { error: err });
     return c.json({ error: "lookup failed" }, 500);

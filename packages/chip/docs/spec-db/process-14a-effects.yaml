@@ -1,5 +1,13 @@
 schema: eliza.process_14a_effects.v1
 status: fail_closed_process_work_order
+release_claim_allowed: false
+pdk_signoff_claim_allowed: false
+physical_signoff_claim_allowed: false
+manufacturing_claim_allowed: false
+reliability_qualification_claim_allowed: false
+tapeout_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
 claim_boundary: >
   This is a 14A-class process-effects and evidence contract, not proof that the
   current RTL, PD, CPU, NPU, package, or simulator is implemented on a 1.4 nm

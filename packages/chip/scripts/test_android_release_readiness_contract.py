@@ -837,7 +837,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             inventory["latestBuildAttempt"]["generationCommands"]["imageOnlyResumeFromCurrentTree"],
         )
 
-    def test_missing_android_archive_source_members_are_repo_generation_dependency(self) -> None:
+    def test_missing_android_archive_source_members_are_external_dependency(self) -> None:
         inventory = {
             "records": [
                 {
@@ -851,7 +851,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
 
         self.assertEqual(
             gate.android_archive_source_dependency(inventory),
-            "repo_artifact_generation",
+            "actionable_external_dependency",
         )
 
     def test_complete_android_archive_source_members_remain_repo_generation(self) -> None:
@@ -870,6 +870,24 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             gate.android_archive_source_dependency(inventory),
             "repo_artifact_generation",
         )
+
+    def test_android_archive_source_next_step_names_missing_members(self) -> None:
+        inventory = {
+            "records": [
+                {
+                    "artifactId": "android-cuttlefish-x86_64-zip",
+                    "readyToArchive": False,
+                    "sourceDirectory": "$AOSP_WORKSPACE/out/target/product/vsoc_x86_64_only",
+                    "missingMembers": ["android-info.txt", "boot.img"],
+                }
+            ]
+        }
+
+        next_step = gate.android_archive_source_next_step(inventory)
+
+        self.assertIn("No release archive should be generated", next_step)
+        self.assertIn("android-cuttlefish-x86_64-zip", next_step)
+        self.assertIn("android-info.txt, boot.img", next_step)
 
     def test_build_only_stage_logs_distinguish_timeout_from_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

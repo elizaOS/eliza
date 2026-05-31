@@ -420,7 +420,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         <Button
           onClick={handleSave}
           disabled={isLoading}
-          className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white"
+          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
         >
           {isLoading ? (
             <>

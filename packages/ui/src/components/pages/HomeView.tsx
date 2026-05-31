@@ -1,95 +1,71 @@
-import {
-  Gamepad2,
-  MessageSquare,
-  Mic,
-  Send,
-  Settings,
-  UserRound,
-  Wallet,
-} from "lucide-react";
+import { X } from "lucide-react";
 import type * as React from "react";
-import { memo, useMemo, useState } from "react";
-
-import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Homescreen } from "../../homescreen/Homescreen";
+import type { OrbAnchor } from "../../homescreen/HomescreenCanvas";
+import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import { useTranslation } from "../../state/TranslationContext";
 import { AppIdentityTile } from "../apps/app-identity";
-import {
-  getInternalToolApps,
-  getInternalToolAppTargetTab,
-} from "../apps/internal-tool-apps";
+import { getHomeGridApps } from "../apps/home-grid-apps";
 import { formatEta } from "../local-inference/hub-utils";
+import { GLASS_COMPOSER_CLASS, GlassIconButton } from "../shell/glass-composer";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
+import { usePullGesture } from "../shell/use-pull-gesture";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { VoiceWaveform } from "../voice/VoiceWaveform";
+import { Spinner } from "../ui/spinner";
+import type {
+  FrequencyAnalyser,
+  VoiceWaveformMode,
+} from "../voice/VoiceWaveform";
 
-// Mounted once and never re-rendered. The background takes no volatile props
-// and no children, so React.memo keeps it stable across every home-view state
-// change (typing, focus, new messages). Load-bearing for perf: the cloud video
-// must never re-render on state changes.
-const HomeBackground = memo(function HomeBackground(): React.JSX.Element {
+function phaseForMode(mode: VoiceWaveformMode): HomescreenPhase {
+  if (mode === "listening") return "listening";
+  if (mode === "responding") return "speaking";
+  return "idle";
+}
+
+function editCommandMatches(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "/edit") return true;
+  return /edit (the )?home\s?screen/.test(normalized);
+}
+
+const HomeVoiceBackground = memo(function HomeVoiceBackground({
+  mode,
+  analyser,
+  userText,
+  assistantText,
+  onOrbAnchor,
+  onEditModeChange,
+  editRequestNonce,
+}: {
+  mode: VoiceWaveformMode;
+  analyser: FrequencyAnalyser | null;
+  userText: string;
+  assistantText: string;
+  onOrbAnchor: (anchor: OrbAnchor | null) => void;
+  onEditModeChange: (editing: boolean) => void;
+  editRequestNonce: number;
+}): React.JSX.Element {
   return (
-    <CloudVideoBackground
-      scrim={0.08}
-      style={{ position: "absolute", inset: 0, height: "100%", width: "100%" }}
+    <Homescreen
+      analyser={analyser}
+      phase={phaseForMode(mode)}
+      userText={userText}
+      assistantText={assistantText}
+      onOrbAnchor={onOrbAnchor}
+      onEditModeChange={onEditModeChange}
+      editRequestNonce={editRequestNonce}
     />
   );
 });
 
-const HEADER_NAV: ReadonlyArray<{
-  tab: Tab;
-  labelKey: string;
-  defaultLabel: string;
-  icon: typeof MessageSquare;
-}> = [
-  {
-    tab: "chat",
-    labelKey: "homeview.nav.chat",
-    defaultLabel: "Chat",
-    icon: MessageSquare,
-  },
-  {
-    tab: "apps",
-    labelKey: "homeview.nav.apps",
-    defaultLabel: "Apps",
-    icon: Gamepad2,
-  },
-  {
-    tab: "character",
-    labelKey: "homeview.nav.character",
-    defaultLabel: "Character",
-    icon: UserRound,
-  },
-  {
-    tab: "inventory",
-    labelKey: "homeview.nav.inventory",
-    defaultLabel: "Wallet",
-    icon: Wallet,
-  },
-  {
-    tab: "settings",
-    labelKey: "homeview.nav.settings",
-    defaultLabel: "Settings",
-    icon: Settings,
-  },
-];
-
-// The eight default apps surfaced above the avatar. All are internal-tool apps,
-// so a tap navigates straight to the owning tab — no catalog fetch required.
-const DEFAULT_APP_NAMES: readonly string[] = [
-  "@elizaos/plugin-lifeops",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-training",
-  "@elizaos/app-skills-viewer",
-  "@elizaos/app-memory-viewer",
-  "@elizaos/plugin-elizamaker",
-  "@elizaos/app-plugin-viewer",
-];
+// ─── HomeView ────────────────────────────────────────────────────────────────
 
 export function HomeView(): React.JSX.Element {
   const controller = useShellControllerContext();
@@ -102,11 +78,89 @@ export function HomeView(): React.JSX.Element {
     modelStatus.kind !== "not-required" &&
     modelStatus.kind !== "ready";
 
+  const [editingHome, setEditingHome] = useState(false);
+  const [editRequestNonce, setEditRequestNonce] = useState(0);
+  const requestEdit = useCallback(() => setEditRequestNonce((n) => n + 1), []);
+
+  // Continuous voice mode: the WebGL orb is revealed at the top, the chat is
+  // pushed down beneath it, and the mic records continuously until stopped.
+  const [voiceMode, setVoiceMode] = useState(false);
+
+  // The orb's projected screen position, reported by the WebGL scene, plus the
+  // measured size of this view — together they reserve the orb's band at the top
+  // of the chat so messages start beneath the *actual* rendered orb.
+  const [orbAnchor, setOrbAnchor] = useState<OrbAnchor | null>(null);
+  const handleOrbAnchor = useCallback(
+    (anchor: OrbAnchor | null) => setOrbAnchor(anchor),
+    [],
+  );
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    const measure = () =>
+      setViewSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Pixel rect of the orb (anchor x/r are width/height fractions). A comfortable
+  // size floor keeps it readable on tiny viewports.
+  const orbRect = useMemo(() => {
+    if (!orbAnchor || viewSize.h === 0) return null;
+    const size = Math.max(72, orbAnchor.r * 2 * viewSize.h);
+    return {
+      left: orbAnchor.x * viewSize.w,
+      top: orbAnchor.y * viewSize.h,
+      size,
+    };
+  }, [orbAnchor, viewSize.w, viewSize.h]);
+
+  // Height to reserve at the top of the chat in voice mode so messages clear the
+  // orb (its center + radius + a gap). Falls back before the first anchor frame.
+  const orbBandPx = useMemo(() => {
+    if (!voiceMode) return 0;
+    if (orbRect) return orbRect.top + orbRect.size / 2 + 16;
+    return viewSize.h > 0 ? viewSize.h * 0.28 : 180;
+  }, [voiceMode, orbRect, viewSize.h]);
+
+  // The single global chat: open-state lives in the shell controller, shared by
+  // every view. The apps fly-away, the curtain, and the chat pill all read this
+  // ONE flag so the homescreen and the global chat never drift out of sync.
+  const chatOpen = controller?.isOpen ?? false;
+  const openChat = useCallback(() => controller?.open(), [controller]);
+  const closeChat = useCallback(() => controller?.close(), [controller]);
+  const setChatOpen = useCallback(
+    (next: boolean) => {
+      if (next) controller?.open();
+      else controller?.close();
+    },
+    [controller],
+  );
+
+  // Transcript fade state
+  const [transcriptFaded, setTranscriptFaded] = useState(false);
+
   const latestAssistant = useMemo(
     () =>
       [...(controller?.messages ?? [])]
         .reverse()
         .find((message) => message.role === "assistant"),
+    [controller?.messages],
+  );
+
+  const latestUserText = useMemo(
+    () =>
+      [...(controller?.messages ?? [])]
+        .reverse()
+        .find((message) => message.role === "user")?.content ?? "",
     [controller?.messages],
   );
 
@@ -121,113 +175,200 @@ export function HomeView(): React.JSX.Element {
     return /something went wrong on my end/i.test(latestAssistant.content);
   }, [latestAssistant]);
 
-  const latestAssistantWords = useMemo(() => {
-    const text = latestAssistant?.content.trim() ?? "";
-    if (!text) return null;
-    const words = text.split(/\s+/).slice(-14);
-    return words.join(" ");
+  // Transcript line: chunk long assistant text into ~14-word groups and cycle
+  // through them, so we never render a long paragraph on the homescreen.
+  const transcriptChunks = useMemo(() => {
+    const words = (latestAssistant?.content.trim() ?? "")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (words.length === 0) return [] as string[];
+    const groups: string[] = [];
+    for (let i = 0; i < words.length; i += 14) {
+      groups.push(words.slice(i, i + 14).join(" "));
+    }
+    return groups;
   }, [latestAssistant]);
+  const [transcriptChunkIndex, setTranscriptChunkIndex] = useState(0);
+  const transcriptChunk = transcriptChunks[transcriptChunkIndex] ?? null;
+  const latestAssistantId = latestAssistant?.id ?? null;
+
+  // Reset to the first chunk + un-fade on each new assistant message, then fade
+  // the line out 15 seconds later.
+  useEffect(() => {
+    if (!latestAssistantId) return;
+    setTranscriptChunkIndex(0);
+    setTranscriptFaded(false);
+    const id = setTimeout(() => setTranscriptFaded(true), 15000);
+    return () => clearTimeout(id);
+  }, [latestAssistantId]);
+
+  // Cycle chunks while there is more than one, keeping each shown briefly.
+  useEffect(() => {
+    if (transcriptChunks.length <= 1) return;
+    const id = setInterval(() => {
+      setTranscriptChunkIndex(
+        (current) => (current + 1) % transcriptChunks.length,
+      );
+    }, 3200);
+    return () => clearInterval(id);
+  }, [transcriptChunks.length]);
+
+  const lastEditUserText = useRef("");
+  useEffect(() => {
+    if (latestUserText && latestUserText !== lastEditUserText.current) {
+      lastEditUserText.current = latestUserText;
+      if (editCommandMatches(latestUserText)) requestEdit();
+    }
+  }, [latestUserText, requestEdit]);
+
+  const enterVoice = useCallback(() => {
+    setVoiceMode(true);
+    controller?.open();
+    controller?.startRecording();
+  }, [controller]);
+
+  const exitVoice = useCallback(() => {
+    setVoiceMode(false);
+    controller?.stopRecording();
+  }, [controller]);
+
+  const toggleVoice = useCallback(() => {
+    if (voiceMode) exitVoice();
+    else enterVoice();
+  }, [voiceMode, enterVoice, exitVoice]);
+
+  // Pull up on the homescreen to open the chat, pull down to close it.
+  const pullBindings = usePullGesture({
+    onPullUp: openChat,
+    onPullDown: closeChat,
+  });
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <HomeBackground />
+      <HomeVoiceBackground
+        mode={mode}
+        analyser={controller?.analyser ?? null}
+        userText={latestUserText}
+        assistantText={latestAssistant?.content ?? ""}
+        onOrbAnchor={handleOrbAnchor}
+        onEditModeChange={setEditingHome}
+        editRequestNonce={editRequestNonce}
+      />
+
+      {/* System-color base. Opaque at rest — the home is chat-first on a plain
+          surface and the WebGL orb stays hidden; fades out in voice mode to
+          reveal the live orb behind. */}
       <div
+        aria-hidden
+        className={cn(
+          "absolute inset-0 z-[5] bg-bg transition-opacity duration-500",
+          voiceMode ? "pointer-events-none opacity-0" : "opacity-100",
+        )}
+      />
+
+      <div
+        ref={viewRef}
         data-testid="home-view"
-        className="relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt"
+        className={cn(
+          "relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 text-txt",
+          "transition-[opacity,transform] duration-500 ease-out",
+          editingHome && "pointer-events-none opacity-0",
+        )}
+        {...pullBindings}
       >
-        <HomeHeader onNavigate={setTab} />
-
-        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
-          <DefaultApps onLaunch={setTab} />
-
-          <div className="relative grid h-[min(38vh,260px)] min-h-44 w-full place-items-center">
-            <VoiceWaveform
-              mode={mode}
-              analyser={controller?.analyser ?? null}
-              size={240}
+        {/* Voice mode: reserve the orb's band at the top so the chat sits below
+            the live orb, plus a stop control to leave continuous voice. */}
+        {voiceMode ? (
+          <>
+            <div
+              aria-hidden
+              className="w-full shrink-0 transition-[height] duration-500"
+              style={{ height: orbBandPx }}
             />
-          </div>
-
-          {showModelStatus && modelStatus ? (
-            <ModelStatusPanel
-              status={modelStatus}
-              onOpenSettings={() => setTab("settings")}
-            />
-          ) : noLlmConnection ? (
-            <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
-          ) : (
-            <p
-              className="min-h-6 max-w-xl text-center text-sm text-muted"
-              aria-live="polite"
-              data-testid="home-assistant-transcript"
+            <button
+              type="button"
+              aria-label={t("homeview.orb.stop", {
+                defaultValue: "Stop voice mode",
+              })}
+              data-testid="home-voice-stop"
+              onClick={exitVoice}
+              className="absolute right-3 top-[calc(var(--safe-area-top,0px)+0.75rem)] z-30 flex h-10 w-10 items-center justify-center rounded-full border border-txt/15 bg-txt/5 text-txt/80 backdrop-blur-md transition-colors hover:bg-txt/10"
             >
-              {latestAssistantWords ??
-                t("homeview.assistant.prompt", {
-                  defaultValue: "How can I help?",
-                })}
-            </p>
-          )}
-        </div>
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          </>
+        ) : null}
 
-        <HomeComposer />
+        {/* Rest home: apps + status. Hidden while the chat is open so the chat
+            takes the full height. */}
+        {!chatOpen ? (
+          <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-6 pt-[calc(var(--safe-area-top,0px)+15vh)]">
+            {showModelStatus && modelStatus ? (
+              <ModelStatusPanel
+                status={modelStatus}
+                onOpenSettings={() => setTab("settings")}
+              />
+            ) : noLlmConnection ? (
+              <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
+            ) : (
+              <p
+                className={cn(
+                  "min-h-5 max-w-xl text-center text-sm font-medium text-txt/85 transition-opacity duration-1000 mb-2",
+                  transcriptFaded && "opacity-0",
+                )}
+                aria-live="polite"
+                data-testid="home-assistant-transcript"
+              >
+                {transcriptChunk ??
+                  t("homeview.assistant.prompt", {
+                    defaultValue: "hey, what's up?",
+                  })}
+              </p>
+            )}
+
+            <HomeAppGrid onLaunch={setTab} />
+
+            <div className="flex-1" aria-hidden />
+
+            <HomeNotifications />
+          </div>
+        ) : null}
+
+        <HomeChatPill
+          open={chatOpen}
+          onOpenChange={setChatOpen}
+          onRequestEdit={requestEdit}
+          voiceMode={voiceMode}
+          onToggleVoice={toggleVoice}
+        />
       </div>
     </div>
   );
 }
 
-function HomeHeader({
-  onNavigate,
-}: {
-  onNavigate: (tab: Tab) => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <header
-      data-testid="home-header"
-      className="flex w-full max-w-3xl shrink-0 items-center justify-center gap-1 pt-[calc(var(--safe-area-top,0px)+0.5rem)] pb-2"
-    >
-      {HEADER_NAV.map(({ tab, labelKey, defaultLabel, icon: Icon }) => {
-        const label = t(labelKey, { defaultValue: defaultLabel });
-        return (
-          <button
-            key={tab}
-            type="button"
-            aria-label={label}
-            title={label}
-            onClick={() => onNavigate(tab)}
-            className="flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white/90 transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none"
-          >
-            <Icon className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        );
-      })}
-    </header>
-  );
-}
+// ─── Apps ────────────────────────────────────────────────────────────────────
 
-function DefaultApps({
+/**
+ * The homescreen launcher grid: the default-pinned tiles from {@link getHomeGridApps}
+ * laid out 4-up, each tile an image-only {@link AppIdentityTile} with a small
+ * label below. Tapping navigates to the app's tab.
+ */
+function HomeAppGrid({
   onLaunch,
 }: {
   onLaunch: (tab: Tab) => void;
 }): React.JSX.Element | null {
   const { t } = useTranslation();
-  const apps = useMemo(() => {
-    const byName = new Map(getInternalToolApps().map((app) => [app.name, app]));
-    return DEFAULT_APP_NAMES.map((name) => byName.get(name)).filter(
-      (app): app is NonNullable<typeof app> => Boolean(app),
-    );
-  }, []);
+  const apps = useMemo(() => getHomeGridApps(), []);
 
   if (apps.length === 0) return null;
 
   return (
     <div
-      className="mx-auto grid w-full max-w-xs grid-cols-4 place-items-center gap-3"
-      data-testid="home-default-apps"
+      className="mx-auto grid w-full max-w-sm grid-cols-4 place-items-start gap-x-3 gap-y-4 overflow-visible"
+      data-testid="home-app-grid"
     >
       {apps.map((app) => {
-        const target = getInternalToolAppTargetTab(app.name);
         const displayName = app.displayName ?? app.name;
         return (
           <button
@@ -238,18 +379,115 @@ function DefaultApps({
               name: displayName,
               defaultValue: "Open {{name}}",
             })}
-            onClick={() => {
-              if (target) onLaunch(target);
-            }}
-            className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
+            onClick={() => onLaunch(app.targetTab)}
+            className="group flex w-full flex-col items-center gap-1 rounded-xs p-1 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="md" imageOnly />
+            <AppIdentityTile
+              app={app}
+              size="md"
+              imageOnly
+              className="transition-transform duration-200 group-hover:scale-105 group-focus-visible:scale-105"
+            />
+            <span className="line-clamp-1 w-full text-center text-[0.62rem] font-medium text-white/90 [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]">
+              {displayName}
+            </span>
           </button>
         );
       })}
     </div>
   );
 }
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+function HomeNotifications(): React.JSX.Element | null {
+  const { agentStatus, firstRunComplete, startupCoordinator } = useApp();
+  const { t } = useTranslation();
+  const startupPhase = startupCoordinator.phase;
+  if (firstRunComplete && startupPhase !== "ready") {
+    const label =
+      startupPhase === "restoring-session" ||
+      startupPhase === "resolving-target" ||
+      startupPhase === "polling-backend"
+        ? t("homeview.notifications.connectingBackend", {
+            defaultValue: "Connecting to Eliza…",
+          })
+        : startupPhase === "hydrating"
+          ? t("homeview.notifications.loadingWorkspace", {
+              defaultValue: "Loading workspace…",
+            })
+          : t("homeview.notifications.starting", {
+              defaultValue: "Starting Eliza…",
+            });
+
+    return (
+      <div
+        data-testid="home-notifications"
+        data-state={startupPhase}
+        role="status"
+        aria-live="polite"
+        className="flex max-w-md items-center gap-2 rounded border border-accent/40 bg-bg/55 px-3 py-2 text-xs font-medium text-txt backdrop-blur"
+      >
+        <Spinner size={14} className="shrink-0 opacity-90" aria-hidden />
+        <span className="leading-snug">{label}</span>
+      </div>
+    );
+  }
+
+  const state = agentStatus?.state ?? null;
+
+  if (!state || state === "running" || state === "not_started") return null;
+
+  const busy = state === "starting" || state === "restarting";
+  const label =
+    state === "starting"
+      ? t("homeview.notifications.starting", {
+          defaultValue: "Starting Eliza…",
+        })
+      : state === "restarting"
+        ? t("homeview.notifications.restarting", {
+            defaultValue: "Restarting Eliza…",
+          })
+        : state === "stopped"
+          ? t("homeview.notifications.stopped", {
+              defaultValue: "Eliza is stopped",
+            })
+          : t("homeview.notifications.error", {
+              defaultValue: "Eliza hit a problem starting up",
+            });
+
+  return (
+    <div
+      data-testid="home-notifications"
+      data-state={state}
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "flex max-w-md items-center gap-2 rounded border bg-bg/55 px-3 py-2 text-xs font-medium backdrop-blur",
+        state === "error"
+          ? "border-danger/40 text-danger"
+          : state === "stopped"
+            ? "border-warn/40 text-warn"
+            : "border-accent/40 text-txt",
+      )}
+    >
+      {busy ? (
+        <Spinner size={14} className="shrink-0 opacity-90" aria-hidden />
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-full",
+            state === "error" ? "bg-danger" : "bg-warn",
+          )}
+        />
+      )}
+      <span className="leading-snug">{label}</span>
+    </div>
+  );
+}
+
+// ─── No-LLM / Model-status panels ───────────────────────────────────────────
 
 function NoLlmConnectionPanel({
   onOpenSettings,
@@ -262,7 +500,7 @@ function NoLlmConnectionPanel({
 
   return (
     <div
-      className="w-full max-w-md rounded-md border border-warn/30 bg-bg/55 p-4 text-center backdrop-blur"
+      className="w-full max-w-md rounded border border-warn/30 bg-bg/55 p-4 text-center backdrop-blur"
       data-testid="home-no-llm-panel"
     >
       <p className="mb-3 text-sm font-medium text-txt">
@@ -294,9 +532,6 @@ function NoLlmConnectionPanel({
   );
 }
 
-// Local text-model readiness shown under the avatar: a live download bar while
-// the assigned model installs/loads, or a recovery panel when it is missing or
-// failed. Send is gated upstream (controller.canSend) on `status.blocksSend`.
 function ModelStatusPanel({
   status,
   onOpenSettings,
@@ -324,14 +559,14 @@ function ModelStatusPanel({
           });
     return (
       <div
-        className="w-full max-w-md rounded-md border border-border/40 bg-bg/55 p-4 text-center backdrop-blur"
+        className="w-full max-w-md rounded border border-border/40 bg-bg/55 p-4 text-center backdrop-blur"
         data-testid="home-model-status"
         data-kind={status.kind}
         aria-live="polite"
       >
         <p className="mb-2 text-sm font-medium text-txt">{label}</p>
         <div
-          className="h-2 w-full overflow-hidden rounded-sm bg-muted/60"
+          className="h-2 w-full overflow-hidden rounded bg-muted/60"
           role="progressbar"
           aria-valuenow={percent}
           aria-valuemin={0}
@@ -379,7 +614,7 @@ function ModelRecoveryPanel({
 
   return (
     <div
-      className="w-full max-w-md rounded-md border border-warn/30 bg-bg/55 p-4 text-center backdrop-blur"
+      className="w-full max-w-md rounded border border-warn/30 bg-bg/55 p-4 text-center backdrop-blur"
       data-testid="home-model-status"
       data-kind={status.kind}
     >
@@ -409,119 +644,258 @@ function ModelRecoveryPanel({
   );
 }
 
-// Owns the volatile draft/focus state so keystrokes re-render only the composer
-// — never HomeView or the memoized background behind it.
-function HomeComposer(): React.JSX.Element {
+// ─── Bottom chat pill ────────────────────────────────────────────────────────
+
+/**
+ * The chat composer + message list, controlled by the parent.
+ *
+ * Open: full-height chat — messages fill from the top, the refractive-glass
+ * composer pins to the bottom. The composer's right control is the voice button
+ * (taps into continuous voice mode) until text is typed, then a send arrow.
+ * Collapsed: a compact glass opener pill — tap or swipe up to open.
+ */
+function HomeChatPill({
+  open,
+  onOpenChange,
+  onRequestEdit,
+  voiceMode,
+  onToggleVoice,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRequestEdit: () => void;
+  voiceMode: boolean;
+  onToggleVoice: () => void;
+}): React.JSX.Element {
   const controller = useShellControllerContext();
   const { t } = useTranslation();
+  const expanded = open;
+  const setExpanded = onOpenChange;
   const [draft, setDraft] = useState("");
-  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Collapse on outside click when expanded.
+  useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setExpanded(false);
+      }
+    };
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
+  }, [expanded, setExpanded]);
+
   const trimmed = draft.trim();
-  const canSend = Boolean(controller?.canSend && trimmed.length > 0);
+  const hasDraft = trimmed.length > 0;
+  const isEditCommand = editCommandMatches(trimmed);
+  const canSend = Boolean(hasDraft && (isEditCommand || controller?.canSend));
+  const agentBooting = controller?.phase === "booting";
+  const canUseComposer = Boolean(controller?.canSend);
+
   const recentMessages = useMemo(
-    () => controller?.messages.slice(-4) ?? [],
+    () => controller?.messages.slice(-50) ?? [],
     [controller?.messages],
   );
 
+  useEffect(() => {
+    if (expanded) {
+      const id = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(id);
+    }
+  }, [expanded]);
+
   function sendDraft() {
+    if (isEditCommand) {
+      onRequestEdit();
+      setDraft("");
+      return;
+    }
     if (!canSend || !controller) return;
     controller.send(trimmed);
     setDraft("");
   }
 
-  const draftPreview = trimmed;
-  const showRecent = focused || draftPreview.length > 0;
+  // Swipe-down on the messages list to collapse
+  const swipeDrag = useRef<{ y: number; time: number } | null>(null);
+
+  function onMessagesPointerDown(e: React.PointerEvent<HTMLOListElement>) {
+    swipeDrag.current = { y: e.clientY, time: Date.now() };
+  }
+
+  function onMessagesPointerUp(e: React.PointerEvent<HTMLOListElement>) {
+    if (!swipeDrag.current) return;
+    const dy = e.clientY - swipeDrag.current.y;
+    const dt = Date.now() - swipeDrag.current.time;
+    swipeDrag.current = null;
+    if (dy > 40 || (dy > 20 && dt < 250)) {
+      setExpanded(false);
+    }
+  }
+
+  // Swipe-up on the collapsed pill
+  const pillDrag = useRef<{ y: number } | null>(null);
+  const suppressPillClick = useRef(false);
+
+  function onPillPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    pillDrag.current = { y: e.clientY };
+  }
+
+  function onPillPointerUp() {
+    if (!pillDrag.current) return;
+    pillDrag.current = null;
+    suppressPillClick.current = true;
+    setExpanded(true);
+  }
 
   return (
-    <div className="w-full max-w-2xl shrink-0 pb-[calc(var(--safe-area-bottom,0px)+0.25rem)]">
-      {showRecent && (recentMessages.length > 0 || draftPreview.length > 0) ? (
-        <ol
-          className="mb-3 flex max-h-32 flex-col gap-1 overflow-hidden"
-          data-testid="home-recent-chats"
-          aria-label={t("homeview.composer.recentChat", {
-            defaultValue: "Recent chat",
-          })}
+    <div
+      ref={containerRef}
+      className={cn(
+        "w-full px-3 pb-[calc(var(--safe-area-bottom,0px)+0.5rem)]",
+        // Full-height chat surface when open; compact opener when collapsed.
+        expanded ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
+      )}
+      data-testid="home-chat-pill-container"
+    >
+      {expanded ? (
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-testid="home-chat-panel"
         >
-          {recentMessages.map((message) => (
-            <li
-              key={message.id}
-              className={cn(
-                "truncate rounded-sm border border-border/30 bg-bg/45 px-3 py-1.5 text-xs backdrop-blur",
-                message.role === "user"
-                  ? "ml-auto max-w-[82%]"
-                  : "mr-auto max-w-[82%]",
-              )}
+          {/* Messages fill from the top; the composer pins to the bottom. */}
+          {recentMessages.length > 0 ? (
+            <ol
+              className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2"
+              data-testid="home-recent-chats"
+              aria-label={t("homeview.composer.recentChat", {
+                defaultValue: "Recent chat",
+              })}
+              onPointerDown={onMessagesPointerDown}
+              onPointerUp={onMessagesPointerUp}
             >
-              {message.content}
-            </li>
-          ))}
-          {draftPreview.length > 0 ? (
-            <li className="ml-auto max-w-[82%] truncate rounded-sm border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
-              {draftPreview}
-            </li>
-          ) : null}
-        </ol>
+              {recentMessages.map((message) => (
+                <li
+                  key={message.id}
+                  className={cn(
+                    "max-w-[84%] rounded px-3 py-1.5 text-xs leading-relaxed",
+                    message.role === "user"
+                      ? "ml-auto bg-txt/15 text-txt/90"
+                      : "mr-auto bg-txt/8 text-txt/65",
+                  )}
+                >
+                  {message.content}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="flex-1" aria-hidden />
+          )}
+
+          {/* Composer — refractive glass bar; draft text stays in input until sent, no bubble preview */}
+          <div className="mx-2 mt-2">
+            <div className={cn("px-2 py-1.5", GLASS_COMPOSER_CLASS)}>
+              <Input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendDraft();
+                  }
+                }}
+                placeholder={
+                  agentBooting
+                    ? t("chat.agentStarting", {
+                        defaultValue: "Starting Eliza...",
+                      })
+                    : t("homeview.composer.placeholder", {
+                        defaultValue: "Ask Eliza...",
+                      })
+                }
+                aria-label={t("homeview.composer.messageLabel", {
+                  defaultValue: "Message Eliza",
+                })}
+                data-testid="home-chat-input"
+                style={{ outline: "none" }}
+                className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-txt placeholder:text-txt/50 focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+              {hasDraft ? (
+                <GlassIconButton
+                  icon="send"
+                  label={t("homeview.composer.send", {
+                    defaultValue: "Send message",
+                  })}
+                  disabled={!canSend}
+                  onClick={sendDraft}
+                />
+              ) : (
+                <GlassIconButton
+                  icon="mic"
+                  active={voiceMode}
+                  disabled={!canUseComposer}
+                  label={
+                    voiceMode
+                      ? t("homeview.composer.stopVoice", {
+                          defaultValue: "Stop voice mode",
+                        })
+                      : t("homeview.composer.startVoice", {
+                          defaultValue: "Start voice mode",
+                        })
+                  }
+                  onClick={onToggleVoice}
+                />
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
 
-      <div className="flex items-center gap-1.5 rounded-full border border-white/30 bg-white/12 p-2 text-txt shadow-[0_6px_28px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-colors focus-within:border-white/50 focus-within:bg-white/20">
-        <Button
+      {/* Collapsed pill — compact centered opener, not a fake composer. */}
+      {!expanded ? (
+        <button
           type="button"
-          size="icon"
-          variant="ghost"
-          aria-label={
-            controller?.recording
-              ? t("homeview.composer.stopVoice", {
-                  defaultValue: "Stop voice input",
-                })
-              : t("homeview.composer.startVoice", {
-                  defaultValue: "Start voice input",
-                })
-          }
-          aria-pressed={controller?.recording ?? false}
-          onClick={() => controller?.toggleRecording()}
+          aria-label={t("homeview.pill.open", {
+            defaultValue: "Open chat",
+          })}
+          aria-expanded={false}
+          data-testid="home-chat-pill"
           className={cn(
-            "shrink-0 rounded-full text-txt/70 hover:bg-white/20 hover:text-txt",
-            controller?.recording &&
-              "animate-pulse bg-accent/20 text-accent hover:bg-accent/25 hover:text-accent",
+            "group mx-auto flex min-h-12 w-40 cursor-pointer items-center justify-center rounded-[6px] border border-white/20 px-4 py-3",
+            "bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.045))] backdrop-blur-2xl",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.38),inset_0_-1px_0_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.24),0_0_28px_rgba(255,255,255,0.08)]",
+            "transition-[transform,background-color,box-shadow] duration-200 ease-out",
+            "hover:scale-[1.04] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.23),rgba(255,255,255,0.07))] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(255,255,255,0.1),0_18px_44px_rgba(0,0,0,0.28),0_0_36px_rgba(255,255,255,0.12)]",
+            "active:scale-[1.04] focus:outline-none focus-visible:outline-none",
           )}
-        >
-          <Mic className="h-4 w-4" aria-hidden />
-        </Button>
-        <Input
-          type="text"
-          value={draft}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              sendDraft();
+          onPointerDown={onPillPointerDown}
+          onPointerUp={onPillPointerUp}
+          onClick={() => {
+            if (suppressPillClick.current) {
+              suppressPillClick.current = false;
+              return;
+            }
+            setExpanded(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setExpanded(true);
             }
           }}
-          placeholder={t("homeview.composer.placeholder", {
-            defaultValue: "Ask Eliza...",
-          })}
-          aria-label={t("homeview.composer.messageLabel", {
-            defaultValue: "Message Eliza",
-          })}
-          data-testid="home-chat-input"
-          style={{ outline: "none" }}
-          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
-        />
-        <Button
-          type="button"
-          size="icon"
-          aria-label={t("homeview.composer.send", {
-            defaultValue: "Send message",
-          })}
-          disabled={!canSend}
-          onClick={sendDraft}
-          className="shrink-0 rounded-full text-bg disabled:opacity-45"
         >
-          <Send className="h-4 w-4" aria-hidden />
-        </Button>
-      </div>
+          <span
+            aria-hidden
+            className="h-1.5 w-24 rounded-full bg-white/55 shadow-[0_0_18px_rgba(255,255,255,0.28)] transition-all duration-200 group-hover:w-28"
+          />
+        </button>
+      ) : null}
     </div>
   );
 }

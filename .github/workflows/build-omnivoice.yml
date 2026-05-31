@@ -39,7 +39,7 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
   # omnivoice.cpp upstream — plugins/plugin-local-inference/native/omnivoice.cpp is
   # gitignored at the parent repo level, so CI clones it fresh.
   OMNIVOICE_REPO: "https://github.com/elizaOS/omnivoice.cpp.git"

@@ -36,7 +36,7 @@
   --warn-muted: rgba(240, 185, 11, 0.7);
   --warn-subtle: rgba(240, 185, 11, 0.14);
   --focus: rgba(240, 185, 11, 0.18);
-  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.34);
+  --focus-ring: none;
   --link-color: var(--classic-gold);
   --link-hover-color: var(--highlight-gold);
 }
@@ -97,6 +97,18 @@
   --first-run-roster-border: rgba(31, 41, 55, 0.16);
   --first-run-field-focus-border: rgba(255, 138, 36, 0.46);
   --first-run-field-focus-shadow: none;
+}
+
+/* Short landscape viewports (phones held sideways) trip the width-based `sm:`
+ * breakpoint, so they get the full-size hero heading + min-height and the
+ * primary action scrolls below the fold. Compress the heading on short
+ * viewports so Cloud/Local + Connect stay visible without scrolling. */
+@media (max-height: 540px) and (orientation: landscape) {
+  .first-run-screen h1 {
+    min-height: 0;
+    font-size: 1.75rem;
+    line-height: 1.15;
+  }
 }
 
 /* ── First-run theme variables ────────────────────────────────────────

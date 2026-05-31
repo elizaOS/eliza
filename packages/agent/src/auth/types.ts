@@ -31,7 +31,8 @@ export type DirectAccountProvider =
   | "openai-api"
   | "deepseek-api"
   | "zai-api"
-  | "moonshot-api";
+  | "moonshot-api"
+  | "cerebras-api";
 
 export type AccountCredentialProvider =
   | SubscriptionProvider
@@ -70,6 +71,7 @@ export const DIRECT_ACCOUNT_PROVIDER_IDS = [
   "deepseek-api",
   "zai-api",
   "moonshot-api",
+  "cerebras-api",
 ] as const satisfies readonly DirectAccountProvider[];
 
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [
@@ -144,6 +146,7 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
   "deepseek-api": "DEEPSEEK_API_KEY",
   "zai-api": "ZAI_API_KEY",
   "moonshot-api": "MOONSHOT_API_KEY",
+  "cerebras-api": "CEREBRAS_API_KEY",
 };
 
 /** Maps subscription provider IDs to their model provider short names. */

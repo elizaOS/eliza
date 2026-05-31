@@ -3,6 +3,7 @@
 # AVB/A-B/recovery/OTA flags are not evidence of AVB keys, rollback indexes,
 # recovery behavior, update success, or secure flashing.
 # not AVB, A/B, recovery, OTA, rollback evidence.
+# scaffold marker only: slotselect,avb remains blocked until target AVB/A-B evidence lands.
 
 # /vendor: read-only vendor image. Block-device name matches the Android
 # dynamic-partition convention; the underlying super partition layout is

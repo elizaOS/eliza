@@ -952,8 +952,6 @@ function PluginListView({
     contentContainerRef: connectorContentRef,
     queueContentAlignment: queueConnectorContentAlignment,
     registerContentItem: registerConnectorContentItem,
-    registerSidebarItem: registerConnectorSidebarItem,
-    registerSidebarViewport: registerConnectorSidebarViewport,
     scrollContentToItem: scrollConnectorIntoView,
   } = useLinkedSidebarSelection<string>({
     contentTopOffset: 0,

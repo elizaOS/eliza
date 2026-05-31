@@ -28,6 +28,15 @@ REQUIRED_RELEASE_BLOCKERS = {
     "memory_uma_claim_gate",
     "pd_signoff_release_check",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "rtl_claim_allowed",
+    "aosp_boot_claim_allowed",
+    "linux_boot_claim_allowed",
+    "silicon_claim_allowed",
+    "release_claim_allowed",
+    "phone_performance_claim_allowed",
+}
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -82,6 +91,8 @@ def check_work_order(data: dict[str, Any], report: dict[str, Any]) -> list[str]:
         "claim boundary must block RTL evidence use",
         errors,
     )
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        require(data.get(flag) is False, f"{flag} must be false", errors)
 
     source = data.get("source_artifacts")
     require(isinstance(source, dict), "source_artifacts must be a mapping", errors)

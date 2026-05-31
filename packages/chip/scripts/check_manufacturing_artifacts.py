@@ -16,6 +16,17 @@ REPORT = ROOT / "build/reports/manufacturing_artifacts.json"
 DEFAULT_RESOLVED_MANIFEST = ROOT / "build/reports/manufacturing-resolved-artifacts.json"
 SCHEMA = "eliza.manufacturing_artifacts.v1"
 CLAIM_BOUNDARY = "manufacturing_artifact_inventory_only_not_fabrication_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "package_vendor_approval_claim_allowed": False,
+    "fpga_release_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "first_article_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 DEFAULT_MANIFESTS = [
     "docs/manufacturing/artifact-manifest.yaml",
     "package/artifact-manifest.yaml",
@@ -119,6 +130,11 @@ TRUE_MISSING_STATES = {
     "true_missing_release_output",
     "true_missing_checksum_manifest",
 }
+BLOCKER_DEPENDENCIES = (
+    "repo_artifact_generation",
+    "live_device_validation",
+    "actionable_external_dependency",
+)
 PHONE_RELEASE_OUTPUT_GENERATION_PLAN: dict[str, dict[str, object]] = {
     "schematic_erc_report": {
         "generation_status": "blocked_by_schematic_release_gate",
@@ -421,11 +437,14 @@ def write_report(
     action_summary = summarize_release_actions(findings)
     manifest_matrix = manifest_unblock_matrix(findings)
     blocker_class_counts = classify_release_blockers(findings)
+    dependency_summary = blocker_dependency_summary(findings)
+    dependency_counts = dependency_summary["counts"]
     payload = {
         "schema": SCHEMA,
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": mode,
         "manifests": manifests,
         "resolved_manifest": (
@@ -442,8 +461,12 @@ def write_report(
             "action_buckets": action_summary["bucket_counts"],
             "blocker_classes": blocker_class_counts,
             "artifact_state_counts": artifact_state_counts(findings),
+            "blocker_dependency_counts": dependency_counts,
             "blocked_manifest_count": len(manifest_matrix),
         },
+        "blocker_dependency_counts": dependency_counts,
+        "next_command_by_dependency": dependency_summary["next_command_by_dependency"],
+        "blocker_dependency_summary": dependency_summary,
         "release_unblock_action_summary": action_summary,
         "release_blocker_class_summary": {
             "release_credit": False,
@@ -480,6 +503,7 @@ def write_report(
                     },
                 },
                 **classify_finding(finding),
+                "dependency_type": blocker_dependency_for_finding(finding),
             }
             for index, finding in enumerate(findings, start=1)
         ],
@@ -511,6 +535,47 @@ def release_action_bucket(finding: str) -> str:
     if ": release requires status complete, got " in finding:
         return "artifact_status_promotion"
     return "other_release_blocker"
+
+
+def blocker_dependency_for_finding(finding: str) -> str:
+    """Classify whether a release blocker can be closed by repo generation now."""
+    state = artifact_state_for_finding(finding)
+    if state in TRUE_MISSING_STATES:
+        plan = generation_plan_for_missing_finding(finding)
+        if plan.get("can_generate_from_repo_now") is True:
+            return "repo_artifact_generation"
+    return "actionable_external_dependency"
+
+
+def blocker_dependency_summary(findings: list[str]) -> dict[str, object]:
+    counts = {dependency: 0 for dependency in BLOCKER_DEPENDENCIES}
+    commands: dict[str, list[str]] = {dependency: [] for dependency in BLOCKER_DEPENDENCIES}
+    sample_findings: dict[str, list[str]] = {dependency: [] for dependency in BLOCKER_DEPENDENCIES}
+    for finding in findings:
+        dependency = blocker_dependency_for_finding(finding)
+        counts[dependency] += 1
+        if len(sample_findings[dependency]) < 5:
+            sample_findings[dependency].append(finding)
+        for command in blocker_next_commands(finding):
+            if command not in commands[dependency]:
+                commands[dependency].append(command)
+    return {
+        "release_credit": False,
+        "counts": counts,
+        "next_command_by_dependency": {
+            dependency: command_list
+            for dependency, command_list in commands.items()
+            if command_list
+        },
+        "sample_findings": {
+            dependency: rows for dependency, rows in sample_findings.items() if rows
+        },
+        "classification_policy": (
+            "repo_artifact_generation is counted only when a finding's generation plan has "
+            "can_generate_from_repo_now=true; release rows blocked on approval, supplier, "
+            "fabrication, PD signoff, or phone/live prerequisites stay actionable_external_dependency."
+        ),
+    }
 
 
 def release_action_next_step(bucket: str) -> str:
@@ -1144,7 +1209,7 @@ ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_rel
 ALLOWED_FAIL_CLOSED_PHONE_RELEASE_GATE_STATUSES = {
     "missing",
     "blocked_local_routed_candidate_not_release",
-    "blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article",
+    "blocked_local_cad_incomplete_and_release_requires_supplier_models_routed_clearance_and_first_article",
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CHECKSUM_METADATA_RE = re.compile(r"(^|_)checksum$")

@@ -13,9 +13,8 @@ import {
 } from "../services/ShopifyService.js";
 import type { InventoryLevel, Location } from "../types.js";
 import {
-  confirmationRequired,
   getActionOptions,
-  isConfirmed,
+  requireShopifyConfirmation,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
 
@@ -227,15 +226,15 @@ export async function manageInventoryHandler(
         `Adjustment: ${sign}${intent.delta} units`,
         `Reason: ${intent.reason ?? "correction"}`,
       ].join("\n");
-      if (!isConfirmed(options)) {
-        await callback?.({ text: preview });
-        return confirmationRequired(preview, {
-          intent,
-          productId: product.id,
-          inventoryItemId,
-          locationId,
-        });
-      }
+      const confirmBlock = await requireShopifyConfirmation({
+        runtime,
+        message,
+        actionName: "SHOPIFY_MANAGE_INVENTORY",
+        pendingKey: `inventory:${product.id}:${intent.delta}`,
+        preview,
+        callback,
+      });
+      if (confirmBlock) return confirmBlock;
 
       await svc.adjustInventory({
         inventoryItemId,

@@ -946,6 +946,13 @@
       "when": 1779408300000,
       "tag": "0134_auth_events_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1779408400000,
+      "tag": "0135_agent_sandboxes_image_digest",
+      "breakpoints": true
     }
   ]
 }

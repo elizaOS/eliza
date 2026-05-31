@@ -25,6 +25,7 @@ ROUTED_OUTPUT_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
 )
 ROUTED_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+ROUTED_SCHEMATIC = ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
 ROUTED_STEP = ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
 ROUTED_STEP_METADATA = ROUTED_STEP.with_suffix(ROUTED_STEP.suffix + ".metadata.yaml")
 
@@ -227,8 +228,45 @@ def write_yaml_candidate(
 def write_json_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path = ROOT / path_text
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = blocked_record(artifact_id, path_text)
+    if path_text == "board/kicad/e1-phone/production/reports/drc.json":
+        payload.update(
+            {
+                "raw_kicad_report_kind": "drc",
+                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_cli_command": (
+                    "kicad-cli pcb drc --format json --output "
+                    "board/kicad/e1-phone/production/reports/drc.json "
+                    "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+                ),
+                "kicad_cli_version": "",
+                "source_board_sha256": sha256(ROUTED_BOARD) if ROUTED_BOARD.is_file() else "",
+                "tool_exit_code": "not_run",
+                "raw_kicad_cli_report": {},
+                "raw_kicad_cli_payload_required_for_release": True,
+            }
+        )
+    if path_text == "board/kicad/e1-phone/production/reports/erc.json":
+        payload.update(
+            {
+                "raw_kicad_report_kind": "erc",
+                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_cli_command": (
+                    "kicad-cli sch erc --format json --output "
+                    "board/kicad/e1-phone/production/reports/erc.json "
+                    "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
+                ),
+                "kicad_cli_version": "",
+                "source_schematic_sha256": (
+                    sha256(ROUTED_SCHEMATIC) if ROUTED_SCHEMATIC.is_file() else ""
+                ),
+                "tool_exit_code": "not_run",
+                "raw_kicad_cli_report": {},
+                "raw_kicad_cli_payload_required_for_release": True,
+            }
+        )
     path.write_text(
-        json.dumps(blocked_record(artifact_id, path_text), indent=2, sort_keys=True) + "\n",
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     return {"path": path_text, "kind": "json", "metadata": ""}

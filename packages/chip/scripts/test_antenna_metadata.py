@@ -20,6 +20,12 @@ if str(SCRIPT_DIR) not in sys.path:
 import check_antenna_metadata as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, payload: dict[str, object]) -> None:
+    testcase.assertEqual(payload["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(payload.get(key), expected, key)
+
+
 class AntennaMetadataBlockedStateTests(unittest.TestCase):
     def test_missing_openlane_report_is_blocked_exit_2_with_structured_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -41,6 +47,7 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["schema"], gate.SCHEMA)
             self.assertEqual(payload["status"], "blocked")
+            assert_false_claim_flags(self, payload)
             self.assertFalse(payload["release_credit"])
             self.assertFalse(payload["summary"]["release_credit"])
             self.assertEqual(payload["summary"]["blockers"], 1)
@@ -74,6 +81,7 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             self.assertIn("STATUS: FAIL", stdout.getvalue())
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "fail")
+            assert_false_claim_flags(self, payload)
             self.assertEqual(payload["summary"]["failures"], 1)
             self.assertEqual(
                 payload["blocker_categories"],

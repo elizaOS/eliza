@@ -22,6 +22,16 @@ def test_e1x_rtl_contract_gate_passes_or_only_blocks_optional_lint() -> None:
     assert report["schema"] == "eliza.gate_status.v1"
     assert report["status"] == "PASS"
     assert report["subsystem"] == "e1x"
+    for claim_key in (
+        "full_riscv_compliance_claim_allowed",
+        "wafer_scale_rtl_claim_allowed",
+        "pd_signoff_claim_allowed",
+        "dft_claim_allowed",
+        "package_claim_allowed",
+        "silicon_claim_allowed",
+        "release_claim_allowed",
+    ):
+        assert report[claim_key] is False
     assert report["summary"]["failing_check_count"] == 0
 
     checks = {check["id"]: check for check in report["checks"]}

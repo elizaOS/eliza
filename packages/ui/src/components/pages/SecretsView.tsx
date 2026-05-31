@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import type { TranslateFn } from "../../types";
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
@@ -95,8 +97,13 @@ export function SecretsView({
 } = {}) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
-  const [allSecrets, setAllSecrets] = useState<SecretInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Seed from the shared cache so a revisit paints the last-known secrets
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedSecrets = getCached<SecretInfo[]>("secrets:list");
+  const [allSecrets, setAllSecrets] = useState<SecretInfo[]>(
+    cachedSecrets?.data ?? [],
+  );
+  const [loading, setLoading] = useState(!cachedSecrets);
   const [error, setError] = useState<string | null>(null);
   const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(loadPinnedKeys);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -110,12 +117,13 @@ export function SecretsView({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError(null);
     try {
       const res = await client.getSecrets();
       setAllSecrets(res.secrets);
+      setCached("secrets:list", res.secrets);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load secrets");
     } finally {
@@ -124,7 +132,8 @@ export function SecretsView({
   }, []);
 
   useEffect(() => {
-    load();
+    // Revalidate silently when cached secrets are already on screen.
+    load({ silent: getCached<SecretInfo[]>("secrets:list") != null });
   }, [load]);
 
   // Vault secrets = pinned by user OR already set in env
@@ -220,12 +229,10 @@ export function SecretsView({
     });
   };
 
-  if (loading) {
+  if (loading && allSecrets.length === 0) {
     return (
       <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className="rounded-sm border border-border/50 bg-card/92 py-8 text-center text-sm italic text-muted">
-          {t("secretsview.LoadingSecrets")}
-        </div>
+        <ListSkeleton rows={6} />
       </ContentLayout>
     );
   }
@@ -239,7 +246,7 @@ export function SecretsView({
             variant="outline"
             size="sm"
             className="h-8 px-3 text-sm"
-            onClick={load}
+            onClick={() => void load()}
           >
             {t("common.retry")}
           </Button>

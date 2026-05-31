@@ -99,6 +99,17 @@ CLAIM_BOUNDARY = (
     "and SI/PI remain BLOCKED with no open-source path (owned by e1x3d-signoff)."
 )
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "three_d_stack_signoff_claim_allowed": False,
+    "electrothermal_signoff_claim_allowed": False,
+    "si_pi_signoff_claim_allowed": False,
+    "foundry_signoff_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+}
+
 
 def run_design_name(run_dir: Path) -> str | None:
     """Resolve the design name OpenLane2 recorded for a run from resolved.json."""
@@ -209,11 +220,13 @@ def build_summary(
         "lvs_unmatched_devices": metric_value("design__lvs_unmatched_device__count"),
         "lvs_unmatched_nets": metric_value("design__lvs_unmatched_net__count"),
         "antenna_violating_nets": metric_value("antenna__violating__nets"),
+        "antenna_violating_pins": metric_value("antenna__violating__pins"),
         "route_antenna_violations": metric_value("route__antenna_violation__count"),
         "setup_wns": metric_value("timing__setup__wns"),
         "hold_wns": metric_value("timing__hold__wns"),
         "setup_violation_count": metric_value("timing__setup_vio__count"),
         "hold_violation_count": metric_value("timing__hold_vio__count"),
+        "max_slew_violation_count": metric_value("design__max_slew_violation__count"),
         "accepted_antenna_bound": 0,
         "gds": outputs.get("gds"),
         "def": outputs.get("def"),
@@ -352,12 +365,12 @@ def emit(
     ]
     if run_dir is not None:
         evidence_paths.insert(1, (run_dir / "final/metrics.json").relative_to(ROOT).as_posix())
-        if run_design_name(run_dir) == "e1x3d_tile":
-            evidence_paths.insert(2, "pd/constraints/e1x3d_tile.sdc")
+        evidence_paths.insert(2, "pd/constraints/e1x3d_tile.sdc")
     report = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x3d-pd-signoff",
         "status": status,
+        **FALSE_CLAIM_FLAGS,
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "subsystem": "e1x3d",

@@ -220,6 +220,24 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
         self.assertEqual(placeholder["blocker_dependency"], "live_device_validation")
         self.assertIn("ELIZA_OPENSBI_HANDOFF_CMD", placeholder["next_command"])
         self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 1)
+        self.assertEqual(report["summary"]["next_command_batch_count"], 4)
+        commands = {
+            batch["id"]: batch for batch in report["next_command_plan"]
+        }
+        handoff_batch = commands["resolve_opensbi_handoff_command_placeholder"]
+        self.assertEqual(
+            handoff_batch["claim_boundary"],
+            "operator_commands_only_not_firmware_boot_evidence",
+        )
+        self.assertEqual(handoff_batch["blocker_dependency"], "live_device_validation")
+        self.assertIn(
+            "ELIZA_OPENSBI_HANDOFF_CMD='<exact qemu, renode, or board handoff command>'",
+            handoff_batch["commands"][0],
+        )
+        self.assertNotIn(
+            "resolve_u_boot_alternate_boot_chain_not_selected",
+            commands,
+        )
 
     def test_complete_boot_chain_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -275,6 +293,8 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
         assert_false_claim_flags(self, report)
         self.assertEqual(
             report["blocker_dependency_counts"],

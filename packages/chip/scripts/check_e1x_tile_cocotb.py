@@ -100,6 +100,15 @@ RUNS = {
         },
     },
 }
+FALSE_CLAIM_FLAGS = {
+    "full_wafer_scale_claim_allowed": False,
+    "full_riscv_compliance_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "dft_claim_allowed": False,
+    "package_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -227,6 +236,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": "E1X tile integration cocotb verification only: tiny-core contract tiles, repair-routed/MMIO tiles, and the production e1x_pe_tile that integrates the real RV64IM_Zicsr_Zifencei e1x_pe_core (boots a program, executes M-extension MUL, round-trips a fabric wavelet through the router Local port). Not full wafer-scale RTL, full RISC-V compliance, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_tile.sv",

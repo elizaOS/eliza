@@ -26,6 +26,7 @@ import json
 import math
 import os
 import time
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -45,6 +46,11 @@ DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INITIAL = 0.0
 DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INCREMENT = 0.01
 DEFAULT_ACTION_SCALE_INCREMENT = 0.05
 DEFAULT_PHASE_EVAL_INTERVAL_STEPS = 50_000
+DEFAULT_HIWONDER_SINE_FEEDBACK = {
+    "pitch": 2.0,
+    "roll": -1.5,
+    "yaw": 0.25,
+}
 ACTION_SCALE_SCHEDULE_SCHEMA = "alberta-action-scale-schedule-v1"
 LOCOMOTION_PRIOR_RESIDUAL_SCHEDULE_SCHEMA = "alberta-locomotion-prior-residual-schedule-v1"
 
@@ -197,6 +203,26 @@ def _initial_action_scale_for_training(
     if locomotion_action_prior != "none":
         return min(float(target_scale), DEFAULT_LOCOMOTION_PRIOR_ACTION_SCALE_INITIAL)
     return None
+
+
+def _resolve_locomotion_prior_feedback(
+    *,
+    locomotion_action_prior: str,
+    pitch: float | None,
+    roll: float | None,
+    yaw: float | None,
+) -> tuple[float, float, float]:
+    if locomotion_action_prior == "hiwonder_sine":
+        return (
+            float(DEFAULT_HIWONDER_SINE_FEEDBACK["pitch"] if pitch is None else pitch),
+            float(DEFAULT_HIWONDER_SINE_FEEDBACK["roll"] if roll is None else roll),
+            float(DEFAULT_HIWONDER_SINE_FEEDBACK["yaw"] if yaw is None else yaw),
+        )
+    return (
+        float(0.0 if pitch is None else pitch),
+        float(0.0 if roll is None else roll),
+        float(0.0 if yaw is None else yaw),
+    )
 
 
 def _parse_hidden_sizes(value: str | tuple[int, ...] | list[int]) -> tuple[int, ...]:
@@ -496,6 +522,9 @@ def _evaluate_task_success(
     env.active_tasks = [task]
     successes: list[bool] = []
     failures: list[bool] = []
+    physical_falls: list[bool] = []
+    support_contract_failures: list[bool] = []
+    done_reasons: list[str] = []
     returns: list[float] = []
     lengths: list[int] = []
     reasons: list[str] = []
@@ -528,6 +557,12 @@ def _evaluate_task_success(
     locomotion_prior_residual_scales: list[float] = []
     tracked_body_names: list[str] = []
     reward_term_totals: dict[str, list[float]] = {}
+    self_collision_count_sum: list[float] = []
+    self_collision_active_steps: list[float] = []
+    self_collision_pre_fall_max: list[float] = []
+    self_collision_terminal_max: list[float] = []
+    support_contract_pre_fall_sum: list[float] = []
+    support_contract_terminal_sum: list[float] = []
     try:
         for ep in range(max(1, int(episodes))):
             obs, info = env.reset(seed=seed + ep)
@@ -538,6 +573,10 @@ def _evaluate_task_success(
             episode_tracked_dx = [0.0]
             episode_tracked_dy = [0.0]
             episode_delta_yaw = [0.0]
+            episode_self_collision = [
+                float(info.get("self_collision_count", 0.0) or 0.0)
+            ]
+            episode_support_contract_terms: list[float] = []
             steps = 0
             terminated = False
             truncated = False
@@ -576,6 +615,7 @@ def _evaluate_task_success(
                 )
                 total += float(reward)
                 reward_terms = info.get("reward_terms")
+                support_contract_term = 0.0
                 if isinstance(reward_terms, dict):
                     for key, value in reward_terms.items():
                         number = _optional_float(value)
@@ -583,6 +623,9 @@ def _evaluate_task_success(
                             episode_reward_terms[key] = (
                                 episode_reward_terms.get(key, 0.0) + number
                             )
+                            if key == "support_contract":
+                                support_contract_term = number
+                episode_support_contract_terms.append(support_contract_term)
                 steps += 1
                 episode_tracked_dx.append(
                     float(info.get("tracked_delta_x", info.get("delta_x", 0.0)) or 0.0)
@@ -591,6 +634,9 @@ def _evaluate_task_success(
                     float(info.get("tracked_delta_y", info.get("delta_y", 0.0)) or 0.0)
                 )
                 episode_delta_yaw.append(float(info.get("delta_yaw", 0.0) or 0.0))
+                episode_self_collision.append(
+                    float(info.get("self_collision_count", 0.0) or 0.0)
+                )
                 last_result = checker.update(
                     _telemetry_sample_from_info(
                         steps * env.config.control_dt_s,
@@ -600,12 +646,25 @@ def _evaluate_task_success(
                 if terminated or truncated or last_result.success or last_result.failed:
                     break
             success = bool(last_result.success)
+            done_reason = str(info.get("done_reason") or "")
+            physical_fall = bool(
+                done_reason == "fall" or str(last_result.reason or "").startswith("fall:")
+            )
+            support_contract_failed = done_reason == "support_contract"
             failed = bool(last_result.failed or (terminated and not success))
             reason = str(last_result.reason or "")
             if failed and not reason:
-                reason = "env_terminated_before_goal_success"
+                reason = (
+                    f"env_terminated_before_goal_success:{done_reason}"
+                    if done_reason
+                    else "env_terminated_before_goal_success"
+                )
             successes.append(success)
             failures.append(failed)
+            physical_falls.append(physical_fall)
+            support_contract_failures.append(support_contract_failed)
+            if done_reason:
+                done_reasons.append(done_reason)
             returns.append(total)
             lengths.append(steps)
             final_delta_x.append(float(info.get("delta_x", 0.0) or 0.0))
@@ -625,6 +684,30 @@ def _evaluate_task_success(
             max_tracked_delta_y.append(float(np.max(episode_tracked_dy)))
             min_tracked_delta_y.append(float(np.min(episode_tracked_dy)))
             max_abs_delta_yaw.append(float(np.max(np.abs(episode_delta_yaw))))
+            step_collisions = episode_self_collision[1:]
+            terminal_fall = bool(terminated and str(info.get("done_reason") or "") == "fall")
+            pre_fall_collisions = step_collisions[:-1] if terminal_fall else step_collisions
+            terminal_collisions = step_collisions[-1:] if terminal_fall else []
+            pre_fall_support = (
+                episode_support_contract_terms[:-1]
+                if terminal_fall
+                else episode_support_contract_terms
+            )
+            terminal_support = (
+                episode_support_contract_terms[-1:] if terminal_fall else []
+            )
+            self_collision_count_sum.append(float(np.sum(step_collisions)))
+            self_collision_active_steps.append(
+                float(np.sum(np.asarray(step_collisions, dtype=np.float32) > 0.0))
+            )
+            self_collision_pre_fall_max.append(
+                float(np.max(pre_fall_collisions)) if pre_fall_collisions else 0.0
+            )
+            self_collision_terminal_max.append(
+                float(np.max(terminal_collisions)) if terminal_collisions else 0.0
+            )
+            support_contract_pre_fall_sum.append(float(np.sum(pre_fall_support)))
+            support_contract_terminal_sum.append(float(np.sum(terminal_support)))
             final_foot_contact_switches.append(
                 float(info.get("foot_contact_switch_count", 0.0) or 0.0)
             )
@@ -632,7 +715,7 @@ def _evaluate_task_success(
                 float(info.get("max_swing_foot_clearance_m", 0.0) or 0.0)
             )
             max_foot_slip.append(float(info.get("max_foot_slip_m_s", 0.0) or 0.0))
-            max_self_collision.append(float(info.get("self_collision_count", 0.0) or 0.0))
+            max_self_collision.append(float(np.max(episode_self_collision)))
             tracked_name = str(info.get("tracked_body_name") or "")
             if tracked_name:
                 tracked_body_names.append(tracked_name)
@@ -665,8 +748,12 @@ def _evaluate_task_success(
     physical_checks = _physical_checks(task.id, movement_summary)
     success_rate = float(np.mean(successes)) if successes else 0.0
     failure_rate = float(np.mean(failures)) if failures else 0.0
+    physical_fall_rate = float(np.mean(physical_falls)) if physical_falls else 0.0
+    support_contract_failure_rate = (
+        float(np.mean(support_contract_failures)) if support_contract_failures else 0.0
+    )
     if task.success.get("no_fall") is True:
-        physical_checks["no_fall"] = failure_rate <= 0.0
+        physical_checks["no_fall"] = physical_fall_rate <= 0.0
     if "hold_s" in task.success:
         physical_checks["hold_s"] = success_rate >= 1.0
     if "min_alternating_foot_contacts" in task.success:
@@ -697,6 +784,13 @@ def _evaluate_task_success(
         "episodes": len(successes),
         "success_rate": success_rate,
         "failure_rate": failure_rate,
+        "physical_fall_rate": physical_fall_rate,
+        "support_contract_failure_rate": support_contract_failure_rate,
+        "termination_summary": {
+            "done_reason_counts": dict(sorted(Counter(done_reasons).items())),
+            "physical_fall_rate": physical_fall_rate,
+            "support_contract_failure_rate": support_contract_failure_rate,
+        },
         "mean_return": float(np.mean(returns)) if returns else 0.0,
         "mean_length": float(np.mean(lengths)) if lengths else 0.0,
         "mean_final_delta_x_m": float(np.mean(final_delta_x)) if final_delta_x else 0.0,
@@ -721,6 +815,18 @@ def _evaluate_task_success(
         "movement_summary": movement_summary,
         "reward_term_summary": {
             key: _float_stats(values) for key, values in sorted(reward_term_totals.items())
+        },
+        "support_collision_diagnostics": {
+            "self_collision_count_sum": _float_stats(self_collision_count_sum),
+            "self_collision_active_steps": _float_stats(self_collision_active_steps),
+            "self_collision_pre_fall_max": _float_stats(self_collision_pre_fall_max),
+            "self_collision_terminal_max": _float_stats(self_collision_terminal_max),
+            "support_contract_pre_fall_sum": _float_stats(
+                support_contract_pre_fall_sum
+            ),
+            "support_contract_terminal_sum": _float_stats(
+                support_contract_terminal_sum
+            ),
         },
         "action_summary": {
             "l2_norm": _float_stats(action_l2),
@@ -796,9 +902,9 @@ def train_robot(
         DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INCREMENT
     ),
     locomotion_prior_residual_mode: str = "joint",
-    locomotion_prior_feedback_pitch: float = 0.0,
-    locomotion_prior_feedback_roll: float = 0.0,
-    locomotion_prior_feedback_yaw: float = 0.0,
+    locomotion_prior_feedback_pitch: float | None = None,
+    locomotion_prior_feedback_roll: float | None = None,
+    locomotion_prior_feedback_yaw: float | None = None,
     cbp_hidden_sizes: str | tuple[int, ...] | list[int] = (128, 128),
     cbp_replacement_rate: float = 1e-4,
     cbp_maturity_threshold: int = 100,
@@ -838,6 +944,16 @@ def train_robot(
     )
     current_locomotion_prior_residual_scale = float(
         residual_scale_schedule["initial_scale"]
+    )
+    (
+        locomotion_prior_feedback_pitch,
+        locomotion_prior_feedback_roll,
+        locomotion_prior_feedback_yaw,
+    ) = _resolve_locomotion_prior_feedback(
+        locomotion_action_prior=locomotion_action_prior,
+        pitch=locomotion_prior_feedback_pitch,
+        roll=locomotion_prior_feedback_roll,
+        yaw=locomotion_prior_feedback_yaw,
     )
     # One env spanning all requested tasks (shared obs/action space); pin a
     # single task per phase so the controller learns them sequentially.
@@ -1120,6 +1236,9 @@ def train_robot(
                 "episodes": 0,
                 "success_rate": 0.0,
                 "failure_rate": 0.0,
+                "physical_fall_rate": 0.0,
+                "support_contract_failure_rate": 0.0,
+                "termination_summary": {},
                 "mean_return": 0.0,
                 "mean_length": 0.0,
                 "mean_final_delta_x_m": 0.0,
@@ -1133,6 +1252,7 @@ def train_robot(
                 "mean_final_tracked_z_m": 0.0,
                 "movement_summary": {},
                 "reward_term_summary": {},
+                "support_collision_diagnostics": {},
                 "action_summary": {},
                 "physical_checks": {},
                 "physical_success": False,
@@ -1174,6 +1294,11 @@ def train_robot(
                 "eval_mean_return": ev.mean_return,
                 "eval_success_rate": promotion_eval["success_rate"],
                 "eval_failure_rate": promotion_eval["failure_rate"],
+                "eval_physical_fall_rate": promotion_eval["physical_fall_rate"],
+                "eval_support_contract_failure_rate": promotion_eval[
+                    "support_contract_failure_rate"
+                ],
+                "termination_summary": promotion_eval["termination_summary"],
                 "eval_mean_length": promotion_eval["mean_length"],
                 "pre_mean_final_delta_x_m": pre_success_eval["mean_final_delta_x_m"],
                 "eval_mean_final_delta_x_m": promotion_eval["mean_final_delta_x_m"],
@@ -1204,6 +1329,9 @@ def train_robot(
                 "physical_checks": promotion_eval["physical_checks"],
                 "movement_summary": promotion_eval["movement_summary"],
                 "reward_term_summary": promotion_eval["reward_term_summary"],
+                "support_collision_diagnostics": promotion_eval[
+                    "support_collision_diagnostics"
+                ],
                 "action_summary": promotion_eval["action_summary"],
                 "learning_return_delta": float(ev.mean_return - pre_ev.mean_return),
                 "learning_success_rate_delta": float(
@@ -1258,6 +1386,11 @@ def train_robot(
                 "success_rate": promotion_eval["success_rate"],
                 "eval_success_rate": promotion_eval["success_rate"],
                 "failure_rate": promotion_eval["failure_rate"],
+                "physical_fall_rate": promotion_eval["physical_fall_rate"],
+                "support_contract_failure_rate": promotion_eval[
+                    "support_contract_failure_rate"
+                ],
+                "termination_summary": promotion_eval["termination_summary"],
                 "mean_final_delta_x_m": promotion_eval["mean_final_delta_x_m"],
                 "mean_final_delta_y_m": promotion_eval["mean_final_delta_y_m"],
                 "mean_final_delta_yaw_rad": promotion_eval["mean_final_delta_yaw_rad"],
@@ -1277,6 +1410,9 @@ def train_robot(
                 "physical_checks": promotion_eval["physical_checks"],
                 "movement_summary": promotion_eval["movement_summary"],
                 "reward_term_summary": promotion_eval["reward_term_summary"],
+                "support_collision_diagnostics": promotion_eval[
+                    "support_collision_diagnostics"
+                ],
                 "action_summary": promotion_eval["action_summary"],
                 "learning_return_delta": float(ev.mean_return - pre_ev.mean_return),
                 "learning_success_rate_delta": float(
@@ -1453,7 +1589,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-normalize", action="store_true")
     p.add_argument(
         "--locomotion-action-prior",
-        choices=("none", "gait", "hiwonder_sine"),
+        choices=(
+            "none",
+            "gait",
+            "hiwonder_sine",
+            "hiwonder_contact_sine",
+            "hiwonder_low_slip_contact_sine",
+        ),
         default="none",
     )
     p.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
@@ -1468,9 +1610,9 @@ def main(argv: list[str] | None = None) -> None:
         choices=("joint", "hiwonder_stride_mod"),
         default="joint",
     )
-    p.add_argument("--locomotion-prior-feedback-pitch", type=float, default=0.0)
-    p.add_argument("--locomotion-prior-feedback-roll", type=float, default=0.0)
-    p.add_argument("--locomotion-prior-feedback-yaw", type=float, default=0.0)
+    p.add_argument("--locomotion-prior-feedback-pitch", type=float, default=None)
+    p.add_argument("--locomotion-prior-feedback-roll", type=float, default=None)
+    p.add_argument("--locomotion-prior-feedback-yaw", type=float, default=None)
     p.add_argument("--out-dir", default="checkpoints/alberta_text_conditioned")
     p.add_argument("--require-phase-success", action="store_true")
     p.add_argument("--min-phase-success-rate", type=float, default=1.0)

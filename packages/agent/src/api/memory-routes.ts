@@ -289,19 +289,21 @@ async function fetchMemoriesFromTables(
     Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
     200,
   );
-  const allMemories: TaggedMemory[] = [];
-
-  for (const tableName of tables) {
-    const memories = await runtime.getMemories({
-      agentId: runtime.agentId as UUID,
-      roomId: params.roomId,
-      tableName,
-      limit: perTableLimit,
-    });
-    for (const m of memories) {
-      allMemories.push(Object.assign(m, { _table: tableName }));
-    }
-  }
+  // Read every table concurrently — they are independent queries, and a
+  // sequential loop made the feed's first paint wait on N round-trips. Promise.all
+  // preserves input order, so the flattened result matches the old ordering.
+  const perTableMemories = await Promise.all(
+    tables.map(async (tableName) => {
+      const memories = await runtime.getMemories({
+        agentId: runtime.agentId as UUID,
+        roomId: params.roomId,
+        tableName,
+        limit: perTableLimit,
+      });
+      return memories.map((m) => Object.assign(m, { _table: tableName }));
+    }),
+  );
+  const allMemories: TaggedMemory[] = perTableMemories.flat();
 
   // The DB adapter ignores entityId in getMemories (used only for RLS
   // context). Post-filter here so person-centric views actually work.

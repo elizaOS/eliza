@@ -18,6 +18,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
+import { resolveImageDigest } from "./containers/registry-probe";
 import { isAlreadyGoneMessage } from "./docker-error-classifier";
 import { dockerNodeManager } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
@@ -61,6 +62,13 @@ export interface DockerSandboxMetadata {
   agentId: string;
   volumePath: string;
   dockerImage: string;
+  /**
+   * Registry-resolved sha256 digest of `dockerImage` at provision time.
+   * Null when the image is not on a supported registry (e.g. a local-only
+   * name) or the registry was unreachable. The fleet-upgrade reconciler
+   * uses this to detect when the tag's digest has moved.
+   */
+  imageDigest: string | null;
   headscaleIp?: string;
 }
 
@@ -160,6 +168,20 @@ function shouldInstallStewardPlugin(
     agentId.toLowerCase() === "sol" ||
     environmentVars.STEWARD_ENABLE_TRADE_PLUGIN === "true" ||
     env.STEWARD_ENABLE_TRADE_PLUGIN === "true"
+  );
+}
+
+export function requiresHeadscaleRoute(
+  env: Partial<Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>> = {
+    HEADSCALE_API_KEY: getCloudAwareEnv().HEADSCALE_API_KEY,
+    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
+      getCloudAwareEnv().AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+  },
+): boolean {
+  if (!env.HEADSCALE_API_KEY?.trim()) return false;
+  return !(
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
   );
 }
 
@@ -464,6 +486,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // retry logic provide safety against concurrent capacity changes.
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
+      excludeNodeId: config.excludeNodeId,
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
@@ -495,7 +518,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.warn(
         "[docker-sandbox] No nodes in DB, falling back to CONTAINERS_DOCKER_NODES env var (seed-only, no load balancing)",
       );
-      const envNodes = parseDockerNodes();
+      const allEnvNodes = parseDockerNodes();
+      const envNodes = config.excludeNodeId
+        ? allEnvNodes.filter((n) => n.nodeId !== config.excludeNodeId)
+        : allEnvNodes;
+      if (envNodes.length === 0) {
+        throw new Error(
+          `[docker-sandbox] No nodes available (excludeNodeId=${config.excludeNodeId ?? "none"} filtered out all seed nodes)`,
+        );
+      }
       const envNode = envNodes[Math.floor(Math.random() * envNodes.length)]!;
       nodeId = envNode.nodeId;
       hostname = envNode.hostname;
@@ -823,6 +854,19 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    const meta: ContainerMeta = {
+      nodeId,
+      hostname,
+      containerName,
+      bridgePort,
+      webUiPort,
+      agentId,
+      sshPort,
+      sshUser,
+      hostKeyFingerprint,
+    };
+    this.containers.set(containerName, meta);
+
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
@@ -843,22 +887,49 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // 9. Store metadata in in-memory cache (includes SSH details for stop/runCommand)
-    const meta: ContainerMeta = {
-      nodeId,
-      hostname,
-      containerName,
-      bridgePort,
-      webUiPort,
-      agentId,
-      sshPort,
-      sshUser,
-      hostKeyFingerprint,
-    };
-    this.containers.set(containerName, meta);
+    if (requiresHeadscaleRoute() && !headscaleIp) {
+      const errorMessage =
+        "Headscale VPN is configured, but the sandbox did not register a headscale_ip. " +
+        "Refusing to mark the agent running without a routable internal ingress; " +
+        "set AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1 only for legacy public-host routing.";
+      logger.error(`[docker-sandbox] ${errorMessage}`, {
+        agentId,
+        containerName,
+        nodeId,
+      });
+      await ssh
+        .exec(
+          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          DOCKER_CMD_TIMEOUT_MS,
+        )
+        .then(() => {
+          logger.info(
+            `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
+          );
+        })
+        .catch((cleanupErr) => {
+          logger.warn(
+            `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        });
+      await this.stop(containerName).catch((cleanupErr) => {
+        const cleanupMessage =
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        logger.warn(
+          `[docker-sandbox] Cleanup after missing Headscale registration failed for ${containerName}: ${cleanupMessage}`,
+        );
+      });
+      throw new Error(errorMessage);
+    }
 
     // 10. Return handle with strongly-typed metadata
     const targetHost = headscaleIp || hostname;
+
+    // Probe ghcr.io for the image's current digest so the fleet-upgrade
+    // reconciler can detect when the tag has been republished. Returns null
+    // on bare image names or registry errors — both are treated as
+    // "unknown, leave alone" by the reconciler.
+    const imageDigest = await resolveImageDigest(resolvedImage);
 
     const metadata: DockerSandboxMetadata = {
       provider: "docker",
@@ -870,6 +941,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       agentId,
       volumePath,
       dockerImage: resolvedImage,
+      imageDigest,
       headscaleIp: headscaleIp || undefined,
     };
 
@@ -950,6 +1022,84 @@ export class DockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
   // stop
   // ------------------------------------------------------------------
+
+  /**
+   * Stop and remove a container on a specific node using explicit node info.
+   * Used by the fleet-upgrade handler to tear down the old container AFTER
+   * the blue/green swap has already updated the agent_sandboxes row to point
+   * at the blue — at which point `this.containers` and the DB both resolve
+   * to the blue, so the regular `stop(sandboxId)` would target the wrong
+   * container.
+   *
+   * Best-effort: a swap that already redirected traffic doesn't break if we
+   * leave a zombie on the old node; the next reconciliation pass plus the
+   * autoscaler's idle-node drain handle eventual cleanup. We still try
+   * stop+rm with graceful drain so users on websockets get a SIGTERM rather
+   * than an abrupt kill.
+   */
+  async stopOnSpecificNode(
+    node: DockerNode,
+    containerName: string,
+    gracefulSeconds = 30,
+  ): Promise<void> {
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? DEFAULT_SSH_PORT,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? DEFAULT_SSH_USERNAME,
+    );
+    let stopErr: unknown;
+    let rmErr: unknown;
+    try {
+      await ssh.exec(
+        `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+    } catch (err) {
+      stopErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isAlreadyGoneMessage(msg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: docker stop failed for ${containerName} on ${node.node_id}: ${msg}`,
+        );
+      }
+    }
+    try {
+      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+    } catch (err) {
+      rmErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isAlreadyGoneMessage(msg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: docker rm -f failed for ${containerName} on ${node.node_id}: ${msg}`,
+        );
+      }
+    }
+
+    // Only decrement allocated_count when we have evidence the container is
+    // actually gone: at least one call landed, or one reported "already gone".
+    // If BOTH calls failed for a non-already-gone reason (SSH down, daemon
+    // hung), the container may still be running on the node — decrementing
+    // would under-count and let the scheduler over-place onto this node.
+    // Mirrors the escalation guard in stop(), but stays best-effort (no throw)
+    // because traffic has already been redirected to the new container.
+    if (stopErr && rmErr) {
+      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
+      if (!isAlreadyGoneMessage(stopMsg) && !isAlreadyGoneMessage(rmMsg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: both stop and rm failed for ${containerName} on ${node.node_id}; leaving allocated_count intact (possible zombie) — stop -> ${stopMsg}; rm -> ${rmMsg}`,
+        );
+        return;
+      }
+    }
+
+    await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
+      logger.warn(
+        `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
 
   async stop(sandboxId: string): Promise<void> {
     const meta = await this.resolveContainer(sandboxId);

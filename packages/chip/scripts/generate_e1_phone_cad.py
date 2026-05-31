@@ -15,6 +15,7 @@ import json
 import math
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from contextlib import suppress
@@ -3041,6 +3042,36 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         "connections": connection_rows,
     }
     coverage_path.write_text(json.dumps(connection_coverage, indent=2) + "\n")
+    coverage_lines = [
+        "# E1 Phone CAD Connection Coverage",
+        "",
+        f"Status: {connection_coverage['status']}.",
+        "",
+        "## Summary",
+        "",
+        f"- Required connections: {connection_coverage['required_connection_count']}",
+        f"- Passing connections: {connection_coverage['passing_connection_count']}",
+        f"- Terminal markers: {connection_coverage['required_connection_terminal_marker_count']}",
+        f"- Solid STEP connection parts: {connection_coverage['required_connection_solid_step_part_count']}",
+        f"- Represented nets: {connection_coverage['represented_net_count_total']}",
+        f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
+        f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
+        "",
+        "## Connections",
+        "",
+    ]
+    for row in connection_rows:
+        result = "PASS" if row["pass"] else "BLOCKED"
+        coverage_lines.append(
+            f"- {result}: `{row['id']}` uses `{row['cad_part']}` from `{row['from']}` "
+            f"to `{row['to']}`; nets={row['represented_net_count']}, "
+            f"routes={row['represented_route_count']}, "
+            f"terminals=`{row['from_terminal_part']}`/`{row['to_terminal_part']}`, "
+            f"span={row['visual_route_span_mm']} mm, "
+            f"endpoint_distance={row['endpoint_center_distance_mm']} mm"
+        )
+    (REVIEW_DIR / "cad-connection-coverage.md").write_text("\n".join(coverage_lines) + "\n")
     return connection_coverage
 
 
@@ -6178,6 +6209,17 @@ def write_solid_cad_handoff_artifacts(
         "# E1 Phone CAD Connection Coverage",
         "",
         f"Status: {connection_coverage['status']}.",
+        "",
+        "## Summary",
+        "",
+        f"- Required connections: {connection_coverage['required_connection_count']}",
+        f"- Passing connections: {connection_coverage['passing_connection_count']}",
+        f"- Terminal markers: {connection_coverage['required_connection_terminal_marker_count']}",
+        f"- Solid STEP connection parts: {connection_coverage['required_connection_solid_step_part_count']}",
+        f"- Represented nets: {connection_coverage['represented_net_count_total']}",
+        f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
+        f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
         "",
         "## Connections",
         "",
@@ -15910,7 +15952,52 @@ def write_board_step_readiness_artifacts(
     component_models_for_intake = component_manifest_for_intake.get("models", [])
     if not isinstance(component_models_for_intake, list):
         component_models_for_intake = []
-    kicad_cli_path = shutil.which("kicad-cli")
+    bundled_kicad_cli = ROOT / "tools/bin/kicad-cli"
+    kicad_cli_path = str(bundled_kicad_cli) if bundled_kicad_cli.is_file() else shutil.which("kicad-cli")
+    kicad_cli_runner = ROOT / "scripts/kicad_run.sh"
+    kicad_cli_available = bool(kicad_cli_path) or kicad_cli_runner.is_file()
+
+    def kicad_command(*args: str) -> list[str]:
+        if kicad_cli_path:
+            return [kicad_cli_path, *args]
+        return [str(kicad_cli_runner), "kicad-cli", *args]
+
+    def kicad_probe(*args: str) -> tuple[int | None, str]:
+        if not kicad_cli_available:
+            return None, ""
+        with suppress(Exception):
+            completed = subprocess.run(
+                kicad_command(*args),
+                cwd=ROOT,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+            )
+            return completed.returncode, completed.stdout
+        return None, ""
+
+    version_rc, kicad_version_output = kicad_probe("version")
+    sch_help_rc, sch_help = kicad_probe("sch", "--help")
+    pcb_help_rc, pcb_help = kicad_probe("pcb", "--help")
+    step_help_rc, step_help = kicad_probe("pcb", "export", "step", "--help")
+    sch_erc_available = sch_help_rc == 0 and "erc" in sch_help
+    pcb_drc_available = pcb_help_rc == 0 and "drc" in pcb_help
+    pcb_step_export_available = (
+        step_help_rc in {0, 1} and "Usage: step" in step_help and "--subst-models" in step_help
+    )
+    kicad_version = kicad_version_output.strip()
+    pcb_step_export_status = (
+        "blocked_kicad_cli_lacks_pcb_export_step"
+        if not pcb_step_export_available
+        else "blocked_kicad_cli_7_cannot_open_current_board"
+        if kicad_version.startswith("7.")
+        else "available_not_release_validated"
+    )
+    required_release_commands_available = (
+        sch_erc_available and pcb_drc_available and pcb_step_export_available
+    )
     kicad_cli_preflight = {
         "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
         "claim_boundary": (
@@ -15918,23 +16005,40 @@ def write_board_step_readiness_artifacts(
             "environment evidence only and does not grant release credit."
         ),
         "tool": "kicad-cli",
-        "available": bool(kicad_cli_path),
-        "resolved_path": kicad_cli_path or "",
+        "available": kicad_cli_available,
+        "resolved_path": kicad_cli_path
+        or ("scripts/kicad_run.sh kicad-cli" if kicad_cli_runner.is_file() else ""),
+        "version": kicad_version,
+        "sch_erc_available": sch_erc_available,
+        "pcb_drc_available": pcb_drc_available,
+        "pcb_step_export_available": pcb_step_export_available,
+        "required_release_commands_available": required_release_commands_available,
         "required_for": [
             "board/kicad/e1-phone/production/reports/drc.json",
             "board/kicad/e1-phone/production/reports/erc.json",
+            "board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
         "attempted_commands": [
             "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
             "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json",
+            "kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
-        "drc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
-        "erc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
+        "drc_status": (
+            "blocked_kicad_cli_drc_not_run"
+            if pcb_drc_available
+            else "blocked_kicad_cli_lacks_pcb_drc"
+        ),
+        "erc_status": (
+            "blocked_kicad_cli_erc_not_run"
+            if sch_erc_available
+            else "blocked_kicad_cli_lacks_sch_erc"
+        ),
+        "step_export_status": pcb_step_export_status,
         "release_credit": False,
         "next_action": (
-            "Install KiCad CLI in the release environment and run DRC/ERC against "
-            "the routed KiCad board and schematic; archive raw JSON plus waivers "
-            "before promoting the routed-board intake."
+            "Install a release-capable KiCad CLI with sch erc, pcb drc, and pcb "
+            "export step; rerun DRC/ERC/STEP against the approved routed board "
+            "and archive raw JSON plus waivers before promoting the routed-board intake."
         ),
     }
     routed_kicad_preflight_path.write_text(json.dumps(kicad_cli_preflight, indent=2) + "\n")
@@ -16295,6 +16399,17 @@ def write_board_step_readiness_artifacts(
         or development_board_state["development_footprint_refs"]
         or 0
     )
+    expected_routed_development_route_count = int(routed_development_intake.get("route_count") or 0)
+    expected_routed_development_segment_count = int(
+        routed_development_intake.get("segment_count")
+        or development_board_state["segment_count"]
+        or 0
+    )
+    expected_routed_development_via_count = int(
+        development_step_intake.get("via_visual_count")
+        or development_board_state["via_count"]
+        or 0
+    )
     development_step_local_review_ready = (
         development_board_state["exists"]
         and expected_development_footprint_count > 0
@@ -16304,8 +16419,12 @@ def write_board_step_readiness_artifacts(
         and development_board_state["e1phone_footprint_refs"] == 0
         and development_board_state["placeholder_marker_count"] == 0
         and development_board_state["segment_count"] > 0
-        and development_board_state["routed_development_route_count"] == 153
-        and development_board_state["routed_development_segment_count"] == 306
+        and expected_routed_development_route_count > 0
+        and development_board_state["routed_development_route_count"]
+        == expected_routed_development_route_count
+        and expected_routed_development_segment_count > 0
+        and development_board_state["routed_development_segment_count"]
+        == expected_routed_development_segment_count
         and development_board_state["routed_development_missing_required_shared_net_count"] == 0
         and development_board_state["routed_development_missing_route_domain_net_count"] == 0
         and development_board_state["step_exists"]
@@ -16524,14 +16643,18 @@ def write_board_step_readiness_artifacts(
         == int(development_step_intake.get("footprint_envelope_count") or 0)
         and cast(int, detailed_routed_step_candidate["pad_contact_visual_count"]) > 0
         and cast(int, detailed_routed_step_candidate["route_segment_visual_count"]) > 0
-        and detailed_routed_step_candidate["route_visual_record_count"] == 306
-        and detailed_routed_step_candidate["via_visual_record_count"] == 24
+        and detailed_routed_step_candidate["route_visual_record_count"]
+        == expected_routed_development_segment_count
+        and detailed_routed_step_candidate["via_visual_record_count"]
+        == expected_routed_development_via_count
         and detailed_routed_step_candidate["filled_copper_zone_record_count"]
         == int(development_step_intake.get("filled_copper_zone_visual_count") or 0)
         and detailed_routed_step_candidate["filled_copper_zone_filled_polygon_count"]
         == int(development_step_intake.get("filled_copper_zone_polygon_count") or 0)
-        and detailed_routed_step_candidate["component_model_record_count"] == 89
-        and detailed_routed_step_candidate["cad_connection_record_count"] == 32
+        and detailed_routed_step_candidate["component_model_record_count"]
+        == len(component_model_records)
+        and detailed_routed_step_candidate["cad_connection_record_count"]
+        == len(cad_connection_records)
         and detailed_routed_step_candidate["all_route_records_have_net_layer_class_and_source"]
         and detailed_routed_step_candidate["all_component_records_have_local_step"]
         and detailed_routed_step_candidate["all_connection_records_have_cad_step"]
@@ -16695,8 +16818,10 @@ def write_board_step_readiness_artifacts(
         {
             "id": "development_routed_tracks_present_for_local_review",
             "pass": development_step_local_review_ready
-            and development_board_state["routed_development_route_count"] == 153
-            and development_board_state["routed_development_segment_count"] == 306,
+            and development_board_state["routed_development_route_count"]
+            == expected_routed_development_route_count
+            and development_board_state["routed_development_segment_count"]
+            == expected_routed_development_segment_count,
             "evidence": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
         },
         {
@@ -16789,8 +16914,10 @@ def write_board_step_readiness_artifacts(
             "has_detailed_blocked_routed_step_candidate": detailed_routed_step_candidate_ready,
             "has_development_routed_tracks_for_local_review": (
                 development_step_local_review_ready
-                and development_board_state["routed_development_route_count"] == 153
-                and development_board_state["routed_development_segment_count"] == 306
+                and development_board_state["routed_development_route_count"]
+                == expected_routed_development_route_count
+                and development_board_state["routed_development_segment_count"]
+                == expected_routed_development_segment_count
             ),
             "has_development_footprints_replaced_for_local_review": (
                 development_step_local_review_ready
@@ -18596,8 +18723,11 @@ def write_end_to_end_objective_acceptance_artifacts(
         },
         {
             "id": "full_cad_boolean_interference",
-            "status": full_cad_boolean.get("status"),
-            "pass": full_cad_boolean.get("status") == "full_cad_boolean_interference_pass",
+            "status": full_cad_boolean.get("overall_status") or full_cad_boolean.get("status"),
+            "pass": (
+                full_cad_boolean.get("overall_status") == "pass"
+                or full_cad_boolean.get("status") == "full_cad_boolean_interference_pass"
+            ),
             "required_evidence": [
                 "full-cad-boolean-interference.json",
                 "full-cad-boolean-interference-results-template.csv",

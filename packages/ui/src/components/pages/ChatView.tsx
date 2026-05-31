@@ -255,10 +255,22 @@ export function ChatView({
     const controller = new AbortController();
     fetchWithCsrf("/api/coding-agents/preflight", { signal: controller.signal })
       .then((r) => r.json())
-      .then((data: { installed?: unknown[]; available?: boolean }) => {
+      .then((data: unknown) => {
+        if (Array.isArray(data)) {
+          setCodingAgentsAvailable(
+            data.some(
+              (item) =>
+                typeof item === "object" &&
+                item !== null &&
+                (item as { installed?: unknown }).installed === true,
+            ),
+          );
+          return;
+        }
+        const status = data as { installed?: unknown[]; available?: boolean };
         setCodingAgentsAvailable(
-          (Array.isArray(data.installed) && data.installed.length > 0) ||
-            data.available === true,
+          (Array.isArray(status.installed) && status.installed.length > 0) ||
+            status.available === true,
         );
       })
       .catch(() => {

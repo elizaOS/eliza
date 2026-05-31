@@ -50,6 +50,16 @@ def test_ams_contract_passes() -> None:
     result = run("check_ams_contract.py")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "PASS ams_block_contract" in result.stdout
+    for path in (ROOT / "docs/spec-db/ams").glob("*.yaml"):
+        contract = yaml.safe_load(path.read_text())
+        for key in (
+            "claim_allowed",
+            "release_claim_allowed",
+            "electrical_signoff_claim_allowed",
+            "vendor_ip_claim_allowed",
+            "silicon_claim_allowed",
+        ):
+            assert contract.get(key) is False, f"{path.name}: {key}"
 
 
 def test_padring_substrate_passes() -> None:

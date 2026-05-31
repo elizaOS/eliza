@@ -4,17 +4,18 @@
  * Pre-agent / home-screen brand wiring test.
  *
  * Asserts that `App.tsx` wraps the StartupScreen (pre-agent gate) in
- * `<CloudVideoBackground>` so the home screen renders over CLOUDS per brand,
- * and that the cloud component itself can produce either the expected `<video>`
- * element with cloud sources or a static poster for startup. Rendering the full <App> would require mocking the
- * entire AppContext + boot config + capacitor surfaces, which is brittle —
- * this hits the two load-bearing facts directly.
+ * `<HomescreenBackdrop>` so onboarding renders over the brand's living
+ * crystal-ball-over-orange scene (clouds removed), and that the backdrop itself
+ * paints brand orange and layers its children above the canvas. Rendering the
+ * full <App> would require mocking the entire AppContext + boot config +
+ * capacitor surfaces, which is brittle — this hits the load-bearing facts
+ * directly.
  */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import {
   afterAll,
   afterEach,
@@ -77,8 +78,7 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
-import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
+import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 const APP_MAIN_TS = readFileSync(
@@ -99,75 +99,58 @@ const WINDOW_SHELL_TS = readFileSync(
 );
 
 describe("App pre-agent cloud wiring", () => {
-  it("wraps the pre-agent StartupScreen in a full-screen CloudVideoBackground", () => {
+  it("wraps the pre-agent StartupScreen in a full-screen HomescreenBackdrop", () => {
     // Pull the contents of the `if (startupCoordinator.phase !== "ready" …)`
-    // pre-agent gate and assert clouds are wired there. We grep for the
-    // testid we added so the assertion fails loudly if the wrapper is moved.
+    // pre-agent gate and assert the crystal-ball backdrop is wired there. We
+    // grep for the testid we kept so the assertion fails loudly if the wrapper
+    // is moved.
     expect(APP_TSX).toContain(
-      'import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground"',
+      'import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop"',
     );
     expect(APP_TSX).toContain('data-testid="pre-agent-cloud-shell"');
     expect(APP_TSX).toMatch(
-      /<CloudVideoBackground[\s\S]*<StartupScreen[\s\S]*<\/CloudVideoBackground>/,
+      /<HomescreenBackdrop[\s\S]*<StartupScreen[\s\S]*<\/HomescreenBackdrop>/,
     );
-    // The clouds are a true full-viewport background (fixed inset:0) with a
-    // light scrim and theme-aware black text layered above.
+    // The backdrop is a true full-viewport background (fixed inset:0) with
+    // theme-aware text layered above the crystal-ball canvas.
     expect(APP_TSX).toMatch(/position: "fixed"/);
-    expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
     expect(APP_TSX).toMatch(/text-txt/);
   });
 
-  it("shows the poster first, then streams the cloud loop video over it", async () => {
+  it("paints brand orange and mounts the crystal-ball canvas behind its children", () => {
     const { container } = render(
-      <CloudVideoBackground scrim={0.05}>
+      <HomescreenBackdrop>
         <div data-testid="welcome">welcome</div>
-      </CloudVideoBackground>,
+      </HomescreenBackdrop>,
     );
 
-    // Poster image is present immediately (jpeg-first).
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      CLOUD_BACKGROUND_ASSETS.poster,
-    );
+    // The crystal-ball canvas container mounts (empty in jsdom — no WebGL).
+    expect(
+      container.querySelector('[data-testid="homescreen-canvas"]'),
+    ).not.toBeNull();
 
-    // The video layer mounts after the deferred post-load tick.
-    await waitFor(
-      () => {
-        expect(container.querySelector("video")).not.toBeNull();
-      },
-      { timeout: 2000 },
-    );
-    const video = container.querySelector("video");
-    expect(video?.getAttribute("preload")).toBe("auto");
-    expect(video?.getAttribute("poster")).toBe(CLOUD_BACKGROUND_ASSETS.poster);
+    // The wrapper paints brand orange so onboarding is on-brand even before
+    // WebGL initializes (reduced-motion, jsdom, SSR).
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.style.background).toContain("--brand-orange");
 
-    const srcAttrs = Array.from(
-      container.querySelectorAll("video > source"),
-    ).map((s) => s.getAttribute("src"));
-    expect(srcAttrs).toContain(CLOUD_BACKGROUND_ASSETS.source1080pMp4);
-
-    // children still rendered above the video
+    // children still rendered above the canvas
     expect(
       container.querySelector('[data-testid="welcome"]')?.textContent,
     ).toBe("welcome");
   });
 
-  it("renders only the poster when not animated", () => {
+  it("layers the children wrapper above the canvas in Z order", () => {
     const { container } = render(
-      <CloudVideoBackground
-        animated={false}
-        poster={CLOUD_BACKGROUND_ASSETS.poster}
-      >
+      <HomescreenBackdrop>
         <div data-testid="welcome">welcome</div>
-      </CloudVideoBackground>,
+      </HomescreenBackdrop>,
     );
 
-    expect(container.querySelector("video")).toBeNull();
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      CLOUD_BACKGROUND_ASSETS.poster,
-    );
-    expect(
-      container.querySelector('[data-testid="welcome"]')?.textContent,
-    ).toBe("welcome");
+    const welcome = container.querySelector('[data-testid="welcome"]');
+    const wrapper = welcome?.parentElement as HTMLElement;
+    expect(wrapper.style.zIndex).toBe("1");
+    expect(wrapper.style.position).toBe("relative");
   });
 
   it("keeps the assistant pill out of the full app shell", () => {
@@ -220,5 +203,14 @@ describe("App pre-agent cloud wiring", () => {
     expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
       'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
+  });
+
+  it("renders the home shell while a completed agent is still starting", () => {
+    expect(APP_TSX).toContain("function canRenderStartupHome");
+    expect(APP_TSX).toContain('phase === "starting-runtime"');
+    expect(APP_TSX).toContain('phase === "hydrating"');
+    expect(APP_TSX).toContain("!renderStartupHome");
+    expect(APP_TSX).toContain('data-testid="pre-agent-home-shell"');
+    expect(APP_TSX).toContain("<HomeShellContent />");
   });
 });

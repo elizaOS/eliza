@@ -2,18 +2,45 @@
   "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
   "claim_boundary": "Local tool preflight for routed-board DRC/ERC generation. This is environment evidence only and does not grant release credit.",
   "tool": "kicad-cli",
-  "available": false,
-  "resolved_path": "",
+  "available": true,
+  "resolved_path": "tools/bin/kicad-cli",
+  "version": "9.0.9",
+  "schema_warning": "KiCad emitted: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found",
+  "sch_erc_available": true,
+  "pcb_drc_available": true,
+  "pcb_step_export_available": true,
+  "required_release_commands_available": true,
   "required_for": [
     "board/kicad/e1-phone/production/reports/drc.json",
-    "board/kicad/e1-phone/production/reports/erc.json"
+    "board/kicad/e1-phone/production/reports/erc.json",
+    "board/kicad/e1-phone/production/step/routed-board-with-components.step"
   ],
   "attempted_commands": [
     "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
-    "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json"
+    "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json",
+    "kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output board/kicad/e1-phone/production/step/routed-board-with-components.step"
   ],
-  "drc_status": "blocked_tool_unavailable",
-  "erc_status": "blocked_tool_unavailable",
+  "drc_status": "blocked_kicad_cli_drc_violations",
+  "erc_status": "blocked_kicad_cli_erc_violations",
+  "step_export_status": "available_not_release_validated",
+  "last_local_probe": {
+    "claim_boundary": "Local probe only. Outputs were written under /tmp and do not replace production release reports.",
+    "drc": {
+      "command": "tools/bin/kicad-cli pcb drc --format json --output /tmp/e1-kicad-drc-erc/routed-drc.json board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+      "exit_code": 0,
+      "kicad_version": "9.0.9",
+      "violation_count": 1863,
+      "unconnected_item_count": 441,
+      "release_credit": false
+    },
+    "erc": {
+      "command": "tools/bin/kicad-cli sch erc --format json --output /tmp/e1-kicad-drc-erc/e1-phone-erc.json board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
+      "exit_code": 0,
+      "kicad_version": "9.0.9",
+      "violation_count": 366,
+      "release_credit": false
+    }
+  },
   "release_credit": false,
-  "next_action": "Install KiCad CLI in the release environment and run DRC/ERC against the routed KiCad board and schematic; archive raw JSON plus waivers before promoting the routed-board intake."
+  "next_action": "KiCad 9.0.9 can run local DRC/ERC, but the current routed candidate reports DRC/ERC violations. Fix or waive violations against an approved routed board, then archive production JSON reports and reviewer signoff before promoting the routed-board intake."
 }

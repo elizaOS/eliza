@@ -192,6 +192,17 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             "capture_system_bridge_runtime_evidence.py",
             " ".join(runtime_batch["commands"]),
         )
+        runtime_commands = " ".join(runtime_batch["commands"])
+        self.assertIn("--adb-connect 127.0.0.1:6520", runtime_commands)
+        self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
+        self.assertIn(
+            "--output packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json",
+            runtime_commands,
+        )
+        self.assertIn(
+            "--logcat packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log",
+            runtime_commands,
+        )
 
     def test_implemented_packaged_bridge_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

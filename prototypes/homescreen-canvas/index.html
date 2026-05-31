@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Milady Homescreen Canvas — Prototype</title>
+<style>
+  :root {
+    --accent: #ff5800;
+    --accent-rgb: 255, 88, 0;
+    --ink: #0b0b0c;
+    --paper: #ffffff;
+    --glass: rgba(255, 255, 255, 0.14);
+    --glass-border: rgba(255, 255, 255, 0.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  body {
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  #stage { position: fixed; inset: 0; }
+  /* The canvas is the homescreen background — every scene paints here. */
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---- Foreground blocks (chat / apps / notifications) ------------------- */
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+  .layer > * { pointer-events: auto; }
+
+  .block {
+    position: absolute;
+    border-radius: 18px;
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  /* pinned apps — 2 rows of 4 */
+  .apps {
+    top: 64px; left: 50%; transform: translateX(-50%);
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+    padding: 14px 16px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+  }
+  .app-tile {
+    width: 54px; height: 54px; border-radius: 15px;
+    display: grid; place-items: center; font-weight: 700; font-size: 17px;
+    color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.5);
+    background: linear-gradient(150deg, rgba(255,255,255,.22), rgba(255,255,255,.06));
+    border: 1px solid rgba(255,255,255,.28);
+  }
+
+  /* chat transcript + composer, anchored bottom-center */
+  .chat {
+    bottom: 26px; left: 50%; transform: translateX(-50%);
+    width: min(560px, calc(100vw - 40px));
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .bubbles { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow: hidden; }
+  .bubble {
+    max-width: 80%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px;
+    text-shadow: 0 1px 8px rgba(0,0,0,.55);
+  }
+  .bubble.user { align-self: flex-end; background: rgba(var(--accent-rgb), .9); }
+  .bubble.assistant { align-self: flex-start; background: var(--glass); border: 1px solid var(--glass-border); }
+  .composer {
+    display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
+    border-radius: 999px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+  }
+  .composer input {
+    flex: 1; background: transparent; border: 0; outline: 0; color: #fff; font-size: 15px;
+  }
+  .composer input::placeholder { color: rgba(255,255,255,.6); }
+  .mic, .send {
+    width: 40px; height: 40px; border-radius: 999px; border: 0; cursor: pointer;
+    display: grid; place-items: center; color: #fff; font-size: 16px;
+    background: rgba(var(--accent-rgb), .95);
+  }
+
+  /* notifications — top right, collapsible */
+  .notes {
+    top: 64px; right: 22px; width: 244px; padding: 12px 14px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .note { font-size: 12.5px; opacity: .92; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+  .note b { color: var(--accent); }
+
+  /* ---- Edit mode chrome -------------------------------------------------- */
+  .editing .block { outline: 1.5px dashed rgba(255,255,255,.55); cursor: grab; }
+  .editing .block::after {
+    content: attr(data-label); position: absolute; top: -10px; left: 10px;
+    font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    background: var(--accent); color: #111; padding: 2px 7px; border-radius: 6px; font-weight: 700;
+  }
+  /* the lorem-ipsum placeholder revealed under the chat while editing */
+  .lorem {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    width: min(560px, calc(100vw - 40px)); padding: 14px 16px; border-radius: 18px;
+    background: rgba(0,0,0,.28); border: 1px dashed rgba(255,255,255,.3);
+    color: rgba(255,255,255,.5); font-size: 12.5px; display: none;
+  }
+  .editing.chat-collapsed .lorem { display: block; }
+  .editing.chat-collapsed .chat { display: none; }
+
+  .topbar {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; padding: 6px;
+    border-radius: 999px; background: rgba(10,10,12,.6); border: 1px solid rgba(255,255,255,.12);
+    backdrop-filter: blur(14px); z-index: 40;
+  }
+  .topbar button {
+    height: 34px; padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer;
+    font-weight: 600; font-size: 13px; color: #fff; background: rgba(255,255,255,.1);
+  }
+  .topbar button:hover { background: rgba(255,255,255,.18); }
+  .topbar button.primary { background: var(--accent); color: #111; }
+  .topbar button:disabled { opacity: .35; cursor: default; }
+  .topbar .sep { width: 1px; height: 22px; background: rgba(255,255,255,.16); }
+
+  /* edit panel */
+  .editpanel {
+    position: absolute; left: 18px; top: 64px; width: 300px; z-index: 40;
+    background: rgba(10,10,12,.72); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px; padding: 14px; backdrop-filter: blur(16px);
+    display: none; flex-direction: column; gap: 12px;
+  }
+  .editing .editpanel { display: flex; }
+  .editpanel h3 { margin: 0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: rgba(255,255,255,.7); }
+  .editpanel textarea {
+    width: 100%; min-height: 64px; resize: vertical; border-radius: 10px; padding: 9px 11px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #fff;
+    font: inherit; outline: 0;
+  }
+  .editpanel .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-size: 11.5px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #fff;
+  }
+  .chip:hover { background: rgba(var(--accent-rgb), .25); border-color: rgba(var(--accent-rgb), .6); }
+  .apply { height: 36px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; background: var(--accent); color: #111; }
+
+  /* perf HUD */
+  .perf {
+    position: absolute; right: 18px; bottom: 18px; z-index: 40;
+    font: 11px ui-monospace, Menlo, monospace; color: rgba(255,255,255,.85);
+    background: rgba(10,10,12,.6); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px; padding: 8px 10px; min-width: 132px;
+  }
+  .perf .fps { font-size: 16px; font-weight: 700; }
+  .perf.warn { border-color: var(--accent); color: var(--accent); }
+  .perf .bar { height: 4px; border-radius: 3px; margin-top: 6px; background: #2bd66a; transition: width .2s, background .2s; }
+
+  .hint {
+    position: absolute; bottom: 18px; left: 18px; z-index: 40; max-width: 280px;
+    font-size: 11.5px; color: rgba(255,255,255,.55);
+  }
+  kbd { background: rgba(255,255,255,.14); border-radius: 5px; padding: 1px 6px; font: inherit; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="bg"></canvas>
+
+  <!-- Foreground blocks: each is a themeable, movable "block" in edit mode -->
+  <div class="layer" id="layer">
+    <div class="block apps" id="block-apps" data-label="Pinned apps">
+      <div class="app-tile">L</div><div class="app-tile">S</div>
+      <div class="app-tile">T</div><div class="app-tile">M</div>
+      <div class="app-tile">K</div><div class="app-tile">V</div>
+      <div class="app-tile">E</div><div class="app-tile">P</div>
+    </div>
+
+    <div class="block notes" id="block-notes" data-label="Notifications">
+      <div class="note"><b>Calendar</b> · standup in 20m</div>
+      <div class="note"><b>Mail</b> · 2 unread from team</div>
+      <div class="note"><b>Training</b> · eliza-1 2b run finished</div>
+    </div>
+
+    <div class="lorem">Lorem ipsum chat placeholder — the live chat is hidden so you can style the canvas underneath. Toggle it back with the Chat button.</div>
+
+    <div class="block chat" id="block-chat" data-label="Chat">
+      <div class="bubbles" id="bubbles">
+        <div class="bubble assistant">hey — i'm your homescreen. describe how you want me to look.</div>
+      </div>
+      <div class="composer">
+        <input id="chatInput" placeholder="Message, or describe a new look…" />
+        <button class="mic" title="Push to talk">●</button>
+        <button class="send" id="send" title="Send">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit-mode top bar -->
+  <div class="topbar">
+    <button id="editToggle" class="primary">Edit homescreen</button>
+    <div class="sep"></div>
+    <button id="undo" disabled>↶ Undo</button>
+    <button id="redo" disabled>↷ Redo</button>
+    <button id="reset">Reset to default</button>
+    <button id="dup">Duplicate</button>
+    <button id="chatCollapse">Hide chat</button>
+  </div>
+
+  <!-- Edit panel: natural-language scene editing (mock LLM in this prototype) -->
+  <div class="editpanel">
+    <h3>Describe the homescreen</h3>
+    <textarea id="prompt" placeholder="e.g. make the background black · give me a sci-fi jarvis UI · calm deep-space"></textarea>
+    <div class="row">
+      <span class="chip" data-p="make the background black">black bg</span>
+      <span class="chip" data-p="give me a sci-fi jarvis UI">sci-fi jarvis</span>
+      <span class="chip" data-p="calm deep space nebula">deep space</span>
+      <span class="chip" data-p="reset to the default crystal ball">default</span>
+    </div>
+    <button class="apply" id="apply">Apply change →</button>
+    <div style="font-size:11px;opacity:.55">In production this prompt is sent to the agent's HOMESCREEN.edit action, which returns a validated scene document. Here it's pattern-matched to canned scenes to demo the flow.</div>
+  </div>
+
+  <div class="perf" id="perf"><span class="fps" id="fps">– fps</span><div class="bar" id="perfBar" style="width:100%"></div></div>
+  <div class="hint">Voice + text both drive the canvas. Hold the mic dot to simulate speaking — the orb reacts to amplitude.</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://esm.sh/three@0.160.0" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+
+/* ============================================================================
+ * SCENE RUNTIME
+ * ----------------------------------------------------------------------------
+ * A scene is a factory: (ctx) => { update(dt, t), dispose() }.
+ * ctx is the documented INPUT CONTRACT every scene (built-in or agent-authored)
+ * receives. This mirrors the production runtime so the prototype doubles as the
+ * design reference for what the LLM edit-prompt must document.
+ *
+ *   ctx.THREE      three.js namespace
+ *   ctx.scene      THREE.Scene to add objects to (cleared between scenes)
+ *   ctx.camera     THREE.PerspectiveCamera
+ *   ctx.renderer   THREE.WebGLRenderer
+ *   ctx.size       { w, h, dpr }
+ *   ctx.theme      { accent:[r,g,b] 0..1, background:THREE.Color }
+ *   ctx.inputs     live, mutated each frame:
+ *       audioUser      0..1 mic amplitude
+ *       audioAssistant 0..1 TTS amplitude
+ *       energy         0..1 combined
+ *       pointer        { x, y, down }  (-1..1 normalized)
+ *       text           last user/agent text (string)
+ *       listening      bool
+ *       speaking       bool
+ * ========================================================================== */
+
+const canvas = document.getElementById("bg");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(0, 0, 4.6);
+
+const inputs = {
+  audioUser: 0, audioAssistant: 0, energy: 0,
+  pointer: { x: 0, y: 0, down: false },
+  text: "", listening: false, speaking: false,
+};
+
+const ctx = {
+  THREE, renderer, camera,
+  scene: null,
+  size: { w: 1, h: 1, dpr: 1 },
+  theme: { accent: [1, 0.345, 0], background: new THREE.Color(0xff5800) },
+  inputs,
+};
+
+let current = null;        // active scene instance
+let currentScene = null;   // active THREE.Scene
+
+function mountScene(factory) {
+  // tear down previous
+  if (current?.dispose) current.dispose();
+  if (currentScene) {
+    currentScene.traverse((o) => {
+      o.geometry?.dispose?.();
+      if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+      else o.material?.dispose?.();
+    });
+  }
+  currentScene = new THREE.Scene();
+  ctx.scene = currentScene;
+  current = factory(ctx);
+}
+
+/* ---- Shared: an inner "logo" texture drawn to a canvas (stands in for the
+ *      eliza mark; the production version projects the real brand SVG). ----- */
+function makeLogoTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, 512, 512);
+  // tight, faint halo so the mark floats without washing out the glass
+  const halo = g.createRadialGradient(256, 256, 10, 256, 256, 150);
+  halo.addColorStop(0, "rgba(255,255,255,0.35)");
+  halo.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = halo; g.fillRect(0, 0, 512, 512);
+  // wordmark — crisp, slightly smaller so it sits "inside" the ball
+  g.fillStyle = "rgba(255,255,255,0.95)";
+  g.font = "600 96px -apple-system, Inter, system-ui, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText("eliza", 256, 262);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/* ============================================================================
+ * SCENE 1 — DEFAULT: white Fresnel crystal-ball over orange.
+ *   - pulsing (breathing scale) + rippling (vertex noise displacement)
+ *   - eliza logo suspended inside, refracted by the shell → "crystal ball"
+ * ========================================================================== */
+function fresnelCrystalBall(ctx) {
+  const { THREE, scene, theme } = ctx;
+  scene.background = theme.background.clone();
+
+  const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(2.5, 3, 4);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-3, -1, 2);
+  const amb = new THREE.AmbientLight(0xffffff, 0.4);
+  scene.add(key, fill, amb);
+
+  // inner logo plane (the thing seen "inside" the ball)
+  const logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 1.1),
+    new THREE.MeshBasicMaterial({ map: makeLogoTexture(), transparent: true, depthWrite: false, opacity: 0.85 })
+  );
+  logo.position.z = -0.25;
+  scene.add(logo);
+
+  // the crystal shell — Fresnel-lit, lightly rippling sphere
+  const uniforms = {
+    uTime: { value: 0 },
+    uEnergy: { value: 0 },
+    uPulse: { value: 0 },
+    uRim: { value: new THREE.Color(0xffffff) },
+    uAccent: { value: new THREE.Color().fromArray(theme.accent) },
+  };
+  const shell = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1, 64),
+    new THREE.ShaderMaterial({
+      uniforms, transparent: true, side: THREE.FrontSide, depthWrite: false,
+      vertexShader: `
+        uniform float uTime; uniform float uEnergy;
+        varying vec3 vN; varying vec3 vView;
+        // cheap value noise
+        float hash(vec3 p){ return fract(sin(dot(p, vec3(17.1,31.7,13.3)))*43758.5); }
+        float noise(vec3 p){
+          vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+          float n=mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),
+                          mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+                      mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
+                          mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+          return n;
+        }
+        void main(){
+          vec3 n = normalize(normal);
+          float ripple = noise(position*2.4 + vec3(0.0, uTime*0.5, uTime*0.2));
+          float amp = 0.018 + uEnergy*0.10;
+          vec3 displaced = position + n * (ripple-0.5) * amp;
+          vec4 mv = modelViewMatrix * vec4(displaced,1.0);
+          vN = normalize(normalMatrix * n);
+          vView = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform vec3 uRim; uniform vec3 uAccent; uniform float uEnergy; uniform float uPulse;
+        varying vec3 vN; varying vec3 vView;
+        void main(){
+          float ndv = max(dot(vN, vView), 0.0);
+          // crisp bright fresnel rim: sharp falloff so only the silhouette glows
+          float rimF = pow(1.0 - ndv, 4.0);
+          float rim = smoothstep(0.35, 1.0, rimF) + rimF * 0.35;
+          // a faint secondary inner ring for a glassy "double caustic" feel
+          float inner = pow(1.0 - ndv, 1.6) * 0.10;
+          // body stays mostly transparent so the logo + orange read through as glass
+          float body = (1.0 - ndv) * 0.05;
+          vec3 col = mix(uRim, uAccent, uEnergy * 0.6);
+          float a = clamp(rim * (0.85 + uPulse*0.15 + uEnergy*0.4) + inner + body, 0.0, 1.0);
+          gl_FragColor = vec4(col, a);
+        }`,
+    })
+  );
+  scene.add(shell);
+
+  return {
+    update(dt, t) {
+      uniforms.uTime.value = t;
+      uniforms.uEnergy.value += (ctx.inputs.energy - uniforms.uEnergy.value) * 0.15;
+      // pulse: slow breathing + audio
+      const pulse = 0.5 + 0.5 * Math.sin(t * 1.2);
+      uniforms.uPulse.value = pulse;
+      const s = 1 + pulse * 0.03 + ctx.inputs.energy * 0.06;
+      shell.scale.setScalar(s);
+      shell.rotation.y = t * 0.12;
+      logo.rotation.z = Math.sin(t * 0.3) * 0.05;
+      logo.scale.setScalar(1 + pulse * 0.02);
+      // subtle parallax toward pointer
+      ctx.scene.background.lerp(ctx.theme.background, 0.05);
+      camera.position.x += (ctx.inputs.pointer.x * 0.25 - camera.position.x) * 0.04;
+      camera.position.y += (ctx.inputs.pointer.y * 0.25 - camera.position.y) * 0.04;
+      camera.lookAt(0, 0, 0);
+    },
+    dispose() {},
+  };
+}
+
+/* ============================================================================
+ * SCENE 2 — SCI-FI JARVIS: wireframe core, rotating rings, grid, cyan accents.
+ * Demonstrates a *total* transformation from one natural-language instruction.
+ * ========================================================================== */
+function jarvis(ctx) {
+  const { THREE, scene } = ctx;
+  scene.background = new THREE.Color(0x04070d);
+  const cyan = 0x35e3ff;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  const p = new THREE.PointLight(cyan, 8, 0, 2); p.position.set(0, 0, 3); scene.add(p);
+
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.9, 1),
+    new THREE.MeshBasicMaterial({ color: cyan, wireframe: true })
+  );
+  scene.add(core);
+  const rings = [];
+  for (let i = 0; i < 3; i++) {
+    const r = new THREE.Mesh(
+      new THREE.TorusGeometry(1.25 + i * 0.22, 0.006, 8, 120),
+      new THREE.MeshBasicMaterial({ color: cyan, transparent: true, opacity: 0.6 - i * 0.12 })
+    );
+    r.rotation.x = Math.PI / 2 + i * 0.4; r.rotation.y = i * 0.6;
+    rings.push(r); scene.add(r);
+  }
+  const grid = new THREE.GridHelper(40, 40, cyan, 0x0a2230);
+  grid.position.y = -2.2; grid.material.opacity = 0.25; grid.material.transparent = true;
+  scene.add(grid);
+
+  return {
+    update(dt, t) {
+      core.rotation.x = t * 0.3; core.rotation.y = t * 0.4;
+      const s = 1 + ctx.inputs.energy * 0.3; core.scale.setScalar(s);
+      rings.forEach((r, i) => { r.rotation.z = t * (0.3 + i * 0.15) * (i % 2 ? -1 : 1); });
+    },
+    dispose() {},
+  };
+}
+
+/* ============================================================================
+ * SCENE 3 — DEEP SPACE: calm starfield nebula. Background-only customization.
+ * ========================================================================== */
+function deepSpace(ctx) {
+  const { THREE, scene } = ctx;
+  scene.background = new THREE.Color(0x05030f);
+  const N = 1400;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    pos[i*3] = (Math.random()-0.5)*16;
+    pos[i*3+1] = (Math.random()-0.5)*12;
+    pos[i*3+2] = (Math.random()-0.5)*10 - 2;
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9fb8ff, size: 0.03, transparent: true, opacity: 0.85 }));
+  scene.add(stars);
+  const neb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 48, 48),
+    new THREE.MeshBasicMaterial({ color: 0x7a3cff, transparent: true, opacity: 0.18 })
+  );
+  scene.add(neb);
+  return {
+    update(dt, t) {
+      stars.rotation.y = t * 0.02;
+      neb.scale.setScalar(1 + Math.sin(t*0.6)*0.05 + ctx.inputs.energy*0.2);
+    },
+    dispose() {},
+  };
+}
+
+/* ============================================================================
+ * SCENE DOCUMENTS + HISTORY
+ * A scene "document" is { id, label, factory key, theme patch }. The history
+ * stack gives undo / redo / reset — the same model the production reducer uses.
+ * ========================================================================== */
+const FACTORIES = {
+  "fresnel-crystal-ball": fresnelCrystalBall,
+  "jarvis": jarvis,
+  "deep-space": deepSpace,
+};
+const DEFAULT_DOC = { id: "default", label: "Crystal ball", factory: "fresnel-crystal-ball", bg: 0xff5800 };
+
+let history = [DEFAULT_DOC];
+let cursor = 0;
+
+function applyDoc(doc) {
+  ctx.theme.background = new THREE.Color(doc.bg ?? 0x000000);
+  mountScene(FACTORIES[doc.factory]);
+}
+function pushDoc(doc) {
+  history = history.slice(0, cursor + 1);
+  history.push(doc);
+  cursor = history.length - 1;
+  applyDoc(doc); syncChrome();
+}
+function undo() { if (cursor > 0) { cursor--; applyDoc(history[cursor]); syncChrome(); } }
+function redo() { if (cursor < history.length - 1) { cursor++; applyDoc(history[cursor]); syncChrome(); } }
+function resetDefault() { pushDoc({ ...DEFAULT_DOC, id: "reset-" + Date.now() }); }
+
+/* ---- MOCK "LLM": maps a natural-language instruction to a scene document.
+ *      In production this is the agent's HOMESCREEN.edit action returning a
+ *      validated scene doc; here we pattern-match a few canned transforms. -- */
+function mockEdit(promptText) {
+  const p = promptText.toLowerCase();
+  const base = history[cursor];
+  if (/jarvis|sci-?fi|hud|futuristic/.test(p)) return { id: "j"+Date.now(), label: "Jarvis HUD", factory: "jarvis", bg: 0x04070d };
+  if (/space|nebula|stars?|galaxy|cosmos/.test(p)) return { id: "s"+Date.now(), label: "Deep space", factory: "deep-space", bg: 0x05030f };
+  if (/default|crystal|reset/.test(p)) return { ...DEFAULT_DOC, id: "d"+Date.now() };
+  // color-only edits keep the current factory, patch the background
+  const colors = { black:0x000000, white:0xf2f2f2, orange:0xff5800, blue:0x123a8f, green:0x0e5a2f, purple:0x3a1d6e, red:0x7a1414, pink:0xff5fa2 };
+  for (const [name, hex] of Object.entries(colors)) {
+    if (new RegExp(`\\b${name}\\b`).test(p)) return { ...base, id: name+Date.now(), label: `${name} bg`, bg: hex };
+  }
+  // unknown → nudge accent, keep scene (so "do something cool" still does *something*)
+  return { ...base, id: "x"+Date.now(), label: "tweak", bg: base.bg };
+}
+
+/* ============================================================================
+ * RENDER LOOP + PERF
+ * ========================================================================== */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = window.innerWidth, h = window.innerHeight;
+  ctx.size = { w, h, dpr };
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// perf sampling — rolling FPS + warn + (demo) auto-optimize hint
+const perfEl = document.getElementById("perf");
+const fpsEl = document.getElementById("fps");
+const barEl = document.getElementById("perfBar");
+let frames = 0, perfClock = performance.now(), fps = 60;
+function samplePerf(now) {
+  frames++;
+  if (now - perfClock >= 500) {
+    fps = Math.round((frames * 1000) / (now - perfClock));
+    frames = 0; perfClock = now;
+    fpsEl.textContent = fps + " fps";
+    const ratio = Math.max(0, Math.min(1, fps / 60));
+    barEl.style.width = (ratio * 100) + "%";
+    const warn = fps < 45;
+    perfEl.classList.toggle("warn", warn);
+    barEl.style.background = warn ? "#ff5800" : (fps < 55 ? "#e8c437" : "#2bd66a");
+    if (warn && renderer.getPixelRatio() > 1) {
+      // auto self-optimize: drop backing resolution when the device bogs down
+      renderer.setPixelRatio(Math.max(1, renderer.getPixelRatio() - 0.25));
+    }
+  }
+}
+
+let last = performance.now(), t0 = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const t = (now - t0) / 1000;
+  // decay simulated audio
+  inputs.audioUser *= 0.94; inputs.audioAssistant *= 0.94;
+  inputs.energy = Math.max(inputs.audioUser, inputs.audioAssistant);
+  current?.update(dt, t);
+  renderer.render(currentScene, camera);
+  samplePerf(now);
+  requestAnimationFrame(frame);
+}
+
+applyDoc(DEFAULT_DOC);
+requestAnimationFrame(frame);
+
+/* ============================================================================
+ * EDIT-MODE CHROME WIRING
+ * ========================================================================== */
+const stage = document.getElementById("stage");
+const layer = document.getElementById("layer");
+const editToggle = document.getElementById("editToggle");
+const undoBtn = document.getElementById("undo");
+const redoBtn = document.getElementById("redo");
+let editing = false;
+
+function syncChrome() {
+  undoBtn.disabled = cursor <= 0;
+  redoBtn.disabled = cursor >= history.length - 1;
+}
+function setEditing(on) {
+  editing = on;
+  layer.classList.toggle("editing", on);
+  stage.classList.toggle("editing", on);
+  editToggle.textContent = on ? "Done editing" : "Edit homescreen";
+  editToggle.classList.toggle("primary", !on);
+}
+editToggle.onclick = () => setEditing(!editing);
+undoBtn.onclick = undo;
+redoBtn.onclick = redo;
+document.getElementById("reset").onclick = resetDefault;
+document.getElementById("dup").onclick = () => pushDoc({ ...history[cursor], id: "dup"+Date.now(), label: history[cursor].label + " copy" });
+document.getElementById("chatCollapse").onclick = (e) => {
+  layer.classList.toggle("chat-collapsed");
+  stage.classList.toggle("chat-collapsed");
+  e.target.textContent = layer.classList.contains("chat-collapsed") ? "Show chat" : "Hide chat";
+};
+
+document.getElementById("apply").onclick = () => {
+  const text = document.getElementById("prompt").value.trim();
+  if (!text) return;
+  pushDoc(mockEdit(text));
+};
+document.querySelectorAll(".chip").forEach((c) => {
+  c.onclick = () => { document.getElementById("prompt").value = c.dataset.p; pushDoc(mockEdit(c.dataset.p)); };
+});
+
+// chat input also accepts look-changes (chat-driven editing)
+document.getElementById("send").onclick = sendChat;
+document.getElementById("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
+function sendChat() {
+  const el = document.getElementById("chatInput");
+  const text = el.value.trim(); if (!text) return;
+  el.value = "";
+  addBubble(text, "user");
+  inputs.text = text;
+  const looksLikeEdit = /(background|theme|look|sci-?fi|jarvis|space|color|colour|crystal|black|white|orange|blue|green|purple|red|pink|reset|default)/i.test(text);
+  if (looksLikeEdit) {
+    pushDoc(mockEdit(text));
+    addBubble("done — updated your homescreen. say “reset” to go back.", "assistant");
+  } else {
+    addBubble("got it.", "assistant");
+  }
+}
+function addBubble(text, role) {
+  const b = document.createElement("div");
+  b.className = "bubble " + role; b.textContent = text;
+  const wrap = document.getElementById("bubbles");
+  wrap.appendChild(b);
+  while (wrap.children.length > 6) wrap.removeChild(wrap.firstChild);
+}
+
+// pointer → canvas input
+window.addEventListener("pointermove", (e) => {
+  inputs.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  inputs.pointer.y = -((e.clientY / window.innerHeight) * 2 - 1);
+});
+// hold the mic dot → simulate speaking amplitude
+const micBtn = document.querySelector(".mic");
+let micTimer = null;
+micBtn.addEventListener("pointerdown", () => {
+  inputs.speaking = true;
+  micTimer = setInterval(() => { inputs.audioUser = 0.5 + Math.random() * 0.5; }, 60);
+});
+const stopMic = () => { inputs.speaking = false; clearInterval(micTimer); };
+micBtn.addEventListener("pointerup", stopMic);
+micBtn.addEventListener("pointerleave", stopMic);
+
+// drag blocks while editing
+let drag = null;
+layer.addEventListener("pointerdown", (e) => {
+  if (!editing) return;
+  const block = e.target.closest(".block");
+  if (!block) return;
+  const r = block.getBoundingClientRect();
+  drag = { block, dx: e.clientX - r.left, dy: e.clientY - r.top };
+  block.style.transform = "none";
+  block.setPointerCapture?.(e.pointerId);
+});
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  drag.block.style.left = (e.clientX - drag.dx) + "px";
+  drag.block.style.top = (e.clientY - drag.dy) + "px";
+  drag.block.style.right = "auto"; drag.block.style.bottom = "auto";
+});
+window.addEventListener("pointerup", () => { drag = null; });
+
+// keyboard: cmd/ctrl+z undo, shift for redo, E toggles edit
+window.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault(); e.shiftKey ? redo() : undo();
+  } else if (e.key.toLowerCase() === "e" && !e.target.matches("input,textarea")) {
+    setEditing(!editing);
+  }
+});
+
+syncChrome();
+</script>
+</body>
+</html>

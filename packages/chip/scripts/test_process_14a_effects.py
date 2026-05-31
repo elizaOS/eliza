@@ -27,6 +27,9 @@ def load_spec() -> dict[str, object]:
 
 def test_process_14a_spec_is_fail_closed() -> None:
     data = load_spec()
+    flags = {key: value for key, value in data.items() if key.endswith("_claim_allowed")}
+    if not flags or any(value is not False for value in flags.values()):
+        raise AssertionError(flags)
     errors: list[str] = []
     checker.check_node_target(data, errors)
     checker.check_sources(data, errors)

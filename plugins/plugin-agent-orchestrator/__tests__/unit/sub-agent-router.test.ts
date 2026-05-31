@@ -1166,11 +1166,10 @@ describe("SubAgentRouter", () => {
         const publicPage = "https://example.test/apps/random-tweet/";
         const localStyle = `${localPage}style.css`;
         const publicScript = `${publicPage}app.js`;
-        vi.stubGlobal(
-          "fetch",
+        stubFetch(
           vi.fn(async () => {
             return new Response("ok", { status: 200 });
-          }),
+          }) as typeof fetch,
         );
         session = {
           ...sessionWithTask(`build and verify ${publicPage}`, undefined, {

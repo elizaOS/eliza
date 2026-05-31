@@ -15,6 +15,14 @@ ROOT = Path(__file__).resolve().parents[2]
 PAYLOAD = ROOT / "external/datasets/intel-floorset/payload"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/floorset_lite"
 CLAIM_BOUNDARY = "floorset_lite_conversion_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 REVISION = "a01137f8cb0406fcb1eef4a76e09445d95aab863"
 
 
@@ -111,6 +119,7 @@ def build_records(config_dir: Path, payload: Path, out_dir: Path) -> list[dict[s
         "schema": "eda.design_bundle.v1",
         "id": f"{case_id}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": config_dir.name,
             "revision": REVISION,
@@ -134,6 +143,7 @@ def build_records(config_dir: Path, payload: Path, out_dir: Path) -> list[dict[s
         "id": f"{case_id}-constraint-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "coordinate_system": "floorset_lite_tensor_coordinates_no_e1_coordinates",
             "node_features": [
@@ -212,6 +222,7 @@ def build_records(config_dir: Path, payload: Path, out_dir: Path) -> list[dict[s
         "id": f"{case_id}-tensor-conversion-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": ["PyTorch tensor loader", "FloorSet LiteTensorDataTest"],
             "version_capture": "external/datasets/intel-floorset/manifest.yaml",
@@ -276,6 +287,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_revision": REVISION,
         "payload": file_record(args.payload / "README.md"),
         "converted_case_count": len(config_dirs),
@@ -285,6 +297,7 @@ def main() -> int:
             "contains_external_payload": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "training_only": True,
             "deterministic_replay_required_for_optimization_claims": True,
         },

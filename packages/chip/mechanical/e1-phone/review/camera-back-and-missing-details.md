@@ -3,10 +3,11 @@
 evidence_class: `cad_estimate_for_evt_planning, not_measured_hardware`
 
 Scope: rear-camera/torch optical+mechanical path verification, and an audit of
-production-phone CAD parts against the 132-entry assembly manifest. All numbers
+production-phone CAD parts against the 258-entry assembly manifest. All numbers
 are read from `out/assembly-manifest.json` bounds and the fresh OCP boolean
-interference run (`check_e1_phone_boolean_interference.py`, 2026-05-21,
-11/11 scopes PASS, 0 unintentional clashes, 459 B-rep pairs evaluated).
+interference run (`check_e1_phone_boolean_interference.py`, refreshed after
+the screen/back collision review, 11/11 scopes PASS, 0 unintentional clashes,
+989 B-rep pairs evaluated).
 
 Reference frame: origin mid-plane, +Z toward screen. Back outer plane Z = -5.9 mm,
 back wall 1.15 mm, back inner wall Z = -4.7 mm. Front cover-glass outer face +5.9 mm,
@@ -77,7 +78,7 @@ flash side is covered by the septum. No light-leak path to the lens is open.
 
 ---
 
-## PART B — Missing-details hunt (vs 132-part manifest)
+## PART B — Missing-details hunt (vs 258-part manifest)
 
 EMI/RF, retention, glass-edge, and acoustic-mesh families are well covered. The
 gaps cluster in **thermal**, **display EMI/grounding**, **structural mid-plate**,

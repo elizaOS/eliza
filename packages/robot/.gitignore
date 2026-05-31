@@ -58,11 +58,3 @@ research/
 # scripts/sync_menagerie.sh; the canonical copies live under
 # assets/profiles/<id>/mjcf/ so the menagerie checkout is build-time only).
 vendor/mujoco_menagerie/
-
-# Feminine silhouette tooling — large binary working directories kept local-only.
-# Scripts, parts, viewer, and kinematic_tree are tracked; raw STL copies and
-# working output are not (the promoted results live in assets/ already).
-cad/asimov-feminine/originals/
-cad/asimov-feminine/output/
-cad/asimov-feminine/saffron_sentinel.glb
-cad/asimov-fembot/cad-env/

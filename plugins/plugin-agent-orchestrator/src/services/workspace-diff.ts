@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
@@ -182,7 +189,9 @@ export async function captureChangeSet(
   toolPaths: string[] = [],
   baselineDirty: string[] = [],
 ): Promise<WorkspaceChangeSet | undefined> {
-  if (!(await isWorkTree(workdir))) return undefined;
+  if (!(await isWorkTree(workdir))) {
+    return captureToolPathOnlyChangeSet(workdir, toolPaths);
+  }
   const base = baselineSha?.trim() ? baselineSha.trim() : "HEAD";
 
   // Exclude files already dirty at spawn (pre-existing churn the agent didn't
@@ -206,9 +215,13 @@ export async function captureChangeSet(
   );
   if (changedFiles.length === 0) return undefined;
 
-  // Real stat from git (tracked changes); independent of how much diff text we
-  // render. Falls back to a file count for a purely gitignored/untracked set.
-  const shortstat = (await git(workdir, ["diff", "--shortstat", base]))?.trim();
+  // Real stat from git for the same filtered file set rendered to the user.
+  // This avoids counting files that were already dirty at spawn and excluded
+  // from `changedFiles`. Falls back to a file count for gitignored/untracked
+  // tool-written files.
+  const shortstat = (
+    await git(workdir, ["diff", "--shortstat", base, "--", ...changedFiles])
+  )?.trim();
   const diffStat =
     shortstat && shortstat.length > 0
       ? shortstat
@@ -226,6 +239,57 @@ export async function captureChangeSet(
   return {
     changedFiles,
     diffStat,
+    diff,
+    truncated: overLength || changedFiles.length >= MAX_CHANGED_FILES,
+    capturedAt: Date.now(),
+  };
+}
+
+function captureToolPathOnlyChangeSet(
+  workdir: string,
+  toolPaths: string[],
+): WorkspaceChangeSet | undefined {
+  const changedFiles = [
+    ...new Set(
+      toolPaths
+        .map((file) => toWorkdirRelative(workdir, file))
+        .filter((file) => file.length > 0),
+    ),
+  ].slice(0, MAX_CHANGED_FILES);
+  if (changedFiles.length === 0) return undefined;
+
+  let diff = "";
+  for (const file of changedFiles.slice(0, MAX_FILE_DIFFS)) {
+    const absolute = resolve(workdir, file);
+    let fileDiff = "";
+    try {
+      if (existsSync(absolute)) {
+        const stat = statSync(absolute);
+        if (stat.isFile() && stat.size <= MAX_DIFF_CHARS) {
+          const content = readFileSync(absolute, "utf8");
+          fileDiff = [
+            `diff --git a/${file} b/${file}`,
+            "new file mode 100644",
+            "--- /dev/null",
+            `+++ b/${file}`,
+            "@@",
+            ...content.split("\n").map((line) => `+${line}`),
+          ].join("\n");
+        }
+      }
+    } catch {
+      fileDiff = "";
+    }
+    if (fileDiff) diff = diff ? `${diff}\n${fileDiff}` : fileDiff;
+    if (diff.length > MAX_DIFF_CHARS) break;
+  }
+
+  const overLength = diff.length > MAX_DIFF_CHARS;
+  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated]`;
+
+  return {
+    changedFiles,
+    diffStat: `${changedFiles.length} file(s) changed`,
     diff,
     truncated: overLength || changedFiles.length >= MAX_CHANGED_FILES,
     capturedAt: Date.now(),

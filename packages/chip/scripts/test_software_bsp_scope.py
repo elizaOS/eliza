@@ -109,6 +109,38 @@ def test_structured_findings_cover_external_evidence_gaps() -> None:
     print("PASS structured software BSP findings cover external evidence gaps")
 
 
+def test_next_command_plan_covers_blocked_aosp_evidence() -> None:
+    report = check_software_bsp_scope.build_report()
+    commands = report.get("next_command_plan", [])
+    aosp_batch = next(
+        (
+            item
+            for item in commands
+            if item.get("id") == "capture_aosp_software_bsp_external_evidence"
+        ),
+        None,
+    )
+    if not aosp_batch:
+        raise AssertionError(f"missing AOSP command batch: {commands}")
+    if (
+        aosp_batch.get("claim_boundary")
+        != "operator_commands_only_not_software_bsp_evidence"
+    ):
+        raise AssertionError(aosp_batch)
+    joined = "\n".join(aosp_batch.get("commands", []))
+    for token in (
+        "sw/aosp-device/import-aosp-device.sh --check /path/to/aosp",
+        "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
+        "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-smoke",
+        "AOSP_QEMU_SMOKE_COMMAND='/exact/qemu-system-riscv64 smoke command'",
+        "AOSP_RENODE_SMOKE_COMMAND='/exact/renode smoke command'",
+        "python3 scripts/check_software_bsp.py aosp --require-evidence",
+    ):
+        if token not in joined:
+            raise AssertionError(f"missing {token!r} in {joined}")
+    print("PASS next-command plan covers blocked AOSP evidence")
+
+
 def test_unstructured_check_status_fails() -> None:
     report = check_software_bsp_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -125,6 +157,14 @@ def test_scaffold_removal_fails() -> None:
     print("PASS scaffold removal rejected")
 
 
+def test_next_command_plan_removal_fails() -> None:
+    report = check_software_bsp_scope.build_report()
+    mutated = copy.deepcopy(report)
+    mutated["next_command_plan"] = []
+    expect_error(mutated, "next_command_plan")
+    print("PASS next-command plan removal rejected")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
@@ -133,8 +173,10 @@ def main() -> None:
     test_blocker_removal_fails()
     test_uboot_capture_plan_is_release_scoped()
     test_structured_findings_cover_external_evidence_gaps()
+    test_next_command_plan_covers_blocked_aosp_evidence()
     test_unstructured_check_status_fails()
     test_scaffold_removal_fails()
+    test_next_command_plan_removal_fails()
 
 
 if __name__ == "__main__":

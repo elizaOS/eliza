@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uiSrc = path.resolve(here, "../src");
+const sharedSrc = path.resolve(here, "../../shared/src");
 
 export default defineConfig({
   root: here,
@@ -36,6 +37,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@ui-src": uiSrc,
+      "@elizaos/shared": sharedSrc,
     },
   },
   server: {

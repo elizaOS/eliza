@@ -27,8 +27,8 @@ export const codingAgentExamplesProvider: Provider = {
   descriptionCompressed:
     "ACPX task-agent action examples, framework availability, subscription defaults.",
   position: -1,
-  contexts: ["code", "tasks", "agent_internal"],
-  contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
+  contexts: ["code", "agent_internal"],
+  contextGate: { anyOf: ["code", "agent_internal"] },
   cacheStable: true,
   cacheScope: "agent",
 
@@ -70,9 +70,8 @@ export const codingAgentExamplesProvider: Provider = {
         "  workspace: PROVISION_WORKSPACE or FINALIZE_WORKSPACE",
       ].join("\n");
 
-      // The provider's contextGate already scopes this to the code/tasks/
-      // agent_internal routing contexts, so when it runs at all the detailed
-      // task-agent examples are the right payload — no extra keyword gate.
+      // The provider's contextGate scopes this to coding/agent-internal routing
+      // contexts. Generic owner task/todo turns must stay with LifeOps surfaces.
       const detailedText = [
         compactText,
         "",

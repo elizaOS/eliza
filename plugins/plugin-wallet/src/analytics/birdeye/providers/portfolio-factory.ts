@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { sanitizeWalletDisplayLabel } from "../../../security/wallet-context-safety.js";
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type {
   WalletPortfolioResponse,
@@ -80,7 +81,7 @@ export const formatPortfolio = (response: WalletPortfolioResponse) => {
   return formatJsonTable(
     "holdings",
     items.map((item) => ({
-      symbol: item.symbol || "unknown",
+      symbol: sanitizeWalletDisplayLabel(item.symbol || "unknown"),
       address: item.address || "unknown",
       amount:
         typeof item.uiAmount === "number"
@@ -123,7 +124,7 @@ function formatPortfolioProviderText({
     formatJsonTable(
       "  holdings",
       holdings.slice(0, 20).map((item) => ({
-        symbol: item.symbol || "unknown",
+        symbol: sanitizeWalletDisplayLabel(item.symbol || "unknown"),
         address: item.address || "unknown",
         amount:
           typeof item.uiAmount === "number"

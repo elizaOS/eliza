@@ -431,6 +431,32 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
 	});
 
+	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
+		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: badReply,
+				}),
+				"   ",
+			]);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "What is 2+2?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"I'm not sure how to answer that.",
+				);
+			}
+		}
+	});
+
 	it("uses a compact response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -1449,7 +1475,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines live lookups when no web search action is registered instead of falling back to shell", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1466,22 +1492,6 @@ android smoke model works`,
 					relationships: [],
 					addressedTo: ["e2e"],
 				},
-			}),
-			{
-				thought: "Shell can fetch a current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
 			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
@@ -1521,45 +1531,23 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
 
-	it("routes synthetic current-price Stage 1 candidates to a real shell lookup action", async () => {
+	it("does not resolve synthetic current-price Stage 1 candidates to shell", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: [],
 				candidateActionNames: ["GET_CRYPTO_PRICE"],
 				replyText: "On it.",
-			}),
-			{
-				thought: "Shell can fetch the current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
 			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
@@ -1612,22 +1600,14 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		expect(browserHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain(
-			'"candidateActions":["GET_CRYPTO_PRICE","SHELL"]',
-		);
-		expect(plannerUserContent).toContain('"tierAParents":["SHELL"]');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
@@ -1715,7 +1695,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1732,22 +1712,6 @@ android smoke model works`,
 					relationships: [],
 					addressedTo: ["e2e"],
 				},
-			}),
-			{
-				thought: "Shell can fetch a current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
 			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
@@ -1787,19 +1751,13 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
@@ -1828,6 +1786,74 @@ android smoke model works`,
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.contexts).toContain("general");
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["update website"],
+				replyText: "On it.",
+				candidateActionNames: ["SCHEDULED_TASKS"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS" },
+				],
+				messageText: "update the website, add some fixes",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("keeps scheduled coding-related reminders on LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["create scheduled task"],
+				replyText: "I'll schedule that.",
+				candidateActionNames: ["SCHEDULED_TASKS_CREATE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS_CREATE" },
+				],
+				messageText: "create a scheduled task to fix the app tomorrow",
+			},
+		);
+
+		expect(routed.plan.contexts).not.toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["SCHEDULED_TASKS_CREATE"]);
 	});
 
 	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {
@@ -2146,6 +2172,54 @@ android smoke model works`,
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+	});
+
+	it("includes CURRENT_TIME in Stage 1 only for direct date/time/year questions", async () => {
+		const makeTimeState = (): State => ({
+			values: { availableContexts: "simple, general" },
+			data: {
+				providerOrder: ["CURRENT_TIME"],
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- Date: 2026-05-30\n- Time: 12:34:56 UTC\n- Day: Saturday",
+						providerName: "CURRENT_TIME",
+					},
+				},
+			},
+			text: "",
+		});
+		const response = () =>
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "It is 2026.",
+				extra: { requiresTool: false },
+			});
+
+		const dateRuntime = makeRuntime([response()]);
+		await runV5MessageRuntimeStage1({
+			runtime: dateRuntime,
+			message: makeMessage({ text: "What year is it?" }),
+			state: makeTimeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const dateParams = useModelCalls(dateRuntime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		expect(dateParams.messages?.[1]?.content ?? "").toContain("# Current Time");
+
+		const genericRuntime = makeRuntime([response()]);
+		await runV5MessageRuntimeStage1({
+			runtime: genericRuntime,
+			message: makeMessage({ text: "Tell me a short joke." }),
+			state: makeTimeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const genericParams = useModelCalls(genericRuntime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		expect(genericParams.messages?.[1]?.content ?? "").not.toContain(
+			"# Current Time",
+		);
 	});
 
 	it("current_turn_boundary allows recall questions to read from visible prior_message blocks", async () => {

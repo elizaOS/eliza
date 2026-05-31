@@ -21,6 +21,14 @@ DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/current_research_watchlist_records"
 CLAIM_BOUNDARY = (
     "current_research_watchlist_text_sample_only_no_import_training_inference_e1_or_release_claim"
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "optimization_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -90,6 +98,7 @@ def make_record(entry: dict[str, Any], watchlist_path: Path, row_index: int) -> 
             "expected_report": "build/ai_eda/current_research_watchlist_records/<run-id>/conversion_report.json",
         },
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
 
 
@@ -136,6 +145,7 @@ def main() -> int:
         "run_id": args.run_id,
         "watchlist": source_record(args.watchlist, 0),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "policy": {
@@ -148,6 +158,7 @@ def main() -> int:
             "runs_inference": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_optimization_claims": True,
         },
     }

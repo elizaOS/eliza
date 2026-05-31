@@ -20,8 +20,7 @@
  *     → { key, value, retrievedAt }  // value plaintext, recovered by the
  *                                   //  service's decrypt-on-retrieve
  *
- * The orchestrator wires this module via `routes.ts`; see Wave F's wiring
- * follow-up for the dispatcher hookup. The implementation is intentionally
+ * The orchestrator wires this module via `routes.ts`. The implementation is
  * decoupled from the credential-tunnel service: callers pass a small
  * `BridgeCredentialAdapter` so the same routes can be wired against a
  * test-time mock or the production `CredentialTunnelService`.
@@ -231,8 +230,8 @@ async function handleGet(
  * Dispatcher for the credential bridge routes. Returns true when the path
  * matches one of our patterns (whether or not the response is a success).
  *
- * Hook this from `routes.ts` after the parent-context dispatcher:
- *   if (await handleBridgeRoutes(req, res, normalizedPathname, ctx)) return true;
+ * `routes.ts` calls this after parent-context routes and before generic
+ * `:agentId` routes.
  */
 export async function handleBridgeRoutes(
   req: IncomingMessage,

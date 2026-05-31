@@ -76,7 +76,7 @@
   --status-info-bg: rgba(11, 53, 241, 0.12);
 
   --focus: rgba(11, 53, 241, 0.18);
-  --focus-ring: 0 0 0 2px rgba(11, 53, 241, 0.44);
+  --focus-ring: none;
   --scrollbar-track: rgba(255, 255, 255, 0.3);
   --scrollbar-thumb-start: rgba(11, 53, 241, 0.42);
   --scrollbar-thumb-mid: rgba(11, 53, 241, 0.58);
@@ -214,7 +214,7 @@
   --status-info-bg: rgba(11, 53, 241, 0.16);
 
   --focus: rgba(11, 53, 241, 0.18);
-  --focus-ring: 0 0 0 2px rgba(11, 53, 241, 0.44);
+  --focus-ring: none;
   --scrollbar-track: transparent;
   --scrollbar-thumb-start: rgba(11, 53, 241, 0.88);
   --scrollbar-thumb-mid: rgba(11, 53, 241, 0.72);

@@ -5,11 +5,17 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+import check_pdk_access_gate  # noqa: E402
 SCRIPT = ROOT / "scripts/check_pdk_portability.py"
 INDEX = ROOT / "pd/openlane/portability-index.yaml"
 
@@ -45,6 +51,20 @@ def test_portability_index_has_all_required_lanes() -> None:
     missing = required - ids
     if missing:
         raise AssertionError(f"missing lanes: {sorted(missing)}")
+
+
+def test_portability_report_false_claim_flags_are_declared(tmp_path: Path) -> None:
+    report = tmp_path / "pdk-portability.json"
+    checker.write_report([], [])
+    original = checker.REPORT.read_text(encoding="utf-8")
+    try:
+        checker.REPORT.write_text(original, encoding="utf-8")
+        data = json.loads(checker.REPORT.read_text(encoding="utf-8"))
+    finally:
+        if report.exists():
+            report.unlink()
+    for key in checker.FALSE_CLAIM_FLAGS:
+        assert data.get(key) is False, key
 
 
 def test_advanced_nodes_are_blocked() -> None:
@@ -217,6 +237,20 @@ def test_pdk_access_gate_has_per_foundry_checklist() -> None:
                 )
 
 
+def test_pdk_access_report_keeps_false_claim_flags() -> None:
+    rc = check_pdk_access_gate.main()
+    if rc != 2:
+        raise AssertionError(f"expected blocked PDK access gate, got rc={rc}")
+    report = json.loads(
+        (ROOT / "build/reports/pdk_access_gate.json").read_text(encoding="utf-8")
+    )
+    if report["claim_boundary"] != check_pdk_access_gate.CLAIM_BOUNDARY:
+        raise AssertionError(report["claim_boundary"])
+    for key, expected in check_pdk_access_gate.FALSE_CLAIM_FLAGS.items():
+        if report.get(key) is not expected:
+            raise AssertionError(f"{key} must be {expected!r}: {report.get(key)!r}")
+
+
 def main() -> int:
     for test in (
         test_portability_index_has_all_required_lanes,
@@ -227,6 +261,7 @@ def main() -> int:
         test_open_pdk_library_manifests_cross_reference_macros,
         test_advanced_node_corners_have_bspdn_planning,
         test_pdk_access_gate_has_per_foundry_checklist,
+        test_pdk_access_report_keeps_false_claim_flags,
     ):
         test()
         print(f"PASS {test.__name__}")

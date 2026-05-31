@@ -383,6 +383,13 @@ function main() {
     `[build-patched-electrobun-cli] Using rcedit package ${resolvedRceditPackageJson}`,
   );
 
+  // Build the CLI from our fork's integration branch (elizaOS/electrobun@develop)
+  // rather than the upstream release tag. The fork carries the Bun-canary
+  // wiring, the merged upstream fixes, and the Rust-ported native programs.
+  // `electrobunVersion` (from the installed npm package) is retained only for
+  // the scratch dir name and the rcedit resolution below.
+  const ELECTROBUN_FORK_URL = "https://github.com/elizaOS/electrobun.git";
+  const ELECTROBUN_FORK_REF = "develop";
   const tempRoot = path.join(
     process.env.RUNNER_TEMP ?? os.tmpdir(),
     `eliza-electrobun-src-${electrobunVersion}`,
@@ -394,10 +401,10 @@ function main() {
     "--depth",
     "1",
     "--branch",
-    `v${electrobunVersion}`,
+    ELECTROBUN_FORK_REF,
     "--filter=blob:none",
     "--sparse",
-    "https://github.com/blackboardsh/electrobun.git",
+    ELECTROBUN_FORK_URL,
     tempRoot,
   ]);
   run("git", ["-C", tempRoot, "sparse-checkout", "set", "package"]);

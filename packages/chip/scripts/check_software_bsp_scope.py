@@ -198,6 +198,62 @@ def structured_findings(
     return findings
 
 
+def next_command_plan(
+    reports: list[dict[str, Any]], checks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        plan.append(
+            {
+                "id": f"repair_{check.get('id', 'software_bsp_scope_check')}",
+                "scope": "repo_contract",
+                "claim_boundary": "operator_commands_only_not_software_bsp_evidence",
+                "commands": [
+                    "python3 scripts/check_software_bsp_scope.py",
+                ],
+                "evidence": str(check.get("evidence", "")),
+            }
+        )
+    for report in reports:
+        target = str(report.get("target", "target"))
+        if not (
+            report.get("scaffold_status") != "PASS"
+            or report.get("missing_evidence")
+            or report.get("invalid_evidence")
+            or report.get("errors")
+        ):
+            continue
+        commands = check_software_bsp.capture_plan_commands(
+            target,
+            buildroot=None,
+            linux=None,
+            opensbi=None,
+            u_boot=None,
+            aosp=None,
+            target_host=None,
+            opensbi_handoff_cmd=None,
+            qemu_smoke_cmd=None,
+            renode_smoke_cmd=None,
+        )
+        plan.append(
+            {
+                "id": f"capture_{target}_software_bsp_external_evidence",
+                "scope": "external_tree_capture",
+                "claim_boundary": "operator_commands_only_not_software_bsp_evidence",
+                "target": target,
+                "commands": commands,
+                "requires": [
+                    "external source checkout matching the command path",
+                    "real build/runtime command output, not placeholder transcripts",
+                    "required PASS markers and claim-boundary metadata in every evidence log",
+                ],
+            }
+        )
+    return plan
+
+
 def evidence_paths_for_target(manifest: dict[str, Any], target: str) -> set[str]:
     entries = list_values(mapping(mapping(manifest.get("targets")).get(target)).get("evidence"))
     return {str(entry.get("path")) for entry in entries if isinstance(entry, dict)}
@@ -373,6 +429,7 @@ def build_report() -> dict[str, Any]:
         },
     ]
     findings = structured_findings(reports, checks)
+    commands = next_command_plan(reports, checks)
     return {
         "schema": "eliza.software_bsp_scope.v1",
         "status": "software_bsp_scope_release_blocked",
@@ -396,6 +453,7 @@ def build_report() -> dict[str, Any]:
         },
         "targets": reports,
         "findings": findings,
+        "next_command_plan": commands,
         "blocked_until_real_evidence": [
             "external Buildroot defconfig transcript and image manifest with PASS provenance markers",
             "Buildroot target runtime MMIO and e1-npu ML smoke transcripts from the built image",
@@ -415,6 +473,7 @@ def build_report() -> dict[str, Any]:
             "missing_evidence_count": missing_total,
             "invalid_evidence_count": invalid_total,
             "release_claim_allowed": False,
+            "next_command_batch_count": len(commands),
         },
         "checks": checks,
     }
@@ -478,6 +537,22 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     findings = data.get("findings")
     if not isinstance(findings, list) or not findings:
         errors.append("findings must list structured software BSP blockers")
+    commands = data.get("next_command_plan")
+    if not isinstance(commands, list) or not commands:
+        errors.append("next_command_plan must list capture commands for blocked software BSP evidence")
+    else:
+        for command_batch in commands:
+            if not isinstance(command_batch, dict):
+                errors.append("next_command_plan entries must be mappings")
+                continue
+            if command_batch.get("claim_boundary") != (
+                "operator_commands_only_not_software_bsp_evidence"
+            ):
+                errors.append(f"{command_batch.get('id')}: invalid next-command claim boundary")
+            if not isinstance(command_batch.get("commands"), list) or not command_batch.get(
+                "commands"
+            ):
+                errors.append(f"{command_batch.get('id')}: commands must be non-empty")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         errors.append("checks must be a non-empty list")

@@ -18,9 +18,11 @@ Reproducible: re-running with the same out/*.step files yields the same numbers.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sys
 import time
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -355,6 +357,68 @@ def load_part(name: str) -> Part | None:
         return None
     xmn, ymn, zmn, xmx, ymx, zmx = b.Get()
     return Part(name=name, shape=shape, bbox=(xmn, ymn, zmn, xmx, ymx, zmx))
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def source_geometry_summary(manifest_entries: list[dict[str, Any]], parts: dict[str, Part]) -> dict:
+    """Record the exact geometry inputs used by this local B-rep run."""
+    critical_names = sorted(
+        {
+            "screen_cover_glass",
+            "display_lcm",
+            "screen_adhesive_top",
+            "orange_side_frame",
+            "orange_back_shell",
+            "front_camera_module",
+            "front_camera_under_glass",
+            "front_camera_black_mask_window",
+            "earpiece_receiver",
+            "handset_acoustic_slot",
+            "handset_acoustic_mesh",
+            "rear_camera_shell_aperture",
+            "rear_camera_cover_glass",
+            "rear_camera_lens_window",
+            "rear_camera_module",
+            "rear_camera_optical_sight_tunnel",
+            "rear_flash_shell_aperture",
+            "rear_flash_led_window",
+            "rear_flash_led",
+        }
+    )
+    critical_steps: list[dict[str, Any]] = []
+    for name in critical_names:
+        step_path = OUT_DIR / f"{name}.step"
+        critical_steps.append(
+            {
+                "part": name,
+                "path": step_path.relative_to(ROOT).as_posix(),
+                "present": step_path.is_file(),
+                "loaded": name in parts,
+                "size_bytes": step_path.stat().st_size if step_path.is_file() else 0,
+                "sha256": file_sha256(step_path) if step_path.is_file() else "",
+                "bbox_mm": [round(v, 6) for v in parts[name].bbox] if name in parts else [],
+            }
+        )
+    return {
+        "manifest_path": MANIFEST.relative_to(ROOT).as_posix(),
+        "manifest_sha256": file_sha256(MANIFEST),
+        "manifest_entry_count": len(manifest_entries),
+        "step_directory": OUT_DIR.relative_to(ROOT).as_posix(),
+        "loaded_part_count": len(parts),
+        "critical_step_hashes": critical_steps,
+        "derivation": (
+            "Each pass/fail check in this report is computed from the loaded STEP "
+            "B-rep shapes above using OpenCascade intersections, minimum-distance "
+            "queries, or bbox containment derived from those loaded shapes."
+        ),
+    }
 
 
 def aabb_gap_or_overlap(a: Part, b: Part) -> tuple[float, bool]:
@@ -971,6 +1035,13 @@ def evaluate_side_frame_external_cutouts(parts: dict[str, Part]) -> dict:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="run the boolean calculations without rewriting review artifacts",
+    )
+    args = parser.parse_args()
     t0 = time.time()
     with open(MANIFEST) as f:
         manifest = json.load(f)
@@ -1142,6 +1213,7 @@ def main() -> int:
         "min_target_gap_mm": MIN_TARGET_GAP_MM,
         "parts_loaded": len(parts),
         "parts_missing": failed_load,
+        "source_geometry": source_geometry_summary(manifest, parts),
         "pair_count_total": pair_count_full,
         "pair_count_brep_evaluated": pair_count_brep,
         "unintentional_clashes": [
@@ -1167,11 +1239,13 @@ def main() -> int:
         },
         "overall_status": "pass" if overall_pass else "blocked_boolean_interference_incomplete",
         "release_credit": False,
-        "release_blocked": not overall_pass,
+        "release_blocked": True,
         "release_blocker_category": (
-            "none" if overall_pass else "local_concept_boolean_interference_clashes"
+            "routed_supplier_boolean_rerun_missing"
+            if overall_pass
+            else "local_concept_boolean_interference_clashes"
         ),
-        "release_blocker_count": 0 if overall_pass else len(interferences),
+        "release_blocker_count": 1 if overall_pass else len(interferences),
         "next_action": (
             "Local concept boolean evidence passed; promote/rerun release evidence "
             "against routed board STEP and supplier B-rep models through the enclosure gate."
@@ -1185,14 +1259,21 @@ def main() -> int:
         ),
     }
     out_json_path = REVIEW_DIR / "full-cad-boolean-interference.json"
-    out_json_path.write_text(json.dumps(out_json, indent=2, default=str))
-    print(f"wrote {out_json_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {out_json_path}", file=sys.stderr)
+    else:
+        out_json_path.write_text(json.dumps(out_json, indent=2, default=str))
+        print(f"wrote {out_json_path}", file=sys.stderr)
 
     # --- write Markdown ---
     md_lines = [
         "# E1 Phone Full CAD Boolean Interference Acceptance",
         "",
         f"Status: {'PASS' if overall_pass else 'BLOCKED'}.",
+        (
+            "Release: BLOCKED. This is local concept-envelope B-rep evidence only; "
+            "release credit requires rerun against routed board STEP and supplier B-rep models."
+        ),
         "",
         f"Engine: `{ENGINE_NAME}`.",
         f"Date: {DATE}. Reviewer: `{REVIEWER}`.",
@@ -1341,50 +1422,59 @@ def main() -> int:
         "",
     ]
     md_path = REVIEW_DIR / "full-cad-boolean-interference.md"
-    md_path.write_text("\n".join(md_lines))
-    print(f"wrote {md_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {md_path}", file=sys.stderr)
+    else:
+        md_path.write_text("\n".join(md_lines))
+        print(f"wrote {md_path}", file=sys.stderr)
 
     # --- write results template CSV (populated) ---
     csv_path = REVIEW_DIR / "full-cad-boolean-interference-results-template.csv"
-    with open(csv_path, "w", newline="") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow(
-            [
-                "scope_id",
-                "assembly_step",
-                "boolean_engine",
-                "min_gap_mm",
-                "interference_count",
-                "interference_volume_mm3",
-                "pass",
-                "reviewer",
-                "notes",
-            ]
-        )
-        for s in scope_results:
+    if args.check_only:
+        print(f"check-only: not rewriting {csv_path}", file=sys.stderr)
+    else:
+        with open(csv_path, "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
             w.writerow(
                 [
-                    s["case"],
-                    "fully_assembled",
-                    ENGINE_NAME,
-                    s["min_gap_mm"],
-                    s["interference_count"],
-                    s["interference_volume_mm3"],
-                    "true" if s["status"] == "pass" else "false",
-                    REVIEWER,
-                    s["risk"],
+                    "scope_id",
+                    "assembly_step",
+                    "boolean_engine",
+                    "min_gap_mm",
+                    "interference_count",
+                    "interference_volume_mm3",
+                    "pass",
+                    "reviewer",
+                    "notes",
                 ]
             )
-    print(f"wrote {csv_path}", file=sys.stderr)
+            for s in scope_results:
+                w.writerow(
+                    [
+                        s["case"],
+                        "fully_assembled",
+                        ENGINE_NAME,
+                        s["min_gap_mm"],
+                        s["interference_count"],
+                        s["interference_volume_mm3"],
+                        "true" if s["status"] == "pass" else "false",
+                        REVIEWER,
+                        s["risk"],
+                    ]
+                )
+        print(f"wrote {csv_path}", file=sys.stderr)
 
     # --- write N x N min-gap matrix CSV ---
     mat_path = REVIEW_DIR / "full-cad-min-gap-matrix.csv"
-    with open(mat_path, "w", newline="") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow([""] + names)
-        for i, ni in enumerate(names):
-            w.writerow([ni] + [matrix[i][j] for j in range(N)])
-    print(f"wrote {mat_path}", file=sys.stderr)
+    if args.check_only:
+        print(f"check-only: not rewriting {mat_path}", file=sys.stderr)
+    else:
+        with open(mat_path, "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
+            w.writerow([""] + names)
+            for i, ni in enumerate(names):
+                w.writerow([ni] + [matrix[i][j] for j in range(N)])
+        print(f"wrote {mat_path}", file=sys.stderr)
 
     # --- refresh assembly-clearance.json/md to reaffirm pass ---
     ac_json_path = REVIEW_DIR / "assembly-clearance.json"
@@ -1400,8 +1490,11 @@ def main() -> int:
         ac["full_assembly_boolean_pass"] = overall_pass
         ac["full_assembly_unintentional_clash_count"] = len(interferences)
         ac["min_gap_mm_assembly_wide"] = min((s["min_gap_mm"] for s in scope_results), default=0.0)
-        ac_json_path.write_text(json.dumps(ac, indent=2))
-        print(f"refreshed {ac_json_path}", file=sys.stderr)
+        if args.check_only:
+            print(f"check-only: not rewriting {ac_json_path}", file=sys.stderr)
+        else:
+            ac_json_path.write_text(json.dumps(ac, indent=2))
+            print(f"refreshed {ac_json_path}", file=sys.stderr)
 
     ac_md_path = REVIEW_DIR / "assembly-clearance.md"
     if ac_md_path.exists():
@@ -1417,8 +1510,11 @@ def main() -> int:
                 f"Unintentional clash pairs: {len(interferences)}.",
                 "",
             ]
-            ac_md_path.write_text(original.rstrip() + "\n" + "\n".join(addendum))
-            print(f"refreshed {ac_md_path}", file=sys.stderr)
+            if args.check_only:
+                print(f"check-only: not rewriting {ac_md_path}", file=sys.stderr)
+            else:
+                ac_md_path.write_text(original.rstrip() + "\n" + "\n".join(addendum))
+                print(f"refreshed {ac_md_path}", file=sys.stderr)
 
     print(
         f"\n=== SUMMARY ===\n"

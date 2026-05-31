@@ -1480,6 +1480,43 @@ def openlane_release_preflight_action() -> str:
     )
 
 
+def openlane_preflight_action() -> str:
+    report = read_report(ROOT / "build/reports/openlane_run_preflight.json")
+    findings = report.get("findings")
+    messages: list[str] = []
+    next_steps: list[str] = []
+    if isinstance(findings, list):
+        for row in findings:
+            if not isinstance(row, dict):
+                continue
+            message = row.get("message")
+            if isinstance(message, str) and message and len(messages) < 3:
+                messages.append(message)
+            next_step = row.get("next_step")
+            if isinstance(next_step, str) and next_step and next_step not in next_steps:
+                next_steps.append(next_step)
+    current = f" Current blockers: {'; '.join(messages)}." if messages else ""
+    steps = f" Required next steps: {'; '.join(next_steps[:3])}." if next_steps else ""
+    return (
+        "Let the active pinned OpenLane run finish, then rerun "
+        "python3 scripts/check_openlane_run_preflight.py; if the lock persists after the run exits, "
+        "inspect the lock before starting another flow."
+        + current
+        + steps
+    )
+
+
+def os_rv64_release_action() -> str:
+    manifest_dir = ROOT.parent / "os/linux/elizaos"
+    return (
+        "Promote the OS RV64 release only after replacing the template manifest with a filled "
+        "manifest.json that has the real ISO filename, byte size, SHA-256, collected qemu-virt, "
+        "GRUB EFI RISC-V, agent-live, and riscv64-agent-runtime evidence rows; rerun "
+        "python3 ../os/linux/elizaos/scripts/check_release_manifest.py. Current manifest source: "
+        f"{manifest_dir.relative_to(ROOT.parent)}/manifest.json or manifest.json.template."
+    )
+
+
 def fpga_release_action() -> str:
     summary = report_summary(FPGA_RELEASE_REPORT_PATH)
     category_counts = summary.get("blocker_category_counts")
@@ -1669,6 +1706,7 @@ def blocker_action(result: GateResult) -> dict[str, object]:
         "io-cell-contract-check": io_cell_contract_action(),
         "antenna-metadata-check": antenna_metadata_action(),
         "antenna-metadata-release-check": antenna_metadata_action(),
+        "openlane-run-preflight-check": openlane_preflight_action(),
         "openlane-run-release-preflight-check": openlane_release_preflight_action(),
         "fpga-release-check": fpga_release_action(),
         "linux-firmware-boot-chain-contract-check": linux_firmware_boot_chain_action(),
@@ -1726,6 +1764,7 @@ def blocker_action(result: GateResult) -> dict[str, object]:
             "Boot a target phone/emulator and capture live Android/system bridge, media, "
             "security lifecycle, radio/sensor/PMIC, and launcher runtime evidence."
         ),
+        "os-rv64-release-check": os_rv64_release_action(),
     }
     validation = result.script
     if result.args:

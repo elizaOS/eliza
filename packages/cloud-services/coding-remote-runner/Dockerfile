@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim
 
-ARG BUN_VERSION=1.3.14
+ARG BUN_VERSION=canary
 ARG INSTALL_CODEX=true
 ARG INSTALL_CLAUDE_CODE=true
 ARG INSTALL_OPENCODE=true
@@ -23,7 +23,7 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+RUN curl -fsSL https://bun.sh/install | bash -s "${BUN_VERSION}"
 
 RUN if [ "$INSTALL_CODEX" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_CLAUDE_CODE" = "true" ]; then npm install -g @anthropic-ai/claude-code; fi \

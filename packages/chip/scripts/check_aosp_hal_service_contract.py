@@ -9,6 +9,7 @@ contexts, and the service agrees with the Linux driver ABI.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import re
 import sys
@@ -435,6 +436,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],

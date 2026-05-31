@@ -85,6 +85,7 @@ candidate_connector_stack:
     why: 0.35 mm pitch, 0.6 mm stacking height, high-current contacts, and high-speed support fit phone-class split-board constraints.
     unresolved:
       - exact_circuit_count_and_power_contact_count
+      - exact_orderable_circuit_count_50_or_greater_and_power_contact_count
       - mating_pair_orderable_part_numbers
       - flex_width_and_stiffener_clearance_next_to_battery
   signal_flex_alternate:
@@ -112,10 +113,13 @@ minimum_pin_budget:
   rationale: >
     Counts named crossing nets plus extra returns around USB2/audio clocks,
     parallel power/ground contacts, and EVT rework spares. Exact count must be
-    recomputed after connector family and bottom-island partition freeze.
+    recomputed after connector family and bottom-island partition freeze; the
+    selected supplier connector must use an orderable 50-contact-or-greater
+    mating pair rather than a custom 49-contact assumption.
 
 release_blockers:
   - exact connector circuit count and orderable mating part numbers not selected
+  - exact 50-contact-or-greater connector circuit count and orderable mating part numbers not selected
   - flex stackup, bend radius, stiffener, and strain relief not drawn
   - USB2 and audio SI across the flex not simulated or measured
   - power contact current rise and return allocation not reviewed

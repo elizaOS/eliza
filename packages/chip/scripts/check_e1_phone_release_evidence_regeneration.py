@@ -16,6 +16,21 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
+CLAIM_BOUNDARY = (
+    "Release-evidence regeneration drift diagnostic only. This report does "
+    "not grant release credit or satisfy fabrication, supplier, routed "
+    "board, factory, first-article, or mechanical evidence gates."
+)
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fabrication_release_claim_allowed": False,
+    "supplier_release_claim_allowed": False,
+    "routed_board_release_claim_allowed": False,
+    "factory_release_claim_allowed": False,
+    "first_article_release_claim_allowed": False,
+    "mechanical_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -167,11 +182,8 @@ def drift_report(failures: list[DriftFinding]) -> dict[str, Any]:
         "status": status,
         "release_credit": False,
         "generated_utc": _dt.datetime.now(_dt.UTC).isoformat(),
-        "claim_boundary": (
-            "Release-evidence regeneration drift diagnostic only. This report does "
-            "not grant release credit or satisfy fabrication, supplier, routed "
-            "board, factory, first-article, or mechanical evidence gates."
-        ),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "finding_count": len(failures),
             "stale_generated_report_count": sum(

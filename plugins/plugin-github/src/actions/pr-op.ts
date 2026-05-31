@@ -11,11 +11,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, requireConfirmation } from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
-  isConfirmed,
   requireNumber,
   requireString,
   resolveAccountSelection,
@@ -151,6 +150,7 @@ async function runList(
 
 async function runReview(
   runtime: IAgentRuntime,
+  message: Memory,
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
@@ -173,13 +173,29 @@ async function runReview(
     return { success: false, error: err };
   }
 
-  if (!isConfirmed(options)) {
-    const preview =
-      `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-      (body ? ` with body: "${body.slice(0, 120)}"` : "") +
-      ` as ${describeSelection(selection)}. Re-invoke with confirmed: true to proceed.`;
-    await callback?.({ text: preview });
-    return { success: false, requiresConfirmation: true, preview };
+  const preview =
+    `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
+    (body ? ` with body: "${body.slice(0, 120)}"` : "") +
+    ` as ${describeSelection(selection)}.`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: GitHubActions.GITHUB_PR_OP,
+    pendingKey: `review:${repo}:${number}:${action}`,
+    prompt: `${preview} Reply yes to confirm or no to cancel.`,
+    callback,
+  });
+  if (decision.status !== "confirmed") {
+    const text =
+      decision.status === "pending"
+        ? `${preview} Reply yes to confirm or no to cancel.`
+        : "GitHub PR review cancelled.";
+    await callback?.({ text });
+    return {
+      ...(decision.status === "pending"
+        ? { success: false as const, requiresConfirmation: true as const, preview }
+        : { success: false as const, error: text }),
+    };
   }
 
   if (action === "request-changes" && !body) {
@@ -305,7 +321,7 @@ export const prOpAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
@@ -320,7 +336,7 @@ export const prOpAction: Action = {
     try {
       return op === "list"
         ? await runList(runtime, options, callback)
-        : await runReview(runtime, options, callback);
+        : await runReview(runtime, message, options, callback);
     } catch (err) {
       const rl = inspectRateLimit(err);
       const message = rl.isRateLimited

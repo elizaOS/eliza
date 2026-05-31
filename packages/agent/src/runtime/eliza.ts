@@ -259,6 +259,7 @@ import {
   PGLITE_ERROR_CODES,
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
@@ -609,6 +610,57 @@ async function registerStaticPluginPhase(
   }
 }
 
+async function ensureStaticPluginsRegisteredByName(
+  packageNames: readonly string[],
+): Promise<void> {
+  const requested = new Set(packageNames);
+  if (requested.size === 0) return;
+
+  const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
+    (registration) =>
+      requested.has(registration.packageName) ||
+      (registration.registryName
+        ? requested.has(registration.registryName)
+        : false),
+  );
+  const missing = [...requested].filter(
+    (packageName) =>
+      !registrations.some(
+        (registration) =>
+          registration.packageName === packageName ||
+          registration.registryName === packageName,
+      ),
+  );
+  if (missing.length > 0) {
+    logger.debug(
+      `[boot] no static registration for preferred provider plugin(s): ${missing.join(", ")}`,
+    );
+  }
+
+  await Promise.all(
+    registrations.map(async (registration) => {
+      const registryName =
+        registration.registryName ?? registration.packageName;
+      if (STATIC_ELIZA_PLUGINS[registryName]) {
+        return;
+      }
+      try {
+        const mod = await registration.load();
+        if (mod) {
+          STATIC_ELIZA_PLUGINS[registryName] = mod;
+          logger.info(
+            `[boot] preferred provider plugin ${registration.packageName} loaded before runtime initialization`,
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          `[boot] preferred provider plugin ${registration.packageName} unavailable before runtime initialization: ${formatError(err)}`,
+        );
+      }
+    }),
+  );
+}
+
 async function ensureBlockingCoreStaticPluginsRegistered(): Promise<void> {
   if (_blockingStaticPluginsRegistered) return;
   if (!_blockingStaticPluginsRegistrationPromise) {
@@ -947,53 +999,6 @@ export async function configureLocalEmbeddingPlugin(
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
-}
-
-const LOCAL_INFERENCE_RUNTIME_MODEL_KEYS = new Set([
-  "TEXT_SMALL",
-  "TEXT_LARGE",
-  "TEXT_EMBEDDING",
-  "RESPONSE_HANDLER",
-  "ACTION_PLANNER",
-  "TEXT_COMPLETION",
-  "TEXT_TO_SPEECH",
-  "TRANSCRIPTION",
-  "IMAGE_DESCRIPTION",
-]);
-
-function moveLocalInferenceModelsToRuntimeHandlers(plugin: Plugin): void {
-  if (!plugin.models) return;
-  const nextModels = { ...plugin.models };
-  let removed = 0;
-  for (const modelType of LOCAL_INFERENCE_RUNTIME_MODEL_KEYS) {
-    if (modelType in nextModels) {
-      delete nextModels[modelType as keyof typeof nextModels];
-      removed += 1;
-    }
-  }
-  if (removed === 0) return;
-  plugin.models =
-    Object.keys(nextModels).length > 0
-      ? (nextModels as NonNullable<Plugin["models"]>)
-      : undefined;
-  logger.info(
-    `[eliza] plugin-local-inference model handlers moved to runtime router (${removed} static handler(s) deferred)`,
-  );
-}
-
-async function ensureLocalInferenceRuntimeHandlers(
-  runtime: AgentRuntime,
-): Promise<void> {
-  try {
-    const { ensureLocalInferenceHandler } = await import(
-      "@elizaos/plugin-local-inference/runtime"
-    );
-    await ensureLocalInferenceHandler(runtime);
-  } catch (err) {
-    logger.warn(
-      `[eliza] plugin-local-inference runtime handler registration skipped: ${formatError(err)}`,
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1756,7 +1761,7 @@ export async function autoFetchCloudGithubToken(
     if (!res.ok) {
       // 404 = no GitHub connection for this agent, which is fine
       if (res.status !== 404) {
-        logger.info(
+        logger.debug(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
@@ -2105,7 +2110,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
     if (Number.isNaN(pid) || pid <= 0) {
       // Malformed pid file — remove it
       unlinkSync(pidPath);
-      logger.info(`[eliza] Removed malformed PGlite postmaster.pid`);
+      logger.debug(`[eliza] Removed malformed PGlite postmaster.pid`);
       return "cleared-malformed";
     }
 
@@ -2122,7 +2127,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
       if (code === "ESRCH") {
         // Process doesn't exist — stale pid file, safe to remove
         unlinkSync(pidPath);
-        logger.info(
+        logger.debug(
           `[eliza] Removed stale PGlite postmaster.pid (process ${pid} not running)`,
         );
         return "cleared-stale";
@@ -3654,9 +3659,15 @@ export async function startEliza(
   const blockDeferredPluginImports = shouldBlockDeferredPluginImports();
   const initialPluginResolutionPhase: PluginResolutionPhase =
     blockDeferredPluginImports ? "all" : "blocking";
+  const initialForceIncludePluginNames =
+    !blockDeferredPluginImports && preferredProviderPluginName
+      ? [preferredProviderPluginName]
+      : [];
+  await ensureStaticPluginsRegisteredByName(initialForceIncludePluginNames);
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
+    forceIncludePluginNames: initialForceIncludePluginNames,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
 
@@ -3725,9 +3736,6 @@ export async function startEliza(
   const PREREGISTER_PLUGINS = new Set(CORE_PLUGINS);
   const sqlPlugin = resolvedPlugins.find(
     (p) => p.name === "@elizaos/plugin-sql",
-  );
-  const localEmbeddingPlugin = resolvedPlugins.find(
-    (p) => p.name === "@elizaos/plugin-local-inference",
   );
   const otherPlugins = resolvedPlugins.filter(
     (p) => !PREREGISTER_PLUGINS.has(p.name),
@@ -4059,30 +4067,7 @@ export async function startEliza(
     );
   }
 
-  // 7d. Pre-register plugin-local-inference so its non-embedding local model
-  //     handlers/actions are available before runtime.initialize() starts all
-  //     plugins in parallel. TEXT_EMBEDDING is intentionally deferred to
-  //     ensureLocalInferenceHandler() after the runtime is initialized: desktop
-  //     local embeddings require an active Eliza-1 bundle, and startup probes
-  //     must not abort the app before the user can activate one.
-  if (localEmbeddingPlugin) {
-    await configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
-    moveLocalInferenceModelsToRuntimeHandlers(localEmbeddingPlugin.plugin);
-    await runtime.registerPlugin(localEmbeddingPlugin.plugin);
-    await ensureLocalInferenceRuntimeHandlers(runtime);
-    bootTimer.lap("register-local-inference");
-    logger.info(
-      "[eliza] plugin-local-inference pre-registered with runtime local handlers (TEXT_EMBEDDING follows ELIZA_DISABLE_LOCAL_EMBEDDINGS)",
-    );
-  } else {
-    logger.warn(
-      "[eliza] @elizaos/plugin-local-inference not found — embeddings " +
-        "will fall back to whatever TEXT_EMBEDDING handler is registered by " +
-        "other plugins (may incur cloud API costs)",
-    );
-  }
-
-  // 7e. Register the roles capability (cheap, gates provider/action visibility).
+  // 7d. Register the roles capability (cheap, gates provider/action visibility).
   //     The remaining core plugins (companion, app-control, device-filesystem,
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
@@ -4483,8 +4468,14 @@ export async function startEliza(
       return;
     }
 
+    const alreadyRegisteredPluginNames = new Set(
+      (runtime.plugins ?? [])
+        .map((plugin) => plugin.name)
+        .filter((name): name is string => typeof name === "string"),
+    );
     const deferredPluginsForRuntime = deferredResolvedPlugins
       .filter((p) => !PREREGISTER_PLUGINS.has(p.name))
+      .filter((p) => !alreadyRegisteredPluginNames.has(p.plugin.name ?? p.name))
       .map((p) => p.plugin);
     if (deferredPluginsForRuntime.length === 0) {
       return;
@@ -4625,6 +4616,14 @@ export async function startEliza(
     // their actions; the initial pass after the essential boot only saw the
     // core message-handler actions.
     installActionAliases(runtime);
+    // Same timing reason: validate the intent→action map only once the deferred
+    // plugins have registered. Run during blocking init it would warn about
+    // actions like TASKS (agent-orchestrator) and PLAY_EMOTE (companion) that
+    // simply hadn't loaded yet.
+    validateIntentActionMap(
+      runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
     bootTimer.lap("deferred:complete");
   };
 
@@ -4899,16 +4898,13 @@ export async function startEliza(
           });
           installRuntimeMethodBindings(newRuntime);
 
-          // Pre-register plugin-sql + static local-inference handlers before
-          // initialize(). TEXT_EMBEDDING is wired by runtime hooks after init
-          // so hot-reload matches initial startup.
+          // Pre-register plugin-sql before initialize() so the adapter is ready,
+          // matching initial startup. local-inference wires its handlers via the
+          // runtime hooks like every other plugin.
           // Re-derive from freshly resolved plugins (not outer closure) so
           // hot-reload picks up any plugin updates.
           const freshSqlPlugin = resolvedPlugins.find(
             (p) => p.name === "@elizaos/plugin-sql",
-          );
-          const freshLocalEmbeddingPlugin = resolvedPlugins.find(
-            (p) => p.name === "@elizaos/plugin-local-inference",
           );
           if (freshSqlPlugin) {
             await registerSqlPluginWithRecovery(
@@ -4916,17 +4912,6 @@ export async function startEliza(
               freshSqlPlugin,
               freshConfig,
             );
-          }
-          if (freshLocalEmbeddingPlugin) {
-            await configureLocalEmbeddingPlugin(
-              freshLocalEmbeddingPlugin.plugin,
-              freshConfig,
-            );
-            moveLocalInferenceModelsToRuntimeHandlers(
-              freshLocalEmbeddingPlugin.plugin,
-            );
-            await newRuntime.registerPlugin(freshLocalEmbeddingPlugin.plugin);
-            await ensureLocalInferenceRuntimeHandlers(newRuntime);
           }
 
           // Pre-register remaining core plugins sequentially (same as startup)

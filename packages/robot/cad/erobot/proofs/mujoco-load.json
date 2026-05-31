@@ -1,0 +1,35 @@
+{
+  "schema": "erobot-mujoco-load-v1",
+  "ok": true,
+  "stands_under_gravity": true,
+  "robot_model": {
+    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/erobot/mjcf/erobot.xml",
+    "nq": 31,
+    "nv": 30,
+    "nu": 24,
+    "nbody": 26,
+    "ngeom": 40,
+    "total_mass_kg": 27.1939,
+    "steps": 200,
+    "pelvis_z_start_m": 0.918,
+    "pelvis_z_end_m": 0.1293,
+    "qpos_finite": true,
+    "qvel_finite": true,
+    "contacts": 0
+  },
+  "scene_model": {
+    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/erobot/mjcf/scene.xml",
+    "nq": 31,
+    "nv": 30,
+    "nu": 24,
+    "nbody": 26,
+    "ngeom": 41,
+    "total_mass_kg": 27.1939,
+    "steps": 1500,
+    "pelvis_z_start_m": 0.918,
+    "pelvis_z_end_m": 0.9177,
+    "qpos_finite": true,
+    "qvel_finite": true,
+    "contacts": 16
+  }
+}

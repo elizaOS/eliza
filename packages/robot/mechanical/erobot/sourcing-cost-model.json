@@ -1,0 +1,34 @@
+{
+  "schema": "erobot-sourcing-cost-model-v1",
+  "priced_on": "2026-05-30",
+  "off_the_shelf": {
+    "line_items": 12,
+    "cost_qty1_usd": 14624.08,
+    "cost_qty1000_usd": 9155.0,
+    "confirmed_prices": 5,
+    "estimated_prices": 7
+  },
+  "custom_molded": {
+    "unique_parts": 17,
+    "total_molded_pieces": 30,
+    "tooling_capex_usd": 119000.0,
+    "tooling_usd_per_mold": 7000.0,
+    "shell_cost_qty1_usd": 1278.3,
+    "shell_cost_qty1000_usd": 363.3,
+    "resin_usd_per_kg": {
+      "PA6_GF30": 12.0,
+      "PC_ABS": 7.0,
+      "TPU_SHORE_A95": 5.0
+    }
+  },
+  "unit_cost_curve": {
+    "qty1_usd": 15902.38,
+    "qty1000_usd_per_unit": 9637.3
+  },
+  "blockers": [
+    "Battery is a custom Li-ion pack (contact-sales); stock LiFePO4 is too heavy.",
+    "RealSense D435i, bearing, fastener, PDB, and TPU prices are estimates pending RFQ.",
+    "Mid-tier actuator at 24.8 N\u00b7m peak limits dynamic gait; verify against gait torque demand.",
+    "Shell tooling assumes aluminum family tools; final mold count depends on part splits + draft."
+  ]
+}

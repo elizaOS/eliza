@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -66,47 +67,73 @@ async function retryTransientFsOperation(operation) {
   throw lastError;
 }
 
-if (!(await pathExists(nestedSourceDir))) {
-  if (
+async function hasFlatEntryPoint() {
+  return (
     (await pathExists(path.join(distDir, "index.js"))) ||
     (await pathExists(path.join(distDir, "index.d.ts")))
-  ) {
-    process.exit(0);
-  }
-  console.error(`Compiled source directory not found: ${nestedSourceDir}`);
-  process.exit(1);
+  );
 }
 
-const entries = await fs.readdir(nestedSourceDir);
-for (const entry of entries) {
-  const nestedEntry = path.join(nestedSourceDir, entry);
-  if (!(await pathExists(nestedEntry))) {
-    continue;
-  }
-  const targetEntry = path.join(distDir, entry);
-  const stagingEntry = path.join(
-    distDir,
-    `.flatten-${process.pid}-${Date.now()}-${entry}`,
-  );
-
-  try {
-    await retryTransientFsOperation(() => fs.rename(nestedEntry, stagingEntry));
-  } catch (error) {
-    if (error?.code === "ENOENT") {
+async function flattenNestedSource() {
+  const entries = await fs.readdir(nestedSourceDir);
+  for (const entry of entries) {
+    const nestedEntry = path.join(nestedSourceDir, entry);
+    if (!(await pathExists(nestedEntry))) {
       continue;
     }
-    throw error;
-  }
+    const targetEntry = path.join(distDir, entry);
+    const stagingEntry = path.join(
+      distDir,
+      `.flatten-${process.pid}-${Date.now()}-${entry}`,
+    );
 
-  await retryTransientFsOperation(() =>
-    fs.rm(targetEntry, { recursive: true, force: true }),
-  );
-  await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
+    try {
+      await retryTransientFsOperation(() =>
+        fs.rename(nestedEntry, stagingEntry),
+      );
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    await retryTransientFsOperation(() =>
+      fs.rm(targetEntry, { recursive: true, force: true }),
+    );
+    await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
+  }
 }
 
-await retryTransientFsOperation(() =>
-  fs.rm(path.join(distDir, "packages"), { recursive: true, force: true }),
-);
-await retryTransientFsOperation(() =>
-  fs.rm(path.join(distDir, "plugins"), { recursive: true, force: true }),
-);
+async function removeNestedRoots() {
+  await retryTransientFsOperation(() =>
+    fs.rm(path.join(distDir, "packages"), { recursive: true, force: true }),
+  );
+  await retryTransientFsOperation(() =>
+    fs.rm(path.join(distDir, "plugins"), { recursive: true, force: true }),
+  );
+}
+
+let flattened = false;
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  if (!(await pathExists(nestedSourceDir))) {
+    if (flattened || (await hasFlatEntryPoint())) {
+      process.exit(0);
+    }
+    console.error(`Compiled source directory not found: ${nestedSourceDir}`);
+    process.exit(1);
+  }
+
+  await flattenNestedSource();
+  flattened = true;
+  await removeNestedRoots();
+
+  if (!(await pathExists(nestedSourceDir))) {
+    process.exit(0);
+  }
+
+  await delay(100 * (attempt + 1));
+}
+
+console.error(`Compiled source directory kept reappearing: ${nestedSourceDir}`);
+process.exit(1);

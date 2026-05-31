@@ -149,6 +149,8 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
     recording: false,
     send: vi.fn(),
     toggleRecording: vi.fn(),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
     waveformMode: "idle",
   }),
 }));

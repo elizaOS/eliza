@@ -118,7 +118,7 @@ export function BillingTab({ user }: BillingTabProps) {
       toast.error(
         t("cloud.billingTab.minAmount", {
           min: AMOUNT_LIMITS.MIN,
-          defaultValue: "Minimum amount is ${{min}}",
+          defaultValue: "Minimum amount is $" + "{{min}}",
         }),
       );
       return;
@@ -128,7 +128,7 @@ export function BillingTab({ user }: BillingTabProps) {
       toast.error(
         t("cloud.billingTab.maxAmount", {
           max: AMOUNT_LIMITS.MAX,
-          defaultValue: "Maximum amount is ${{max}}",
+          defaultValue: "Maximum amount is $" + "{{max}}",
         }),
       );
       return;
@@ -291,7 +291,10 @@ export function BillingTab({ user }: BillingTabProps) {
                     min: AMOUNT_LIMITS.MIN,
                     max: AMOUNT_LIMITS.MAX,
                     defaultValue:
-                      "Enter the amount you want to add. Min: ${{min}}, Max: ${{max}}",
+                      "Enter the amount you want to add. Min: $" +
+                      "{{min}}" +
+                      ", Max: $" +
+                      "{{max}}",
                   })}
                 </p>
 
@@ -396,11 +399,11 @@ export function BillingTab({ user }: BillingTabProps) {
                       {amountValue === null || amountValue < AMOUNT_LIMITS.MIN
                         ? t("cloud.billingTab.minAmount", {
                             min: AMOUNT_LIMITS.MIN,
-                            defaultValue: "Minimum amount is ${{min}}",
+                            defaultValue: "Minimum amount is $" + "{{min}}",
                           })
                         : t("cloud.billingTab.maxAmount", {
                             max: AMOUNT_LIMITS.MAX,
-                            defaultValue: "Maximum amount is ${{max}}",
+                            defaultValue: "Maximum amount is $" + "{{max}}",
                           })}
                     </span>
                   </div>
@@ -413,7 +416,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       {t("cloud.billingTab.willBeAdded", {
                         amount: amountValue.toFixed(2),
                         defaultValue:
-                          "${{amount}} will be added to your balance",
+                          "$" + "{{amount}}" + " will be added to your balance",
                       })}
                     </span>
                   </div>

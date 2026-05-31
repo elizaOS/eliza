@@ -35,11 +35,15 @@ export function parseBunVersion(rawVersion) {
 
 export function isSupportedBunVersion(rawVersion) {
   const parsed = parseBunVersion(rawVersion);
-  if (
-    parsed.major == null ||
-    parsed.minor == null ||
-    parsed.channel !== "stable"
-  ) {
+  if (parsed.major == null || parsed.minor == null) {
+    return false;
+  }
+  // The repo standardizes on the Bun 1.4 canary (Rust) line, so accept canary
+  // at or above 1.4. Stable >= 1.3 stays supported for anyone still on it.
+  if (parsed.channel === "canary") {
+    return parsed.major > 1 || (parsed.major === 1 && parsed.minor >= 4);
+  }
+  if (parsed.channel !== "stable") {
     return false;
   }
   if (parsed.major > 1) return true;

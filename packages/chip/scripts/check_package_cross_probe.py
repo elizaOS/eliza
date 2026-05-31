@@ -12,6 +12,17 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/package_cross_probe.json"
 MANIFEST = ROOT / "package/artifact-manifest.yaml"
+SCHEMA = "eliza.package_cross_probe.v1"
+CLAIM_BOUNDARY = "package_padframe_board_cross_probe_only_not_vendor_package_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "package_vendor_release_claim_allowed": False,
+    "padframe_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "cross_probe_signoff_claim_allowed": False,
+    "foundry_io_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 CROSS_PROBE_DRAFT = (
     ROOT / "docs/manufacturing/evidence/package/"
     "package-vendor-padframe-action-inventory-2026-05-23.yaml"
@@ -488,10 +499,11 @@ def write_report(status: str, mode: str, failures: list[str], blockers: list[str
     release_credit_false = release_credit_false_artifacts(local_evidence)
     class_counts = blocker_class_counts(failures + blockers)
     payload = {
-        "schema": "eliza.package_cross_probe.v1",
+        "schema": SCHEMA,
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
-        "claim_boundary": "package_padframe_board_cross_probe_only_not_vendor_package_release_evidence",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": mode,
         "release_ready": status == "pass" and mode == "release",
         "release_credit": status == "pass" and mode == "release",

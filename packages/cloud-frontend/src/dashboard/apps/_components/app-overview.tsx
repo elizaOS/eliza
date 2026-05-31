@@ -374,7 +374,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-[#FF5800] hover:bg-black hover:text-white"
+                    className="bg-[#FF5800] hover:bg-[#e54f00]"
                   >
                     {t("cloud.apps.overview.regenerate", {
                       defaultValue: "Regenerate",

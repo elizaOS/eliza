@@ -1,26 +1,48 @@
 schema: eliza.e1_phone_routed_board_clearance_release_intake.v1
-status: empty_intake_blocked_waiting_routed_board_step_supplier_geometry_and_clearance_measurements
-date: 2026-05-22
-claim_boundary: >
-  Empty intake template for the routed-board mechanical clearance release.
-  This file is not a clearance report and contains no passed evidence.
+status: local_candidate_intake_blocked_waiting_supplier_geometry_and_clearance_measurements
+date: 2026-05-28
+claim_boundary: 'Fail-closed intake for the routed-board mechanical clearance release. The local routed
+  KiCad candidate and copied local routed STEP candidate are identified so downstream reviews inspect
+  the right artifacts, but they have no release credit. This file is not a clearance report and contains
+  no passed release evidence.
 
+  '
 mapped_source_artifacts:
-  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
-  - packages/chip/board/kicad/e1-phone/routed-clearance-release-execution.yaml
-
+- packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+- packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+- packages/chip/board/kicad/e1-phone/routed-clearance-release-execution.yaml
 intake_metadata:
-  review_id: null
+  review_id: local-routed-candidate-clearance-intake-2026-05-28
   board_revision: EVT1-routed-first-article
-  routed_pcb_path: null
-  routed_board_step_path: null
+  routed_pcb_path: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  routed_pcb_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  routed_board_step_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  routed_board_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  routed_board_step_size_bytes: 33644081
   enclosure_cad_revision: null
-  component_model_bundle_path: null
+  component_model_bundle_path: packages/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+  component_model_bundle_sha256: 0f2a9e13b7c44a2eaa291da2ddcd132ea9cb614ce5434bc8bf3d8450d1cd5113
+  component_model_manifest_path: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+  component_model_manifest_sha256: 395d050132bf05751d35f29afe398162bd07e9edee634d56a64ceefd01326694
   reviewer: null
   review_date: null
   unit_or_fixture_serials: []
+local_candidate_context:
+  evidence_class: blocked_local_candidate_outputs_not_release
+  release_credit: false
+  routed_output_metadata: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
+  board_step_readiness: packages/chip/mechanical/e1-phone/review/board-step-readiness.json
+  kicad_cli_preflight: packages/chip/mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json
+  route_count: 153
+  segment_count: 306
+  via_count: 24
+  component_model_count: 89
+  cad_connection_count: 32
+  reason_not_release: 'Local routed-output candidate copied from non-release development STEP; lacks native
+    release-capable KiCad STEP export, DRC/ERC signoff, supplier-approved component geometry, measured
+    routed-board clearance, and release approval.
 
+    '
 required_inputs:
   routed_kicad_pcb: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   routed_board_step: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
@@ -28,98 +50,97 @@ required_inputs:
   drc_report: packages/chip/board/kicad/e1-phone/production/reports/drc.json
   erc_report: packages/chip/board/kicad/e1-phone/production/reports/erc.json
   assembly_drawing: packages/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
-
 clearance_cases:
-  - case_id: haptic_to_battery
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: split_interconnect_connectors_on_pcb_islands
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: usb_shell_to_external_aperture
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: battery_back_void_foam_to_pouch
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: battery_to_pcb_islands
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: bottom_mic_to_usb
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: front_camera_to_earpiece
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: haptic_to_pcb_islands
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: rear_camera_to_battery
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: split_interconnect_flex_to_battery_edge
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: split_interconnect_flex_within_side_rail
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-  - case_id: usb_to_bottom_speaker
-    measured_min_clearance_mm: null
-    required_min_clearance_mm: null
-    measurement_source: null
-    result: not_reviewed
-    pass: false
-
+- case_id: haptic_to_battery
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: split_interconnect_connectors_on_pcb_islands
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: usb_shell_to_external_aperture
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: battery_back_void_foam_to_pouch
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: battery_to_pcb_islands
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: bottom_mic_to_usb
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: front_camera_to_earpiece
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: haptic_to_pcb_islands
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: rear_camera_to_battery
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: split_interconnect_flex_to_battery_edge
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: split_interconnect_flex_within_side_rail
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
+- case_id: usb_to_bottom_speaker
+  measured_min_clearance_mm: null
+  required_min_clearance_mm: null
+  measurement_source: null
+  result: not_reviewed
+  pass: false
 release_flags:
-  routed_board_step_present: false
+  routed_board_step_present: true
+  routed_board_step_release_credit: false
+  routed_board_step_blocked_local_candidate: true
   supplier_geometry_complete: false
   boolean_interference_passed: false
   all_clearance_cases_measured: false
   all_clearance_cases_passed: false
   reviewer_signed: false
   release_allowed: false
-
 open_items:
-  - routed board STEP with all supplier component models is missing
-  - per-case clearance measurements are not populated
-  - boolean interference report is not attached
-  - physical fit first-article evidence is not attached
-
+- routed board STEP exists only as a blocked local candidate without release credit
+- release-capable native KiCad STEP export with all supplier component models is missing
+- per-case clearance measurements are not populated
+- boolean interference report is not attached
+- physical fit first-article evidence is not attached
 forbidden_claims:
-  - routed_clearance_passed
-  - enclosure_ready
-  - fabrication_ready
-  - end_to_end_phone_ready
+- routed_clearance_passed
+- enclosure_ready
+- fabrication_ready
+- end_to_end_phone_ready

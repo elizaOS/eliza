@@ -43,33 +43,74 @@ import os from "node:os";
 import path from "node:path";
 import { ensureRouteAuthorized } from "./auth.ts";
 
-// node:sqlite is a Node.js v22.5+ built-in and is not yet available in every
-// Bun release (Bun 1.3.10 ships without it; 1.3.13 inside the Electrobun
-// bundle has it). The training-benchmarks route is one optional consumer; if
-// the route is never called, we should not fail module init just because the
-// runtime lacks the builtin. So resolve lazily and gate the route on
-// availability — calls when sqlite is missing return 503 instead of crashing
-// the entire API on first import.
+// A SQLite backend is resolved lazily so module init never fails on a runtime
+// that lacks one. Node ≥22.5 exposes `node:sqlite` (DatabaseSync); Bun exposes
+// `bun:sqlite` (Database). Neither runtime ships both, so we try each and
+// normalize to the small read-only surface this reader needs. When neither is
+// present the route reports `dbReady: false` instead of crashing the API.
+interface SqliteStatement {
+  all(...params: unknown[]): Record<string, unknown>[];
+  get(...params: unknown[]): Record<string, unknown> | undefined;
+  run(...params: unknown[]): { changes: number; lastInsertRowid: number };
+}
 type DatabaseSyncCtor = new (
   filename: string,
   options?: { readOnly?: boolean },
 ) => {
-  prepare(sql: string): {
-    all(...params: unknown[]): Record<string, unknown>[];
-    get(...params: unknown[]): Record<string, unknown> | undefined;
-    run(...params: unknown[]): { changes: number; lastInsertRowid: number };
-  };
+  prepare(sql: string): SqliteStatement;
   close(): void;
 };
+
+interface BunDatabase {
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+interface BunSqliteModule {
+  Database: new (
+    filename: string,
+    options?: { readonly?: boolean },
+  ) => BunDatabase;
+}
+
 const requireFromHere = createRequire(import.meta.url);
 let DatabaseSyncCached: DatabaseSyncCtor | null | undefined;
 function loadDatabaseSync(): DatabaseSyncCtor | null {
   if (DatabaseSyncCached !== undefined) return DatabaseSyncCached;
+  // Node ≥22.5 built-in.
   try {
     const mod = requireFromHere("node:sqlite") as {
       DatabaseSync?: DatabaseSyncCtor;
     };
-    DatabaseSyncCached = mod.DatabaseSync ?? null;
+    if (mod.DatabaseSync) {
+      DatabaseSyncCached = mod.DatabaseSync;
+      return DatabaseSyncCached;
+    }
+  } catch {
+    // Not Node — fall through to Bun.
+  }
+  // Bun built-in. Bun spells the read-only flag `readonly` and throws on
+  // Node's `readOnly`, so adapt the constructor to the shared signature.
+  try {
+    const { Database } = requireFromHere("bun:sqlite") as BunSqliteModule;
+    class BunDatabaseSync {
+      private readonly db: BunDatabase;
+      constructor(filename: string, options?: { readOnly?: boolean }) {
+        // Bun rejects `{ readonly: false }` (SQLITE_MISUSE — flags include
+        // neither READONLY nor READWRITE). Pass the flag only when read-only
+        // is requested; otherwise let Bun default to readwrite+create.
+        this.db = options?.readOnly
+          ? new Database(filename, { readonly: true })
+          : new Database(filename);
+      }
+      prepare(sql: string): SqliteStatement {
+        return this.db.prepare(sql);
+      }
+      close(): void {
+        this.db.close();
+      }
+    }
+    DatabaseSyncCached = BunDatabaseSync;
+    return DatabaseSyncCached;
   } catch {
     DatabaseSyncCached = null;
   }
@@ -207,7 +248,7 @@ export function openBenchmarkResultsReader(
 
   const DatabaseSync = loadDatabaseSync();
   if (!DatabaseSync) {
-    // Runtime lacks node:sqlite (e.g. older Bun). Surface "not ready"
+    // Runtime exposes neither node:sqlite nor bun:sqlite. Surface "not ready"
     // instead of throwing — callers treat this as no benchmark data.
     return {
       ready: false,

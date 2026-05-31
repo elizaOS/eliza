@@ -5,8 +5,8 @@ name: Local Inference Bench
 # --target — so we run it in two layers:
 #
 #   1. PR + nightly: harness route smoke. Boots
-#      `packages/scripts/benchmark/stub-agent-server.mjs` on a free port and checks
-#      only `/api/health`; it does not write benchmark artifacts.
+#      `packages/scripts/benchmark/stub-agent-server.mjs` on a free port and
+#      runs the profile harness against its model-ensure path.
 #   2. Nightly only: real agent profile. Boots `bun run dev`, points the
 #      harness at the dev server, writes the report under
 #      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the
@@ -27,7 +27,7 @@ on:
     - cron: "30 4 * * 0"
   pull_request:
     paths:
-      - "scripts/benchmark/**"
+      - "packages/scripts/benchmark/**"
       - ".github/workflows/local-inference-bench.yml"
       - "plugins/plugin-local-embedding/**"
       - "packages/training/scripts/publish_eliza1_model.py"
@@ -61,7 +61,7 @@ permissions:
   pull-requests: write
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "canary"
   NODE_VERSION: "24"
   STUB_PORT: "31338"
 
@@ -90,7 +90,9 @@ jobs:
       - name: Boot stub agent server
         run: |
           set -euo pipefail
-          node packages/scripts/benchmark/stub-agent-server.mjs --port "${STUB_PORT}" &
+          node packages/scripts/benchmark/stub-agent-server.mjs \
+            --port "${STUB_PORT}" \
+            --require-installed-models &
           echo $! > /tmp/stub.pid
           # Wait for the stub to bind (health endpoint becomes 200).
           for _ in $(seq 1 50); do
@@ -105,6 +107,19 @@ jobs:
         run: |
           set -euo pipefail
           curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health"
+
+      - name: Verify harness model ensure path
+        run: |
+          set -euo pipefail
+          node packages/scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:${STUB_PORT}" \
+            --config packages/scripts/benchmark/configs/host-cpu.json \
+            --label "stub-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
+            --out ".ci-logs/stub-profile" \
+            --ensure-models \
+            --download-timeout-ms 30000 \
+            --load-timeout-ms 10000 \
+            --request-timeout-ms 30000
 
       - name: Tear down stub
         if: ${{ always() }}
@@ -179,7 +194,8 @@ jobs:
             --target "http://127.0.0.1:31337" \
             --config packages/scripts/benchmark/configs/host-cpu.json \
             --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
-            --out "$OUT_DIR"
+            --out "$OUT_DIR" \
+            --ensure-models
           echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
 
       - name: Tear down dev agent
@@ -304,7 +320,8 @@ jobs:
             --target "http://127.0.0.1:31337" \
             --config packages/scripts/benchmark/configs/aosp-arm64.json \
             --label "cuttlefish-${GITHUB_RUN_ID}" \
-            --out "$OUT_DIR"
+            --out "$OUT_DIR" \
+            --ensure-models
 
       - name: Upload cuttlefish report artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

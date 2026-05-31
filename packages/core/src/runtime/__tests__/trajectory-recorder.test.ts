@@ -830,6 +830,12 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(encodeTrajectoryFieldValue({ a: 1, b: "two" })).toBe(
 			'{"a":1,"b":"two"}',
 		);
+		expect(encodeTrajectoryFieldValue({})).toBe("{}");
+		const nullPrototype = Object.create(null);
+		expect(encodeTrajectoryFieldValue(nullPrototype)).toBe("{}");
+		expect(encodeTrajectoryFieldValue(new URL("https://example.com/a"))).toBe(
+			'"https://example.com/a"',
+		);
 		expect(encodeTrajectoryFieldValue("hello")).toBe("hello");
 		expect(encodeTrajectoryFieldValue(undefined)).toBe("");
 		expect(encodeTrajectoryFieldValue(null)).toBe("");
@@ -868,6 +874,15 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(captured.output).toBe('{"success":true,"data":{"temp":72}}');
 		expect(captured.errorText).toBeUndefined();
 		expect(captured.truncated).toBeUndefined();
+	});
+
+	it("captureToolStageIO preserves empty plain records as JSON objects", () => {
+		const captured = captureToolStageIO({
+			input: {},
+			output: { args: {} },
+		});
+		expect(captured.input).toBe("{}");
+		expect(captured.output).toBe('{"args":{}}');
 	});
 
 	it("captureToolStageIO attaches a truncated[] marker only for capped fields", () => {

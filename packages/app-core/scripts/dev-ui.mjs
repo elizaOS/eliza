@@ -1191,10 +1191,19 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createDevChildEnv(process.env);
+  // V8 bytecode cache for the Node API runtime. The runtime is deliberately
+  // Node (not Bun) for node: built-ins, so this persists compiled module
+  // bytecode across boots and --watch restarts, trimming plugin-import cost.
+  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
+  // Co-located with tsx's transpile cache in tmpdir so both share a lifecycle.
+  const apiCompileCacheDir =
+    childEnv.NODE_COMPILE_CACHE?.trim() ||
+    path.join(os.tmpdir(), "eliza-node-compile-cache");
   const apiSpawnEnv = extendNodePathEnv(
     {
       ...childEnv,
       NODE_ENV: "development",
+      NODE_COMPILE_CACHE: apiCompileCacheDir,
       NODE_OPTIONS: appendNodeOption(
         childEnv.NODE_OPTIONS,
         "--disable-warning=ExperimentalWarning",
@@ -1206,6 +1215,13 @@ if (uiOnly) {
       ELIZA_HEADLESS: "1",
       ELIZA_DEV_AUTH_BYPASS: "1",
       LOG_LEVEL: devLogLevel,
+      // Dev boots happen on developer machines that may be busy (concurrent
+      // builds, test suites, other agents). plugin-sql pulls in native pglite
+      // bindings whose dynamic import can exceed the 30s production default
+      // under CPU contention, false-failing the whole boot into a retry loop.
+      // Give dev generous headroom; an explicit env value still wins.
+      ELIZA_PLUGIN_BOOT_TIMEOUT_MS:
+        process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? "90000",
     },
     apiSpawnCwd,
   );

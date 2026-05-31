@@ -207,11 +207,14 @@ class TextConditionedProfileEnv(gym.Env):
         )
         self._last_locomotion_prior_residual = np.zeros(self._action_dim, dtype=np.float32)
         self._last_locomotion_prior_residual_stability_scale = 1.0
+        self._last_locomotion_prior_goal_hold_scale = 1.0
         self._last_locomotion_prior_residual_scale = 0.0
         self._last_single_foot_contact_state: str | None = None
         self._foot_contact_switch_count = 0
+        self._post_contact_no_support_steps = 0
         self._max_swing_foot_clearance_m = 0.0
         self._max_foot_slip_m_s = 0.0
+        self._max_self_collision_count = 0
 
     # ------------------------------------------------------------------ mujoco
 
@@ -350,13 +353,17 @@ class TextConditionedProfileEnv(gym.Env):
         self._prev_foot_xy = self._current_foot_xy()
         self._last_foot_telemetry = self._foot_telemetry()
         self._last_reward_terms = {}
+        self._last_locomotion_prior_goal_hold_scale = 1.0
         self._last_single_foot_contact_state = self._single_foot_contact_state(
             self._last_foot_telemetry
         )
         self._foot_contact_switch_count = 0
+        self._post_contact_no_support_steps = 0
         self._max_swing_foot_clearance_m = self._current_swing_foot_clearance_m()
         self._max_foot_slip_m_s = 0.0
+        self._max_self_collision_count = self._self_collision_count()
         pose = self._root_pose_summary()
+        floor_clearance = self._robot_geometry_floor_clearance_summary()
         return self._build_obs(), {
             "task_id": task.id,
             "task_tier": task.tier,
@@ -366,6 +373,18 @@ class TextConditionedProfileEnv(gym.Env):
             "tracked_body_name": self._tracked_body_name,
             "init_upright_proj": pose["upright_proj"],
             "stand_height_m": self._stand_height_m,
+            "min_robot_geom_floor_clearance_m": floor_clearance[
+                "min_robot_geom_floor_clearance_m"
+            ],
+            "below_floor_robot_geom_count": floor_clearance[
+                "below_floor_robot_geom_count"
+            ],
+            "worst_below_floor_robot_geom": floor_clearance[
+                "worst_below_floor_robot_geom"
+            ],
+            "floor_penetration_tolerance_m": floor_clearance[
+                "floor_penetration_tolerance_m"
+            ],
         }
 
     def _apply_task_init_state(self, task: TaskSpec) -> None:
@@ -592,6 +611,7 @@ class TextConditionedProfileEnv(gym.Env):
         )
         self._last_foot_telemetry = self._foot_telemetry()
         self._update_foot_contact_switch_count()
+        self._update_post_contact_no_support_steps()
         self._max_swing_foot_clearance_m = max(
             self._max_swing_foot_clearance_m,
             self._current_swing_foot_clearance_m(),
@@ -599,6 +619,11 @@ class TextConditionedProfileEnv(gym.Env):
         self._max_foot_slip_m_s = max(
             self._max_foot_slip_m_s,
             float(np.max(self._last_foot_telemetry[4:6])),
+        )
+        self_collision_count = self._self_collision_count()
+        self._max_self_collision_count = max(
+            self._max_self_collision_count,
+            int(self_collision_count),
         )
         obs = self._build_obs()
         pose = self._root_pose_summary()
@@ -621,9 +646,18 @@ class TextConditionedProfileEnv(gym.Env):
             not prone_tilt_exempt
             and (abs(pitch) > fall_pitch or abs(roll) > fall_roll)
         )
-        terminated = bool(torso_z < fall_z_threshold or upright_proj < 0.0 or tilt_fall)
+        support_contract_terminated = self._locomotion_terminal_support_contract_violated()
+        physical_fell = bool(torso_z < fall_z_threshold or upright_proj < 0.0 or tilt_fall)
+        terminated = bool(
+            physical_fell or support_contract_terminated
+        )
         truncated = not terminated and self._step_count >= self.config.episode_steps
-        reward = self._reward(effective_action, pose=pose, fell=terminated)
+        reward = self._reward(
+            effective_action,
+            pose=pose,
+            fell=physical_fell,
+            support_contract_terminated=support_contract_terminated,
+        )
         tracked = self._tracked_pose_summary(pose)
         elapsed_s = max(self._step_count * self.config.control_dt_s, 1e-6)
         dx = pose["x"] - self._episode_start_x
@@ -634,10 +668,12 @@ class TextConditionedProfileEnv(gym.Env):
         tracked_dz = tracked["z"] - self._episode_start_tracked_z
         success_bound_violation = self._success_bound_violation_score(dx, dy, dyaw)
         success_predicate_now = self._immediate_success_predicate_holds(pose)
-        self_collision_count = self._self_collision_count()
+        floor_clearance = self._robot_geometry_floor_clearance_summary()
         done_reason = None
-        if terminated:
+        if physical_fell:
             done_reason = "fall"
+        elif support_contract_terminated:
+            done_reason = "support_contract"
         elif truncated:
             done_reason = "time_limit"
         return (
@@ -684,8 +720,21 @@ class TextConditionedProfileEnv(gym.Env):
                 "success_predicate_now": success_predicate_now,
                 "success_bounds_violated": success_bound_violation > 0.0,
                 "success_bound_violation": success_bound_violation,
+                "min_robot_geom_floor_clearance_m": floor_clearance[
+                    "min_robot_geom_floor_clearance_m"
+                ],
+                "below_floor_robot_geom_count": floor_clearance[
+                    "below_floor_robot_geom_count"
+                ],
+                "worst_below_floor_robot_geom": floor_clearance[
+                    "worst_below_floor_robot_geom"
+                ],
+                "floor_penetration_tolerance_m": floor_clearance[
+                    "floor_penetration_tolerance_m"
+                ],
                 "reward_terms": dict(self._last_reward_terms),
                 "self_collision_count": self_collision_count,
+                "max_self_collision_count": int(self._max_self_collision_count),
                 "raw_action_max_abs": float(np.max(np.abs(clipped))) if clipped.size else 0.0,
                 "effective_action_max_abs": float(np.max(np.abs(effective_action)))
                 if effective_action.size
@@ -708,6 +757,9 @@ class TextConditionedProfileEnv(gym.Env):
                 "locomotion_prior_residual_stability_scale": float(
                     self._last_locomotion_prior_residual_stability_scale
                 ),
+                "locomotion_prior_goal_hold_scale": float(
+                    self._last_locomotion_prior_goal_hold_scale
+                ),
                 "locomotion_prior_residual_scale": float(
                     self._last_locomotion_prior_residual_scale
                 ),
@@ -727,17 +779,33 @@ class TextConditionedProfileEnv(gym.Env):
                 self._last_locomotion_prior_residual.copy()
             )
             self._last_locomotion_prior_residual_stability_scale = 1.0
+            self._last_locomotion_prior_goal_hold_scale = 1.0
             self._last_locomotion_prior_residual_scale = 0.0
             return action
         if self.config.locomotion_action_prior == "gait":
             prior = self._locomotion_gait_prior_action()
         elif self.config.locomotion_action_prior == "hiwonder_sine":
             prior = self._locomotion_hiwonder_sine_prior_action()
+        elif self.config.locomotion_action_prior == "hiwonder_contact_sine":
+            prior = self._locomotion_hiwonder_contact_sine_prior_action()
+        elif self.config.locomotion_action_prior == "hiwonder_low_slip_contact_sine":
+            prior = self._locomotion_hiwonder_low_slip_contact_sine_prior_action()
         else:
             raise ValueError(
-                "locomotion_action_prior must be one of: none, gait, hiwonder_sine"
+                "locomotion_action_prior must be one of: none, gait, "
+                "hiwonder_sine, hiwonder_contact_sine, "
+                "hiwonder_low_slip_contact_sine"
             )
-        prior = self._apply_locomotion_prior_balance_feedback(prior)
+        if self.config.locomotion_action_prior == "hiwonder_low_slip_contact_sine":
+            raw_prior = prior.copy()
+            balanced_prior = self._apply_locomotion_prior_balance_feedback(raw_prior)
+            balance_delta = np.clip(balanced_prior - raw_prior, -0.25, 0.25)
+            prior = self._apply_locomotion_prior_goal_hold_taper(raw_prior)
+            prior = np.clip(prior + balance_delta, -1.0, 1.0).astype(np.float32)
+        else:
+            prior = self._apply_locomotion_prior_balance_feedback(prior)
+            prior = self._apply_locomotion_prior_goal_hold_taper(prior)
+        prior = self._apply_locomotion_prior_capture_plant(prior)
         residual_scale = float(self.config.locomotion_prior_residual_scale)
         residual = self._locomotion_prior_residual_action(action)
         self._last_locomotion_prior_action = prior.copy()
@@ -745,10 +813,208 @@ class TextConditionedProfileEnv(gym.Env):
         self._last_locomotion_prior_residual_scale = residual_scale
         return np.clip(prior + residual_scale * residual, -1.0, 1.0).astype(np.float32)
 
+    def _apply_locomotion_prior_capture_plant(self, prior: np.ndarray) -> np.ndarray:
+        if self._current_task is None or not _is_locomotion_reward(self._current_task.reward):
+            return prior
+        if self.config.locomotion_action_prior not in {
+            "hiwonder_sine",
+            "hiwonder_contact_sine",
+            "hiwonder_low_slip_contact_sine",
+        }:
+            return prior
+        crit = self._current_task.success
+        required_contacts = int(crit.get("min_alternating_foot_contacts", 0))
+        if required_contacts <= 0 or self._foot_contact_switch_count < required_contacts:
+            return prior
+        pose = self._root_pose_summary()
+        tracked = self._tracked_pose_summary(pose)
+        progress_ratio = 0.0
+        if "delta_x_m_min" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                (tracked["x"] - self._episode_start_tracked_x)
+                / max(float(crit["delta_x_m_min"]), 1e-6),
+            )
+        if "delta_x_m_max" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                -(tracked["x"] - self._episode_start_tracked_x)
+                / max(abs(float(crit["delta_x_m_max"])), 1e-6),
+            )
+        if "delta_y_m_min" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                (tracked["y"] - self._episode_start_tracked_y)
+                / max(float(crit["delta_y_m_min"]), 1e-6),
+            )
+        if "delta_y_m_max" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                -(tracked["y"] - self._episode_start_tracked_y)
+                / max(abs(float(crit["delta_y_m_max"])), 1e-6),
+            )
+        capture = float(np.clip((max(0.0, progress_ratio) - 1.0) / 0.10, 0.0, 1.0))
+        if bool(crit.get("no_fall", False)):
+            fall_pitch = max(float(crit.get("fall_pitch_rad", 0.6)), 1e-6)
+            fall_roll = max(float(crit.get("fall_roll_rad", 0.6)), 1e-6)
+            pitch = float(pose.get("pitch", 0.0))
+            roll = float(pose.get("roll", 0.0))
+            tilt_ratio = max(abs(pitch) / fall_pitch, abs(roll) / fall_roll)
+            capture = max(capture, float(np.clip((tilt_ratio - 0.82) / 0.13, 0.0, 1.0)))
+            height_target = float(
+                self._current_task.reward.get(
+                    "torso_height_target_m",
+                    self._stand_height_m
+                    * float(self._current_task.reward.get("torso_height_target_ratio", 1.0)),
+                )
+            )
+            height_ratio = float(pose.get("z", 0.0)) / max(height_target, 1e-6)
+            capture = max(capture, float(np.clip((0.82 - height_ratio) / 0.12, 0.0, 1.0)))
+        if "max_abs_delta_yaw_rad" in crit:
+            yaw_bound = max(float(crit["max_abs_delta_yaw_rad"]), 1e-6)
+            yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - self._episode_start_yaw)
+            yaw_ratio = abs(yaw) / yaw_bound
+            capture = max(capture, float(np.clip((yaw_ratio - 0.90) / 0.10, 0.0, 1.0)))
+        if "max_foot_slip_m_s" in crit:
+            slip_limit = max(float(crit["max_foot_slip_m_s"]), 1e-6)
+            slip_ratio = float(self._max_foot_slip_m_s) / slip_limit
+            capture = max(capture, float(np.clip((slip_ratio - 0.92) / 0.08, 0.0, 1.0)))
+        if capture <= 0.0:
+            return prior
+
+        pitch = float(pose.get("pitch", 0.0))
+        roll = float(pose.get("roll", 0.0))
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - self._episode_start_yaw)
+        pitch_sign = 1.0 if pitch >= 0.0 else -1.0
+        plant = np.zeros_like(prior, dtype=np.float32)
+        for idx, joint in enumerate(self._action_joints):
+            name = joint.name.lower()
+            is_left = name.startswith(("l_", "left_"))
+            side = 1.0 if is_left else -1.0
+            if "hip_pitch" in name:
+                plant[idx] = -pitch_sign * 0.22
+            elif "knee" in name:
+                plant[idx] = 0.16
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                plant[idx] = pitch_sign * 0.22
+            elif "hip_roll" in name:
+                plant[idx] = side * float(np.clip(roll, -0.20, 0.20))
+            elif "ank_roll" in name:
+                plant[idx] = -side * float(np.clip(roll, -0.20, 0.20))
+            elif "hip_yaw" in name:
+                plant[idx] = -side * float(np.clip(0.5 * yaw, -0.18, 0.18))
+        blend = float(np.clip(capture, 0.0, 0.60))
+        return ((1.0 - blend) * prior + blend * plant).astype(np.float32)
+
+    def _apply_locomotion_prior_goal_hold_taper(self, prior: np.ndarray) -> np.ndarray:
+        if self._current_task is None or not _is_locomotion_reward(self._current_task.reward):
+            self._last_locomotion_prior_goal_hold_scale = 1.0
+            return prior
+        if self.config.locomotion_action_prior not in {
+            "hiwonder_sine",
+            "hiwonder_contact_sine",
+            "hiwonder_low_slip_contact_sine",
+        }:
+            self._last_locomotion_prior_goal_hold_scale = 1.0
+            return prior
+        crit = self._current_task.success
+        pose = self._root_pose_summary()
+        tracked = self._tracked_pose_summary(pose)
+        progress_ratio = 0.0
+        if "delta_x_m_min" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                (tracked["x"] - self._episode_start_tracked_x)
+                / max(float(crit["delta_x_m_min"]), 1e-6),
+            )
+        if "delta_x_m_max" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                -(tracked["x"] - self._episode_start_tracked_x)
+                / max(abs(float(crit["delta_x_m_max"])), 1e-6),
+            )
+        if "delta_y_m_min" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                (tracked["y"] - self._episode_start_tracked_y)
+                / max(float(crit["delta_y_m_min"]), 1e-6),
+            )
+        if "delta_y_m_max" in crit:
+            progress_ratio = max(
+                progress_ratio,
+                -(tracked["y"] - self._episode_start_tracked_y)
+                / max(abs(float(crit["delta_y_m_max"])), 1e-6),
+            )
+        progress_ratio = max(0.0, float(progress_ratio))
+
+        contact_scale = 1.0
+        if "min_alternating_foot_contacts" in crit:
+            contact_scale = float(
+                np.clip(
+                    float(self._foot_contact_switch_count)
+                    / max(float(crit["min_alternating_foot_contacts"]), 1.0),
+                    0.0,
+                    1.0,
+                )
+            )
+        # The HiWonder open-loop seeds repeatedly get near the displacement
+        # threshold and then fall. Start reducing prior authority before the
+        # final lunge so residual learning can solve the verifier hold window.
+        progress_hold = contact_scale * float(
+            np.clip((progress_ratio - 0.85) / 0.15, 0.0, 1.0)
+        )
+
+        tilt_hold = 0.0
+        height_hold = 0.0
+        yaw_hold = 0.0
+        slip_hold = 0.0
+        if bool(crit.get("no_fall", False)):
+            fall_pitch = max(float(crit.get("fall_pitch_rad", 0.6)), 1e-6)
+            fall_roll = max(float(crit.get("fall_roll_rad", 0.6)), 1e-6)
+            tilt_ratio = max(
+                abs(float(pose.get("pitch", 0.0))) / fall_pitch,
+                abs(float(pose.get("roll", 0.0))) / fall_roll,
+            )
+            tilt_hold = float(np.clip((tilt_ratio - 0.45) / 0.25, 0.0, 1.0))
+            height_target = float(
+                self._current_task.reward.get(
+                    "torso_height_target_m",
+                    self._stand_height_m
+                    * float(self._current_task.reward.get("torso_height_target_ratio", 1.0)),
+                )
+            )
+            height_ratio = float(pose.get("z", 0.0)) / max(height_target, 1e-6)
+            height_hold = float(np.clip((0.90 - height_ratio) / 0.20, 0.0, 1.0))
+        if "max_abs_delta_yaw_rad" in crit:
+            yaw_bound = max(float(crit["max_abs_delta_yaw_rad"]), 1e-6)
+            yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - self._episode_start_yaw)
+            yaw_ratio = abs(yaw) / yaw_bound
+            yaw_hold = float(np.clip((yaw_ratio - 0.85) / 0.15, 0.0, 1.0))
+        if "max_foot_slip_m_s" in crit and contact_scale >= 1.0:
+            slip_limit = max(float(crit["max_foot_slip_m_s"]), 1e-6)
+            slip_ratio = float(self._max_foot_slip_m_s) / slip_limit
+            slip_hold = float(np.clip((slip_ratio - 0.90) / 0.10, 0.0, 1.0))
+
+        if self.config.locomotion_action_prior == "hiwonder_low_slip_contact_sine":
+            progress_scale = float(1.0 - 0.95 * progress_hold)
+            recovery_hold = max(tilt_hold, height_hold, yaw_hold, slip_hold)
+            recovery_scale = float(1.0 - 0.65 * recovery_hold)
+            scale = min(progress_scale, recovery_scale)
+        else:
+            hold = max(progress_hold, tilt_hold, height_hold, yaw_hold, slip_hold)
+            scale = float(1.0 - 0.95 * hold)
+        self._last_locomotion_prior_goal_hold_scale = scale
+        return (prior * scale).astype(np.float32)
+
     def _locomotion_prior_residual_action(self, action: np.ndarray) -> np.ndarray:
         if (
             self.config.locomotion_prior_residual_mode == "hiwonder_stride_mod"
-            and self.config.locomotion_action_prior == "hiwonder_sine"
+            and self.config.locomotion_action_prior
+            in {
+                "hiwonder_sine",
+                "hiwonder_contact_sine",
+                "hiwonder_low_slip_contact_sine",
+            }
         ):
             return self._locomotion_hiwonder_stride_mod_residual_action(action)
         if self.config.locomotion_prior_residual_mode != "joint":
@@ -836,11 +1102,32 @@ class TextConditionedProfileEnv(gym.Env):
             dtype=np.float32,
         )
         stride, push, crouch, roll = np.clip(coeff, -1.0, 1.0)
+        yaw_timing = np.clip(
+            np.asarray(
+                [
+                    mean_for(("hip_yaw",)),
+                    0.5
+                    * (
+                        mean_for(("hip_yaw",), side="r_")
+                        - mean_for(("hip_yaw",), side="l_")
+                    ),
+                ],
+                dtype=np.float32,
+            ),
+            -1.0,
+            1.0,
+        )
+        cadence, phase_shift = yaw_timing
 
-        params = self._locomotion_hiwonder_sine_params()
+        if self.config.locomotion_action_prior == "hiwonder_contact_sine":
+            params = self._locomotion_hiwonder_contact_sine_params()
+        elif self.config.locomotion_action_prior == "hiwonder_low_slip_contact_sine":
+            params = self._locomotion_hiwonder_low_slip_contact_sine_params()
+        else:
+            params = self._locomotion_hiwonder_sine_params()
         mod = dict(params)
-        mod["hz"] += 0.20 * float(stride)
-        mod["phase0"] += 0.14 * float(push)
+        mod["hz"] = max(0.70, params["hz"] + 0.30 * float(cadence))
+        mod["phase0"] += 0.45 * float(phase_shift)
         mod["hip_amp"] += 0.045 * float(stride)
         mod["knee_amp"] += 0.035 * float(stride)
         mod["ank_amp"] += 0.025 * float(stride)
@@ -890,6 +1177,36 @@ class TextConditionedProfileEnv(gym.Env):
         self._last_locomotion_prior_residual_stability_scale = stability_scale
         return (residual * stability_scale).astype(np.float32)
 
+    def _locomotion_terminal_support_contract_violated(self) -> bool:
+        if self._current_task is None or not _is_locomotion_reward(self._current_task.reward):
+            return False
+        crit = self._current_task.success
+        if (
+            "max_self_collision_count" in crit
+            and self._max_self_collision_count > int(crit["max_self_collision_count"])
+        ):
+            return True
+        required_contacts = (
+            int(crit["min_alternating_foot_contacts"])
+            if "min_alternating_foot_contacts" in crit
+            else 0
+        )
+        contact_contract_active = self._foot_contact_switch_count >= required_contacts
+        if (
+            contact_contract_active
+            and "max_foot_slip_m_s" in crit
+            and self._max_foot_slip_m_s > float(crit["max_foot_slip_m_s"])
+        ):
+            return True
+        no_support_terminal_steps = int(
+            self._current_task.reward.get("post_contact_no_support_terminal_steps", 3)
+        )
+        return (
+            contact_contract_active
+            and required_contacts > 0
+            and self._post_contact_no_support_steps >= max(1, no_support_terminal_steps)
+        )
+
     def _apply_locomotion_prior_balance_feedback(self, action: np.ndarray) -> np.ndarray:
         pitch_gain = float(self.config.locomotion_prior_feedback_pitch)
         roll_gain = float(self.config.locomotion_prior_feedback_roll)
@@ -901,32 +1218,62 @@ class TextConditionedProfileEnv(gym.Env):
         roll = float(pose.get("roll", 0.0))
         yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - self._episode_start_yaw)
         yaw_cmd = float(np.clip(yaw_gain * yaw, -0.35, 0.35))
+        fall_pitch = 0.6
+        fall_roll = 0.6
+        tilt_ratio = 0.0
+        no_fall_task = self._current_task is not None and bool(
+            self._current_task.success.get("no_fall", False)
+        )
+        if no_fall_task:
+            fall_pitch = max(
+                float(self._current_task.success.get("fall_pitch_rad", fall_pitch)),
+                1e-6,
+            )
+            fall_roll = max(
+                float(self._current_task.success.get("fall_roll_rad", fall_roll)),
+                1e-6,
+            )
+            tilt_ratio = max(abs(pitch) / fall_pitch, abs(roll) / fall_roll)
+        pitch_side_scales = {"left": 1.0, "right": 1.0}
+        if no_fall_task:
+            left_contact = bool(self._last_foot_telemetry[0] > 0.5)
+            right_contact = bool(self._last_foot_telemetry[1] > 0.5)
+            if left_contact != right_contact and abs(pitch) / fall_pitch > 0.70:
+                stance = "left" if left_contact else "right"
+                swing = "right" if left_contact else "left"
+                pitch_side_scales[stance] = 1.25
+                pitch_side_scales[swing] = 0.25
         corrected = action.copy()
         for idx, joint in enumerate(self._action_joints):
             name = joint.name.lower()
-            side = 1.0 if name.startswith("l_") else -1.0
+            is_left = name.startswith(("l_", "left_"))
+            side_name = "left" if is_left else "right"
+            side = 1.0 if is_left else -1.0
+            pitch_side_scale = pitch_side_scales[side_name]
             if "hip_pitch" in name:
-                corrected[idx] += side * pitch_gain * pitch
-            elif "ank_pitch" in name:
-                corrected[idx] -= side * pitch_gain * pitch
+                corrected[idx] += side * pitch_side_scale * pitch_gain * pitch
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                corrected[idx] -= side * pitch_side_scale * pitch_gain * pitch
             elif "hip_roll" in name:
                 corrected[idx] += side * roll_gain * roll
             elif "ank_roll" in name:
                 corrected[idx] -= side * roll_gain * roll
             elif "hip_yaw" in name:
                 corrected[idx] -= side * yaw_cmd
-        if self._current_task is not None and bool(
-            self._current_task.success.get("no_fall", False)
-        ):
-            fall_pitch = float(self._current_task.success.get("fall_pitch_rad", 0.6))
-            fall_roll = float(self._current_task.success.get("fall_roll_rad", 0.6))
-            tilt_ratio = max(
-                abs(pitch) / max(fall_pitch, 1e-6),
-                abs(roll) / max(fall_roll, 1e-6),
-            )
-            if tilt_ratio > 0.65:
-                stability_scale = float(np.clip((0.90 - tilt_ratio) / 0.25, 0.35, 1.0))
-                corrected *= stability_scale
+        if no_fall_task and abs(pitch) / fall_pitch > 0.82:
+            brace = float(np.clip((abs(pitch) / fall_pitch - 0.82) / 0.18, 0.0, 1.0))
+            pitch_sign = 1.0 if pitch >= 0.0 else -1.0
+            for idx, joint in enumerate(self._action_joints):
+                name = joint.name.lower()
+                if "hip_pitch" in name:
+                    corrected[idx] -= pitch_sign * 0.18 * brace
+                elif "knee" in name:
+                    corrected[idx] += 0.12 * brace
+                elif "ank_pitch" in name or "ankle_pitch" in name:
+                    corrected[idx] += pitch_sign * 0.18 * brace
+        if no_fall_task and tilt_ratio > 0.65:
+            stability_scale = float(np.clip((0.90 - tilt_ratio) / 0.25, 0.35, 1.0))
+            corrected *= stability_scale
         return np.clip(corrected, -1.0, 1.0).astype(np.float32)
 
     def _apply_profile_command_filter(self, target: np.ndarray) -> np.ndarray:
@@ -1248,12 +1595,113 @@ class TextConditionedProfileEnv(gym.Env):
                 z[side_idx] = float(np.min(self._data.geom_xpos[geom_ids, 2]))
         return z
 
+    def _floor_height_m(self) -> float:
+        if self._model is None or self._data is None or self._floor_geom_ids.size == 0:
+            return 0.0
+        return float(np.max(self._data.geom_xpos[self._floor_geom_ids, 2]))
+
+    def _robot_geom_ids_for_floor_check(self) -> list[int]:
+        if self._model is None:
+            return []
+        import mujoco
+
+        floor_ids = set(int(idx) for idx in self._floor_geom_ids)
+        robot_geom_ids: list[int] = []
+        for geom_id in range(int(self._model.ngeom)):
+            if geom_id in floor_ids:
+                continue
+            if (
+                int(self._model.geom_contype[geom_id]) == 0
+                and int(self._model.geom_conaffinity[geom_id]) == 0
+            ):
+                continue
+            body_id = int(self._model.geom_bodyid[geom_id])
+            body_name = (
+                mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_BODY, body_id)
+                or ""
+            )
+            if body_name in {"world", "target_ball"}:
+                continue
+            robot_geom_ids.append(geom_id)
+        return robot_geom_ids
+
+    def _geom_aabb_min_z_m(self, geom_id: int) -> float:
+        assert self._model is not None and self._data is not None
+        import mujoco
+
+        geom_type = int(self._model.geom_type[geom_id])
+        center = self._data.geom_xpos[geom_id]
+        xmat = self._data.geom_xmat[geom_id].reshape(3, 3)
+        size = self._model.geom_size[geom_id]
+        if geom_type == int(mujoco.mjtGeom.mjGEOM_SPHERE):
+            return float(center[2] - size[0])
+        if geom_type == int(mujoco.mjtGeom.mjGEOM_BOX):
+            z_extent = float(np.sum(np.abs(xmat[2, :]) * size[:3]))
+            return float(center[2] - z_extent)
+        if geom_type == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
+            radius = float(size[0])
+            half_length = float(size[1])
+            z_extent = radius + abs(float(xmat[2, 2])) * half_length
+            return float(center[2] - z_extent)
+        if geom_type == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
+            radius = float(size[0])
+            half_length = float(size[1])
+            radial_z_extent = radius * float(np.linalg.norm(xmat[2, :2]))
+            axial_z_extent = abs(float(xmat[2, 2])) * half_length
+            return float(center[2] - radial_z_extent - axial_z_extent)
+        if geom_type == int(mujoco.mjtGeom.mjGEOM_MESH):
+            mesh_id = int(self._model.geom_dataid[geom_id])
+            vert_adr = int(self._model.mesh_vertadr[mesh_id])
+            vert_num = int(self._model.mesh_vertnum[mesh_id])
+            verts = self._model.mesh_vert[vert_adr: vert_adr + vert_num]
+            return float(np.min((verts @ xmat[2, :]) + center[2]))
+        return float(center[2] - self._model.geom_rbound[geom_id])
+
+    def _robot_geometry_floor_clearance_summary(self) -> dict[str, object]:
+        if self._model is None or self._data is None:
+            return {
+                "min_robot_geom_floor_clearance_m": 0.0,
+                "below_floor_robot_geom_count": 0,
+                "worst_below_floor_robot_geom": "",
+            }
+        import mujoco
+
+        floor_z = self._floor_height_m()
+        penetration_tolerance_m = 0.005
+        worst_clearance = math.inf
+        worst_name = ""
+        below_count = 0
+        for geom_id in self._robot_geom_ids_for_floor_check():
+            clearance = self._geom_aabb_min_z_m(geom_id) - floor_z
+            if clearance < -penetration_tolerance_m:
+                below_count += 1
+            if clearance < worst_clearance:
+                name = (
+                    mujoco.mj_id2name(
+                        self._model,
+                        mujoco.mjtObj.mjOBJ_GEOM,
+                        geom_id,
+                    )
+                    or f"geom_{geom_id}"
+                )
+                worst_clearance = float(clearance)
+                worst_name = name
+        if not np.isfinite(worst_clearance):
+            worst_clearance = 0.0
+        return {
+            "min_robot_geom_floor_clearance_m": float(worst_clearance),
+            "below_floor_robot_geom_count": int(below_count),
+            "worst_below_floor_robot_geom": worst_name if below_count else "",
+            "floor_penetration_tolerance_m": penetration_tolerance_m,
+        }
+
     def _reward(
         self,
         action: np.ndarray,
         *,
         pose: dict[str, float],
         fell: bool,
+        support_contract_terminated: bool = False,
     ) -> float:
         """Composite reward shaped to discourage the "fall-fast, collect
         upright_bonus" local optimum:
@@ -1332,27 +1780,42 @@ class TextConditionedProfileEnv(gym.Env):
         )
         no_support = 1.0 if float(np.sum(foot_telemetry[:2])) < 0.5 else 0.0
         double_support = 1.0 if float(np.sum(foot_telemetry[:2] > 0.5)) >= 2.0 else 0.0
-        foot_slip = float(np.sum(foot_telemetry[4:6]))
+        foot_slip = float(np.max(foot_telemetry[4:6])) if foot_telemetry.size >= 6 else 0.0
+        max_foot_slip = max(float(self._max_foot_slip_m_s), foot_slip)
         foot_spacing_penalty = self._foot_spacing_penalty()
         self_collision_count = self._self_collision_count()
+        max_self_collision_count = max(
+            int(self._max_self_collision_count),
+            int(self_collision_count),
+        )
         support_contract_scale = 1.0
         support_contract_penalty = 0.0
         if _is_locomotion_reward(r):
+            if "min_alternating_foot_contacts" in crit:
+                required_contacts = int(crit["min_alternating_foot_contacts"])
+                if self._foot_contact_switch_count >= required_contacts and no_support > 0.0:
+                    support_contract_scale = 0.0
+                    support_contract_penalty += float(
+                        r.get("post_contact_no_support_penalty", 8.0)
+                    )
             if "max_foot_slip_m_s" in crit:
                 slip_limit = float(crit["max_foot_slip_m_s"])
-                slip_excess = max(0.0, foot_slip - slip_limit)
+                slip_excess = max(0.0, max_foot_slip - slip_limit)
                 if slip_excess > 0.0:
                     support_contract_scale = 0.0
                     support_contract_penalty += 20.0 * slip_excess
             if "max_self_collision_count" in crit:
                 collision_limit = float(crit["max_self_collision_count"])
-                collision_excess = max(0.0, float(self_collision_count) - collision_limit)
+                collision_excess = max(
+                    0.0,
+                    float(max_self_collision_count) - collision_limit,
+                )
                 if collision_excess > 0.0:
                     support_contract_scale = 0.0
                     support_contract_penalty += 20.0 * collision_excess
         gait_prior_track = 0.0
         if "target_velocity_x_m_s" in r or "target_velocity_y_m_s" in r:
-            gait_prior = self._locomotion_gait_prior_action()
+            gait_prior = self._locomotion_reward_reference_action(action)
             gait_prior_error = float(np.mean((action - gait_prior) ** 2))
             gait_prior_track = float(np.exp(-gait_prior_error / 0.08))
         upright_bonus = float(max(0.0, upright_proj))
@@ -1382,10 +1845,12 @@ class TextConditionedProfileEnv(gym.Env):
         tracked = self._tracked_pose_summary(pose)
         tracked_dx = tracked["x"] - self._episode_start_tracked_x
         tracked_dy = tracked["y"] - self._episode_start_tracked_y
+        no_progress_yaw_scale = 1.0
         if _is_locomotion_reward(r) and "max_abs_delta_yaw_rad" in crit:
             yaw_bound = max(float(crit["max_abs_delta_yaw_rad"]), 1e-6)
             yaw_ratio = abs(dyaw) / yaw_bound
             yaw_scale = float(np.clip((1.0 - yaw_ratio) / 0.5, 0.0, 1.0))
+            no_progress_yaw_scale = yaw_scale
             locomotion_stability_scale = min(locomotion_stability_scale, yaw_scale)
         post_guard_residual = self._last_locomotion_prior_residual
         pre_guard_residual = self._last_locomotion_prior_residual_pre_guard
@@ -1398,7 +1863,9 @@ class TextConditionedProfileEnv(gym.Env):
         )
         residual_energy = pre_guard_energy
         residual_penalty_scale = 1.0 if abs(residual_scale) > 0.0 else 0.0
-        no_progress_stability_scale = locomotion_stability_scale
+        no_progress_stability_scale = (
+            no_progress_yaw_scale if _is_locomotion_reward(r) else locomotion_stability_scale
+        )
         residual_authority = residual_penalty_scale * residual_energy
         residual_guard_suppression = residual_penalty_scale * max(
             0.0,
@@ -1488,31 +1955,40 @@ class TextConditionedProfileEnv(gym.Env):
             r.get("movement_progress_weight", 4.0 if _is_locomotion_reward(r) else 1.0)
         )
         alternating_contact_progress = 0.0
+        alternating_contact_completion = 0.0
         if "min_alternating_foot_contacts" in crit:
+            required_contacts = float(crit["min_alternating_foot_contacts"])
             alternating_contact_progress = _clamped_ratio(
                 float(self._foot_contact_switch_count),
-                float(crit["min_alternating_foot_contacts"]),
+                required_contacts,
             )
+            alternating_contact_completion = (
+                1.0
+                if float(self._foot_contact_switch_count) >= required_contacts
+                else 0.0
+            )
+        locomotion_contact_reward_scale = 1.0
         locomotion_task_progress = progress
         locomotion_reward_progress = progress
         if _is_locomotion_reward(r) and "min_alternating_foot_contacts" in crit:
             locomotion_task_progress = min(progress, alternating_contact_progress)
             precontact_progress_scale = float(
-                r.get("precontact_progress_scale", 0.25)
+                r.get("precontact_progress_scale", 0.10)
             )
             precontact_progress_scale = float(
                 np.clip(precontact_progress_scale, 0.0, 1.0)
             )
             contact_credit_scale = precontact_progress_scale + (
                 1.0 - precontact_progress_scale
-            ) * alternating_contact_progress
+            ) * (alternating_contact_progress**2)
             # Success stays strictly contact-gated, but exploration needs a
             # small directional reward before the policy has already discovered
             # alternating contacts.
             locomotion_reward_progress = progress * contact_credit_scale
+            locomotion_contact_reward_scale = alternating_contact_completion
             gait_prior_direction_scale = min(
                 gait_prior_direction_scale,
-                contact_credit_scale,
+                locomotion_contact_reward_scale,
             )
         locomotion_no_progress = locomotion_task_progress
         if _is_locomotion_reward(r):
@@ -1524,7 +2000,7 @@ class TextConditionedProfileEnv(gym.Env):
         velocity_contact_scale = 1.0
         locomotion_directional_credit_scale = 1.0
         if _is_locomotion_reward(r) and "min_alternating_foot_contacts" in crit:
-            precontact_velocity_scale = float(r.get("precontact_velocity_scale", 0.35))
+            precontact_velocity_scale = float(r.get("precontact_velocity_scale", 0.15))
             precontact_velocity_scale = float(
                 np.clip(precontact_velocity_scale, 0.0, 1.0)
             )
@@ -1534,7 +2010,61 @@ class TextConditionedProfileEnv(gym.Env):
             )
             velocity_contact_scale = precontact_velocity_scale + (
                 1.0 - precontact_velocity_scale
-            ) * alternating_contact_progress
+            ) * (alternating_contact_progress**2)
+        late_hold_instability = 0.0
+        late_hold_speed = 0.0
+        if _is_locomotion_reward(r):
+            near_goal_start = float(r.get("late_hold_progress_start", 0.83))
+            near_goal_scale = float(
+                np.clip(
+                    (directional_progress - near_goal_start)
+                    / max(1.0 - near_goal_start, 1e-6),
+                    0.0,
+                    1.0,
+                )
+            )
+            if near_goal_scale > 0.0:
+                support_failure = 1.0 - support_contract_scale
+                instability = max(
+                    0.0,
+                    1.0 - locomotion_stability_scale,
+                    support_failure,
+                )
+                body_speed = math.hypot(vx_actual, vy_actual)
+                angular_speed = abs(yaw_actual)
+                late_hold_instability = near_goal_scale * instability
+                late_hold_speed = near_goal_scale * (
+                    body_speed * body_speed + 0.25 * angular_speed * angular_speed
+                )
+        goal_hold_scale = 0.0
+        goal_hold_brake = 0.0
+        goal_hold_slip = 0.0
+        goal_hold_support = 0.0
+        if _is_locomotion_reward(r):
+            hold_start = float(r.get("goal_hold_progress_start", 0.85))
+            goal_hold_scale = float(
+                np.clip(
+                    (directional_progress - hold_start) / max(1.0 - hold_start, 1e-6),
+                    0.0,
+                    1.0,
+                )
+            )
+            if goal_hold_scale > 0.0:
+                body_speed = math.hypot(vx_actual, vy_actual)
+                angular_speed = abs(yaw_actual)
+                goal_hold_brake = goal_hold_scale * (
+                    body_speed * body_speed + 0.25 * angular_speed * angular_speed
+                )
+                if "max_foot_slip_m_s" in crit:
+                    slip_limit = float(crit["max_foot_slip_m_s"])
+                    goal_hold_slip = goal_hold_scale * max(0.0, max_foot_slip - slip_limit)
+                valid_support = (
+                    float(np.sum(foot_telemetry[:2] > 0.5)) >= 1.0
+                    and support_contract_scale > 0.0
+                )
+                goal_hold_support = goal_hold_scale * (1.0 if valid_support else 0.0)
+        drive_scale = 1.0 - float(r.get("goal_hold_drive_suppression", 0.75)) * goal_hold_scale
+        drive_scale = float(np.clip(drive_scale, 0.10, 1.0))
         terms = {
             "alive": alive,
             "height_track": float(
@@ -1546,6 +2076,7 @@ class TextConditionedProfileEnv(gym.Env):
             * (locomotion_stability_scale if _is_locomotion_reward(r) else 1.0)
             * velocity_contact_scale
             * locomotion_directional_credit_scale
+            * (drive_scale if _is_locomotion_reward(r) else 1.0)
             * float(r.get("velocity_track_weight", 0.0))
             * velocity_track,
             "yaw_track": tracking_scale
@@ -1554,16 +2085,24 @@ class TextConditionedProfileEnv(gym.Env):
             * yaw_track,
             "contact_cadence": float(r.get("gait_phase_weight", 0.0))
             * contact_cadence
+            * (
+                alternating_contact_completion
+                if _is_locomotion_reward(r)
+                and "min_alternating_foot_contacts" in crit
+                else 1.0
+            )
             * locomotion_directional_credit_scale,
             "stance_contact": float(
                 r.get("stance_contact_weight", 0.4 if _is_locomotion_reward(r) else 0.0)
             )
             * stance_contact
+            * locomotion_contact_reward_scale
             * locomotion_directional_credit_scale,
             "foot_clearance": float(
                 r.get("foot_clearance_weight", 0.4 if _is_locomotion_reward(r) else 0.0)
             )
             * foot_clearance
+            * locomotion_contact_reward_scale
             * locomotion_directional_credit_scale,
             "no_support": -float(
                 r.get("no_support_weight", 3.0 if _is_locomotion_reward(r) else 0.0)
@@ -1593,6 +2132,7 @@ class TextConditionedProfileEnv(gym.Env):
             "upright": float(r.get("upright_weight", 0.5)) * upright_bonus,
             "movement_progress": movement_progress_weight
             * locomotion_reward_progress
+            * (drive_scale if _is_locomotion_reward(r) else 1.0)
             * positive_locomotion_scale,
             "alternating_contact": float(
                 r.get(
@@ -1600,7 +2140,7 @@ class TextConditionedProfileEnv(gym.Env):
                     3.0 if _is_locomotion_reward(r) else 0.0,
                 )
             )
-            * alternating_contact_progress
+            * alternating_contact_completion
             * locomotion_directional_credit_scale
             * positive_locomotion_scale,
             "no_progress": -float(
@@ -1619,6 +2159,7 @@ class TextConditionedProfileEnv(gym.Env):
             )
             * gait_prior_track
             * gait_prior_direction_scale
+            * (drive_scale if _is_locomotion_reward(r) else 1.0)
             * positive_locomotion_scale,
             "action_rate": float(r.get("action_rate_weight", -0.01)) * action_rate,
             "energy": float(r.get("energy_weight", -0.001)) * energy,
@@ -1655,6 +2196,27 @@ class TextConditionedProfileEnv(gym.Env):
             )
             * yaw_drift_margin_penalty,
             "drift": -drift_penalty,
+            "late_hold_instability": -float(
+                r.get("late_hold_instability_weight", 30.0 if _is_locomotion_reward(r) else 0.0)
+            )
+            * late_hold_instability,
+            "late_hold_speed": -float(
+                r.get("late_hold_speed_weight", 6.0 if _is_locomotion_reward(r) else 0.0)
+            )
+            * late_hold_speed,
+            "goal_hold_brake": -float(
+                r.get("goal_hold_brake_weight", 10.0 if _is_locomotion_reward(r) else 0.0)
+            )
+            * goal_hold_brake,
+            "goal_hold_slip": -float(
+                r.get("goal_hold_slip_weight", 35.0 if _is_locomotion_reward(r) else 0.0)
+            )
+            * goal_hold_slip,
+            "goal_hold_support": float(
+                r.get("goal_hold_support_weight", 4.0 if _is_locomotion_reward(r) else 0.0)
+            )
+            * goal_hold_support
+            * locomotion_stability_scale,
         }
         reward = float(sum(terms.values()))
         if success_now:
@@ -1682,6 +2244,15 @@ class TextConditionedProfileEnv(gym.Env):
                 float(r.get("fall_penalty", 100.0 if _is_locomotion_reward(r) else 25.0))
             )
             reward += terms["fall_penalty"]
+            if _is_locomotion_reward(r):
+                fall_progress = float(np.clip(directional_progress, 0.0, 1.0))
+                fall_contact = alternating_contact_completion
+                if "min_alternating_foot_contacts" not in crit:
+                    fall_contact = 1.0
+                terms["fall_after_progress"] = -float(
+                    r.get("fall_after_progress_weight", 80.0)
+                ) * fall_progress * max(0.25, fall_contact)
+                reward += terms["fall_after_progress"]
             remaining_fraction = max(
                 0.0,
                 float(self.config.episode_steps - self._step_count)
@@ -1699,6 +2270,42 @@ class TextConditionedProfileEnv(gym.Env):
                 * remaining_fraction
             )
             reward += terms["fall_remaining_horizon"]
+        elif support_contract_terminated:
+            terms["support_contract_terminal_penalty"] = -abs(
+                float(
+                    r.get(
+                        "support_contract_terminal_penalty",
+                        100.0 if _is_locomotion_reward(r) else 25.0,
+                    )
+                )
+            )
+            reward += terms["support_contract_terminal_penalty"]
+            if _is_locomotion_reward(r):
+                support_progress = float(np.clip(directional_progress, 0.0, 1.0))
+                support_contact = alternating_contact_completion
+                if "min_alternating_foot_contacts" not in crit:
+                    support_contact = 1.0
+                terms["support_contract_after_progress"] = -float(
+                    r.get("support_contract_after_progress_weight", 80.0)
+                ) * support_progress * max(0.25, support_contact)
+                reward += terms["support_contract_after_progress"]
+            remaining_fraction = max(
+                0.0,
+                float(self.config.episode_steps - self._step_count)
+                / max(float(self.config.episode_steps), 1.0),
+            )
+            terms["support_contract_remaining_horizon"] = -(
+                abs(
+                    float(
+                        r.get(
+                            "support_contract_remaining_horizon_penalty",
+                            100.0 if _is_locomotion_reward(r) else 0.0,
+                        )
+                    )
+                )
+                * remaining_fraction
+            )
+            reward += terms["support_contract_remaining_horizon"]
         self._last_reward_terms = {key: float(value) for key, value in terms.items()}
         return float(reward)
 
@@ -1755,6 +2362,84 @@ class TextConditionedProfileEnv(gym.Env):
     def _locomotion_hiwonder_sine_prior_action(self) -> np.ndarray:
         return self._locomotion_hiwonder_sine_action_from_params(
             self._locomotion_hiwonder_sine_params()
+        )
+
+    def _locomotion_reward_reference_action(self, action: np.ndarray) -> np.ndarray:
+        if (
+            self.config.locomotion_action_prior != "none"
+            and self._last_locomotion_prior_action.shape == action.shape
+            and self._last_locomotion_prior_action.size
+        ):
+            return self._last_locomotion_prior_action
+        return self._locomotion_gait_prior_action()
+
+    def _locomotion_hiwonder_contact_sine_params(self) -> dict[str, float]:
+        """Two-contact near-gait seed from targeted HiWonder search.
+
+        This seed is still not walking evidence: it falls early and slips. Its
+        purpose is to give residual learning an alternating-contact starting
+        point, unlike the forward-distance seed that currently collapses to one
+        contact switch.
+        """
+        scale = 0.8147696337817656
+        return {
+            "hz": 1.9965819076045213,
+            "phase0": -3.4193015410464103,
+            "hip_bias": scale * 0.11638073492971858,
+            "hip_amp": scale * 0.2963791745148809,
+            "knee_bias": scale * 0.32431382948178705,
+            "knee_amp": scale * 0.3293892016826658,
+            "knee_phase": 0.4630632539913353,
+            "ank_bias": scale * 0.3958865262987347,
+            "ank_amp": scale * 0.1486299328777018,
+            "ank_phase": -2.337457217305818,
+            "roll_bias": scale * -0.22981242257561257,
+            "roll_amp": scale * 0.33081099002991077,
+            "ank_roll_amp": scale * 0.08620927814045706,
+            "roll_phase": -0.09589924523431376,
+            "ank_roll_phase_delta": 1.0711501181689165,
+            "yaw_amp": 0.0,
+            "yaw_phase": -3.0957997999352855,
+        }
+
+    def _locomotion_hiwonder_contact_sine_prior_action(self) -> np.ndarray:
+        return self._locomotion_hiwonder_sine_action_from_params(
+            self._locomotion_hiwonder_contact_sine_params()
+        )
+
+    def _locomotion_hiwonder_low_slip_contact_sine_params(self) -> dict[str, float]:
+        """Lower-slip two-contact seed from the HiWonder gait search.
+
+        This seed does not solve walking by itself. It is a verifier-aligned
+        alternative to the higher-displacement contact seed: it starts with
+        alternating contacts, lower slip, and bounded yaw so learning can spend
+        its residual authority on distance and stability instead of recovering
+        from an immediate support-contract violation.
+        """
+        scale = 0.5655192902421767
+        return {
+            "hz": 1.873301612571277,
+            "phase0": -3.3554338987814045,
+            "hip_bias": scale * 0.012721802429099413,
+            "hip_amp": scale * 0.32494538242900256,
+            "knee_bias": scale * 0.31322109128087194,
+            "knee_amp": scale * 0.3454326963660835,
+            "knee_phase": 0.12220283733835285,
+            "ank_bias": scale * 0.3373221724297508,
+            "ank_amp": scale * 0.12254094647952828,
+            "ank_phase": -2.7310217796320266,
+            "roll_bias": scale * -0.11791134732367488,
+            "roll_amp": scale * 0.3403377689223018,
+            "ank_roll_amp": scale * 0.056873179057129575,
+            "roll_phase": 0.045934116916319656,
+            "ank_roll_phase_delta": 1.378989057369882,
+            "yaw_amp": 0.0,
+            "yaw_phase": -3.0957997999352855,
+        }
+
+    def _locomotion_hiwonder_low_slip_contact_sine_prior_action(self) -> np.ndarray:
+        return self._locomotion_hiwonder_sine_action_from_params(
+            self._locomotion_hiwonder_low_slip_contact_sine_params()
         )
 
     def _locomotion_hiwonder_sine_action_from_params(
@@ -1891,7 +2576,10 @@ class TextConditionedProfileEnv(gym.Env):
                 return False
         if "max_self_collision_count" in crit:
             matched = True
-            if self._self_collision_count() > int(crit["max_self_collision_count"]):
+            if max(
+                int(self._max_self_collision_count),
+                int(self._self_collision_count()),
+            ) > int(crit["max_self_collision_count"]):
                 return False
 
         for key, value in (
@@ -1956,6 +2644,22 @@ class TextConditionedProfileEnv(gym.Env):
         ):
             self._foot_contact_switch_count += 1
         self._last_single_foot_contact_state = state
+
+    def _update_post_contact_no_support_steps(self) -> None:
+        if self._current_task is None or not _is_locomotion_reward(self._current_task.reward):
+            self._post_contact_no_support_steps = 0
+            return
+        required_contacts = int(
+            self._current_task.success.get("min_alternating_foot_contacts", 0)
+        )
+        contact_contract_active = (
+            required_contacts > 0
+            and self._foot_contact_switch_count >= required_contacts
+        )
+        if contact_contract_active and float(np.sum(self._last_foot_telemetry[:2])) < 0.5:
+            self._post_contact_no_support_steps += 1
+        else:
+            self._post_contact_no_support_steps = 0
 
     def _current_swing_foot_clearance_m(self) -> float:
         swing_mask = self._last_foot_telemetry[:2] <= 0.5

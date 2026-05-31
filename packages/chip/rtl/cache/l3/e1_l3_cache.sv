@@ -12,9 +12,17 @@
 // tracks which L2s (and the NPU IO-coherent client) hold the line, and in
 // what state.
 //
-// Replacement: Mockingjay-class with DRRIP fallback. This module exposes a
-// REPLACEMENT_POLICY parameter and delegates to a replacement-policy
-// sub-module so the choice is single-source-of-truth.
+// Replacement: REPLACEMENT_POLICY selects the policy and the module
+// delegates victim selection and access training to a dedicated
+// replacement sub-module so the choice is single-source-of-truth:
+//   0 = DRRIP    -> e1_drrip          (set-dueling SRRIP/BRRIP)
+//   1 = Hawkeye  -> e1_hawkeye        (OPTgen-trained PC predictor)
+//   2 = Mockingjay -> e1_mockingjay_prod (HPCA'22 ETR/STT/RTP port)
+//   3 = LRU      -> tree-PLRU         (in-module baseline)
+// Policies 0-2 instantiate their real sub-modules over the flattened
+// {bank,set} index space; policy 3 keeps the cheap tree-PLRU baseline.
+// Each policy maintains its own way-state; the FSM only emits the
+// access/hit/install events the sub-modules train on.
 //
 // Latency: ~25 cycles in physical design. Functional model is single-cycle
 // hit / multi-cycle miss with backing SLC.
@@ -84,11 +92,14 @@ module e1_l3_cache
 
     localparam int unsigned BANK_BYTES    = SIZE_BYTES / BANKS;
     localparam int unsigned SETS_PER_BANK = BANK_BYTES / (WAYS * LINE_BYTES);
+    localparam int unsigned SETS_TOTAL    = BANKS * SETS_PER_BANK;
     localparam int unsigned INDEX_W       = $clog2(SETS_PER_BANK);
     localparam int unsigned OFFSET_W      = $clog2(LINE_BYTES);
     localparam int unsigned BANK_W        = $clog2(BANKS);
     localparam int unsigned TAG_W         = PADDR_W - INDEX_W - BANK_W - OFFSET_W;
     localparam int unsigned LINE_BITS     = 8 * LINE_BYTES;
+    localparam int unsigned WAY_W         = $clog2(WAYS);
+    localparam int unsigned FLAT_SET_W    = $clog2(SETS_TOTAL);
     /* verilator lint_off UNUSEDPARAM */
     localparam int unsigned BANK_SHIFT    = OFFSET_W;
     /* verilator lint_on UNUSEDPARAM */
@@ -104,6 +115,14 @@ module e1_l3_cache
         return a[PADDR_W-1 -: TAG_W];
     endfunction
 
+    // Flatten {bank, set} into the single set-index space the replacement
+    // sub-modules manage. Each (bank,set) pair owns a distinct line of
+    // policy state, so per-bank way decisions never alias.
+    function automatic logic [FLAT_SET_W-1:0] flat_set
+        (input logic [BANK_W-1:0] b, input logic [INDEX_W-1:0] s);
+        return FLAT_SET_W'(b * SETS_PER_BANK + s);
+    endfunction
+
     // Per-bank storage. Per-line directory: which L2s hold it and the
     // aggregated state. Under MOESI the directory additionally tracks a
     // single owner_id: the L2 that holds the canonical dirty copy when
@@ -116,15 +135,10 @@ module e1_l3_cache
     logic [SRC_W-1:0]      owner_id   [BANKS][WAYS][SETS_PER_BANK];
     logic [WAYS-2:0]       plru       [BANKS][SETS_PER_BANK];
 
-    // 2-bit RRPV per way per set for DRRIP / RRIP-class policies.
-    logic [1:0]            rrpv [BANKS][WAYS][SETS_PER_BANK];
-    // Set-dueling psel counter (10-bit signed).
-    logic signed [9:0]     drrip_psel_q;
-
     // Lookup
     typedef struct packed {
         logic                   hit;
-        logic [$clog2(WAYS)-1:0] way;
+        logic [WAY_W-1:0]       way;
         logic [LINE_BITS-1:0]   line;
         mesi_e                  state;
         logic [NUM_L2-1:0]      sharers;
@@ -140,7 +154,7 @@ module e1_l3_cache
             if (state_array[b][w][s] != MESI_I &&
                 tag_array[b][w][s] == addr_tag(paddr)) begin
                 r.hit     = 1'b1;
-                r.way     = w[$clog2(WAYS)-1:0];
+                r.way     = w[WAY_W-1:0];
                 r.line    = data_array[b][w][s];
                 r.state   = state_array[b][w][s];
                 r.sharers = sharers[b][w][s];
@@ -150,35 +164,17 @@ module e1_l3_cache
         return r;
     endfunction
 
-    // DRRIP victim selection: scan for RRPV=3, age otherwise.
-    function automatic logic [$clog2(WAYS)-1:0] drrip_victim
-        (input logic [BANK_W-1:0] b, input logic [INDEX_W-1:0] s);
-        logic [$clog2(WAYS)-1:0] candidate;
-        candidate = '0;
-        // First scan: any way with RRPV == 3?
-        for (int w = 0; w < WAYS; w++) begin
-            if (rrpv[b][w][s] == 2'b11) candidate = w[$clog2(WAYS)-1:0];
-        end
-        return candidate;
-    endfunction
-
-    function automatic logic [$clog2(WAYS)-1:0] plru_victim
+    function automatic logic [WAY_W-1:0] plru_victim
         (input logic [WAYS-2:0] tree);
-        logic [$clog2(WAYS)-1:0] way;
+        logic [WAY_W-1:0] way;
         int unsigned node;
         node = 0;
         way  = '0;
-        for (int level = 0; level < $clog2(WAYS); level++) begin
-            way[$clog2(WAYS)-1-level] = tree[node];
+        for (int level = 0; level < WAY_W; level++) begin
+            way[WAY_W-1-level] = tree[node];
             node = (node * 2) + 1 + (tree[node] ? 1 : 0);
         end
         return way;
-    endfunction
-
-    function automatic logic [$clog2(WAYS)-1:0] pick_victim
-        (input logic [BANK_W-1:0] b, input logic [INDEX_W-1:0] s);
-        if (REPLACEMENT_POLICY == 2'd0) return drrip_victim(b, s);
-        else return plru_victim(plru[b][s]);
     endfunction
 
     // FSM
@@ -199,11 +195,153 @@ module e1_l3_cache
     logic [LINE_BITS-1:0] cur_line_q;
     mesi_e             cur_grant_state_q;
     logic [SRC_W-1:0]  cur_src_q;
-    logic [$clog2(WAYS)-1:0] cur_victim_q;
+    logic [WAY_W-1:0]  cur_victim_q;
     logic [NUM_L2-1:0] cur_probe_mask_q;
+
+    // ----------------------------------------------------------------
+    // Replacement policy sub-modules.
+    //
+    // A single shared access-event bus feeds every instantiated policy;
+    // the FSM raises exactly one of {hit, install} per access. The active
+    // policy's victim_way is muxed combinationally for the current set.
+    // Only the policy named by REPLACEMENT_POLICY observes training and
+    // sources victims; the others remain quiescent (acc_valid gated).
+    // ----------------------------------------------------------------
+    logic                   rpl_acc_valid_c;
+    logic                   rpl_acc_hit_c;
+    logic                   rpl_acc_install_c;
+    logic [WAY_W-1:0]       rpl_acc_way_c;
+    logic [FLAT_SET_W-1:0]  rpl_acc_set_c;
+    logic [FLAT_SET_W-1:0]  rpl_query_set_c;
+    logic [TAG_W-1:0]       rpl_acc_tag_c;
+
+    logic [WAY_W-1:0]       drrip_victim_w;
+    logic [WAY_W-1:0]       hawkeye_victim_w;
+    logic [WAY_W-1:0]       mockingjay_victim_w;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [31:0]            mockingjay_hits_w;
+    logic [31:0]            mockingjay_misses_w;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    e1_drrip #(
+        .WAYS (WAYS),
+        .SETS (SETS_TOTAL)
+    ) u_drrip (
+        .clk                 (clk),
+        .rst_n               (rst_n),
+        .acc_valid           (rpl_acc_valid_c && (REPLACEMENT_POLICY == 2'd0)),
+        .acc_set             (rpl_acc_set_c),
+        .acc_hit             (rpl_acc_hit_c),
+        .acc_way             (rpl_acc_way_c),
+        .acc_is_miss_install (rpl_acc_install_c),
+        .query_set           (rpl_query_set_c),
+        .victim_way          (drrip_victim_w)
+    );
+
+    e1_hawkeye #(
+        .WAYS (WAYS),
+        .SETS (SETS_TOTAL)
+    ) u_hawkeye (
+        .clk                 (clk),
+        .rst_n               (rst_n),
+        .acc_valid           (rpl_acc_valid_c && (REPLACEMENT_POLICY == 2'd1)),
+        .acc_set             (rpl_acc_set_c),
+        .acc_hit             (rpl_acc_hit_c),
+        .acc_way             (rpl_acc_way_c),
+        .acc_is_miss_install (rpl_acc_install_c),
+        .acc_pc              ('0),  // no PC channel at the L3 directory
+        .query_set           (rpl_query_set_c),
+        .victim_way          (hawkeye_victim_w)
+    );
+
+    e1_mockingjay_prod #(
+        .WAYS (WAYS),
+        .SETS (SETS_TOTAL),
+        .TAG_W (TAG_W)
+    ) u_mockingjay (
+        .clk                 (clk),
+        .rst_n               (rst_n),
+        .acc_valid           (rpl_acc_valid_c && (REPLACEMENT_POLICY == 2'd2)),
+        .acc_set             (rpl_acc_set_c),
+        .acc_hit             (rpl_acc_hit_c),
+        .acc_way             (rpl_acc_way_c),
+        .acc_is_miss_install (rpl_acc_install_c),
+        .acc_pc              ('0),  // no PC channel at the L3 directory
+        .acc_tag             (rpl_acc_tag_c),
+        .query_set           (rpl_query_set_c),
+        .victim_way          (mockingjay_victim_w),
+        .hits_count          (mockingjay_hits_w),
+        .misses_count        (mockingjay_misses_w)
+    );
+
+    // Victim for the set currently under lookup, selected by policy.
+    function automatic logic [WAY_W-1:0] policy_victim
+        (input logic [BANK_W-1:0] b, input logic [INDEX_W-1:0] s);
+        unique case (REPLACEMENT_POLICY)
+            2'd0:    return drrip_victim_w;
+            2'd1:    return hawkeye_victim_w;
+            2'd2:    return mockingjay_victim_w;
+            default: return plru_victim(plru[b][s]);
+        endcase
+    endfunction
 
     assign l2_acq_ready = (state_q == T_IDLE);
     assign slc_grant_ready = 1'b1;
+
+    // ----------------------------------------------------------------
+    // Access-event bus. The sub-modules sample these on the same posedge
+    // the FSM acts on the event, so the decode is purely combinational
+    // off the current state.
+    //   - install: the cycle a fill is written (T_INSTALL).
+    //   - hit:     the cycle a directory hit is serviced without a fill
+    //              (T_LOOKUP hit-no-probe, or T_PROBE_SHARERS completing).
+    // query_set always points at the set the FSM is selecting a victim
+    // for, so policy_victim() reads a stable victim_way during T_LOOKUP.
+    // ----------------------------------------------------------------
+    always_comb begin
+        automatic logic [BANK_W-1:0]  qb = addr_bank(cur_paddr_q);
+        automatic logic [INDEX_W-1:0] qs = addr_index(cur_paddr_q);
+        automatic l3_lookup_t         lk = do_lookup(cur_paddr_q);
+        automatic logic [NUM_L2-1:0]  mask;
+
+        rpl_acc_valid_c   = 1'b0;
+        rpl_acc_hit_c     = 1'b0;
+        rpl_acc_install_c = 1'b0;
+        rpl_acc_way_c     = '0;
+        rpl_acc_set_c     = flat_set(qb, qs);
+        rpl_query_set_c   = flat_set(qb, qs);
+        rpl_acc_tag_c     = addr_tag(cur_paddr_q);
+
+        unique case (state_q)
+            T_LOOKUP: begin
+                if (lk.hit) begin
+                    mask = lk.sharers;
+                    mask[cur_src_q] = 1'b0;
+                    // Hit serviced without a coherence probe trains a hit;
+                    // a probe defers the touch to T_PROBE_SHARERS.
+                    if (!((cur_req_state_q == MESI_M && |mask) ||
+                          (cur_req_state_q == MESI_S && lk.state == MESI_M && |mask))) begin
+                        rpl_acc_valid_c = 1'b1;
+                        rpl_acc_hit_c   = 1'b1;
+                        rpl_acc_way_c   = lk.way;
+                    end
+                end
+            end
+            T_PROBE_SHARERS: begin
+                if (l2_probe_ack) begin
+                    rpl_acc_valid_c = 1'b1;
+                    rpl_acc_hit_c   = 1'b1;
+                    rpl_acc_way_c   = cur_victim_q;
+                end
+            end
+            T_INSTALL: begin
+                rpl_acc_valid_c   = 1'b1;
+                rpl_acc_install_c = 1'b1;
+                rpl_acc_way_c     = cur_victim_q;
+            end
+            default: ;
+        endcase
+    end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -212,9 +350,7 @@ module e1_l3_cache
             data_array  <= '{default: '{default: '{default: '0}}};
             sharers     <= '{default: '{default: '{default: '0}}};
             owner_id    <= '{default: '{default: '{default: '0}}};
-            rrpv        <= '{default: '{default: '{default: 2'b11}}};
             plru        <= '{default: '{default: '0}};
-            drrip_psel_q <= 10'sd0;
 
             state_q             <= T_IDLE;
             cur_paddr_q         <= '0;
@@ -278,6 +414,7 @@ module e1_l3_cache
                         mask[cur_src_q] = 1'b0; // don't probe self
                         if (cur_req_state_q == MESI_M && |mask) begin
                             cur_probe_mask_q <= mask;
+                            cur_victim_q         <= r.way;
                             l2_probe_valid       <= 1'b1;
                             l2_probe_paddr_line  <= cur_paddr_q;
                             l2_probe_target_state<= MESI_I;
@@ -286,6 +423,7 @@ module e1_l3_cache
                             hpm_l3_snoop_hit     <= 1'b1;
                         end else if (cur_req_state_q == MESI_S && r.state == MESI_M && |mask) begin
                             cur_probe_mask_q <= mask;
+                            cur_victim_q         <= r.way;
                             l2_probe_valid       <= 1'b1;
                             l2_probe_paddr_line  <= cur_paddr_q;
                             l2_probe_target_state<= MESI_S;
@@ -296,29 +434,28 @@ module e1_l3_cache
                             cur_line_q         <= r.line;
                             cur_grant_state_q  <= cur_req_state_q;
                             cur_victim_q       <= r.way;
-                            // Update sharers + DRRIP
+                            // Update sharers; replacement training is driven
+                            // by the access-event bus (rpl_acc_hit_c).
                             sharers[b][r.way][s] <= r.sharers | (NUM_L2'(1) << cur_src_q);
                             if (cur_req_state_q == MESI_M)
                                 state_array[b][r.way][s] <= MESI_M;
                             else if (state_array[b][r.way][s] != MESI_M)
                                 state_array[b][r.way][s] <= MESI_S;
-                            rrpv[b][r.way][s] <= 2'b00;
-                            plru[b][s] <= /* keep tree update small */
-                                plru[b][s];
                             state_q <= T_RESP;
                         end
                     end else begin
+                        automatic logic [WAY_W-1:0] victim = policy_victim(b, s);
                         hpm_l3_miss <= 1'b1;
-                        cur_victim_q <= pick_victim(b, s);
+                        cur_victim_q <= victim;
                         // Writeback victim if dirty
-                        if (state_array[b][pick_victim(b, s)][s] == MESI_M) begin
+                        if (state_array[b][victim][s] == MESI_M) begin
                             hpm_l3_writeback <= 1'b1;
                             slc_acq_valid       <= 1'b1;
-                            slc_acq_paddr_line  <= {tag_array[b][pick_victim(b, s)][s],
+                            slc_acq_paddr_line  <= {tag_array[b][victim][s],
                                                     s, b, {OFFSET_W{1'b0}}};
                             slc_acq_is_write    <= 1'b1;
                             slc_acq_qos         <= QOS_CPU_BG;
-                            slc_acq_wb_data     <= data_array[b][pick_victim(b, s)][s];
+                            slc_acq_wb_data     <= data_array[b][victim][s];
                             state_q             <= T_REQ_SLC;
                         end else begin
                             slc_acq_valid       <= 1'b1;
@@ -383,7 +520,8 @@ module e1_l3_cache
                     state_array[b][cur_victim_q][s] <= cur_grant_state_q;
                     data_array[b][cur_victim_q][s]  <= cur_line_q;
                     sharers[b][cur_victim_q][s]     <= (NUM_L2'(1) << cur_src_q);
-                    rrpv[b][cur_victim_q][s]        <= 2'b10; // SRRIP insertion
+                    // Insertion training (RRPV/ETR/predictor) is driven by
+                    // the access-event bus (rpl_acc_install_c) this cycle.
                     state_q                         <= T_RESP;
                 end
                 T_RESP: begin

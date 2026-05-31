@@ -13,6 +13,17 @@ REPORT = ROOT / "build/reports/e1x3d_benchmark.json"
 REPORT_ID = "e1x3d-scaled-repair-model-gate"
 BENCH_REPORT = ROOT / f"benchmarks/results/{REPORT_ID}/report.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "fpga_claim_allowed": False,
+    "board_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "three_d_signoff_claim_allowed": False,
+    "full_wafer_rtl_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -221,6 +232,7 @@ def main() -> int:
         "schema": "eliza.gate_status.v1",
         "gate": "e1x3d-benchmark",
         "status": "PASS" if not failures else "BLOCKED",
+        **FALSE_CLAIM_FLAGS,
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x3d",

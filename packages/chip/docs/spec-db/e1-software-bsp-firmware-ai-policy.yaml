@@ -1,6 +1,12 @@
 schema: eliza.software_bsp_firmware_ai_policy.v1
 claim_boundary: software_bsp_firmware_policy_only_no_patch_boot_bsp_perf_or_vulnerability_claim
 status: DRAFT_CAPTURE_ONLY
+patch_claim_allowed: false
+boot_success_claim_allowed: false
+bsp_readiness_claim_allowed: false
+kernel_performance_claim_allowed: false
+vulnerability_claim_allowed: false
+release_or_tapeout_claim_allowed: false
 
 description: >-
   Governs how a future automated agent may touch the E1 software stack (boot

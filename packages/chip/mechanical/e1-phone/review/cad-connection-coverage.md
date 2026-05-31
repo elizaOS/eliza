@@ -2,6 +2,17 @@
 
 Status: cad_connection_markers_complete_not_release.
 
+## Summary
+
+- Required connections: 32
+- Passing connections: 32
+- Terminal markers: 64
+- Solid STEP connection parts: 96
+- Represented nets: 150
+- Represented route records: 153
+- Route classification gaps: 0
+- Release credit: false
+
 ## Connections
 
 - PASS: `display_touch_fpc` uses `display_fpc_tail` from `display_fpc_connector` to `display_lcm`; nets=14, routes=14, terminals=`display_touch_fpc_from_terminal`/`display_touch_fpc_to_terminal`, span=10.0 mm, endpoint_distance=64.869 mm
@@ -13,14 +24,22 @@ Status: cad_connection_markers_complete_not_release.
 - PASS: `usb_c_to_pd_controller_escape` uses `usb_pd_controller_escape_trace_marker` from `usb_c_receptacle` to `usb_pd_controller_package_marker`; nets=5, routes=5, terminals=`usb_c_to_pd_controller_escape_from_terminal`/`usb_c_to_pd_controller_escape_to_terminal`, span=9.0 mm, endpoint_distance=19.281 mm
 - PASS: `pd_controller_to_charger_control` uses `pd_charger_control_trace_marker` from `usb_pd_controller_package_marker` to `charger_package_marker`; nets=9, routes=9, terminals=`pd_controller_to_charger_control_from_terminal`/`pd_controller_to_charger_control_to_terminal`, span=10.0 mm, endpoint_distance=11.0 mm
 - PASS: `charger_to_battery_power_sense` uses `charger_battery_power_sense_trace_marker` from `charger_package_marker` to `battery_connector_package_marker`; nets=4, routes=4, terminals=`charger_to_battery_power_sense_from_terminal`/`charger_to_battery_power_sense_to_terminal`, span=4.8 mm, endpoint_distance=4.833 mm
+- PASS: `display_bias_power_flex` uses `display_bias_power_flex_marker` from `backlight_bias_package_marker` to `display_fpc_connector`; nets=2, routes=2, terminals=`display_bias_power_flex_from_terminal`/`display_bias_power_flex_to_terminal`, span=6.0 mm, endpoint_distance=19.548 mm
+- PASS: `rear_camera_power_flex` uses `rear_camera_power_flex_marker` from `main_pcb` to `rear_camera_module`; nets=3, routes=3, terminals=`rear_camera_power_flex_from_terminal`/`rear_camera_power_flex_to_terminal`, span=8.0 mm, endpoint_distance=61.498 mm
+- PASS: `front_camera_power_flex` uses `front_camera_power_flex_marker` from `main_pcb` to `front_camera_module`; nets=3, routes=3, terminals=`front_camera_power_flex_from_terminal`/`front_camera_power_flex_to_terminal`, span=7.0 mm, endpoint_distance=70.48 mm
+- PASS: `wifi_bt_host_control` uses `wifi_bt_host_control_trace_marker` from `wifi_bt_module_keepout` to `soc_package_marker`; nets=17, routes=17, terminals=`wifi_bt_host_control_from_terminal`/`wifi_bt_host_control_to_terminal`, span=13.0 mm, endpoint_distance=29.981 mm
+- PASS: `cellular_host_control` uses `cellular_host_control_trace_marker` from `cellular_lga_module_keepout` to `soc_package_marker`; nets=8, routes=8, terminals=`cellular_host_control_from_terminal`/`cellular_host_control_to_terminal`, span=12.0 mm, endpoint_distance=13.13 mm
 - PASS: `bottom_speaker_lead_pair` uses `bottom_speaker_lead_pair` from `main_pcb` to `bottom_speaker_module`; nets=2, routes=2, terminals=`bottom_speaker_lead_pair_from_terminal`/`bottom_speaker_lead_pair_to_terminal`, span=10.0 mm, endpoint_distance=66.429 mm
 - PASS: `bottom_microphone_flex` uses `bottom_microphone_flex_leads` from `main_pcb` to `bottom_mic`; nets=2, routes=2, terminals=`bottom_microphone_flex_from_terminal`/`bottom_microphone_flex_to_terminal`, span=8.0 mm, endpoint_distance=70.927 mm
 - PASS: `top_microphone_flex` uses `top_microphone_flex_tail` from `main_pcb` to `top_mic`; nets=2, routes=2, terminals=`top_microphone_flex_from_terminal`/`top_microphone_flex_to_terminal`, span=18.0 mm, endpoint_distance=70.927 mm
 - PASS: `earpiece_receiver_lead_flex` uses `earpiece_receiver_lead_flex` from `main_pcb` to `earpiece_receiver`; nets=2, routes=2, terminals=`earpiece_receiver_lead_flex_from_terminal`/`earpiece_receiver_lead_flex_to_terminal`, span=14.0 mm, endpoint_distance=68.87 mm
 - PASS: `haptic_flex` uses `haptic_flex_tail` from `main_pcb` to `haptic_lra`; nets=1, routes=2, terminals=`haptic_flex_from_terminal`/`haptic_flex_to_terminal`, span=12.0 mm, endpoint_distance=56.546 mm
+- PASS: `sensor_hub_i2c_flex` uses `sensor_hub_i2c_flex_marker` from `main_pcb` to `sensor_hub_package_marker`; nets=2, routes=2, terminals=`sensor_hub_i2c_flex_from_terminal`/`sensor_hub_i2c_flex_to_terminal`, span=5.0 mm, endpoint_distance=35.75 mm
 - PASS: `sim_esim_signal_flex` uses `sim_esim_signal_flex_marker` from `main_pcb` to `sim_tray_keepout`; nets=9, routes=9, terminals=`sim_esim_signal_flex_from_terminal`/`sim_esim_signal_flex_to_terminal`, span=9.0 mm, endpoint_distance=36.564 mm
 - PASS: `nfc_loop_antenna_flex` uses `nfc_loop_antenna_flex_marker` from `nfc_controller_package_marker` to `nfc_loop_match_marker`; nets=4, routes=4, terminals=`nfc_loop_antenna_flex_from_terminal`/`nfc_loop_antenna_flex_to_terminal`, span=6.0 mm, endpoint_distance=28.284 mm
 - PASS: `compute_som_sodimm_carrier` uses `compute_som_sodimm_connector` from `main_pcb` to `compute_som_daughterboard_keepout`; nets=9, routes=9, terminals=`compute_som_sodimm_carrier_from_terminal`/`compute_som_sodimm_carrier_to_terminal`, span=65.0 mm, endpoint_distance=45.036 mm
+- PASS: `soc_shield_ground_spring` uses `soc_shield_ground_spring_marker` from `soc_shield_can` to `main_pcb`; nets=1, routes=2, terminals=`soc_shield_ground_spring_from_terminal`/`soc_shield_ground_spring_to_terminal`, span=3.6 mm, endpoint_distance=55.457 mm
+- PASS: `radio_shield_ground_spring` uses `radio_shield_ground_spring_marker` from `radio_shield_can` to `main_pcb`; nets=2, routes=3, terminals=`radio_shield_ground_spring_from_terminal`/`radio_shield_ground_spring_to_terminal`, span=3.6 mm, endpoint_distance=54.639 mm
 - PASS: `cellular_main_rf_feed` uses `cellular_rf_feed_development_envelope` from `cellular_lga_module_keepout` to `cellular_top_antenna_keepout`; nets=1, routes=1, terminals=`cellular_main_rf_feed_from_terminal`/`cellular_main_rf_feed_to_terminal`, span=15.0 mm, endpoint_distance=30.621 mm
 - PASS: `cellular_diversity_rf_feed` uses `cellular_div_rf_feed_development_envelope` from `cellular_lga_module_keepout` to `cellular_bottom_antenna_keepout`; nets=1, routes=1, terminals=`cellular_diversity_rf_feed_from_terminal`/`cellular_diversity_rf_feed_to_terminal`, span=12.0 mm, endpoint_distance=117.429 mm
 - PASS: `cellular_antenna_aperture_tuner` uses `antenna_aperture_tuner` from `cellular_lga_module_keepout` to `cellular_bottom_antenna_keepout`; nets=2, routes=2, terminals=`cellular_antenna_aperture_tuner_from_terminal`/`cellular_antenna_aperture_tuner_to_terminal`, span=2.0 mm, endpoint_distance=117.429 mm

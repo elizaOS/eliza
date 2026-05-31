@@ -29,6 +29,14 @@ REPORT = ROOT / "docs/evidence/process/pdk-portability.json"
 MACROS_MANIFEST = ROOT / "pd/macros/manifest.yaml"
 
 SCHEMA = "eliza.pd_portability_index.v1"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_pdk_claim_allowed": False,
+    "advanced_node_access_claim_allowed": False,
+    "tapeout_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
 
 # PDKs that have hard-macro entries the library manifest must cross-reference.
 # The map is portability-index `pdk_name` -> pd/macros/manifest.yaml `pdks` key.
@@ -261,6 +269,7 @@ def write_report(entries: list[dict[str, Any]], errors: list[str]) -> None:
         "schema": "eliza.process_pdk_portability_report.v1",
         "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "pdk_portability_index_only_not_production_pdk_or_tapeout_signoff",
+        **FALSE_CLAIM_FLAGS,
         "evidence_class": "real_open_pdk_methodology_index_with_advanced_node_blocked_gates",
         "checked_index": rel(INDEX),
         "total_entries": len(entries),

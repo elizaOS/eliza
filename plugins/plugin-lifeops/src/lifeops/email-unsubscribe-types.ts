@@ -75,7 +75,11 @@ export interface EmailUnsubscribeRequest {
   listId?: string | null;
   blockAfter?: boolean | null;
   trashExisting?: boolean | null;
-  confirmed?: boolean | null;
+  /**
+   * Set only after {@link requireConfirmation} or an equivalent user gate.
+   * LLM `confirmed` params must not satisfy this.
+   */
+  userAuthorization?: boolean | null;
 }
 
 export interface EmailUnsubscribeResult {

@@ -232,6 +232,20 @@ module e1_npu_formal(input logic clk);
             a_gemm_i_window:    assert(formal_gemm_i < formal_gemm_m);
             a_gemm_j_window:    assert(formal_gemm_j < formal_gemm_n);
             a_gemm_l_window:    assert(formal_gemm_l < formal_gemm_k);
+
+            // Accumulator-overflow safety. gemm_acc accumulates int8*int8
+            // products (each operand is signed [7:0], product in
+            // [-128*127, 128*128] = [-16256, 16384], |product| <= 16384) and is
+            // re-zeroed on the final MAC of every output cell, i.e. after at
+            // most (gemm_k-1) accumulation steps with gemm_l in [0, gemm_k-1]
+            // and gemm_k <= 7 (3-bit). The running magnitude is therefore at
+            // most gemm_l * 16384 < 7*16384 = 114688 < 2^31, so the signed-32
+            // accumulator provably never overflows. Bounding by
+            // (formal_gemm_l + 1) * 16384 ties the proof to the loop window,
+            // making it inductive (mode prove) rather than depth-bounded.
+            a_gemm_acc_no_overflow:
+                assert((formal_gemm_acc <=  $signed((formal_gemm_l + 4'd1) * 32'sd16384)) &&
+                       (formal_gemm_acc >= -$signed((formal_gemm_l + 4'd1) * 32'sd16384)));
         end
 
         if (rst_n && formal_vec_cfg_ok) begin
@@ -252,8 +266,31 @@ module e1_npu_formal(input logic clk);
         end
 
         if (rst_n && formal_desc_busy) begin
+            // The descriptor-timeout counter never exceeds the limit while the
+            // engine is busy: it increments by one per busy cycle and the
+            // firing edge (count >= DESC_TIMEOUT_LIMIT) drops desc_busy in the
+            // same cycle. Proven inductively under `mode prove`
+            // (verify/formal/npu/e1_npu_kind.sby) so it is a true bound, not a
+            // depth-12 vacuous pass: at depth 12 the counter cannot even reach
+            // 128, so the BMC task alone witnesses nothing.
             a_desc_timeout_prelimit: assert(formal_desc_timeout_count <= 32'd128);
         end
+
+`ifdef FORMAL_DEEP
+        // Witness the descriptor-timeout firing edge. Reachable only at BMC
+        // depth >= ~130 (the counter must climb from 0 to DESC_TIMEOUT_LIMIT
+        // while desc_busy stays high), which the depth-12 routine task cannot
+        // reach. verify/formal/npu/e1_npu_deep.sby drives this cover at depth
+        // 160 so the timeout exit is an exercised transition, not just an
+        // unproven invariant. desc_status == 32'h0000_000c is the timeout-exit
+        // code written at rtl/npu/e1_npu.sv:821.
+        if (rst_n && addr == 6'h13) begin
+            c_desc_timeout_fires: cover(formal_desc_state == 4'h0 /* DESC_IDLE */ &&
+                                        rdata[3:0] == 4'hc);
+        end
+        c_desc_timeout_count_reaches_limit:
+            cover(rst_n && formal_desc_timeout_count == 32'd128);
+`endif
 
         // -----------------------------------------------------------------
         // Descriptor status register (addr 6'h13). The read value is
@@ -315,17 +352,28 @@ module e1_npu_formal(input logic clk);
             end
 
             // -------------------------------------------------------------
-            // Thermal-throttle saturation (PERF_THERMAL_THROTTLE, addr 6'h1f).
-            // The counter increments on every host write to 6'h1f and may only
-            // decrease on PERF_CLEAR. Two consecutive reads of 6'h1f therefore
-            // never observe a downward step unless a clear took effect — i.e.
-            // the counter must saturate, never wrap, at 2^32. The dossier flags
-            // a silent wrap at rtl/npu/e1_npu.sv:934; this assertion fails if
-            // the RTL truly wraps, surfacing it as a defect rather than masking.
+            // Thermal-throttle counter (PERF_THERMAL_THROTTLE, addr 6'h1f).
+            // The counter increments by one on every host write to 6'h1f and is
+            // re-zeroed only by PERF_CLEAR. Two consecutive reads of 6'h1f
+            // therefore never observe a downward step unless a clear took
+            // effect — within the reachable window this proves there is no
+            // spurious decrement or skip.
+            //
+            // HONEST SCOPE: this does NOT prove no-wrap at 2^32. The RTL does an
+            // unsaturated `perf_thermal_throttle <= perf_thermal_throttle + 1`
+            // (rtl/npu/e1_npu.sv:1084), so the counter genuinely wraps 2^32-1 ->
+            // 0. The assertion below is consequently only sound as a bounded BMC
+            // property (no two-read decrement reachable within the bound); it is
+            // NOT proven under k-induction, because the inductive step admits the
+            // pre-wrap state 2^32-1 and the property is false there. Witnessing a
+            // real wrap would need ~2^32 writes (infeasible for BMC) and
+            // eliminating it requires an RTL saturating add, which is out of this
+            // harness's scope. The no-wrap guarantee is therefore an open RTL
+            // item, tracked in rtl_gap_work_order.yaml, not a proven property.
             // -------------------------------------------------------------
             if (!(valid_q && write_q && (addr_q == 6'h17) && wdata_q[0])) begin
                 if (addr == 6'h1f && addr_q == 6'h1f) begin
-                    a_thermal_no_wrap: assert(rdata >= rdata_q);
+                    a_thermal_no_decrement_bounded: assert(rdata >= rdata_q);
                 end
             end
         end

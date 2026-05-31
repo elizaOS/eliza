@@ -37,7 +37,12 @@ FALSE_CLAIM_FLAGS = {
 }
 RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_launcher_runtime_evidence.py"
 DEFAULT_CAPTURE_EVIDENCE = "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
+DEFAULT_CAPTURE_LOGCAT = "packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt"
+DEFAULT_CAPTURE_TRANSCRIPT = (
+    "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
+)
 RECHECK_COMMAND = "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
+ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 ANDROID_TARGET_PREFIXES = (
     "/system/",
     "/vendor/",
@@ -175,7 +180,10 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     "adb devices",
                     (
                         f"{RUNTIME_CAPTURE_SCRIPT} "
-                        f"--out {DEFAULT_CAPTURE_EVIDENCE}"
+                        f"{' '.join(f'--adb-connect {address}' for address in ADB_CONNECT_CANDIDATES)} "
+                        f"--output {DEFAULT_CAPTURE_EVIDENCE} "
+                        f"--logcat {DEFAULT_CAPTURE_LOGCAT} "
+                        f"--transcript {DEFAULT_CAPTURE_TRANSCRIPT}"
                     ),
                     RECHECK_COMMAND,
                 ],

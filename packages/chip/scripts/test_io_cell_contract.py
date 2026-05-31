@@ -27,6 +27,15 @@ def test_report_emits_io_cell_findings() -> None:
     report = check_io_cell_contract.build_report()
     if report["status"] != "BLOCKED":
         raise AssertionError(report["status"])
+    for key in (
+        "foundry_io_cell_release_claim_allowed",
+        "esd_latchup_signoff_claim_allowed",
+        "ibis_si_claim_allowed",
+        "padframe_tapeout_claim_allowed",
+        "board_package_release_claim_allowed",
+    ):
+        if report.get(key) is not False:
+            raise AssertionError(f"{key} must be false")
     findings = report.get("findings")
     if not isinstance(findings, list) or not findings:
         raise AssertionError("findings missing")

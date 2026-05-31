@@ -145,7 +145,6 @@ describe("LifeOps plugin action gating", () => {
       "SCHEDULED_TASK",
       "LIFEOPS_THREAD_CONTROL",
       "GMAIL_ACTION",
-      "INBOX",
       "CALENDAR_ACTION",
       "SCHEDULING",
       "LIST_OVERDUE_FOLLOWUPS",
@@ -159,6 +158,22 @@ describe("LifeOps plugin action gating", () => {
     ]) {
       expect(actionNames).not.toContain(removed);
     }
+  });
+
+  it("does not advertise bare TASKS as a LifeOps scheduled-item alias", () => {
+    const scheduledTasks = findAction("SCHEDULED_TASKS");
+
+    expect(scheduledTasks.similes ?? []).not.toContain("TASKS");
+    expect(scheduledTasks.contexts ?? []).toEqual(
+      expect.arrayContaining(["tasks", "automation"]),
+    );
+    expect(scheduledTasks.tags ?? []).toEqual(
+      expect.arrayContaining([
+        "domain:lifeops",
+        "resource:scheduled-item",
+        "resource:scheduled-task",
+      ]),
+    );
   });
 
   it("ENTITY exposes a flat 6-action canonical surface (no transitional follow-up similes)", () => {

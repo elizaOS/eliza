@@ -20,6 +20,7 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
       ],

@@ -24,7 +24,7 @@ import {
   useState,
 } from "react";
 import { createNavigateViewHandler } from "./app-navigate-view";
-import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
+import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -79,6 +79,7 @@ import {
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
+  isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
@@ -112,27 +113,19 @@ function lazyNamedView<
 }
 
 import { fetchWithCsrf } from "./api/csrf-client";
+// Import the page registry from its standalone module, NOT the
+// `app-shell-components` barrel — that barrel statically re-exports every page
+// view, so importing through it folds all of them back into the main chunk.
 import {
   type AppShellPageRegistration,
   listAppShellPages,
-} from "./app-shell-components";
-// Static imports for views that AppWindowRenderer (and DetachedShellRoot)
-// also import statically. WHY not lazy here: a `lazy()` for a module that
-// any other importer pulls eagerly is folded back into the main chunk by
-// Rollup with a warning, since the dynamic boundary can't actually defer
-// load. Going all-static makes the load path honest. If you want true
-// route-level splitting back, lift `lazy()` to a single owning call site.
+} from "./app-shell-registry";
+// CharacterEditor, DesktopTabBar, and FineTuningView stay static: they are
+// already pulled eagerly elsewhere in the app graph (main.tsx / plugin-loader /
+// boot-config), so a lazy() boundary here would only fold back into main. The
+// remaining page views are lazy-split below.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
-import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { LogsView } from "./components/pages/LogsView";
-import { MemoryViewerView } from "./components/pages/MemoryViewerView";
-import { PluginsPageView } from "./components/pages/PluginsPageView";
-import { RelationshipsView } from "./components/pages/RelationshipsView";
-import { RuntimeView } from "./components/pages/RuntimeView";
-import { SkillsView } from "./components/pages/SkillsView";
-import { TasksPageView } from "./components/pages/TasksPageView";
-import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -178,6 +171,69 @@ const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
 );
+// Route-level page views — lazy-split out of the main chunk. Each renders
+// inside the LazyViewBoundary Suspense below, and none is imported statically
+// elsewhere in the app graph, so the dynamic boundary actually defers load.
+const DatabasePageView = lazyNamedView(
+  () => import("./components/pages/DatabasePageView"),
+  "DatabasePageView",
+);
+const LogsView = lazyNamedView(
+  () => import("./components/pages/LogsView"),
+  "LogsView",
+);
+const MemoryViewerView = lazyNamedView(
+  () => import("./components/pages/MemoryViewerView"),
+  "MemoryViewerView",
+);
+const PluginsPageView = lazyNamedView(
+  () => import("./components/pages/PluginsPageView"),
+  "PluginsPageView",
+);
+const RelationshipsView = lazyNamedView(
+  () => import("./components/pages/RelationshipsView"),
+  "RelationshipsView",
+);
+const RuntimeView = lazyNamedView(
+  () => import("./components/pages/RuntimeView"),
+  "RuntimeView",
+);
+const SkillsView = lazyNamedView(
+  () => import("./components/pages/SkillsView"),
+  "SkillsView",
+);
+const TasksPageView = lazyNamedView(
+  () => import("./components/pages/TasksPageView"),
+  "TasksPageView",
+);
+const TrajectoriesView = lazyNamedView(
+  () => import("./components/pages/TrajectoriesView"),
+  "TrajectoriesView",
+);
+
+// Once the shell is interactive, warm the lazy route chunks during idle time so
+// the first navigation to each view is instant instead of waiting on a chunk
+// fetch. Paths must match the lazy() loaders above exactly so the bundler
+// reuses the same chunks. Failures are ignored — this is best-effort warming.
+function prefetchRouteViewChunks(): void {
+  const loaders: Array<() => Promise<unknown>> = [
+    () => import("./components/pages/DatabasePageView"),
+    () => import("./components/pages/LogsView"),
+    () => import("./components/pages/MemoryViewerView"),
+    () => import("./components/pages/PluginsPageView"),
+    () => import("./components/pages/RelationshipsView"),
+    () => import("./components/pages/RuntimeView"),
+    () => import("./components/pages/SkillsView"),
+    () => import("./components/pages/TasksPageView"),
+    () => import("./components/pages/TrajectoriesView"),
+    () => import("./components/pages/SettingsView"),
+    () => import("./components/pages/StreamView"),
+    () => import("./components/pages/AutomationsFeed"),
+    () => import("./components/pages/ViewManagerPage"),
+    () => import("./components/pages/BrowserWorkspaceView"),
+  ];
+  for (const load of loaders) void load().catch(() => {});
+}
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {
   return (
@@ -768,6 +824,20 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
+function canRenderStartupHome(
+  phase: ReturnType<typeof useApp>["startupCoordinator"]["phase"],
+  firstRunComplete: boolean,
+): boolean {
+  if (!firstRunComplete) return false;
+  return (
+    phase === "restoring-session" ||
+    phase === "resolving-target" ||
+    phase === "polling-backend" ||
+    phase === "starting-runtime" ||
+    phase === "hydrating"
+  );
+}
+
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
@@ -988,7 +1058,9 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={headerActions} />
+      {props.tab !== "orchestrator" ? (
+        <Header pageRightExtras={headerActions} />
+      ) : null}
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1106,7 +1178,7 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat";
+  return tab === "home" || tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {
@@ -1135,6 +1207,10 @@ export function App() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
+  const renderStartupHome = canRenderStartupHome(
+    startupCoordinator.phase,
+    firstRunComplete,
+  );
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
     skip: !isCoordinatorReady || isPopout,
   });
@@ -1150,6 +1226,35 @@ export function App() {
   const contextMenu = useContextMenu();
 
   useSecretsManagerShortcut();
+
+  // Warm lazy route chunks during idle once the shell is ready, so the first
+  // navigation to a code-split view is instant rather than waiting on a fetch.
+  useEffect(() => {
+    if (startupCoordinator.phase !== "ready" || typeof window === "undefined") {
+      return;
+    }
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const schedule =
+      w.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 200));
+    const cancel =
+      w.cancelIdleCallback ?? ((id: number) => window.clearTimeout(id));
+    const id = schedule(() => prefetchRouteViewChunks());
+    return () => cancel(id);
+  }, [startupCoordinator.phase]);
+
+  // While the startup-home surface is showing, reflect it in the tab — but
+  // only when the user is on the root route. An explicit deep-link (e.g.
+  // /settings or /apps/<view>) must survive startup; pushing "home" here would
+  // rewrite the URL and strand the requested route on the home shell once the
+  // coordinator reaches "ready". Mirrors the isRoot gate in ready-phase hydration.
+  useEffect(() => {
+    if (!renderStartupHome || tab === "home") return;
+    if (!isRouteRootPath(getWindowNavigationPath())) return;
+    setTab("home");
+  }, [renderStartupHome, setTab, tab]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1585,18 +1690,19 @@ export function App() {
     );
   }
 
-  // StartupCoordinator gate — the coordinator is the sole startup authority.
-  // Non-ready phases are handled by StartupScreen.
-  if (startupCoordinator.phase !== "ready" || !firstRunComplete) {
-    // Pre-agent / first-run setup surface: the cloud loop is a true full-viewport
-    // background (poster first, video streamed in once the client is loaded);
-    // the first-run shell layers above it in Z and scrolls within itself.
+  // StartupCoordinator gate — onboarding/pairing/error stay on the dedicated
+  // startup surfaces. Once first-run is complete, startup can continue in the
+  // background while the static home shell renders immediately.
+  if (
+    (startupCoordinator.phase !== "ready" || !firstRunComplete) &&
+    !renderStartupHome
+  ) {
+    // Pre-agent / first-run setup surface: the living crystal-ball-over-orange
+    // homescreen backdrop is a true full-viewport background; the first-run
+    // shell layers above it in Z and scrolls within itself.
     return (
       <BugReportProvider value={bugReport}>
-        <CloudVideoBackground
-          scrim={0.05}
-          style={{ position: "fixed", inset: 0 }}
-        >
+        <HomescreenBackdrop style={{ position: "fixed", inset: 0 }}>
           <div
             data-testid="pre-agent-cloud-shell"
             className="flex h-full min-h-0 w-full flex-col overflow-y-auto text-txt"
@@ -1604,7 +1710,24 @@ export function App() {
           >
             <StartupScreen />
           </div>
-        </CloudVideoBackground>
+        </HomescreenBackdrop>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
+  if (renderStartupHome) {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <div
+            data-testid="pre-agent-home-shell"
+            className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          >
+            <HomeShellContent />
+          </div>
+          <ShellOverlays actionNotice={actionNotice} />
+        </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
     );
@@ -1698,7 +1821,9 @@ export function App() {
           tab !== "views" && <GameViewOverlay />}
         <ShellOverlays actionNotice={actionNotice} />
         {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
-          <ShellFoundationMount />
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center">
+            <ShellFoundationMount />
+          </div>
         ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

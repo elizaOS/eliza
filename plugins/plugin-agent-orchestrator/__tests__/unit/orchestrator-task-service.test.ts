@@ -39,6 +39,8 @@ class FakeAcp {
   readonly spawnArgs: Record<string, unknown>[] = [];
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
+  failSend = false;
+  failStop = false;
 
   onSessionEvent(
     cb: (sessionId: string, event: string, data: unknown) => void,
@@ -65,11 +67,13 @@ class FakeAcp {
   }
 
   sendToSession(sessionId: string, message: string): Promise<void> {
+    if (this.failSend) return Promise.reject(new Error("send failed"));
     this.sent.push({ sessionId, message });
     return Promise.resolve();
   }
 
   stopSession(sessionId: string): Promise<void> {
+    if (this.failStop) return Promise.reject(new Error("stop failed"));
     this.stopped.push(sessionId);
     return Promise.resolve();
   }
@@ -140,6 +144,78 @@ async function withSpawnedSession(): Promise<{
   return { service, acp, taskId: task.id, sessionId };
 }
 
+/** Like {@link withSpawnedSession} but the spawn carries an explicit
+ * human-provided label, exercising the "keep the user's choice" precedence. */
+async function withSpawnedSessionLabel(label: string): Promise<{
+  service: OrchestratorTaskService;
+  acp: FakeAcp;
+  taskId: string;
+  sessionId: string;
+}> {
+  const acp = new FakeAcp();
+  const service = makeService(acp);
+  await service.start();
+  const task = await service.createTask(createInput());
+  const detail = must(
+    await service.spawnAgentForTask(task.id, { label }),
+    "expected spawn detail",
+  );
+  const sessionId = must(detail.sessions[0], "expected session").sessionId;
+  return { service, acp, taskId: task.id, sessionId };
+}
+
+describe("OrchestratorTaskService — sub-agent naming", () => {
+  it("gives a spawned session a non-empty person-name label", async () => {
+    const { service, taskId } = await withSpawnedSession();
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    expect(session.label.length).toBeGreaterThan(0);
+    // Not the generic "<framework> agent" descriptor any more.
+    expect(session.label).not.toMatch(/ agent$/);
+  });
+
+  it("weaves the assigned name into the spawned goal prompt", async () => {
+    const { service, acp, taskId } = await withSpawnedSession();
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    const initialTask = must(acp.spawnArgs[0], "spawn args").initialTask;
+    expect(typeof initialTask).toBe("string");
+    expect(initialTask as string).toContain(`You are ${session.label},`);
+  });
+
+  it("assigns distinct names to two concurrent sub-agents on one task", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.spawnAgentForTask(task.id);
+    await service.spawnAgentForTask(task.id);
+    const sessions = must(await service.getTask(task.id), "detail").sessions;
+    expect(sessions).toHaveLength(2);
+    const [first, second] = sessions;
+    expect(must(first, "first").label.length).toBeGreaterThan(0);
+    expect(must(second, "second").label.length).toBeGreaterThan(0);
+    expect(must(first, "first").label).not.toBe(must(second, "second").label);
+  });
+
+  it("keeps an explicit caller label instead of assigning a pooled name", async () => {
+    const { service, acp, taskId } =
+      await withSpawnedSessionLabel("Release Captain");
+    const session = must(
+      (await service.getTask(taskId))?.sessions[0],
+      "session",
+    );
+    expect(session.label).toBe("Release Captain");
+    const initialTask = must(acp.spawnArgs[0], "spawn args").initialTask;
+    expect(typeof initialTask).toBe("string");
+    expect(initialTask as string).toContain("You are Release Captain,");
+  });
+});
+
 describe("OrchestratorTaskService — lifecycle", () => {
   it("creates a task and defaults originalRequest to the goal without an extra message", async () => {
     const service = makeService();
@@ -185,6 +261,17 @@ describe("OrchestratorTaskService — lifecycle", () => {
     );
     expect(updated.priority).toBe("urgent");
     expect(updated.acceptanceCriteria).toEqual(["ci green"]);
+    const preserved = must(
+      await service.updateTask(id, {
+        title: undefined,
+        goal: undefined,
+        summary: "real update",
+      }),
+      "preserved",
+    );
+    expect(preserved.title).toBe("Ship feature");
+    expect(preserved.goal).toBe("Implement and verify");
+    expect(preserved.summary).toBe("real update");
     expect(await service.updateTask("missing", { priority: "low" })).toBeNull();
   });
 
@@ -246,6 +333,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
   it("validates a task to done on pass and back to active on failure", async () => {
     const service = makeService();
     const passed = await service.createTask(createInput());
+    await service.updateTask(passed.id, { status: "validating" });
     const done = must(
       await service.validateTask(passed.id, {
         passed: true,
@@ -258,12 +346,24 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(done.closedAt).toBeTruthy();
 
     const failing = await service.createTask(createInput());
+    await service.updateTask(failing.id, { status: "validating" });
     const reverted = must(
-      await service.validateTask(failing.id, { passed: false }),
+      await service.validateTask(failing.id, {
+        passed: false,
+        summary: "needs another pass",
+      }),
       "reverted",
     );
     expect(reverted.status).toBe("active");
-    expect(await service.validateTask("missing", { passed: true })).toBeNull();
+    await expect(
+      service.validateTask(passed.id, { passed: true, summary: "again" }),
+    ).rejects.toThrow(/validating/);
+    expect(
+      await service.validateTask("missing", {
+        passed: true,
+        summary: "not found",
+      }),
+    ).toBeNull();
   });
 
   it("adds a user message and stamps the last user turn", async () => {
@@ -285,6 +385,26 @@ describe("OrchestratorTaskService — lifecycle", () => {
         senderKind: "user",
       }),
     ).toBe(false);
+  });
+
+  it("reports room message delivery failures instead of claiming success", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.spawnAgentForTask(task.id);
+    acp.failSend = true;
+
+    const result = must(
+      await service.postUserMessage(task.id, "please continue"),
+      "result",
+    );
+
+    expect(result.forwardedTo).toEqual([]);
+    expect(result.failedTo).toHaveLength(1);
+    expect((await service.getTask(task.id))?.sessions[0]?.status).toBe(
+      "send_failed",
+    );
   });
 
   it("relays a posted user message to every live session as a goal-wrapped follow-up", async () => {
@@ -461,7 +581,8 @@ describe("OrchestratorTaskService — task status guards", () => {
 
   it("never mutates a terminal task from a session event", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
-    await service.validateTask(taskId, { passed: true });
+    await drive(acp, sessionId, "task_complete", { response: "done" });
+    await service.validateTask(taskId, { passed: true, summary: "verified" });
     await drive(acp, sessionId, "tool_running", { toolCall: { title: "ls" } });
     expect(must(await service.getTask(taskId), "detail").status).toBe("done");
   });
@@ -472,6 +593,26 @@ describe("OrchestratorTaskService — task status guards", () => {
     await drive(acp, sessionId, "blocked", { message: "x" });
     expect(must(await service.getTask(taskId), "detail").status).not.toBe(
       "blocked",
+    );
+  });
+
+  it("does not mark a session stopped when ACP stop fails", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.spawnAgentForTask(task.id);
+    const sessionId = must(
+      (await service.getTask(task.id))?.sessions[0]?.sessionId,
+      "session",
+    );
+    acp.failStop = true;
+
+    await expect(service.stopTaskAgent(task.id, sessionId)).rejects.toThrow(
+      /stop failed/,
+    );
+    expect((await service.getTask(task.id))?.sessions[0]?.status).toBe(
+      "stop_failed",
     );
   });
 });
@@ -574,7 +715,11 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
     );
 
     const finished = await service.createTask(createInput({ title: "done" }));
-    await service.validateTask(finished.id, { passed: true });
+    await service.updateTask(finished.id, { status: "validating" });
+    await service.validateTask(finished.id, {
+      passed: true,
+      summary: "verified",
+    });
 
     const status = await service.getStatus();
     expect(status.taskCount).toBe(3);
@@ -595,7 +740,8 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
     const b = await service.createTask(createInput({ title: "b" }));
     await service.spawnAgentForTask(b.id);
     const done = await service.createTask(createInput({ title: "done" }));
-    await service.validateTask(done.id, { passed: true });
+    await service.updateTask(done.id, { status: "validating" });
+    await service.validateTask(done.id, { passed: true, summary: "verified" });
 
     expect(await service.pauseAll()).toBe(2);
     expect((await service.getStatus()).pausedTaskCount).toBe(2);

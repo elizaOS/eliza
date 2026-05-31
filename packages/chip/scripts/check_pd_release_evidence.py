@@ -15,6 +15,16 @@ from provenance_sanitize import sanitize_host_local_paths
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_DIR = ROOT / "docs/evidence/pd"
 REPORT = ROOT / "build/reports/pd_release_evidence.json"
+CLAIM_BOUNDARY = "pd_release_evidence_manifest_check_only_not_signoff_or_tapeout_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "physical_signoff_claim_allowed": False,
+    "drc_lvs_antenna_sta_claim_allowed": False,
+    "foundry_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 PROHIBITED_RELEASE_USE = {
     "prohibited_until_external_review",
     "prohibited_until_signoff_replay",
@@ -136,7 +146,8 @@ def write_report(status: str, findings: list[dict[str, Any]], summary: dict[str,
         .isoformat()
         .replace("+00:00", "Z"),
         "release_credit": False,
-        "claim_boundary": "pd_release_evidence_manifest_check_only_not_signoff_or_tapeout_evidence",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"release_ready": False, "release_credit": False, **summary},
         "findings": findings,
     }

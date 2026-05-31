@@ -12,6 +12,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import { handleAgentRoutes } from "./agent-routes.js";
+import { handleBridgeRoutes } from "./bridge-routes.js";
 import { handleIssueRoutes } from "./issue-routes.js";
 import { handleOrchestratorRoutes } from "./orchestrator-routes.js";
 import { handleParentContextRoutes } from "./parent-context-routes.js";
@@ -32,33 +33,30 @@ export async function handleCodingAgentRoutes(
     ? pathname.replace(/^\/api\/task-agents/, "/api/coding-agents")
     : pathname;
 
-  // Durable orchestrator task surface. Distinct `/api/orchestrator/*` prefix,
-  // so it matches first and never collides with the ACP session routes below.
   if (await handleOrchestratorRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to parent-runtime bridge routes before generic :id agent routes.
   if (await handleParentContextRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to agent routes
+  if (await handleBridgeRoutes(req, res, normalizedPathname, ctx)) {
+    return true;
+  }
+
   if (await handleAgentRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to workspace routes
   if (await handleWorkspaceRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to issue routes
   if (await handleIssueRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Route not handled
   return false;
 }
 

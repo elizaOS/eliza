@@ -46,6 +46,32 @@ describe("workspace-diff — real git capture", () => {
     }
   });
 
+  it("captures tool-written files outside a git work tree", async () => {
+    const plain = mkdtempSync(join(tmpdir(), "plain-"));
+    try {
+      writeFileSync(join(plain, "deploy.txt"), "deployed\n");
+      const cs = await captureChangeSet(plain, undefined, ["deploy.txt"]);
+      expect(cs).toBeDefined();
+      expect(cs?.changedFiles).toEqual(["deploy.txt"]);
+      expect(cs?.diffStat).toBe("1 file(s) changed");
+      expect(cs?.diff).toContain("deployed");
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects escaping tool paths outside a non-git work tree", async () => {
+    const plain = mkdtempSync(join(tmpdir(), "plain-"));
+    try {
+      const cs = await captureChangeSet(plain, undefined, [
+        "subdir/../../outside.txt",
+      ]);
+      expect(cs).toBeUndefined();
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
   it("returns undefined change set when nothing changed since baseline", async () => {
     const base = await captureBaselineSha(dir);
     expect(await captureChangeSet(dir, base)).toBeUndefined();
@@ -166,6 +192,7 @@ describe("workspace-diff — real git capture", () => {
     expect(cs).toBeDefined();
     expect(cs?.changedFiles).toContain("new.html");
     expect(cs?.changedFiles).not.toContain("index.html"); // pre-existing dirty
+    expect(cs?.diffStat).toBe("1 file(s) changed");
   });
 
   it("keeps a pre-existing-dirty file if the agent DID write it this session", async () => {

@@ -28,14 +28,31 @@ from dataclasses import dataclass
 
 from compiler.runtime.e1x3d_wafer_model import E1X3DConfig, artifact_sha256, thermal_model
 
-# Catalog of inter-tier bonding technologies: (name, pitch_um, hard_cap_vias_per_mm2).
-# Capacity at a pitch is (1000/pitch_um)^2 vias/mm2, capped at the technology's
-# demonstrated density ceiling (MIV ~30M/mm2 per the research).
-BONDING_CATALOG: tuple[tuple[str, float, float], ...] = (
-    ("hybrid_bond_f2f_6um", 6.0, 1.0e6),
-    ("hybrid_bond_f2f_3um", 3.0, 1.0e6),
-    ("hybrid_bond_f2f_1um", 1.0, 1.0e6),
-    ("monolithic_miv", 0.1, 30.0e6),
+# Catalog of inter-tier bonding technologies:
+#   (name, pitch_um, geometric_hard_cap_vias_per_mm2, realizable_signal_density_per_mm2)
+#
+# The GEOMETRIC capacity at a pitch is (1000/pitch_um)^2 vias/mm2, capped at the
+# technology's demonstrated density ceiling (MIV ~30M/mm2 per the research). That
+# is the theoretical packing of bond pads and OVERSTATES what a real flow can
+# route as inter-tier signals: keep-out, redundancy, power/ground bonds, and
+# alignment tolerance all consume budget.
+#
+# Feasibility is therefore gated on the REALIZABLE signal density, not the
+# geometric one. The anchor is TSMC's published F2F SoIC figure of ~14,000
+# signals/mm2 at 6 um HVM (vs the 27,778/mm2 geometric value) -- a bonding
+# efficiency of ~0.5. Finer hybrid pitches scale by the same quadratic with the
+# same efficiency factor; 1 um hybrid is roadmap/research for general logic
+# (imec W2W 1 um is HVM for image sensors / 3D NAND only), so its realizable
+# figure is a research extrapolation, not 2025 HVM. Monolithic MIV is sequential
+# integration with near-unity efficiency at its demonstrated ~100k MIV/mm2.
+#
+# Source-of-truth narrative: docs/arch/e1x3d-signoff-accounting.md (research
+# anchors: "F2F SoIC signal density = ~14,000 signals/mm2").
+BONDING_CATALOG: tuple[tuple[str, float, float, float], ...] = (
+    ("hybrid_bond_f2f_6um", 6.0, 1.0e6, 14_000.0),
+    ("hybrid_bond_f2f_3um", 3.0, 1.0e6, 56_000.0),
+    ("hybrid_bond_f2f_1um", 1.0, 1.0e6, 126_000.0),
+    ("monolithic_miv", 0.1, 30.0e6, 100_000.0),
 )
 # Open3DBench measured two-tier folded-2D wirelength reduction vs planar.
 TWO_TIER_WIRELENGTH_DELTA = -0.24
@@ -59,15 +76,38 @@ class PEFloorplan:
 
 
 def via_capacity_per_mm2(pitch_um: float, hard_cap: float) -> float:
+    """Geometric bond-pad packing density: (1000/pitch)^2, capped at hard_cap."""
     return min((1000.0 / pitch_um) ** 2, hard_cap)
 
 
+def realizable_signal_density_per_mm2(geometric_cap: float, realizable_cap: float) -> float:
+    """Routable inter-tier signal density: the smaller of geometric and the
+    technology's realizable signal-density ceiling. Feasibility is judged on this,
+    not the geometric figure."""
+    return min(geometric_cap, realizable_cap)
+
+
 def _feasible_bondings(required_density: float) -> list[dict[str, float | str]]:
+    """Bondings whose REALIZABLE signal density covers the required via density.
+
+    Each entry reports both the geometric pad-packing capacity and the realizable
+    signal-density ceiling so the geometric headline stays visible while the
+    feasibility verdict uses the realizable number.
+    """
     feasible: list[dict[str, float | str]] = []
-    for name, pitch, cap in BONDING_CATALOG:
-        capacity = via_capacity_per_mm2(pitch, cap)
-        if capacity >= required_density:
-            feasible.append({"bonding": name, "pitch_um": pitch, "capacity_per_mm2": capacity})
+    for name, pitch, geom_cap, real_cap in BONDING_CATALOG:
+        geometric = via_capacity_per_mm2(pitch, geom_cap)
+        realizable = realizable_signal_density_per_mm2(geometric, real_cap)
+        if realizable >= required_density:
+            feasible.append(
+                {
+                    "bonding": name,
+                    "pitch_um": pitch,
+                    "capacity_per_mm2": realizable,
+                    "realizable_signal_density_per_mm2": realizable,
+                    "geometric_capacity_per_mm2": geometric,
+                }
+            )
     return feasible
 
 
@@ -92,11 +132,23 @@ def evaluate_split(
     required_density = inter_tier_vias / footprint_3d
     feasible = _feasible_bondings(required_density)
     recommended = feasible[0]["bonding"] if feasible else None
-    configured_capacity = via_capacity_per_mm2(
-        config.inter_tier_via_pitch_um,
-        next((cap for _, pitch, cap in BONDING_CATALOG if pitch == config.inter_tier_via_pitch_um), 1.0e6),
+    configured_entry = next(
+        (
+            (geom_cap, real_cap)
+            for _, pitch, geom_cap, real_cap in BONDING_CATALOG
+            if pitch == config.inter_tier_via_pitch_um
+        ),
+        (1.0e6, 14_000.0),
     )
-    configured_ok = configured_capacity >= required_density
+    configured_geometric = via_capacity_per_mm2(
+        config.inter_tier_via_pitch_um, configured_entry[0]
+    )
+    configured_realizable = realizable_signal_density_per_mm2(
+        configured_geometric, configured_entry[1]
+    )
+    # Feasibility uses the realizable signal density; the geometric figure is the
+    # optimistic pad-packing budget and is reported for transparency only.
+    configured_ok = configured_realizable >= required_density
     return {
         "split": split,
         "footprint_2d_mm2": round(footprint_2d, 6),
@@ -110,6 +162,8 @@ def evaluate_split(
         "feasible_bondings": feasible,
         "recommended_bonding": recommended,
         "configured_bonding_pitch_um": config.inter_tier_via_pitch_um,
+        "configured_bonding_geometric_capacity_per_mm2": round(configured_geometric, 1),
+        "configured_bonding_realizable_density_per_mm2": round(configured_realizable, 1),
         "configured_bonding_sufficient": configured_ok,
         "wirelength_delta_vs_planar": TWO_TIER_WIRELENGTH_DELTA,
     }
@@ -124,16 +178,34 @@ def build_placement_report(
     fine = evaluate_split(cfg, fp, "fine_logic_fold")
     thermal = thermal_model(cfg)
 
-    # Gate: the configured split must be physically feasible with at least one
-    # catalog bonding, give a real footprint shrink, and pass the thermal ceiling.
+    # Gate: the CONFIGURED bonding pitch must carry the block split's required via
+    # density at REALIZABLE signal density (not the optimistic geometric budget),
+    # the split must give a real footprint shrink, and it must pass the thermal
+    # ceiling. The mere existence of *some* finer-pitch feasible bonding is not
+    # enough -- the gate is judged against the pitch this design is configured to
+    # use, so a configured 6 um HVM pitch that cannot route 24,000 signals/mm2
+    # fails closed even though a 3 um pitch would suffice.
     block_feasible = bool(block["feasible_bondings"])
     fine_feasible = bool(fine["feasible_bondings"])
+    configured_pitch_ok = bool(block["configured_bonding_sufficient"])
     shrink_ok = 0.25 <= float(block["xy_footprint_shrink"]) <= 0.70
     thermal_ok = thermal["status"] == "PASS"
-    status = "PASS" if (block_feasible and shrink_ok and thermal_ok) else "BLOCKED"
+    status = (
+        "PASS"
+        if (block_feasible and configured_pitch_ok and shrink_ok and thermal_ok)
+        else "BLOCKED"
+    )
     reasons: list[str] = []
     if not block_feasible:
         reasons.append("block SRAM-on-logic split has no feasible bonding in catalog")
+    if not configured_pitch_ok:
+        reasons.append(
+            f"configured {block['configured_bonding_pitch_um']} um bond carries only "
+            f"{block['configured_bonding_realizable_density_per_mm2']} realizable signals/mm2 "
+            f"(geometric {block['configured_bonding_geometric_capacity_per_mm2']}/mm2) but the "
+            f"block split needs {block['required_via_density_per_mm2']}/mm2; the realizable "
+            f"feasible pitch is {block['recommended_bonding']}"
+        )
     if not shrink_ok:
         reasons.append(f"block split XY shrink {block['xy_footprint_shrink']} outside [0.25, 0.70]")
     if not thermal_ok:

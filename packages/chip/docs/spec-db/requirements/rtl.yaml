@@ -14,7 +14,7 @@ requirements:
     title: CPU subsystem must integrate a production RV64 core, not the tiny contract stub
     owner: cpu
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: tiny_contract_model_blocks_linux_capable_soc_and_product_claims
     work_order_id: cpu-real-core-integration
@@ -34,7 +34,7 @@ requirements:
     title: CPU privileged boot path (CLINT/PLIC/MMU/console) must close before OS bring-up claims
     owner: cpu
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: qemu_renode_semantics_are_not_e1_chip_boot_validation
     work_order_id: cpu-privileged-boot-contract
@@ -52,7 +52,7 @@ requirements:
     title: Full SoC routing/ordering/arbitration must close beyond the contract windows
     owner: memory
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: contract_windows_only_full_soc_routing_blocked
     work_order_id: interconnect-full-soc-routing
@@ -73,7 +73,7 @@ requirements:
     title: DMA must be verified against a production memory hierarchy, not a 4 KiB SRAM aperture
     owner: npu
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: word_copy_engine_blocks_dma_throughput_and_coherency_claims
     work_order_id: dma-real-memory-system
@@ -94,7 +94,7 @@ requirements:
     title: NPU must replace bounded scratch GEMM with the selected production accelerator
     owner: npu
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: mmio_scratch_gemm_blocks_accelerator_and_model_execution_claims
     work_order_id: npu-production-accelerator
@@ -115,7 +115,7 @@ requirements:
     title: Display must replace SRAM-backed scanout with a production framebuffer client
     owner: platform
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: sram_scanout_blocks_panel_bringup_and_bandwidth_claims
     work_order_id: display-real-framebuffer-path
@@ -134,7 +134,7 @@ requirements:
     title: Boot ROM must replace identity contract words with executable reset/handoff code
     owner: cpu
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: identity_contract_rom_blocks_firmware_and_os_boot_gates
     work_order_id: bootrom-firmware-handoff
@@ -151,7 +151,7 @@ requirements:
     title: DRAM model must be replaced with a real controller boundary and capacity discovery
     owner: memory
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: sram_dram_aperture_blocks_bandwidth_and_capacity_claims
     work_order_id: dram-controller-and-capacity

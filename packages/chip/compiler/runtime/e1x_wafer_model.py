@@ -526,12 +526,13 @@ def model_shard_sample_artifact(config: E1XConfig, model: QuantizedModelSpec, lo
     capacity_bytes = config.local_sram_kib_per_core * 1024
     word_count = capacity_bytes // word_bytes
     shard_bytes = int(load["weight_shard_bytes_per_core"])
-    sample_word_count = min(64, ceil(shard_bytes / word_bytes))
+    shard_word_count = ceil(shard_bytes / word_bytes)
     words = [
         {"word_addr": idx, "word": _packed_w4_sample_word(model.name, idx)}
-        for idx in range(sample_word_count)
+        for idx in range(shard_word_count)
     ]
-    words.append({"word_addr": word_count - 1, "word": _packed_w4_sample_word(model.name, word_count - 1)})
+    if word_count - 1 >= shard_word_count:
+        words.append({"word_addr": word_count - 1, "word": _packed_w4_sample_word(model.name, word_count - 1)})
     artifact = {
         "schema": "eliza.e1x.quantized_model_shard_sample.v1",
         "chip": config.name,
@@ -545,6 +546,9 @@ def model_shard_sample_artifact(config: E1XConfig, model: QuantizedModelSpec, lo
         "reserved_runtime_bytes_per_core": 4 * 1024,
         "per_core_model_capacity_bytes": int(load["per_core_model_capacity_bytes"]),
         "weight_shard_bytes_per_core": shard_bytes,
+        "weight_shard_word_count": shard_word_count,
+        "sampled_shard_word_count": shard_word_count,
+        "sentinel_word_count": len(words) - shard_word_count,
         "sampled_word_count": len(words),
         "expected_loaded_bytes": len(words) * word_bytes,
         "expected_checksum": _sram_loader_checksum(words),

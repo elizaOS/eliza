@@ -4,6 +4,7 @@ import type { ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
+	findWebLookupActionName,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
@@ -147,6 +148,20 @@ describe("live routing regressions", () => {
 				"what is the current BTC price in USD? answer briefly.",
 			),
 		).toBe("current BTC price in USD");
+	});
+
+	it("resolves web lookups to a search action and never falls back to shell", () => {
+		// A real search backend satisfies the lookup (preferred over a shell).
+		expect(
+			findWebLookupActionName([{ name: "BRAVE_SEARCH" }, { name: "SHELL" }]),
+		).toBe("BRAVE_SEARCH");
+		// With only a shell available there is no web-lookup action: return
+		// undefined so the model answers directly instead of force-routing a
+		// live-info ask ("current price of X") to SHELL — a tool a weak planner
+		// can't drive, which loops on the required-tool cap and surfaces a
+		// generic failure. Genuine shell requests route via looksLikeLocalShellRequest.
+		expect(findWebLookupActionName([{ name: "SHELL" }])).toBeUndefined();
+		expect(findWebLookupActionName([])).toBeUndefined();
 	});
 
 	it("promotes explicit reply to direct shell/search action aliases", () => {

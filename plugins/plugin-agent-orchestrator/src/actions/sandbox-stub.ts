@@ -45,8 +45,16 @@ function buildTasksUnsupportedAction({
   return {
     name: "TASKS",
     description,
-    contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
+    contexts: ["code", "automation", "agent_internal", "connectors"],
     roleGate: { minRole: "USER" },
+    tags: [
+      "domain:coding",
+      "domain:agent-orchestration",
+      "resource:agent-task",
+      "resource:coding-task",
+      "capability:delegate",
+      "surface:task-coordinator",
+    ],
     suppressPostActionContinuation: true,
     similes: [...TASKS_STUB_SIMILES],
     examples: [],

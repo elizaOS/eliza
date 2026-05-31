@@ -62,6 +62,16 @@ def test_claim_boundary_drift_fails() -> None:
     print("PASS claim boundary drift rejected")
 
 
+def test_false_claim_flags_are_required() -> None:
+    data, spec_data = load_valid_report()
+    mutated = copy.deepcopy(data)
+    mutated["release_claim_allowed"] = True
+    mutated.pop("phone_claim_allowed", None)
+    expect_error(mutated, spec_data, "phone_claim_allowed")
+    expect_error(mutated, spec_data, "release_claim_allowed")
+    print("PASS false claim flag drift rejected")
+
+
 def test_missing_fault_field_fails() -> None:
     data, spec_data = load_valid_report()
     mutated = copy.deepcopy(data)
@@ -87,6 +97,7 @@ def test_stream_drift_fails() -> None:
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
+    test_false_claim_flags_are_required()
     test_missing_fault_field_fails()
     test_display_underflow_fails()
     test_stream_drift_fails()

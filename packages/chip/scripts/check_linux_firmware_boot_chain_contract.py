@@ -10,6 +10,7 @@ or when reference-only qemu-virt evidence can be mistaken for chip boot proof.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import hashlib
 import json
 import re
@@ -539,6 +540,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
 
 def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    command_plan = next_command_plan(findings)
     blocker_dependency_counts = {
         "repo_artifact_generation": sum(
             1 for finding in blockers if finding.blocker_dependency == "repo_artifact_generation"
@@ -556,16 +558,41 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),
             "blocker_dependency_counts": blocker_dependency_counts,
+            "next_command_batch_count": len(command_plan),
         },
         "blocker_dependency_counts": blocker_dependency_counts,
         "findings": [asdict(finding) for finding in findings],
+        "next_command_plan": command_plan,
         "evidence": evidence,
     }
+
+
+def next_command_plan(findings: list[Finding]) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    for finding in findings:
+        if finding.severity != "blocker" or not finding.next_command:
+            continue
+        plan.append(
+            {
+                "id": f"resolve_{finding.code}",
+                "scope": "external_firmware_capture",
+                "claim_boundary": "operator_commands_only_not_firmware_boot_evidence",
+                "blocker_dependency": finding.blocker_dependency or "repo_artifact_generation",
+                "commands": [finding.next_command],
+                "requires": [
+                    "exact selected QEMU, Renode, generated-AP, or board handoff command",
+                    "real firmware transcript with required PASS markers",
+                    "rerun of the firmware boot-chain contract after capture",
+                ],
+            }
+        )
+    return plan
 
 
 def write_report(report: Mapping[str, Any], path: Path) -> None:

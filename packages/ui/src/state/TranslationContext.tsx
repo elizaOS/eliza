@@ -48,6 +48,12 @@ export interface TranslationContextValue {
 
 const TranslationCtx = createContext<TranslationContextValue | null>(null);
 
+const TEST_TRANSLATION_CONTEXT: TranslationContextValue = {
+  t: createTranslator("en"),
+  uiLanguage: "en",
+  setUiLanguage: () => {},
+};
+
 // ── Provider ───────────────────────────────────────────────────────────
 
 export function TranslationProvider({
@@ -172,11 +178,7 @@ export function useTranslation(): TranslationContextValue {
   const ctx = useContext(TranslationCtx);
   if (!ctx) {
     if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
-      return {
-        t: createTranslator("en"),
-        uiLanguage: "en",
-        setUiLanguage: () => {},
-      };
+      return TEST_TRANSLATION_CONTEXT;
     }
     throw new Error("useTranslation must be used within TranslationProvider");
   }

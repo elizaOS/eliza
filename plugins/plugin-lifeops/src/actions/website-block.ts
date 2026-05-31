@@ -5,7 +5,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+	ModelType,
+	requireConfirmation,
+	runWithTrajectoryContext,
+} from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlAccess,
@@ -83,11 +87,11 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
   },
   release: {
     description:
-      "Release a managed website block rule by id. Requires confirmed:true. harsh_no_bypass rules cannot be released through this path — they must wait for gate fulfillment.",
+      "Release a managed website block rule by id. Asks the user to confirm on a follow-up turn (reply yes) before releasing — an LLM-supplied confirmed flag is never authoritative. harsh_no_bypass rules cannot be released through this path — they must wait for gate fulfillment.",
     descriptionCompressed:
-      "release managed-block-rule(id) confirmed-true; harsh_no_bypass not releasable",
-    required: ["ruleId", "confirmed"],
-    optional: ["reason"],
+      "release managed-block-rule(id) two-turn-confirm; harsh_no_bypass not releasable",
+    required: ["ruleId"],
+    optional: ["reason", "confirmed"],
   },
   list_active: {
     description:
@@ -101,7 +105,6 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
 
 type WebsiteBlockPlan = {
   shouldAct?: boolean | null;
-  confirmed?: boolean | null;
   response?: string;
   websites: string[];
   durationMinutes?: number | null;
@@ -377,15 +380,13 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "Use the current request plus recent conversation context.",
     "Return JSON only as a single object with these fields:",
     "  shouldAct: boolean",
-    "  confirmed: boolean",
     "  response: short natural-language reply when clarification or deferral is needed",
     "  websites: array of public website hostnames or URLs to block",
     "  durationMinutes: positive integer for a timed block, or null/omit for an indefinite/manual block",
     "",
     "Rules:",
     "- Only start a block when the user is clearly asking to block websites now.",
-    "- Set confirmed=true only when the current request explicitly authorizes the block to happen now, including a direct follow-up instruction to act now on previously discussed websites.",
-    "- Set confirmed=false when the user is only naming candidate websites, asking for advice, or asking you to wait.",
+    "- Do not encode user authorization in JSON; authorization is collected on a follow-up user message.",
     "- Generic focus-block requests like 'turn on a focus block for all social media sites' belong here; do not invent a task gate for them.",
     "- If the user says not yet, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
     "- If the current request refers to previously mentioned websites, recover them from recent conversation context.",
@@ -395,7 +396,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- Use durationMinutes=null when the user explicitly wants the block to last until manual removal.",
     "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration.",
     "",
-    'Return JSON only, for example {"shouldAct":true,"confirmed":true,"response":null,"websites":["x.com"],"durationMinutes":60}.',
+    'Return JSON only, for example {"shouldAct":true,"response":null,"websites":["x.com"],"durationMinutes":60}.',
     "Current request:",
     currentMessage || "(empty)",
     "Recent conversation turns:",
@@ -417,7 +418,6 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     }
     return {
       shouldAct: normalizeShouldAct(parsed.shouldAct),
-      confirmed: normalizeShouldAct(parsed.confirmed),
       response: normalizePlannerResponse(parsed.response),
       websites: normalizeWebsiteCandidates(parsed.websites),
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
@@ -621,20 +621,31 @@ async function handleBlock(
     };
   }
 
-  const confirmed =
-    coerceConfirmedFlag(params.confirmed) || llmPlan?.confirmed === true;
-  if (!confirmed) {
-    const websitesLabel = formatWebsiteList(parsed.request.websites);
-    const durationLabel =
-      parsed.request.durationMinutes === null
-        ? "until you manually unblock"
-        : `for ${parsed.request.durationMinutes} minute${parsed.request.durationMinutes === 1 ? "" : "s"}`;
+  const websitesLabel = formatWebsiteList(parsed.request.websites);
+  const durationLabel =
+    parsed.request.durationMinutes === null
+      ? "until you manually unblock"
+      : `for ${parsed.request.durationMinutes} minute${parsed.request.durationMinutes === 1 ? "" : "s"}`;
+  const confirmPrompt = `Ready to block ${websitesLabel} ${durationLabel}.`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "WEBSITE_BLOCK",
+    pendingKey: `block:${parsed.request.websites.join(",")}:${parsed.request.durationMinutes ?? "manual"}`,
+    prompt: confirmPrompt,
+  });
+  if (decision.status !== "confirmed") {
     return {
-      success: true,
-      text: `Ready to block ${websitesLabel} ${durationLabel}. Reply "confirm" or re-issue with confirmed: true to start the block.`,
+      success: decision.status === "pending",
+      text:
+        decision.status === "pending"
+          ? `${confirmPrompt} Reply yes to confirm or no to cancel.`
+          : "Website block cancelled.",
       data: {
         draft: true,
-        requiresConfirmation: true,
+        requiresConfirmation: decision.status === "pending",
+        awaitingUserInput: decision.status === "pending",
+        cancelled: decision.status === "cancelled",
         websites: parsed.request.websites,
         durationMinutes: parsed.request.durationMinutes,
       },
@@ -809,6 +820,7 @@ function formatLiveWebsiteBlockStatus(
 
 async function handleRelease(
   runtime: IAgentRuntime,
+  message: Memory,
   params: WebsiteBlockParams,
 ): Promise<ActionResult> {
   const ruleId = coerceString(params.ruleId);
@@ -818,10 +830,36 @@ async function handleRelease(
       text: "BLOCK action=release requires a ruleId.",
     };
   }
-  if (!coerceConfirmedFlag(params.confirmed)) {
+  // harsh_no_bypass rules can never be released by confirmation — reject up
+  // front so we don't offer a confirmation prompt that could never succeed.
+  const rule = await new BlockRuleReader(runtime).getBlockRuleById(ruleId);
+  if (rule?.gateType === "harsh_no_bypass") {
     return {
       success: false,
-      text: "BLOCK action=release requires confirmed:true to release the rule.",
+      text: `Block rule ${ruleId} is harsh_no_bypass and cannot be released by confirmation — it must wait for gate fulfillment.`,
+      data: { actionName: ACTION_NAME, subaction: "release", ruleId },
+    };
+  }
+  const releasePrompt = `Release website block rule ${ruleId}?`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "WEBSITE_BLOCK_RELEASE",
+    pendingKey: `release:${ruleId}`,
+    prompt: releasePrompt,
+  });
+  if (decision.status !== "confirmed") {
+    return {
+      success: decision.status === "pending",
+      text:
+        decision.status === "pending"
+          ? `${releasePrompt} Reply yes to confirm or no to cancel.`
+          : "Release cancelled.",
+      data: {
+        requiresConfirmation: decision.status === "pending",
+        awaitingUserInput: decision.status === "pending",
+        ruleId,
+      },
     };
   }
   const reason = coerceString(params.reason) ?? "user_confirmed";
@@ -968,7 +1006,7 @@ export async function runWebsiteBlockHandler(
     case "request_permission":
       return handleRequestPermission();
     case "release":
-      return handleRelease(runtime, params);
+      return handleRelease(runtime, message, params);
     case "list_active":
       return handleListActive(runtime, params);
   }

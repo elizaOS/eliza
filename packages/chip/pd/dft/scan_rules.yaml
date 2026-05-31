@@ -76,11 +76,16 @@ nodes:
       - sky130_fd_sc_hd__sdfxbp_1
       - sky130_fd_sc_hd__sdfrtp_1
     scan_ready_netlist: build/dft/e1_bootrom.scan_ready.v
-    retarget_pass: pd/dft/scan_insertion.tcl
+    prep_pass: pd/dft/scan_insertion.tcl
+    retarget_tool: fault_not_vendored
     notes: |
-      sky130_fd_sc_hd ships scan-capable flops; pd/dft/scan_insertion.tcl
-      (dfflibmap + abc) retargets onto them. Validated on rtl/bootrom via
-      pd/dft/run_e1_bootrom_scan_prep.tcl. Full-design stitching needs Fault.
+      sky130_fd_sc_hd ships scan-capable flops (sdf*), but pd/dft/scan_insertion.tcl
+      (dfflibmap + abc) does NOT retarget onto them -- dfflibmap maps to ordinary
+      flops (e1_bootrom is a flop-less ROM; a 104-flop module maps to dfrtp_1/
+      dfxtp_1, zero sdf*). Scan-flop substitution + chain stitching need Fault,
+      which is not vendored under external/, so the sdf* scan_flop_cells above are
+      the target set, not what the prep pass currently produces. Prep validated on
+      rtl/bootrom via pd/dft/run_e1_bootrom_scan_prep.tcl.
   gf180:
     node_id: gf180
     scan_status: scan_capable_library_present
@@ -89,10 +94,13 @@ nodes:
       - gf180mcu_fd_sc_mcu7t5v0__sdffq_1
       - gf180mcu_fd_sc_mcu7t5v0__sdffrnq_1
     scan_ready_netlist: null
-    retarget_pass: pd/dft/scan_insertion.tcl
+    prep_pass: pd/dft/scan_insertion.tcl
+    retarget_tool: fault_not_vendored
     notes: |
-      gf180mcu library ships scan flops; scan-prep not yet exercised on this
-      node. Retarget requires the gf180 typical-corner Liberty on PATH.
+      gf180mcu library ships scan flops (sdff*); the dfflibmap prep pass has not
+      been exercised on this node and, as on sky130, would only map to ordinary
+      flops. Scan-flop retargeting + stitching need Fault (not vendored). Prep
+      requires the gf180 typical-corner Liberty on PATH.
   ihp-sg13g2:
     node_id: ihp-sg13g2
     scan_status: scan_capability_unverified

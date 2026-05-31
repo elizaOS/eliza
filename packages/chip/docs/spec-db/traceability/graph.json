@@ -1,19 +1,19 @@
 {
   "claim_boundary": "traceability_graph_records_existing_edges_no_silicon_or_signoff_claim",
   "counts": {
-    "edges": 253,
+    "edges": 289,
     "gates": 108,
     "node_kinds": {
-      "artifact": 45,
+      "artifact": 73,
       "gate": 108,
       "pd_evidence": 9,
       "requirement": 28,
-      "rtl": 17,
+      "rtl": 18,
       "rtl_gap": 17,
       "spec_doc": 17,
-      "test": 30
+      "test": 34
     },
-    "nodes": 271,
+    "nodes": 304,
     "requirements": 28,
     "rtl_gaps": 17
   },
@@ -694,12 +694,22 @@
       "src": "gap:bootrom-firmware-handoff"
     },
     {
+      "dst": "artifact:scripts/check_bootrom_positive_handoff.py",
+      "relation": "affects",
+      "src": "gap:bootrom-firmware-handoff"
+    },
+    {
       "dst": "artifact:scripts/check_bootrom_sim_transcript.py",
       "relation": "affects",
       "src": "gap:bootrom-firmware-handoff"
     },
     {
       "dst": "artifact:scripts/run_qemu.sh",
+      "relation": "affects",
+      "src": "gap:bootrom-firmware-handoff"
+    },
+    {
+      "dst": "artifact:scripts/test_bootrom_positive_handoff.py",
       "relation": "affects",
       "src": "gap:bootrom-firmware-handoff"
     },
@@ -724,7 +734,37 @@
       "src": "gap:cpu-legacy-stub-module-name"
     },
     {
+      "dst": "artifact:scripts/check_cpu_ap_scope.py",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
       "dst": "artifact:scripts/run_rtl_check.sh",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "artifact:scripts/run_verilator.sh",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "artifact:scripts/test_cpu_ap_scope.py",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "artifact:scripts/yosys_e1_soc.ys",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "artifact:scripts/yosys_formal_top.ys",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "artifact:scripts/yosys_formal_top_structural.ys",
       "relation": "affects",
       "src": "gap:cpu-legacy-stub-module-name"
     },
@@ -735,6 +775,11 @@
     },
     {
       "dst": "rtl:rtl/cpu/e1_tiny_cpu_contract.sv",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
+      "dst": "test:verify/formal/e1_soc_top.sby",
       "relation": "affects",
       "src": "gap:cpu-legacy-stub-module-name"
     },
@@ -774,12 +819,27 @@
       "src": "gap:cpu-real-core-integration"
     },
     {
+      "dst": "artifact:build/reports/soc_integration.json",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
       "dst": "artifact:scripts/check_cpu_ap_completion_gate.py",
       "relation": "affects",
       "src": "gap:cpu-real-core-integration"
     },
     {
       "dst": "artifact:scripts/check_cpu_ap_scope.py",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "artifact:scripts/check_soc_real_integration.py",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "artifact:scripts/test_soc_real_integration_report.py",
       "relation": "affects",
       "src": "gap:cpu-real-core-integration"
     },
@@ -809,7 +869,17 @@
       "src": "gap:cpu-real-core-integration"
     },
     {
+      "dst": "artifact:scripts/check_display_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:display-proof-gap"
+    },
+    {
       "dst": "artifact:scripts/run_formal.sh",
+      "relation": "affects",
+      "src": "gap:display-proof-gap"
+    },
+    {
+      "dst": "artifact:scripts/test_display_formal_coverage.py",
       "relation": "affects",
       "src": "gap:display-proof-gap"
     },
@@ -859,6 +929,11 @@
       "src": "gap:display-real-framebuffer-path"
     },
     {
+      "dst": "artifact:scripts/test_linux_bsp_contract.py",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
       "dst": "artifact:sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml",
       "relation": "affects",
       "src": "gap:display-real-framebuffer-path"
@@ -899,6 +974,16 @@
       "src": "gap:display-real-framebuffer-path"
     },
     {
+      "dst": "artifact:scripts/check_dma_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:dma-proof-depth-and-protocol"
+    },
+    {
+      "dst": "artifact:scripts/test_dma_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:dma-proof-depth-and-protocol"
+    },
+    {
       "dst": "artifact:scripts/yosys_formal_dma.ys",
       "relation": "affects",
       "src": "gap:dma-proof-depth-and-protocol"
@@ -924,7 +1009,17 @@
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "artifact:scripts/check_dma_engine.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
       "dst": "artifact:scripts/check_dma_long_transfer_coverage.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "artifact:scripts/test_dma_engine_gate.py",
       "relation": "affects",
       "src": "gap:dma-real-memory-system"
     },
@@ -934,12 +1029,27 @@
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "artifact:verify/cocotb/aia_sg_top/Makefile",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
       "dst": "artifact:verify/cocotb/dma/Makefile",
       "relation": "affects",
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "artifact:verify/cocotb/dma_sg/Makefile",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
       "dst": "rtl:rtl/dma/e1_dma.sv",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "rtl:rtl/dma/e1_dma_sg.sv",
       "relation": "affects",
       "src": "gap:dma-real-memory-system"
     },
@@ -954,7 +1064,22 @@
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "test:verify/cocotb/aia_sg_top/e1_aia_sg_harness.sv",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "test:verify/cocotb/aia_sg_top/test_aia_sg_top.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
       "dst": "test:verify/cocotb/dma/test_dma_long_transfer.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "test:verify/cocotb/dma_sg/test_dma_sg.py",
       "relation": "affects",
       "src": "gap:dma-real-memory-system"
     },
@@ -975,6 +1100,11 @@
     },
     {
       "dst": "artifact:scripts/check_dram_controller.py",
+      "relation": "affects",
+      "src": "gap:dram-controller-and-capacity"
+    },
+    {
+      "dst": "artifact:scripts/test_dram_controller_gate.py",
       "relation": "affects",
       "src": "gap:dram-controller-and-capacity"
     },
@@ -1049,7 +1179,17 @@
       "src": "gap:formal-yosys-fallback-is-not-equivalent"
     },
     {
+      "dst": "artifact:scripts/check_axil_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
       "dst": "artifact:scripts/run_formal.sh",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "artifact:scripts/test_axil_formal_coverage.py",
       "relation": "affects",
       "src": "gap:interconnect-axi-lite-proof-coverage"
     },
@@ -1149,7 +1289,17 @@
       "src": "gap:interconnect-full-soc-routing"
     },
     {
+      "dst": "artifact:scripts/check_soc_integration.py",
+      "relation": "affects",
+      "src": "gap:interconnect-full-soc-routing"
+    },
+    {
       "dst": "artifact:scripts/test_memory_interconnect_contract_report.py",
+      "relation": "affects",
+      "src": "gap:interconnect-full-soc-routing"
+    },
+    {
+      "dst": "artifact:scripts/test_soc_integration_report.py",
       "relation": "affects",
       "src": "gap:interconnect-full-soc-routing"
     },
@@ -1174,6 +1324,16 @@
       "src": "gap:interconnect-full-soc-routing"
     },
     {
+      "dst": "artifact:scripts/check_npu_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "artifact:scripts/test_npu_formal_coverage.py",
+      "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
       "dst": "rtl:rtl/npu/e1_npu.sv",
       "relation": "affects",
       "src": "gap:npu-formal-engine-coverage"
@@ -1192,6 +1352,26 @@
       "dst": "test:verify/properties/npu_axil_bind.sv",
       "relation": "affects",
       "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:npu-production-accelerator"
+    },
+    {
+      "dst": "artifact:build/reports/npu_accelerator.json",
+      "relation": "affects",
+      "src": "gap:npu-production-accelerator"
+    },
+    {
+      "dst": "artifact:scripts/check_npu_accelerator.py",
+      "relation": "affects",
+      "src": "gap:npu-production-accelerator"
+    },
+    {
+      "dst": "artifact:scripts/test_npu_accelerator_gate.py",
+      "relation": "affects",
+      "src": "gap:npu-production-accelerator"
     },
     {
       "dst": "rtl:rtl/npu/e1_npu.sv",
@@ -1581,6 +1761,11 @@
       "path": "build/reports/cpu_ap_scope.json"
     },
     {
+      "id": "artifact:build/reports/npu_accelerator.json",
+      "kind": "artifact",
+      "path": "build/reports/npu_accelerator.json"
+    },
+    {
       "id": "artifact:build/reports/npu_cocotb_coverage.json",
       "kind": "artifact",
       "path": "build/reports/npu_cocotb_coverage.json"
@@ -1589,6 +1774,11 @@
       "id": "artifact:build/reports/npu_coverage_summary.json",
       "kind": "artifact",
       "path": "build/reports/npu_coverage_summary.json"
+    },
+    {
+      "id": "artifact:build/reports/soc_integration.json",
+      "kind": "artifact",
+      "path": "build/reports/soc_integration.json"
     },
     {
       "id": "artifact:docs/arch/interconnect.md",
@@ -1621,9 +1811,19 @@
       "path": "scripts/archive_release.sh"
     },
     {
+      "id": "artifact:scripts/check_axil_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/check_axil_formal_coverage.py"
+    },
+    {
       "id": "artifact:scripts/check_boot_security_chain_contract.py",
       "kind": "artifact",
       "path": "scripts/check_boot_security_chain_contract.py"
+    },
+    {
+      "id": "artifact:scripts/check_bootrom_positive_handoff.py",
+      "kind": "artifact",
+      "path": "scripts/check_bootrom_positive_handoff.py"
     },
     {
       "id": "artifact:scripts/check_bootrom_sim_transcript.py",
@@ -1641,9 +1841,24 @@
       "path": "scripts/check_cpu_ap_scope.py"
     },
     {
+      "id": "artifact:scripts/check_display_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/check_display_formal_coverage.py"
+    },
+    {
       "id": "artifact:scripts/check_display_scanout.py",
       "kind": "artifact",
       "path": "scripts/check_display_scanout.py"
+    },
+    {
+      "id": "artifact:scripts/check_dma_engine.py",
+      "kind": "artifact",
+      "path": "scripts/check_dma_engine.py"
+    },
+    {
+      "id": "artifact:scripts/check_dma_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/check_dma_formal_coverage.py"
     },
     {
       "id": "artifact:scripts/check_dma_long_transfer_coverage.py",
@@ -1671,9 +1886,19 @@
       "path": "scripts/check_mvp_status.py"
     },
     {
+      "id": "artifact:scripts/check_npu_accelerator.py",
+      "kind": "artifact",
+      "path": "scripts/check_npu_accelerator.py"
+    },
+    {
       "id": "artifact:scripts/check_npu_coverage_summary.py",
       "kind": "artifact",
       "path": "scripts/check_npu_coverage_summary.py"
+    },
+    {
+      "id": "artifact:scripts/check_npu_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/check_npu_formal_coverage.py"
     },
     {
       "id": "artifact:scripts/check_platform_contract.py",
@@ -1684,6 +1909,16 @@
       "id": "artifact:scripts/check_release_archive.py",
       "kind": "artifact",
       "path": "scripts/check_release_archive.py"
+    },
+    {
+      "id": "artifact:scripts/check_soc_integration.py",
+      "kind": "artifact",
+      "path": "scripts/check_soc_integration.py"
+    },
+    {
+      "id": "artifact:scripts/check_soc_real_integration.py",
+      "kind": "artifact",
+      "path": "scripts/check_soc_real_integration.py"
     },
     {
       "id": "artifact:scripts/pipeline_check.py",
@@ -1711,9 +1946,44 @@
       "path": "scripts/run_rtl_check.sh"
     },
     {
+      "id": "artifact:scripts/run_verilator.sh",
+      "kind": "artifact",
+      "path": "scripts/run_verilator.sh"
+    },
+    {
+      "id": "artifact:scripts/test_axil_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/test_axil_formal_coverage.py"
+    },
+    {
+      "id": "artifact:scripts/test_bootrom_positive_handoff.py",
+      "kind": "artifact",
+      "path": "scripts/test_bootrom_positive_handoff.py"
+    },
+    {
+      "id": "artifact:scripts/test_cpu_ap_scope.py",
+      "kind": "artifact",
+      "path": "scripts/test_cpu_ap_scope.py"
+    },
+    {
+      "id": "artifact:scripts/test_display_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/test_display_formal_coverage.py"
+    },
+    {
       "id": "artifact:scripts/test_display_scanout_gate.py",
       "kind": "artifact",
       "path": "scripts/test_display_scanout_gate.py"
+    },
+    {
+      "id": "artifact:scripts/test_dma_engine_gate.py",
+      "kind": "artifact",
+      "path": "scripts/test_dma_engine_gate.py"
+    },
+    {
+      "id": "artifact:scripts/test_dma_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/test_dma_formal_coverage.py"
     },
     {
       "id": "artifact:scripts/test_dma_long_transfer_coverage.py",
@@ -1721,9 +1991,19 @@
       "path": "scripts/test_dma_long_transfer_coverage.py"
     },
     {
+      "id": "artifact:scripts/test_dram_controller_gate.py",
+      "kind": "artifact",
+      "path": "scripts/test_dram_controller_gate.py"
+    },
+    {
       "id": "artifact:scripts/test_dram_controller_make_target.py",
       "kind": "artifact",
       "path": "scripts/test_dram_controller_make_target.py"
+    },
+    {
+      "id": "artifact:scripts/test_linux_bsp_contract.py",
+      "kind": "artifact",
+      "path": "scripts/test_linux_bsp_contract.py"
     },
     {
       "id": "artifact:scripts/test_memory_interconnect_contract_report.py",
@@ -1731,9 +2011,19 @@
       "path": "scripts/test_memory_interconnect_contract_report.py"
     },
     {
+      "id": "artifact:scripts/test_npu_accelerator_gate.py",
+      "kind": "artifact",
+      "path": "scripts/test_npu_accelerator_gate.py"
+    },
+    {
       "id": "artifact:scripts/test_npu_coverage_summary.py",
       "kind": "artifact",
       "path": "scripts/test_npu_coverage_summary.py"
+    },
+    {
+      "id": "artifact:scripts/test_npu_formal_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/test_npu_formal_coverage.py"
     },
     {
       "id": "artifact:scripts/test_pipeline_formal_manifest.py",
@@ -1751,6 +2041,21 @@
       "path": "scripts/test_release_archive_simulator_evidence.py"
     },
     {
+      "id": "artifact:scripts/test_soc_integration_report.py",
+      "kind": "artifact",
+      "path": "scripts/test_soc_integration_report.py"
+    },
+    {
+      "id": "artifact:scripts/test_soc_real_integration_report.py",
+      "kind": "artifact",
+      "path": "scripts/test_soc_real_integration_report.py"
+    },
+    {
+      "id": "artifact:scripts/yosys_e1_soc.ys",
+      "kind": "artifact",
+      "path": "scripts/yosys_e1_soc.ys"
+    },
+    {
       "id": "artifact:scripts/yosys_formal_dma.ys",
       "kind": "artifact",
       "path": "scripts/yosys_formal_dma.ys"
@@ -1759,6 +2064,11 @@
       "id": "artifact:scripts/yosys_formal_npu_structural.ys",
       "kind": "artifact",
       "path": "scripts/yosys_formal_npu_structural.ys"
+    },
+    {
+      "id": "artifact:scripts/yosys_formal_top.ys",
+      "kind": "artifact",
+      "path": "scripts/yosys_formal_top.ys"
     },
     {
       "id": "artifact:scripts/yosys_formal_top_structural.ys",
@@ -1786,9 +2096,19 @@
       "path": "sw/linux/dts/eliza-e1.dts"
     },
     {
+      "id": "artifact:verify/cocotb/aia_sg_top/Makefile",
+      "kind": "artifact",
+      "path": "verify/cocotb/aia_sg_top/Makefile"
+    },
+    {
       "id": "artifact:verify/cocotb/dma/Makefile",
       "kind": "artifact",
       "path": "verify/cocotb/dma/Makefile"
+    },
+    {
+      "id": "artifact:verify/cocotb/dma_sg/Makefile",
+      "kind": "artifact",
+      "path": "verify/cocotb/dma_sg/Makefile"
     },
     {
       "area": "bootrom",
@@ -2876,6 +3196,11 @@
       "path": "rtl/dma/e1_dma.sv"
     },
     {
+      "id": "rtl:rtl/dma/e1_dma_sg.sv",
+      "kind": "rtl",
+      "path": "rtl/dma/e1_dma_sg.sv"
+    },
+    {
       "id": "rtl:rtl/interconnect/e1_axi_lite_interconnect.sv",
       "kind": "rtl",
       "path": "rtl/interconnect/e1_axi_lite_interconnect.sv"
@@ -2936,7 +3261,7 @@
       "id": "spec_doc:docs/evidence/pd/dft-evidence.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/dft-evidence.yaml",
-      "sha": "aecc6b64527d1a00"
+      "sha": "1f494b2491cecb20"
     },
     {
       "id": "spec_doc:docs/evidence/pd/macro-placement-evidence.yaml",
@@ -2984,7 +3309,7 @@
       "id": "spec_doc:docs/spec-db/e1-npu-runtime-contract.json",
       "kind": "spec_doc",
       "path": "docs/spec-db/e1-npu-runtime-contract.json",
-      "sha": "fd9498b1db53dba0797c7d6ee8c4eb3ae0e9f2dd9fd1c4c7515a55fe70fa01ee"
+      "sha": "12cb5c395cf9c7b2ce105bf8ac81f6a8b27286a735179aa7e2321a745784445d"
     },
     {
       "id": "spec_doc:docs/spec-db/memory-2028-target.yaml",
@@ -3002,7 +3327,7 @@
       "id": "spec_doc:docs/spec-db/process-14a-effects.yaml",
       "kind": "spec_doc",
       "path": "docs/spec-db/process-14a-effects.yaml",
-      "sha": "e9f5c76112e5f9e72aaf75480a0e2bdce3321d9807665715a74b60b307187ab5"
+      "sha": "4707f99816ad483586deb9fdf62bd3b7de42f6ab033e10c58205c1216c4002d1"
     },
     {
       "id": "spec_doc:docs/spec-db/security-2028-target.yaml",
@@ -3014,13 +3339,13 @@
       "id": "spec_doc:sw/platform/e1_platform_contract.json",
       "kind": "spec_doc",
       "path": "sw/platform/e1_platform_contract.json",
-      "sha": "ce65c6784923006f827c5443d28c92ce1a02ec5beebe6b07897d910da9593286"
+      "sha": "9b405023c82514f1d4e3d320da35827a09b4bd895d269d04714c20e298b5086a"
     },
     {
       "id": "spec_doc:verify/rtl_gap_work_order.yaml",
       "kind": "spec_doc",
       "path": "verify/rtl_gap_work_order.yaml",
-      "sha": "cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512"
+      "sha": "9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54"
     },
     {
       "id": "test:fw/boot-rom/check_boot_rom.py",
@@ -3033,6 +3358,16 @@
       "path": "verify/check_formal_engine_agreement.py"
     },
     {
+      "id": "test:verify/cocotb/aia_sg_top/e1_aia_sg_harness.sv",
+      "kind": "test",
+      "path": "verify/cocotb/aia_sg_top/e1_aia_sg_harness.sv"
+    },
+    {
+      "id": "test:verify/cocotb/aia_sg_top/test_aia_sg_top.py",
+      "kind": "test",
+      "path": "verify/cocotb/aia_sg_top/test_aia_sg_top.py"
+    },
+    {
       "id": "test:verify/cocotb/display/test_display_scanout.py",
       "kind": "test",
       "path": "verify/cocotb/display/test_display_scanout.py"
@@ -3041,6 +3376,11 @@
       "id": "test:verify/cocotb/dma/test_dma_long_transfer.py",
       "kind": "test",
       "path": "verify/cocotb/dma/test_dma_long_transfer.py"
+    },
+    {
+      "id": "test:verify/cocotb/dma_sg/test_dma_sg.py",
+      "kind": "test",
+      "path": "verify/cocotb/dma_sg/test_dma_sg.py"
     },
     {
       "id": "test:verify/cocotb/e1_tiny_cpu_contract_tb.sv",
@@ -3141,6 +3481,11 @@
       "id": "test:verify/formal/e1_npu_formal.sv",
       "kind": "test",
       "path": "verify/formal/e1_npu_formal.sv"
+    },
+    {
+      "id": "test:verify/formal/e1_soc_top.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_soc_top.sby"
     },
     {
       "id": "test:verify/formal/e1_soc_top_formal.sv",

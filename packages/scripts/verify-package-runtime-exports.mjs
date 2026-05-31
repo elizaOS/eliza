@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -77,9 +78,17 @@ for (const value of collectRuntimeExportPaths(manifest.exports)) {
   required.add(value);
 }
 
-const missing = [...required]
-  .sort()
-  .filter((entry) => !fs.existsSync(path.resolve(packageDir, entry)));
+function findMissingRuntimeExports() {
+  return [...required]
+    .sort()
+    .filter((entry) => !fs.existsSync(path.resolve(packageDir, entry)));
+}
+
+let missing = findMissingRuntimeExports();
+for (let attempt = 0; missing.length > 0 && attempt < 20; attempt += 1) {
+  await delay(100 * (attempt + 1));
+  missing = findMissingRuntimeExports();
+}
 
 if (missing.length > 0) {
   console.error(

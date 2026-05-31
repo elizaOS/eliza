@@ -72,6 +72,7 @@ const NAV_TIMEOUT_MS = 12_000;
 // Ready checks only confirm route-level render markers after navigation.
 // Full bootstrap waits use the surrounding test timeout and Playwright defaults.
 const READY_CHECK_TIMEOUT_MS = 15_000;
+const STARTUP_SETTLED_TIMEOUT_MS = 45_000;
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
 const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
@@ -266,6 +267,12 @@ async function expectNoFirstRunRedirect(page: Page): Promise<void> {
   await expect(page).not.toHaveURL(/first-run/, { timeout: NAV_TIMEOUT_MS });
 }
 
+async function expectStartupSettled(page: Page): Promise<void> {
+  await page
+    .getByText("Initializing agent")
+    .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
+}
+
 export async function openAppPath(
   page: Page,
   targetPath: string,
@@ -273,6 +280,7 @@ export async function openAppPath(
   await installRenderTelemetryGuard(page);
   await page.goto(targetPath, { waitUntil: "domcontentloaded" });
   await expectRootReady(page);
+  await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
@@ -1139,6 +1147,30 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ complete: true, cloudProvisioned: true }),
+    });
+  });
+
+  await page.route("**/api/asr/local-inference/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ready: false }),
+    });
+  });
+
   await page.route("**/api/hyperliquid/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1680,6 +1712,26 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     await route.fallback();
+  });
+
+  await page.route("**/api/auth/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        required: false,
+        authenticated: true,
+        loginRequired: false,
+        localAccess: true,
+        passwordConfigured: true,
+        pairingEnabled: false,
+        expiresAt: null,
+      }),
+    });
   });
 
   await page.route("**/api/auth/me", async (route) => {

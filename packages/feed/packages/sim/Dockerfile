@@ -12,7 +12,7 @@
 #   docker run -e TICK_INTERVAL_MS=30000 feed-sim
 # ---------------------------------------------------------
 
-FROM oven/bun:1.3.4 AS base
+FROM oven/bun:canary AS base
 
 # -- Install stage: resolve workspace deps -----------------------------------
 FROM base AS install

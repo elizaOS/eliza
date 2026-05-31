@@ -128,11 +128,16 @@ export function PaymentWaitingOverlay({
                     amount: data?.creditsToAdd ?? "—",
                     bonus: data.bonusCredits,
                     defaultValue:
-                      "Added ${{amount}} in cloud credit (incl. ${{bonus}} bonus).",
+                      "Added $" +
+                      "{{amount}}" +
+                      " in cloud credit (incl. $" +
+                      "{{bonus}}" +
+                      " bonus).",
                   })
                 : t("cloud.paymentWaiting.addedCredit", {
                     amount: data?.creditsToAdd ?? "—",
-                    defaultValue: "Added ${{amount}} in cloud credit.",
+                    defaultValue:
+                      "Added $" + "{{amount}}" + " in cloud credit.",
                   })
               : isFailed
                 ? (data?.error ??

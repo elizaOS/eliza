@@ -8,6 +8,320 @@
   "min_target_gap_mm": 0.15,
   "parts_loaded": 258,
   "parts_missing": [],
+  "source_geometry": {
+    "manifest_path": "mechanical/e1-phone/out/assembly-manifest.json",
+    "manifest_sha256": "1acf322a006f56f493513ba5430c98f17515da994233cc9c514fd2c6a879f6e0",
+    "manifest_entry_count": 258,
+    "step_directory": "mechanical/e1-phone/out",
+    "loaded_part_count": 258,
+    "critical_step_hashes": [
+      {
+        "part": "display_lcm",
+        "path": "mechanical/e1-phone/out/display_lcm.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15681,
+        "sha256": "114e1550905ebc05ea7cfdbc8450e5d2c28e278cd0bdd24df611701e35d7ee66",
+        "bbox_mm": [
+          -35.39,
+          -70.085,
+          1.63,
+          35.39,
+          59.085,
+          5.02
+        ]
+      },
+      {
+        "part": "earpiece_receiver",
+        "path": "mechanical/e1-phone/out/earpiece_receiver.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15525,
+        "sha256": "f1df0a5f159a49244587d5036b33af6f3b7a651d13fd64c506a16dd14186869e",
+        "bbox_mm": [
+          -6.0,
+          65.8,
+          -0.25,
+          6.0,
+          71.8,
+          2.25
+        ]
+      },
+      {
+        "part": "front_camera_black_mask_window",
+        "path": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15577,
+        "sha256": "8c464500d5d5e0f13f364fec777b10ad8d748e47934004102b375eb9a7bbb4eb",
+        "bbox_mm": [
+          -21.5,
+          65.3,
+          5.08,
+          -16.5,
+          70.3,
+          5.16
+        ]
+      },
+      {
+        "part": "front_camera_module",
+        "path": "mechanical/e1-phone/out/front_camera_module.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15616,
+        "sha256": "45b9fb1638389046d9232a948e2c36cc47386c272bdd4ac841e9de8a4f92e4a6",
+        "bbox_mm": [
+          -22.25,
+          64.55,
+          -0.6,
+          -15.75,
+          71.05,
+          2.6
+        ]
+      },
+      {
+        "part": "front_camera_under_glass",
+        "path": "mechanical/e1-phone/out/front_camera_under_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15585,
+        "sha256": "542a45846a593b1ec34672ffd1e1313208b7e2474df2315c8cad0b0f57799594",
+        "bbox_mm": [
+          -20.7,
+          66.1,
+          5.08,
+          -17.3,
+          69.5,
+          5.16
+        ]
+      },
+      {
+        "part": "handset_acoustic_mesh",
+        "path": "mechanical/e1-phone/out/handset_acoustic_mesh.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15598,
+        "sha256": "1b44da94125b1cb91aef554f014b2412d7d3c9daccbc236a000f5599825bc127",
+        "bbox_mm": [
+          -8.75,
+          69.14,
+          4.75,
+          8.75,
+          69.26,
+          5.15
+        ]
+      },
+      {
+        "part": "handset_acoustic_slot",
+        "path": "mechanical/e1-phone/out/handset_acoustic_slot.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15538,
+        "sha256": "6606edfd0a7e689eb447a71673a6d8460cab547222c3ad17784129b4374b9ea2",
+        "bbox_mm": [
+          -8.0,
+          68.7,
+          5.855,
+          8.0,
+          69.7,
+          6.105
+        ]
+      },
+      {
+        "part": "orange_back_shell",
+        "path": "mechanical/e1-phone/out/orange_back_shell.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 344345,
+        "sha256": "e515e073f1b19e19e39951be97469c009f7e639b5bfcc4949edcab47e448afcc",
+        "bbox_mm": [
+          -39.0,
+          -76.8,
+          -5.9,
+          39.0,
+          76.8,
+          -4.7
+        ]
+      },
+      {
+        "part": "orange_side_frame",
+        "path": "mechanical/e1-phone/out/orange_side_frame.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 754096,
+        "sha256": "545f8029478243f05fc1002a4b5a2fb7084058e251c2bbe9a36e2724ff98fbb7",
+        "bbox_mm": [
+          -39.0,
+          -76.8,
+          -5.9,
+          39.0,
+          76.8,
+          5.15
+        ]
+      },
+      {
+        "part": "rear_camera_cover_glass",
+        "path": "mechanical/e1-phone/out/rear_camera_cover_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15562,
+        "sha256": "9bb28263ec2fa0230d3f7188ab940c992e8aa0df08cf42eb050277b030c97278",
+        "bbox_mm": [
+          16.4,
+          53.2,
+          -5.9,
+          25.6,
+          62.4,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_camera_lens_window",
+        "path": "mechanical/e1-phone/out/rear_camera_lens_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15560,
+        "sha256": "2cf1b543a21b3ed738c98971e0513d822d8d2591eb0120dd1cdb03e26d8607d1",
+        "bbox_mm": [
+          17.6,
+          54.4,
+          -5.9,
+          24.4,
+          61.2,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_camera_module",
+        "path": "mechanical/e1-phone/out/rear_camera_module.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15512,
+        "sha256": "1d7ba2623b1f028abc324c98fbac6e5bf222f94c4a650fcf16a1f8ff13b01ddb",
+        "bbox_mm": [
+          16.0,
+          52.8,
+          -4.3,
+          26.0,
+          62.8,
+          0.8
+        ]
+      },
+      {
+        "part": "rear_camera_optical_sight_tunnel",
+        "path": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15599,
+        "sha256": "a9c1f7398592d1c7a6988630262d7c733cd436b5fdea1298bbea05d411f704ec",
+        "bbox_mm": [
+          17.45,
+          54.25,
+          -5.9,
+          24.55,
+          61.35,
+          -4.3
+        ]
+      },
+      {
+        "part": "rear_camera_shell_aperture",
+        "path": "mechanical/e1-phone/out/rear_camera_shell_aperture.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15619,
+        "sha256": "22b886e1b88721028844095064ef78e24d82ac507f3619ccb5c4463c6d3aa4ce",
+        "bbox_mm": [
+          15.7,
+          52.5,
+          -5.955,
+          26.3,
+          63.1,
+          -5.875
+        ]
+      },
+      {
+        "part": "rear_flash_led",
+        "path": "mechanical/e1-phone/out/rear_flash_led.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15565,
+        "sha256": "f0ae19ca99334a13b9aa007b2686f154acf4f223d8a3cf5c94c482031ef9fb19",
+        "bbox_mm": [
+          12.4,
+          57.3,
+          -4.55,
+          13.4,
+          58.3,
+          -3.85
+        ]
+      },
+      {
+        "part": "rear_flash_led_window",
+        "path": "mechanical/e1-phone/out/rear_flash_led_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15543,
+        "sha256": "b7c971d651991593c529b0ac8526203b83a5bb3570419a64a42abaf7cbc1bbaf",
+        "bbox_mm": [
+          12.1,
+          57.0,
+          -5.9,
+          13.7,
+          58.6,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_flash_shell_aperture",
+        "path": "mechanical/e1-phone/out/rear_flash_shell_aperture.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15602,
+        "sha256": "ba410ca0c2b250f23b478041c52458f99818f6355d5e50bca71e4cbb26326df1",
+        "bbox_mm": [
+          11.8,
+          56.7,
+          -5.955,
+          14.0,
+          58.9,
+          -5.875
+        ]
+      },
+      {
+        "part": "screen_adhesive_top",
+        "path": "mechanical/e1-phone/out/screen_adhesive_top.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15616,
+        "sha256": "568d5461e1747a4496e070555690152b3c6ec9e56a3c694e8220719de480136e",
+        "bbox_mm": [
+          -31.5,
+          74.885,
+          4.96,
+          31.5,
+          75.885,
+          5.14
+        ]
+      },
+      {
+        "part": "screen_cover_glass",
+        "path": "mechanical/e1-phone/out/screen_cover_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 131089,
+        "sha256": "592e86672f5e0a5b24728b67c854fa5cd7d57109946dbf5a5e24a07ada065942",
+        "bbox_mm": [
+          -38.55,
+          -75.885,
+          5.2,
+          38.55,
+          75.885,
+          5.9
+        ]
+      }
+    ],
+    "derivation": "Each pass/fail check in this report is computed from the loaded STEP B-rep shapes above using OpenCascade intersections, minimum-distance queries, or bbox containment derived from those loaded shapes."
+  },
   "pair_count_total": 33153,
   "pair_count_brep_evaluated": 989,
   "unintentional_clashes": [],
@@ -5496,9 +5810,9 @@
   },
   "overall_status": "pass",
   "release_credit": false,
-  "release_blocked": false,
-  "release_blocker_category": "none",
-  "release_blocker_count": 0,
+  "release_blocked": true,
+  "release_blocker_category": "routed_supplier_boolean_rerun_missing",
+  "release_blocker_count": 1,
   "next_action": "Local concept boolean evidence passed; promote/rerun release evidence against routed board STEP and supplier B-rep models through the enclosure gate.",
   "wall_seconds": 0.0,
   "wall_seconds_note": "wall-clock runtime omitted from committed evidence for deterministic reruns"

@@ -177,7 +177,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
         try {
           unlinkSync(lockPath);
-          logger.info(
+          logger.debug(
             { src: "plugin:sql", dataDir, lockPath, pid },
             "Removed stale PGlite lock file"
           );
@@ -279,7 +279,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
       if (Number.isNaN(pid) || pid <= 0) {
         unlinkSync(pidPath);
-        logger.info(
+        logger.debug(
           { src: "plugin:sql", dataDir, pidPath },
           "Removed malformed PGlite postmaster.pid"
         );

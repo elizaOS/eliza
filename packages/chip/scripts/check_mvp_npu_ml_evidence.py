@@ -15,6 +15,14 @@ REPORT = ROOT / "build/reports/mvp_npu_ml_smoke.json"
 TRANSCRIPT = ROOT / "build/reports/mvp_npu_ml_smoke.log"
 SCALE_REPORT = ROOT / "build/reports/mvp_npu_scale_sim.json"
 MODEL = ROOT / "benchmarks/models/mobile_smoke.tflite"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_integrated_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 sys.path.insert(0, str(ROOT / "compiler/runtime"))
 from e1_npu_runtime import golden_gemm_s8  # noqa: E402
@@ -120,6 +128,7 @@ def run_smoke() -> int:
         "generated_utc": datetime.now(UTC).isoformat(),
         "npu_ml_smoke_claim": status == "pass",
         "integrated_linux_npu_ml_claim": False,
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "This proves a deterministic local e1 NPU runtime/scratchpad INT8 GEMM "
             "smoke only. The minimum Linux+NPU target still requires the same workload "
@@ -172,6 +181,9 @@ def validate() -> int:
         errors.append("invalid status")
     if data.get("integrated_linux_npu_ml_claim") is not False:
         errors.append("integrated_linux_npu_ml_claim must remain false for local-only smoke")
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be false")
     if not TRANSCRIPT.is_file():
         errors.append(f"missing transcript: {rel(TRANSCRIPT)}")
     else:

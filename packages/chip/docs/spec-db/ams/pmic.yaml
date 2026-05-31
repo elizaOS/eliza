@@ -8,6 +8,11 @@ claim_boundary: >
   control interface, target nodes for any on-die LDO/DC-DC, and the stability /
   PSRR signoff corners. Makes no loop-stability, transient, or efficiency claim:
   those stay blocked on Spectre/AMS PMIC stability signoff with the vendor model.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
 
 supply_rails:
   - rail: VBAT

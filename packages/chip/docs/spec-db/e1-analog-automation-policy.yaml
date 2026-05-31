@@ -1,6 +1,12 @@
 schema: eliza.analog_automation_policy.v1
 status: DRAFT_CAPTURE_ONLY
 claim_boundary: analog_policy_only_no_spice_layout_ip_or_signoff_claim
+spice_netlist_claim_allowed: false
+analog_layout_claim_allowed: false
+foundry_ip_claim_allowed: false
+analog_performance_claim_allowed: false
+si_pi_closure_claim_allowed: false
+tapeout_or_release_claim_allowed: false
 
 context: >
   Governs every present and future AI- or automation-assisted analog/mixed-signal

@@ -546,6 +546,19 @@ export class JobsRepository {
   async delete(id: string): Promise<void> {
     await dbWrite.delete(jobs).where(eq(jobs.id, id));
   }
+
+  /**
+   * Count jobs of `type` that are still in flight (pending or in_progress).
+   * Used by the fleet-upgrade reconciler to enforce a rate limit on how
+   * many blue/green swaps can be in flight at once.
+   */
+  async countInFlightByType(type: string): Promise<number> {
+    const rows = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.status} IN ('pending', 'in_progress')`));
+    return rows[0]?.count ?? 0;
+  }
 }
 
 // Singleton instance

@@ -20,7 +20,7 @@ summary:
   artifact_presence_complete_blocker_count: 4
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 144
+  non_release_acceptance_artifact_count: 137
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
@@ -135,10 +135,10 @@ summary:
     wifi_bluetooth: 5
   local_component_model_directory_release_allowed: false
   public_sourcing_intake_ready: true
-  public_cad_source_record_count: 7
-  public_cad_source_step_or_3d_observed_count: 5
-  public_cad_source_footprint_or_eda_observed_count: 7
-  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
+  public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5
@@ -151,10 +151,10 @@ public_sourcing_intake_context:
   source_artifacts:
   - board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
   - mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
-  public_cad_source_record_count: 7
-  public_cad_source_step_or_3d_observed_count: 5
-  public_cad_source_footprint_or_eda_observed_count: 7
-  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
+  public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5
@@ -1081,7 +1081,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1107,7 +1106,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1117,7 +1115,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1127,7 +1124,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1146,14 +1142,12 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
@@ -1163,26 +1157,11 @@ blockers:
     board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/drc.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/erc.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
     - blocked_candidate_not_approved
@@ -1191,7 +1170,6 @@ blockers:
     board/kicad/e1-phone/production/reports/external-interface-design-review.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
@@ -1201,7 +1179,6 @@ blockers:
     board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
@@ -1211,7 +1188,6 @@ blockers:
     board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
@@ -1234,7 +1210,6 @@ blockers:
     board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
@@ -1244,11 +1219,9 @@ blockers:
     board/kicad/e1-phone/production/reports/route-feasibility-density.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1271,7 +1244,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1282,26 +1254,11 @@ blockers:
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - fail_closed
     - local candidate artifact only
     - not_approved
     - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
     - not release evidence
@@ -1319,13 +1276,6 @@ blockers:
     - blocked_candidate_not_approved
     - not_approved
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/test/first-article-test-transcript.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
@@ -1341,7 +1291,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1351,7 +1300,7 @@ blockers:
     board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 44
+  non_release_acceptance_artifact_count: 39
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Generate production/factory outputs from routed board package
@@ -1430,21 +1379,7 @@ blockers:
     - blocked_candidate_not_approved
     - not_approved
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/test/first-article-test-transcript.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
-  non_release_acceptance_artifact_count: 3
+  non_release_acceptance_artifact_count: 1
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Run first article on routed hardware and replace templates

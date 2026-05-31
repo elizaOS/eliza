@@ -30,7 +30,8 @@ npm install @elizaos/plugin-whatsapp
 |----------|----------|-------------|
 | `WHATSAPP_ACCESS_TOKEN` | Yes | WhatsApp Business API access token |
 | `WHATSAPP_PHONE_NUMBER_ID` | Yes | Phone number ID from WhatsApp Business API |
-| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | No | Token for webhook verification |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | No | Token for Meta's one-time webhook subscribe handshake (GET) |
+| `WHATSAPP_APP_SECRET` | Yes (Cloud API webhooks) | App Secret for verifying `X-Hub-Signature-256` on webhook POSTs |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | No | Business account ID |
 | `WHATSAPP_API_VERSION` | No | Graph API version (default: v24.0) |
 | `WHATSAPP_AUTH_METHOD` | No | `cloudapi` or `baileys` (auto-detected if omitted) |

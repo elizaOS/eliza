@@ -152,6 +152,15 @@ class AospTeeContractTests(unittest.TestCase):
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["confidentiality_claim"], "BLOCKED")
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        for claim_key in (
+            "aosp_confidential_boot_claim_allowed",
+            "attestation_claim_allowed",
+            "memory_encryption_claim_allowed",
+            "io_protection_claim_allowed",
+            "npu_protection_claim_allowed",
+            "release_claim_allowed",
+        ):
+            self.assertIs(report[claim_key], False, claim_key)
 
     def test_missing_pieces_block(self) -> None:
         with (

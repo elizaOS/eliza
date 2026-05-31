@@ -1,6 +1,13 @@
 schema: eliza.pd_signoff_manifest.v1
 signoff: e1_chip_top_pd
 status: required_for_pd_release
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+pd_signoff_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
 run_manifest_schema: pd/signoff/run-manifest.schema.json
 next_commands:
   manifest_preflight: python3 scripts/check_pd_signoff.py --manifest-only

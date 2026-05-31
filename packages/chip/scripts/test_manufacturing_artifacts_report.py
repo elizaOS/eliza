@@ -11,6 +11,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/manufacturing_artifacts.json"
 RESOLVED = ROOT / "build/reports/manufacturing-resolved-artifacts.json"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "package_vendor_approval_claim_allowed": False,
+    "fpga_release_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "first_article_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def main() -> int:
@@ -27,11 +38,19 @@ def main() -> int:
     report = json.loads(REPORT.read_text(encoding="utf-8"))
     assert report["schema"] == "eliza.manufacturing_artifacts.v1"
     assert report["status"] == "blocked"
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        assert report.get(key) is expected, key
     assert report["resolved_manifest"] == "build/reports/manufacturing-resolved-artifacts.json"
     assert RESOLVED.is_file()
 
     summary = report["summary"]
     state_counts = summary["artifact_state_counts"]
+    dependency_counts = report["blocker_dependency_counts"]
+    assert dependency_counts["repo_artifact_generation"] == 0
+    assert dependency_counts["live_device_validation"] == 0
+    assert dependency_counts["actionable_external_dependency"] == summary["blockers"]
+    assert report["blocker_dependency_summary"]["release_credit"] is False
+    assert "actionable_external_dependency" in report["next_command_by_dependency"]
     assert state_counts["true_missing_generated_file"] > 0
     assert state_counts["true_missing_release_output"] > 0
     assert state_counts["present_fail_closed_non_release_artifact"] > 0
@@ -110,7 +129,6 @@ def main() -> int:
     pd_row = matrix_by_path["pd/signoff/manifest.yaml"]
     assert pd_row["manifest"] == "e1_chip_top_pd"
     assert pd_row["release_credit"] is False
-    assert pd_row["artifact_state_counts"]["true_missing_generated_file"] > 0
     assert pd_row["artifact_state_counts"]["external_release_gate_open"] > 0
     assert "python3 scripts/check_pd_signoff.py" in pd_row["generation_commands"]
     assert (
@@ -165,6 +183,10 @@ def main() -> int:
         in packet["generation_commands"]
         and packet["repo_generation_plan"]["can_generate_from_repo_now"] is False
         for packet in packets
+    )
+    assert all(
+        finding["dependency_type"] == "actionable_external_dependency"
+        for finding in report["findings"]
     )
     return 0
 

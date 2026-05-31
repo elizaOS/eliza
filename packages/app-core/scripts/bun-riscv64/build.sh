@@ -67,10 +67,22 @@ bun_jq() {
     bun -e "const v = JSON.parse(require('fs').readFileSync('${VERSION_FILE}','utf8')); console.log($1);"
 }
 
-BUN_TAG="${BUN_TAG:-$(bun_jq 'v.bun.tag')}"
-WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.webkit.fork_commit')}"
+# Rust-core port (BUN_RISCV64_RUST_CORE=1, set by run-build.sh --rust-core):
+# build the post-Zig→Rust-rewrite bun from rust_core_port.target_commit + the
+# nightly it pins, instead of the last-Zig tag (bun.tag). The rust-core/ patch
+# series is mounted at /opt/bun-patches by run-build.sh in this mode.
+if [ "${BUN_RISCV64_RUST_CORE:-0}" = "1" ]; then
+    BUN_TAG="${BUN_TAG:-$(bun_jq 'v.rust_core_port.target_commit')}"
+    RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.rust_core_port.rust_channel')}"
+    # bun@target_commit's deps/webkit.ts pins WEBKIT_VERSION=963f8758…, distinct
+    # from the Zig-era 1.3.14 WebKit — use the version this bun expects.
+    WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.rust_core_port.webkit_commit')}"
+else
+    BUN_TAG="${BUN_TAG:-$(bun_jq 'v.bun.tag')}"
+    RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.toolchain.rust.channel')}"
+    WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.webkit.fork_commit')}"
+fi
 WEBKIT_FORK="$(bun_jq 'v.webkit.fork')"
-RUST_NIGHTLY="$(bun_jq 'v.toolchain.rust.channel')"
 LLVM_VERSION="$(bun_jq 'v.toolchain.llvm.version')"
 ZIG_VERSION="$(bun_jq 'v.toolchain.zig.version')"
 ALPINE_BRANCH="$(bun_jq 'v.toolchain.musl.alpine_branch')"
@@ -105,6 +117,11 @@ SRC_ROOT="${SRC_ROOT:-/work/src}"
 mkdir -p "$SRC_ROOT"
 cd "$SRC_ROOT"
 
+# Robust git transport for the multi-GB bun + WebKit fetches below: HTTP/1.1
+# (avoids HTTP/2 mid-stream "curl 92 CANCEL" resets) + a large send/recv buffer.
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 1048576000
+
 # ──────────────────────────────────────────────────────────────────────────
 # Stage 1: clone WebKit fork at the pinned commit and apply riscv64 patches.
 # ──────────────────────────────────────────────────────────────────────────
@@ -118,8 +135,21 @@ if [ ! -d "$SRC_ROOT/WebKit" ]; then
     # commit (via `git fetch <sha>`), this stays under ~1.5 GB.
     git init --initial-branch=main "$SRC_ROOT/WebKit"
     git -C "$SRC_ROOT/WebKit" remote add origin "https://github.com/${WEBKIT_FORK}.git"
-    git -C "$SRC_ROOT/WebKit" fetch --depth=1 --filter=blob:none origin "${WEBKIT_COMMIT}"
-    git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"
+    # Multi-GB partial clones over HTTP/2 intermittently fail mid-stream with
+    # "curl 92 ... CANCEL" / "early EOF" / "could not fetch ... from promisor
+    # remote". Pin HTTP/1.1, enlarge the buffer, and retry fetch+checkout (the
+    # blob:none checkout lazily pulls blobs, so it can flake independently).
+    git -C "$SRC_ROOT/WebKit" config http.version HTTP/1.1
+    git -C "$SRC_ROOT/WebKit" config http.postBuffer 1048576000
+    for attempt in 1 2 3 4 5; do
+        if git -C "$SRC_ROOT/WebKit" fetch --depth=1 --filter=blob:none origin "${WEBKIT_COMMIT}" \
+           && git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"; then
+            break
+        fi
+        [ "$attempt" -eq 5 ] && die "WebKit fetch/checkout failed after 5 attempts (network) @ ${WEBKIT_COMMIT}"
+        log "WebKit fetch attempt ${attempt} failed (network); retrying in $((attempt * 10))s…"
+        sleep $((attempt * 10))
+    done
 fi
 git -C "$SRC_ROOT/WebKit" reset --hard "${WEBKIT_COMMIT}" >/dev/null
 
@@ -180,13 +210,19 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 log "── stage 2: Bun checkout + patches ──────────────────────────────────"
 
+# BUN_TAG may be a tag (Zig fallback, e.g. bun-v1.3.14) OR a bare commit SHA
+# (Rust-core port, e.g. rust_core_port.target_commit). `git clone --branch`
+# rejects a SHA, so fetch the ref directly — GitHub allows fetch-by-SHA
+# (allowAnySHA1InWant) — mirroring the WebKit checkout above. Works for both.
 if [ ! -d "$SRC_ROOT/bun" ]; then
-    log "Cloning oven-sh/bun @ ${BUN_TAG}"
-    git clone --depth=1 --branch "${BUN_TAG}" \
-        --recurse-submodules --shallow-submodules \
-        https://github.com/oven-sh/bun.git "$SRC_ROOT/bun"
+    log "Fetching oven-sh/bun @ ${BUN_TAG}"
+    git init -q "$SRC_ROOT/bun"
+    git -C "$SRC_ROOT/bun" remote add origin https://github.com/oven-sh/bun.git
+    git -C "$SRC_ROOT/bun" fetch --depth=1 --recurse-submodules origin "${BUN_TAG}"
+    git -C "$SRC_ROOT/bun" checkout -q FETCH_HEAD
 fi
-git -C "$SRC_ROOT/bun" reset --hard "${BUN_TAG}" >/dev/null
+git -C "$SRC_ROOT/bun" fetch --depth=1 origin "${BUN_TAG}" >/dev/null 2>&1
+git -C "$SRC_ROOT/bun" reset --hard FETCH_HEAD >/dev/null
 git -C "$SRC_ROOT/bun" submodule update --init --recursive --depth=1
 
 if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then

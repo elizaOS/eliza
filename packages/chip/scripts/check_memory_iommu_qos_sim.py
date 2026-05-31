@@ -23,6 +23,16 @@ REQUIRED_FAULT_FIELDS = {
     "syndrome_status",
     "recovery_behavior",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "rtl_iommu_claim_allowed",
+    "lpddr_claim_allowed",
+    "android_dmabuf_claim_allowed",
+    "silicon_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def validate_report(data: dict[str, Any], spec: dict[str, Any]) -> list[str]:
@@ -32,6 +42,8 @@ def validate_report(data: dict[str, Any], spec: dict[str, Any]) -> list[str]:
     boundary = str(data.get("claim_boundary", ""))
     for token in ("not RTL IOMMU", "not LPDDR", "not Android", "not silicon"):
         require(token in boundary, f"claim boundary must include {token}", errors)
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        require(data.get(flag) is False, f"{flag} must be false", errors)
 
     iommu = spec.get("iommu")
     qos = spec.get("qos")
