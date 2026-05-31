@@ -80,22 +80,30 @@ bun build.ts --release
    the riscv64 bun, which can't execute on the x86_64 build host
    (`qemu-riscv64: ... ld-musl-riscv64.so.1 not found`). Build-time `bun install`
    must use the HOST bun; only the BUNDLED bun should be riscv64.
-3. **`nativeWrapper.cpp` WGPU/Dawn is unguarded (THE remaining blocker).** The
-   fork skips `vendorWGPU` on riscv64 (no Dawn build → software/llvmpipe), but
-   `nativeWrapper.cpp` `#include "dawn/webgpu.h"` (line ~45) and ~365 WGPU refs
-   are unconditional, so it fails to compile. The WGPU code is CLUSTERED, so a
-   bounded guard is feasible: wrap (a) the include, (b) `class WGPUViewImpl`
-   (~3620-3717), (c) the 2 `dynamic_cast<WGPUViewImpl*>` sites (~6072), and (d)
-   the export/shim region (~7094-8316) in `#if ELECTROBUN_ENABLE_WGPU`; in the
-   `#else`, provide no-op/null stub bodies for the ~23 `ELECTROBUN_EXPORT`
-   WGPU C-ABI symbols (`initWGPUView`, `wgpuViewSetFrame/Transparent/Passthrough/
-   Hidden/Remove`, `wgpuViewGetNativeHandle`, `wgpuInstanceCreateSurfaceMainThread`,
+3. **`nativeWrapper.cpp` WGPU/Dawn guard — RESOLVED (commit `720e9e88` on
+   `shaw/riscv64-gui-headless`).** The linux `nativeWrapper.cpp` unconditionally
+   `#include "dawn/webgpu.h"` and used ~360 WGPU refs, but `vendorWGPU` has no
+   Dawn build for riscv64 (→ WebKitGTK/llvmpipe), so the riscv64 cross-build
+   could not compile the native wrapper. The WGPU code was confirmed CLUSTERED
+   into four regions — the include (line 45), `class WGPUViewImpl` (3619-4001),
+   the `initWGPUView` export (chunk A), and the `wgpu*` export/helper block
+   (chunk B, ending before `loadHTMLInWebView`) — now each wrapped in
+   `#if ELECTROBUN_ENABLE_WGPU`. In the `#else`: a minimal complete `WGPUViewImpl`
+   (only `->parentXWindow` is read externally, by the shared resize handler's
+   `dynamic_cast<WGPUViewImpl*>()` at line 6075) plus no-op/null stub bodies for
+   the 22 `ELECTROBUN_EXPORT` WGPU C-ABI symbols (`initWGPUView`,
+   `wgpuViewSetFrame/Transparent/Passthrough/Hidden/Remove`,
+   `wgpuViewGetNativeHandle`, `wgpuInstanceCreateSurfaceMainThread`,
    `wgpuCreateSurfaceForView`, `wgpuSurface{Configure,GetCurrentTexture,Present}MainThread`,
    `wgpuQueueOnSubmittedWorkDoneShim`, `wgpuBufferMapAsyncShim`, `wgpuInstanceWaitAnyShim`,
    `wgpuBufferRead{Sync,SyncInto}Shim`, `wgpuBufferReadback{Begin,Status,Free}Shim`,
    `wgpuRunGPUTest`, `wgpuCreateAdapterDeviceMainThread`) so the launcher/main
-   still link. `buildNative` should pass `-DELECTROBUN_ENABLE_WGPU` only when the
-   WGPU vendor dir exists.
+   still link. `build.ts` defines `-DELECTROBUN_ENABLE_WGPU` exactly when
+   `existsSync(wgpuIncludeDir)` (true on x64/arm64, false on riscv64), so x64/arm64
+   keep the full WGPU path and only riscv64 gets stubs. mac/win nativeWrapper are
+   untouched (separate WGPU handling). Preprocessor balance verified (10 `#if`/10
+   `#endif`); end-to-end riscv64 link verification is the remaining step (needs an
+   idle host for the cross-compile).
 
 ### Wiring
 The fork branch is local-only in the `upstreams/electrobun` submodule; the only
@@ -106,9 +114,11 @@ build-from-local-branch only.
 
 ## Status / scope note
 
-- **Code scaffolding done on `shaw/riscv64-gui-headless`** (platform.ts/build.ts/
-  nativeWrapper arch hooks); cross-build verified through `buildNative`; the one
-  remaining source blocker is the WGPU guard above.
+- **Code complete on `shaw/riscv64-gui-headless`** (platform.ts/build.ts/
+  nativeWrapper arch hooks + the WGPU guard, commit `720e9e88`); cross-build
+  driven through `buildNative`. All known source blockers are resolved; the only
+  remaining step is to re-drive the riscv64 cross-compile/link end-to-end on an
+  idle host to confirm the guarded wrapper links clean.
 - **Lower priority for the OS image:** the riscv64 elizaOS image does **not** use
   electrobun. `packages/os/linux/elizaos/.../start-kiosk` stages no Electrobun
   binary on riscv64 and falls back to **cage + Epiphany (WebKitGTK) + the Node
