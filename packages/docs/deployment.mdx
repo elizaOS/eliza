@@ -7,7 +7,7 @@ description: Deploy Eliza using Docker, Docker Compose, or cloud containers. Cov
 Eliza supports multiple deployment strategies: standalone Docker containers, Docker Compose orchestration, and cloud-managed containers for Eliza Cloud (AWS ECS).
 
 <Warning>
-The Docker deployment files referenced below (`deploy/Dockerfile`, `docker-setup.sh`) live in the `eliza/` submodule. You must initialize it first with `bun run setup:upstreams` or `git submodule update --init --recursive` before following these instructions. The `deploy/` directory in the repo root contains only `Dockerfile.ci` (CI-specific image for pre-built artifacts) and supporting config files.
+The Docker deployment toolkit lives at `packages/app-core/deploy/` in this repo — `docker-setup.sh`, `docker-compose.yml`, `Dockerfile.ci` (image for prebuilt artifacts), `Dockerfile.cloud`, `deploy.defaults.env`, and the rollout scripts. The example commands below use `eliza/packages/app-core/deploy/...` paths, which apply when a downstream app vendors this repo under an `eliza/` subdirectory; working **inside** this repo, drop the `eliza/` prefix and run them from `packages/app-core/deploy/` directly.
 </Warning>
 
 ## Quick Start with Docker Compose
@@ -15,18 +15,18 @@ The Docker deployment files referenced below (`deploy/Dockerfile`, `docker-setup
 The fastest way to deploy Eliza is using the included setup script, which builds the image, generates authentication tokens, runs interactive onboarding, and starts the gateway.
 
 <Note>
-The Docker deployment files live in the upstream elizaOS toolkit. Initialize the submodule first:
-```bash
-bun run setup:upstreams
-```
+Run from a checkout of this repo. Inside the repo the toolkit is at `packages/app-core/deploy/`; a downstream app that vendors eliza under `eliza/` uses the `../eliza/packages/app-core/deploy/...` paths.
 </Note>
 
 ```bash
-cd deploy
-bash ../eliza/packages/app-core/deploy/docker-setup.sh
+# Inside this repo:
+bash packages/app-core/deploy/docker-setup.sh
+
+# Or, from a downstream app that vendors eliza under eliza/:
+cd deploy && bash ../eliza/packages/app-core/deploy/docker-setup.sh
 ```
 
-Eliza-specific overrides (image name, ports, state paths) are in `deploy/deploy.env` and automatically merged with the upstream defaults.
+App-specific overrides (image name, ports, state paths) go in a repo-root `deploy/deploy.env`, merged over `deploy.defaults.env` (see `packages/app-core/deploy/README.md`).
 
 The setup script performs the following steps:
 
@@ -44,7 +44,7 @@ The setup script requires Docker and Docker Compose to be installed. It will exi
 
 ### CI Dockerfile
 
-The primary Dockerfile (`eliza/packages/app-core/deploy/Dockerfile`) builds a production image from source:
+The CI Dockerfile (`eliza/packages/app-core/deploy/Dockerfile.ci`) builds a production image from prebuilt artifacts:
 
 ```dockerfile
 FROM node:22-slim AS pruner
@@ -88,7 +88,7 @@ The CI image is built by the GitHub Actions release pipeline. To run it locally 
 docker build \
   --build-arg ELIZA_DOCKER_APT_PACKAGES="ffmpeg imagemagick" \
   -t eliza:local \
-  -f eliza/packages/app-core/deploy/Dockerfile \
+  -f eliza/packages/app-core/deploy/Dockerfile.ci \
   .
 ```
 
@@ -140,7 +140,7 @@ ELIZAOS_CLOUD_API_KEY=eliza_xxx
 
 ### Eliza Cloud (AWS ECS)
 
-The `Dockerfile.cloud-agent` (in the elizaOS submodule deploy directory) builds a slim container for deploying agents to Eliza Cloud:
+The `Dockerfile.cloud-agent` (in `packages/app-core/deploy/`) builds a slim container for deploying agents to Eliza Cloud:
 
 ```dockerfile
 FROM node:22-bookworm-slim
