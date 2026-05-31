@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { invalidate } from "../../hooks/resource-cache";
 import { DatabaseView } from "./DatabaseView";
 
 // DatabaseView talks to the runtime exclusively through the `client` singleton
@@ -48,6 +49,11 @@ beforeEach(() => {
   clientMock.getDatabaseTables.mockReset();
   clientMock.getDatabaseRows.mockReset();
   clientMock.executeDatabaseQuery.mockReset();
+  // DatabaseView seeds/reads the module-level resource cache. Clear it so each
+  // test starts cold and the status-gates-tables waterfall is exercised cleanly
+  // instead of hitting the warm-revisit branch with state leaked from a prior test.
+  invalidate("db:status");
+  invalidate("db:tables");
 });
 
 afterEach(() => cleanup());

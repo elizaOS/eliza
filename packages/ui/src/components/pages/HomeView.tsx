@@ -240,8 +240,9 @@ export function HomeView(): React.JSX.Element {
   const [orbExpanded, setOrbExpanded] = useState(false);
   const [orbMuted, setOrbMuted] = useState(false);
 
-  // Lifted chat expanded state — starts open; controls the apps fly-away animation.
-  const [chatOpen, setChatOpen] = useState(true);
+  // Lifted chat expanded state — starts collapsed so the homescreen shows the app
+  // grid + notifications behind a thin chat pill; opening it flies the apps away.
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Transcript fade state
   const [transcriptFaded, setTranscriptFaded] = useState(false);
@@ -1015,20 +1016,18 @@ function HomeChatPill({
                   onClick={sendDraft}
                 />
               ) : (
-                <GlassIconButton
-                  icon="mic"
-                  active={controller?.recording ?? false}
+                <MicButton
+                  recording={controller?.recording ?? false}
                   disabled={!canUseComposer}
-                  label={
-                    controller?.recording
-                      ? t("homeview.composer.stopVoice", {
-                          defaultValue: "Stop voice input",
-                        })
-                      : t("homeview.composer.startVoice", {
-                          defaultValue: "Start voice input",
-                        })
-                  }
-                  onClick={() => controller?.toggleRecording()}
+                  onTap={() => controller?.toggleRecording()}
+                  onHoldStart={() => controller?.startRecording()}
+                  onHoldEnd={() => controller?.stopRecording()}
+                  startLabel={t("homeview.composer.startVoice", {
+                    defaultValue: "Start voice input",
+                  })}
+                  stopLabel={t("homeview.composer.stopVoice", {
+                    defaultValue: "Stop voice input",
+                  })}
                 />
               )}
             </div>
