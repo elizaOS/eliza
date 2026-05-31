@@ -791,10 +791,6 @@ async function dialExternal(
     };
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "This is a call from an automated assistant.";
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
