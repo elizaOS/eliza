@@ -62,8 +62,8 @@ def build_profile_dict(spec: RobotSpec | None = None) -> dict[str, Any]:
         },
         "contact": {
             "floor_geom_names": ["floor"],
-            "left_foot_geom_names": ["left_foot_sole_col"],
-            "right_foot_geom_names": ["right_foot_sole_col"],
+            "left_foot_geom_names": ["left_foot_sole_col", "left_toe_sole_col"],
+            "right_foot_geom_names": ["right_foot_sole_col", "right_toe_sole_col"],
         },
         "sensors": {
             "imu_noise_std": 0.005,

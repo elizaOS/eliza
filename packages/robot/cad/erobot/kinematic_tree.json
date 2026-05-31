@@ -1,6 +1,6 @@
 {
   "robot": "erobot",
-  "dof": 25,
+  "dof": 27,
   "standing_height_m": 1.665,
   "links": [
     {
@@ -196,6 +196,38 @@
       ]
     },
     {
+      "name": "left_toe",
+      "parent": "left_ankle_roll",
+      "world_pos": [
+        0.09,
+        0.105,
+        0.0225
+      ],
+      "joint": "left_toe_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "left_toe_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "left_toe_sole",
+          "type": "box",
+          "role": "sole",
+          "material": "TPU_SHORE_A95",
+          "wall_mm": 8.0
+        }
+      ]
+    },
+    {
       "name": "right_hip_pitch",
       "parent": "pelvis",
       "world_pos": [
@@ -359,6 +391,38 @@
         },
         {
           "name": "right_foot_sole",
+          "type": "box",
+          "role": "sole",
+          "material": "TPU_SHORE_A95",
+          "wall_mm": 8.0
+        }
+      ]
+    },
+    {
+      "name": "right_toe",
+      "parent": "right_ankle_roll",
+      "world_pos": [
+        0.09,
+        -0.105,
+        0.0225
+      ],
+      "joint": "right_toe_joint",
+      "joint_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "group": "LEG",
+      "primitives": [
+        {
+          "name": "right_toe_shell",
+          "type": "box",
+          "role": "shell",
+          "material": "PA6_GF30",
+          "wall_mm": 2.5
+        },
+        {
+          "name": "right_toe_sole",
           "type": "box",
           "role": "sole",
           "material": "TPU_SHORE_A95",

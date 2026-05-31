@@ -142,6 +142,7 @@ class Dimensions:
     foot_height: float = 0.045
     foot_forward_offset: float = 0.05   # ankle is set back from toe
     sole_thickness: float = 0.008
+    toe_length: float = 0.08            # front segment, hinged + tendon-driven
 
     # Pelvis shell (box half-extents)
     pelvis_half: Vec3 = (0.085, 0.115, 0.075)
@@ -201,6 +202,10 @@ class Joint:
     home_rad: float
     group: JointGroup
     tier: ActuatorTier
+    # tendon_driven joints are actuated through a cable + pulley (the toes),
+    # not a motor seated at the joint. The MJCF drives them via a spatial
+    # tendon actuator; mass lumps the remote winch at the joint body.
+    tendon_driven: bool = False
 
     @property
     def torque_nm(self) -> float:
@@ -275,6 +280,7 @@ _RANGES: dict[str, tuple[float, float, float]] = {
     "knee": (0.0, 2.3, 0.0),
     "ankle_pitch": (-0.9, 0.5, 0.0),
     "ankle_roll": (-0.3, 0.3, 0.0),
+    "toe": (-0.6, 0.2, 0.0),
     "waist_yaw": (-1.0, 1.0, 0.0),
     "shoulder_pitch": (-3.0, 1.5, 0.0),
     "shoulder_roll": (-1.6, 1.6, 0.0),
@@ -291,6 +297,7 @@ _AXES: dict[str, Vec3] = {
     "yaw": (0.0, 0.0, 1.0),
     "knee": (0.0, 1.0, 0.0),   # pitch
     "elbow": (0.0, 1.0, 0.0),  # pitch
+    "toe": (0.0, 1.0, 0.0),    # pitch
 }
 
 _TIER: dict[str, ActuatorTier] = {
@@ -308,6 +315,7 @@ _TIER: dict[str, ActuatorTier] = {
     "wrist_yaw": "low",
     "neck_yaw": "low",
     "neck_pitch": "low",
+    "toe": "low",
 }
 
 
@@ -343,6 +351,7 @@ def _joint(name: str, index: int, kind: str, group: JointGroup) -> Joint:
         home_rad=home,
         group=group,
         tier=_TIER[kind],
+        tendon_driven=("toe" in kind),
     )
 
 
@@ -432,8 +441,13 @@ def build_spec(dims: Dimensions = DIMENSIONS) -> RobotSpec:
             geoms=(_housing(f"{side}_ankle_pitch_shell", d, "mid", "PA6_GF30", load),),
         ))
         idx += 1
-        # ankle_roll body carries the foot
+        # ankle_roll carries the heel+midfoot; the toe is a separate hinged link
         foot_pos_z = -(d.ankle_height - d.foot_height / 2.0)
+        sole_z = foot_pos_z - d.foot_height / 2.0 - d.sole_thickness / 2.0
+        heel_x = d.foot_forward_offset - d.foot_length / 2.0
+        main_len = d.foot_length - d.toe_length
+        main_cx = heel_x + main_len / 2.0
+        toe_hinge_x = heel_x + main_len
         bodies.append(Body(
             name=f"{side}_ankle_roll",
             parent=f"{side}_ankle_pitch",
@@ -446,15 +460,39 @@ def build_spec(dims: Dimensions = DIMENSIONS) -> RobotSpec:
                 Geom(
                     name=f"{side}_foot_shell", type="box", material_key="PA6_GF30",
                     wall_mm=d.shell_wall_mm,
-                    size=(d.foot_length / 2.0, d.foot_width / 2.0, d.foot_height / 2.0),
-                    pos=(d.foot_forward_offset, 0.0, foot_pos_z),
+                    size=(main_len / 2.0, d.foot_width / 2.0, d.foot_height / 2.0),
+                    pos=(main_cx, 0.0, foot_pos_z),
                 ),
                 Geom(
                     name=f"{side}_foot_sole", type="box", material_key="TPU_SHORE_A95",
                     wall_mm=d.sole_thickness * 1000.0, role="sole",
-                    size=(d.foot_length / 2.0, d.foot_width / 2.0, d.sole_thickness / 2.0),
-                    pos=(d.foot_forward_offset, 0.0,
-                         foot_pos_z - d.foot_height / 2.0 - d.sole_thickness / 2.0),
+                    size=(main_len / 2.0, d.foot_width / 2.0, d.sole_thickness / 2.0),
+                    pos=(main_cx, 0.0, sole_z),
+                ),
+            ),
+        ))
+        idx += 1
+        # toe link — tendon/pulley driven (no motor in the toe)
+        bodies.append(Body(
+            name=f"{side}_toe",
+            parent=f"{side}_ankle_roll",
+            pos=(toe_hinge_x, 0.0, foot_pos_z),
+            group="LEG",
+            joint=_joint(f"{side}_toe_joint", idx, "toe", "LEG"),
+            actuator_tier="low",   # lumped winch mass; driven via tendon+pulley
+            geoms=(
+                Geom(
+                    name=f"{side}_toe_shell", type="box", material_key="PA6_GF30",
+                    wall_mm=d.shell_wall_mm,
+                    size=(d.toe_length / 2.0, d.foot_width / 2.0, d.foot_height / 2.0),
+                    pos=(d.toe_length / 2.0, 0.0, 0.0),
+                ),
+                Geom(
+                    name=f"{side}_toe_sole", type="box", material_key="TPU_SHORE_A95",
+                    wall_mm=d.sole_thickness * 1000.0, role="sole",
+                    size=(d.toe_length / 2.0, d.foot_width / 2.0, d.sole_thickness / 2.0),
+                    pos=(d.toe_length / 2.0, 0.0,
+                         -d.foot_height / 2.0 - d.sole_thickness / 2.0),
                 ),
             ),
         ))

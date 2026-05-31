@@ -60,6 +60,8 @@ def build_components(spec: RobotSpec | None = None) -> list[Component]:
     for body in spec.bodies:
         if body.joint is None or body.actuator_tier is None:
             continue
+        if body.joint.tendon_driven:
+            continue  # toe has no motor in the link; driven by a remote winch + pulley
         tier = body.actuator_tier
         axis = body.joint.axis
         if tier in _MOTOR_CYL:
@@ -115,6 +117,17 @@ def build_components(spec: RobotSpec | None = None) -> list[Component]:
     comps.append(Component("head_camera", "head", "camera", "box",
                            (0.038, 0.012, 0.012), {"pos": (0.040, 0.0, 0.085)}, 0.072,
                            "Intel RealSense D435i behind the face"))
+
+    # --- toe cable drive: winch in the shank, pulley at the ankle (per foot) ---
+    for side in ("left", "right"):
+        comps.append(Component(
+            f"{side}_toe_winch", f"{side}_knee", "motor", "box",
+            (0.0168, 0.0293, 0.022), {"pos": (0.0, 0.0, -0.12)}, 0.17,
+            "toe-flexor cable winch (XM540 class) mounted on the shank"))
+        comps.append(Component(
+            f"{side}_ankle_pulley", f"{side}_ankle_roll", "pulley", "cylinder",
+            (0.012,), {"fromto": (-0.045, -0.018, -0.0475, -0.045, 0.018, -0.0475)}, 0.03,
+            "cable pulley turning the toe tendon, mounted behind the ankle motor"))
     return comps
 
 

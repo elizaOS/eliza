@@ -1,15 +1,15 @@
 {
   "schema": "erobot-mass-reconciliation-v1",
   "ok": true,
-  "mass_model_kg": 27.55,
-  "mjcf_compiled_kg": 27.55,
-  "bom_kg": 29.049,
+  "mass_model_kg": 27.951,
+  "mjcf_compiled_kg": 27.951,
+  "bom_kg": 29.441,
   "mjcf_vs_model_delta_kg": 0.0,
-  "bom_extra_hardware_kg": 1.499,
+  "bom_extra_hardware_kg": 1.489,
   "note": "MJCF must match the analytic model; BOM is >= model by discrete bearings/fasteners/wear pads not represented as sim shells.",
   "by_group_kg": {
     "TORSO": 3.473,
-    "LEG": 13.699,
+    "LEG": 14.1,
     "ARM": 6.279,
     "HEAD": 0.737,
     "ELECTRONICS": 3.362

@@ -1,85 +1,90 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config";
-import { ElizaClient } from "./client-base";
+import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
-import type { AgentRequestTransport } from "./transport";
+import { ElizaClient } from "./client-base";
+import type { CodingAgentTaskThread } from "./client-types";
 
-// Covers the getCodingAgentStatus fix: durable task threads (served by
-// /api/orchestrator/tasks via OrchestratorTaskService) are folded into the
-// status alongside live ACP sessions, and a thread-fetch failure degrades to an
-// empty thread list rather than nulling the whole status.
-
-function json(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+function thread(overrides: Partial<CodingAgentTaskThread> = {}) {
+  return {
+    id: "task-1",
+    title: "Durable task",
+    kind: "coding",
+    status: "active",
+    priority: "normal",
+    paused: false,
+    originalRequest: "Build the thing",
+    sessionCount: 1,
+    activeSessionCount: 1,
+    latestSessionId: "session-1",
+    latestSessionLabel: "Worker",
+    latestWorkdir: "/repo",
+    latestRepo: null,
+    latestActivityAt: Date.now(),
+    decisionCount: 0,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+      state: "unavailable",
+      byProvider: [],
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    closedAt: null,
+    archivedAt: null,
+    ...overrides,
+  } satisfies CodingAgentTaskThread;
 }
 
-function makeClient(handlers: Record<string, () => Response>) {
-  const request = vi.fn<AgentRequestTransport["request"]>(async (url) => {
-    const { pathname } = new URL(url);
-    const handler = handlers[pathname];
-    return handler ? handler() : json({});
-  });
-  const client = new ElizaClient("http://agent.example:31337", "token");
-  client.setRequestTransport({ request });
-  return client;
-}
-
-describe("ElizaClient.getCodingAgentStatus — durable task threads", () => {
-  beforeEach(() => {
-    setBootConfig({ branding: {} });
-    vi.restoreAllMocks();
-  });
-
-  it("folds orchestrator task threads into the status", async () => {
-    const client = makeClient({
-      "/api/coding-agents": () => json([]),
-      "/api/orchestrator/tasks": () =>
-        json({ tasks: [{ id: "t1" }, { id: "t2" }] }),
-    });
-
-    const status = await client.getCodingAgentStatus();
-
-    expect(status).not.toBeNull();
-    expect(status?.taskThreadCount).toBe(2);
-    expect(status?.taskThreads).toHaveLength(2);
-  });
-
-  it("survives a thread fetch that rejects — status stays non-null (the load-bearing guard)", async () => {
-    const client = makeClient({
-      "/api/coding-agents": () => json([]),
-      "/api/orchestrator/tasks": () => json({ error: "boom" }, 500),
-    });
+describe("ElizaClient.getCodingAgentStatus", () => {
+  it("includes durable task threads even when the legacy ACP endpoint fails", async () => {
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.fetch = vi.fn(async (path: string) => {
+      if (path === "/api/coding-agents") throw new Error("ACP unavailable");
+      if (path === "/api/orchestrator/status") {
+        return {
+          taskCount: 3,
+          activeTaskCount: 1,
+          pausedTaskCount: 0,
+          blockedTaskCount: 0,
+          validatingTaskCount: 0,
+          sessionCount: 1,
+          activeSessionCount: 1,
+          usage: {},
+          byStatus: {},
+        };
+      }
+      if (path === "/api/orchestrator/tasks?limit=20") {
+        return { tasks: [thread()] };
+      }
+      throw new Error(`unexpected path: ${path}`);
+    }) as typeof client.fetch;
 
     const status = await client.getCodingAgentStatus();
 
-    expect(status).not.toBeNull();
-    expect(status?.taskThreadCount).toBe(0);
-    expect(status?.taskThreads).toEqual([]);
+    expect(status).toMatchObject({
+      supervisionLevel: "orchestrator",
+      taskCount: 1,
+      taskThreadCount: 3,
+      taskThreads: [{ id: "task-1" }],
+      tasks: [{ sessionId: "session-1", agentType: "task-thread" }],
+    });
   });
 
-  it("survives a 200 thread response whose body lacks `tasks` (resolves undefined, not a rejection)", async () => {
-    const client = makeClient({
-      "/api/coding-agents": () => json([]),
-      // 200 OK but no `tasks` key — listCodingAgentTaskThreads resolves
-      // undefined; the Array.isArray normalization must keep status non-null.
-      "/api/orchestrator/tasks": () => json({}),
+  it("limits the durable task-thread preview used by status polling", async () => {
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    const fetch = vi.fn(async (path: string) => {
+      if (path === "/api/coding-agents") return [];
+      if (path === "/api/orchestrator/status") return { taskCount: 0 };
+      if (path === "/api/orchestrator/tasks?limit=20") return { tasks: [] };
+      throw new Error(`unexpected path: ${path}`);
     });
+    client.fetch = fetch as typeof client.fetch;
 
-    const status = await client.getCodingAgentStatus();
+    await client.getCodingAgentStatus();
 
-    expect(status).not.toBeNull();
-    expect(status?.taskThreadCount).toBe(0);
-    expect(status?.taskThreads).toEqual([]);
-  });
-
-  it("returns null when the primary ACP session fetch fails", async () => {
-    const client = makeClient({
-      "/api/coding-agents": () => json({ error: "down" }, 500),
-    });
-
-    await expect(client.getCodingAgentStatus()).resolves.toBeNull();
+    expect(fetch).toHaveBeenCalledWith("/api/orchestrator/tasks?limit=20");
   });
 });

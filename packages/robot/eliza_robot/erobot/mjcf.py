@@ -112,7 +112,7 @@ def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
     if body.joint is not None:
         j = body.joint
         td = _TIER_JOINT[j.tier]
-        ET.SubElement(elem, "joint", {
+        jattr = {
             "name": j.name,
             "type": "hinge",
             "axis": _fmt(*j.axis),
@@ -120,7 +120,13 @@ def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
             "damping": f"{td['damping']:g}",
             "armature": f"{td['armature']:g}",
             "frictionloss": f"{td['frictionloss']:g}",
-        })
+        }
+        if j.tendon_driven:
+            # toe: a return spring extends it; the cable can only pull it flexed
+            jattr["stiffness"] = "3.0"
+            jattr["springref"] = "0.0"
+            jattr["damping"] = "0.3"
+        ET.SubElement(elem, "joint", jattr)
 
     for g in body.geoms:
         # visual shell
@@ -129,9 +135,55 @@ def _emit_body(parent_elem: ET.Element, body: Body, spec: RobotSpec,
         if g.role == "sole" or all_collision:
             elem.append(_geom_elem(g, collision=True))
 
+    _emit_tendon_attachments(elem, body, spec)
+
     for child in spec.bodies:
         if child.parent == body.name:
             _emit_body(elem, child, spec, all_collision=all_collision, extra_mass=extra_mass)
+
+
+def _foot_pos_z(spec: RobotSpec) -> float:
+    d = spec.dims
+    return -(d.ankle_height - d.foot_height / 2.0)
+
+
+def _emit_tendon_attachments(elem: ET.Element, body, spec: RobotSpec) -> None:
+    """Sites + pulley geom for the toe cable drive, in the body's own frame."""
+    fz = _foot_pos_z(spec)
+    for side in ("left", "right"):
+        if body.name == f"{side}_knee":
+            ET.SubElement(elem, "site", {"name": f"{side}_toe_cable_shank",
+                                         "pos": _fmt(-0.035, 0.0, -0.06), "size": "0.004",
+                                         "rgba": "0.1 0.1 0.1 1"})
+        elif body.name == f"{side}_ankle_roll":
+            pz = fz
+            ET.SubElement(elem, "geom", {
+                "name": f"{side}_ankle_pulley_geom", "type": "cylinder",
+                "fromto": _fmt(-0.045, -0.018, pz, -0.045, 0.018, pz), "size": "0.012",
+                "class": "visual", "material": "PA6_GF30", "contype": "0", "conaffinity": "0"})
+            ET.SubElement(elem, "site", {"name": f"{side}_toe_pulley_side",
+                                         "pos": _fmt(-0.065, 0.0, pz), "size": "0.004",
+                                         "rgba": "0 0 0 0"})
+        elif body.name == f"{side}_toe":
+            # anchor offset below the hinge gives the cable a real moment arm; the
+            # ankle pulley turns shank-cable tension into toe articulation.
+            ET.SubElement(elem, "site", {"name": f"{side}_toe_cable_anchor",
+                                         "pos": _fmt(0.02, 0.0, -0.025), "size": "0.004",
+                                         "rgba": "0.1 0.1 0.1 1"})
+
+
+def _emit_tendons(root: ET.Element, spec: RobotSpec) -> None:
+    if not any(j.tendon_driven for j in spec.joints):
+        return
+    tendon = ET.SubElement(root, "tendon")
+    for side in ("left", "right"):
+        sp = ET.SubElement(tendon, "spatial", {
+            "name": f"{side}_toe_tendon", "width": "0.003",
+            "rgba": "0.05 0.05 0.05 1", "limited": "false"})
+        ET.SubElement(sp, "site", {"site": f"{side}_toe_cable_shank"})
+        ET.SubElement(sp, "geom", {"geom": f"{side}_ankle_pulley_geom",
+                                   "sidesite": f"{side}_toe_pulley_side"})
+        ET.SubElement(sp, "site", {"site": f"{side}_toe_cable_anchor"})
 
 
 def _add_point_mass(bm: BodyMass, extra_kg: float) -> BodyMass:
@@ -192,6 +244,7 @@ def build_mjcf(spec: RobotSpec | None = None, *, all_collision: bool = False) ->
     _emit_body(worldbody, _with_spawn(pelvis, spawn_z), spec,
                all_collision=all_collision, extra_mass=extra_mass)
 
+    _emit_tendons(root, spec)
     _emit_actuators(root, spec)
     _emit_sensors(root, spec)
     _emit_keyframe(root, spec, spawn_z)
@@ -216,6 +269,8 @@ def _electronics_distribution() -> dict[str, float]:
 def _emit_actuators(root: ET.Element, spec: RobotSpec) -> None:
     act = ET.SubElement(root, "actuator")
     for j in sorted(spec.joints, key=lambda j: j.index):
+        if j.tendon_driven:
+            continue  # driven by a tendon actuator below
         td = _TIER_JOINT[j.tier]
         ET.SubElement(act, "position", {
             "name": j.name.replace("_joint", "_act"),
@@ -224,6 +279,22 @@ def _emit_actuators(root: ET.Element, spec: RobotSpec) -> None:
             "ctrlrange": _fmt(j.lower_rad, j.upper_rad),
             "forcerange": _fmt(-j.torque_nm, j.torque_nm),
         })
+    # tendon (cable-over-pulley) actuators — tension only, cables cannot push
+    for side in ("left", "right"):
+        if any(j.tendon_driven and j.name.startswith(side) for j in spec.joints):
+            ET.SubElement(act, "motor", {
+                "name": f"{side}_toe_act", "tendon": f"{side}_toe_tendon",
+                "ctrlrange": "0 60", "gear": "1"})
+
+
+def _ctrl_defaults(spec: RobotSpec) -> list[float]:
+    """Default ctrl vector in actuator order (joint position acts, then tendons)."""
+    ctrl = [j.home_rad for j in sorted(spec.joints, key=lambda j: j.index)
+            if not j.tendon_driven]
+    for side in ("left", "right"):
+        if any(j.tendon_driven and j.name.startswith(side) for j in spec.joints):
+            ctrl.append(0.0)
+    return ctrl
 
 
 def _emit_sensors(root: ET.Element, spec: RobotSpec) -> None:
@@ -238,10 +309,9 @@ def _emit_sensors(root: ET.Element, spec: RobotSpec) -> None:
 
 def _emit_keyframe(root: ET.Element, spec: RobotSpec, spawn_z: float) -> None:
     qpos = [0.0, 0.0, spawn_z, 1.0, 0.0, 0.0, 0.0]
-    ctrl = []
     for j in sorted(spec.joints, key=lambda j: j.index):
         qpos.append(j.home_rad)
-        ctrl.append(j.home_rad)
+    ctrl = _ctrl_defaults(spec)
     kf = ET.SubElement(root, "keyframe")
     ET.SubElement(kf, "key", {"name": "home", "qpos": _fmt(*qpos), "ctrl": _fmt(*ctrl)})
 

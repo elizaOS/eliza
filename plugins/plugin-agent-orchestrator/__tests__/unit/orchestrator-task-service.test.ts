@@ -176,14 +176,15 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     expect(session.label).not.toMatch(/ agent$/);
   });
 
-  it("weaves the assigned name into the session's goal prompt", async () => {
-    const { service, taskId } = await withSpawnedSession();
+  it("weaves the assigned name into the spawned goal prompt", async () => {
+    const { service, acp, taskId } = await withSpawnedSession();
     const session = must(
       (await service.getTask(taskId))?.sessions[0],
       "session",
     );
-    expect(session.goalPrompt).toBeTruthy();
-    expect(session.goalPrompt).toContain(`You are ${session.label},`);
+    const initialTask = must(acp.spawnArgs[0], "spawn args").initialTask;
+    expect(typeof initialTask).toBe("string");
+    expect(initialTask as string).toContain(`You are ${session.label},`);
   });
 
   it("assigns distinct names to two concurrent sub-agents on one task", async () => {
@@ -202,13 +203,16 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
   });
 
   it("keeps an explicit caller label instead of assigning a pooled name", async () => {
-    const { service, taskId } = await withSpawnedSessionLabel("Release Captain");
+    const { service, acp, taskId } =
+      await withSpawnedSessionLabel("Release Captain");
     const session = must(
       (await service.getTask(taskId))?.sessions[0],
       "session",
     );
     expect(session.label).toBe("Release Captain");
-    expect(session.goalPrompt).toContain("You are Release Captain,");
+    const initialTask = must(acp.spawnArgs[0], "spawn args").initialTask;
+    expect(typeof initialTask).toBe("string");
+    expect(initialTask as string).toContain("You are Release Captain,");
   });
 });
 

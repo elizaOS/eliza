@@ -1,10 +1,5 @@
 import type { Plugin, ViewCapability } from "@elizaos/core";
 
-// Shared capability manifest for every orchestrator view variant (GUI / XR /
-// TUI). Declared once so the param schemas — which tell an agent driving the
-// view by voice/NL what each capability accepts — stay consistent across
-// variants and survive the team's ongoing view-parity churn in this file.
-// Param names match exactly what runOrchestratorCapability() reads.
 const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
   {
@@ -128,10 +123,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     description: "Record a validation result for an orchestrator task",
     params: {
       taskId: { type: "string", description: "Task thread id to validate" },
-      passed: {
-        type: "boolean",
-        description: "Whether validation passed",
-      },
+      passed: { type: "boolean", description: "Whether validation passed" },
       summary: { type: "string", description: "Validation summary" },
       evidence: {
         type: "string",
@@ -154,7 +146,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
       taskId: { type: "string", description: "Target task thread id" },
       framework: {
         type: "string",
-        description: "Coding agent framework (claude, codex, opencode…)",
+        description: "Coding agent framework (claude, codex, opencode...)",
       },
       providerSource: {
         type: "string",

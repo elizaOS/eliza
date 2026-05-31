@@ -188,6 +188,8 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "orchestrator-resume-all",
     "orchestrator-delete-task",
     "orchestrator-fork-task",
+    "orchestrator-update-task",
+    "orchestrator-validate-task",
     "orchestrator-add-agent",
     "orchestrator-stop-agent",
     "orchestrator-send-message",

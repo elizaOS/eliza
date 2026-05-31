@@ -122,7 +122,11 @@ import type {
   UpdateStatus,
   UpdateTriggerRequest,
 } from "./client-types";
-import { ApiError, mapAcpSessionsToCodingAgentSessions } from "./client-types";
+import {
+  ApiError,
+  mapAcpSessionsToCodingAgentSessions,
+  mapTaskThreadsToCodingAgentSessions,
+} from "./client-types";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -3422,29 +3426,56 @@ ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
 ElizaClient.prototype.getCodingAgentStatus = async function (
   this: ElizaClient,
 ) {
+  const [acpResult, orchestratorStatusResult, taskThreadsResult] =
+    await Promise.allSettled([
+      this.fetch<RawAcpSession[]>("/api/coding-agents"),
+      this.getOrchestratorStatus(),
+      this.listCodingAgentTaskThreads({ limit: 20 }),
+    ]);
+
+  const acpSessions =
+    acpResult.status === "fulfilled" && Array.isArray(acpResult.value)
+      ? acpResult.value
+      : null;
+  const taskThreads =
+    taskThreadsResult.status === "fulfilled" &&
+    Array.isArray(taskThreadsResult.value)
+      ? taskThreadsResult.value
+      : null;
+  const orchestratorStatus =
+    orchestratorStatusResult.status === "fulfilled"
+      ? orchestratorStatusResult.value
+      : null;
+
+  if (!acpSessions && !taskThreads && !orchestratorStatus) {
+    return null;
+  }
+
+  const acpTasks = acpSessions
+    ? mapAcpSessionsToCodingAgentSessions(acpSessions).filter(
+        (task) => !TERMINAL_STATUSES.has(task.status),
+      )
+    : [];
+  const taskThreadSessions = taskThreads
+    ? mapTaskThreadsToCodingAgentSessions(taskThreads).filter(
+        (task) => !TERMINAL_STATUSES.has(task.status),
+      )
+    : [];
+  const tasks = [...acpTasks, ...taskThreadSessions];
+
+  const taskThreadCount =
+    typeof orchestratorStatus?.taskCount === "number"
+      ? orchestratorStatus.taskCount
+      : (taskThreads?.length ?? 0);
+
   try {
-    const acpSessions = await this.fetch<RawAcpSession[]>("/api/coding-agents");
-    const tasks = Array.isArray(acpSessions)
-      ? mapAcpSessionsToCodingAgentSessions(acpSessions).filter(
-          (task) => !TERMINAL_STATUSES.has(task.status),
-        )
-      : [];
-    // Durable task threads live behind /api/orchestrator/tasks (served by
-    // OrchestratorTaskService). Fold them in so status reflects persisted task
-    // threads, not just live ACP sessions. Threads degrade to empty if the
-    // orchestrator surface is unavailable — the ACP status above still resolves.
-    // Normalize the resolved value too: a 200 response whose body lacks `tasks`
-    // resolves to undefined (not a rejection), so `.catch` alone wouldn't guard
-    // it and `.length` would throw and null the entire status.
-    const threadList = await this.listCodingAgentTaskThreads().catch(() => []);
-    const taskThreads = Array.isArray(threadList) ? threadList : [];
     return {
-      supervisionLevel: "acp",
+      supervisionLevel: acpSessions ? "acp" : "orchestrator",
       taskCount: tasks.length,
       tasks,
       pendingConfirmations: 0,
-      taskThreadCount: taskThreads.length,
-      taskThreads,
+      taskThreadCount,
+      taskThreads: taskThreads ?? [],
     } satisfies CodingAgentStatus;
   } catch {
     return null;

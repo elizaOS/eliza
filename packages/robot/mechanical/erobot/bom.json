@@ -4,23 +4,23 @@
   "currency": "USD",
   "robot": {
     "profile_id": "erobot",
-    "dof": 25,
+    "dof": 27,
     "standing_height_m": 1.665
   },
   "totals": {
-    "bom_mass_kg": 27.648,
-    "mass_model_total_kg": 26.149,
-    "cost_qty1_usd": 16184.79,
-    "cost_qty1000_usd_per_unit": 10010.83,
-    "tooling_capex_usd": 91000.0,
-    "unique_molds": 13
+    "bom_mass_kg": 29.441,
+    "mass_model_total_kg": 27.951,
+    "cost_qty1_usd": 17627.13,
+    "cost_qty1000_usd_per_unit": 10860.39,
+    "tooling_capex_usd": 133000.0,
+    "unique_molds": 19
   },
   "by_category": {
     "actuator": {
-      "qty": 25,
-      "mass_kg": 13.56,
-      "cost_qty1": 13300.46,
-      "cost_qty1000": 8625.0
+      "qty": 27,
+      "mass_kg": 13.89,
+      "cost_qty1": 14289.24,
+      "cost_qty1000": 9345.0
     },
     "compute": {
       "qty": 1,
@@ -59,10 +59,10 @@
       "cost_qty1000": 14.0
     },
     "molded_shell": {
-      "qty": 22,
-      "mass_kg": 8.75,
-      "cost_qty1": 970.83,
-      "cost_qty1000": 299.83
+      "qty": 34,
+      "mass_kg": 10.21,
+      "cost_qty1": 1424.39,
+      "cost_qty1000": 387.39
     }
   },
   "parts": [
@@ -100,7 +100,7 @@
       "vendor": "Robotis",
       "model": "Dynamixel XM540-W270-R",
       "spec": "10.6 N\u00b7m stall, 12 V, TTL/RS-485",
-      "qty": 4,
+      "qty": 6,
       "unit_mass_kg": 0.165,
       "unit_price_qty1_usd": 494.39,
       "unit_price_qty1000_usd": 360.0,
@@ -236,14 +236,56 @@
     },
     {
       "category": "molded_shell",
+      "name": "ankle_pitch_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "30% glass-filled nylon 6 (injection molded)",
+      "spec": "wall 3.0 mm, shell mass 128 g",
+      "qty": 2,
+      "unit_mass_kg": 0.12817698026646357,
+      "unit_price_qty1_usd": 38.23,
+      "unit_price_qty1000_usd": 7.73,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
+      "name": "ankle_roll_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "30% glass-filled nylon 6 (injection molded)",
+      "spec": "wall 3.0 mm, shell mass 128 g",
+      "qty": 2,
+      "unit_mass_kg": 0.12817698026646357,
+      "unit_price_qty1_usd": 38.23,
+      "unit_price_qty1000_usd": 7.73,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
+      "name": "elbow_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "PC-ABS blend (injection molded)",
+      "spec": "wall 2.5 mm, shell mass 89 g",
+      "qty": 2,
+      "unit_mass_kg": 0.08874999246391167,
+      "unit_price_qty1_usd": 36.3,
+      "unit_price_qty1000_usd": 5.8,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
       "name": "foot_shell (2-piece clamshell)",
       "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
       "model": "30% glass-filled nylon 6 (injection molded)",
-      "spec": "wall 2.5 mm, shell mass 267 g",
+      "spec": "wall 2.5 mm, shell mass 188 g",
       "qty": 2,
-      "unit_mass_kg": 0.26724000000000003,
-      "unit_price_qty1_usd": 41.73,
-      "unit_price_qty1000_usd": 11.23,
+      "unit_mass_kg": 0.18835999999999997,
+      "unit_price_qty1_usd": 39.75,
+      "unit_price_qty1000_usd": 9.25,
       "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
       "confirmed": false,
       "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
@@ -295,11 +337,11 @@
       "name": "hip_pitch_shell (2-piece clamshell)",
       "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
       "model": "30% glass-filled nylon 6 (injection molded)",
-      "spec": "wall 3.0 mm, shell mass 139 g",
+      "spec": "wall 3.0 mm, shell mass 185 g",
       "qty": 2,
-      "unit_mass_kg": 0.138636221856207,
-      "unit_price_qty1_usd": 38.49,
-      "unit_price_qty1000_usd": 7.99,
+      "unit_mass_kg": 0.1845748515837075,
+      "unit_price_qty1_usd": 39.65,
+      "unit_price_qty1000_usd": 9.15,
       "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
       "confirmed": false,
       "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
@@ -309,11 +351,25 @@
       "name": "hip_roll_shell (2-piece clamshell)",
       "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
       "model": "30% glass-filled nylon 6 (injection molded)",
-      "spec": "wall 3.0 mm, shell mass 128 g",
+      "spec": "wall 3.0 mm, shell mass 185 g",
       "qty": 2,
-      "unit_mass_kg": 0.12817698026646357,
-      "unit_price_qty1_usd": 38.23,
-      "unit_price_qty1000_usd": 7.73,
+      "unit_mass_kg": 0.1845748515837075,
+      "unit_price_qty1_usd": 39.65,
+      "unit_price_qty1000_usd": 9.15,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
+      "name": "knee_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "30% glass-filled nylon 6 (injection molded)",
+      "spec": "wall 3.0 mm, shell mass 185 g",
+      "qty": 2,
+      "unit_mass_kg": 0.1845748515837075,
+      "unit_price_qty1_usd": 39.65,
+      "unit_price_qty1000_usd": 9.15,
       "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
       "confirmed": false,
       "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
@@ -390,6 +446,20 @@
     },
     {
       "category": "molded_shell",
+      "name": "toe_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "30% glass-filled nylon 6 (injection molded)",
+      "spec": "wall 2.5 mm, shell mass 109 g",
+      "qty": 2,
+      "unit_mass_kg": 0.10948000000000001,
+      "unit_price_qty1_usd": 37.76,
+      "unit_price_qty1000_usd": 7.26,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
       "name": "torso_shell (2-piece clamshell)",
       "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
       "model": "30% glass-filled nylon 6 (injection molded)",
@@ -412,6 +482,20 @@
       "unit_mass_kg": 0.27136197695765635,
       "unit_price_qty1_usd": 38.99,
       "unit_price_qty1000_usd": 8.49,
+      "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "confirmed": false,
+      "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."
+    },
+    {
+      "category": "molded_shell",
+      "name": "wrist_shell (2-piece clamshell)",
+      "vendor": "Injection molder (Xometry/Protolabs/Fictiv)",
+      "model": "PC-ABS blend (injection molded)",
+      "spec": "wall 2.5 mm, shell mass 69 g",
+      "qty": 2,
+      "unit_mass_kg": 0.06872799416405317,
+      "unit_price_qty1_usd": 36.01,
+      "unit_price_qty1000_usd": 5.51,
       "source_url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
       "confirmed": false,
       "note": "Custom molded. Qty-1 is FDM/SLA prototype regime; qty-1000 is molded."

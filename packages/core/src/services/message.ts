@@ -3681,7 +3681,7 @@ function hasAckOnlyActionableIntent(
 
 function inferAckIntentCandidateActions(
 	result: ResponseHandlerResult,
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	fallbackText = "",
 ): string[] {
 	const intentText = Array.isArray(result.intents)
@@ -3722,7 +3722,7 @@ function inferAckIntentCandidateActions(
 }
 
 function inferDirectCurrentRequestCandidateActions(
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
 ): string[] {
 	if (looksLikeLocalShellRequest(messageText)) {
@@ -3757,7 +3757,7 @@ function inferDirectCurrentRequestCandidateActions(
 
 function shouldUseDirectReplyFastPath(args: {
 	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name">>;
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
@@ -3792,39 +3792,49 @@ function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
 }
 
 function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 ): string | undefined {
-	return (
-		findAvailableActionName(actions, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]) ??
-		findAvailableActionName(actions, [
-			"SHELL",
-			"RUN_IN_TERMINAL",
-			"RUN_COMMAND",
-			"EXECUTE_COMMAND",
-			"TERMINAL",
-			"RUN_SHELL",
-			"EXEC",
-		])
-	);
+	return findAvailableActionName(actions, [
+		"SEARCH",
+		"WEB_SEARCH",
+		"SEARCH_WEB",
+		"BRAVE_SEARCH",
+		"INTERNET_SEARCH",
+		"SEARCH_INTERNET",
+		"LOOKUP_WEB",
+		"GOOGLE",
+	]);
 }
 
 function findAvailableActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	names: readonly string[],
 ): string | undefined {
 	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return actions.find((action) =>
-		wanted.has(normalizeActionIdentifier(action.name)),
-	)?.name;
+	return actions.find((action) => {
+		if (wanted.has(normalizeActionIdentifier(action.name))) return true;
+		const similes = Array.isArray(action.similes) ? action.similes : [];
+		return similes.some((simile) =>
+			wanted.has(normalizeActionIdentifier(String(simile))),
+		);
+	})?.name;
+}
+
+const LIVE_LOOKUP_UNAVAILABLE_REPLY =
+	"I don't have a live web search action available here, so I can't look up current information in this chat.";
+
+function shouldReplaceUnavailableLiveLookupAck(args: {
+	message: Memory;
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+	reply: string;
+}): boolean {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	return (
+		text.length > 0 &&
+		looksLikeWebSearchRequest(text) &&
+		!findWebLookupActionName(args.actions) &&
+		looksLikeProgressOnlyReply(args.reply)
+	);
 }
 
 function uniqueActionNames(names: readonly string[]): string[] {
@@ -4028,7 +4038,7 @@ function shouldUseStage1PlannerFallback(
 
 function synthesizePlannerFallbackFromStage1Failure(args: {
 	reason: string;
-	actions: ReadonlyArray<Pick<Action, "name">>;
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 	messageText: string;
 }): MessageHandlerResult {
 	const candidateActions = inferDirectCurrentRequestCandidateActions(
@@ -5322,6 +5332,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
 					reply = "I'm not sure how to answer that.";
 				}
+			}
+			if (
+				shouldReplaceUnavailableLiveLookupAck({
+					message: args.message,
+					actions: args.runtime.actions ?? [],
+					reply,
+				})
+			) {
+				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
 			}
 			return {
 				kind: "direct_reply",

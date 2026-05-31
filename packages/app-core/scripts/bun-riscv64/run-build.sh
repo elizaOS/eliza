@@ -27,6 +27,7 @@ FORCE_CLOOP="1"
 JOBS=""
 IMAGE_ONLY=0
 SHELL_MODE=0
+RUST_CORE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +37,10 @@ while [ $# -gt 0 ]; do
         --jobs) JOBS="$2"; shift 2 ;;
         --image-only) IMAGE_ONLY=1; shift ;;
         --shell) SHELL_MODE=1; shift ;;
+        # Build the post-rewrite Rust-core bun (rust_core_port.target_commit +
+        # rust-core/ patch series) instead of the last-Zig tag. Default stays
+        # the validated Zig fallback.
+        --rust-core) RUST_CORE=1; shift ;;
         -h|--help)
             # Usage block lives in the file header (lines 3-17 of the
             # leading comment, just below the shebang).
@@ -73,9 +78,16 @@ verification step does.
 NO_BINFMT
 fi
 
+# The Dockerfile vendors x86_64 toolchain binaries (Zig x86_64, bun x64
+# bootstrap), so the builder image MUST be linux/amd64. On amd64 CI hosts this
+# is native; on an arm64 host (Apple Silicon) it runs under emulation. Without
+# this, an arm64 host builds an arm64 image where the x86_64 bun bootstrap
+# fails with "rosetta error: failed to open elf .../ld-linux-x86-64.so.2".
+PLATFORM="linux/amd64"
+
 # ─── Build the image ───────────────────────────────────────────────────────
-echo "[run-build] building image ${IMAGE_TAG}"
-docker build ${NO_CACHE} -t "${IMAGE_TAG}" .
+echo "[run-build] building image ${IMAGE_TAG} (--platform ${PLATFORM})"
+docker build --platform "${PLATFORM}" ${NO_CACHE} -t "${IMAGE_TAG}" .
 
 if [ "$IMAGE_ONLY" = "1" ]; then
     echo "[run-build] --image-only: stopping after image build."
@@ -86,6 +98,7 @@ fi
 if [ "$SHELL_MODE" = "1" ]; then
     echo "[run-build] dropping into shell inside ${IMAGE_TAG}"
     exec docker run --rm -it \
+        --platform "${PLATFORM}" \
         -v "$HERE:/work-host:rw" \
         --entrypoint /bin/bash \
         "${IMAGE_TAG}"
@@ -95,11 +108,20 @@ fi
 mkdir -p "$HERE/dist"
 mkdir -p "$HERE/dist/src-cache"
 
+# Patch series: Zig fallback uses bun-patches/; --rust-core uses rust-core/
+# (0001 build-system + C_LOOP port, 0002 second-wave source gaps).
+PATCH_MOUNT="$HERE/bun-patches"
+if [ "$RUST_CORE" = "1" ]; then
+    PATCH_MOUNT="$HERE/rust-core"
+    echo "[run-build] --rust-core: building Rust-core bun (rust_core_port) from rust-core/ patches"
+fi
+
 DOCKER_RUN_ARGS=(
     --rm
+    --platform "${PLATFORM}"
     -v "$HERE/build.sh:/opt/build.sh:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
-    -v "$HERE/bun-patches:/opt/bun-patches:ro"
+    -v "$PATCH_MOUNT:/opt/bun-patches:ro"
     -v "$HERE/webkit-patches:/opt/webkit-patches:ro"
     -v "$HERE/dist:/artifact"
     -v "$HERE/dist/src-cache:/work/src"
@@ -110,6 +132,9 @@ if [ -n "$JOBS" ]; then
 fi
 if [ "$FORCE_CLOOP" = "1" ]; then
     DOCKER_RUN_ARGS+=(-e "BUN_RISCV64_FORCE_CLOOP=1")
+fi
+if [ "$RUST_CORE" = "1" ]; then
+    DOCKER_RUN_ARGS+=(-e "BUN_RISCV64_RUST_CORE=1")
 fi
 
 echo "[run-build] starting cross-compile (this typically takes 30-90 minutes)"

@@ -142,3 +142,27 @@ description = "Vendored upstream Tails OS source (public test fixtures + docs)"
 paths = [
   '''(^|/)packages/os/linux/variants/milady-tails/tails/''',
 ]
+
+# Robot engineering material identifiers such as PA6_GF30, PC_ABS, and
+# TPU_SHORE_A95 are mechanical/material codes, not credentials. Keep this scoped
+# to the robot material files and exact extracted token values that gitleaks'
+# generic-api-key rule misclassifies.
+[[allowlists]]
+description = "Robot material identifiers (not credentials; match target)"
+paths = [
+  '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''material_key="(PA6_GF30|PC_ABS|TPU_SHORE_A95)"''',
+]
+
+[[allowlists]]
+description = "Robot material identifiers (not credentials; secret target)"
+paths = [
+  '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^(PA6_GF30|PC_ABS|TPU_SHORE_A95)$''',
+]
