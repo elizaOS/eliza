@@ -601,7 +601,6 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
-let trayActive = false;
 
 function requestAppQuit(): void {
   isQuitting = true;
@@ -1108,12 +1107,19 @@ function attachMainWindow(
       return;
     }
 
-    // On Linux without an active tray icon, minimizing-to-tray (or running in
-    // the background) strands an invisible process: there is no dock reopen
-    // like macOS and no StatusNotifier item to restore from. Quit cleanly in
-    // that case so closing the last window can't leave the agent unreachable.
-    // macOS/Windows and the Linux-with-tray path keep their existing behavior.
-    if (!isQuitting && process.platform === "linux" && !trayActive) {
+    // On Linux with no tray configured, minimizing-to-tray (or running in the
+    // background) strands an invisible process: there is no dock reopen like
+    // macOS and no StatusNotifier item to restore from. Quit cleanly in that
+    // case so closing the last window can't leave the agent unreachable. The
+    // tray decision is read from the environment up front — not from a flag set
+    // after createTray() resolves — so closing during startup, before the tray
+    // icon appears, doesn't spuriously quit. macOS/Windows and the
+    // Linux-with-tray path keep their existing behavior.
+    if (
+      !isQuitting &&
+      process.platform === "linux" &&
+      !shouldCreateDesktopTray(process.env)
+    ) {
       logger.info(
         "[Main] Window close on Linux with no tray — quitting (no surface to restore from)",
       );
@@ -2429,7 +2435,6 @@ async function main(): Promise<void> {
         tooltip: BRAND.appName,
         title: BRAND.appName,
       });
-      trayActive = true;
     } catch (err) {
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,

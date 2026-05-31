@@ -162,13 +162,17 @@ const buildVariant = resolveBuildVariant(
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
+// Whisper builds are default-on: skipped only when explicitly disabled via env
+// (ELIZA_DESKTOP_BUILD_WHISPER="0"). Since `env !== "0"` is already true when the
+// var is unset, the `|| --build-whisper` arm only matters when the env opt-out is
+// in play; it is the explicit-request path, captured separately by
+// whisperExplicitlyRequested below.
 const buildWhisper =
   process.env.ELIZA_DESKTOP_BUILD_WHISPER !== "0" ||
   getBooleanArg(args, "build-whisper");
-// buildWhisper is default-on (env !== "0"), so the common dev case has it true
-// without the user asking. "Explicitly requested" is the narrower signal used to
-// decide whether missing native tooling is a hard failure (CI passes
-// --build-whisper on a tooled runner) or a graceful skip (out-of-box dev build).
+// "Explicitly requested" is the narrower signal: it decides whether missing
+// native tooling is a hard failure (CI passes --build-whisper on a tooled
+// runner) or a graceful skip (out-of-box dev build).
 const whisperExplicitlyRequested =
   getBooleanArg(args, "build-whisper") ||
   process.env.ELIZA_DESKTOP_BUILD_WHISPER === "1";

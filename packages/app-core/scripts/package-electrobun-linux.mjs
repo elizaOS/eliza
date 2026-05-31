@@ -47,8 +47,18 @@ const rpmArch = arch === "arm64" ? "aarch64" : "x86_64";
 // produced packages stay byte-identical unless the brand env is provided.
 const displayName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
 // Lowercase slug used for install paths, the launcher wrapper, the .desktop
-// file, and the icon. Defaults to "eliza".
+// file, the icon, and (suffixed with `-app`) the deb/rpm package name.
+// Defaults to "eliza". It must satisfy Debian package-name policy — start with
+// an alphanumeric, then only [a-z0-9.+-] — or dpkg-deb/rpmbuild reject the
+// control metadata with an opaque error, so validate the env value up front.
 const namespace = (process.env.ELIZA_NAMESPACE ?? "").trim() || "eliza";
+if (!/^[a-z0-9][a-z0-9.+-]+$/.test(namespace)) {
+  throw new Error(
+    `ELIZA_NAMESPACE "${namespace}" is not a valid Debian/RPM package name. ` +
+      "Use lowercase letters, digits, '.', '+', or '-', at least two characters, " +
+      'starting with a letter or digit (e.g. "acme" or "acme-desktop").',
+  );
+}
 // System package name. Not derivable from the existing literal, so keep the
 // literal fallback and derive from the namespace only when the env is set.
 const packageName = (process.env.ELIZA_NAMESPACE ?? "").trim()
