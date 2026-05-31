@@ -35,7 +35,27 @@ interface SandboxCharacterJson {
   // normalises both, so we pass it through untouched.
   messageExamples?: unknown;
   settings?: Record<string, unknown>;
+  /**
+   * Per-character connector config (e.g. `{ discord: { ... }, telegram: {...} }`).
+   * Only applied when the container is the connector owner
+   * (ELIZA_SANDBOX_OWNS_CONNECTORS=1) to avoid double-connecting the same bot
+   * token from both the gateway and the container.
+   */
+  connectors?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+/**
+ * Whether this container should own (connect directly to) its platform
+ * connectors. Default false: the gateway owns the connection and forwards
+ * inbound events to the container (resolves the double-connect seam). Set
+ * ELIZA_SANDBOX_OWNS_CONNECTORS=1 only when the operator has linked the
+ * connector to the container and disabled the gateway's connection row.
+ */
+export function sandboxOwnsConnectors(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_SANDBOX_OWNS_CONNECTORS?.trim() === "1";
 }
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -150,8 +170,70 @@ export function applySandboxCharacterFromEnv(
     assistant: { ...(ui.assistant ?? {}), name },
   } as ElizaConfig["ui"];
 
+  // Connector ownership (Deliverable B / double-connect resolution). When the
+  // operator makes the container the connector owner, apply the per-character
+  // connector config so the runtime loads the connector plugin and connects
+  // directly. Otherwise the gateway keeps the connection and forwards inbound
+  // events to /agents/<id>/message here.
+  if (
+    sandboxOwnsConnectors(env) &&
+    parsed.connectors &&
+    typeof parsed.connectors === "object" &&
+    !Array.isArray(parsed.connectors)
+  ) {
+    config.connectors = {
+      ...(config.connectors ?? {}),
+      ...(parsed.connectors as ElizaConfig["connectors"]),
+    } as ElizaConfig["connectors"];
+    logger.info(
+      `[sandbox-character] Container owns connectors (${Object.keys(parsed.connectors).join(", ")}); will connect directly`,
+    );
+  }
+
   logger.info(
     `[sandbox-character] Loaded injected character "${name}" (id=${id}) from ELIZA_AGENT_CHARACTER_JSON`,
   );
   return config;
+}
+
+/** Connector bot-token env vars that trigger a direct platform connection. */
+const CONNECTOR_TOKEN_ENV_KEYS = [
+  "DISCORD_API_TOKEN",
+  "DISCORD_BOT_TOKEN",
+  "TELEGRAM_BOT_TOKEN",
+] as const;
+
+/**
+ * Resolve the double-connect seam for a provisioned container.
+ *
+ * In the default (gateway-owned) mode the gateway holds the Discord/Telegram
+ * connection and forwards inbound events to this container; if the container
+ * ALSO connected with the same bot token we would get token contention and
+ * duplicate replies. So, unless the operator has explicitly made the
+ * container the connector owner (ELIZA_SANDBOX_OWNS_CONNECTORS=1), we strip
+ * the connector bot tokens from the environment BEFORE plugin auto-enable, so
+ * the container runs purely as an inference target reached via
+ * /agents/<id>/message.
+ *
+ * No-op outside a provisioned container (ELIZA_CLOUD_PROVISIONED != "1"), so
+ * local dev and the in-worker path are unaffected.
+ */
+export function applySandboxConnectorOwnership(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.ELIZA_CLOUD_PROVISIONED !== "1") return;
+  if (sandboxOwnsConnectors(env)) return;
+
+  const stripped: string[] = [];
+  for (const key of CONNECTOR_TOKEN_ENV_KEYS) {
+    if (env[key]) {
+      delete env[key];
+      stripped.push(key);
+    }
+  }
+  if (stripped.length > 0) {
+    logger.info(
+      `[sandbox-character] Gateway owns connectors; not connecting directly (cleared ${stripped.join(", ")} to avoid double-connect). Set ELIZA_SANDBOX_OWNS_CONNECTORS=1 to connect from the container instead.`,
+    );
+  }
 }

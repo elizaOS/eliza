@@ -79,3 +79,70 @@ describe("resolveSandboxRouteAgentId", () => {
     expect(resolveSandboxRouteAgentId({})).toBeNull();
   });
 });
+
+describe("connector ownership (double-connect resolution)", () => {
+  const characterWithDiscord = JSON.stringify({
+    name: "Nyx",
+    connectors: { discord: { dmPolicy: "pairing" } },
+  });
+
+  it("does NOT apply connectors by default (gateway owns the connection)", () => {
+    const config = {} as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: characterWithDiscord,
+    });
+    expect((out as { connectors?: unknown }).connectors).toBeUndefined();
+  });
+
+  it("applies connectors when ELIZA_SANDBOX_OWNS_CONNECTORS=1", () => {
+    const config = {} as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: characterWithDiscord,
+      ELIZA_SANDBOX_OWNS_CONNECTORS: "1",
+    });
+    const connectors = (
+      out as { connectors: Record<string, { dmPolicy?: string }> }
+    ).connectors;
+    expect(connectors.discord.dmPolicy).toBe("pairing");
+  });
+});
+
+describe("applySandboxConnectorOwnership", () => {
+  it("strips connector tokens in a provisioned container by default", async () => {
+    const { applySandboxConnectorOwnership } = await import(
+      "../sandbox-character.ts"
+    );
+    const env: NodeJS.ProcessEnv = {
+      ELIZA_CLOUD_PROVISIONED: "1",
+      DISCORD_API_TOKEN: "tok",
+      DISCORD_BOT_TOKEN: "tok",
+      TELEGRAM_BOT_TOKEN: "tg",
+    };
+    applySandboxConnectorOwnership(env);
+    expect(env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
+    expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+  });
+
+  it("keeps connector tokens when the container owns connectors", async () => {
+    const { applySandboxConnectorOwnership } = await import(
+      "../sandbox-character.ts"
+    );
+    const env: NodeJS.ProcessEnv = {
+      ELIZA_CLOUD_PROVISIONED: "1",
+      ELIZA_SANDBOX_OWNS_CONNECTORS: "1",
+      DISCORD_API_TOKEN: "tok",
+    };
+    applySandboxConnectorOwnership(env);
+    expect(env.DISCORD_API_TOKEN).toBe("tok");
+  });
+
+  it("is a no-op outside a provisioned container", async () => {
+    const { applySandboxConnectorOwnership } = await import(
+      "../sandbox-character.ts"
+    );
+    const env: NodeJS.ProcessEnv = { DISCORD_API_TOKEN: "tok" };
+    applySandboxConnectorOwnership(env);
+    expect(env.DISCORD_API_TOKEN).toBe("tok");
+  });
+});
