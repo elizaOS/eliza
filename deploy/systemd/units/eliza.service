@@ -20,6 +20,10 @@ RestartSec=5
 StandardOutput=append:__LOG__
 StandardError=append:__LOG__
 SyslogIdentifier=eliza
+# Baseline hardening — block privilege escalation via setuid binaries. The bot's
+# shell tool (node-pty) and ACP/acpx coding sub-agents run arbitrary commands; if
+# any legitimately needs `sudo`/setuid, drop this line.
+NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target

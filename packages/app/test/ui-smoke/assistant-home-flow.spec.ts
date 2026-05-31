@@ -317,11 +317,26 @@ test.describe("assistant home app flow", () => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
     await openAppPath(page, "/");
-    await expect(page.getByTestId("first-run-shell")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Where (should|is)\b/ }),
+    ).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
     await seedAppStorage(page);
+    await page.evaluate(() => {
+      localStorage.setItem("eliza:first-run-complete", "1");
+      localStorage.setItem("eliza:setup:step", "activate");
+      localStorage.setItem("eliza:ui-shell-mode", "native");
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "local:embedded",
+          kind: "local",
+          label: "This device",
+        }),
+      );
+    });
     const assistantApi = await installAssistantFlowRoutes(page);
 
     await openAppPath(page, "/");
