@@ -1,8 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  SceneInstance,
-  SceneRenderContext,
-} from "./scene-types";
 import {
   compileSceneScript,
   createSceneInputs,
@@ -12,6 +8,7 @@ import {
   resolveSceneFactory,
   resolveSceneFactoryOrDefault,
 } from "./scene-runtime";
+import type { SceneInstance, SceneRenderContext } from "./scene-types";
 import { BUILTIN_PRESETS } from "./scene-types";
 
 function fakeCtx(): SceneRenderContext {
@@ -37,7 +34,10 @@ describe("preset registry", () => {
     expect(getPreset("test-orb")).toBe(factory);
     expect(presetKeys()).toContain("test-orb");
 
-    const resolved = resolveSceneFactory({ kind: "preset", preset: "test-orb" });
+    const resolved = resolveSceneFactory({
+      kind: "preset",
+      preset: "test-orb",
+    });
     expect(resolved.ok).toBe(true);
   });
 
@@ -54,9 +54,7 @@ describe("preset registry", () => {
 
 describe("compileSceneScript", () => {
   it("compiles a valid body returning a SceneInstance", () => {
-    const result = compileSceneScript(
-      "return { update() {}, dispose() {} };",
-    );
+    const result = compileSceneScript("return { update() {}, dispose() {} };");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const instance = result.factory(fakeCtx());

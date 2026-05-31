@@ -14,11 +14,11 @@ import {
   type BlockLayout,
   type BlocksConfig,
   type BlockTheme,
+  createDefaultScene,
+  defaultBlocks,
   type HomescreenScene,
   type SceneBackground,
   type SceneTheme,
-  createDefaultScene,
-  defaultBlocks,
 } from "./scene-types";
 
 export interface SceneValidationOk {
@@ -80,7 +80,8 @@ function coerceLayout(raw: unknown): BlockLayout {
   };
   if (!isObject(raw)) return base;
   const anchor =
-    typeof raw.anchor === "string" && ANCHORS.has(raw.anchor as BlockLayout["anchor"])
+    typeof raw.anchor === "string" &&
+    ANCHORS.has(raw.anchor as BlockLayout["anchor"])
       ? (raw.anchor as BlockLayout["anchor"])
       : base.anchor;
   const offset = isObject(raw.offset)
@@ -95,7 +96,8 @@ function coerceLayout(raw: unknown): BlockLayout {
 }
 
 function coerceBlockTheme(raw: unknown): BlockTheme {
-  if (!isObject(raw)) return { surface: null, text: null, radius: null, blur: null };
+  if (!isObject(raw))
+    return { surface: null, text: null, radius: null, blur: null };
   const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
   const n = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) ? v : null;

@@ -123,7 +123,7 @@ describe("HOMESCREEN handler — edit/create", () => {
 	});
 
 	it("extracts a fenced JSON object from a chatty model reply", async () => {
-		const chatty = "Sure! Here you go:\n```json\n" + VALID_SCENE + "\n```";
+		const chatty = `Sure! Here you go:\n\`\`\`json\n${VALID_SCENE}\n\`\`\``;
 		const { action, runtime, callback, emitted } = setup(chatty);
 		const result = await action.handler?.(
 			runtime,
@@ -193,7 +193,7 @@ describe("prompt helpers", () => {
 
 	it("extractSceneJson handles balanced nested braces", () => {
 		const nested = '{"a":{"b":{"c":1}},"d":2}';
-		expect(extractSceneJson("noise " + nested + " trailing")).toBe(nested);
+		expect(extractSceneJson(`noise ${nested} trailing`)).toBe(nested);
 	});
 
 	it("extractSceneJson ignores braces inside strings", () => {

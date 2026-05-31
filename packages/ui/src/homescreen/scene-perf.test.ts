@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createPerfState,
   DEFAULT_THRESHOLDS,
-  perfLabel,
   type PerfState,
+  perfLabel,
   perfTick,
 } from "./scene-perf";
 
@@ -75,13 +75,25 @@ describe("perfLabel", () => {
 
   it("shows reducing-detail while warning", () => {
     expect(
-      perfLabel({ fps: 30, tier: 0.6, warning: true, belowFrames: 0, aboveFrames: 0 }),
+      perfLabel({
+        fps: 30,
+        tier: 0.6,
+        warning: true,
+        belowFrames: 0,
+        aboveFrames: 0,
+      }),
     ).toMatch(/reducing detail/);
   });
 
   it("shows the detail percentage when degraded but not warning", () => {
     expect(
-      perfLabel({ fps: 58, tier: 0.6, warning: false, belowFrames: 0, aboveFrames: 0 }),
+      perfLabel({
+        fps: 58,
+        tier: 0.6,
+        warning: false,
+        belowFrames: 0,
+        aboveFrames: 0,
+      }),
     ).toMatch(/60% detail/);
   });
 });

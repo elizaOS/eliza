@@ -74,7 +74,7 @@ describe("undo / redo", () => {
   });
 
   it("undo/redo at the boundaries are no-ops", () => {
-    let h = createHistory(scene("a"));
+    const h = createHistory(scene("a"));
     expect(undo(h)).toBe(h);
     expect(redo(h)).toBe(h);
   });

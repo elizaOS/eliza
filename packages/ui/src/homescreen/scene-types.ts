@@ -180,9 +180,12 @@ export const BUILTIN_PRESETS = {
 export type BuiltinPreset =
   (typeof BUILTIN_PRESETS)[keyof typeof BUILTIN_PRESETS];
 
-const defaultLayout = (
-  anchor: BlockLayout["anchor"],
-): BlockLayout => ({ anchor, offset: { x: 0, y: 0 }, collapsed: false, hidden: false });
+const defaultLayout = (anchor: BlockLayout["anchor"]): BlockLayout => ({
+  anchor,
+  offset: { x: 0, y: 0 },
+  collapsed: false,
+  hidden: false,
+});
 
 const defaultBlock = (anchor: BlockLayout["anchor"]): BlockConfig => ({
   layout: defaultLayout(anchor),
