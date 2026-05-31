@@ -1,24 +1,65 @@
-Subject: [PATCH] riscv64 Rust-core bun: include <wtf/Scope.h> in JSModuleLoader.cpp
+Subject: [PATCH] riscv64 bun-v1.3.14: restore includes/forward-decl dropped by WebKit reorg
 
-Building oven-sh/WebKit @ 963f8758 (the WEBKIT_VERSION pinned by the Rust-core
-bun target_commit, distinct from the Zig-era 5488984d) as JSCOnly+C_LOOP for
-riscv64: JSModuleLoader.cpp uses WTF::makeScopeExit (runtime/JSModuleLoader.cpp
-~line 1176) but does not include <wtf/Scope.h> directly, and it is not pulled in
-transitively in the JSCOnly configuration. Add the include.
+Building oven-sh/WebKit @ 5488984 (the WEBKIT_VERSION pinned by
+oven-sh/bun@bun-v1.3.14) as JSCOnly+C_LOOP for riscv64 fails to compile
+because a JSCJSValue.h refactor in this commit dropped transitive
+declarations several translation units relied on:
 
-This is an upstream-safe, additive include; not riscv64- or C_LOOP-specific.
+  - ArithProfile.h declares `friend class JSC::LLIntOffsetsExtractor;`
+    (qualified), which needs a prior declaration; every TU that includes
+    ArithProfile.h before one (LLIntOffsetsExtractor.cpp, JIT*Generator.cpp)
+    failed with "no class named 'LLIntOffsetsExtractor' in namespace 'JSC'".
+    Forward-declare it in ArithProfile.h so all includers see it.
+  - Heap.cpp and DeferredWorkTimer.cpp use SetForScope without including
+    <wtf/SetForScope.h>.
+  - JSModuleLoader.cpp uses WTF::makeScopeExit without including <wtf/Scope.h>.
 
-Rebased against 963f8758 (Rust-core WebKit). The three other hunks the
-5488984d-era 0007 carried are now OBSOLETE upstream and were dropped:
-  - heap/Heap.cpp already includes <wtf/SetForScope.h> (line 110).
-  - runtime/DeferredWorkTimer.cpp already includes <wtf/SetForScope.h> (line 36).
-  - bytecode/ArithProfile.h now uses the *unqualified* `friend class
-    LLIntOffsetsExtractor;` (not the qualified `JSC::` form), which itself
-    introduces JSC::LLIntOffsetsExtractor into the namespace, so the separate
-    forward declaration is no longer required.
+These are upstream-safe, additive declarations/includes. They are not
+riscv64- or C_LOOP-specific, but are required to build this WebKit commit
+in our JSCOnly configuration.
 
+diff --git a/Source/JavaScriptCore/bytecode/ArithProfile.h b/Source/JavaScriptCore/bytecode/ArithProfile.h
+index 7cd0e8550f..c6ec2f1477 100644
+--- a/Source/JavaScriptCore/bytecode/ArithProfile.h
++++ b/Source/JavaScriptCore/bytecode/ArithProfile.h
+@@ -33,6 +33,11 @@
+ namespace JSC {
+ 
+ class CCallHelpers;
++// The qualified `friend class JSC::LLIntOffsetsExtractor;` declarations below need a
++// prior declaration; a JSCJSValue.h refactor in this Bun WebKit fork dropped the
++// transitive forward declaration this header used to receive, breaking every TU that
++// includes ArithProfile.h before one. Declare it here so all includers see it.
++class LLIntOffsetsExtractor;
+ 
+ struct ObservedType {
+     constexpr ObservedType(uint8_t bits = TypeEmpty)
+diff --git a/Source/JavaScriptCore/heap/Heap.cpp b/Source/JavaScriptCore/heap/Heap.cpp
+index e7c224edac..a5fa10c9cf 100644
+--- a/Source/JavaScriptCore/heap/Heap.cpp
++++ b/Source/JavaScriptCore/heap/Heap.cpp
+@@ -105,6 +105,7 @@
+ #include <wtf/MemoryFootprint.h>
+ #include <wtf/RAMSize.h>
+ #include <wtf/Scope.h>
++#include <wtf/SetForScope.h>
+ #include <wtf/SimpleStats.h>
+ #include <wtf/SystemTracing.h>
+ #include <wtf/TZoneMallocInlines.h>
+diff --git a/Source/JavaScriptCore/runtime/DeferredWorkTimer.cpp b/Source/JavaScriptCore/runtime/DeferredWorkTimer.cpp
+index 778c1983a0..b23c122b0c 100644
+--- a/Source/JavaScriptCore/runtime/DeferredWorkTimer.cpp
++++ b/Source/JavaScriptCore/runtime/DeferredWorkTimer.cpp
+@@ -33,6 +33,7 @@
+ #include "VM.h"
+ #include <wtf/RunLoop.h>
+ #include <wtf/Scope.h>
++#include <wtf/SetForScope.h>
+ #include <wtf/TZoneMallocInlines.h>
+ 
+ namespace JSC {
 diff --git a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
-index 46bf6f4ddf..80bb07d7d6 100644
+index 9972fbeb3e..04f3a158c9 100644
 --- a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
 +++ b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
 @@ -50,6 +50,7 @@
@@ -27,5 +68,5 @@ index 46bf6f4ddf..80bb07d7d6 100644
  #include "VMTrapsInlines.h"
 +#include <wtf/Scope.h>
  #include <wtf/text/MakeString.h>
-
+ 
  namespace JSC {
