@@ -231,6 +231,14 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
             env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
 
+      # github.repository preserves the org's casing (elizaOS/eliza), but
+      # Docker tags must be all-lowercase. metadata-action lowercases for the
+      # push tags, but the raw ci-boot-verify tag below needs an explicit
+      # lowercased image name or the build-local step fails with
+      # "repository name must be lowercase".
+      - id: image
+        run: echo "name=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
         with:
@@ -262,7 +270,7 @@ jobs:
           file: packages/app-core/deploy/Dockerfile.ci
           push: false
           load: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-boot-verify
+          tags: ${{ steps.image.outputs.name }}:ci-boot-verify
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           cache-from: type=gha
@@ -277,7 +285,7 @@ jobs:
         # timeout. A failure here blocks the push below, so a non-bootable
         # image is never published.
         env:
-          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-boot-verify
+          DOCKER_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
           BOOT_VERIFY_ONLY: "true"
           SMOKE_TIMEOUT_SEC: "180"
           SMOKE_PORT: "32138"
