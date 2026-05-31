@@ -216,7 +216,7 @@ const requiredWorkflowSnippets = [
   "bun run test:desktop:playwright",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
-  "https://github.com/blackboardsh/electrobun.git",
+  "https://github.com/elizaOS/electrobun.git",
   '"sparse-checkout", "set", "package"',
   'writeGitHubEnv("ELECTROBUN_RCEDIT_PACKAGE_JSON", resolvedRceditPackageJson);',
   'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
