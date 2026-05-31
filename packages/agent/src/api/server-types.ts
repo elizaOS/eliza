@@ -182,7 +182,20 @@ export interface ServerState {
   broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
   broadcastWsToClientId: ((clientId: string, data: object) => number) | null;
-  /** Currently active conversation ID from the frontend (sent via WS). */
+  /**
+   * Broadcast a JSON payload only to WebSocket clients that currently have the
+   * given conversation active. Returns the number of clients delivered to.
+   * Set by startApiServer.
+   */
+  broadcastWsToConversation:
+    | ((conversationId: string, data: object) => number)
+    | null;
+  /**
+   * Most-recently-set active conversation across all connections, used as a
+   * sensible default for code paths that need *any* active conversation
+   * (autonomy routing, swarm synthesis). Per-connection active conversations
+   * are tracked inside the WebSocket layer, not here.
+   */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
   _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
