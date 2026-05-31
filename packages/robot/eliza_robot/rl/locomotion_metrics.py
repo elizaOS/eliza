@@ -19,7 +19,7 @@ the bridge.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 import numpy as np
 
@@ -62,10 +62,10 @@ def count_contact_switches(
     switches = 0
     last_single: str | None = None
     for i in range(n):
-        l, r = bool(left[i]), bool(right[i])
-        if l == r:  # double support or flight — not a single-stance state
+        left_i, right_i = bool(left[i]), bool(right[i])
+        if left_i == right_i:  # double support or flight — not a single stance
             continue
-        state = "left" if l else "right"
+        state = "left" if left_i else "right"
         if last_single is not None and state != last_single:
             switches += 1
         last_single = state
@@ -170,5 +170,179 @@ def evaluate_walk_trajectory(
         foot_contact_switches=switches,
         fell=bool(fell),
         walk_forward_pass=(len(fail) == 0),
+        fail_reasons=tuple(fail),
+    )
+
+
+@dataclass(frozen=True)
+class TurnMetrics:
+    """Honest grade for an in-place turn (yaw) command.
+
+    A turn is genuine only when the base yaw actually accumulated past a
+    threshold in the commanded rotational direction *while staying roughly in
+    place* (a robot that walks off in a circle, or merely drifts, is not
+    turning on the spot) and without falling.
+    """
+
+    cum_yaw_rad: float
+    translation_drift_m: float
+    min_base_height_m: float
+    direction: str
+    fell: bool
+    passed: bool
+    fail_reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class StandMetrics:
+    """Honest grade for a stand/stop (hold-still) command.
+
+    Standing is genuine only when the base stayed put: bounded planar
+    translation, bounded net yaw, upright, and no fall. A robot that wanders or
+    spins while told to stop fails.
+    """
+
+    delta_x_m: float
+    delta_y_m: float
+    translation_m: float
+    cum_yaw_rad: float
+    min_base_height_m: float
+    fell: bool
+    passed: bool
+    fail_reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def grade_turn(
+    cum_yaw_rad: float,
+    translation_drift_m: float,
+    min_base_height_m: float,
+    fell: bool,
+    *,
+    direction: str,
+    min_yaw_rad: float = 0.6,
+    max_drift_m: float = 1.0,
+    min_base_height_m_floor: float = 0.7,
+) -> TurnMetrics:
+    """Grade an in-place turn from already-accumulated scalar measurements.
+
+    Unlike :func:`evaluate_walk_trajectory`, this takes pre-reduced scalars
+    (the caller accumulates them while rolling out the policy) so it stays a
+    pure numpy primitive with no trajectory or sim dependency.
+
+    Args:
+        cum_yaw_rad: net signed cumulative base yaw over the rollout, in
+            radians. By convention positive is left/CCW and negative is
+            right/CW. Compute it by summing per-step wrapped yaw deltas.
+        translation_drift_m: planar distance the base wandered from its start,
+            i.e. ``hypot(dx, dy)``. An in-place turn should stay small.
+        min_base_height_m: lowest base height reached during the rollout.
+        fell: whether the episode terminated early (a fall).
+        direction: commanded turn direction, ``'left'`` or ``'right'``. ``left``
+            requires ``cum_yaw_rad >= min_yaw_rad``; ``right`` requires
+            ``cum_yaw_rad <= -min_yaw_rad``.
+        min_yaw_rad: minimum magnitude of accumulated yaw to count as a turn.
+        max_drift_m: maximum planar translation drift allowed.
+        min_base_height_m_floor: the base must stay at/above this the whole
+            rollout.
+
+    Returns a :class:`TurnMetrics` whose ``passed`` is True only if every
+    criterion holds.
+    """
+    if direction not in ("left", "right"):
+        raise ValueError("direction must be 'left' or 'right'")
+
+    cyaw = float(cum_yaw_rad)
+    drift = float(translation_drift_m)
+    min_z = float(min_base_height_m)
+
+    fail: list[str] = []
+    if fell:
+        fail.append("fell")
+    if min_z < min_base_height_m_floor:
+        fail.append(f"min_base_height {min_z:.3f}m < {min_base_height_m_floor}m")
+    if direction == "left":
+        if cyaw < min_yaw_rad:
+            fail.append(f"cum_yaw {cyaw:.3f} < {min_yaw_rad} (left)")
+    else:
+        if cyaw > -min_yaw_rad:
+            fail.append(f"cum_yaw {cyaw:.3f} > {-min_yaw_rad} (right)")
+    if drift > max_drift_m:
+        fail.append(f"translation_drift {drift:.3f}m > {max_drift_m}m")
+
+    return TurnMetrics(
+        cum_yaw_rad=cyaw,
+        translation_drift_m=drift,
+        min_base_height_m=min_z,
+        direction=direction,
+        fell=bool(fell),
+        passed=(len(fail) == 0),
+        fail_reasons=tuple(fail),
+    )
+
+
+def grade_stand(
+    dx_m: float,
+    dy_m: float,
+    cum_yaw_rad: float,
+    min_base_height_m: float,
+    fell: bool,
+    *,
+    max_translation_m: float = 0.5,
+    max_yaw_rad: float = 0.8,
+    min_base_height_m_floor: float = 0.7,
+) -> StandMetrics:
+    """Grade a stand/stop command from already-accumulated scalar measurements.
+
+    Like :func:`grade_turn`, this takes pre-reduced scalars so it stays a pure
+    numpy primitive. Standing passes only when the base barely moved or rotated
+    while staying upright.
+
+    Args:
+        dx_m: net base displacement along x over the rollout (``x_end - x_0``).
+        dy_m: net base displacement along y over the rollout (``y_end - y_0``).
+        cum_yaw_rad: net signed cumulative base yaw, in radians (sum of
+            per-step wrapped yaw deltas).
+        min_base_height_m: lowest base height reached during the rollout.
+        fell: whether the episode terminated early (a fall).
+        max_translation_m: maximum allowed |dx| and |dy| (each axis is checked
+            independently, matching the per-action stand gate).
+        max_yaw_rad: maximum allowed |cum_yaw_rad|.
+        min_base_height_m_floor: the base must stay at/above this the whole
+            rollout.
+
+    Returns a :class:`StandMetrics` whose ``passed`` is True only if every
+    criterion holds.
+    """
+    dx = float(dx_m)
+    dy = float(dy_m)
+    cyaw = float(cum_yaw_rad)
+    min_z = float(min_base_height_m)
+
+    fail: list[str] = []
+    if fell:
+        fail.append("fell")
+    if min_z < min_base_height_m_floor:
+        fail.append(f"min_base_height {min_z:.3f}m < {min_base_height_m_floor}m")
+    if abs(dx) > max_translation_m or abs(dy) > max_translation_m:
+        fail.append(
+            f"translation dx {dx:.3f}m dy {dy:.3f}m > {max_translation_m}m"
+        )
+    if abs(cyaw) > max_yaw_rad:
+        fail.append(f"cum_yaw {abs(cyaw):.3f} > {max_yaw_rad}")
+
+    return StandMetrics(
+        delta_x_m=dx,
+        delta_y_m=dy,
+        translation_m=float(np.hypot(dx, dy)),
+        cum_yaw_rad=cyaw,
+        min_base_height_m=min_z,
+        fell=bool(fell),
+        passed=(len(fail) == 0),
         fail_reasons=tuple(fail),
     )
