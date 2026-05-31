@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
 import {
   buildVectorGraph2DLayout,
@@ -1408,9 +1409,7 @@ export function VectorBrowserView({
         <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
           <PagePanel variant="inset" className="p-5">
             {graphLoading ? (
-              <div className="py-16 text-center text-sm italic text-muted">
-                {t("vectorbrowserview.LoadingEmbeddings")}
-              </div>
+              <ListSkeleton rows={5} rowClassName="h-16" />
             ) : (
               <VectorGraph
                 memories={graphMemories}
@@ -1426,9 +1425,7 @@ export function VectorBrowserView({
         <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
           <PagePanel variant="inset" className="p-5">
             {graphLoading ? (
-              <div className="py-16 text-center text-sm italic text-muted">
-                {t("vectorbrowserview.LoadingEmbeddings")}
-              </div>
+              <ListSkeleton rows={5} rowClassName="h-16" />
             ) : (
               <VectorGraph3D
                 memories={graphMemories}

@@ -90,10 +90,11 @@ async function invokeSubaction(
   harness: BlockRuleTestHarness,
   subaction: "list_active" | "release",
   parameters: Record<string, unknown>,
+  message: Memory = EMPTY_MESSAGE,
 ): Promise<ActionResult> {
   const result = await runWebsiteBlockHandler(
     harness.runtime,
-    EMPTY_MESSAGE,
+    message,
     undefined,
     {
       parameters: { subaction, ...parameters },
@@ -179,24 +180,34 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
       gateTodoId: "todo-h",
     });
 
-    const unconfirmed = await invokeSubaction(harness, "release", {
+    const pending = await invokeSubaction(harness, "release", {
       ruleId: normalId,
-      confirmed: false,
+      reason: "done",
     });
-    expect(unconfirmed.success).toBe(false);
+    expect(pending.success).toBe(true);
+    expect(actionData(pending).requiresConfirmation).toBe(true);
 
-    const harshAttempt = await invokeSubaction(harness, "release", {
-      ruleId: harshId,
-      confirmed: true,
-    });
+    const harshAttempt = await invokeSubaction(
+      harness,
+      "release",
+      { ruleId: harshId, reason: "done" },
+      {
+        ...EMPTY_MESSAGE,
+        content: { text: "yes" },
+      } as Memory,
+    );
     expect(harshAttempt.success).toBe(false);
     expect(harshAttempt.text ?? "").toMatch(/harsh_no_bypass/);
 
-    const ok = await invokeSubaction(harness, "release", {
-      ruleId: normalId,
-      confirmed: true,
-      reason: "done",
-    });
+    const ok = await invokeSubaction(
+      harness,
+      "release",
+      { ruleId: normalId, reason: "done" },
+      {
+        ...EMPTY_MESSAGE,
+        content: { text: "yes" },
+      } as Memory,
+    );
     expect(ok.success).toBe(true);
     const reader = new BlockRuleReader(harness.runtime);
     const released = await reader.getBlockRuleById(normalId);

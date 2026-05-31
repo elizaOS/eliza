@@ -1,9 +1,9 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { BrowserBridgeRouteService } from "../service.js";
-import { BROWSER_BRIDGE_ROUTE_SERVICE_TYPE } from "../service.js";
-import type { BrowserBridgeRouteContext } from "./bridge.js";
+import type { BrowserBridgeRouteService } from "../../service.js";
+import { BROWSER_BRIDGE_ROUTE_SERVICE_TYPE } from "../../service.js";
+import type { BrowserBridgeRouteContext } from "../bridge.js";
 
 vi.mock("@elizaos/core", () => ({
   logger: {
@@ -100,7 +100,7 @@ describe("Browser Bridge companion revoke route", () => {
       pathname: "/api/browser-bridge/companions/companion-1/revoke",
       service,
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 

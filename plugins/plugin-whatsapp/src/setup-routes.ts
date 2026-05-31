@@ -24,6 +24,7 @@ import {
   whatsappAuthExists,
   whatsappLogout,
 } from "./pairing-service.js";
+import { isWhatsAppWebhookAuthorized, readWebhookRawBody } from "./webhook-auth.js";
 
 // ── Module-level state ─────────────────────────────────────────────────
 // Replaces WhatsAppRouteState.whatsappPairingSessions — shared across
@@ -150,9 +151,28 @@ async function handleWebhookEvent(
     return;
   }
 
-  const body = req.body as Record<string, unknown> | null;
-  if (!body) {
+  // GHSA-vhvq-g4mq-vq62: verify Meta X-Hub-Signature-256 before any side-effect.
+  if (!isWhatsAppWebhookAuthorized(runtime, req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const rawBody = readWebhookRawBody(req);
+  if (!rawBody) {
     res.status(400).json({ error: "Missing request body" });
+    return;
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      res.status(400).json({ error: "Invalid request body" });
+      return;
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    res.status(400).json({ error: "Invalid request body" });
     return;
   }
 

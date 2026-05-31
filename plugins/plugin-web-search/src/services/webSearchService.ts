@@ -81,7 +81,8 @@ export class WebSearchService extends IWebSearchService {
     static override serviceType = ServiceType.WEB_SEARCH;
     override capabilityDescription = "Web search and content discovery capabilities" as const;
 
-    tavilyClient!: TavilyClient;
+    tavilyClient: TavilyClient | undefined;
+    private configured = false;
 
     static override async start(runtime: IAgentRuntime): Promise<WebSearchService> {
         const service = new WebSearchService(runtime);
@@ -96,12 +97,25 @@ export class WebSearchService extends IWebSearchService {
     private async initialize(runtime: IAgentRuntime): Promise<void> {
         const apiKey = runtime.getSetting("TAVILY_API_KEY");
         if (typeof apiKey !== "string" || apiKey.length === 0) {
-            throw new Error("TAVILY_API_KEY is not set");
+            // Degrade gracefully instead of throwing, so the plugin can be
+            // installed unconfigured without crashing agent boot. The service
+            // stays inert and `search()` reports an honest, recoverable error
+            // until a TAVILY_API_KEY is provided.
+            this.configured = false;
+            logger.warn(
+                { src: "plugin-web-search" },
+                "TAVILY_API_KEY not set — web search is inert until a key is provided"
+            );
+            return;
         }
         this.tavilyClient = tavily({ apiKey });
+        this.configured = true;
     }
 
     async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
+        if (!this.configured || !this.tavilyClient) {
+            throw new Error("Web search is not configured: set TAVILY_API_KEY to enable it.");
+        }
         try {
             const response = await this.tavilyClient.search(query, {
                 includeAnswer: options?.includeAnswer ?? true,

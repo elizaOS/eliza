@@ -44,7 +44,8 @@ export type LinkedAccountProviderId =
 	| 'openai-api'
 	| 'deepseek-api'
 	| 'zai-api'
-	| 'moonshot-api';
+	| 'moonshot-api'
+	| 'cerebras-api';
 
 export type LinkedAccountAccountSource = 'oauth' | 'api-key';
 

@@ -40,6 +40,7 @@ const controllerMock = vi.hoisted(() => ({
       },
     ],
     canSend: true,
+    isOpen: true,
     modelStatus: {
       kind: "not-required",
       blocksSend: false,
@@ -49,6 +50,8 @@ const controllerMock = vi.hoisted(() => ({
       errors: [],
     } as MockModelStatus,
     recording: false,
+    open: vi.fn(),
+    close: vi.fn(),
     send: vi.fn(),
     toggleRecording: vi.fn(),
     startRecording: vi.fn(),
@@ -75,11 +78,21 @@ afterEach(() => {
   controllerMock.value.toggleRecording.mockClear();
   controllerMock.value.startRecording.mockClear();
   controllerMock.value.stopRecording.mockClear();
+  controllerMock.value.open.mockClear();
+  controllerMock.value.close.mockClear();
   controllerMock.value.recording = false;
   controllerMock.value.canSend = true;
+  controllerMock.value.isOpen = true;
   controllerMock.value.modelStatus = { ...NOT_REQUIRED_STATUS };
   backgroundRenders.count = 0;
 });
+
+function openHomeChatPanel() {
+  const pill = screen.queryByTestId("home-chat-pill");
+  if (!pill) return;
+  fireEvent.pointerDown(pill, { clientY: 100 });
+  fireEvent.pointerUp(pill, { clientY: 100 });
+}
 
 describe("HomeView", () => {
   it("renders the homescreen canvas, concise assistant transcript, and the home composer", () => {
@@ -89,11 +102,60 @@ describe("HomeView", () => {
     expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
       "I can open any view and keep the conversation moving.",
     );
+    openHomeChatPanel();
     expect(screen.getByTestId("home-chat-input")).toBeTruthy();
+    expect(screen.getByTestId("home-chat-panel").className).toContain(
+      "animate-[slide-up_180ms_ease-out]",
+    );
+  });
+
+  it("requests chat open from a direct collapsed-pill click", () => {
+    controllerMock.value.isOpen = false;
+
+    render(<HomeView />);
+
+    const pill = screen.getByTestId("home-chat-pill");
+    expect(pill.className).toContain("mx-auto");
+    expect(pill.className).toContain("w-40");
+    expect(pill.className).toContain("backdrop-blur-2xl");
+    expect(pill.className).toContain("hover:scale-[1.04]");
+    expect(pill.className).toContain("focus-visible:outline-none");
+    expect(pill.className).not.toContain("focus-visible:ring");
+    expect(pill.textContent).not.toContain("Ask Eliza");
+
+    fireEvent.click(pill);
+
+    expect(controllerMock.value.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests chat open from a plain pointer release on the collapsed pill", () => {
+    controllerMock.value.isOpen = false;
+
+    render(<HomeView />);
+
+    const pill = screen.getByTestId("home-chat-pill");
+    fireEvent.pointerDown(pill, { clientY: 100 });
+    fireEvent.pointerUp(pill, { clientY: 112 });
+
+    expect(controllerMock.value.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking the orb closes home chat and starts centered voice mode", () => {
+    controllerMock.value.isOpen = true;
+
+    render(<HomeView />);
+
+    fireEvent.click(screen.getByTestId("home-orb-hit"));
+
+    expect(controllerMock.value.close).toHaveBeenCalledTimes(1);
+    expect(controllerMock.value.startRecording).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("home-orb-expanded")).toBeTruthy();
+    expect(screen.getByTestId("home-view").className).toContain("opacity-0");
   });
 
   it("shows recent chats while typing and submits through the shared shell controller", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.focus(input);
@@ -113,6 +175,7 @@ describe("HomeView", () => {
     render(<HomeView />);
 
     expect(backgroundRenders.count).toBe(1);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.focus(input);
@@ -163,6 +226,7 @@ describe("HomeView", () => {
     controllerMock.value.canSend = false;
 
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello" } });
@@ -214,6 +278,7 @@ describe("HomeView", () => {
 
   it("renders the mic as the trailing control and opens voice on a quick tap", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     const input = screen.getByTestId("home-chat-input");
     const mic = screen.getByRole("button", { name: "Start voice input" });
@@ -234,6 +299,7 @@ describe("HomeView", () => {
     vi.useFakeTimers();
     try {
       render(<HomeView />);
+      openHomeChatPanel();
       const mic = screen.getByRole("button", { name: "Start voice input" });
 
       fireEvent.pointerDown(mic, { pointerId: 1, button: 0 });
@@ -252,6 +318,7 @@ describe("HomeView", () => {
 
   it("morphs the mic into a send button once the user types", () => {
     render(<HomeView />);
+    openHomeChatPanel();
 
     expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
 

@@ -14,6 +14,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { sanitizeSpawnEnv } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 
 // ============================================================================
@@ -153,7 +154,8 @@ export async function runCommandWithTimeout(
     return false;
   })();
 
-  const resolvedEnv = env ? { ...process.env, ...env } : { ...process.env };
+  const merged = env ? { ...process.env, ...env } : { ...process.env };
+  const resolvedEnv = sanitizeSpawnEnv(merged) as Record<string, string | undefined>;
   if (shouldSuppressNpmFund) {
     if (resolvedEnv.NPM_CONFIG_FUND == null) {
       resolvedEnv.NPM_CONFIG_FUND = "false";

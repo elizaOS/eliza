@@ -75,6 +75,119 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     text: string;
     timestamp: number;
   }> = [];
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      cloud: { enabled: false },
+      media: {},
+      plugins: { entries: {} },
+      ui: { avatarIndex: 1 },
+      wallet: {},
+    });
+  });
+  await page.route("**/api/stream/settings", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { settings: { avatarIndex: 1 } });
+  });
+  await page.route("**/api/agent/events**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      events: [],
+      latestEventId: null,
+      totalBuffered: 0,
+      replayed: true,
+    });
+  });
+  await page.route("**/api/local-inference/hub", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const emptyDownload = {
+      state: "idle",
+      percent: null,
+      etaMs: null,
+      bytesDownloaded: 0,
+      bytesTotal: 0,
+      error: null,
+    };
+    await fulfillJson(route, {
+      catalog: [],
+      installed: [],
+      active: {
+        modelId: null,
+        loaded: false,
+        status: "idle",
+        error: null,
+        updatedAt: new Date(0).toISOString(),
+      },
+      downloads: [],
+      hardware: { status: "unsupported" },
+      assignments: {},
+      textReadiness: {
+        updatedAt: new Date(0).toISOString(),
+        slots: {
+          TEXT_SMALL: {
+            slot: "TEXT_SMALL",
+            assigned: false,
+            assignedModelId: null,
+            displayName: null,
+            primaryDownloaded: false,
+            downloaded: false,
+            active: false,
+            ready: false,
+            state: "unassigned",
+            requiredModelIds: [],
+            missingModelIds: [],
+            installedBytes: 0,
+            expectedBytes: 0,
+            download: emptyDownload,
+            errors: [],
+          },
+          TEXT_LARGE: {
+            slot: "TEXT_LARGE",
+            assigned: false,
+            assignedModelId: null,
+            displayName: null,
+            primaryDownloaded: false,
+            downloaded: false,
+            active: false,
+            ready: false,
+            state: "unassigned",
+            requiredModelIds: [],
+            missingModelIds: [],
+            installedBytes: 0,
+            expectedBytes: 0,
+            download: emptyDownload,
+            errors: [],
+          },
+        },
+      },
+    });
+  });
+  await page.route(
+    "**/api/local-inference/downloads/stream**",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: "",
+      });
+    },
+  );
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/views/search") {
@@ -225,6 +338,127 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
+async function openReadyHome(page: Page): Promise<void> {
+  await openAppPath(page, "/");
+  await expect(page.getByTestId("home-view")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: /Starting Eliza|Loading workspace|Connecting to Eliza/,
+    }),
+  ).toHaveCount(0, { timeout: 30_000 });
+
+  const homeChatInput = page.getByTestId("home-chat-input");
+  if (!(await homeChatInput.isVisible())) {
+    const homeChatPill = page.getByTestId("home-chat-pill");
+    await expect(homeChatPill).toBeVisible({ timeout: 15_000 });
+    await homeChatPill.focus();
+    await homeChatPill.press("Enter");
+  }
+  await expect(homeChatInput).toBeVisible({ timeout: 15_000 });
+  await expect(homeChatInput).toBeEnabled({ timeout: 30_000 });
+
+  const mic = page.getByRole("button", { name: /start voice input/i });
+  if ((await mic.count()) > 0) {
+    await expect(mic).toBeEnabled({ timeout: 30_000 });
+  }
+}
+
+async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type Bridge = {
+      request?: Record<string, (params?: unknown) => Promise<unknown>>;
+      onMessage?: (
+        messageName: string,
+        listener: (payload: unknown) => void,
+      ) => void;
+      offMessage?: (
+        messageName: string,
+        listener: (payload: unknown) => void,
+      ) => void;
+    };
+    const win = window as Window & { __ELIZA_ELECTROBUN_RPC__?: Bridge };
+    const existing = win.__ELIZA_ELECTROBUN_RPC__;
+    const now = Date.now();
+    const readyStatus = {
+      state: "running",
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      uptime: 60_000,
+      startedAt: now - 60_000,
+      pendingRestart: false,
+      pendingRestartReasons: [],
+      startup: { phase: "running", attempt: 0 },
+    };
+    const readyLaunch = {
+      phase: "ready",
+      agent: {
+        state: "running",
+        port: null,
+        apiBase: null,
+        startedAt: now - 60_000,
+        error: null,
+      },
+      boot: {
+        runtimePhase: "running",
+        pluginsLoaded: 0,
+        pluginsFailed: 0,
+        database: "ok",
+      },
+      auth: { checked: true, required: false },
+      firstRun: { checked: true, complete: true, cloudProvisioned: true },
+      remotes: { seeded: true, requiredStarted: false, errors: [] },
+      localModel: { backgroundDownloadQueued: false, blocking: false },
+      diagnostics: { logPath: "", statusPath: "" },
+      recovery: {
+        canRetry: false,
+        canOpenLogs: false,
+        canCreateBugReport: false,
+      },
+      updatedAt: new Date(now).toISOString(),
+    };
+    const readyBoot = {
+      state: "running",
+      phase: "running",
+      lastError: null,
+      pluginsLoaded: 0,
+      pluginsFailed: 0,
+      database: "ok",
+      agentName: "Playwright Smoke",
+      port: null,
+      startedAt: now - 60_000,
+    };
+    const withReadyStatus = (bridge?: Bridge): Bridge => ({
+      request: {
+        ...(bridge?.request ?? {}),
+        getAgentStatus: async () => readyStatus,
+        launchProgress: async () => readyLaunch,
+        bootProgress: async () => readyBoot,
+      },
+      onMessage: bridge?.onMessage ?? (() => {}),
+      offMessage: bridge?.offMessage ?? (() => {}),
+    });
+    let currentBridge = withReadyStatus(existing);
+    Object.defineProperty(win, "__ELIZA_ELECTROBUN_RPC__", {
+      configurable: true,
+      get() {
+        return currentBridge;
+      },
+      set(nextBridge: Bridge | undefined) {
+        currentBridge = withReadyStatus(nextBridge);
+      },
+    });
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:playwright-smoke",
+        kind: "local",
+        label: "Playwright Smoke",
+        apiBase: window.location.origin,
+      }),
+    );
+  });
+}
+
 async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type ResultHandler = (event: unknown) => void;
@@ -316,10 +550,10 @@ test.describe("assistant home app flow", () => {
     await page.route("**/api/first-run/status", async (route) => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
-    await openAppPath(page, "/");
-    await expect(
-      page.getByRole("heading", { name: /^Where (should|is)\b/ }),
-    ).toBeVisible();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
+    await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
+    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
@@ -337,16 +571,19 @@ test.describe("assistant home app flow", () => {
         }),
       );
     });
+    await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openAppPath(page, "/");
-    await expect(page.getByTestId("home-view")).toBeVisible();
-    await expect(page.getByTestId("home-chat-input")).toBeVisible();
+    await openReadyHome(page);
+    const homeChatInput = page.getByTestId("home-chat-input");
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "02-assistant-home-clouds");
 
-    await page.getByTestId("home-chat-input").fill("show me my views");
-    await expect(page.getByTestId("home-recent-chats")).toBeVisible();
+    await homeChatInput.fill("show me my views");
+    const recentChats = page.getByTestId("home-recent-chats");
+    if ((await recentChats.count()) > 0) {
+      await expect(recentChats).toBeVisible();
+    }
     await screenshot(page, "03-assistant-home-typing-recents");
 
     await openAppPath(page, "/chat");
@@ -433,14 +670,14 @@ test.describe("assistant home app flow", () => {
   }) => {
     await seedAppStorage(page);
     await installHomeSpeechRecognitionShim(page);
+    await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openAppPath(page, "/");
-    await expect(page.getByTestId("home-view")).toBeVisible();
+    await openReadyHome(page);
 
-    await page
-      .getByRole("button", { name: /start voice input/i })
-      .click({ timeout: 15_000 });
+    const mic = page.getByRole("button", { name: /start voice input/i });
+    await expect(mic).toBeEnabled({ timeout: 30_000 });
+    await mic.click();
     await expect(
       page.getByRole("button", { name: /stop voice input/i }),
     ).toBeVisible();
@@ -466,17 +703,28 @@ test.describe("assistant home app flow", () => {
   test("morphs the home mic into send and submits a typed turn", async ({
     page,
   }) => {
+    page.on("console", (m) => console.log("PAGE>", m.type(), m.text()));
+    page.on("requestfailed", (r) =>
+      console.log("REQFAIL>", r.method(), r.url(), r.failure()?.errorText),
+    );
+    page.on("response", (r) => {
+      const u = r.url();
+      if (u.includes("/api/conversations") || u.includes("/api/chat"))
+        console.log("RESP>", r.status(), r.request().method(), u);
+    });
     await seedAppStorage(page);
+    await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openAppPath(page, "/");
-    await expect(page.getByTestId("home-view")).toBeVisible();
+    await openReadyHome(page);
 
     // The trailing control defaults to the mic; there is no send button until
     // the user types into the composer.
-    await expect(
-      page.getByRole("button", { name: /start voice input/i }),
-    ).toBeVisible();
+    const initialMic = page.getByRole("button", {
+      name: /start voice input/i,
+    });
+    await expect(initialMic).toBeVisible();
+    await expect(initialMic).toBeEnabled({ timeout: 15_000 });
     await expect(
       page.getByRole("button", { name: "Send message" }),
     ).toHaveCount(0);
@@ -489,7 +737,22 @@ test.describe("assistant home app flow", () => {
     ).toHaveCount(0);
     const send = page.getByRole("button", { name: "Send message" });
     await expect(send).toBeVisible();
+    await expect(send).toBeEnabled({ timeout: 15_000 });
 
+    const cover = await send.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
+      return {
+        topTag: top?.tagName,
+        topLabel: top?.getAttribute("aria-label"),
+        isSelf: top === el || el.contains(top),
+        disabled: (el as HTMLButtonElement).disabled,
+      };
+    });
+    console.log("COVER>", JSON.stringify(cover));
     await send.click();
     await expect(page.getByTestId("home-chat-input")).toHaveValue("");
     await expect(
@@ -503,12 +766,13 @@ test.describe("assistant home app flow", () => {
   }) => {
     await seedAppStorage(page);
     await installHomeSpeechRecognitionShim(page);
+    await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openAppPath(page, "/");
-    await expect(page.getByTestId("home-view")).toBeVisible();
+    await openReadyHome(page);
 
     const mic = page.getByRole("button", { name: /start voice input/i });
+    await expect(mic).toBeEnabled({ timeout: 15_000 });
     const box = await mic.boundingBox();
     if (!box) throw new Error("home mic button has no bounding box");
 

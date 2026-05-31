@@ -104,6 +104,7 @@ import {
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
+  assertBrowserWorkspaceUserScriptAllowed,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
@@ -750,6 +751,12 @@ export async function executeBrowserWorkspaceCommand(
           command,
         )) as BrowserWorkspaceCommandResult;
       }
+      assertBrowserWorkspaceUserScriptAllowed(
+        command.script,
+        "eval",
+        "desktop",
+        env,
+      );
       const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
       return {
         mode: "desktop",

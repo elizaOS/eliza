@@ -61,12 +61,6 @@
     filter 0.22s ease;
 }
 
-.elizaos-voice-pill__hit:focus-visible .elizaos-voice-pill__pill {
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.85),
-    0 4px 18px rgba(0, 0, 0, 0.26);
-}
-
 /* Expanded chat panel — transparent shell; bubbles carry the glass */
 .elizaos-voice-pill__chat {
   width: 280px;

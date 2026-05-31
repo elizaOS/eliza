@@ -109,6 +109,20 @@ export class WalletBackendService extends Service {
     };
   }
 
+  /**
+   * Resolve chain + required fields without signing. Used before out-of-band
+   * financial confirmation so invalid params fail fast (GHSA-rqm7-f4jc-84x3).
+   */
+  preflightWalletAction(
+    params: WalletRouterParams,
+  ): WalletRouterFailure | null {
+    const handlerResult = this.resolveHandler(params);
+    if (!handlerResult.ok) {
+      return handlerResult;
+    }
+    return this.validateRequiredParams(params);
+  }
+
   async routeWalletAction(
     params: WalletRouterParams,
   ): Promise<WalletRouterResult> {

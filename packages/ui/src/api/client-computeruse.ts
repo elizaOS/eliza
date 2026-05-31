@@ -16,7 +16,9 @@ export interface ComputerUsePendingApproval {
 export interface ComputerUseApprovalSnapshot {
   mode: ComputerUseApprovalMode;
   pendingCount: number;
-  pendingApprovals: ComputerUsePendingApproval[];
+  // Optional: the server may omit this in partial/error snapshots served during
+  // recovery windows. Consumers must default it (see ComputerUseApprovalOverlay).
+  pendingApprovals?: ComputerUsePendingApproval[];
 }
 
 export interface ComputerUseApprovalResolution {

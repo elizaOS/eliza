@@ -4,8 +4,10 @@ import {
   Cloud,
   HardDrive,
   Loader2,
+  Mic,
   MicOff,
   Network,
+  Settings2,
   Volume2,
 } from "lucide-react";
 import * as React from "react";
@@ -16,6 +18,7 @@ import {
   type FirstRunStep,
   normalizeFirstRunName,
 } from "../../first-run/first-run";
+import type { MicrophonePermissionController } from "../../first-run/use-microphone-permission";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -46,6 +49,7 @@ export interface FirstRunShellProps {
     transcript: string;
     error: string | null;
   };
+  microphone: MicrophonePermissionController;
   primaryLabel: string;
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
@@ -319,23 +323,38 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const characters = Array.from(text);
-    let index = 0;
     setRendered("");
     setComplete(false);
 
+    // Drive the reveal off elapsed wall-clock time rather than counting one
+    // character per timer tick. Under main-thread contention (the onboarding
+    // orb/cloud animations plus this hook re-rendering the whole shell on every
+    // character) the chained timers fire hundreds of ms apart instead of ~20ms,
+    // which previously stretched a ~0.6s animation to ~18s and left the heading
+    // mid-word for seconds. Catching up to the time-derived index keeps the
+    // total reveal bounded by REVEAL_DURATION_MS no matter how starved the
+    // event loop is, so the completed prompt is always available promptly.
+    const REVEAL_DURATION_MS = 600;
+    const STEP_MS = 22;
+    const startedAt =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+
     const reveal = () => {
       if (cancelled) return;
-      index += 1;
-      setRendered(characters.slice(0, index).join(""));
-      if (index >= characters.length) {
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      const progress = Math.min(1, (now - startedAt) / REVEAL_DURATION_MS);
+      const index = Math.max(1, Math.ceil(progress * characters.length));
+      if (progress >= 1 || index >= characters.length) {
+        setRendered(text);
         setComplete(true);
         return;
       }
-      const previous = characters[index - 1];
-      timeout = setTimeout(reveal, previous === " " ? 12 : 22);
+      setRendered(characters.slice(0, index).join(""));
+      timeout = setTimeout(reveal, STEP_MS);
     };
 
-    timeout = setTimeout(reveal, 40);
+    timeout = setTimeout(reveal, STEP_MS);
     return () => {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
@@ -366,6 +385,84 @@ function FirstRunStatus(props: {
     <p className="max-w-[40rem] rounded-sm border border-destructive/40 bg-destructive-subtle px-4 py-2 text-center text-sm text-destructive">
       {message}
     </p>
+  );
+}
+
+function FirstRunMicrophonePermission(props: {
+  microphone: MicrophonePermissionController;
+  t: TranslateFn;
+}) {
+  const { microphone, t } = props;
+  const { status, canRequest, requesting } = microphone;
+
+  if (status === "granted") {
+    return (
+      <div className="flex min-h-[2.75rem] items-center justify-center">
+        <StatusBadge
+          label={t("firstrunshell.micGranted", {
+            defaultValue: "Microphone ready",
+          })}
+          variant="success"
+          icon={<Mic />}
+          withDot
+        />
+      </div>
+    );
+  }
+
+  // `not-applicable` means the renderer has no microphone API at all (e.g. a
+  // headless surface) — there is nothing actionable to show.
+  if (status === "not-applicable") {
+    return null;
+  }
+
+  const denied =
+    status === "denied" || status === "restricted" || canRequest === false;
+
+  return (
+    <div className="flex min-h-[2.75rem] w-full flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          void (denied ? microphone.openSettings() : microphone.request());
+        }}
+        disabled={requesting}
+        data-testid={
+          denied
+            ? "first-run-microphone-open-settings"
+            : "first-run-microphone-request"
+        }
+        className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-45 ${GLASS_INTERACTIVE}`}
+      >
+        {requesting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : denied ? (
+          <Settings2 className="h-4 w-4" />
+        ) : (
+          <Mic className="h-4 w-4" />
+        )}
+        {requesting
+          ? t("firstrunshell.micRequesting", { defaultValue: "Requesting…" })
+          : denied
+            ? t("firstrunshell.micOpenSettings", {
+                defaultValue: "Open Settings",
+              })
+            : t("firstrunshell.micEnable", {
+                defaultValue: "Enable microphone",
+              })}
+      </button>
+      <p className="max-w-[24rem] text-center text-xs text-[var(--first-run-text-muted)]">
+        {denied
+          ? t("firstrunshell.micDeniedHelp", {
+              defaultValue:
+                "Microphone access is blocked. Grant it in settings to talk to your assistant.",
+            })
+          : t("firstrunshell.micHelp", {
+              defaultValue:
+                "Your assistant is voice-first. Enable the microphone to talk to it.",
+            })}
+      </p>
+    </div>
   );
 }
 
@@ -585,6 +682,7 @@ export function FirstRunShell({
   error,
   cloudError,
   voice,
+  microphone,
   primaryLabel,
   canBack,
   updateDraft,
@@ -659,6 +757,9 @@ export function FirstRunShell({
                 finishRuntime={finishRuntime}
                 t={t}
               />
+            ) : null}
+            {promptComplete && step === "runtime" ? (
+              <FirstRunMicrophonePermission microphone={microphone} t={t} />
             ) : null}
             {promptComplete ? (
               <FirstRunVoiceControl

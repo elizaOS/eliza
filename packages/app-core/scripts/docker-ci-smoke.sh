@@ -7,24 +7,61 @@ set -Eeuo pipefail
 #   1. Installs deps with bun using the committed lockfile
 #   2. Builds required runtime/UI artifacts for Dockerfile.ci
 #   3. Builds the production image locally
-#   4. Optionally boots the container and probes /api/health or /api/status
+#   4. Boots the container running the REAL agent entrypoint and probes
+#      /api/health or /api/status, failing if the agent crashes on startup
+#
+# The boot probe runs the image's default command (APP_CMD_START =
+# the absolute tsx loader plus `packages/agent/dist/bin.js start`), i.e. the
+# actual production entrypoint. It does NOT substitute a stub health server, so a
+# broken runtime dependency closure (missing zod / @elizaos/core / chalk /
+# etc.) surfaces as a RED build instead of shipping a container that crashes
+# the moment it boots in production.
 #
 # Usage:
 #   bash packages/app-core/scripts/docker-ci-smoke.sh [--tag TAG] [--version VERSION] [--skip-smoke]
+#   # Verify an already-built/pulled image without rebuilding:
+#   DOCKER_IMAGE=ghcr.io/... bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
 #
 # Environment:
 #   BUN_VERSION          Bun version to install/use in CI (default: 1.3.9)
 #   SMOKE_PORT           Host port to bind for smoke boot (default: 32138)
 #   SMOKE_TIMEOUT_SEC    Max wait for boot probe (default: 420)
 #   DOCKER_IMAGE         Override image tag completely
+#   BOOT_VERIFY_ONLY     If "true", skip the build and only boot-verify
+#                        DOCKER_IMAGE (must be set). Equivalent to
+#                        --boot-verify-only.
+#   SMOKE_CHARACTER_JSON Optional minimal character JSON injected via
+#                        ELIZA_AGENT_CHARACTER_JSON for the boot.
 
 BUN_VERSION="${BUN_VERSION:-1.3.10}"
 SMOKE_PORT="${SMOKE_PORT:-32138}"
 CONTAINER_PORT="${CONTAINER_PORT:-42138}"
 SMOKE_TIMEOUT_SEC="${SMOKE_TIMEOUT_SEC:-420}"
 SKIP_SMOKE=false
+BOOT_VERIFY_ONLY="${BOOT_VERIFY_ONLY:-false}"
 TAG="docker-smoke"
 VERSION=""
+
+# Log signatures that mean the agent crashed during startup. If any of these
+# show up in the container logs we fail immediately rather than waiting out the
+# full timeout. These are the exact failure modes (missing runtime deps,
+# entrypoint blowups) that previously shipped green because the smoke step
+# booted a stub health server instead of the real entrypoint.
+#
+# Kept deliberately specific to module-resolution failures and explicit
+# fatal-startup markers so a benign warning that merely contains a generic word
+# (FATAL, Cannot read properties of undefined, ...) does not flap the gate. The
+# container-exit and health-timeout checks below are the backstops for any crash
+# that does not print one of these.
+BOOT_CRASH_PATTERNS=(
+  'Cannot find package'
+  'Cannot find module'
+  'ERR_MODULE_NOT_FOUND'
+  'ERR_REQUIRE_ESM'
+  'MODULE_NOT_FOUND'
+  'Failed to start'
+  'crashed during init'
+)
 
 log() {
   printf '[docker-ci-smoke] %s\n' "$*"
@@ -86,6 +123,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_SMOKE=true
       shift
       ;;
+    --boot-verify-only)
+      BOOT_VERIFY_ONLY=true
+      shift
+      ;;
     -h|--help)
       sed -n '1,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -141,7 +182,7 @@ load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
-APP_CMD_START="${APP_CMD_START:-node --import tsx ${APP_ENTRYPOINT} start}"
+APP_CMD_START="${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
@@ -166,9 +207,13 @@ log "Smoke port: $SMOKE_PORT"
 log "Container port override: $CONTAINER_PORT"
 log "Artifact dir: $SMOKE_ARTIFACT_DIR"
 
-command -v node >/dev/null 2>&1 || fail "node is required"
-command -v bun >/dev/null 2>&1 || fail "bun is required"
-BUN_BIN="$(command -v bun)"
+# bun/node are only needed for the build path. In boot-verify-only mode we
+# just run an already-built image, so don't hard-require them.
+if [[ "$BOOT_VERIFY_ONLY" != "true" ]]; then
+  command -v node >/dev/null 2>&1 || fail "node is required"
+  command -v bun >/dev/null 2>&1 || fail "bun is required"
+  BUN_BIN="$(command -v bun)"
+fi
 
 DOCKER_BIN="$(find_docker_bin)" || fail "docker is required"
 
@@ -203,6 +248,207 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# boot_verify boots the just-built (or pre-supplied) image running the REAL
+# agent entrypoint and fails the script if the agent crashes on startup or
+# never serves health. This is the gate that stops a container that crashes on
+# boot (missing runtime deps, broken entrypoint) from shipping green.
+boot_verify() {
+  log "Starting container boot verification (real agent entrypoint)"
+  log "Command under test: ${APP_CMD_START}"
+
+  # A tiny, valid character so the agent has a concrete identity to boot with.
+  # The runtime falls back to a bundled default if this is unset, but pinning
+  # one keeps the boot deterministic across branches.
+  local character_json
+  character_json="${SMOKE_CHARACTER_JSON:-{\"name\":\"CiSmoke\",\"bio\":[\"CI boot verification agent.\"],\"system\":\"You are a CI boot probe.\"}}"
+
+  # Unique pglite data dir per run avoids the data-dir lock that makes a
+  # second container on the same host fail to acquire the store.
+  local pglite_dir="/tmp/ci-db-${RANDOM}-${RANDOM}"
+
+  "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  # NOTE: no command override here. The container runs its default CMD
+  # (APP_CMD_START = the real absolute tsx loader plus agent dist start).
+  # Substituting a stub health server is exactly what let broken
+  # images ship green before; do not reintroduce it.
+  "$DOCKER_BIN" run -d \
+    --name "$CONTAINER_NAME" \
+    -e PORT="$CONTAINER_PORT" \
+    -e APP_PORT="$CONTAINER_PORT" \
+    -e ELIZA_PORT="$CONTAINER_PORT" \
+    -e ELIZA_API_PORT="$CONTAINER_PORT" \
+    -e ELIZA_AGENT_PORT="$CONTAINER_PORT" \
+    -e APP_API_BIND=0.0.0.0 \
+    -e ELIZA_API_BIND=0.0.0.0 \
+    -e AGENT_API_BIND=0.0.0.0 \
+    -e ELIZA_AGENT_CHARACTER_JSON="$character_json" \
+    -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
+    -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
+    -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
+    -e ELIZA_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
+    -e PGLITE_DATA_DIR="$pglite_dir" \
+    -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
+    -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
+    "$DOCKER_IMAGE" >/dev/null
+
+  local status_url="http://127.0.0.1:${SMOKE_PORT}/api/status"
+  local health_url="http://127.0.0.1:${SMOKE_PORT}/api/health"
+
+  probe_ok() {
+    local url="$1"
+    local out="$2"
+    local code
+    code="$(curl -sS --connect-timeout 1 --max-time 3 -o "$out" -w '%{http_code}' "$url" || true)"
+    case "$code" in
+      200)
+        return 0
+        ;;
+      401)
+        if grep -q 'Unauthorized' "$out" 2>/dev/null; then
+          return 0
+        fi
+        ;;
+    esac
+    return 1
+  }
+
+  # Scan container logs for known crash signatures. Returns 0 (match) when the
+  # agent has crashed on startup so we can fail fast with a clear message
+  # instead of waiting out the whole timeout.
+  scan_crash() {
+    local logs_file="$1"
+    local pattern
+    for pattern in "${BOOT_CRASH_PATTERNS[@]}"; do
+      if grep -qiF "$pattern" "$logs_file" 2>/dev/null; then
+        printf '%s' "$pattern"
+        return 0
+      fi
+    done
+    return 1
+  }
+
+  # Confirm health by probing a few times in a row before declaring success,
+  # so a single transient curl failure does not flap the gate.
+  confirm_ok() {
+    local url="$1"
+    local out="$2"
+    local i
+    for i in 1 2 3; do
+      probe_ok "$url" "$out" || return 1
+      [[ "$i" -lt 3 ]] && sleep 1
+    done
+    return 0
+  }
+
+  # Post-health observation window: after health first comes up, keep watching
+  # the container for a short window so a crash that happens just AFTER the
+  # server binds (async plugin/runtime init blowing up post-listen) still turns
+  # the gate RED instead of slipping through. Only scans logs emitted AFTER the
+  # passed-in checkpoint ("$1", an RFC3339 UTC timestamp captured when health
+  # first succeeded) so a benign pre-health crash signature can't false-positive.
+  # Returns non-zero if the container dies or logs a crash signature in-window.
+  confirm_stable() {
+    local since="$1"
+    local window="${BOOT_STABLE_WINDOW_SEC:-15}"
+    local stable_logs="$SMOKE_ARTIFACT_DIR/post-health.log"
+    local stable_deadline=$((SECONDS + window))
+    while (( SECONDS < stable_deadline )); do
+      timeout 30 "$DOCKER_BIN" logs --since "$since" "$CONTAINER_NAME" >"$stable_logs" 2>&1 || true
+      local m
+      if m="$(scan_crash "$stable_logs")"; then
+        log "Crash signature appeared after health came up: '${m}'"
+        timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+        return 1
+      fi
+      if ! timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' 2>/dev/null | grep -Fxq "$CONTAINER_NAME"; then
+        local code
+        code="$(timeout 10 "$DOCKER_BIN" inspect -f '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null || echo '?')"
+        log "Container exited (exit code ${code}) during the post-health window"
+        timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+        return 1
+      fi
+      sleep 3
+    done
+    return 0
+  }
+
+  local logs_file="$SMOKE_ARTIFACT_DIR/boot.log"
+  local deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
+  local last_log_dump=0
+  while (( SECONDS < deadline )); do
+    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$logs_file" 2>&1 || true
+
+    # Fail fast on a known crash signature in the logs.
+    local matched
+    if matched="$(scan_crash "$logs_file")"; then
+      log "Detected startup crash signature in container logs: '${matched}'"
+      timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+      log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
+      fail "Agent crashed on startup (matched '${matched}'); image is NOT bootable"
+    fi
+
+    local running_containers_file
+    running_containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-running-containers.txt")"
+    timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' >"$running_containers_file" 2>&1 || true
+    if ! grep -Fxq "$CONTAINER_NAME" "$running_containers_file" 2>/dev/null; then
+      rm -f "$running_containers_file" >/dev/null 2>&1 || true
+      local exit_code
+      exit_code="$(timeout 10 "$DOCKER_BIN" inspect -f '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null || echo '?')"
+      timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+      log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
+      fail "Container exited (exit code ${exit_code}) before health came up; image is NOT bootable"
+    fi
+    rm -f "$running_containers_file" >/dev/null 2>&1 || true
+
+    if (( SECONDS - last_log_dump >= 30 )); then
+      last_log_dump=$SECONDS
+      log "Container still booting; recent logs follow"
+      timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
+    fi
+
+    if confirm_ok "$health_url" /tmp/eliza-docker-health.txt; then
+      log "Health probe succeeded against the real entrypoint: $health_url"
+      cat /tmp/eliza-docker-health.txt
+      local health_ts
+      health_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
+      confirm_stable "$health_ts" && { log "Boot verified: agent stayed up after health came up"; return 0; }
+      fail "Agent served health then crashed during the post-health window; image is NOT bootable"
+    fi
+
+    if confirm_ok "$status_url" /tmp/eliza-docker-status.txt; then
+      log "Status probe succeeded against the real entrypoint: $status_url"
+      cat /tmp/eliza-docker-status.txt
+      local status_ts
+      status_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
+      confirm_stable "$status_ts" && { log "Boot verified: agent stayed up after status came up"; return 0; }
+      fail "Agent served status then crashed during the post-health window; image is NOT bootable"
+    fi
+
+    sleep 5
+  done
+
+  timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+  log "Preserved timeout artifacts in $SMOKE_ARTIFACT_DIR"
+  fail "Timed out waiting for the real agent to serve health (${SMOKE_TIMEOUT_SEC}s); image is NOT bootable"
+}
+
+# Boot-verify-only mode: skip the entire build and just verify a pre-built
+# image (DOCKER_IMAGE must be set/pullable). Used by the build workflow to
+# verify the image it just built locally before pushing.
+if [[ "$BOOT_VERIFY_ONLY" == "true" ]]; then
+  log "Boot-verify-only mode: skipping build, verifying $DOCKER_IMAGE"
+  if ! "$DOCKER_BIN" image inspect "$DOCKER_IMAGE" >/dev/null 2>&1; then
+    log "Image $DOCKER_IMAGE not present locally; attempting pull"
+    "$DOCKER_BIN" pull "$DOCKER_IMAGE" >/dev/null 2>&1 || fail "Image $DOCKER_IMAGE not available locally and pull failed"
+  fi
+  if $SKIP_SMOKE; then
+    log "Skipping runtime boot (--skip-smoke)"
+    exit 0
+  fi
+  boot_verify
+  exit 0
+fi
 
 log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
@@ -438,85 +684,4 @@ if $SKIP_SMOKE; then
   exit 0
 fi
 
-log "Starting container smoke boot"
-"$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-"$DOCKER_BIN" run -d \
-  --name "$CONTAINER_NAME" \
-  -e PORT="$CONTAINER_PORT" \
-  -e APP_PORT="$CONTAINER_PORT" \
-  -e ELIZA_API_PORT="$CONTAINER_PORT" \
-  -e ELIZA_API_PORT="$CONTAINER_PORT" \
-  -e ELIZA_PORT="$CONTAINER_PORT" \
-  -e APP_API_BIND=0.0.0.0 \
-  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
-  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
-  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
-  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
-  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
-  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
-  -e ELIZA_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
-  -e PGLITE_DATA_DIR=/tmp/eliza-smoke/pglite \
-  -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
-  -e ELIZA_API_BIND=0.0.0.0 \
-  -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
-  "$DOCKER_IMAGE" \
-  sh -lc 'node -e '"'"'const http=require("node:http");const port=Number(process.env.PORT||process.env.APP_PORT||process.env.ELIZA_PORT||2138);http.createServer((req,res)=>{if(req.url==="/api/health"||req.url==="/api/status"){res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,smoke:true}));return;}res.writeHead(404);res.end();}).listen(port,"0.0.0.0",()=>console.log(`[docker-ci-smoke] health server listening on ${port}`));'"'"'' >/dev/null
-
-status_url="http://127.0.0.1:${SMOKE_PORT}/api/status"
-health_url="http://127.0.0.1:${SMOKE_PORT}/api/health"
-
-probe_ok() {
-  local url="$1"
-  local out="$2"
-  local code
-  code="$(curl -sS --connect-timeout 1 --max-time 3 -o "$out" -w '%{http_code}' "$url" || true)"
-  case "$code" in
-    200)
-      return 0
-      ;;
-    401)
-      if grep -q 'Unauthorized' "$out" 2>/dev/null; then
-        return 0
-      fi
-      ;;
-  esac
-  return 1
-}
-
-deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
-last_log_dump=0
-while (( SECONDS < deadline )); do
-  running_containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-running-containers.txt")"
-  timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' >"$running_containers_file" 2>&1 || true
-  if ! grep -Fxq "$CONTAINER_NAME" "$running_containers_file" 2>/dev/null; then
-    rm -f "$running_containers_file" >/dev/null 2>&1 || true
-    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
-    log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
-    fail "Container exited before smoke probe succeeded"
-  fi
-  rm -f "$running_containers_file" >/dev/null 2>&1 || true
-
-  if (( SECONDS - last_log_dump >= 30 )); then
-    last_log_dump=$SECONDS
-    log "Container still booting; recent logs follow"
-    timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
-  fi
-
-  if probe_ok "$health_url" /tmp/eliza-docker-health.txt; then
-    log "Health probe succeeded: $health_url"
-    cat /tmp/eliza-docker-health.txt
-    exit 0
-  fi
-
-  if probe_ok "$status_url" /tmp/eliza-docker-status.txt; then
-    log "Status probe succeeded: $status_url"
-    cat /tmp/eliza-docker-status.txt
-    exit 0
-  fi
-
-  sleep 5
-done
-
-timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
-log "Preserved timeout artifacts in $SMOKE_ARTIFACT_DIR"
-fail "Timed out waiting for container smoke probe (${SMOKE_TIMEOUT_SEC}s)"
+boot_verify

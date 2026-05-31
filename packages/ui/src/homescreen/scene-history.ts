@@ -27,7 +27,11 @@ const DEFAULT_LIMIT = 50;
 
 /** The scene at the cursor — the one the editor renders. */
 export function currentScene(history: SceneHistory): HomescreenScene {
-  return history.entries[history.cursor]!;
+  const scene = history.entries[history.cursor];
+  if (!scene) {
+    throw new Error("Scene history cursor is out of bounds");
+  }
+  return scene;
 }
 
 export function canUndo(history: SceneHistory): boolean {

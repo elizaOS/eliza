@@ -37,6 +37,7 @@ import { formatByteSize } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import {
   DocumentViewer,
   getDocumentSummary,
@@ -357,7 +358,8 @@ export function DocumentsView({
   useEffect(() => {
     // Revalidate silently when cached documents are already on screen.
     loadData({
-      silent: getCached<DocumentRecord[]>(`documents:list:${scopeFilter}`) != null,
+      silent:
+        getCached<DocumentRecord[]>(`documents:list:${scopeFilter}`) != null,
     }).catch(() => {
       setLoading(false);
     });
@@ -1098,13 +1100,7 @@ export function DocumentsView({
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
           {loading && !isShowingSearchResults && documents.length === 0 && (
-            <PagePanel.Empty
-              variant="inset"
-              className="px-0 py-10 text-center text-sm font-medium !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
-              title={t("documentsview.LoadingDocuments")}
-            >
-              {t("documentsview.LoadingDocuments")}
-            </PagePanel.Empty>
+            <ListSkeleton rows={6} />
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (

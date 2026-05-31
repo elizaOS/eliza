@@ -318,11 +318,14 @@ export * from "./utils/channel-utils";
 export type {
 	ConfirmationDecision,
 	ConfirmationStatus,
+	DestructiveConfirmationGateResult,
 	RequireConfirmationArgs,
 } from "./utils/confirmation";
 // Unified two-phase confirmation helper for destructive actions.
 export {
 	clearPendingConfirmation,
+	gateDestructiveConfirmation,
+	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)

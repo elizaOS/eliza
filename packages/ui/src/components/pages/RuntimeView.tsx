@@ -25,6 +25,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
 
 type RuntimeSectionKey =
   | "summary"
@@ -660,16 +661,14 @@ export function RuntimeView({
           </div>
         ) : null}
 
-        {!snapshot ? (
+        {loading && !snapshot ? (
+          <DetailSkeleton className="min-h-[24rem]" />
+        ) : !snapshot ? (
           <PagePanel.Empty
             variant="panel"
             className="min-h-[24rem]"
             description={t("runtimeview.loadingDescription")}
-            title={
-              loading
-                ? t("runtimeview.loadingSnapshot")
-                : t("runtimeview.noSnapshotAvailable")
-            }
+            title={t("runtimeview.noSnapshotAvailable")}
           />
         ) : !snapshot.runtimeAvailable ? (
           <PagePanel.Empty

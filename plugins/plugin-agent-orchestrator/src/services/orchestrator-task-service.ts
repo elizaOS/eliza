@@ -268,13 +268,45 @@ export class OrchestratorTaskService extends Service {
     this.started = true;
     const acp = this.acp();
     if (acp) {
-      this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
-        void this.onSessionEvent(sessionId, event, data);
-      });
-    } else {
+      this.subscribeToAcp(acp);
+      return;
+    }
+    // ACP may not be registered yet — service start order during boot isn't
+    // guaranteed. Wait for it to load so session events are still recorded once
+    // it comes online, instead of giving up after the first miss.
+    void this.bindToAcpWhenReady();
+  }
+
+  private subscribeToAcp(acp: AcpService): void {
+    this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
+      void this.onSessionEvent(sessionId, event, data);
+    });
+  }
+
+  private async bindToAcpWhenReady(): Promise<void> {
+    const getLoadPromise = this.runtime.getServiceLoadPromise;
+    if (typeof getLoadPromise !== "function") {
       this.log(
         "warn",
         "ACP service unavailable at start; session events will not be recorded",
+      );
+      return;
+    }
+    try {
+      const acp = (await getLoadPromise.call(
+        this.runtime,
+        AcpService.serviceType,
+      )) as AcpService;
+      if (this.started && !this.unsubscribe) {
+        this.subscribeToAcp(acp);
+      }
+    } catch (error) {
+      this.log(
+        "warn",
+        "ACP service did not become available; session events will not be recorded",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
       );
     }
   }

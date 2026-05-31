@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BrowserService, type BrowserTarget } from "./browser-service.js";
+import { BrowserService, type BrowserTarget } from "../browser-service.js";
 
 const originalEnv = { ...process.env };
 

@@ -10,11 +10,7 @@ import {
 } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 import { parseJsonObjectResponse } from "../utils/json";
-import {
-  confirmationRequired,
-  isConfirmed,
-  mergedOptions,
-} from "./confirmation";
+import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 
 interface MusicQueryIntent {
   needsResearch: boolean;
@@ -662,16 +658,15 @@ export async function handlePlayMusicQuery(
 
   const messageText = readMusicQueryText(message, options);
   const preview = `Confirmation required before resolving and queueing music for: "${messageText}".`;
-  if (!isConfirmed(options)) {
-    await callback({
-      text: preview,
-      source: message.content.source,
-    });
-    return confirmationRequired(preview, {
-      op: "play_query",
-      query: messageText,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAY_MUSIC_QUERY",
+    pendingKey: `play_query:${messageText.slice(0, 160)}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   try {
     // Step 1: Analyze the query intent
