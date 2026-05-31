@@ -543,12 +543,13 @@ function renderPhoneSurface(
       <Component />
     </TabContentView>
   ) : (
-    <ChatView />
+    // Fall back to the info landing, not a chat page — chat lives in the pill.
+    <HomeView />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ChatView />;
+  if (!APPS_ENABLED) return <HomeView />;
   return (
     <TabContentView chatScope="page-apps">
       {getAppSlugFromPath(navigationPath) ? (
@@ -643,7 +644,7 @@ function renderStaticViewRouterTab({
     ),
   };
   if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    return LifeOpsPageView ? <LifeOpsPageView /> : <HomeView />;
   }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
@@ -684,7 +685,7 @@ function renderStaticViewRouterTab({
       </TabContentView>
     );
   }
-  return directViews[tab] ?? <ChatView />;
+  return directViews[tab] ?? <HomeView />;
 }
 
 function renderViewRouterContent({
