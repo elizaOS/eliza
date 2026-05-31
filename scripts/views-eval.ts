@@ -63,6 +63,39 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+// Minimum spacing between request *starts* so we stay under the per-minute
+// quota instead of stampeding into 429s. The key is shared and tightly
+// throttled, so pacing — not retrying — is the real fix.
+const MIN_INTERVAL_MS = Number.parseInt(
+  process.env.CEREBRAS_MIN_INTERVAL_MS ?? "1500",
+  10,
+);
+// How long a single call may spend backing off before it gives up. Big enough
+// to ride out a full quota window (a 60s RPM bucket) even under contention.
+const BACKOFF_BUDGET_MS = Number.parseInt(
+  process.env.CEREBRAS_BACKOFF_BUDGET_MS ?? "180000",
+  10,
+);
+
+// Serialize every Cerebras call through one chain and space the starts. This
+// guarantees at most one in-flight request and a steady cadence, which is what
+// keeps us under the rate limit rather than relying on backoff alone.
+let cerebrasChain: Promise<unknown> = Promise.resolve();
+let lastStart = 0;
+function gate<T>(fn: () => Promise<T>): Promise<T> {
+  const run = cerebrasChain.then(async () => {
+    const since = Date.now() - lastStart;
+    if (since < MIN_INTERVAL_MS) await sleep(MIN_INTERVAL_MS - since);
+    lastStart = Date.now();
+    return fn();
+  });
+  cerebrasChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function cerebras(
   messages: ChatMessage[],
   temperature: number,
@@ -75,35 +108,48 @@ async function cerebras(
     max_tokens: maxTokens,
     stream: false,
   };
-  let attempt = 0;
-  for (;;) {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const json = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      return json.choices?.[0]?.message?.content ?? "";
-    }
-    if (res.status === 429 && attempt < 6) {
-      const wait = Math.min(2000 * 2 ** attempt, 30_000);
-      attempt += 1;
-      console.log(
-        `  · 429 rate-limited, backing off ${wait}ms (try ${attempt})`,
+  return gate(async () => {
+    let attempt = 0;
+    let waited = 0;
+    for (;;) {
+      const res = await fetch(`${BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        return json.choices?.[0]?.message?.content ?? "";
+      }
+      if (res.status === 429 && waited < BACKOFF_BUDGET_MS) {
+        // Honor the server's Retry-After when present, else exponential
+        // backoff; add jitter so concurrent jobs don't resync their retries.
+        const retryAfter = Number.parseInt(
+          res.headers.get("retry-after") ?? "",
+          10,
+        );
+        const headerWait = Number.isFinite(retryAfter) ? retryAfter * 1000 : 0;
+        const backoff = Math.min(2000 * 2 ** attempt, 30_000);
+        const wait =
+          Math.max(headerWait, backoff) + Math.floor(Math.random() * 500);
+        attempt += 1;
+        waited += wait;
+        console.log(
+          `  · 429 rate-limited, backing off ${wait}ms (try ${attempt}, ${Math.round(waited / 1000)}s total)`,
+        );
+        await sleep(wait);
+        continue;
+      }
+      throw new Error(
+        `Cerebras ${res.status}: ${(await res.text()).slice(0, 300)}`,
       );
-      await sleep(wait);
-      continue;
     }
-    throw new Error(
-      `Cerebras ${res.status}: ${(await res.text()).slice(0, 300)}`,
-    );
-  }
+  });
 }
 
 // ── View catalog the planner reasons over (mirrors a real install) ───────────

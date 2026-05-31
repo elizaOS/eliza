@@ -15,7 +15,7 @@
     "interferences": []
   },
   "full_range_advisory": {
-    "samples": 225,
+    "samples": 243,
     "min_nonadjacent_clearance_mm": -145.0,
     "worst_event": {
       "clearance_mm": -145.0,
@@ -25,7 +25,7 @@
       ],
       "pose": "left_shoulder_roll_joint=-0.800"
     },
-    "penetration_events": 194,
+    "penetration_events": 206,
     "note": "arm/torso and arm/leg overlap at extreme single-joint poses is expected for a humanoid and is enforced by controller limits, not geometry."
   }
 }

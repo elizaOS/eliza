@@ -86,6 +86,56 @@ def mujoco_load_proof(spec: RobotSpec | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Tendon / pulley foot articulation
+# ---------------------------------------------------------------------------
+
+
+def tendon_actuation_proof(spec: RobotSpec | None = None) -> dict:
+    """Drive each toe's cable-over-pulley tendon and confirm the toe articulates
+    and springs back — physical proof the pulley drive works."""
+    import mujoco
+
+    spec = spec or build_spec()
+    paths = write_models(spec)
+    model = mujoco.MjModel.from_xml_path(str(paths["scene"]))
+    data = mujoco.MjData(model)
+    feet = []
+    ok = True
+    for side in ("left", "right"):
+        jname, aname = f"{side}_toe_joint", f"{side}_toe_act"
+        try:
+            qadr = model.joint(jname).qposadr[0]
+            aid = model.actuator(aname).id
+        except KeyError:
+            continue
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        for _ in range(500):
+            mujoco.mj_step(model, data)
+        base = float(data.qpos[qadr])
+        data.ctrl[aid] = float(model.actuator_ctrlrange[aid][1])  # full tension
+        for _ in range(500):
+            mujoco.mj_step(model, data)
+        flexed = float(data.qpos[qadr])
+        data.ctrl[aid] = 0.0
+        for _ in range(700):
+            mujoco.mj_step(model, data)
+        relaxed = float(data.qpos[qadr])
+        articulated = abs(flexed - base) > 0.10
+        returns = abs(relaxed - base) < 0.08
+        feet.append({"foot": side, "base_rad": round(base, 4),
+                     "tensioned_rad": round(flexed, 4), "relaxed_rad": round(relaxed, 4),
+                     "travel_deg": round((flexed - base) * 57.2958, 1),
+                     "articulates": articulated, "springs_back": returns})
+        ok = ok and articulated and returns
+    return {
+        "schema": "erobot-tendon-actuation-v1",
+        "ok": bool(ok and feet),
+        "drive": "spatial tendon (cable) wrapping an ankle pulley geom, tension-only motor",
+        "feet": feet,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 2. Joint-sweep self-collision clearance
 # ---------------------------------------------------------------------------
 
@@ -354,6 +404,7 @@ def run_all(spec: RobotSpec | None = None) -> dict:
     spec = spec or build_spec()
     results = {
         "mujoco-load": mujoco_load_proof(spec),
+        "tendon-actuation": tendon_actuation_proof(spec),
         "joint-sweep": joint_sweep_proof(spec),
         "mass-reconciliation": mass_reconciliation_proof(spec),
         "structural-sanity": structural_sanity_proof(spec),

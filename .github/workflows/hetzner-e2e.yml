@@ -161,6 +161,26 @@ jobs:
             exit 0
           fi
 
+          if [ "${status_code#5}" != "$status_code" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API auth preflight returned HTTP $status_code; skipping Hetzner E2E before provisioning."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API auth preflight returned HTTP \`$status_code\` before provisioning Hetzner capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+              echo ""
+              echo "Check staging Cloud API logs for \`user-agent: hetzner-e2e-preflight/1.0\` on \`/api/v1/eliza/agents\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
           echo "::error::Unexpected cloud API auth preflight response: $response"
           exit 1
 
