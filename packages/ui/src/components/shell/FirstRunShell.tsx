@@ -319,23 +319,38 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const characters = Array.from(text);
-    let index = 0;
     setRendered("");
     setComplete(false);
 
+    // Drive the reveal off elapsed wall-clock time rather than counting one
+    // character per timer tick. Under main-thread contention (the onboarding
+    // orb/cloud animations plus this hook re-rendering the whole shell on every
+    // character) the chained timers fire hundreds of ms apart instead of ~20ms,
+    // which previously stretched a ~0.6s animation to ~18s and left the heading
+    // mid-word for seconds. Catching up to the time-derived index keeps the
+    // total reveal bounded by REVEAL_DURATION_MS no matter how starved the
+    // event loop is, so the completed prompt is always available promptly.
+    const REVEAL_DURATION_MS = 600;
+    const STEP_MS = 22;
+    const startedAt =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+
     const reveal = () => {
       if (cancelled) return;
-      index += 1;
-      setRendered(characters.slice(0, index).join(""));
-      if (index >= characters.length) {
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      const progress = Math.min(1, (now - startedAt) / REVEAL_DURATION_MS);
+      const index = Math.max(1, Math.ceil(progress * characters.length));
+      if (progress >= 1 || index >= characters.length) {
+        setRendered(text);
         setComplete(true);
         return;
       }
-      const previous = characters[index - 1];
-      timeout = setTimeout(reveal, previous === " " ? 12 : 22);
+      setRendered(characters.slice(0, index).join(""));
+      timeout = setTimeout(reveal, STEP_MS);
     };
 
-    timeout = setTimeout(reveal, 40);
+    timeout = setTimeout(reveal, STEP_MS);
     return () => {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
