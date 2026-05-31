@@ -184,6 +184,31 @@ function redactCharacterSecrets(character: Record<string, unknown>): Record<stri
   return clone;
 }
 
+/**
+ * Resolve the AGENT_SERVER_SHARED_SECRET to inject into a provisioned
+ * container so it can validate the X-Server-Token the cloud gateways attach to
+ * forwarded platform messages. Precedence:
+ *   1. An explicit per-deployment value in the sandbox's environment_vars.
+ *   2. The daemon's own AGENT_SERVER_SHARED_SECRET (the same value the
+ *      gateways read), so both ends share one secret with no extra config.
+ * Returns an empty object when neither is set, leaving the container's
+ * X-Server-Token path disabled (no regression).
+ */
+function resolveServerSharedSecretEnv(
+  environmentVars: Record<string, string>,
+): Record<string, string> {
+  const explicit = environmentVars.AGENT_SERVER_SHARED_SECRET;
+  if (typeof explicit === "string" && explicit.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: explicit.trim() };
+  }
+  const env = getCloudAwareEnv();
+  const daemonSecret = env.AGENT_SERVER_SHARED_SECRET;
+  if (typeof daemonSecret === "string" && daemonSecret.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: daemonSecret.trim() };
+  }
+  return {};
+}
+
 function resolveStewardElizaPluginPackage(): string {
   const env = getCloudAwareEnv();
   return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
@@ -651,6 +676,17 @@ export class DockerSandboxProvider implements SandboxProvider {
       JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
       // Allow the agent subdomain origin so the browser can call the API.
       ELIZA_ALLOWED_ORIGINS: `https://${agentId}.${getAgentBaseDomain()}`,
+      // Shared service-to-service secret the cloud gateways attach as the
+      // X-Server-Token header when they forward inbound platform messages to
+      // this container's /agents/:id/message endpoint. The container's auth
+      // path (packages/agent server-helpers-auth isAuthorized) accepts this
+      // header when it matches, so a gateway can route a message without
+      // knowing the per-agent inbound API token. Sourced from the daemon's own
+      // AGENT_SERVER_SHARED_SECRET (the same value the gateways read); both
+      // ends must share it. An explicit per-deployment value in
+      // environmentVars wins. Omitted entirely when neither is set, which
+      // simply leaves the X-Server-Token path disabled in the container.
+      ...resolveServerSharedSecretEnv(environmentVars),
     };
 
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
