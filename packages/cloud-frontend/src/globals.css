@@ -1818,12 +1818,6 @@ button:not(:disabled),
   border-top-color: var(--accent);
 }
 
-/* Focus ring for all buttons */
-.stwd-eliza-login .stwd-login__btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .checkout-visual {
   align-items: center;
   aspect-ratio: 1 / 1;
@@ -1894,3 +1888,17 @@ button:not(:disabled),
   position: absolute;
   transform: translateX(-50%);
 }
+
+/* Product policy: focus rings are intentionally disabled globally. Keep this
+   after imported auth/wallet styles so their focus outlines cannot win. */
+/* biome-ignore-start lint/complexity/noImportantStyles: focus rings are banned globally and imported auth/wallet focus styles must not win. */
+:where(:focus, :focus-visible, :focus-within) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+:where(:focus, :focus-visible) :where(*) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */

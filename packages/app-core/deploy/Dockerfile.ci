@@ -123,8 +123,8 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
   true
 
 # Standalone tsx install — the runtime entrypoint is
-# `node --import tsx packages/agent/dist/...`, which requires `tsx` resolvable
-# from /app/. bun's workspace install on GHA can drop tsx from the build
+# the absolute tsx loader plus `packages/agent/dist/...`, which avoids requiring
+# `tsx` to be resolvable from /app. bun's workspace install on GHA can drop tsx from the build
 # context (it lives under `node_modules/.bun/tsx@<v>/` but isn't always
 # materialized at `node_modules/tsx/`, and dockerignore prunes per-package
 # trees). Mirror Dockerfile.cloud's pattern: install tsx in a dedicated stage
@@ -173,7 +173,7 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 WORKDIR /app
 COPY --from=pruner /app /app
-# tsx is required by APP_CMD_START (`node --import tsx ...`). Bring it in
+# tsx is required by APP_CMD_START. Bring it in
 # from its own stage so it's self-contained (with esbuild + get-tsconfig
 # deps) at /opt/tsx, independent of bun's workspace install. Mirrors
 # Dockerfile.cloud's pattern.

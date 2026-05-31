@@ -192,14 +192,9 @@ async function runReview(
         : "GitHub PR review cancelled.";
     await callback?.({ text });
     return {
-      success: decision.status === "pending",
-      requiresConfirmation: decision.status === "pending",
-      preview,
-      text,
-      data: {
-        awaitingUserInput: decision.status === "pending",
-        cancelled: decision.status === "cancelled",
-      },
+      ...(decision.status === "pending"
+        ? { success: false as const, requiresConfirmation: true as const, preview }
+        : { success: false as const, error: text }),
     };
   }
 

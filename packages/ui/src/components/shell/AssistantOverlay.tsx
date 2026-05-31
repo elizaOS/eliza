@@ -133,8 +133,6 @@ export function AssistantOverlay({
         "bg-bg/95 backdrop-blur-xl",
         "border border-border/40",
         "",
-        // Focus ring on the container (visible only when the container
-        // itself is keyboard-focused via Tab cycling)
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
         // Enter motion (skipped under prefers-reduced-motion)
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",

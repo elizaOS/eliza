@@ -8,6 +8,7 @@
 
 import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
+import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
 import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
@@ -24,7 +25,6 @@ import {
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } from "../workspace/index.js";
-import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
   assertBrowserWorkspaceConnectorAccountGate,
@@ -295,13 +295,13 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "script is required" }, 400);
         return true;
       }
-      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
         tabId,
         body,
         "evaluate browser workspace tab",
       );
+      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       json(res, {
         result: await evaluateBrowserWorkspaceTab({
           id: tabId,

@@ -19,6 +19,7 @@ import {
   type SceneBackground,
   type SceneFactory,
   type SceneInputs,
+  type SceneOutputs,
 } from "./scene-types";
 
 // ── Preset registry ──────────────────────────────────────────────────────────
@@ -172,6 +173,14 @@ export function createSceneInputs(): SceneInputs {
     assistantText: "",
     time: 0,
   };
+}
+
+/**
+ * Build the runtime-owned output object a scene writes to each frame. Reset to
+ * null per scene so a scene with no orb leaves the host's anchor cleared.
+ */
+export function createSceneOutputs(): SceneOutputs {
+  return { orbAnchor: null };
 }
 
 /**

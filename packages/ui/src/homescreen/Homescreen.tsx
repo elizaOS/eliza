@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "../components/ui/button";
 import type { FrequencyAnalyser } from "../components/voice/VoiceWaveform";
 import { cn } from "../lib/utils";
-import { HomescreenCanvas } from "./HomescreenCanvas";
+import { HomescreenCanvas, type OrbAnchor } from "./HomescreenCanvas";
 import type { HomescreenPhase } from "./scene-types";
 import { useHomescreen } from "./useHomescreen";
 
@@ -13,6 +13,8 @@ export interface HomescreenProps {
   phase?: HomescreenPhase;
   userText?: string;
   assistantText?: string;
+  /** Notified when the orb's projected screen position changes (or null). */
+  onOrbAnchor?: (anchor: OrbAnchor | null) => void;
   /** Notified when edit mode flips, so the host can collapse the chat overlay. */
   onEditModeChange?: (editing: boolean) => void;
   /**
@@ -39,6 +41,7 @@ export function Homescreen({
   phase = "idle",
   userText = "",
   assistantText = "",
+  onOrbAnchor,
   onEditModeChange,
   editRequestNonce = 0,
   className,
@@ -70,6 +73,7 @@ export function Homescreen({
         phase={phase}
         userText={userText}
         assistantText={assistantText}
+        onOrbAnchor={onOrbAnchor}
       />
 
       {/* No on-screen edit button: edit mode is entered via the "/edit" chat

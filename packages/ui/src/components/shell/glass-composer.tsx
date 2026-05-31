@@ -12,17 +12,21 @@ import { cn } from "../../lib/utils";
 
 /** Class for the glass composer bar — translucent, blurred, edge-highlighted; no plain borders. */
 export const GLASS_COMPOSER_CLASS =
-  "flex items-center gap-1.5 rounded-xs border border-white/25 bg-white/10 p-1.5 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.22)]";
+  "flex items-center gap-1.5 rounded-[6px] border border-txt/15 bg-txt/5 p-1.5 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.25),inset_0_-1px_0_rgba(0,0,0,0.06),0_10px_30px_rgba(0,0,0,0.18)]";
 
 // xs-cornered button rect + filled glyphs, combined under fillRule=evenodd so
 // the glyph becomes a transparent hole in the white button.
 const BTN_RECT =
-  "M3 0H33A3 3 0 0 1 36 3V33A3 3 0 0 1 33 36H3A3 3 0 0 1 0 33V3A3 3 0 0 1 3 0Z";
-const SEND_GLYPH = "M9 9L29 18L9 27L13 18Z";
+  "M6 0H30A6 6 0 0 1 36 6V30A6 6 0 0 1 30 36H6A6 6 0 0 1 0 30V6A6 6 0 0 1 6 0Z";
+// Up arrow — shaft + head, pointing up (send).
+const SEND_GLYPH = "M18 8L27 18L21 18L21 28L15 28L15 18L9 18Z";
+// Five-bar waveform — tallest in the center, like OpenAI's voice indicator.
 const MIC_GLYPH =
-  "M18 7A4 4 0 0 0 14 11V15A4 4 0 0 0 22 15V11A4 4 0 0 0 18 7Z" +
-  "M12 15A6 6 0 0 0 24 15H22A4 4 0 0 1 14 15Z" +
-  "M17 21H19V27H17ZM13 27H23V29H13Z";
+  "M6 14H9V22H6Z" +
+  "M11.5 10H14.5V26H11.5Z" +
+  "M16.5 7H19.5V29H16.5Z" +
+  "M22 10H25V26H22Z" +
+  "M27 14H30V22H27Z";
 
 export function GlassIconButton({
   icon,
@@ -30,13 +34,19 @@ export function GlassIconButton({
   disabled,
   active,
   onClick,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
 }: {
   icon: "mic" | "send";
   label: string;
   disabled?: boolean;
   /** Mic only: reflects recording state (adds a pulse + aria-pressed). */
   active?: boolean;
-  onClick?: () => void;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerUp?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerCancel?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }): React.JSX.Element {
   return (
     <button
@@ -45,6 +55,9 @@ export function GlassIconButton({
       aria-pressed={icon === "mic" ? active : undefined}
       disabled={disabled}
       onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center transition-transform",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0",
