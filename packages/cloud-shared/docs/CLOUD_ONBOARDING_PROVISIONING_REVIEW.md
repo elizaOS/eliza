@@ -149,6 +149,44 @@ incremental decision is exercised by unit tests; the mock-stack e2e covers the
 full-backup round-trip (the mock writes fulls directly, so it does not trip the
 incremental planner).
 
+## 7b. BLOCKER FOUND — staging Cloud API 500s on authed endpoints
+
+While driving toward real-infra confirmation I dispatched the real
+`hetzner-e2e` workflow (gh authed as a maintainer; `ci-hetzner-e2e` secrets are
+present). **Every run skips provisioning** at the preflight:
+`Cloud API auth preflight returned HTTP 500 … skipping`. Reproduced directly
+against `https://api-staging.elizacloud.ai`:
+
+| Request | Staging | Local stack | Expected |
+| --- | --- | --- | --- |
+| `GET /api/health` | 200 | 200 | ✓ |
+| `GET /api/v1/models` (public) | 200 | 200 | ✓ |
+| `GET /api/v1/eliza/agents` no auth | 401 | 401 | ✓ |
+| `GET /api/v1/eliza/agents` `Bearer eliza_<bad>` | **500** | **401** | 401 |
+| `GET /api/v1/credits/balance` `Bearer eliza_<bad>` | **500** | 401 | 401 |
+| `GET /api/v1/api-keys` `Bearer eliza_<bad>` | 401 | 401 | 401 |
+
+Root cause: routes guarded by `requireUserOrApiKeyWithOrg`
+(`workers-hono-auth.ts:386`) route any `eliza_`-prefixed bearer through
+`apiKeysService.validateApiKey()`. On staging that call **throws** (its Upstash
+Redis / Neon-replica datastore access errors) for every `eliza_` key — valid or
+not, which is why even the preflight's real `ELIZACLOUD_API_KEY` 500s. The
+thrown error isn't an `ApiError`, so it surfaces as `500 internal_error`. The
+session-only `/api/v1/api-keys` route (no `validateApiKey`) correctly 401s.
+
+**The code is correct** — the local mock-stack returns 401 for all bad-key
+shapes (`tests/auth-errors.spec.ts`, 5 cases). This is a **staging
+infrastructure/config fault** (the staging Worker's `dbRead` replica URL or
+Upstash credentials), not a defect in this repo. It cannot be fixed from a
+credential-less dev box: it needs access to the `api-staging.elizacloud.ai`
+Cloudflare Worker env / Neon / Upstash. Until it's fixed, the real Hetzner e2e
+stays gated and true real-infra confidence is unreachable.
+
+Action to unblock: redeploy/repair the staging Cloud API datastore env (verify
+`DATABASE_URL`/replica + Upstash REST vars on the staging worker), confirm
+`GET /api/v1/eliza/agents` with a valid key returns 200, then re-run
+`hetzner-e2e` (`gh workflow run hetzner-e2e.yml --ref develop`).
+
 ## 8. Verification status (honest)
 
 Confirmed in this environment (no cloud credentials needed):
