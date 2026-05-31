@@ -3422,7 +3422,6 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
-			currentMessageText,
 			candidateActions: effectiveCandidateActions,
 			contexts: routedContexts,
 		});
@@ -3543,26 +3542,26 @@ function _isSimpleMessageHandlerShortcut(
 	);
 }
 
+// Prefer a complete, substantive direct reply over force-planned action when
+// the model already answered the turn. Purely STRUCTURAL — it never scans the
+// user's text to classify intent:
+//   1. the reply reads as a finished answer, not an ack/progress/refusal/empty
+//      fragment (looksLikeCompleteDirectReply), and
+//   2. the only signals pushing toward planning are weak/injectable ones — a
+//      simple/general context plus search/shell/spawn-class candidate actions,
+//      the exact shapes the Stage-1 inference backstop force-injects
+//      (hasOnlyWeakDirectReplyPlanningSignals).
+// When the model defers to a tool it acks ("On it.") or returns an empty/refusal
+// reply, which fails (1) — so genuine web/shell/build turns still plan, while a
+// finished answer (e.g. a one-sentence policy explanation) wins directly even if
+// a coding-keyword heuristic would have force-injected a spawn over it.
 function shouldPreferCompleteDirectReply(args: {
 	replyText: string;
-	currentMessageText: string;
 	candidateActions: readonly string[];
 	contexts: readonly string[];
 }): boolean {
 	if (!looksLikeCompleteDirectReply(args.replyText)) return false;
-	if (!hasOnlyWeakDirectReplyPlanningSignals(args)) return false;
-	const normalized = args.currentMessageText
-		.toLowerCase()
-		.replace(/\s+/gu, " ")
-		.trim();
-	if (!normalized) return false;
-	if (looksLikeLocalShellRequest(normalized)) return false;
-	if (looksLikeWebSearchRequest(normalized)) return false;
-	if (looksLikeCodingWorkRequest(normalized)) return false;
-	return (
-		looksLikeActionExplanationRequest(normalized) ||
-		looksLikeCreativeWritingRequest(normalized)
-	);
+	return hasOnlyWeakDirectReplyPlanningSignals(args);
 }
 
 function shouldPreferInlineCodeSnippetDirectReply(args: {
