@@ -1,5 +1,12 @@
 schema: eliza.rail_plan.v1
 status: authoritative_planning_release_blocked
+claim_allowed: false
+release_claim_allowed: false
+pdn_signoff_claim_allowed: false
+pmic_procurement_claim_allowed: false
+measured_silicon_claim_allowed: false
+tapeout_claim_allowed: false
+production_readiness_claim_allowed: false
 claim_boundary: >
   This file is the authoritative 16-rail target plan for the Eliza E1 2028
   mobile-class SKU. Voltages, current budgets, and decoupling targets are

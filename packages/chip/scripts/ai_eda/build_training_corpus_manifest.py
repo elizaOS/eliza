@@ -14,6 +14,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/training_corpus_manifest"
 CLAIM_BOUNDARY = "training_corpus_manifest_only_no_payload_weights_training_or_e1_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 DATASETS = (
     {
@@ -246,6 +254,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "policy": {
             "manifest_only": True,
             "contains_dataset_payload": False,
@@ -254,6 +263,7 @@ def main() -> int:
             "runs_inference": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_optimization_claims": True,
         },
         "dataset_count": len(datasets),

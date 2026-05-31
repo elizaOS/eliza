@@ -2,10 +2,11 @@
  * Built-in scene factories, registered into the runtime's preset registry.
  *
  * These are the trusted, shipped backgrounds. The default —
- * {@link BUILTIN_PRESETS.fresnelCrystalBall} — is a white Fresnel crystal ball
- * over orange with the eliza mark suspended inside, pulsing and rippling with
- * voice energy. The others give the agent concrete targets when a user asks for
- * a different vibe ("a sci-fi Jarvis UI", "deep space").
+ * {@link BUILTIN_PRESETS.fresnelCrystalBall} — is a small reflective white
+ * crystal ball over orange. It rests round and still, and only pulses /
+ * ripples while the agent is voicing. The others give the agent concrete
+ * targets when a user asks for a different vibe ("a sci-fi Jarvis UI",
+ * "deep space").
  *
  * All factories render through `ctx.three` (the WebGL core namespace the host
  * passes in) with GLSL `ShaderMaterial`s. WebGL keeps the homescreen broadly
@@ -23,43 +24,19 @@ import {
 
 type Three = typeof THREE;
 
-/** Draw the lowercase "eliza" wordmark to a canvas texture for the orb's core. */
-function makeLogoTexture(T: Three): THREE.Texture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const g = canvas.getContext("2d");
-  if (g) {
-    g.clearRect(0, 0, 512, 512);
-    const halo = g.createRadialGradient(256, 256, 0, 256, 256, 150);
-    halo.addColorStop(0, "rgba(255,255,255,0.35)");
-    halo.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = halo;
-    g.fillRect(0, 0, 512, 512);
-    g.fillStyle = "rgba(255,255,255,0.92)";
-    g.font = "600 96px ui-sans-serif, system-ui, -apple-system, sans-serif";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText("eliza", 256, 256);
-  }
-  const tex = new T.CanvasTexture(canvas);
-  tex.colorSpace = T.SRGBColorSpace;
-  return tex;
-}
-
 const FRESNEL_VERT = /* glsl */ `
   uniform float uTime;
   uniform float uEnergy;
   uniform float uPulse;
   varying vec3 vN;
   varying vec3 vView;
-  // cheap value noise for surface ripple
-  float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
   void main(){
     vec3 pos = position;
-    float ripple = sin(pos.y*8.0 + uTime*2.0) * 0.012
-                 + sin(pos.x*6.0 - uTime*1.6) * 0.010;
-    float pulse = (uPulse*0.04 + uEnergy*0.06);
+    // Surface stays round and still at rest; ripple/pulse only while voicing
+    // (gated by uEnergy) so the ball wobbles in response to speech, not idle.
+    float ripple = (sin(pos.y*8.0 + uTime*2.0) * 0.012
+                 + sin(pos.x*6.0 - uTime*1.6) * 0.010) * uEnergy;
+    float pulse = uPulse * uEnergy * 0.05;
     pos += normal * (ripple + pulse);
     vec4 wp = modelMatrix * vec4(pos, 1.0);
     vN = normalize(mat3(modelMatrix) * normal);
@@ -77,13 +54,29 @@ const FRESNEL_FRAG = /* glsl */ `
   varying vec3 vN;
   varying vec3 vView;
   void main(){
-    float ndv = max(dot(vN, vView), 0.0);
-    float rimF = pow(1.0 - ndv, 4.0);
-    float rim = smoothstep(0.35, 1.0, rimF) + rimF * 0.35;
-    float inner = pow(1.0 - ndv, 1.6) * 0.10;
-    float body = (1.0 - ndv) * 0.05;
-    vec3 col = mix(uRim, uAccent, uEnergy * 0.6);
-    float a = clamp(rim * (0.85 + uPulse*0.15 + uEnergy*0.4) + inner + body, 0.0, 1.0);
+    vec3 N = normalize(vN);
+    vec3 V = normalize(vView);
+    float ndv = max(dot(N, V), 0.0);
+    float fres = pow(1.0 - ndv, 3.0);
+
+    // Reflect the view ray against a fake sky/ground environment so the ball
+    // reads as polished glass rather than a flat rim glow.
+    vec3 R = reflect(-V, N);
+    float up = R.y * 0.5 + 0.5;
+    vec3 ground = mix(uAccent, vec3(1.0), 0.35);
+    vec3 envCol = mix(ground, vec3(1.0), smoothstep(0.0, 1.0, up));
+
+    // Specular glint from a fixed key light.
+    vec3 L = normalize(vec3(0.4, 0.7, 0.6));
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N, H), 0.0), 64.0);
+
+    vec3 col = mix(uAccent * 0.6, envCol, 0.85);
+    col += uRim * fres;
+    col += vec3(spec);
+    col = mix(col, uAccent, uEnergy * 0.25);
+
+    float a = clamp(0.45 + fres * 0.55 + spec + uEnergy * 0.2, 0.0, 1.0);
     gl_FragColor = vec4(col, a);
   }
 `;
@@ -92,11 +85,14 @@ function backgroundColor(T: Three, hex: number): THREE.Color {
   return new T.Color(hex);
 }
 
-/** The default: white Fresnel crystal ball over orange, eliza mark inside. */
+/** The default: a small reflective white crystal ball over orange. */
 function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   const T = ctx.three as Three;
   const scene = ctx.scene as THREE.Scene;
   scene.background = backgroundColor(T, ctx.theme.background);
+
+  // Resting radius — smaller than the viewport-filling original.
+  const BASE_SCALE = 0.6;
 
   let segments = 64;
   let geometry = new T.IcosahedronGeometry(1, segments);
@@ -119,21 +115,10 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
     uniforms,
     transparent: true,
     depthWrite: false,
-    blending: T.AdditiveBlending,
+    blending: T.NormalBlending,
   });
   const shell = new T.Mesh(geometry, material);
   scene.add(shell);
-
-  const logoTex = makeLogoTexture(T);
-  const logoMat = new T.MeshBasicMaterial({
-    map: logoTex,
-    transparent: true,
-    depthWrite: false,
-    opacity: 0.9,
-  });
-  const logo = new T.Mesh(new T.PlaneGeometry(1.1, 1.1), logoMat);
-  logo.position.z = -0.25;
-  scene.add(logo);
 
   return {
     update(_dt, time) {
@@ -142,8 +127,11 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
       uniforms.uEnergy.value = e;
       uniforms.uPulse.value = 0.5 + Math.sin(time * 1.4) * 0.5;
       shell.rotation.y = time * 0.15;
-      shell.scale.setScalar(1 + e * 0.05 + Math.sin(time * 1.4) * 0.01);
-      logo.material.opacity = 0.75 + e * 0.2;
+      // Breathing pulse is gated by energy so the ball is perfectly round and
+      // still at rest, then pulses while voicing.
+      shell.scale.setScalar(
+        BASE_SCALE * (1 + e * 0.05 + Math.sin(time * 1.4) * 0.01 * e),
+      );
     },
     optimize(tier) {
       // Drop tessellation as the tier falls; rebuild the icosahedron.
@@ -159,12 +147,8 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
     },
     dispose() {
       scene.remove(shell);
-      scene.remove(logo);
       geometry.dispose();
       material.dispose();
-      logo.geometry.dispose();
-      logoMat.dispose();
-      logoTex.dispose();
     },
   };
 }

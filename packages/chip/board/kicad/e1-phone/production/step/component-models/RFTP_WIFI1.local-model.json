@@ -28,7 +28,7 @@
     "height": 0.0500002,
     "width": 1.4000001999999998
   },
-  "local_discrete_step_bytes": 15611,
+  "local_discrete_step_bytes": 15636,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.4,
     "height": 0.05,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "d07005543283edef70847b59909316badfdc97f8320b1a6865f6313238ab4bd2",
+  "local_discrete_step_sha256": "bb816081cf9e2c19937eeaed101da04c9a2e13e2bc8d80067600c4778151e3fd",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -93,7 +93,7 @@
   "supplier_step_intake_bytes": 15640,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "322ff386b0f214b286af12ff4c1ab004891f2ea18986581d46ed4c104cb1004a",
+  "supplier_step_intake_sha256": "f9be567cdc0e483d38392a34612bafea265bd924e038e4ae9fc9de19aaf98f32",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 1,

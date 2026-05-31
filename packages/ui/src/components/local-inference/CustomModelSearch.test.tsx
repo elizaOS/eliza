@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { act } from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type {
@@ -87,7 +92,6 @@ afterEach(() => {
 
 describe("CustomModelSearch", () => {
   it("searches Hugging Face explicitly and downloads the selected result spec", async () => {
-    vi.useFakeTimers();
     const onDownload = vi.fn();
     searchHuggingFaceGguf.mockResolvedValue({ models: [hfModel] });
     renderSearch({ onDownload });
@@ -96,12 +100,8 @@ describe("CustomModelSearch", () => {
       screen.getByPlaceholderText("Search custom Hugging Face GGUF repos"),
       { target: { value: "qwen" } },
     );
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
 
-    expect(screen.getByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
+    expect(await screen.findByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
 
     expect(searchHuggingFaceGguf).toHaveBeenCalledWith(
@@ -113,7 +113,6 @@ describe("CustomModelSearch", () => {
   });
 
   it("searches ModelScope explicitly and routes downloads through the hub downloader", async () => {
-    vi.useFakeTimers();
     const onDownload = vi.fn();
     const msModel: CatalogModel = {
       ...hfModel,
@@ -130,17 +129,17 @@ describe("CustomModelSearch", () => {
       screen.getByPlaceholderText("Search ModelScope owner or owner/model"),
       { target: { value: "Qwen/Qwen3.5-0.8B-GGUF" } },
     );
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
 
-    expect(searchHuggingFaceGguf).toHaveBeenCalledWith(
-      "Qwen/Qwen3.5-0.8B-GGUF",
-      undefined,
-      "modelscope",
+    await waitFor(() =>
+      expect(searchHuggingFaceGguf).toHaveBeenCalledWith(
+        "Qwen/Qwen3.5-0.8B-GGUF",
+        undefined,
+        "modelscope",
+      ),
     );
-    expect(screen.getByText("ModelScope Qwen3.5 0.8B GGUF")).toBeTruthy();
+    expect(
+      await screen.findByText("ModelScope Qwen3.5 0.8B GGUF"),
+    ).toBeTruthy();
     const download = screen.getByRole("button", {
       name: "Download",
     }) as HTMLButtonElement;
@@ -150,7 +149,6 @@ describe("CustomModelSearch", () => {
   });
 
   it("does not render a completed stale search while the next query is debouncing", async () => {
-    vi.useFakeTimers();
     const first = deferred<{ models: CatalogModel[] }>();
     const nextModel: CatalogModel = {
       ...hfModel,
@@ -170,33 +168,22 @@ describe("CustomModelSearch", () => {
       "Search custom Hugging Face GGUF repos",
     );
     fireEvent.change(input, { target: { value: "qwen" } });
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(searchHuggingFaceGguf).toHaveBeenCalledTimes(1));
 
     fireEvent.change(input, { target: { value: "llama" } });
-    await act(async () => {
-      first.resolve({ models: [hfModel] });
-      await first.promise;
-    });
+    first.resolve({ models: [hfModel] });
+    await first.promise;
 
     expect(screen.queryByText("Qwen3.5 0.8B GGUF")).toBeNull();
 
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      second.resolve({ models: [nextModel] });
-      await second.promise;
-    });
+    await waitFor(() => expect(searchHuggingFaceGguf).toHaveBeenCalledTimes(2));
+    second.resolve({ models: [nextModel] });
+    await second.promise;
 
-    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
+    expect(await screen.findByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
 
   it("hides completed results immediately after the user starts a different valid query", async () => {
-    vi.useFakeTimers();
     const nextModel: CatalogModel = {
       ...hfModel,
       id: "hf:Meta/Llama-3.2-1B-GGUF::llama-3.2-1b-q4_k_m.gguf",
@@ -214,22 +201,13 @@ describe("CustomModelSearch", () => {
       "Search custom Hugging Face GGUF repos",
     );
     fireEvent.change(input, { target: { value: "qwen" } });
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
 
-    expect(screen.getByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
+    expect(await screen.findByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
 
     fireEvent.change(input, { target: { value: "llama" } });
     expect(screen.queryByText("Qwen3.5 0.8B GGUF")).toBeNull();
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
 
-    await act(async () => {
-      vi.advanceTimersByTime(450);
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
+    expect(await screen.findByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
 });

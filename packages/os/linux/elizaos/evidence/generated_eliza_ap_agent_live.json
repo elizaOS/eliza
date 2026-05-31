@@ -2,7 +2,7 @@
   "claim_boundary": "generated_eliza_ap_chip_emulator_agent_live_evidence_blocked",
   "fallback_payload_used": null,
   "full_agent_bundle": false,
-  "generated_utc": "2026-05-28T19:58:42Z",
+  "generated_utc": "2026-05-31T00:47:46Z",
   "health": {
     "http_status": 0,
     "ready": false,
@@ -23,7 +23,7 @@
     "systemctl_is_active": "unknown"
   },
   "status": "blocked",
-  "transcript_path": "packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "transcript_path": "/home/shaw/milady/eliza/packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
   "validation": {
     "problems": [
       "agent transcript missing marker group: elizaos-agent-ready one of systemctl is-active elizaos-agent.service: active one of systemctl is-active elizaos-agent.service\nactive one of systemctl_is_active=active",

@@ -3681,7 +3681,7 @@ function hasAckOnlyActionableIntent(
 
 function inferAckIntentCandidateActions(
 	result: ResponseHandlerResult,
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	fallbackText = "",
 ): string[] {
 	const intentText = Array.isArray(result.intents)
@@ -3708,21 +3708,14 @@ function inferAckIntentCandidateActions(
 		if (lookupAction) return [lookupAction];
 	}
 	if (looksLikeCodingWorkRequest(actionText)) {
-		const codingAction = findAvailableActionName(actions, [
-			"TASKS",
-			"TASKS_SPAWN_AGENT",
-			"SPAWN_AGENT",
-			"START_CODING_TASK",
-			"CODE_TASK",
-			"SPAWN_CODING_AGENT",
-		]);
+		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
 	return [];
 }
 
 function inferDirectCurrentRequestCandidateActions(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string[] {
 	if (looksLikeLocalShellRequest(messageText)) {
@@ -3742,14 +3735,7 @@ function inferDirectCurrentRequestCandidateActions(
 		if (lookupAction) return [lookupAction];
 	}
 	if (looksLikeCodingWorkRequest(messageText)) {
-		const codingAction = findAvailableActionName(actions, [
-			"TASKS",
-			"TASKS_SPAWN_AGENT",
-			"SPAWN_AGENT",
-			"START_CODING_TASK",
-			"CODE_TASK",
-			"SPAWN_CODING_AGENT",
-		]);
+		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
 	return [];
@@ -3757,7 +3743,7 @@ function inferDirectCurrentRequestCandidateActions(
 
 function shouldUseDirectReplyFastPath(args: {
 	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
@@ -3804,6 +3790,40 @@ function findWebLookupActionName(
 		"LOOKUP_WEB",
 		"GOOGLE",
 	]);
+}
+
+const CODING_DELEGATION_ACTION_TAGS = [
+	"domain:coding",
+	"resource:agent-task",
+	"capability:delegate",
+] as const;
+
+const LEGACY_CODING_DELEGATION_ACTION_NAMES = [
+	"TASKS",
+	"TASKS_SPAWN_AGENT",
+	"SPAWN_AGENT",
+	"START_CODING_TASK",
+	"CODE_TASK",
+	"SPAWN_CODING_AGENT",
+] as const;
+
+function hasActionTags(
+	action: Pick<Action, "tags">,
+	requiredTags: readonly string[],
+): boolean {
+	const tags = new Set((action.tags ?? []).map((tag) => tag.toLowerCase()));
+	return requiredTags.every((tag) => tags.has(tag));
+}
+
+function findCodingDelegationActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): string | undefined {
+	return (
+		actions.find((action) =>
+			hasActionTags(action, CODING_DELEGATION_ACTION_TAGS),
+		)?.name ??
+		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
+	);
 }
 
 function findAvailableActionName(

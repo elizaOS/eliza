@@ -29,6 +29,15 @@ REQUIRED_REPORTS = {
     "execution_coverage_ladder": ROOT / "build/reports/e1x_execution_coverage_ladder.json",
     "full_output_workplan": ROOT / "build/reports/e1x_full_output_workplan.json",
     "full_output_checksum_manifest": ROOT / "build/reports/e1x_full_output_checksum_manifest.json",
+    "expanded_real_weight_rows": ROOT / "build/reports/e1x_expanded_real_weight_rows.json",
+    "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
+    "vocab_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
+    "repaired_real_weight_execution": ROOT / "build/reports/e1x_repaired_real_weight_execution.json",
+    "attn_out_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
+    "attn_qkv_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json",
+    "mlp_gate_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json",
+    "mlp_up_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json",
+    "mlp_down_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json",
     "vector_kernel_template": ROOT / "build/reports/e1x_vector_kernel_template.json",
     "looped_vector_kernel_skeleton": ROOT / "build/reports/e1x_looped_vector_kernel_skeleton.json",
     "per_layer_vector_codegen": ROOT / "build/reports/e1x_per_layer_vector_codegen.json",
@@ -326,6 +335,15 @@ def main() -> int:
     execution_ladder = reports.get("execution_coverage_ladder", {}).get("summary", {})
     full_workplan = reports.get("full_output_workplan", {}).get("summary", {})
     full_checksum_manifest = reports.get("full_output_checksum_manifest", {}).get("summary", {})
+    expanded_real_weight = reports.get("expanded_real_weight_rows", {}).get("summary", {})
+    full_norm_real_weight = reports.get("full_norm_real_weight_rows", {}).get("summary", {})
+    vocab_sampled_k = reports.get("vocab_sampled_k_real_weight_rows", {}).get("summary", {})
+    repaired_real_weight = reports.get("repaired_real_weight_execution", {}).get("summary", {})
+    attn_out_sampled_k = reports.get("attn_out_sampled_k_real_weight_rows", {}).get("summary", {})
+    attn_qkv_sampled_k = reports.get("attn_qkv_sampled_k_real_weight_rows", {}).get("summary", {})
+    mlp_gate_sampled_k = reports.get("mlp_gate_sampled_k_real_weight_rows", {}).get("summary", {})
+    mlp_up_sampled_k = reports.get("mlp_up_sampled_k_real_weight_rows", {}).get("summary", {})
+    mlp_down_sampled_k = reports.get("mlp_down_sampled_k_real_weight_rows", {}).get("summary", {})
     vector_kernel = reports.get("vector_kernel_template", {}).get("summary", {})
     loop_skeleton = reports.get("looped_vector_kernel_skeleton", {}).get("summary", {})
     per_layer_codegen = reports.get("per_layer_vector_codegen", {}).get("summary", {})
@@ -724,6 +742,201 @@ def main() -> int:
             == "full_output_real_weight_checksum_missing"
             and int(full_checksum_manifest.get("failing_check_count", 1)) == 0,
             "full-output checksum manifest commits every scheduled row identity and links existing checksum evidence while preserving the real-weight blocker",
+        ),
+        (
+            "expanded_real_weight_rows_execute_full_k_samples",
+            int(expanded_real_weight.get("placement_layer_count", 0)) == 283
+            and int(expanded_real_weight.get("covered_kind_count", 0)) == 8
+            and int(expanded_real_weight.get("executed_full_k_output_row_count", 0)) == 849
+            and int(expanded_real_weight.get("executed_full_k_mac_count", 0)) == 4_147_443
+            and 0.0003 < float(expanded_real_weight.get("row_coverage_fraction", 0.0)) < 0.0004
+            and 0.0003 < float(expanded_real_weight.get("mac_coverage_fraction", 0.0)) < 0.0004
+            and float(expanded_real_weight.get("mac_gain_vs_microkernel_proof", 0.0)) > 158.0
+            and int(expanded_real_weight.get("expanded_full_k_checksum", 0))
+            == 11_081_612_788_320_878_322
+            and expanded_real_weight.get("sampled_layer_result_sha256")
+            == "2abc4cb9334b939b0b230cca5d4ad605ea35aba13a5940948601e52dd25ed117"
+            and int(expanded_real_weight.get("microkernel_sample_mac_count", 0)) == 26_180
+            and expanded_real_weight.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and expanded_real_weight.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(expanded_real_weight.get("failing_check_count", 1)) == 0,
+            "expanded real-weight executor computes first/mid/last full-K W4A8 rows for every placed layer while preserving the full-output blocker",
+        ),
+        (
+            "full_norm_real_weight_rows_execute_whole_kind",
+            full_norm_real_weight.get("executed_kind") == "norm"
+            and int(full_norm_real_weight.get("executed_norm_layer_count", 0)) == 81
+            and int(full_norm_real_weight.get("executed_norm_output_row_count", 0)) == 414_720
+            and int(full_norm_real_weight.get("executed_norm_mac_count", 0)) == 414_720
+            and 0.15 < float(full_norm_real_weight.get("row_coverage_fraction", 0.0)) < 0.17
+            and 0.0 < float(full_norm_real_weight.get("mac_coverage_fraction", 0.0)) < 0.0001
+            and int(full_norm_real_weight.get("full_norm_real_weight_checksum", 0))
+            == 1_566_824_365_644_515_702
+            and full_norm_real_weight.get("sampled_norm_result_sha256")
+            == "e83b0a710f70a39f82b10ff34593f0b0dc2ca95fd095e2b7ee76a5946bc9b488"
+            and full_norm_real_weight.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and full_norm_real_weight.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(full_norm_real_weight.get("failing_check_count", 1)) == 0,
+            "full norm real-weight executor computes every norm output row while preserving the matmul/full-output blocker",
+        ),
+        (
+            "vocab_sampled_k_real_weight_rows_execute_singletons",
+            int(vocab_sampled_k.get("executed_layer_count", 0)) == 2
+            and int(vocab_sampled_k.get("sampled_k", 0)) == 128
+            and int(vocab_sampled_k.get("executed_vocab_output_row_count", 0)) == 64_000
+            and int(vocab_sampled_k.get("executed_vocab_sampled_k_mac_count", 0)) == 8_192_000
+            and int(vocab_sampled_k.get("represented_vocab_full_k_mac_count", 0)) == 327_680_000
+            and 0.02 < float(vocab_sampled_k.get("row_coverage_fraction", 0.0)) < 0.03
+            and 0.0006 < float(vocab_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.0007
+            and 0.02 < float(vocab_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.03
+            and int(vocab_sampled_k.get("vocab_sampled_k_real_weight_checksum", 0))
+            == 2_937_447_206_589_032_094
+            and vocab_sampled_k.get("vocab_sampled_k_result_sha256")
+            == "eefae909eba8d90f14e4b04daee33f994e791f8be981fd2dcfa1fe3fdc5bf084"
+            and vocab_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and vocab_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(vocab_sampled_k.get("failing_check_count", 1)) == 0,
+            "vocab sampled-K real-weight executor computes every embedding/lm_head output row over a wider K window while preserving the full-K blocker",
+        ),
+        (
+            "repaired_real_weight_execution_preserves_outputs",
+            int(repaired_real_weight.get("executed_layer_count", 0)) == 83
+            and int(repaired_real_weight.get("executed_real_weight_row_count", 0)) == 478_720
+            and int(repaired_real_weight.get("executed_real_weight_mac_count", 0)) == 8_606_720
+            and int(repaired_real_weight.get("touched_logical_core_count", 0)) == 3_847
+            and int(repaired_real_weight.get("output_invariant_checksum", 0))
+            == 1_513_790_197_994_659_005
+            and int(repaired_real_weight.get("normal_route_checksum", 0))
+            == 5_656_197_490_747_142_705
+            and int(repaired_real_weight.get("high_failure_route_checksum", 0))
+            == 15_868_043_245_877_341_904
+            and int(repaired_real_weight.get("normal_route_checksum", 0))
+            != int(repaired_real_weight.get("high_failure_route_checksum", 0))
+            and int(repaired_real_weight.get("normal_touched_remapped_rows", 0)) == 68
+            and int(repaired_real_weight.get("high_failure_touched_remapped_rows", 0)) == 11_787
+            and float(repaired_real_weight.get("high_vs_normal_touched_remap_ratio", 0.0)) > 170.0
+            and repaired_real_weight.get("sampled_executed_rows_sha256")
+            == "692863e80ac6c9cb3cb10fe4a49bcf2d66c0183838cb76ab66378ffa41d8c605"
+            and repaired_real_weight.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(repaired_real_weight.get("failing_check_count", 1)) == 0,
+            "repair-aware real-weight execution preserves logical outputs while normal/high-failure physical route checksums diverge",
+        ),
+        (
+            "attn_out_sampled_k_real_weight_rows_execute_all_rows",
+            attn_out_sampled_k.get("executed_layer_kind") == "attn_out_proj"
+            and int(attn_out_sampled_k.get("executed_layer_count", 0)) == 40
+            and int(attn_out_sampled_k.get("sampled_k", 0)) == 64
+            and int(attn_out_sampled_k.get("executed_attn_out_output_row_count", 0)) == 204_800
+            and int(attn_out_sampled_k.get("executed_attn_out_sampled_k_mac_count", 0)) == 13_107_200
+            and int(attn_out_sampled_k.get("represented_attn_out_full_k_mac_count", 0)) == 1_048_576_000
+            and 0.07 < float(attn_out_sampled_k.get("row_coverage_fraction", 0.0)) < 0.09
+            and 0.001 < float(attn_out_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
+            and 0.08 < float(attn_out_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.09
+            and int(attn_out_sampled_k.get("attn_out_sampled_k_real_weight_checksum", 0))
+            == 6_608_415_098_217_527_669
+            and attn_out_sampled_k.get("attn_out_sampled_k_result_sha256")
+            == "eb125c171f915724c435bb531c3e46399daeef673edb4e2c571b93b1fd0487aa"
+            and attn_out_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and attn_out_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(attn_out_sampled_k.get("failing_check_count", 1)) == 0,
+            "attn-out sampled-K real-weight executor computes every attn_out_proj output row over a bounded K window",
+        ),
+        (
+            "attn_qkv_sampled_k_real_weight_rows_execute_all_rows",
+            attn_qkv_sampled_k.get("executed_layer_kind") == "attn_qkv_proj"
+            and int(attn_qkv_sampled_k.get("executed_layer_count", 0)) == 40
+            and int(attn_qkv_sampled_k.get("sampled_k", 0)) == 32
+            and int(attn_qkv_sampled_k.get("executed_attn_qkv_output_row_count", 0)) == 614_400
+            and int(attn_qkv_sampled_k.get("executed_attn_qkv_sampled_k_mac_count", 0)) == 19_660_800
+            and int(attn_qkv_sampled_k.get("represented_attn_qkv_full_k_mac_count", 0)) == 3_145_728_000
+            and 0.23 < float(attn_qkv_sampled_k.get("row_coverage_fraction", 0.0)) < 0.24
+            and 0.001 < float(attn_qkv_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
+            and 0.24 < float(attn_qkv_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.25
+            and int(attn_qkv_sampled_k.get("attn_qkv_sampled_k_real_weight_checksum", 0))
+            == 16_749_998_878_173_451_739
+            and attn_qkv_sampled_k.get("attn_qkv_sampled_k_result_sha256")
+            == "7774d62c42840b0bf66082fa7e072df8f4ee9067f659451e7195488f57f74940"
+            and attn_qkv_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and attn_qkv_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(attn_qkv_sampled_k.get("failing_check_count", 1)) == 0,
+            "attn-qkv sampled-K real-weight executor computes every attn_qkv_proj output row over a bounded K window",
+        ),
+        (
+            "mlp_gate_sampled_k_real_weight_rows_execute_all_rows",
+            mlp_gate_sampled_k.get("executed_layer_kind") == "mlp_gate_proj"
+            and int(mlp_gate_sampled_k.get("executed_layer_count", 0)) == 40
+            and int(mlp_gate_sampled_k.get("sampled_k", 0)) == 32
+            and int(mlp_gate_sampled_k.get("executed_mlp_gate_output_row_count", 0)) == 552_960
+            and int(mlp_gate_sampled_k.get("executed_mlp_gate_sampled_k_mac_count", 0)) == 17_694_720
+            and int(mlp_gate_sampled_k.get("represented_mlp_gate_full_k_mac_count", 0)) == 2_831_155_200
+            and 0.21 < float(mlp_gate_sampled_k.get("row_coverage_fraction", 0.0)) < 0.22
+            and 0.001 < float(mlp_gate_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
+            and 0.21 < float(mlp_gate_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.22
+            and int(mlp_gate_sampled_k.get("mlp_gate_sampled_k_real_weight_checksum", 0))
+            == 644_049_328_919_108_482
+            and mlp_gate_sampled_k.get("mlp_gate_sampled_k_result_sha256")
+            == "042143af521f945995b1862636d90a6668be8a9fc68d776ff800251ffc4e3fc4"
+            and mlp_gate_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and mlp_gate_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(mlp_gate_sampled_k.get("failing_check_count", 1)) == 0,
+            "mlp-gate sampled-K real-weight executor computes every mlp_gate_proj output row over a bounded K window",
+        ),
+        (
+            "mlp_up_sampled_k_real_weight_rows_execute_all_rows",
+            mlp_up_sampled_k.get("executed_layer_kind") == "mlp_up_proj"
+            and int(mlp_up_sampled_k.get("executed_layer_count", 0)) == 40
+            and int(mlp_up_sampled_k.get("sampled_k", 0)) == 32
+            and int(mlp_up_sampled_k.get("executed_mlp_up_output_row_count", 0)) == 552_960
+            and int(mlp_up_sampled_k.get("executed_mlp_up_sampled_k_mac_count", 0)) == 17_694_720
+            and int(mlp_up_sampled_k.get("represented_mlp_up_full_k_mac_count", 0)) == 2_831_155_200
+            and 0.21 < float(mlp_up_sampled_k.get("row_coverage_fraction", 0.0)) < 0.22
+            and 0.001 < float(mlp_up_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
+            and 0.21 < float(mlp_up_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.22
+            and int(mlp_up_sampled_k.get("mlp_up_sampled_k_real_weight_checksum", 0))
+            == 5_263_540_896_081_439_006
+            and mlp_up_sampled_k.get("mlp_up_sampled_k_result_sha256")
+            == "9886ad2306ea36a3d73135fea7ea73fad37f07ec6c891b5d5b10a94d4fac74c2"
+            and mlp_up_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and mlp_up_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(mlp_up_sampled_k.get("failing_check_count", 1)) == 0,
+            "mlp-up sampled-K real-weight executor computes every mlp_up_proj output row over a bounded K window",
+        ),
+        (
+            "mlp_down_sampled_k_real_weight_rows_execute_all_rows",
+            mlp_down_sampled_k.get("executed_layer_kind") == "mlp_down_proj"
+            and int(mlp_down_sampled_k.get("executed_layer_count", 0)) == 40
+            and int(mlp_down_sampled_k.get("sampled_k", 0)) == 32
+            and int(mlp_down_sampled_k.get("executed_mlp_down_output_row_count", 0)) == 204_800
+            and int(mlp_down_sampled_k.get("executed_mlp_down_sampled_k_mac_count", 0)) == 6_553_600
+            and int(mlp_down_sampled_k.get("represented_mlp_down_full_k_mac_count", 0)) == 2_831_155_200
+            and 0.07 < float(mlp_down_sampled_k.get("row_coverage_fraction", 0.0)) < 0.08
+            and 0.0005 < float(mlp_down_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.001
+            and 0.21 < float(mlp_down_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.22
+            and int(mlp_down_sampled_k.get("mlp_down_sampled_k_real_weight_checksum", 0))
+            == 3_360_713_502_265_478_628
+            and mlp_down_sampled_k.get("mlp_down_sampled_k_result_sha256")
+            == "a3d640fdc0ae8a55cacdaa0e61bfbfdade39cf9b30d14c291656d579a6b26495"
+            and mlp_down_sampled_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and mlp_down_sampled_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(mlp_down_sampled_k.get("failing_check_count", 1)) == 0,
+            "mlp-down sampled-K real-weight executor computes every mlp_down_proj output row over a bounded K window",
         ),
         (
             "vector_kernel_template_scales_to_workplan",
@@ -1319,6 +1532,204 @@ def main() -> int:
         ),
         "full_output_checksum_manifest_residual_blocker": str(
             full_checksum_manifest.get("residual_blocker", "")
+        ),
+        "expanded_real_weight_rows": int(
+            expanded_real_weight.get("executed_full_k_output_row_count", 0)
+        ),
+        "expanded_real_weight_macs": int(expanded_real_weight.get("executed_full_k_mac_count", 0)),
+        "expanded_real_weight_mac_gain": float(
+            expanded_real_weight.get("mac_gain_vs_microkernel_proof", 0.0)
+        ),
+        "expanded_real_weight_checksum": int(
+            expanded_real_weight.get("expanded_full_k_checksum", 0)
+        ),
+        "expanded_real_weight_result_sha256": str(
+            expanded_real_weight.get("sampled_layer_result_sha256", "")
+        ),
+        "expanded_real_weight_residual_blocker": str(
+            expanded_real_weight.get("residual_blocker", "")
+        ),
+        "full_norm_real_weight_layers": int(
+            full_norm_real_weight.get("executed_norm_layer_count", 0)
+        ),
+        "full_norm_real_weight_rows": int(
+            full_norm_real_weight.get("executed_norm_output_row_count", 0)
+        ),
+        "full_norm_real_weight_macs": int(
+            full_norm_real_weight.get("executed_norm_mac_count", 0)
+        ),
+        "full_norm_real_weight_row_fraction": float(
+            full_norm_real_weight.get("row_coverage_fraction", 0.0)
+        ),
+        "full_norm_real_weight_checksum": int(
+            full_norm_real_weight.get("full_norm_real_weight_checksum", 0)
+        ),
+        "full_norm_real_weight_result_sha256": str(
+            full_norm_real_weight.get("sampled_norm_result_sha256", "")
+        ),
+        "full_norm_real_weight_residual_blocker": str(
+            full_norm_real_weight.get("residual_blocker", "")
+        ),
+        "vocab_sampled_k_layers": int(vocab_sampled_k.get("executed_layer_count", 0)),
+        "vocab_sampled_k_value": int(vocab_sampled_k.get("sampled_k", 0)),
+        "vocab_sampled_k_rows": int(vocab_sampled_k.get("executed_vocab_output_row_count", 0)),
+        "vocab_sampled_k_macs": int(
+            vocab_sampled_k.get("executed_vocab_sampled_k_mac_count", 0)
+        ),
+        "vocab_sampled_k_represented_full_k_macs": int(
+            vocab_sampled_k.get("represented_vocab_full_k_mac_count", 0)
+        ),
+        "vocab_sampled_k_row_fraction": float(
+            vocab_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "vocab_sampled_k_checksum": int(
+            vocab_sampled_k.get("vocab_sampled_k_real_weight_checksum", 0)
+        ),
+        "vocab_sampled_k_result_sha256": str(
+            vocab_sampled_k.get("vocab_sampled_k_result_sha256", "")
+        ),
+        "vocab_sampled_k_residual_blocker": str(vocab_sampled_k.get("residual_blocker", "")),
+        "repaired_real_weight_rows": int(
+            repaired_real_weight.get("executed_real_weight_row_count", 0)
+        ),
+        "repaired_real_weight_macs": int(
+            repaired_real_weight.get("executed_real_weight_mac_count", 0)
+        ),
+        "repaired_real_weight_touched_cores": int(
+            repaired_real_weight.get("touched_logical_core_count", 0)
+        ),
+        "repaired_real_weight_output_checksum": int(
+            repaired_real_weight.get("output_invariant_checksum", 0)
+        ),
+        "repaired_real_weight_normal_route_checksum": int(
+            repaired_real_weight.get("normal_route_checksum", 0)
+        ),
+        "repaired_real_weight_high_failure_route_checksum": int(
+            repaired_real_weight.get("high_failure_route_checksum", 0)
+        ),
+        "repaired_real_weight_high_failure_remapped_rows": int(
+            repaired_real_weight.get("high_failure_touched_remapped_rows", 0)
+        ),
+        "repaired_real_weight_remap_ratio": float(
+            repaired_real_weight.get("high_vs_normal_touched_remap_ratio", 0.0)
+        ),
+        "repaired_real_weight_residual_blocker": str(
+            repaired_real_weight.get("residual_blocker", "")
+        ),
+        "attn_out_sampled_k_layers": int(attn_out_sampled_k.get("executed_layer_count", 0)),
+        "attn_out_sampled_k_value": int(attn_out_sampled_k.get("sampled_k", 0)),
+        "attn_out_sampled_k_rows": int(
+            attn_out_sampled_k.get("executed_attn_out_output_row_count", 0)
+        ),
+        "attn_out_sampled_k_macs": int(
+            attn_out_sampled_k.get("executed_attn_out_sampled_k_mac_count", 0)
+        ),
+        "attn_out_sampled_k_represented_full_k_macs": int(
+            attn_out_sampled_k.get("represented_attn_out_full_k_mac_count", 0)
+        ),
+        "attn_out_sampled_k_row_fraction": float(
+            attn_out_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "attn_out_sampled_k_checksum": int(
+            attn_out_sampled_k.get("attn_out_sampled_k_real_weight_checksum", 0)
+        ),
+        "attn_out_sampled_k_result_sha256": str(
+            attn_out_sampled_k.get("attn_out_sampled_k_result_sha256", "")
+        ),
+        "attn_out_sampled_k_residual_blocker": str(
+            attn_out_sampled_k.get("residual_blocker", "")
+        ),
+        "attn_qkv_sampled_k_layers": int(attn_qkv_sampled_k.get("executed_layer_count", 0)),
+        "attn_qkv_sampled_k_value": int(attn_qkv_sampled_k.get("sampled_k", 0)),
+        "attn_qkv_sampled_k_rows": int(
+            attn_qkv_sampled_k.get("executed_attn_qkv_output_row_count", 0)
+        ),
+        "attn_qkv_sampled_k_macs": int(
+            attn_qkv_sampled_k.get("executed_attn_qkv_sampled_k_mac_count", 0)
+        ),
+        "attn_qkv_sampled_k_represented_full_k_macs": int(
+            attn_qkv_sampled_k.get("represented_attn_qkv_full_k_mac_count", 0)
+        ),
+        "attn_qkv_sampled_k_row_fraction": float(
+            attn_qkv_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "attn_qkv_sampled_k_checksum": int(
+            attn_qkv_sampled_k.get("attn_qkv_sampled_k_real_weight_checksum", 0)
+        ),
+        "attn_qkv_sampled_k_result_sha256": str(
+            attn_qkv_sampled_k.get("attn_qkv_sampled_k_result_sha256", "")
+        ),
+        "attn_qkv_sampled_k_residual_blocker": str(
+            attn_qkv_sampled_k.get("residual_blocker", "")
+        ),
+        "mlp_gate_sampled_k_layers": int(mlp_gate_sampled_k.get("executed_layer_count", 0)),
+        "mlp_gate_sampled_k_value": int(mlp_gate_sampled_k.get("sampled_k", 0)),
+        "mlp_gate_sampled_k_rows": int(
+            mlp_gate_sampled_k.get("executed_mlp_gate_output_row_count", 0)
+        ),
+        "mlp_gate_sampled_k_macs": int(
+            mlp_gate_sampled_k.get("executed_mlp_gate_sampled_k_mac_count", 0)
+        ),
+        "mlp_gate_sampled_k_represented_full_k_macs": int(
+            mlp_gate_sampled_k.get("represented_mlp_gate_full_k_mac_count", 0)
+        ),
+        "mlp_gate_sampled_k_row_fraction": float(
+            mlp_gate_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "mlp_gate_sampled_k_checksum": int(
+            mlp_gate_sampled_k.get("mlp_gate_sampled_k_real_weight_checksum", 0)
+        ),
+        "mlp_gate_sampled_k_result_sha256": str(
+            mlp_gate_sampled_k.get("mlp_gate_sampled_k_result_sha256", "")
+        ),
+        "mlp_gate_sampled_k_residual_blocker": str(
+            mlp_gate_sampled_k.get("residual_blocker", "")
+        ),
+        "mlp_up_sampled_k_layers": int(mlp_up_sampled_k.get("executed_layer_count", 0)),
+        "mlp_up_sampled_k_value": int(mlp_up_sampled_k.get("sampled_k", 0)),
+        "mlp_up_sampled_k_rows": int(
+            mlp_up_sampled_k.get("executed_mlp_up_output_row_count", 0)
+        ),
+        "mlp_up_sampled_k_macs": int(
+            mlp_up_sampled_k.get("executed_mlp_up_sampled_k_mac_count", 0)
+        ),
+        "mlp_up_sampled_k_represented_full_k_macs": int(
+            mlp_up_sampled_k.get("represented_mlp_up_full_k_mac_count", 0)
+        ),
+        "mlp_up_sampled_k_row_fraction": float(
+            mlp_up_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "mlp_up_sampled_k_checksum": int(
+            mlp_up_sampled_k.get("mlp_up_sampled_k_real_weight_checksum", 0)
+        ),
+        "mlp_up_sampled_k_result_sha256": str(
+            mlp_up_sampled_k.get("mlp_up_sampled_k_result_sha256", "")
+        ),
+        "mlp_up_sampled_k_residual_blocker": str(
+            mlp_up_sampled_k.get("residual_blocker", "")
+        ),
+        "mlp_down_sampled_k_layers": int(mlp_down_sampled_k.get("executed_layer_count", 0)),
+        "mlp_down_sampled_k_value": int(mlp_down_sampled_k.get("sampled_k", 0)),
+        "mlp_down_sampled_k_rows": int(
+            mlp_down_sampled_k.get("executed_mlp_down_output_row_count", 0)
+        ),
+        "mlp_down_sampled_k_macs": int(
+            mlp_down_sampled_k.get("executed_mlp_down_sampled_k_mac_count", 0)
+        ),
+        "mlp_down_sampled_k_represented_full_k_macs": int(
+            mlp_down_sampled_k.get("represented_mlp_down_full_k_mac_count", 0)
+        ),
+        "mlp_down_sampled_k_row_fraction": float(
+            mlp_down_sampled_k.get("row_coverage_fraction", 0.0)
+        ),
+        "mlp_down_sampled_k_checksum": int(
+            mlp_down_sampled_k.get("mlp_down_sampled_k_real_weight_checksum", 0)
+        ),
+        "mlp_down_sampled_k_result_sha256": str(
+            mlp_down_sampled_k.get("mlp_down_sampled_k_result_sha256", "")
+        ),
+        "mlp_down_sampled_k_residual_blocker": str(
+            mlp_down_sampled_k.get("residual_blocker", "")
         ),
         "vector_kernel_template_instruction_words": int(
             vector_kernel.get("template_instruction_words", 0)

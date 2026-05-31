@@ -14,6 +14,14 @@ DEFAULT_MANIFEST = (
     ROOT / "build/ai_eda/training_corpus_manifest/validation/training_corpus_manifest.json"
 )
 CLAIM_BOUNDARY = "training_corpus_manifest_only_no_payload_weights_training_or_e1_claim"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_optimization_claim_allowed",
+    "e1_signoff_claim_allowed",
+)
 REQUIRED_DATASETS = {
     "internal_dataset_fixtures",
     "tilos_macroplacement",
@@ -191,6 +199,9 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         errors.append("schema mismatch")
     if manifest.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("claim_boundary mismatch")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if manifest.get(field) is not False:
+            errors.append(f"{field} must be false")
     if manifest.get("missing_or_empty_datasets") != []:
         errors.append("missing_or_empty_datasets must be empty")
     policy = manifest.get("policy")
@@ -204,6 +215,7 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             "runs_inference",
             "release_use_allowed",
             "e1_signoff_evidence",
+            *REQUIRED_FALSE_CLAIM_FLAGS,
         ):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")

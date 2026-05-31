@@ -1897,18 +1897,26 @@ def main() -> int:
                 "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
                 "tool": "kicad-cli",
                 "available": True,
-                "sch_erc_available": False,
-                "pcb_drc_available": False,
+                "sch_erc_available": True,
+                "pcb_drc_available": True,
                 "pcb_step_export_available": True,
-                "required_release_commands_available": False,
-                "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
-                "erc_status": "blocked_kicad_cli_lacks_sch_erc",
-                "step_export_status": "blocked_kicad_cli_7_cannot_open_current_board",
+                "required_release_commands_available": True,
+                "step_export_status": "available_not_release_validated",
                 "release_credit": False,
             }
             for key, expected in expected_kicad_preflight.items():
                 if kicad_preflight.get(key) != expected:
                     raise ValueError(f"routed-board KiCad CLI preflight stale: {key}")
+            if kicad_preflight.get("drc_status") not in {
+                "blocked_kicad_cli_drc_violations",
+                "blocked_kicad_cli_drc_not_run",
+            }:
+                raise ValueError("routed-board KiCad CLI preflight stale: drc_status")
+            if kicad_preflight.get("erc_status") not in {
+                "blocked_kicad_cli_erc_violations",
+                "blocked_kicad_cli_erc_not_run",
+            }:
+                raise ValueError("routed-board KiCad CLI preflight stale: erc_status")
         blocked_candidate_step_files = board_step.get("blocked_candidate_step_files", [])
         if not isinstance(blocked_candidate_step_files, list):
             raise ValueError("board-step blocked_candidate_step_files must be a list")

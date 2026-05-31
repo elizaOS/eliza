@@ -28,7 +28,7 @@
     "height": 0.0500002,
     "width": 3.2000002000000003
   },
-  "local_discrete_step_bytes": 15613,
+  "local_discrete_step_bytes": 15638,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 3.2,
     "height": 0.05,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "8d65ce25bca951f3221dcd45a1368c57446937f126448bfabd1aeafc0c48caa1",
+  "local_discrete_step_sha256": "83df34151ec7b63b9c8ea48c2e7d39bf0690c038fa1416321e7efb24285df85b",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

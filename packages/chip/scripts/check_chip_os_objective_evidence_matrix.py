@@ -139,7 +139,6 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         "Local software BSP scaffold inventory remains tracked but cannot be promoted as Linux/AOSP boot or compatibility evidence.",
         "software_bsp.json",
         proof_kind="static",
-        static_only=True,
         closure_evidence="Software BSP scaffold inventory status=pass remains only scaffold coverage; external Buildroot/Linux/OpenSBI/AOSP evidence must pass separately before readiness claims.",
     ),
     Requirement(

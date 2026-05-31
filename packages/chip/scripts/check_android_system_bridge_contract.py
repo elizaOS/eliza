@@ -112,7 +112,9 @@ FALSE_CLAIM_FLAGS = {
 }
 RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
 DEFAULT_RUNTIME_OUTPUT = "packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
+DEFAULT_RUNTIME_LOGCAT = "packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
 RECHECK_COMMAND = "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
+ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 BRIDGE_PACKAGE = "ai.elizaos.system.bridge"
 EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
@@ -307,8 +309,13 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     "adb devices",
                     (
                         f"{RUNTIME_CAPTURE_SCRIPT} "
+                        + " ".join(
+                            f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES
+                        )
+                        + " "
                         f"--launcher-package {APP_PACKAGE} "
-                        f"--output {DEFAULT_RUNTIME_OUTPUT}"
+                        f"--output {DEFAULT_RUNTIME_OUTPUT} "
+                        f"--logcat {DEFAULT_RUNTIME_LOGCAT}"
                     ),
                     RECHECK_COMMAND,
                 ],

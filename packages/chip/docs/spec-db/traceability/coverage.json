@@ -1,6 +1,10 @@
 {
-  "as_of": "2026-05-28",
+  "as_of": "2026-05-30",
+  "claim_allowed": false,
   "claim_boundary": "traceability_closure_is_structural_completeness_not_silicon_or_signoff",
+  "phone_claim_allowed": false,
+  "production_readiness_claim_allowed": false,
+  "release_claim_allowed": false,
   "requirements": [
     {
       "claim_boundary": "manifest_template_no_post_route_signoff_claim",
@@ -648,6 +652,8 @@
     }
   ],
   "schema": "eliza.traceability_coverage.v1",
+  "signoff_claim_allowed": false,
+  "silicon_claim_allowed": false,
   "summary": {
     "closure_pct_by_domain": {
       "PD": 46.43,
@@ -658,5 +664,6 @@
     "overall_closure_pct": 59.82,
     "requirements": 28,
     "waived": 0
-  }
+  },
+  "tapeout_claim_allowed": false
 }

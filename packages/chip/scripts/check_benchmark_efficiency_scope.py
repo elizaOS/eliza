@@ -62,6 +62,25 @@ REQUIRED_REAL_CALIBRATION_ASSETS = {
     "clock_source",
     "power_meter",
 }
+REQUIRED_CAPTURE_COMMANDS = {
+    "target_benchmark_report": (
+        "python3 benchmarks/run_benchmarks.py run "
+        "--config benchmarks/configs/benchmark_plan.json "
+        "--out-dir benchmarks/results/target-phone "
+        "--claim-level L5_PROTOTYPE_SILICON "
+        "--target-metadata benchmarks/results/target-phone/target-metadata.json"
+    ),
+    "target_benchmark_validation": (
+        "python3 benchmarks/run_benchmarks.py validate-report "
+        "benchmarks/results/target-phone/report.json "
+        "--artifact-root ."
+    ),
+    "npu_nnapi_proof": (
+        "E1_NPU_WRITE_PROOF_JSON=1 "
+        "scripts/android/capture_e1_npu_nnapi_evidence.sh"
+    ),
+    "launcher_agent_runtime": "scripts/android/capture_eliza_launcher_runtime_evidence.sh",
+}
 FORBIDDEN_SIMULATOR_SCORE_METRICS = {
     "wall_clock_score",
     "phone_score",
@@ -321,6 +340,7 @@ def build_report() -> dict[str, Any]:
             "parser_regression_test": rel(PARSER_TEST),
         },
         "blocked_until_real_evidence": blocked_until_real_evidence,
+        "next_capture_commands": REQUIRED_CAPTURE_COMMANDS,
         "findings": findings,
         "checks": checks,
         "summary": {
@@ -390,6 +410,16 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "parser_regression_test",
         ):
             require(isinstance(scaffolds.get(key), str), f"current_scaffolds missing {key}", errors)
+    commands = data.get("next_capture_commands")
+    if not isinstance(commands, dict):
+        errors.append("next_capture_commands must be a mapping")
+    else:
+        for key, expected in REQUIRED_CAPTURE_COMMANDS.items():
+            require(
+                commands.get(key) == expected,
+                f"next_capture_commands missing or changed {key}",
+                errors,
+            )
     return errors
 
 

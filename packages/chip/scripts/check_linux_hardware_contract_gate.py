@@ -34,6 +34,14 @@ REQUIRED_AXES = {
     "dtb_linux_nodes",
     "linux_initramfs_smoke",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "linux_boot_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "silicon_evidence_claim_allowed",
+}
 
 REQUIRED_DOC_TOKENS = {
     LINUX_DOC: [
@@ -156,6 +164,8 @@ def check_gate(errors: list[str]) -> None:
         "linux gate claim_boundary must forbid local scaffold as Linux evidence",
         errors,
     )
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        require(data.get(key) is False, f"{key} must be false", errors)
 
     current = data.get("current_scaffold")
     require(isinstance(current, dict), "current_scaffold must be a mapping", errors)

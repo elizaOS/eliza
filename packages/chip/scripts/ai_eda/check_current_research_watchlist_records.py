@@ -17,6 +17,14 @@ CLAIM_BOUNDARY = (
 )
 REQUIRED_TASK_TYPE = "ai_eda_current_research_watchlist_intake"
 REQUIRED_KIND = "structured_current_research_watchlist_intake"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "optimization_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -36,6 +44,14 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{rel(path)}: expected JSON object")
     return data
+
+
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
 
 
 def validate_source(record: dict[str, Any], record_id: str) -> list[str]:
@@ -64,6 +80,7 @@ def validate_record(path: Path) -> list[str]:
         errors.append(f"{record_id}: schema mismatch")
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(record, record_id))
     if record.get("task_type") != REQUIRED_TASK_TYPE:
         errors.append(f"{record_id}: task_type mismatch")
     if record.get("split") != "train":
@@ -126,6 +143,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report schema mismatch")
     if report.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("report claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(report, "report"))
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")
@@ -139,6 +157,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
             "runs_inference",
             "release_use_allowed",
             "e1_signoff_evidence",
+            *REQUIRED_FALSE_CLAIM_FLAGS,
         ):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")

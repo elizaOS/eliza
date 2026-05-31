@@ -66,11 +66,20 @@ function extractViewTarget(
 			.split(/[\s,!.?]+/)
 			.map((t) => t.trim())
 			.filter((t) => t.length > 0);
-		let i = 0;
-		while (i < tokens.length && FILLER_WORDS.has(tokens[i].toLowerCase())) {
-			i++;
+		// Strip filler from both ends: "the wallet view" / "wallet page" /
+		// "settings view please" should all resolve to the bare view name.
+		let start = 0;
+		while (
+			start < tokens.length &&
+			FILLER_WORDS.has(tokens[start].toLowerCase())
+		) {
+			start++;
 		}
-		const candidate = tokens.slice(i).join(" ").toLowerCase();
+		let end = tokens.length;
+		while (end > start && FILLER_WORDS.has(tokens[end - 1].toLowerCase())) {
+			end--;
+		}
+		const candidate = tokens.slice(start, end).join(" ").toLowerCase();
 		if (candidate && !FILLER_WORDS.has(candidate)) return candidate;
 	}
 

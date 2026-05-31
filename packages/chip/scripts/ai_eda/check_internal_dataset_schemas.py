@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_FILE = ROOT / "docs/spec-db/ai-eda/internal-dataset-schemas.yaml"
 EXAMPLES_DIR = ROOT / "docs/spec-db/ai-eda/examples"
 CLAIM_BOUNDARY = "internal_dataset_schema_validation_only_no_training_inference_or_release_claim"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "generated_artifact_claim_allowed",
+)
 
 
 def load_yaml(path: Path) -> Any:
@@ -96,6 +103,9 @@ def main() -> int:
         != "schema_contract_only_no_training_inference_or_release_claim"
     ):
         errors.append("top-level claim_boundary is missing or incorrect")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if schema.get(field) is not False:
+            errors.append(f"{field} must be false")
 
     policy = schema.get("policy")
     if not isinstance(policy, dict):

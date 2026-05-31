@@ -40,6 +40,13 @@ REQUIRED_TOP_KEYS = {
     "schema",
     "status",
     "claim_boundary",
+    "claim_allowed",
+    "release_claim_allowed",
+    "pdn_signoff_claim_allowed",
+    "pmic_procurement_claim_allowed",
+    "measured_silicon_claim_allowed",
+    "tapeout_claim_allowed",
+    "production_readiness_claim_allowed",
     "source_artifacts",
     "process",
     "soc_topology",
@@ -65,6 +72,15 @@ REQUIRED_RAIL_KEYS = {
     "decoupling_nf",
     "notes",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "pdn_signoff_claim_allowed",
+    "pmic_procurement_claim_allowed",
+    "measured_silicon_claim_allowed",
+    "tapeout_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def fail(failures: list[str], message: str) -> None:
@@ -79,6 +95,9 @@ def validate_plan(payload: dict) -> list[str]:
     missing = sorted(REQUIRED_TOP_KEYS - set(payload))
     if missing:
         fail(failures, f"missing top-level keys: {', '.join(missing)}")
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if payload.get(flag) is not False:
+            fail(failures, f"{flag} must be false")
 
     rails = payload.get("rails", [])
     if not isinstance(rails, list) or len(rails) != len(EXPECTED_RAILS):
@@ -204,6 +223,9 @@ def validate_hash() -> list[str]:
             f"rail-plan-evidence.yaml.rail_plan_sha256 mismatch: "
             f"declared={declared}, actual={plan_hash}",
         )
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if evidence.get(flag) is not False:
+            fail(failures, f"rail-plan-evidence.yaml.{flag} must be false")
     return failures
 
 

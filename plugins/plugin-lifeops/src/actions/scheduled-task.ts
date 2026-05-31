@@ -1,9 +1,9 @@
 /**
  * `SCHEDULED_TASKS` umbrella action.
  *
- * Wraps `ScheduledTaskRunner` — the single execution surface for
+ * Wraps `ScheduledTaskRunner` — the LifeOps scheduled-item execution surface for
  * `reminder | checkin | followup | approval | recap | watcher | output | custom`
- * `ScheduledTask`s (frozen contract per `IMPLEMENTATION_PLAN.md` §1).
+ * `ScheduledTask` records (frozen contract per `IMPLEMENTATION_PLAN.md` §1).
  *
  * Subactions:
  *   - `list`      — read tasks (optional kind / status / subject filters)
@@ -51,6 +51,7 @@ import type {
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
+import { OWNER_OPERATION_VALIDATE } from "./life.js";
 
 const SUBACTIONS = [
   "list",
@@ -595,7 +596,6 @@ export const scheduledTaskAction: Action & {
 } = {
   name: "SCHEDULED_TASKS",
   similes: [
-    "TASKS",
     "SCHEDULED_TASK",
     "REMINDER_TASK",
     "SCHEDULED_REMINDER",
@@ -622,7 +622,10 @@ export const scheduledTaskAction: Action & {
     "NOTIFICATION_ESCALATE",
   ],
   tags: [
+    "domain:lifeops",
     "domain:reminders",
+    "resource:scheduled-item",
+    "resource:scheduled-task",
     "capability:read",
     "capability:write",
     "capability:update",
@@ -631,15 +634,22 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Owner ScheduledTask spine. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+    "Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
   descriptionCompressed:
-    "ScheduledTask list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+    "LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "follow-ups today", "complete check-in", "task history") -> SCHEDULED_TASKS; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
-  contexts: ["tasks", "reminders", "followups", "calendar"],
+    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+  contexts: [
+    "tasks",
+    "automation",
+    "reminders",
+    "followups",
+    "calendar",
+    "productivity",
+  ],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  validate: OWNER_OPERATION_VALIDATE,
   parameters: [
     {
       name: "action",

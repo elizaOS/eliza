@@ -157,6 +157,76 @@ class ManifoldReport:
                     and self.volume_m3 > 0.0 and self.euler_number % 2 == 0)
 
 
+def frustum_mesh(fromto: tuple[float, ...], r0: float, r1: float,
+                 sections: int = 40) -> trimesh.Trimesh:
+    """Tapered tube from end0 (radius r0) to end1 (radius r1) along `fromto`."""
+    length, mid, direction = _fromto_len_mid(fromto)
+    m = trimesh.creation.cylinder(radius=1.0, height=length, sections=sections)
+    z = m.vertices[:, 2]
+    t = (z + length / 2.0) / length          # 0 at -z end, 1 at +z end
+    radial = r0 * (1.0 - t) + r1 * t
+    m.vertices[:, 0] *= radial
+    m.vertices[:, 1] *= radial
+    m.apply_transform(_align_z_to(direction))
+    m.apply_translation(mid)
+    return m
+
+
+# Bodies whose limb shell should taper (proximal radius -> distal radius factor).
+_LIMB_TAPER = {
+    "thigh": (1.18, 0.82), "shank": (1.12, 0.72), "upper_arm": (1.15, 0.8),
+    "forearm": (1.12, 0.72),
+}
+
+
+def visual_mesh_for(geom: Geom) -> trimesh.Trimesh:
+    """A render-quality mesh for one shell geom: limbs taper, spheres/ellipsoids
+    are smoothed high-res, everything else falls back to the primitive."""
+    base = geom.name.replace("left_", "").replace("right_", "")
+    if geom.type == "capsule" and geom.fromto is not None:
+        for key, (f0, f1) in _LIMB_TAPER.items():
+            if key in base:
+                r = geom.size[0]
+                limb = frustum_mesh(geom.fromto, r * f0, r * f1)
+                # rounded distal cap
+                cap = trimesh.creation.icosphere(subdivisions=2, radius=r * f1)
+                cap.apply_translation(geom.fromto[3:])
+                return trimesh.util.concatenate([limb, cap])
+    if geom.type in ("sphere", "ellipsoid"):
+        if geom.type == "sphere":
+            m = trimesh.creation.icosphere(subdivisions=4, radius=geom.size[0])
+        else:
+            m = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
+            m.apply_scale(geom.size)
+        m.apply_translation(geom.pos)
+        return m
+    if geom.type == "box" and geom.role == "shell":
+        # rounded box: subdivide + volume-preserving Taubin smoothing
+        m = trimesh.creation.box(extents=[2 * s for s in geom.size])
+        for _ in range(2):
+            m = m.subdivide()
+        trimesh.smoothing.filter_taubin(m, iterations=12)
+        m.apply_translation(geom.pos)
+        return m
+    return primitive_mesh(geom)
+
+
+def export_visual_meshes(spec, mesh_dir) -> dict[str, str]:
+    """Write a render mesh per shell geom (body-frame) as OBJ; return name->file."""
+    from pathlib import Path
+
+    mesh_dir = Path(mesh_dir)
+    mesh_dir.mkdir(parents=True, exist_ok=True)
+    mapping: dict[str, str] = {}
+    for body in spec.bodies:
+        for g in body.geoms:
+            mesh = visual_mesh_for(g)
+            fn = f"{g.name}.obj"
+            mesh.export(mesh_dir / fn)
+            mapping[g.name] = fn
+    return mapping
+
+
 def manifold_report(name: str, mesh: trimesh.Trimesh) -> ManifoldReport:
     return ManifoldReport(
         name=name,

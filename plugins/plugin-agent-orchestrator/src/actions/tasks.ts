@@ -2323,6 +2323,14 @@ export const tasksAction: Action & {
   name: "TASKS",
   contexts: ["code", "automation", "agent_internal", "connectors"],
   roleGate: { minRole: "USER" },
+  tags: [
+    "domain:coding",
+    "domain:agent-orchestration",
+    "resource:agent-task",
+    "resource:coding-task",
+    "capability:delegate",
+    "surface:task-coordinator",
+  ],
   similes: [
     // create
     "CREATE_AGENT_TASK",

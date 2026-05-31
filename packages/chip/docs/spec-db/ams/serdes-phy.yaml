@@ -9,6 +9,11 @@ claim_boundary: >
   pins, target nodes, and BER/eye signoff corners. Makes no BER, eye-height, or
   return-loss claim: those stay blocked on Sigrity/Spectre SerDes signoff with a
   vendor model and the board coupon plan.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
 
 supply_rails:
   - rail: VDD_SERDES_ANA

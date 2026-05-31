@@ -12,7 +12,7 @@ requirements:
     title: AXI-Lite formal property pack must be bound across all fabric masters/targets
     owner: verify
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: shallow_structural_formal_only_no_protocol_proof_claim
     work_order_id: interconnect-axi-lite-proof-coverage
@@ -32,7 +32,7 @@ requirements:
     title: DMA formal coverage must extend to protocol and long-transfer invariants
     owner: verify
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: depth_12_status_proof_only_no_full_dma_correctness_claim
     work_order_id: dma-proof-depth-and-protocol
@@ -52,7 +52,7 @@ requirements:
     title: NPU coverage accounting must publish opcode/shape/status/fallback summaries
     owner: verify
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: directed_smoke_coverage_only_no_full_coverage_claim
     work_order_id: npu-test-coverage-accounting
@@ -71,7 +71,7 @@ requirements:
     title: Yosys structural fallback must not satisfy deep formal signoff gates
     owner: verify
     source_doc: verify/rtl_gap_work_order.yaml
-    source_doc_sha: cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
     status: open
     claim_boundary: structural_fallback_is_not_property_proof_signoff
     work_order_id: formal-yosys-fallback-is-not-equivalent

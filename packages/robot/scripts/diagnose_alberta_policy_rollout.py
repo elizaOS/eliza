@@ -61,6 +61,17 @@ def _episode_summary(
     max_abs_pitch = max(abs(_float(step.get("imu_pitch"))) for step in steps) if steps else 0.0
     max_abs_roll = max(abs(_float(step.get("imu_roll"))) for step in steps) if steps else 0.0
     max_foot_slip = max((_float(step.get("max_foot_slip_m_s")) for step in steps), default=0.0)
+    min_floor_clearance = min(
+        (_float(step.get("min_robot_geom_floor_clearance_m")) for step in steps),
+        default=0.0,
+    )
+    floor_tolerance = max(
+        (_float(step.get("floor_penetration_tolerance_m"), 0.005) for step in steps),
+        default=0.005,
+    )
+    below_floor_steps = sum(
+        1 for step in steps if int(_float(step.get("below_floor_robot_geom_count"))) > 0
+    )
     max_tracked_dx = max((_float(step.get("tracked_delta_x")) for step in steps), default=0.0)
     max_abs_yaw = max(abs(_float(step.get("delta_yaw"))) for step in steps) if steps else 0.0
     first_slip_step = (
@@ -112,6 +123,10 @@ def _episode_summary(
         "max_abs_pitch_rad": max_abs_pitch,
         "max_abs_roll_rad": max_abs_roll,
         "max_foot_slip_m_s": max_foot_slip,
+        "min_robot_geom_floor_clearance_m": min_floor_clearance,
+        "floor_penetration_tolerance_m": floor_tolerance,
+        "below_floor_step_count": int(below_floor_steps),
+        "geometry_floor_ok": below_floor_steps == 0 and min_floor_clearance >= -floor_tolerance,
         "foot_contact_switch_count": int(_float(final_info.get("foot_contact_switch_count"))),
         "first_slip_limit_step": first_slip_step,
         "first_required_contacts_step": first_required_contacts_step,
@@ -211,6 +226,19 @@ def diagnose(args: argparse.Namespace) -> dict[str, Any]:
                     "left_foot_slip_m_s": _float(info.get("left_foot_slip_m_s")),
                     "right_foot_slip_m_s": _float(info.get("right_foot_slip_m_s")),
                     "max_foot_slip_m_s": _float(info.get("max_foot_slip_m_s")),
+                    "min_robot_geom_floor_clearance_m": _float(
+                        info.get("min_robot_geom_floor_clearance_m")
+                    ),
+                    "below_floor_robot_geom_count": int(
+                        _float(info.get("below_floor_robot_geom_count"))
+                    ),
+                    "worst_below_floor_robot_geom": info.get(
+                        "worst_below_floor_robot_geom",
+                    ),
+                    "floor_penetration_tolerance_m": _float(
+                        info.get("floor_penetration_tolerance_m"),
+                        0.005,
+                    ),
                     "locomotion_prior_goal_hold_scale": _float(
                         info.get("locomotion_prior_goal_hold_scale"),
                         1.0,
@@ -263,6 +291,7 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--seed", type=int, default=28_000)
     parser.add_argument("--domain-rand", action="store_true")
+    parser.add_argument("--allow-below-floor", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     report = diagnose(args)
@@ -270,6 +299,14 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({**report, "episodes": [e["summary"] for e in report["episodes"]]}, indent=2))
+    if not args.allow_below_floor:
+        bad = [
+            episode["summary"]
+            for episode in report["episodes"]
+            if not episode["summary"].get("geometry_floor_ok")
+        ]
+        if bad:
+            raise SystemExit("robot geometry below floor in rollout diagnostic")
 
 
 if __name__ == "__main__":

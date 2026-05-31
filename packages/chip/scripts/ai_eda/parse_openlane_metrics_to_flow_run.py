@@ -167,6 +167,11 @@ def main() -> int:
     flow_run = dict(base)
     flow_run["id"] = f"{base['id']}--metrics-{args.run_id}"
     flow_run["claim_boundary"] = CLAIM_BOUNDARY
+    flow_run["claim_allowed"] = False
+    flow_run["release_claim_allowed"] = False
+    flow_run["training_claim_allowed"] = False
+    flow_run["inference_claim_allowed"] = False
+    flow_run["ppa_signoff_claim_allowed"] = False
     flow_run["metrics"] = {
         "label_status": status,
         "normalized": labels,
@@ -205,6 +210,11 @@ def main() -> int:
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
+        "claim_allowed": False,
+        "release_claim_allowed": False,
+        "training_claim_allowed": False,
+        "inference_claim_allowed": False,
+        "ppa_signoff_claim_allowed": False,
         "base_flow_run": rel(args.base_flow_run.resolve()),
         "metrics_json": rel(metrics_path),
         "metrics_selection_policy": selection_policy,

@@ -34,6 +34,15 @@ GATE_FILE = ROOT / "docs" / "evidence" / "power" / "pdn-signoff-gate.yaml"
 REPORT = ROOT / "build/reports/pdn_workload_signoff.json"
 SCHEMA = "eliza.pdn_workload_signoff.v1"
 CLAIM_BOUNDARY = "pdn_workload_signoff_validation_only_not_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "pdn_signoff_claim_allowed": False,
+    "ir_em_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def blocker_bucket(finding: str) -> str:
@@ -102,6 +111,7 @@ def write_report(status: str, findings: list[str], allow_blocked: bool) -> None:
         "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": "allow_blocked" if allow_blocked else "strict",
         "gate_file": GATE_FILE.relative_to(ROOT).as_posix(),
         "summary": {

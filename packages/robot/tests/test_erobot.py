@@ -27,13 +27,20 @@ def built() -> dict:
 
 def test_spec_is_full_size_humanoid() -> None:
     spec = build_spec()
-    assert spec.dof == 27  # 25 direct joints + 2 tendon-driven toes
+    # 24 DoF: 2 legs x (hip pitch/roll/yaw, knee, ankle pitch/roll, toe) = 14,
+    # 2-DOF waist (yaw + pitch), 2 arms x (shoulder pitch/roll/yaw, elbow) = 8.
+    # Head, neck, and hands/wrists are intentionally removed.
+    assert spec.dof == 24
     assert spec.profile_id == "erobot"
-    assert 1.5 <= spec.standing_height_m <= 1.9
+    assert 1.4 <= spec.standing_height_m <= 1.9
     idx = sorted(j.index for j in spec.joints)
-    assert idx == list(range(27))
-    assert len({j.name for j in spec.joints}) == 27
+    assert idx == list(range(24))
+    assert len({j.name for j in spec.joints}) == 24
     assert sum(j.tendon_driven for j in spec.joints) == 2  # the toes
+    names = {j.name for j in spec.joints}
+    assert not any("neck" in n or "wrist" in n for n in names)
+    assert {"waist_yaw_joint", "waist_pitch_joint"} <= names
+    assert {b.name for b in spec.bodies}.isdisjoint({"head", "neck", "left_wrist_yaw"})
 
 
 def test_mass_budget_is_lightweight() -> None:
@@ -45,7 +52,7 @@ def test_mass_budget_is_lightweight() -> None:
 def test_profile_validates_against_schema(built: dict) -> None:
     prof = load_profile("erobot")
     assert isinstance(prof, RobotProfile)
-    assert prof.kinematics.dof == 27
+    assert prof.kinematics.dof == 24
     assert prof.gait.controller == "rl"
     for j in prof.kinematics.joints:
         assert j.actuator_torque_nm > 0 and j.velocity_max_rad_s > 0
@@ -69,17 +76,48 @@ def test_urdf_is_wellformed(built: dict) -> None:
     import xml.etree.ElementTree as ET
 
     root = ET.parse(built["artifacts"]["urdf"]).getroot()
-    assert len(root.findall("link")) == 28
-    assert len(root.findall("joint")) == 27
+    assert len(root.findall("link")) == 25
+    assert len(root.findall("joint")) == 24
 
 
 def test_all_proofs_pass(built: dict) -> None:
     assert built["ok"], built["proofs_ok"]
     for name in ("manifold", "internal-collision", "mate-verification",
-                 "mechanical-analysis", "mujoco-load", "tendon-actuation",
-                 "joint-sweep", "range-of-motion", "mass-reconciliation",
-                 "structural-sanity"):
+                 "mechanical-analysis", "transmission", "mujoco-load",
+                 "tendon-actuation", "joint-sweep", "range-of-motion",
+                 "rom-requirements", "mass-reconciliation", "structural-sanity"):
         assert built["proofs_ok"][name], f"proof {name} failed"
+
+
+def _proof(name: str) -> dict:
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "cad" / "erobot" / "proofs"
+    return json.loads((root / f"{name}.json").read_text())
+
+
+def test_motor_controls_foot_position_through_pulley(built: dict) -> None:
+    t = _proof("transmission")
+    assert t["ok"]
+    toe = t["toe_position_control"]
+    assert toe["monotonic"]                          # command -> position is a function
+    assert toe["repeatable_hysteresis_deg"] < 2.0    # near-zero backlash
+    assert toe["toe_tip_travel_mm"] > 10.0           # the foot tip actually moves
+    mech = t["pulley_belt_mechanics"]
+    assert mech["cable_safety_factor"] >= 2.0
+    assert mech["backlash_deg"] == 0.0               # positive anchored cable
+    foot = t["foot_position_by_leg_motors"]
+    assert foot["knee_moves_foot_height_m"] > 0.1    # leg motor positions the foot
+
+
+def test_rom_requirements_met(built: dict) -> None:
+    r = _proof("rom-requirements")
+    assert r["ok"], r["failures"]
+    by_type = {row["type"]: row for row in r["joints"]}
+    assert by_type["knee"]["achieved_deg"] >= 115.0          # full knee flexion
+    assert by_type["hip_pitch"]["achieved_deg"] >= 100.0     # hip flexion/extension
+    assert by_type["toe"]["achieved_deg"] >= 15.0            # cable-driven toe
 
 
 def test_every_part_is_manifold() -> None:

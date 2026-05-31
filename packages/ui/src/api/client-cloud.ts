@@ -1130,7 +1130,11 @@ declare module "./client-base" {
       name: string;
       bio?: string[];
       onProgress?: (status: string, detail?: string) => void;
-    }): Promise<{ bridgeUrl: string; agentId: string }>;
+    }): Promise<{
+      bridgeUrl: string;
+      agentId: string;
+      webUiUrl?: string | null;
+    }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -2398,6 +2402,34 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
   }
 };
 
+/**
+ * Resolve the reachable API base for a freshly provisioned cloud agent.
+ *
+ * Prefer a reachable URL the server explicitly provides (`webUiUrl`); otherwise
+ * fall back to the raw container `bridgeUrl`.
+ *
+ * We deliberately do NOT derive `https://<agentId>.<domain>` ourselves.
+ * Verified against live Eliza Cloud (2026-05-31): a running agent is exposed
+ * ONLY as `bridgeUrl: http://<ip>:<port>` (no `web_ui_url` field), and the
+ * per-agent subdomain the cloud code *intends* — `<agentId>.elizacloud.ai`,
+ * built by getElizaAgentPublicWebUiUrl() — is not actually deployed: it returns
+ * a Vercel `DEPLOYMENT_NOT_FOUND` 404. Pinning that 404 URL would wedge
+ * first-run on BACKEND_NOT_FOUND (a 404 is an HTTP response, so the startup
+ * connection-error fallback in startup-phase-poll deliberately does NOT catch
+ * it) — strictly worse than the raw bridgeUrl, whose connection error the
+ * fallback recovers from. If/when the cloud deploys that gateway and returns a
+ * real `webUiUrl`, this picks it up automatically with no further change.
+ */
+export function resolveCloudAgentApiBase(args: {
+  bridgeUrl: string | null;
+  webUiUrl?: string | null;
+}): string {
+  const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
+  const serverProvided = args.webUiUrl?.trim();
+  if (serverProvided) return stripTrailingSlash(serverProvided);
+  return stripTrailingSlash(args.bridgeUrl ?? "");
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
@@ -2443,9 +2475,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     data?: {
       jobId?: string;
       bridgeUrl?: string | null;
+      webUiUrl?: string | null;
     };
     jobId?: string;
     bridgeUrl?: string | null;
+    webUiUrl?: string | null;
   }>(`${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`, {
     method: "POST",
     headers,
@@ -2457,9 +2491,15 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const provisionData = provisionRes.data;
   const immediateBridgeUrl =
     provisionData.data?.bridgeUrl ?? provisionData.bridgeUrl ?? null;
+  const immediateWebUiUrl =
+    provisionData.data?.webUiUrl ?? provisionData.webUiUrl ?? null;
   if (immediateBridgeUrl) {
     onProgress?.("ready", "Sandbox ready!");
-    return { bridgeUrl: immediateBridgeUrl, agentId };
+    return {
+      bridgeUrl: immediateBridgeUrl,
+      agentId,
+      webUiUrl: immediateWebUiUrl,
+    };
   }
   const jobId = provisionData.data?.jobId ?? provisionData.jobId;
   if (!jobId) {
@@ -2474,11 +2514,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     const jobRes = await directCloudJsonResponse<{
       data?: {
         status?: string;
-        result?: { bridgeUrl?: string };
+        result?: { bridgeUrl?: string; webUiUrl?: string | null };
         error?: string;
       };
       status?: string;
-      result?: { bridgeUrl?: string };
+      result?: { bridgeUrl?: string; webUiUrl?: string | null };
       error?: string;
     }>(`${resolvedCloudApiBase}/api/v1/jobs/${jobId}`, { headers });
     if (!jobRes.ok) continue;
@@ -2490,7 +2530,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
 
     if (status === "completed" && result?.bridgeUrl) {
       onProgress?.("ready", "Sandbox ready!");
-      return { bridgeUrl: result.bridgeUrl as string, agentId };
+      return {
+        bridgeUrl: result.bridgeUrl as string,
+        agentId,
+        webUiUrl: result.webUiUrl ?? null,
+      };
     }
 
     if (status === "failed") {

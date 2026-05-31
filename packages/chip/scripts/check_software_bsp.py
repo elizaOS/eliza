@@ -907,22 +907,23 @@ def build_scaffold_report(
                     "next_command": f"python3 scripts/check_software_bsp.py {name} --scaffold-only",
                 }
             )
-        for blocker in result["blockers"]:
-            findings.append(
-                {
-                    "code": blocker_code(
-                        f"{name} {blocker}", "software_bsp_external_evidence_blocked"
-                    ),
-                    "severity": "blocker",
-                    "target": name,
-                    "message": blocker,
-                    "evidence": f"python3 scripts/check_software_bsp.py {name} --require-evidence",
-                    "next_step": "Render the exact capture plan and evidence contract for this target, then capture the listed external transcripts and rerun the require-evidence gate.",
-                    "next_command": f"python3 scripts/check_software_bsp.py capture-plan {name}",
-                    "evidence_requirements_command": f"python3 scripts/check_software_bsp.py {name} --evidence-plan",
-                    "evidence_requirements": evidence_requirements_for_target(name),
-                }
-            )
+        if require_evidence or not scaffold_only:
+            for blocker in result["blockers"]:
+                findings.append(
+                    {
+                        "code": blocker_code(
+                            f"{name} {blocker}", "software_bsp_external_evidence_blocked"
+                        ),
+                        "severity": "blocker",
+                        "target": name,
+                        "message": blocker,
+                        "evidence": f"python3 scripts/check_software_bsp.py {name} --require-evidence",
+                        "next_step": "Render the exact capture plan and evidence contract for this target, then capture the listed external transcripts and rerun the require-evidence gate.",
+                        "next_command": f"python3 scripts/check_software_bsp.py capture-plan {name}",
+                        "evidence_requirements_command": f"python3 scripts/check_software_bsp.py {name} --evidence-plan",
+                        "evidence_requirements": evidence_requirements_for_target(name),
+                    }
+                )
     if any(finding["severity"] == "fail" for finding in findings):
         status = "fail"
     elif findings:

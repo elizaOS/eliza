@@ -12,10 +12,10 @@
         57.3
       ],
       "collision_free_deg": [
-        -85.9,
+        -114.6,
         57.3
       ],
-      "collision_free_fraction": 0.846,
+      "collision_free_fraction": 1.0,
       "tendon_driven": false
     },
     {
@@ -27,9 +27,9 @@
       ],
       "collision_free_deg": [
         -4.8,
-        25.3
+        28.6
       ],
-      "collision_free_fraction": 0.769,
+      "collision_free_fraction": 0.846,
       "tendon_driven": false
     },
     {
@@ -110,10 +110,10 @@
         57.3
       ],
       "collision_free_deg": [
-        -85.9,
+        -114.6,
         57.3
       ],
-      "collision_free_fraction": 0.846,
+      "collision_free_fraction": 1.0,
       "tendon_driven": false
     },
     {
@@ -124,10 +124,10 @@
         11.5
       ],
       "collision_free_deg": [
-        -25.3,
+        -28.6,
         4.8
       ],
-      "collision_free_fraction": 0.769,
+      "collision_free_fraction": 0.846,
       "tendon_driven": false
     },
     {
@@ -215,6 +215,20 @@
       "tendon_driven": false
     },
     {
+      "joint": "waist_pitch_joint",
+      "group": "TORSO",
+      "commanded_deg": [
+        -28.6,
+        45.8
+      ],
+      "collision_free_deg": [
+        -28.6,
+        45.8
+      ],
+      "collision_free_fraction": 1.0,
+      "tendon_driven": false
+    },
+    {
       "joint": "left_shoulder_pitch_joint",
       "group": "ARM",
       "commanded_deg": [
@@ -271,20 +285,6 @@
       "tendon_driven": false
     },
     {
-      "joint": "left_wrist_yaw_joint",
-      "group": "ARM",
-      "commanded_deg": [
-        -114.6,
-        114.6
-      ],
-      "collision_free_deg": [
-        -114.6,
-        114.6
-      ],
-      "collision_free_fraction": 1.0,
-      "tendon_driven": false
-    },
-    {
       "joint": "right_shoulder_pitch_joint",
       "group": "ARM",
       "commanded_deg": [
@@ -336,48 +336,6 @@
       "collision_free_deg": [
         0.0,
         143.2
-      ],
-      "collision_free_fraction": 1.0,
-      "tendon_driven": false
-    },
-    {
-      "joint": "right_wrist_yaw_joint",
-      "group": "ARM",
-      "commanded_deg": [
-        -114.6,
-        114.6
-      ],
-      "collision_free_deg": [
-        -114.6,
-        114.6
-      ],
-      "collision_free_fraction": 1.0,
-      "tendon_driven": false
-    },
-    {
-      "joint": "neck_yaw_joint",
-      "group": "HEAD",
-      "commanded_deg": [
-        -68.8,
-        68.8
-      ],
-      "collision_free_deg": [
-        -68.8,
-        68.8
-      ],
-      "collision_free_fraction": 1.0,
-      "tendon_driven": false
-    },
-    {
-      "joint": "neck_pitch_joint",
-      "group": "HEAD",
-      "commanded_deg": [
-        -34.4,
-        34.4
-      ],
-      "collision_free_deg": [
-        -34.4,
-        34.4
       ],
       "collision_free_fraction": 1.0,
       "tendon_driven": false

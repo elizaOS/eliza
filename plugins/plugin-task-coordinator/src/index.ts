@@ -164,7 +164,10 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     description: "Stop a sub-agent on an orchestrator task",
     params: {
       taskId: { type: "string", description: "Task thread id" },
-      sessionId: { type: "string", description: "Sub-agent session id to stop" },
+      sessionId: {
+        type: "string",
+        description: "Sub-agent session id to stop",
+      },
     },
   },
   {

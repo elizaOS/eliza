@@ -170,6 +170,12 @@ def main() -> int:
         "mode": "local-preflight",
         "status": "PASS_WITH_BLOCKERS_RECORDED",
         "claim_boundary": CLAIM_BOUNDARY,
+        "claim_allowed": False,
+        "release_claim_allowed": False,
+        "external_import_claim_allowed": False,
+        "model_download_claim_allowed": False,
+        "training_claim_allowed": False,
+        "eda_signoff_claim_allowed": False,
         "policy": {
             "installs_packages": False,
             "clones_repositories": False,

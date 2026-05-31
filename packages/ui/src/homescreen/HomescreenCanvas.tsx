@@ -71,8 +71,14 @@ export function HomescreenCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Latest live props, read by the frame loop without re-subscribing it.
-  const liveRef = useRef({ analyser, phase, userText, assistantText });
-  liveRef.current = { analyser, phase, userText, assistantText };
+  const liveRef = useRef({
+    analyser,
+    phase,
+    userText,
+    assistantText,
+    onPerfLabel,
+  });
+  liveRef.current = { analyser, phase, userText, assistantText, onPerfLabel };
 
   // Pointer position in normalized device coords (-1..1).
   const pointerRef = useRef({ x: 0, y: 0, down: false });
@@ -83,7 +89,6 @@ export function HomescreenCanvas({
   // A setter the swap effect wires up once the engine is mounted.
   const setSceneRef = useRef<((s: HomescreenScene) => void) | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once renderer; live props are read through refs.
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !webglAvailable()) return;
@@ -132,11 +137,118 @@ export function HomescreenCanvas({
       let currentScene = (current as SceneInstance & { __scene: THREE.Scene })
         .__scene;
 
+      let perf: PerfState = createPerfState();
+      let last = performance.now();
+      let rafId = 0;
+      let lastPerfLabel = "";
+
+      // Honor prefers-reduced-motion: hold the crystal ball as a single static
+      // frame instead of a continuous pulse/ripple loop. Mirrors the rest of
+      // the background system (CloudVideoBackground, slow-clouds) and satisfies
+      // WCAG 2.3.3 — the sphere stays visible, it just stops animating. Toggling
+      // the OS setting is honored live.
+      const reducedMotion =
+        typeof window.matchMedia === "function"
+          ? window.matchMedia("(prefers-reduced-motion: reduce)")
+          : null;
+
+      // Draw exactly one frame. With `advance: false` (the static repaint used
+      // for reduced-motion, resize, and scene swaps) the clock and perf governor
+      // do not tick, so the scene renders frozen at its current state.
+      const renderFrame = (advance: boolean) => {
+        const now = performance.now();
+        const dt = advance ? (now - last) / 1000 : 0;
+        last = now;
+
+        // Refresh live inputs in place (scenes treat as read-only). Mutating the
+        // band/pointer sub-objects rather than reallocating them avoids per-frame
+        // GC churn in this hot loop and keeps any scene that captured the
+        // reference once reading live values.
+        const live = liveRef.current;
+        if (live.analyser) {
+          const summary = summarizeLevels(
+            sampleFrequencyLevels(live.analyser, BANDS),
+          );
+          inputs.audioUser = live.phase === "listening" ? summary.energy : 0;
+          inputs.audioAssistant =
+            live.phase === "speaking" ? summary.energy : 0;
+          inputs.bands.low = summary.low;
+          inputs.bands.mid = summary.mid;
+          inputs.bands.high = summary.high;
+        } else {
+          // No audio source (onboarding backdrop, idle home): skip the FFT
+          // sampling allocations entirely — every band is silent.
+          inputs.audioUser = 0;
+          inputs.audioAssistant = 0;
+          inputs.bands.low = 0;
+          inputs.bands.mid = 0;
+          inputs.bands.high = 0;
+        }
+        inputs.energy = Math.max(inputs.audioUser, inputs.audioAssistant);
+        inputs.pointer.x = pointerRef.current.x;
+        inputs.pointer.y = pointerRef.current.y;
+        inputs.pointer.down = pointerRef.current.down;
+        inputs.phase = live.phase;
+        inputs.userText = live.userText;
+        inputs.assistantText = live.assistantText;
+        inputs.time += dt;
+
+        current.update(dt, inputs.time);
+
+        if (advance) {
+          const tick = perfTick(perf, dt);
+          perf = tick.state;
+          if (tick.retarget !== null && current.optimize) {
+            current.optimize(tick.retarget);
+          }
+          if (live.onPerfLabel) {
+            const label = perfLabel(perf);
+            if (label !== lastPerfLabel) {
+              lastPerfLabel = label;
+              live.onPerfLabel(label, perf);
+            }
+          }
+        }
+
+        renderer.render(currentScene, camera);
+      };
+
+      const frame = () => {
+        if (disposed) return;
+        renderFrame(true);
+        rafId = requestAnimationFrame(frame);
+      };
+
+      const startLoop = () => {
+        if (rafId || disposed) return;
+        last = performance.now();
+        rafId = requestAnimationFrame(frame);
+      };
+
+      const stopLoop = () => {
+        if (!rafId) return;
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      };
+
+      // Animate unless the user asked for reduced motion, in which case draw a
+      // single static frame and hold there.
+      const applyMotionPreference = () => {
+        if (reducedMotion?.matches) {
+          stopLoop();
+          renderFrame(false);
+        } else {
+          startLoop();
+        }
+      };
+
       setSceneRef.current = (doc: HomescreenScene) => {
         current.dispose();
         current = mountScene(doc);
         currentScene = (current as SceneInstance & { __scene: THREE.Scene })
           .__scene;
+        // A frozen (reduced-motion) surface won't otherwise repaint the swap.
+        if (!rafId) renderFrame(false);
       };
 
       const resize = () => {
@@ -145,64 +257,41 @@ export function HomescreenCanvas({
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        // Keep the static frame matched to the viewport while frozen.
+        if (!rafId) renderFrame(false);
       };
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(container);
 
-      let perf: PerfState = createPerfState();
-      let last = performance.now();
-      let rafId = 0;
-      let lastPerfLabel = "";
+      applyMotionPreference();
+      reducedMotion?.addEventListener("change", applyMotionPreference);
 
-      const frame = () => {
-        if (disposed) return;
-        const now = performance.now();
-        const dt = (now - last) / 1000;
-        last = now;
-
-        // Refresh live inputs in place (scenes treat as read-only).
-        const live = liveRef.current;
-        const summary = summarizeLevels(
-          sampleFrequencyLevels(live.analyser, BANDS),
-        );
-        const isUser = live.phase === "listening";
-        inputs.audioUser = isUser ? summary.energy : 0;
-        inputs.audioAssistant = live.phase === "speaking" ? summary.energy : 0;
-        inputs.energy = Math.max(inputs.audioUser, inputs.audioAssistant);
-        inputs.bands = {
-          low: summary.low,
-          mid: summary.mid,
-          high: summary.high,
-        };
-        inputs.pointer = { ...pointerRef.current };
-        inputs.phase = live.phase;
-        inputs.userText = live.userText;
-        inputs.assistantText = live.assistantText;
-        inputs.time += dt;
-
-        current.update(dt, inputs.time);
-
-        const tick = perfTick(perf, dt);
-        perf = tick.state;
-        if (tick.retarget !== null && current.optimize) {
-          current.optimize(tick.retarget);
-        }
-        if (onPerfLabel) {
-          const label = perfLabel(perf);
-          if (label !== lastPerfLabel) {
-            lastPerfLabel = label;
-            onPerfLabel(label, perf);
-          }
-        }
-
-        renderer.render(currentScene, camera);
-        rafId = requestAnimationFrame(frame);
+      // A lost GPU context (sleep/wake, driver reset, too many live contexts)
+      // would otherwise leave a permanently black canvas while the loop keeps
+      // rendering into a dead context. Pause on loss; rebuild the scene graph —
+      // its GPU resources are gone — and resume on restore.
+      const onContextLost = (e: Event) => {
+        e.preventDefault();
+        stopLoop();
       };
-      rafId = requestAnimationFrame(frame);
+      const onContextRestored = () => {
+        if (disposed) return;
+        current.dispose();
+        current = mountScene(sceneRef.current);
+        currentScene = (current as SceneInstance & { __scene: THREE.Scene })
+          .__scene;
+        resize();
+        applyMotionPreference();
+      };
+      el.addEventListener("webglcontextlost", onContextLost);
+      el.addEventListener("webglcontextrestored", onContextRestored);
 
       cleanup = () => {
-        cancelAnimationFrame(rafId);
+        stopLoop();
+        reducedMotion?.removeEventListener("change", applyMotionPreference);
+        el.removeEventListener("webglcontextlost", onContextLost);
+        el.removeEventListener("webglcontextrestored", onContextRestored);
         ro.disconnect();
         current.dispose();
         renderer.dispose();
@@ -216,7 +305,6 @@ export function HomescreenCanvas({
       cleanup();
     };
     // Mount once; scene swaps go through the imperative setter below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Apply scene-document changes without remounting the renderer.
@@ -242,6 +330,14 @@ export function HomescreenCanvas({
         pointerRef.current.down = true;
       }}
       onPointerUp={() => {
+        pointerRef.current.down = false;
+      }}
+      onPointerCancel={() => {
+        pointerRef.current.down = false;
+      }}
+      onPointerLeave={() => {
+        // A release outside the canvas never fires pointerup here; clear the
+        // held state on exit so scenes don't latch a stuck "pressed" pointer.
         pointerRef.current.down = false;
       }}
     />

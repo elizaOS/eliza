@@ -21,7 +21,7 @@ source_artifacts:
   rail_plan_contract: docs/pd/rail-plan-2028.yaml
 rail_plan_hash:
   rail_plan_path: docs/pd/rail-plan-2028.yaml
-  rail_plan_sha256: 5941b79f61fee2304e14d197393cf049c02938badd063d9bdec94d3fcb5c8848
+  rail_plan_sha256: 2e692801c266587cd3ca7e2f97c486eb76d6634f5489b1e0a8546dac00ba51e3
   enforcement: >
     This sha256 must match the current sha256 of docs/pd/rail-plan-2028.yaml
     AND the sha256 declared in docs/evidence/power/rail-plan-evidence.yaml.

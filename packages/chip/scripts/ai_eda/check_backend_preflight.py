@@ -31,6 +31,14 @@ FALSE_POLICY_FIELDS = (
     "release_use_allowed",
     "external_api_required",
 )
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "external_import_claim_allowed",
+    "model_download_claim_allowed",
+    "training_claim_allowed",
+    "eda_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -133,6 +141,9 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         errors.append("mode must be local-preflight")
     if report.get("status") != "PASS_WITH_BLOCKERS_RECORDED":
         errors.append("status must be PASS_WITH_BLOCKERS_RECORDED")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if report.get(field) is not False:
+            errors.append(f"{field} must be false")
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")

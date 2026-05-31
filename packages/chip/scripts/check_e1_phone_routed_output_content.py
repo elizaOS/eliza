@@ -203,6 +203,20 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def kicad_board_counts(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    return {
+        "sha256": file_sha256(path),
+        "footprint_count": text.count('(footprint "'),
+        "placeholder_marker_count": text.count("placeholder_not_fabrication_footprint"),
+        "legacy_e1phone_footprint_ref_count": text.count('(footprint "E1Phone:'),
+        "segment_count": text.count("\n  (segment "),
+        "via_count": text.count("\n  (via "),
+        "zone_count": text.count("\n  (zone "),
+        "filled_zone_count": text.count("(filled_polygon"),
+    }
+
+
 def load_candidate_manifest() -> dict[str, Any]:
     if not CANDIDATE_MANIFEST.is_file():
         return {
@@ -1279,8 +1293,56 @@ def main() -> int:
         for key, expected in expected_candidate_context.items():
             if candidate_context.get(key) != expected:
                 contract_mismatches.append(f"candidate context stale: {key}")
-        expected_candidate_counts: dict[str | tuple[str, str], float] = {
-            "source_step_size_bytes": 33644081,
+        candidate_manifest_context = load_yaml_mapping(CANDIDATE_MANIFEST)
+        source_step_path = ROOT / str(candidate_manifest_context.get("source_step") or "")
+        if not source_step_path.is_file():
+            raise ValueError("candidate manifest source STEP path is missing")
+        source_board_path = ROOT / str(candidate_source_binding.get("source_board") or "")
+        candidate_board_path = ROOT / str(candidate_source_binding.get("candidate_board") or "")
+        if not source_board_path.is_file() or not candidate_board_path.is_file():
+            raise ValueError("candidate source-binding board paths are missing")
+        source_board_counts = kicad_board_counts(source_board_path)
+        candidate_board_counts = kicad_board_counts(candidate_board_path)
+        step_intake = load_yaml_mapping(STEP_INTAKE)
+        step_segments = [
+            segment for segment in step_intake.get("segments", []) if isinstance(segment, dict)
+        ]
+        step_vias = [via for via in step_intake.get("vias", []) if isinstance(via, dict)]
+        component_manifest_source = load_yaml_mapping(
+            repo_path(str(candidate_context.get("component_model_manifest") or ""))
+        )
+        component_dir_manifest_source = load_yaml_mapping(
+            repo_path(str(candidate_context.get("component_model_directory") or ""))
+            / "release-manifest.yaml"
+        )
+        traceability_source = load_yaml_mapping(
+            ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+        )
+        traceability_summary = traceability_source.get("summary")
+        if not isinstance(traceability_summary, dict):
+            raise ValueError("KiCad/CAD traceability summary missing")
+        cad_connection_summary = component_manifest_source.get("cad_connection_coverage")
+        if not isinstance(cad_connection_summary, dict):
+            raise ValueError("component manifest CAD connection coverage missing")
+        component_package_summary = component_manifest_source.get("package_visual_summary")
+        component_terminal_summary = component_manifest_source.get("terminal_contract_binding")
+        if not isinstance(component_package_summary, dict) or not isinstance(
+            component_terminal_summary, dict
+        ):
+            raise ValueError("component manifest package/terminal summaries missing")
+        component_models_source = [
+            model
+            for model in component_manifest_source.get("models", [])
+            if isinstance(model, dict)
+        ]
+        expected_candidate_counts: dict[str | tuple[str, str], Any] = {
+            "source_step_size_bytes": source_step_path.stat().st_size,
+            ("routed_candidate_source_binding", "source_board_sha256"): source_board_counts[
+                "sha256"
+            ],
+            ("routed_candidate_source_binding", "candidate_board_sha256"): candidate_board_counts[
+                "sha256"
+            ],
             ("routed_candidate_source_binding", "candidate_matches_source_board"): True,
             (
                 "routed_candidate_source_binding",
@@ -1290,179 +1352,445 @@ def main() -> int:
                 "routed_candidate_source_binding",
                 "candidate_is_zero_placeholder_real_footprint_board",
             ): True,
-            ("routed_candidate_source_binding", "source_placeholder_marker_count"): 0,
-            ("routed_candidate_source_binding", "candidate_placeholder_marker_count"): 0,
-            ("routed_candidate_source_binding", "candidate_legacy_e1phone_footprint_ref_count"): 0,
-            ("routed_candidate_source_binding", "candidate_footprint_count"): 89,
-            ("routed_candidate_source_binding", "candidate_segment_count"): 306,
-            ("routed_candidate_source_binding", "candidate_via_count"): 24,
-            ("routed_candidate_source_binding", "candidate_zone_count"): 13,
-            ("routed_candidate_source_binding", "candidate_filled_zone_count"): 6,
-            ("routed_step_visual_detail", "footprint_envelope_count"): 89,
-            ("routed_step_visual_detail", "pad_contact_visual_count"): 1452,
-            ("routed_step_visual_detail", "route_segment_visual_count"): 306,
-            ("routed_step_visual_detail", "route_segment_net_name_count"): 151,
-            ("routed_step_visual_detail", "route_segment_trace_bound_count"): 306,
-            ("routed_step_visual_detail", "route_segment_trace_unbound_count"): 0,
-            ("routed_step_visual_detail", "controlled_impedance_segment_visual_count"): 96,
-            ("routed_step_visual_detail", "board_via_count"): 24,
-            ("routed_step_visual_detail", "via_net_name_count"): 16,
-            ("routed_step_visual_detail", "route_visual_record_count"): 306,
-            ("routed_step_visual_detail", "route_visual_route_id_count"): 153,
-            ("routed_step_visual_detail", "route_visual_net_name_count"): 151,
-            ("routed_step_visual_detail", "route_visual_all_records_have_route_id"): True,
-            ("routed_step_visual_detail", "route_visual_all_records_have_net"): True,
-            ("routed_step_visual_detail", "route_visual_all_records_have_layer"): True,
-            ("routed_step_visual_detail", "route_visual_all_records_have_route_class"): True,
-            ("routed_step_visual_detail", "route_visual_all_records_have_source_domain"): True,
-            ("routed_step_visual_detail", "via_visual_record_count"): 24,
-            ("routed_step_visual_detail", "via_visual_net_name_count"): 16,
-            ("routed_step_visual_detail", "via_visual_all_records_have_net"): True,
-            ("routed_step_visual_detail", "via_visual_all_records_have_layers"): True,
-            ("routed_step_visual_detail", "filled_copper_zone_record_count"): 2,
-            ("routed_step_visual_detail", "filled_copper_zone_all_records_have_net"): True,
-            ("routed_step_visual_detail", "filled_copper_zone_all_records_have_bbox"): True,
+            ("routed_candidate_source_binding", "source_placeholder_marker_count"): source_board_counts[
+                "placeholder_marker_count"
+            ],
+            ("routed_candidate_source_binding", "candidate_placeholder_marker_count"): candidate_board_counts[
+                "placeholder_marker_count"
+            ],
+            (
+                "routed_candidate_source_binding",
+                "candidate_legacy_e1phone_footprint_ref_count",
+            ): candidate_board_counts["legacy_e1phone_footprint_ref_count"],
+            ("routed_candidate_source_binding", "candidate_footprint_count"): candidate_board_counts[
+                "footprint_count"
+            ],
+            ("routed_candidate_source_binding", "candidate_segment_count"): candidate_board_counts[
+                "segment_count"
+            ],
+            ("routed_candidate_source_binding", "candidate_via_count"): candidate_board_counts[
+                "via_count"
+            ],
+            ("routed_candidate_source_binding", "candidate_zone_count"): candidate_board_counts[
+                "zone_count"
+            ],
+            ("routed_candidate_source_binding", "candidate_filled_zone_count"): candidate_board_counts[
+                "filled_zone_count"
+            ],
+            ("routed_step_visual_detail", "footprint_envelope_count"): step_intake.get(
+                "footprint_envelope_count"
+            ),
+            ("routed_step_visual_detail", "pad_contact_visual_count"): step_intake.get(
+                "pad_contact_visual_count"
+            ),
+            ("routed_step_visual_detail", "route_segment_visual_count"): step_intake.get(
+                "route_segment_visual_count"
+            ),
+            ("routed_step_visual_detail", "route_segment_net_name_count"): step_intake.get(
+                "route_segment_net_name_count"
+            ),
+            ("routed_step_visual_detail", "route_segment_trace_bound_count"): step_intake.get(
+                "route_segment_trace_bound_count"
+            ),
+            ("routed_step_visual_detail", "route_segment_trace_unbound_count"): step_intake.get(
+                "route_segment_trace_unbound_count"
+            ),
+            ("routed_step_visual_detail", "controlled_impedance_segment_visual_count"): (
+                step_intake.get("controlled_impedance_segment_visual_count")
+            ),
+            ("routed_step_visual_detail", "board_via_count"): candidate_board_counts["via_count"],
+            ("routed_step_visual_detail", "via_net_name_count"): step_intake.get(
+                "via_net_name_count"
+            ),
+            ("routed_step_visual_detail", "route_visual_record_count"): len(step_segments),
+            ("routed_step_visual_detail", "route_visual_route_id_count"): len(
+                {str(segment.get("route_id", "")) for segment in step_segments}
+            ),
+            ("routed_step_visual_detail", "route_visual_net_name_count"): len(
+                {str(segment.get("net", "")) for segment in step_segments}
+            ),
+            ("routed_step_visual_detail", "route_visual_all_records_have_route_id"): all(
+                bool(segment.get("route_id")) for segment in step_segments
+            ),
+            ("routed_step_visual_detail", "route_visual_all_records_have_net"): all(
+                bool(segment.get("net")) for segment in step_segments
+            ),
+            ("routed_step_visual_detail", "route_visual_all_records_have_layer"): all(
+                bool(segment.get("layer")) for segment in step_segments
+            ),
+            ("routed_step_visual_detail", "route_visual_all_records_have_route_class"): all(
+                bool(segment.get("route_classes")) for segment in step_segments
+            ),
+            ("routed_step_visual_detail", "route_visual_all_records_have_source_domain"): all(
+                bool(segment.get("source_domains")) for segment in step_segments
+            ),
+            ("routed_step_visual_detail", "via_visual_record_count"): len(step_vias),
+            ("routed_step_visual_detail", "via_visual_net_name_count"): len(
+                {str(via.get("net", "")) for via in step_vias}
+            ),
+            ("routed_step_visual_detail", "via_visual_all_records_have_net"): all(
+                bool(via.get("net")) for via in step_vias
+            ),
+            ("routed_step_visual_detail", "via_visual_all_records_have_layers"): all(
+                bool(via.get("layers")) for via in step_vias
+            ),
+            ("routed_step_visual_detail", "filled_copper_zone_record_count"): step_intake.get(
+                "filled_copper_zone_visual_count"
+            ),
+            ("routed_step_visual_detail", "filled_copper_zone_all_records_have_net"): (
+                int(step_intake.get("filled_copper_zone_net_name_count") or 0) > 0
+            ),
+            ("routed_step_visual_detail", "filled_copper_zone_all_records_have_bbox"): (
+                int(step_intake.get("filled_copper_zone_visual_count") or 0) > 0
+            ),
             ("routed_step_visual_detail", "release_credit"): False,
-            ("cad_connection_coverage", "required_connection_count"): 32,
-            ("cad_connection_coverage", "passing_connection_count"): 32,
-            ("cad_connection_coverage", "required_connection_terminal_marker_count"): 64,
-            ("cad_connection_coverage", "passing_connection_terminal_pair_count"): 32,
-            ("cad_connection_coverage", "required_connection_solid_step_part_count"): 96,
-            ("cad_connection_coverage", "passing_connection_solid_step_part_set_count"): 32,
-            ("cad_connection_coverage", "assembly_manifest_part_count"): 258,
-            ("cad_connection_coverage", "assembly_manifest_connection_terminal_marker_count"): 64,
-            ("cad_connection_coverage", "assembly_manifest_connection_solid_step_part_count"): 96,
+            ("cad_connection_coverage", "required_connection_count"): cad_connection_summary.get(
+                "required_connection_count"
+            ),
+            ("cad_connection_coverage", "passing_connection_count"): cad_connection_summary.get(
+                "passing_connection_count"
+            ),
+            (
+                "cad_connection_coverage",
+                "required_connection_terminal_marker_count",
+            ): cad_connection_summary.get("required_connection_terminal_marker_count"),
+            (
+                "cad_connection_coverage",
+                "passing_connection_terminal_pair_count",
+            ): cad_connection_summary.get("passing_connection_terminal_pair_count"),
+            (
+                "cad_connection_coverage",
+                "required_connection_solid_step_part_count",
+            ): cad_connection_summary.get("required_connection_solid_step_part_count"),
+            (
+                "cad_connection_coverage",
+                "passing_connection_solid_step_part_set_count",
+            ): cad_connection_summary.get("passing_connection_solid_step_part_set_count"),
+            ("cad_connection_coverage", "assembly_manifest_part_count"): cad_connection_summary.get(
+                "assembly_manifest_part_count"
+            ),
+            (
+                "cad_connection_coverage",
+                "assembly_manifest_connection_terminal_marker_count",
+            ): cad_connection_summary.get("assembly_manifest_connection_terminal_marker_count"),
+            (
+                "cad_connection_coverage",
+                "assembly_manifest_connection_solid_step_part_count",
+            ): cad_connection_summary.get("assembly_manifest_connection_solid_step_part_count"),
             (
                 "cad_connection_coverage",
                 "assembly_manifest_missing_connection_solid_step_part_count",
-            ): 0,
-            ("cad_connection_coverage", "represented_net_count_total"): 150,
-            ("cad_connection_coverage", "represented_route_record_count_total"): 153,
-            ("cad_connection_coverage", "represented_route_records_with_layer_count_total"): 153,
+            ): cad_connection_summary.get(
+                "assembly_manifest_missing_connection_solid_step_part_count"
+            ),
+            ("cad_connection_coverage", "represented_net_count_total"): cad_connection_summary.get(
+                "represented_net_count_total"
+            ),
+            (
+                "cad_connection_coverage",
+                "represented_route_record_count_total",
+            ): cad_connection_summary.get("represented_route_record_count_total"),
+            (
+                "cad_connection_coverage",
+                "represented_route_records_with_layer_count_total",
+            ): cad_connection_summary.get("represented_route_records_with_layer_count_total"),
             (
                 "cad_connection_coverage",
                 "represented_route_records_with_source_domain_count_total",
-            ): 153,
+            ): cad_connection_summary.get(
+                "represented_route_records_with_source_domain_count_total"
+            ),
             (
                 "cad_connection_coverage",
                 "represented_route_records_with_route_class_count_total",
-            ): 153,
-            ("cad_connection_coverage", "represented_route_classification_gap_count"): 0,
-            ("cad_connection_coverage", "connection_record_count"): 32,
-            ("cad_connection_coverage", "represented_net_list_total"): 150,
-            ("cad_connection_coverage", "controlled_impedance_connection_count"): 16,
+            ): cad_connection_summary.get(
+                "represented_route_records_with_route_class_count_total"
+            ),
+            (
+                "cad_connection_coverage",
+                "represented_route_classification_gap_count",
+            ): cad_connection_summary.get("represented_route_classification_gap_count"),
+            ("cad_connection_coverage", "connection_record_count"): cad_connection_summary.get(
+                "required_connection_count"
+            ),
+            ("cad_connection_coverage", "represented_net_list_total"): cad_connection_summary.get(
+                "represented_net_count_total"
+            ),
+            (
+                "cad_connection_coverage",
+                "controlled_impedance_connection_count",
+            ): cad_connection_summary.get("controlled_impedance_connection_count"),
             (
                 "cad_connection_coverage",
                 "controlled_impedance_requirement_defined_count",
-            ): 32,
-            ("cad_connection_coverage", "bend_radius_requirement_defined_count"): 32,
-            ("cad_connection_coverage", "supplier_release_required_connection_count"): 32,
-            ("kicad_cad_traceability", "footprint_library_count"): 32,
-            ("kicad_cad_traceability", "board_bound_instance_count"): 89,
-            ("kicad_cad_traceability", "step_footprint_instance_count"): 89,
-            ("kicad_cad_traceability", "pinout_bound_footprint_count"): 21,
-            ("kicad_cad_traceability", "cad_connection_count"): 32,
-            ("kicad_cad_traceability", "cad_connection_represented_net_count_total"): 150,
-            ("kicad_cad_traceability", "cad_connection_represented_route_count_total"): 153,
+            ): cad_connection_summary.get("controlled_impedance_requirement_defined_count"),
+            (
+                "cad_connection_coverage",
+                "bend_radius_requirement_defined_count",
+            ): cad_connection_summary.get("bend_radius_requirement_defined_count"),
+            (
+                "cad_connection_coverage",
+                "supplier_release_required_connection_count",
+            ): cad_connection_summary.get("supplier_release_required_connection_count"),
+            ("kicad_cad_traceability", "footprint_library_count"): traceability_summary.get(
+                "footprint_library_count"
+            ),
+            ("kicad_cad_traceability", "board_bound_instance_count"): traceability_summary.get(
+                "board_bound_instance_count"
+            ),
+            ("kicad_cad_traceability", "step_footprint_instance_count"): traceability_summary.get(
+                "step_footprint_instance_count"
+            ),
+            ("kicad_cad_traceability", "pinout_bound_footprint_count"): traceability_summary.get(
+                "pinout_bound_footprint_count"
+            ),
+            ("kicad_cad_traceability", "cad_connection_count"): traceability_summary.get(
+                "cad_connection_count"
+            ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_net_count_total",
+            ): traceability_summary.get("cad_connection_represented_net_count_total"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_count_total",
+            ): traceability_summary.get("cad_connection_represented_route_count_total"),
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_record_count_total",
-            ): 153,
+            ): traceability_summary.get("cad_connection_represented_route_record_count_total"),
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_records_with_layer_count_total",
-            ): 153,
+            ): traceability_summary.get(
+                "cad_connection_represented_route_records_with_layer_count_total"
+            ),
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_records_with_source_domain_count_total",
-            ): 153,
+            ): traceability_summary.get(
+                "cad_connection_represented_route_records_with_source_domain_count_total"
+            ),
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_records_with_route_class_count_total",
-            ): 153,
+            ): traceability_summary.get(
+                "cad_connection_represented_route_records_with_route_class_count_total"
+            ),
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_classification_gap_count",
-            ): 0,
-            ("kicad_cad_traceability", "cad_connection_visual_route_span_total_mm"): 456.0,
-            ("kicad_cad_traceability", "cad_connection_terminal_marker_count"): 64,
-            ("kicad_cad_traceability", "cad_connection_terminal_pair_count"): 32,
-            ("kicad_cad_traceability", "cad_connection_solid_step_part_count"): 96,
-            ("kicad_cad_traceability", "cad_connection_solid_step_part_set_count"): 32,
-            ("kicad_cad_traceability", "cad_connection_solid_step_part_bytes_total"): 1501919,
-            ("kicad_cad_traceability", "cad_connection_controlled_impedance_count"): 16,
+            ): traceability_summary.get("cad_connection_represented_route_classification_gap_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_visual_route_span_total_mm",
+            ): traceability_summary.get("cad_connection_visual_route_span_total_mm"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_terminal_marker_count",
+            ): traceability_summary.get("cad_connection_terminal_marker_count"),
+            ("kicad_cad_traceability", "cad_connection_terminal_pair_count"): traceability_summary.get(
+                "cad_connection_terminal_pair_count"
+            ),
+            ("kicad_cad_traceability", "cad_connection_solid_step_part_count"): traceability_summary.get(
+                "cad_connection_solid_step_part_count"
+            ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_solid_step_part_set_count",
+            ): traceability_summary.get("cad_connection_solid_step_part_set_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_solid_step_part_bytes_total",
+            ): traceability_summary.get("cad_connection_solid_step_part_bytes_total"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_controlled_impedance_count",
+            ): traceability_summary.get("cad_connection_controlled_impedance_count"),
             (
                 "kicad_cad_traceability",
                 "cad_connection_controlled_impedance_requirement_defined_count",
-            ): 32,
+            ): traceability_summary.get(
+                "cad_connection_controlled_impedance_requirement_defined_count"
+            ),
             (
                 "kicad_cad_traceability",
                 "cad_connection_bend_radius_requirement_defined_count",
-            ): 32,
-            ("kicad_cad_traceability", "cad_connection_supplier_release_required_count"): 32,
-            ("kicad_cad_traceability", "incomplete_footprint_count"): 0,
-            ("kicad_cad_traceability", "incomplete_cad_connection_count"): 0,
-            ("component_model_manifest_summary", "component_model_count"): 89,
-            ("component_model_manifest_summary", "supplier_approved_model_count"): 0,
-            ("component_model_manifest_summary", "total_electrical_pad_count"): 1441,
-            ("component_model_manifest_summary", "total_mechanical_pad_count"): 7,
-            ("component_model_manifest_summary", "total_pad_visual_count"): 1452,
-            ("component_model_manifest_summary", "pinout_bound_model_count"): 22,
-            ("component_model_manifest_summary", "support_pattern_model_count"): 67,
+            ): traceability_summary.get("cad_connection_bend_radius_requirement_defined_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_supplier_release_required_count",
+            ): traceability_summary.get("cad_connection_supplier_release_required_count"),
+            ("kicad_cad_traceability", "incomplete_footprint_count"): traceability_summary.get(
+                "incomplete_footprint_count"
+            ),
+            ("kicad_cad_traceability", "incomplete_cad_connection_count"): traceability_summary.get(
+                "incomplete_cad_connection_count"
+            ),
+            ("component_model_manifest_summary", "component_model_count"): component_manifest_source.get(
+                "component_model_count"
+            ),
+            (
+                "component_model_manifest_summary",
+                "supplier_approved_model_count",
+            ): component_manifest_source.get("supplier_approved_model_count"),
+            (
+                "component_model_manifest_summary",
+                "total_electrical_pad_count",
+            ): component_package_summary.get("total_electrical_pad_count"),
+            (
+                "component_model_manifest_summary",
+                "total_mechanical_pad_count",
+            ): component_package_summary.get("total_mechanical_pad_count"),
+            ("component_model_manifest_summary", "total_pad_visual_count"): component_package_summary.get(
+                "total_pad_visual_count"
+            ),
+            ("component_model_manifest_summary", "pinout_bound_model_count"): component_terminal_summary.get(
+                "pinout_bound_model_count"
+            ),
+            ("component_model_manifest_summary", "support_pattern_model_count"): component_terminal_summary.get(
+                "support_pattern_model_count"
+            ),
             (
                 "component_model_manifest_summary",
                 "models_with_terminal_contract_or_no_electrical_pads_count",
-            ): 89,
-            ("component_model_manifest_summary", "total_pad_contract_visual_count"): 1452,
-            ("component_model_manifest_summary", "uncovered_pad_visual_count"): 0,
-            ("component_model_manifest_summary", "non_signal_pad_contract_count"): 7,
-            ("component_model_manifest_summary", "models_with_non_signal_pad_contract_count"): 6,
-            ("component_model_manifest_summary", "npth_mechanical_feature_contract_count"): 4,
+            ): component_terminal_summary.get(
+                "models_with_terminal_contract_or_no_electrical_pads_count"
+            ),
+            (
+                "component_model_manifest_summary",
+                "total_pad_contract_visual_count",
+            ): component_terminal_summary.get("total_pad_contract_visual_count"),
+            ("component_model_manifest_summary", "uncovered_pad_visual_count"): component_terminal_summary.get(
+                "uncovered_pad_visual_count"
+            ),
+            ("component_model_manifest_summary", "non_signal_pad_contract_count"): component_terminal_summary.get(
+                "non_signal_pad_contract_count"
+            ),
+            (
+                "component_model_manifest_summary",
+                "models_with_non_signal_pad_contract_count",
+            ): component_terminal_summary.get("models_with_non_signal_pad_contract_count"),
+            (
+                "component_model_manifest_summary",
+                "npth_mechanical_feature_contract_count",
+            ): component_terminal_summary.get("npth_mechanical_feature_contract_count"),
             (
                 "component_model_manifest_summary",
                 "models_with_npth_mechanical_feature_contract_count",
-            ): 4,
-            ("component_model_manifest_summary", "local_discrete_step_file_count"): 89,
+            ): component_terminal_summary.get(
+                "models_with_npth_mechanical_feature_contract_count"
+            ),
+            (
+                "component_model_manifest_summary",
+                "local_discrete_step_file_count",
+            ): sum(1 for model in component_models_source if model.get("local_discrete_step_file")),
             (
                 "component_model_manifest_summary",
                 "local_discrete_step_imported_solid_count",
-            ): 89,
-            ("component_model_manifest_summary", "local_discrete_step_bbox_match_count"): 89,
-            ("component_model_manifest_summary", "component_model_record_count"): 89,
-            ("component_model_manifest_summary", "component_model_record_reference_count"): 89,
-            ("component_model_directory_summary", "model_record_count"): 89,
-            ("component_model_directory_summary", "component_model_count"): 89,
-            ("component_model_directory_summary", "supplier_approved_model_count"): 0,
-            ("component_model_directory_summary", "pinout_bound_model_record_count"): 22,
-            ("component_model_directory_summary", "support_pattern_model_record_count"): 67,
-            ("component_model_directory_summary", "terminal_contract_model_record_count"): 85,
-            ("component_model_directory_summary", "terminal_contract_total_count"): 1441,
-            ("component_model_directory_summary", "total_pad_contract_visual_count"): 1452,
-            ("component_model_directory_summary", "uncovered_pad_visual_count"): 0,
-            ("component_model_directory_summary", "non_signal_pad_contract_total_count"): 7,
-            ("component_model_directory_summary", "local_discrete_step_file_count"): 89,
-            ("component_model_directory_summary", "local_discrete_step_imported_solid_count"): 89,
-            ("component_model_directory_summary", "local_discrete_step_bbox_match_count"): 89,
+            ): sum(
+                1
+                for model in component_models_source
+                if model.get("local_discrete_step_imported_as_solid") is True
+            ),
+            (
+                "component_model_manifest_summary",
+                "local_discrete_step_bbox_match_count",
+            ): sum(
+                1
+                for model in component_models_source
+                if model.get("local_discrete_step_bbox_matches_envelope") is True
+            ),
+            ("component_model_manifest_summary", "component_model_record_count"): len(
+                component_models_source
+            ),
+            (
+                "component_model_manifest_summary",
+                "component_model_record_reference_count",
+            ): len({str(model.get("reference", "")) for model in component_models_source}),
+            ("component_model_directory_summary", "model_record_count"): component_dir_manifest_source.get(
+                "model_record_count"
+            ),
+            ("component_model_directory_summary", "component_model_count"): component_dir_manifest_source.get(
+                "component_model_count"
+            ),
+            (
+                "component_model_directory_summary",
+                "supplier_approved_model_count",
+            ): component_dir_manifest_source.get("supplier_approved_model_count"),
+            (
+                "component_model_directory_summary",
+                "pinout_bound_model_record_count",
+            ): component_dir_manifest_source.get("pinout_bound_model_record_count"),
+            (
+                "component_model_directory_summary",
+                "support_pattern_model_record_count",
+            ): component_dir_manifest_source.get("support_pattern_model_record_count"),
+            (
+                "component_model_directory_summary",
+                "terminal_contract_model_record_count",
+            ): component_dir_manifest_source.get("terminal_contract_model_record_count"),
+            (
+                "component_model_directory_summary",
+                "terminal_contract_total_count",
+            ): component_dir_manifest_source.get("terminal_contract_total_count"),
+            (
+                "component_model_directory_summary",
+                "total_pad_contract_visual_count",
+            ): component_dir_manifest_source.get("total_pad_contract_visual_count"),
+            ("component_model_directory_summary", "uncovered_pad_visual_count"): component_dir_manifest_source.get(
+                "uncovered_pad_visual_count"
+            ),
+            (
+                "component_model_directory_summary",
+                "non_signal_pad_contract_total_count",
+            ): component_dir_manifest_source.get("non_signal_pad_contract_total_count"),
+            (
+                "component_model_directory_summary",
+                "local_discrete_step_file_count",
+            ): component_dir_manifest_source.get("local_discrete_step_file_count"),
+            (
+                "component_model_directory_summary",
+                "local_discrete_step_imported_solid_count",
+            ): component_dir_manifest_source.get("local_discrete_step_imported_solid_count"),
+            (
+                "component_model_directory_summary",
+                "local_discrete_step_bbox_match_count",
+            ): component_dir_manifest_source.get("local_discrete_step_bbox_match_count"),
             (
                 "component_model_directory_summary",
                 "npth_mechanical_feature_contract_total_count",
-            ): 4,
+            ): component_dir_manifest_source.get("npth_mechanical_feature_contract_total_count"),
             (
                 "component_model_directory_summary",
                 "models_with_npth_mechanical_feature_contract_count",
-            ): 4,
-            ("component_model_directory_summary", "missing_supplier_discrete_model_count"): 89,
-            ("component_model_directory_summary", "supplier_step_intake_placeholder_count"): 0,
-            ("component_model_directory_summary", "supplier_step_intake_local_surrogate_count"): 47,
-            ("component_model_directory_summary", "supplier_step_intake_missing_count"): 0,
+            ): component_dir_manifest_source.get(
+                "models_with_npth_mechanical_feature_contract_count"
+            ),
+            (
+                "component_model_directory_summary",
+                "missing_supplier_discrete_model_count",
+            ): component_dir_manifest_source.get("missing_supplier_discrete_model_count"),
+            (
+                "component_model_directory_summary",
+                "supplier_step_intake_placeholder_count",
+            ): component_dir_manifest_source.get("supplier_step_intake_placeholder_count"),
+            (
+                "component_model_directory_summary",
+                "supplier_step_intake_local_surrogate_count",
+            ): component_dir_manifest_source.get("supplier_step_intake_local_surrogate_count"),
+            (
+                "component_model_directory_summary",
+                "supplier_step_intake_missing_count",
+            ): component_dir_manifest_source.get("supplier_step_intake_missing_count"),
             (
                 "component_model_directory_summary",
                 "supplier_step_intake_not_applicable_count",
-            ): 42,
+            ): component_dir_manifest_source.get("supplier_step_intake_not_applicable_count"),
             (
                 "component_model_directory_summary",
                 "supplier_step_intake_release_candidate_count",
-            ): 0,
+            ): component_dir_manifest_source.get("supplier_step_intake_release_candidate_count"),
         }
         for count_key, expected_count in expected_candidate_counts.items():
             if isinstance(count_key, tuple):
@@ -1474,7 +1802,6 @@ def main() -> int:
                 label = count_key
             if actual != expected_count:
                 contract_mismatches.append(f"candidate context count stale: {label}")
-        step_intake = load_yaml_mapping(STEP_INTAKE)
         expected_route_records = [
             {
                 "index": index,

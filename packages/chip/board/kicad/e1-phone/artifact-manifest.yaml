@@ -282,8 +282,8 @@ release_gates:
       - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
     local_candidate_evidence:
       routed_board_step_candidate_present: true
-      full_cad_boolean_status: blocked_boolean_interference_incomplete
-      full_cad_boolean_evidence_class: incomplete_brep_boolean_interference_result
+      full_cad_boolean_status: pass
+      full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
       full_cad_boolean_release_credit: false
       routed_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
       supplier_approved_component_model_count: 0

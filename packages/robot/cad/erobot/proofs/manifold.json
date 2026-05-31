@@ -1,11 +1,11 @@
 {
   "schema": "erobot-manifold-v1",
   "ok": true,
-  "parts_checked": 79,
+  "parts_checked": 72,
   "non_manifold_parts": [],
   "shell_mass_reconciliation_failures": [],
   "genus_histogram": {
-    "genus_0": 73,
+    "genus_0": 66,
     "genus_1": 6
   },
   "parts": [
@@ -355,6 +355,36 @@
       "volume_cm3": 64.0
     },
     {
+      "part": "spine_shell",
+      "class": "shell",
+      "name": "spine_shell",
+      "watertight": true,
+      "winding_consistent": true,
+      "euler_number": 2,
+      "n_vertices": 642,
+      "n_faces": 1280,
+      "area_m2": 0.03126623183492482,
+      "is_convex": true,
+      "genus": 0,
+      "manifold_ok": true,
+      "volume_cm3": 519.09
+    },
+    {
+      "part": "torso_pitch_shell",
+      "class": "shell",
+      "name": "torso_pitch_shell",
+      "watertight": true,
+      "winding_consistent": true,
+      "euler_number": 2,
+      "n_vertices": 642,
+      "n_faces": 1280,
+      "area_m2": 0.03126623183492482,
+      "is_convex": true,
+      "genus": 0,
+      "manifold_ok": true,
+      "volume_cm3": 519.09
+    },
+    {
       "part": "torso_shell",
       "class": "shell",
       "name": "torso_shell",
@@ -430,36 +460,6 @@
       "volume_cm3": 1218.34
     },
     {
-      "part": "left_wrist_shell",
-      "class": "shell",
-      "name": "left_wrist_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 642,
-      "n_faces": 1280,
-      "area_m2": 0.024212569932965777,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 353.75
-    },
-    {
-      "part": "left_hand_shell",
-      "class": "shell",
-      "name": "left_hand_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.05660000000000001,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 765.0
-    },
-    {
       "part": "right_shoulder_shell",
       "class": "shell",
       "name": "right_shoulder_shell",
@@ -518,66 +518,6 @@
       "genus": 0,
       "manifold_ok": true,
       "volume_cm3": 1218.34
-    },
-    {
-      "part": "right_wrist_shell",
-      "class": "shell",
-      "name": "right_wrist_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 642,
-      "n_faces": 1280,
-      "area_m2": 0.024212569932965777,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 353.75
-    },
-    {
-      "part": "right_hand_shell",
-      "class": "shell",
-      "name": "right_hand_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.05660000000000001,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 765.0
-    },
-    {
-      "part": "neck_shell",
-      "class": "shell",
-      "name": "neck_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 58,
-      "n_faces": 112,
-      "area_m2": 0.02752496769424156,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 348.91
-    },
-    {
-      "part": "head_shell",
-      "class": "shell",
-      "name": "head_shell",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 642,
-      "n_faces": 1280,
-      "area_m2": 0.11223939801209963,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 3438.47
     },
     {
       "part": "left_hip_pitch_motor",
@@ -850,6 +790,21 @@
       "volume_cm3": 174.46
     },
     {
+      "part": "spine_motor",
+      "class": "motor",
+      "name": "spine_motor",
+      "watertight": true,
+      "winding_consistent": true,
+      "euler_number": 2,
+      "n_vertices": 58,
+      "n_faces": 112,
+      "area_m2": 0.01874695276774222,
+      "is_convex": true,
+      "genus": 0,
+      "manifold_ok": true,
+      "volume_cm3": 174.46
+    },
+    {
       "part": "torso_motor",
       "class": "motor",
       "name": "torso_motor",
@@ -925,21 +880,6 @@
       "volume_cm3": 174.46
     },
     {
-      "part": "left_wrist_yaw_motor",
-      "class": "motor",
-      "name": "left_wrist_yaw_motor",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.0120155,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 86.23
-    },
-    {
       "part": "right_shoulder_pitch_motor",
       "class": "motor",
       "name": "right_shoulder_pitch_motor",
@@ -1000,51 +940,6 @@
       "volume_cm3": 174.46
     },
     {
-      "part": "right_wrist_yaw_motor",
-      "class": "motor",
-      "name": "right_wrist_yaw_motor",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.0120155,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 86.23
-    },
-    {
-      "part": "neck_motor",
-      "class": "motor",
-      "name": "neck_motor",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.0120155,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 86.23
-    },
-    {
-      "part": "head_motor",
-      "class": "motor",
-      "name": "head_motor",
-      "watertight": true,
-      "winding_consistent": true,
-      "euler_number": 2,
-      "n_vertices": 8,
-      "n_faces": 12,
-      "area_m2": 0.0120155,
-      "is_convex": true,
-      "genus": 0,
-      "manifold_ok": true,
-      "volume_cm3": 86.23
-    },
-    {
       "part": "battery_pack",
       "class": "battery",
       "name": "battery_pack",
@@ -1053,7 +948,7 @@
       "euler_number": 2,
       "n_vertices": 8,
       "n_faces": 12,
-      "area_m2": 0.06,
+      "area_m2": 0.06000000000000001,
       "is_convex": true,
       "genus": 0,
       "manifold_ok": true,
@@ -1068,7 +963,7 @@
       "euler_number": 2,
       "n_vertices": 8,
       "n_faces": 12,
-      "area_m2": 0.02679999999999999,
+      "area_m2": 0.026800000000000008,
       "is_convex": true,
       "genus": 0,
       "manifold_ok": true,
@@ -1098,11 +993,11 @@
       "euler_number": 2,
       "n_vertices": 58,
       "n_faces": 112,
-      "area_m2": 0.03525993945756507,
+      "area_m2": 0.03337893625902951,
       "is_convex": true,
       "genus": 0,
       "manifold_ok": true,
-      "volume_cm3": 252.34
+      "volume_cm3": 238.32
     },
     {
       "part": "imu_bmi088",
@@ -1120,19 +1015,19 @@
       "volume_cm3": 2.82
     },
     {
-      "part": "head_camera",
+      "part": "torso_camera",
       "class": "camera",
-      "name": "head_camera",
+      "name": "torso_camera",
       "watertight": true,
       "winding_consistent": true,
       "euler_number": 2,
       "n_vertices": 8,
       "n_faces": 12,
-      "area_m2": 0.008447999999999999,
+      "area_m2": 0.006912000000000003,
       "is_convex": true,
       "genus": 0,
       "manifold_ok": true,
-      "volume_cm3": 43.78
+      "volume_cm3": 34.56
     },
     {
       "part": "left_toe_winch",

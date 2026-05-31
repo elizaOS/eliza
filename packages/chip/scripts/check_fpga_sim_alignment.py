@@ -40,6 +40,16 @@ RENODE_MANIFEST = REPO_ROOT / "build/reports/renode_smoke.manifest"
 RENODE_JSON = REPO_ROOT / "build/renode/eliza_e1_smoke.json"
 DEFAULT_OUT = REPO_ROOT / "build/reports/fpga_sim_alignment.json"
 
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "fpga_bitstream_release_claim_allowed": False,
+    "e1_rtl_alignment_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def rel(path: Path) -> str:
     try:
@@ -139,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "schema": "eliza.fpga_sim_alignment.v1",
         "claim_boundary": "sim_is_software_reference_only_not_fpga_or_e1_rtl",
+        **FALSE_CLAIM_FLAGS,
         "fpga": fpga,
         "sim": sim,
         "aligned": aligned,

@@ -1,6 +1,11 @@
 schema: eliza.ai_eda.internal_dataset_schemas.v1
 updated: 2026-05-20
 claim_boundary: schema_contract_only_no_training_inference_or_release_claim
+claim_allowed: false
+release_claim_allowed: false
+training_claim_allowed: false
+inference_claim_allowed: false
+generated_artifact_claim_allowed: false
 policy:
   ai_outputs_are_advisory_until_replayed: true
   deterministic_replay_required_for_evidence: true

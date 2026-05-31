@@ -65,5 +65,5 @@
 	branch = main
 [submodule "upstreams/electrobun"]
 	path = upstreams/electrobun
-	url = https://github.com/blackboardsh/electrobun.git
-	branch = main
+	url = https://github.com/elizaOS/electrobun.git
+	branch = develop

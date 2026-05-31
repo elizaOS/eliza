@@ -28,6 +28,10 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `candidate_step_cad_connection_terminal_pair_count` | `32` |
 | `validation_evidence_category_count` | `6` |
 | `missing_validation_evidence_category_count` | `0` |
+| `validation_evidence_file_presence_complete_count` | `6` |
+| `validation_evidence_source_declared_present_count` | `0` |
+| `validation_evidence_source_declared_absent_count` | `6` |
+| `validation_evidence_release_credit_count` | `0` |
 | `development_route_count` | `153` |
 | `development_segment_count` | `306` |
 | `development_via_count` | `24` |
@@ -108,14 +112,19 @@ Local routed-output candidate has routed development tracks, visible component e
 
 ## Required Acceptance Evidence
 
-| Evidence | Present | Missing artifacts | Acceptance rule |
-| --- | --- | ---: | --- |
-| `drc_erc` | `True` | 0 | clean_or_every_violation_has_signed_release_waiver |
-| `signal_integrity` | `True` | 0 | post_route_length_skew_impedance_return_path_and_channel_checks_present |
-| `power_integrity` | `True` | 0 | high_current_loops_current_density_decoupling_return_path_and_thermal_limits_closed |
-| `rf_validation` | `True` | 0 | matching_conducted_access_coexistence_gnss_desense_and_sar_prescan_ready |
-| `enclosure_validation` | `True` | 0 | routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect |
-| `component_3d_binding_gap_matrix` | `True` | 0 | every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false |
+| Evidence | Files present | Source declares release evidence | Release state | Missing artifacts | Acceptance rule |
+| --- | --- | --- | --- | ---: | --- |
+| `drc_erc` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | clean_or_every_violation_has_signed_release_waiver |
+| `signal_integrity` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | post_route_length_skew_impedance_return_path_and_channel_checks_present |
+| `power_integrity` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | high_current_loops_current_density_decoupling_return_path_and_thermal_limits_closed |
+| `rf_validation` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | matching_conducted_access_coexistence_gnss_desense_and_sar_prescan_ready |
+| `enclosure_validation` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect |
+| `component_3d_binding_gap_matrix` | `True` | `False` | `file_present_but_source_declares_release_evidence_absent` | 0 | every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false |
+
+## Next Unblock Actions
+
+- `replace_local_candidates_with_release_evidence`: `blocked_local_candidate_outputs_present_not_release` (37 blocked rows)
+- `close_validation_evidence`: `blocked_validation_evidence_not_release_declared` (6 blocked rows)
 
 ## Fail-Closed Claims
 

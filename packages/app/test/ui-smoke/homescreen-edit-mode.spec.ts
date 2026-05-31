@@ -64,7 +64,7 @@ test.describe("homescreen edit mode", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("renders the editable canvas and toggles the edit toolbar", async ({
+  test("enters edit mode via the /edit command and toggles the toolbar", async ({
     page,
   }) => {
     await seedAppStorage(page);
@@ -74,17 +74,21 @@ test.describe("homescreen edit mode", () => {
     await expect(page.getByTestId("home-view")).toBeVisible();
     await expect(page.getByTestId("homescreen-canvas")).toBeVisible();
 
-    // Resting state: a single edit affordance, no toolbar.
-    const toggle = page.getByTestId("homescreen-edit-toggle");
-    await expect(toggle).toBeVisible();
+    // Resting state: no on-screen edit button, no toolbar. Edit mode is only
+    // reachable via the "/edit" command, a voiced request, or an agent edit.
+    await expect(page.getByTestId("homescreen-edit-toggle")).toHaveCount(0);
     await expect(page.getByTestId("homescreen-edit-toolbar")).toHaveCount(0);
 
-    // Entering edit mode swaps the toggle for the full toolbar and collapses
-    // the foreground (composer + apps) to a peekable, non-interactive overlay.
-    await toggle.click();
+    // Typing "/edit" opens the editor instead of sending a chat message, swaps
+    // in the full toolbar, and collapses the foreground (composer + apps) to a
+    // peekable, non-interactive overlay.
+    const input = page.getByTestId("home-chat-input");
+    await input.fill("/edit");
+    await input.press("Enter");
     await expect(page.getByTestId("homescreen-edit-toolbar")).toBeVisible();
-    await expect(page.getByTestId("homescreen-edit-toggle")).toHaveCount(0);
     await expect(page.getByTestId("home-view")).toHaveClass(/opacity-0/);
+    // The command is consumed, not sent as a message.
+    await expect(input).toHaveValue("");
 
     for (const name of [
       "Undo",
@@ -98,7 +102,6 @@ test.describe("homescreen edit mode", () => {
 
     // Done returns to the resting state and restores the foreground.
     await page.getByRole("button", { name: "Done editing" }).click();
-    await expect(page.getByTestId("homescreen-edit-toggle")).toBeVisible();
     await expect(page.getByTestId("homescreen-edit-toolbar")).toHaveCount(0);
     await expect(page.getByTestId("home-view")).not.toHaveClass(/opacity-0/);
   });

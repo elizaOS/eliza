@@ -7,12 +7,20 @@ for contributors. User-facing docs live in `docs/user/lifeops-setup.mdx`;
 the QA reference lives in `docs/launchdocs/14-lifeops-qa.md`; the REST
 contract lives in `docs/rest/lifeops.md`.
 
-## The single primitive
+## Scheduled items, not generic tasks
 
 Every reminder, check-in, follow-up, watcher, recap, approval surface, and
-nag-the-user-when-they-go-quiet flow is a **`ScheduledTask`** owned by the
-runner at `src/lifeops/scheduled-task/runner.ts`. There is no second
-mechanism. If LifeOps does it, it is a `ScheduledTask`.
+nag-the-user-when-they-go-quiet flow is a **LifeOps scheduled item** stored
+as a `ScheduledTask` record and owned by the runner at
+`src/lifeops/scheduled-task/runner.ts`. There is no second LifeOps scheduling
+mechanism.
+
+`ScheduledTask` is intentionally not the repository-wide "task" primitive.
+Core runtime tasks are persisted `Task` rows handled by `TaskService`; coding
+agent work is orchestrator/task-coordinator state; project and feature tasks
+may have their own plugin-owned records. LifeOps integrates with those
+surfaces through public plugin/runtime contracts instead of importing or
+owning them as LifeOps primitives.
 
 The shape:
 
@@ -82,7 +90,7 @@ src/lifeops/
 
 ## Default packs
 
-Default packs are bundles of typed task definitions compiled into
+Default packs are bundles of typed scheduled-item definitions compiled into
 `ScheduledTask` records (and sometimes anchor-consolidation policies,
 escalation ladders, autofill whitelists). LifeOps-owned packs live in
 `src/default-packs/`:

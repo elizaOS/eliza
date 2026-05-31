@@ -70,13 +70,13 @@ def build_profile_dict(spec: RobotSpec | None = None) -> dict[str, Any]:
             "locomotion_tracking_body": "pelvis",
             "cameras": [
                 {
-                    "name": "head_cam",
+                    "name": "chest_cam",
                     "width": 640,
                     "height": 480,
                     "fps": 30,
                     "fov_deg": 70.0,
-                    "mount_link": "head",
-                    "extrinsics_rpy_xyz": [0.0, 0.0, 0.0, 0.08, 0.0, 0.05],
+                    "mount_link": "torso",
+                    "extrinsics_rpy_xyz": [0.0, 0.0, 0.0, 0.09, 0.0, 0.38],
                 }
             ],
         },

@@ -99,6 +99,15 @@ FORBIDDEN_POLICY_TRUE_KEYS = {
     "prediction_generated",
     "release_use_allowed",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_optimization_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -221,6 +230,9 @@ def validate_report(name: str, data: dict[str, Any]) -> list[str]:
         errors.append(f"{name}: schema mismatch")
     if data.get("claim_boundary") != expected["claim_boundary"]:
         errors.append(f"{name}: claim_boundary mismatch")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if data.get(field) is not False:
+            errors.append(f"{name}: {field} must be false")
     if data.get("mode") != "dry-run":
         errors.append(f"{name}: mode must be dry-run")
     status = data.get("status")
