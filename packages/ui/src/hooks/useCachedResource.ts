@@ -41,10 +41,12 @@ export interface CachedResourceOptions {
   persist?: boolean;
 }
 
-export interface UseCachedResourceResult<T> extends UseFetchDataResult<T> {
+// UseFetchDataResult is a discriminated union intersected with helpers, so this
+// is a type intersection (an interface cannot extend a union-based alias).
+export type UseCachedResourceResult<T> = UseFetchDataResult<T> & {
   /** True while a background revalidation is running over cached data. */
   isValidating: boolean;
-}
+};
 
 const DEFAULT_STALE_TIME_MS = 30_000;
 
