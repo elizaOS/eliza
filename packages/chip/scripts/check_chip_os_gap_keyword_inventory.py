@@ -97,7 +97,7 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|todo"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|todo|dossier"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
@@ -141,7 +141,7 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
 CLASSIFIED_GENERATOR_LINE_RE = re.compile(
     r"("
     r"non[-_]release|evidence_class|demo|template|generated|generator|"
-    r"placeholder footprint|placeholder land pattern|placeholder values|"
+    r"placeholder|remain(?:s)? blocked|not yet|"
     r"scaffold files|concept/scaffold|Replace .*placeholder|Not fabrication-bound"
     r")",
     re.I,
@@ -324,9 +324,9 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True
-    return ('"' in stripped or "'" in stripped) and bool(
-        CLASSIFIED_GENERATOR_LINE_RE.search(stripped)
-    )
+    if CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
+        return True
+    return False
 
 
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:

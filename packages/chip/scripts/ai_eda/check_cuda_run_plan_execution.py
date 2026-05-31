@@ -29,6 +29,14 @@ REQUIRED_STAGES = {
     "target_capture",
     "training",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "eda_signoff_claim_allowed",
+    "openlane_execution_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -53,6 +61,9 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("claim_boundary mismatch")
     if report.get("mode") not in {"dry-run", "execute"}:
         errors.append("mode must be dry-run or execute")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if report.get(field) is not False:
+            errors.append(f"{field} must be false")
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")

@@ -28,7 +28,7 @@
     "height": 0.3500002,
     "width": 1.0000002
   },
-  "local_discrete_step_bytes": 15573,
+  "local_discrete_step_bytes": 15598,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 0.5,
     "height": 0.35,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "e3e8db88310633de83e4b220135636832468d0b86dc64d7294667f62aa70e50c",
+  "local_discrete_step_sha256": "7bde73af0ae797886281bc73556f6576fafa7ccb64ab93f8b013cc8d99f8f5ff",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -101,7 +101,7 @@
   "supplier_step_intake_bytes": 15694,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/pmic/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "232821ceaca70722ebc1c556b5e056445bdcab153bf83bda060a248113f2bd83",
+  "supplier_step_intake_sha256": "3a3cc7cf2f3dc965da7de2721bbcbeecfb9e4b01d7b1e66129d9abbb87af3ddb",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 2,

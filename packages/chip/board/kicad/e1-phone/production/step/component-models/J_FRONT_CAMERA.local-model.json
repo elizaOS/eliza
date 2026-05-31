@@ -28,7 +28,7 @@
     "height": 1.0000002,
     "width": 18.0000002
   },
-  "local_discrete_step_bytes": 15465,
+  "local_discrete_step_bytes": 15490,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 2.6,
     "height": 1.0,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "5750a5c0948ae1f1e2451dc00776a4dabf66e5821eb14253e6ff183985bd9d45",
+  "local_discrete_step_sha256": "c0f31744b0399cbcbf16eeb105c237835adaedf63368707abd3e880395d0afe6",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -325,7 +325,7 @@
   "supplier_step_intake_bytes": 15574,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "9890de5cbb0965c60551336e2742d6b0d22ead21f03b1e13ac5e584a4ff88b7f",
+  "supplier_step_intake_sha256": "b1392a0a9675827bbf0b77be6897ac1080029438d65d309c0e3d0856f9715bc1",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 30,

@@ -20,6 +20,14 @@ REQUIRED_BOOT_MARKERS = (
     "Debian GNU/Linux installer",
     "Starting system log daemon",
 )
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "silicon_evidence_claim_allowed",
+    "linux_boot_claim_allowed",
+}
 
 
 def sha256_path(path: Path) -> str:
@@ -68,6 +76,9 @@ def main() -> int:
         errors.append("unexpected payload manifest schema")
     if payload.get("claim_boundary") != "qemu_virt_debian_netboot_payload_only":
         errors.append("payload manifest must remain qemu-virt Debian netboot only")
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if payload.get(key) is not False:
+            errors.append(f"payload manifest {key} must be false")
     payloads = payload.get("payloads", {})
     for name in ("linux", "initrd.gz"):
         item = payloads.get(name)
@@ -87,6 +98,9 @@ def main() -> int:
         errors.append("unexpected qemu OS boot manifest schema")
     if boot.get("claim_boundary") != "qemu_virt_reference_only_not_e1_chip_rtl":
         errors.append("qemu OS boot manifest must remain reference-only, not e1-chip RTL")
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if boot.get(key) is not False:
+            errors.append(f"qemu OS boot manifest {key} must be false")
     if boot.get("status") != "PASS":
         errors.append(f"qemu OS boot status is not PASS: {boot.get('status')!r}")
     if boot.get("transcript") != "build/reports/qemu_os_boot_attempt.log":

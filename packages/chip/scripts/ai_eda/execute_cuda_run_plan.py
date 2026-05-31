@@ -243,6 +243,12 @@ def main() -> int:
         "plan": rel(args.plan),
         "plan_schema": plan.get("schema"),
         "claim_boundary": CLAIM_BOUNDARY,
+        "claim_allowed": False,
+        "release_claim_allowed": False,
+        "training_claim_allowed": False,
+        "inference_claim_allowed": False,
+        "eda_signoff_claim_allowed": False,
+        "openlane_execution_claim_allowed": False,
         "policy": {
             "dry_run_default": True,
             "runs_commands": executed > 0,

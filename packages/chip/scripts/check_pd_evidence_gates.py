@@ -44,6 +44,15 @@ ALLOWED_RELEASE_USE = {
     "prohibited_until_external_review",
     "released_for_external_review",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "physical_signoff_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def fail(message: str) -> None:
@@ -124,6 +133,7 @@ def write_report(failures: list[str], manifest_count: int) -> None:
         "generated_utc": datetime.now(UTC).isoformat(),
         "status": "fail" if failures else "pass",
         "claim_boundary": "pd_evidence_schema_check_only_not_physical_signoff_evidence",
+        **FALSE_CLAIM_FLAGS,
         "summary": {"manifests": manifest_count, "findings": len(findings)},
         "findings": findings,
     }

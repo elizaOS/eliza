@@ -56,6 +56,16 @@ EXPECTED_TESTS = (
     "permission_violation_type_latched",
 )
 
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "soc_fabric_integration_claim_allowed": False,
+    "iommu_translation_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "secure_io_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def _verilator() -> str | None:
     found = shutil.which("verilator")
@@ -205,6 +215,7 @@ def main() -> int:
         "status": status,
         "blocker_id": blocker_id,
         "blocker_reason": blocker_reason,
+        **FALSE_CLAIM_FLAGS,
         "evidence_paths": [
             IOPMP_RTL,
             IOPMP_PKG,

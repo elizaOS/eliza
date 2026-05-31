@@ -9,6 +9,11 @@ claim_boundary: >
   interface, supply rails, and the EM/conducted signoff corners. Makes no
   insertion-loss, S-parameter, or matching claim: those stay blocked on HFSS/EM
   and conducted VNA signoff with vendor models and the board coupon plan.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
 
 supply_rails:
   - rail: +1V8

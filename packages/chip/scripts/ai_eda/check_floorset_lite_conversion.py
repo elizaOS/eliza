@@ -13,6 +13,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/floorset_lite/validation/conversion_report.json"
 EXPECTED_SCHEMA = "eliza.ai_eda.floorset_lite_conversion_report.v1"
 EXPECTED_CLAIM_BOUNDARY = "floorset_lite_conversion_training_only_no_e1_signoff_or_release_claim"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -42,6 +50,14 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
+
+
 def validate_record(path: Path, schema: str) -> list[str]:
     record = load_json(path)
     errors: list[str] = []
@@ -49,6 +65,7 @@ def validate_record(path: Path, schema: str) -> list[str]:
         errors.append(f"{rel(path)}: schema mismatch")
     if record.get("claim_boundary") != EXPECTED_CLAIM_BOUNDARY:
         errors.append(f"{rel(path)}: claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(record, rel(path)))
     if schema == "eda.graph_sample.v1":
         values = record.get("labels", {}).get("values", {})
         if not isinstance(values, dict) or "metrics" not in values:
@@ -66,6 +83,7 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("schema mismatch")
     if report.get("claim_boundary") != EXPECTED_CLAIM_BOUNDARY:
         errors.append("claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(report, "report"))
     if report.get("converted_case_count") != 100:
         errors.append("converted_case_count must be 100")
     if report.get("converted_record_count") != 300:
@@ -75,6 +93,9 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("policy must be mapping")
     else:
         for field in ("contains_external_payload", "release_use_allowed", "e1_signoff_evidence"):
+            if policy.get(field) is not False:
+                errors.append(f"policy.{field} must be false")
+        for field in REQUIRED_FALSE_CLAIM_FLAGS:
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")
         if policy.get("training_only") is not True:

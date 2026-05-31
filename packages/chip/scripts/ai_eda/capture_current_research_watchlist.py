@@ -20,6 +20,15 @@ DEFAULT_WATCHLIST = (
 INVENTORY = ROOT / "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/current_research_watchlist"
 CLAIM_BOUNDARY = "current_research_watchlist_capture_only_no_import_training_inference_or_e1_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -109,6 +118,7 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_CURRENT_RESEARCH_NO_IMPORT",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_ids": [task["id"].removesuffix("-intake") for task in candidate_tasks],
         "policy": {
             "changes_rtl": False,

@@ -15,6 +15,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAYLOAD = ROOT / "external/datasets/chipbench-d/payload"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/chipbench_d"
 CLAIM_BOUNDARY = "chipbench_d_conversion_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -199,6 +207,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
         "schema": "eda.design_bundle.v1",
         "id": design_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": case_name,
             "revision": "chipbench_d_local_payload",
@@ -228,6 +237,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
         "id": placement_id,
         "design_bundle_id": design_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "floorplan": {
             "die_area_um": pre_summary["die_area_um"],
             "core_area_um": pre_summary["die_area_um"],
@@ -255,6 +265,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
         "id": flow_id,
         "design_bundle_id": design_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": ["ChiPBench-D public dataset export", "OpenROAD Hier-RTLMP target placement"],
             "version_capture": "external/datasets/chipbench-d/manifest.yaml",
@@ -343,6 +354,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "payload": rel(args.payload),
         "available_case_count": len(available),
         "converted_case_count": len(selected),
@@ -358,6 +370,7 @@ def main() -> int:
             "release_use_allowed": False,
             "training_use_only_until_license_review": True,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_ppa_claims": True,
         },
     }

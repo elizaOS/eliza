@@ -28,7 +28,7 @@
     "height": 0.6500002,
     "width": 3.2000002000000003
   },
-  "local_discrete_step_bytes": 15551,
+  "local_discrete_step_bytes": 15576,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.6,
     "height": 0.65,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "65f2ef5181a82b8c2a07b75fa98a486aef72a907ea55382eb6b6c79ed0337e25",
+  "local_discrete_step_sha256": "41c514d7a17f3ff7f19d7b13a3db47f86da9446dc35a4c3a40aa7f250b35b6fa",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

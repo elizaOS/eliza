@@ -42,6 +42,16 @@ REQUIRED_SOURCES = {
     "ptcrb_certification",
     "usb_if_marks",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "android_compatibility_claim_allowed",
+    "certification_claim_allowed",
+    "secure_boot_claim_allowed",
+    "silicon_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def rel(path: Path) -> str:
@@ -161,6 +171,9 @@ def main() -> int:
         boundary = data.get("claim_boundary")
         if not isinstance(boundary, str) or "not evidence" not in boundary:
             errors.append("claim_boundary must state the matrix is not evidence of completion")
+        for flag in sorted(FALSE_CLAIM_FLAGS):
+            if data.get(flag) is not False:
+                errors.append(f"{flag} must be false")
         policy = data.get("evidence_policy")
         if not isinstance(policy, dict) or "release_claims_forbidden_until" not in policy:
             errors.append("evidence_policy must list release_claims_forbidden_until")

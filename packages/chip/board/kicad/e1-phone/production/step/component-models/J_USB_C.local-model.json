@@ -28,7 +28,7 @@
     "height": 3.2500002,
     "width": 9.6000002
   },
-  "local_discrete_step_bytes": 15551,
+  "local_discrete_step_bytes": 15576,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 7.2,
     "height": 3.25,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "95e3703b2cfc2910b633cb229eddb4cb0b9facabb9caf44358e99002203b6b57",
+  "local_discrete_step_sha256": "569e2291f33d192f1432789f553a7093a640bcffb4a31a08717055db46045c81",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -297,7 +297,7 @@
   "supplier_step_intake_bytes": 15576,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "00a6fd5be45f2ad4e1fbaf0d54247b6af2f0b32755e09d0bc4f31817cd144225",
+  "supplier_step_intake_sha256": "8130a98433d770e369fb834541be24f48ea1646d0f5eeee4d6313cabe8ed5fd1",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 24,

@@ -72,7 +72,7 @@ requirements:
     title: NPU runtime contract pins descriptor ABI and MMIO map
     owner: npu
     source_doc: docs/spec-db/e1-npu-runtime-contract.json
-    source_doc_sha: fd9498b1db53dba0797c7d6ee8c4eb3ae0e9f2dd9fd1c4c7515a55fe70fa01ee
+    source_doc_sha: 12cb5c395cf9c7b2ce105bf8ac81f6a8b27286a735179aa7e2321a745784445d
     status: contract
     claim_boundary: runtime_contract_no_production_accelerator_claim
     links:
@@ -104,7 +104,7 @@ requirements:
     title: Process 14A effects spec bounds advanced-node assumptions
     owner: process
     source_doc: docs/spec-db/process-14a-effects.yaml
-    source_doc_sha: e9f5c76112e5f9e72aaf75480a0e2bdce3321d9807665715a74b60b307187ab5
+    source_doc_sha: 4707f99816ad483586deb9fdf62bd3b7de42f6ab033e10c58205c1216c4002d1
     status: target_spec
     claim_boundary: nda_advanced_node_blocked_no_pdk_access_claim
     links:
@@ -157,7 +157,7 @@ requirements:
     title: Platform contract pins SoC software-visible platform surface
     owner: platform
     source_doc: sw/platform/e1_platform_contract.json
-    source_doc_sha: ce65c6784923006f827c5443d28c92ce1a02ec5beebe6b07897d910da9593286
+    source_doc_sha: 9b405023c82514f1d4e3d320da35827a09b4bd895d269d04714c20e298b5086a
     status: contract
     claim_boundary: platform_contract_no_boot_or_product_claim
     links:

@@ -15,6 +15,14 @@ CLAIM_BOUNDARY = (
     "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
 )
 REQUIRED_SPLITS = ("train", "val", "test")
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -49,6 +57,14 @@ def valid_number(value: Any) -> bool:
     )
 
 
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
+
+
 def validate(report: dict[str, Any], report_path: Path) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.ai_eda.circuitnet3_surrogate_training_run.v1":
@@ -57,6 +73,7 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
         errors.append("report release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(report, "report"))
     out_dir = report_path.parent
     split_counts = report.get("split_counts")
     if not isinstance(split_counts, dict):
@@ -88,6 +105,7 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("model schema is incorrect")
     if model.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("model claim_boundary is missing or incorrect")
+    errors.extend(validate_false_claim_flags(model, "model"))
     targets = model.get("targets")
     if not isinstance(targets, dict) or not targets:
         errors.append("model targets must be a non-empty mapping")
@@ -97,6 +115,7 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("metrics schema is incorrect")
     if metrics.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("metrics claim_boundary is missing or incorrect")
+    errors.extend(validate_false_claim_flags(metrics, "metrics"))
     splits = metrics.get("splits")
     if not isinstance(splits, list) or {
         item.get("split") for item in splits if isinstance(item, dict)

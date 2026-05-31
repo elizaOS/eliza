@@ -318,6 +318,8 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 '"""Generate non-release placeholder artifacts."""\n'
                 'line = "NON-RELEASE placeholder footprint generated from template"\n'
                 'note = "Replace E1Phone placeholder footprints with supplier land patterns"\n'
+                'status = "release remains blocked until external review"\n'
+                'state = "not yet modeled as a final phone antenna system"\n'
                 "# Placeholder footprints are emitted for generated demo artifacts.\n"
                 "# TODO remove this real generator maintenance gap\n",
                 encoding="utf-8",
@@ -329,6 +331,26 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
         self.assertEqual(report["findings"][0]["marker"], "TODO")
+
+    def test_dossier_audit_docs_are_not_source_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            dossier = repo / "packages/chip/docs/E1_SOTA_TAPEOUT_DOSSIER.md"
+            dossier.parent.mkdir(parents=True)
+            dossier.write_text(
+                "The repository is a scaffold and some evidence remains blocked.\n",
+                encoding="utf-8",
+            )
+            source_doc = repo / "packages/chip/docs/arch/boot.md"
+            source_doc.parent.mkdir(parents=True)
+            source_doc.write_text("Boot placeholder text that must be resolved.\n", encoding="utf-8")
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
 
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {

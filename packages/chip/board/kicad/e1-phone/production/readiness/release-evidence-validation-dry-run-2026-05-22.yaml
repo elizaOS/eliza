@@ -630,7 +630,7 @@ validation_rows:
   artifact_kind: file
   parsed_kind: json
   file_size_bytes: 294089
-  sha256: 16c8152ac0e4eab988f75cbf23bf08caaaca136db76db094d23d6877e92990ad
+  sha256: c47cdf47208c67a3bfd6d982cd9aeef2ac8ec078f7e5ebbdbf67685e583b6bb6
   required_content_fields:
   - artifact_id
   - clearance_case_id
@@ -1509,8 +1509,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15691
-  sha256: 68513e91205083739b95bd27316302a8f8fc75a035b01a8c00c4b3b5e4339a2f
+  file_size_bytes: 15716
+  sha256: c7399ae4788a32f2dd98bdf4b29ab3f427b6dfe2e15f929beaa10a6e7dac9f0f
   required_content_fields:
   - artifact_id
   - created_at
@@ -2290,8 +2290,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: c4f6d74e76273fb9e6f1c7c914e19247bb2586dac33207bccc6656ea524a504a
+  file_size_bytes: 15574
+  sha256: 268467d2d09cb93a5397cd4b26965ee3c08d446f168444fdc446accd788c08b6
   required_content_fields:
   - artifact_id
   - created_at
@@ -3022,8 +3022,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15583
-  sha256: 57d55c45b78c0482a7f574ab223c68b3a3ab5ba50027c052a5ceaf2c65ce8334
+  file_size_bytes: 15608
+  sha256: 10266418be016438ef9d2bafb3e6aedd97ba51d37861f752e7234f1773e65615
   required_content_fields:
   - artifact_id
   - created_at
@@ -3754,8 +3754,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15575
-  sha256: c8005d007b1878ce046bd4dae7f857c9437bb2190044b0fea529010897422c39
+  file_size_bytes: 15600
+  sha256: 304d5939a85eb6c1faaf4dd668d4dfe02e65c5722dd5fd08e6da36e31e2f6669
   required_content_fields:
   - artifact_id
   - created_at
@@ -4486,8 +4486,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15635
-  sha256: 1c02aa2cf7353993bee704ebe49fef71cb021621a16afc1af5c1385eb7293386
+  file_size_bytes: 15660
+  sha256: 66d1e8d9f3f0c748486483960bb8c9bb86e767ba21a36fd70a3d9465bb415b83
   required_content_fields:
   - artifact_id
   - created_at
@@ -5218,8 +5218,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: b0ee4ccfd78f7d58cf936ceac12a5eb2799f61ab49fe452adc836ba3810de1df
+  file_size_bytes: 15574
+  sha256: b1392a0a9675827bbf0b77be6897ac1080029438d65d309c0e3d0856f9715bc1
   required_content_fields:
   - artifact_id
   - created_at
@@ -5999,8 +5999,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15669
-  sha256: 88bd4e0466fb9fda74f9beff74159c3a23cb57625ba47c1851a81c0164c75738
+  file_size_bytes: 15694
+  sha256: 3a3cc7cf2f3dc965da7de2721bbcbeecfb9e4b01d7b1e66129d9abbb87af3ddb
   required_content_fields:
   - artifact_id
   - created_at
@@ -6731,8 +6731,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: 513d2fa8f1d53100b66ed91f774478ad32a8a8653c5e996a754a0128494efefd
+  file_size_bytes: 15574
+  sha256: 3507fd75cf392b61bb8e8801ed34833f09f1319c23da4a4e4a11a6987f5f4549
   required_content_fields:
   - artifact_id
   - created_at
@@ -7463,8 +7463,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15691
-  sha256: 01d7f0eaf75d9cc7013fb1c075852ee8b469c2e8284bd8eab698e169e33f9e8e
+  file_size_bytes: 15716
+  sha256: bdb10c447b3dbca1059480ba97171fff50a7e07e76c3c79db1f1741cad76e01a
   required_content_fields:
   - artifact_id
   - created_at
@@ -8244,8 +8244,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15521
-  sha256: 85051c3ebc420f9321548f2a1a9b610db23dda36b0c847465af95811cada456d
+  file_size_bytes: 15546
+  sha256: 5e2fd9de333a627c317581ace13c16a6dc3e667f033e5d380fe6cc8f1a49fc82
   required_content_fields:
   - artifact_id
   - created_at
@@ -8976,8 +8976,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15551
-  sha256: 7d83da1d63d491588ed02cc142898af36f30dec6e335ea58215503ed490cd3d1
+  file_size_bytes: 15576
+  sha256: 8130a98433d770e369fb834541be24f48ea1646d0f5eeee4d6313cabe8ed5fd1
   required_content_fields:
   - artifact_id
   - created_at
@@ -9708,8 +9708,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15513
-  sha256: 6d330ddb41507f152c1bb7b1d11a601d722f8c8792515356ec00208a06a8fdee
+  file_size_bytes: 15538
+  sha256: d69a2ee55d18cf3606b2c63ce6df894c38484daa64ca08e68c917ad7bac71b76
   required_content_fields:
   - artifact_id
   - created_at
@@ -10440,8 +10440,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15615
-  sha256: 9ebafa884b496ddf0909e9ee5acf98298468518f7713d3abaa6331ed4330516d
+  file_size_bytes: 15640
+  sha256: f9be567cdc0e483d38392a34612bafea265bd924e038e4ae9fc9de19aaf98f32
   required_content_fields:
   - artifact_id
   - created_at
@@ -11107,7 +11107,7 @@ present_but_blocked_rows:
   artifact_kind: file
   parsed_kind: json
   file_size_bytes: 294089
-  sha256: 16c8152ac0e4eab988f75cbf23bf08caaaca136db76db094d23d6877e92990ad
+  sha256: c47cdf47208c67a3bfd6d982cd9aeef2ac8ec078f7e5ebbdbf67685e583b6bb6
   required_content_fields:
   - artifact_id
   - clearance_case_id
@@ -11986,8 +11986,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15691
-  sha256: 68513e91205083739b95bd27316302a8f8fc75a035b01a8c00c4b3b5e4339a2f
+  file_size_bytes: 15716
+  sha256: c7399ae4788a32f2dd98bdf4b29ab3f427b6dfe2e15f929beaa10a6e7dac9f0f
   required_content_fields:
   - artifact_id
   - created_at
@@ -12767,8 +12767,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: c4f6d74e76273fb9e6f1c7c914e19247bb2586dac33207bccc6656ea524a504a
+  file_size_bytes: 15574
+  sha256: 268467d2d09cb93a5397cd4b26965ee3c08d446f168444fdc446accd788c08b6
   required_content_fields:
   - artifact_id
   - created_at
@@ -13499,8 +13499,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15583
-  sha256: 57d55c45b78c0482a7f574ab223c68b3a3ab5ba50027c052a5ceaf2c65ce8334
+  file_size_bytes: 15608
+  sha256: 10266418be016438ef9d2bafb3e6aedd97ba51d37861f752e7234f1773e65615
   required_content_fields:
   - artifact_id
   - created_at
@@ -14231,8 +14231,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15575
-  sha256: c8005d007b1878ce046bd4dae7f857c9437bb2190044b0fea529010897422c39
+  file_size_bytes: 15600
+  sha256: 304d5939a85eb6c1faaf4dd668d4dfe02e65c5722dd5fd08e6da36e31e2f6669
   required_content_fields:
   - artifact_id
   - created_at
@@ -14963,8 +14963,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15635
-  sha256: 1c02aa2cf7353993bee704ebe49fef71cb021621a16afc1af5c1385eb7293386
+  file_size_bytes: 15660
+  sha256: 66d1e8d9f3f0c748486483960bb8c9bb86e767ba21a36fd70a3d9465bb415b83
   required_content_fields:
   - artifact_id
   - created_at
@@ -15695,8 +15695,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: b0ee4ccfd78f7d58cf936ceac12a5eb2799f61ab49fe452adc836ba3810de1df
+  file_size_bytes: 15574
+  sha256: b1392a0a9675827bbf0b77be6897ac1080029438d65d309c0e3d0856f9715bc1
   required_content_fields:
   - artifact_id
   - created_at
@@ -16476,8 +16476,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15669
-  sha256: 88bd4e0466fb9fda74f9beff74159c3a23cb57625ba47c1851a81c0164c75738
+  file_size_bytes: 15694
+  sha256: 3a3cc7cf2f3dc965da7de2721bbcbeecfb9e4b01d7b1e66129d9abbb87af3ddb
   required_content_fields:
   - artifact_id
   - created_at
@@ -17208,8 +17208,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15549
-  sha256: 513d2fa8f1d53100b66ed91f774478ad32a8a8653c5e996a754a0128494efefd
+  file_size_bytes: 15574
+  sha256: 3507fd75cf392b61bb8e8801ed34833f09f1319c23da4a4e4a11a6987f5f4549
   required_content_fields:
   - artifact_id
   - created_at
@@ -17940,8 +17940,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15691
-  sha256: 01d7f0eaf75d9cc7013fb1c075852ee8b469c2e8284bd8eab698e169e33f9e8e
+  file_size_bytes: 15716
+  sha256: bdb10c447b3dbca1059480ba97171fff50a7e07e76c3c79db1f1741cad76e01a
   required_content_fields:
   - artifact_id
   - created_at
@@ -18721,8 +18721,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15521
-  sha256: 85051c3ebc420f9321548f2a1a9b610db23dda36b0c847465af95811cada456d
+  file_size_bytes: 15546
+  sha256: 5e2fd9de333a627c317581ace13c16a6dc3e667f033e5d380fe6cc8f1a49fc82
   required_content_fields:
   - artifact_id
   - created_at
@@ -19453,8 +19453,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15551
-  sha256: 7d83da1d63d491588ed02cc142898af36f30dec6e335ea58215503ed490cd3d1
+  file_size_bytes: 15576
+  sha256: 8130a98433d770e369fb834541be24f48ea1646d0f5eeee4d6313cabe8ed5fd1
   required_content_fields:
   - artifact_id
   - created_at
@@ -20185,8 +20185,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15513
-  sha256: 6d330ddb41507f152c1bb7b1d11a601d722f8c8792515356ec00208a06a8fdee
+  file_size_bytes: 15538
+  sha256: d69a2ee55d18cf3606b2c63ce6df894c38484daa64ca08e68c917ad7bac71b76
   required_content_fields:
   - artifact_id
   - created_at
@@ -20917,8 +20917,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: step
-  file_size_bytes: 15615
-  sha256: 9ebafa884b496ddf0909e9ee5acf98298468518f7713d3abaa6331ed4330516d
+  file_size_bytes: 15640
+  sha256: f9be567cdc0e483d38392a34612bafea265bd924e038e4ae9fc9de19aaf98f32
   required_content_fields:
   - artifact_id
   - created_at

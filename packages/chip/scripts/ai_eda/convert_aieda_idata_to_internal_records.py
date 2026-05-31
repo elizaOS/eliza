@@ -18,6 +18,14 @@ DEFAULT_MAP_DIR = (
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/aieda_idata"
 CLAIM_BOUNDARY = "aieda_idata_conversion_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -182,6 +190,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "schema": "eda.design_bundle.v1",
         "id": f"{record_prefix}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": design_name,
             "revision": "aieda_idata_local_payload",
@@ -205,6 +214,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-route-demand-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "node_features": parsed["node_features"],
             "edge_features": parsed["edge_features"],
@@ -225,6 +235,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": ["AiEDA/iDATA public route demand export"],
             "version_capture": "external/datasets/aieda-idata/manifest.yaml",
@@ -296,6 +307,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "map_dir": rel(args.map_dir),
         "available_map_count": len(maps),
         "converted_map_count": len(selected),

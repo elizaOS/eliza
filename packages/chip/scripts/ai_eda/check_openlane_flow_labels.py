@@ -14,6 +14,13 @@ CLAIM_BOUNDARY = "openlane_metric_parse_only_no_training_inference_signoff_or_re
 FIXTURE_STATUS = "fixture_metrics_parser_smoke_no_ppa_claim"
 REAL_STATUS = "deterministic_openlane_metrics_unreviewed"
 BLOCKED_STATUS = "blocked_missing_required_openlane_metrics"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -45,6 +52,9 @@ def validate(report_path: Path) -> list[str]:
         errors.append("report claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
         errors.append("report must set release_use_allowed=false")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if report.get(field) is not False:
+            errors.append(f"report {field} must be false")
 
     flow_path, path_errors = resolve_repo_path(report.get("flow_run_record"), "flow_run_record")
     errors.extend(path_errors)
@@ -58,6 +68,9 @@ def validate(report_path: Path) -> list[str]:
         errors.append("flow record schema is not eda.flow_run.v1")
     if flow.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("flow record claim_boundary is missing or incorrect")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if flow.get(field) is not False:
+            errors.append(f"flow record {field} must be false")
 
     metrics = flow.get("metrics")
     if not isinstance(metrics, dict):

@@ -1,6 +1,11 @@
 {
   "schemaVersion": 1,
   "policy": "eliza-tee-otp-fuse-map-v0",
+  "claim_allowed": false,
+  "release_claim_allowed": false,
+  "silicon_otp_claim_allowed": false,
+  "provisioning_claim_allowed": false,
+  "secure_boot_claim_allowed": false,
   "wordBits": 32,
   "readMajority": "2-of-3",
   "partitions": [

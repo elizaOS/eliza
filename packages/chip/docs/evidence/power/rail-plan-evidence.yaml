@@ -4,9 +4,16 @@ claim_boundary: 'Hash-pinned reference to the authoritative 16-rail plan (docs/p
   and dependent claims (soc-optimized-operating-point.yaml.rail_plan_hash) must follow.
 
   '
+claim_allowed: false
+release_claim_allowed: false
+pdn_signoff_claim_allowed: false
+pmic_procurement_claim_allowed: false
+measured_silicon_claim_allowed: false
+tapeout_claim_allowed: false
+production_readiness_claim_allowed: false
 generated_utc: '2026-05-20T12:48:28Z'
 rail_plan_path: docs/pd/rail-plan-2028.yaml
-rail_plan_sha256: 5941b79f61fee2304e14d197393cf049c02938badd063d9bdec94d3fcb5c8848
+rail_plan_sha256: 2e692801c266587cd3ca7e2f97c486eb76d6634f5489b1e0a8546dac00ba51e3
 release_blockers:
 - Rail count locked at 16; any change requires rotating this hash AND updating UPF
   + signoff gate AND every binding consumer above.

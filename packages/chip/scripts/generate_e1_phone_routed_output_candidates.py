@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import hashlib
 import json
 import re
@@ -702,6 +703,10 @@ def write_local_supplier_lane_surrogate_steps(models: list[dict[str, Any]]) -> d
             "status": "present_local_surrogate_step_not_supplier_approved",
             "release_credit": False,
         }
+    for record in records.values():
+        step_path = ROOT / str(record["file"])
+        record["sha256"] = sha256(step_path)
+        record["bytes"] = step_path.stat().st_size
     return records
 
 
@@ -1371,6 +1376,30 @@ def write_local_envelope_step(path: Path, model: dict[str, Any]) -> None:
     depth = max(float(envelope.get("depth", 0) or 0), 0.1)
     height = max(float(envelope.get("height", 0) or 0), 0.05)
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+        from OCP.gp import gp_Pnt
+
+        shape = BRepPrimAPI_MakeBox(
+            gp_Pnt(-width / 2.0, -depth / 2.0, -height / 2.0),
+            width,
+            depth,
+            height,
+        ).Shape()
+        writer = STEPControl_Writer()
+        writer.Transfer(shape, STEPControl_AsIs)
+        status = writer.Write(str(path))
+        if status != IFSelect_RetDone:
+            raise RuntimeError(f"OCP STEP write failed: {status}")
+        del writer
+        del shape
+        gc.collect()
+        return
+    except ModuleNotFoundError:
+        pass
+
     reference = str(model.get("reference", "LOCAL_ENVELOPE"))
     half_w = width / 2.0
     half_d = depth / 2.0

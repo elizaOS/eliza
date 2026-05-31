@@ -20,7 +20,11 @@ _REGEX_PATTERNS: list[tuple[str, str, dict]] = [
     (r"walk\s+forward\s+fast", "walk", {"speed": 0.8, "direction": 0.0}),
     (r"walk\s+forward\s+slow(ly)?", "walk", {"speed": 0.25, "direction": 0.0}),
     (r"walk\s+forward", "walk", {"speed": 0.5, "direction": 0.0}),
-    (r"walk\s+backward", "walk", {"speed": 0.3, "direction": 3.14}),
+    # Backward: many natural phrasings, all map to walk with direction=pi (vx<0).
+    (r"walk\s+back(wards?)?", "walk", {"speed": 0.3, "direction": 3.14}),
+    (r"(go|move|step)\s+back(wards?)?", "walk", {"speed": 0.3, "direction": 3.14}),
+    (r"back\s+up", "walk", {"speed": 0.3, "direction": 3.14}),
+    (r"reverse", "walk", {"speed": 0.3, "direction": 3.14}),
     (r"walk\s+slow(ly)?", "walk", {"speed": 0.25}),
     (r"walk\s+fast", "walk", {"speed": 0.8}),
     (r"walk", "walk", {"speed": 0.5}),

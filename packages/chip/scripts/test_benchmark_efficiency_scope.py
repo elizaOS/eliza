@@ -94,6 +94,18 @@ def test_scaffold_removal_fails() -> None:
     print("PASS scaffold removal rejected")
 
 
+def test_capture_command_removal_fails() -> None:
+    report = check_benchmark_efficiency_scope.build_report()
+    commands = report.get("next_capture_commands", {})
+    required = check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS
+    if commands != required:
+        raise AssertionError(f"capture commands drifted: {commands!r}")
+    mutated = copy.deepcopy(report)
+    del mutated["next_capture_commands"]["npu_nnapi_proof"]
+    expect_error(mutated, "npu_nnapi_proof")
+    print("PASS capture command removal rejected")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
@@ -102,6 +114,7 @@ def main() -> None:
     test_structured_findings_cover_blocked_real_evidence()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
+    test_capture_command_removal_fails()
 
 
 if __name__ == "__main__":
