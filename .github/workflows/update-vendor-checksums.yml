@@ -53,11 +53,15 @@ jobs:
           download_and_hash "linux"  "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
           download_and_hash "win32"  "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 
-          # Update the timestamp
-          jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-             '."last-updated" = $ts' \
-             "$CHECKSUMS_FILE" > "${CHECKSUMS_FILE}.tmp"
-          mv "${CHECKSUMS_FILE}.tmp" "$CHECKSUMS_FILE"
+          if git diff --quiet "$CHECKSUMS_FILE"; then
+            echo "No platform-tools checksum or URL changes."
+          else
+            # Update the timestamp only when pinned vendor content changes.
+            jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+               '."last-updated" = $ts' \
+               "$CHECKSUMS_FILE" > "${CHECKSUMS_FILE}.tmp"
+            mv "${CHECKSUMS_FILE}.tmp" "$CHECKSUMS_FILE"
+          fi
 
           echo "Updated checksums.json:"
           cat "$CHECKSUMS_FILE"

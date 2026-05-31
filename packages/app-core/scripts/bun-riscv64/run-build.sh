@@ -78,9 +78,16 @@ verification step does.
 NO_BINFMT
 fi
 
+# The Dockerfile vendors x86_64 toolchain binaries (Zig x86_64, bun x64
+# bootstrap), so the builder image MUST be linux/amd64. On amd64 CI hosts this
+# is native; on an arm64 host (Apple Silicon) it runs under emulation. Without
+# this, an arm64 host builds an arm64 image where the x86_64 bun bootstrap
+# fails with "rosetta error: failed to open elf .../ld-linux-x86-64.so.2".
+PLATFORM="linux/amd64"
+
 # ─── Build the image ───────────────────────────────────────────────────────
-echo "[run-build] building image ${IMAGE_TAG}"
-docker build ${NO_CACHE} -t "${IMAGE_TAG}" .
+echo "[run-build] building image ${IMAGE_TAG} (--platform ${PLATFORM})"
+docker build --platform "${PLATFORM}" ${NO_CACHE} -t "${IMAGE_TAG}" .
 
 if [ "$IMAGE_ONLY" = "1" ]; then
     echo "[run-build] --image-only: stopping after image build."
@@ -91,6 +98,7 @@ fi
 if [ "$SHELL_MODE" = "1" ]; then
     echo "[run-build] dropping into shell inside ${IMAGE_TAG}"
     exec docker run --rm -it \
+        --platform "${PLATFORM}" \
         -v "$HERE:/work-host:rw" \
         --entrypoint /bin/bash \
         "${IMAGE_TAG}"
@@ -110,6 +118,7 @@ fi
 
 DOCKER_RUN_ARGS=(
     --rm
+    --platform "${PLATFORM}"
     -v "$HERE/build.sh:/opt/build.sh:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
     -v "$PATCH_MOUNT:/opt/bun-patches:ro"
