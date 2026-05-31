@@ -6,18 +6,18 @@ need an RFQ. Re-run `python -m eliza_robot.erobot.build` to regenerate.
 
 ## Totals
 
-- Robot: 25-DoF humanoid, 1.665 m standing.
-- **BOM mass: 27.648 kg** (sim mass model: 26.149 kg; the delta is discrete bearings/fasteners/wear pads not modeled as sim shells).
-- **Unit cost @ qty 1: $16,184.79**
-- **Unit cost @ qty 1000: $10,010.83/unit** (incl. amortized tooling).
-- Tooling capex: $91,000.00 across 13 molds.
+- Robot: 27-DoF humanoid, 1.665 m standing.
+- **BOM mass: 29.441 kg** (sim mass model: 27.951 kg; the delta is discrete bearings/fasteners/wear pads not modeled as sim shells).
+- **Unit cost @ qty 1: $17,627.13**
+- **Unit cost @ qty 1000: $10,860.39/unit** (incl. amortized tooling).
+- Tooling capex: $133,000.00 across 19 molds.
 
 ## By category
 
 | Category | Qty | Mass (kg) | Cost @ qty 1 | Cost @ qty 1000 |
 |---|---:|---:|---:|---:|
-| actuator | 25 | 13.56 | $13,300.46 | $8,625.00 |
-| molded_shell | 22 | 8.75 | $970.83 | $299.83 |
+| actuator | 27 | 13.89 | $14,289.24 | $9,345.00 |
+| molded_shell | 34 | 10.21 | $1,424.39 | $387.39 |
 | bearing | 6 | 1.62 | $660.00 | $288.00 |
 | power | 2 | 3.10 | $540.00 | $185.00 |
 | sensor | 2 | 0.08 | $338.50 | $230.00 |
@@ -31,7 +31,7 @@ need an RFQ. Re-run `python -m eliza_robot.erobot.build` to regenerate.
 |---|---|---|---:|---:|---:|---:|:--:|---|
 | High-torque leg actuator | CubeMars AK80-64 (KV80) | 120 N·m peak / 48 N·m rated, 48 V, CAN | 6 | 0.850 | $889.90 | $560.00 | confirmed | [link](https://store.cubemars.com/products/ak80-64) |
 | Mid-torque joint actuator | CubeMars AK70-10 (KV100) | 24.8 N·m peak / 8.3 N·m rated, 48 V, CAN | 15 | 0.520 | $398.90 | $255.00 | confirmed | [link](https://store.cubemars.com/products/ak70-10) |
-| Low-torque smart servo | Robotis Dynamixel XM540-W270-R | 10.6 N·m stall, 12 V, TTL/RS-485 | 4 | 0.165 | $494.39 | $360.00 | confirmed | [link](https://robotis.us/dynamixel-xm540-w270-r/) |
+| Low-torque smart servo | Robotis Dynamixel XM540-W270-R | 10.6 N·m stall, 12 V, TTL/RS-485 | 6 | 0.165 | $494.39 | $360.00 | confirmed | [link](https://robotis.us/dynamixel-xm540-w270-r/) |
 | Onboard compute | NVIDIA Jetson Orin Nano Super Dev Kit | 8 GB, 67 TOPS | 1 | 0.180 | $249.00 | $230.00 | confirmed | [link](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano-super-developer-kit/) |
 | IMU | Bosch / SparkFun BMI088 breakout | 6-axis, SPI/I2C | 1 | 0.010 | $18.50 | $10.00 | confirmed | [link](https://www.digikey.com/en/products/detail/bosch-sensortec/BMI088/8634936) |
 | Head depth + RGB camera | Intel RealSense D435i | stereo depth + RGB + IMU, ~10 m | 1 | 0.072 | $320.00 | $220.00 | est. | [link](https://store.intelrealsense.com/buy-intel-realsense-depth-camera-d435i.html) |
@@ -48,28 +48,34 @@ Each unique shell is a 2-piece clamshell bolted around its actuator with brass h
 
 | Shell | Material | Spec | Pieces | Unit mass (kg) | Unit $ (qty 1) | Unit $ (qty 1k) |
 |---|---|---|---:|---:|---:|---:|
-| foot_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 2.5 mm, shell mass 267 g | 2 | 0.267 | $41.73 | $11.23 |
+| ankle_pitch_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 128 g | 2 | 0.128 | $38.23 | $7.73 |
+| ankle_roll_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 128 g | 2 | 0.128 | $38.23 | $7.73 |
+| elbow_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 89 g | 2 | 0.089 | $36.30 | $5.80 |
+| foot_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 2.5 mm, shell mass 188 g | 2 | 0.188 | $39.75 | $9.25 |
 | forearm_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 212 g | 2 | 0.212 | $38.12 | $7.62 |
 | hand_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 160 g | 2 | 0.160 | $37.35 | $6.85 |
 | head_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 319 g | 1 | 0.319 | $39.68 | $9.18 |
-| hip_pitch_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 139 g | 2 | 0.139 | $38.49 | $7.99 |
-| hip_roll_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 128 g | 2 | 0.128 | $38.23 | $7.73 |
+| hip_pitch_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 185 g | 2 | 0.185 | $39.65 | $9.15 |
+| hip_roll_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 185 g | 2 | 0.185 | $39.65 | $9.15 |
+| knee_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 185 g | 2 | 0.185 | $39.65 | $9.15 |
 | neck_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 78 g | 1 | 0.078 | $36.15 | $5.65 |
 | pelvis_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 809 g | 1 | 0.809 | $55.38 | $24.88 |
 | shank_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 635 g | 2 | 0.635 | $51.00 | $20.50 |
 | shoulder_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 89 g | 2 | 0.089 | $36.30 | $5.80 |
 | thigh_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 797 g | 2 | 0.797 | $55.08 | $24.58 |
+| toe_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 2.5 mm, shell mass 109 g | 2 | 0.109 | $37.76 | $7.26 |
 | torso_shell (2-piece clamshell) | 30% glass-filled nylon 6 (injection molded) | wall 3.0 mm, shell mass 2144 g | 1 | 2.144 | $89.04 | $58.54 |
 | upper_arm_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 271 g | 2 | 0.271 | $38.99 | $8.49 |
+| wrist_shell (2-piece clamshell) | PC-ABS blend (injection molded) | wall 2.5 mm, shell mass 69 g | 2 | 0.069 | $36.01 | $5.51 |
 
 ## Mass reconciliation vs sim model
 
 | Source | Mass (kg) |
 |---|---:|
-| Structural shells (PA6-GF30 + PC-ABS) | 9.21 |
-| Off-the-shelf actuators (25) | 13.58 |
+| Structural shells (PA6-GF30 + PC-ABS) | 10.67 |
+| Off-the-shelf actuators (25) | 13.92 |
 | Electronics + battery (lumped in sim) | 3.36 |
-| **Sim mass model total** | **26.15** |
-| + bearings / fasteners / wear pads (BOM-only) | 1.50 |
-| **BOM total** | **27.65** |
+| **Sim mass model total** | **27.95** |
+| + bearings / fasteners / wear pads (BOM-only) | 1.49 |
+| **BOM total** | **29.44** |
 

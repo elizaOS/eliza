@@ -180,13 +180,19 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 log "── stage 2: Bun checkout + patches ──────────────────────────────────"
 
+# BUN_TAG may be a tag (Zig fallback, e.g. bun-v1.3.14) OR a bare commit SHA
+# (Rust-core port, e.g. rust_core_port.target_commit). `git clone --branch`
+# rejects a SHA, so fetch the ref directly — GitHub allows fetch-by-SHA
+# (allowAnySHA1InWant) — mirroring the WebKit checkout above. Works for both.
 if [ ! -d "$SRC_ROOT/bun" ]; then
-    log "Cloning oven-sh/bun @ ${BUN_TAG}"
-    git clone --depth=1 --branch "${BUN_TAG}" \
-        --recurse-submodules --shallow-submodules \
-        https://github.com/oven-sh/bun.git "$SRC_ROOT/bun"
+    log "Fetching oven-sh/bun @ ${BUN_TAG}"
+    git init -q "$SRC_ROOT/bun"
+    git -C "$SRC_ROOT/bun" remote add origin https://github.com/oven-sh/bun.git
+    git -C "$SRC_ROOT/bun" fetch --depth=1 --recurse-submodules origin "${BUN_TAG}"
+    git -C "$SRC_ROOT/bun" checkout -q FETCH_HEAD
 fi
-git -C "$SRC_ROOT/bun" reset --hard "${BUN_TAG}" >/dev/null
+git -C "$SRC_ROOT/bun" fetch --depth=1 origin "${BUN_TAG}" >/dev/null 2>&1
+git -C "$SRC_ROOT/bun" reset --hard FETCH_HEAD >/dev/null
 git -C "$SRC_ROOT/bun" submodule update --init --recursive --depth=1
 
 if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then

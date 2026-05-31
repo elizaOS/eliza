@@ -1,3 +1,16 @@
+diff --git a/src/bun_core/Global.rs b/src/bun_core/Global.rs
+index b43c309..bcc4587 100644
+--- a/src/bun_core/Global.rs
++++ b/src/bun_core/Global.rs
+@@ -525,6 +525,8 @@ pub const arch_name: &str = if cfg!(target_arch = "x86_64") {
+     "x86"
+ } else if cfg!(target_arch = "aarch64") {
+     "arm64"
++} else if cfg!(target_arch = "riscv64") {
++    "riscv64"
+ } else {
+     "unknown"
+ };
 diff --git a/src/bun_core/env.rs b/src/bun_core/env.rs
 index 85fe5aa..32754b2 100644
 --- a/src/bun_core/env.rs

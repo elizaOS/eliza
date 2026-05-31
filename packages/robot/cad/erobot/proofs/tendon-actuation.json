@@ -6,18 +6,18 @@
     {
       "foot": "left",
       "base_rad": -0.0008,
-      "tensioned_rad": -0.3026,
-      "relaxed_rad": -0.0258,
-      "travel_deg": -17.3,
+      "tensioned_rad": -0.3242,
+      "relaxed_rad": -0.0299,
+      "travel_deg": -18.5,
       "articulates": true,
       "springs_back": true
     },
     {
       "foot": "right",
       "base_rad": -0.0008,
-      "tensioned_rad": -0.3026,
-      "relaxed_rad": -0.0258,
-      "travel_deg": -17.3,
+      "tensioned_rad": -0.3242,
+      "relaxed_rad": -0.0299,
+      "travel_deg": -18.5,
       "articulates": true,
       "springs_back": true
     }
