@@ -18,6 +18,7 @@ import {
 import { type RefObject, useCallback } from "react";
 import type { StylePreset, VoiceConfig } from "../api";
 import { ElizaClient } from "../api/client-base";
+import { resolveCloudAgentApiBase } from "../api/client-cloud";
 
 type FirstRunClient = Pick<
   ElizaClient,
@@ -637,13 +638,24 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             onProgress: () => {},
           });
 
-          client.setBaseUrl(provisionedAgent.bridgeUrl);
+          // The provision endpoint hands back `bridgeUrl` as a raw container
+          // address (http://<ip>:<port>) that the browser can't reach (bridge
+          // port firewalled to the cloud's internal network) and that the CSP
+          // blocks (only https:// is allowed for remote hosts). Resolve the
+          // reachable per-agent HTTPS gateway URL instead, so onboarding can
+          // actually talk to the provisioned agent.
+          const cloudAgentApiBase = resolveCloudAgentApiBase({
+            agentId: provisionedAgent.agentId,
+            cloudApiBase,
+            bridgeUrl: provisionedAgent.bridgeUrl,
+          });
+          client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
-              apiBase: provisionedAgent.bridgeUrl,
+              apiBase: cloudAgentApiBase,
               accessToken: authToken,
             }),
           );
