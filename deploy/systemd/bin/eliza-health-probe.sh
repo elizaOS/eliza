@@ -17,6 +17,13 @@ BOTLOG="${ELIZA_LOG:-$HOME/.local/share/eliza/bot.log}"
 mkdir -p "$(dirname "$LOG")"
 log() { printf '%s %s\n' "$(date -Is)" "$1" >>"$LOG"; }
 restart() {
+  # Respect an intentional stop: if the unit isn't active, systemd's
+  # Restart=always already handles genuine crashes — don't resurrect a bot the
+  # operator deliberately stopped (e.g. for maintenance) within the probe window.
+  if ! systemctl --user is-active --quiet eliza.service; then
+    log "eliza.service not active — skipping restart ($1)"
+    exit 0
+  fi
   log "UNHEALTHY: $1 — restarting eliza.service"
   systemctl --user restart eliza.service || log "WARN: restart command failed"
   exit 0

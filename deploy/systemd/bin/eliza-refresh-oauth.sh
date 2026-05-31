@@ -56,3 +56,7 @@ if (( remaining_s < THRESHOLD )); then
 else
   log "token healthy (${remaining_s}s remaining); no-op."
 fi
+
+# Refreshing is best-effort (any hiccup is logged inside refresh()); exit clean
+# so the timer-driven oneshot never reports a spurious unit failure.
+exit 0

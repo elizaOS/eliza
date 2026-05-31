@@ -129,6 +129,8 @@ not a unit failure.
 | Probe activity | `~/.local/share/eliza/probe.log` (sparse — only restarts and hourly heartbeats) |
 | systemd journal | `journalctl --user -u eliza.service` |
 
+The `bot.log` file is append-only and **not rotated** — `StandardOutput=append:` grows it unbounded. On a long-running host add a `logrotate` rule (e.g. weekly with `copytruncate`), or drop the `StandardOutput`/`StandardError` overrides in `eliza.service` so output goes to the systemd journal, which rotates automatically.
+
 ## What this does **not** handle
 
 - **Subscription cancellation / Anthropic account lock.** Restarts cannot fix an inactive subscription.
