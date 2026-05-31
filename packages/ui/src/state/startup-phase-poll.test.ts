@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
+import { scanProviderCredentials } from "../bridge";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   type PollingBackendDeps,
@@ -477,5 +478,113 @@ describe("shouldFallBackToLocalOrigin", () => {
     expect(
       shouldFallBackToLocalOrigin({ ...eligible, pageProtocol: "views:" }),
     ).toBe(false);
+  });
+});
+
+describe("runPollingBackend cancellation during options fetch", () => {
+  it("bails without mutating state when cancelled mid-fetch", async () => {
+    // Regression: the post-Promise.all path (first-run options + config) had
+    // no `cancelled.current` guard, so an effect torn down while the fetch was
+    // in flight still called setFirstRunOptions and dispatched BACKEND_REACHED
+    // on a dead effect. Flip `cancelled` the instant options are fetched and
+    // assert nothing downstream fires.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    const cancelled = { current: false };
+    clientMock.getFirstRunOptions.mockImplementation(async () => {
+      cancelled.current = true; // effect cleanup raced the in-flight fetch
+      return firstRunOptions();
+    });
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: null,
+      restoredActiveServer: {
+        id: "local:desktop",
+        kind: "local",
+        label: "Local agent",
+        apiBase: "http://127.0.0.1:34137",
+      },
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+    );
+
+    expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
+  it("bails without mutating state when cancelled during the provider-credential scan", async () => {
+    // Second race window: scanProviderCredentials() is a separate in-flight
+    // await after the Promise.all guard. An effect torn down while it runs must
+    // not call applyFirstRunResumeFields / setSetupStep / dispatch BACKEND_REACHED.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    const cancelled = { current: false };
+    // No firstRunProvider in config -> the scan path runs.
+    clientMock.getConfig.mockResolvedValue({});
+    (
+      scanProviderCredentials as unknown as ReturnType<typeof vi.fn>
+    ).mockImplementation(async () => {
+      cancelled.current = true; // effect cleanup raced the in-flight scan
+      return [];
+    });
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: null,
+      restoredActiveServer: {
+        id: "local:desktop",
+        kind: "local",
+        label: "Local agent",
+        apiBase: "http://127.0.0.1:34137",
+      },
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+    );
+
+    expect(deps.setSetupStep).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
   });
 });
