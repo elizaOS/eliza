@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { cn } from "../../lib/utils";
@@ -25,6 +26,7 @@ import {
   settingsSectionTitle,
 } from "../settings/settings-sections";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 const SETTINGS_CONTENT_CLASS =
   "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
@@ -73,6 +75,55 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
     );
   },
 );
+
+function SettingsNavButton({
+  section,
+  label,
+  isActive,
+  onSelect,
+}: {
+  section: SettingsSectionDef;
+  label: string;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const { agentProps } = useAgentElement({
+    id: `section-${section.id}`,
+    role: "tab",
+    label,
+    group: "settings-sections",
+    status: isActive ? "active" : "inactive",
+    description: `Open the ${label} settings section`,
+    onActivate: () => onSelect(section.id),
+  });
+  const Icon = section.icon;
+  const toneClass = SECTION_TONE_ICON_CLASS[section.tone];
+  return (
+    <SidebarContent.ItemButton
+      onClick={() => onSelect(section.id)}
+      aria-current={isActive ? "page" : undefined}
+      className="items-center gap-2.5"
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon
+        active={isActive}
+        className={cn("mt-0 h-8 w-8 rounded-sm p-1.5", !isActive && toneClass)}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </SidebarContent.ItemIcon>
+      <SidebarContent.ItemBody>
+        <SidebarContent.ItemTitle
+          className={cn(
+            "text-sm leading-5",
+            isActive ? "font-semibold" : "font-medium",
+          )}
+        >
+          {label}
+        </SidebarContent.ItemTitle>
+      </SidebarContent.ItemBody>
+    </SidebarContent.ItemButton>
+  );
+}
 
 export function SettingsView({
   inModal,
@@ -296,46 +347,22 @@ export function SettingsView({
       <SidebarScrollRegion className="pt-0">
         <SidebarPanel>
           <nav className="space-y-1.5" aria-label={t("nav.settings")}>
-            {visibleSections.map((section) => {
-              const isActive = activeSection === section.id;
-              const Icon = section.icon;
-              const toneClass = SECTION_TONE_ICON_CLASS[section.tone];
-              return (
-                <SidebarContent.Item
-                  key={section.id}
-                  as="div"
-                  active={isActive}
-                  className="gap-2 py-2"
-                  ref={registerSidebarItem(section.id)}
-                >
-                  <SidebarContent.ItemButton
-                    onClick={() => handleSectionChange(section.id)}
-                    aria-current={isActive ? "page" : undefined}
-                    className="items-center gap-2.5"
-                  >
-                    <SidebarContent.ItemIcon
-                      active={isActive}
-                      className={cn(
-                        "mt-0 h-8 w-8 rounded-sm p-1.5",
-                        !isActive && toneClass,
-                      )}
-                    >
-                      <Icon className="h-4 w-4" aria-hidden />
-                    </SidebarContent.ItemIcon>
-                    <SidebarContent.ItemBody>
-                      <SidebarContent.ItemTitle
-                        className={cn(
-                          "text-sm leading-5",
-                          isActive ? "font-semibold" : "font-medium",
-                        )}
-                      >
-                        {settingsSectionLabel(section, t)}
-                      </SidebarContent.ItemTitle>
-                    </SidebarContent.ItemBody>
-                  </SidebarContent.ItemButton>
-                </SidebarContent.Item>
-              );
-            })}
+            {visibleSections.map((section) => (
+              <SidebarContent.Item
+                key={section.id}
+                as="div"
+                active={activeSection === section.id}
+                className="gap-2 py-2"
+                ref={registerSidebarItem(section.id)}
+              >
+                <SettingsNavButton
+                  section={section}
+                  label={settingsSectionLabel(section, t)}
+                  isActive={activeSection === section.id}
+                  onSelect={handleSectionChange}
+                />
+              </SidebarContent.Item>
+            ))}
           </nav>
         </SidebarPanel>
       </SidebarScrollRegion>
@@ -343,35 +370,40 @@ export function SettingsView({
   );
 
   return (
-    <PageLayout
-      className={cn("h-full", inModal && "min-h-0")}
-      data-testid="settings-shell"
-      sidebar={settingsSidebar}
-      contentRef={contentContainerRef}
-      contentClassName={SETTINGS_CONTENT_CLASS}
-      contentInnerClassName={SETTINGS_CONTENT_WIDTH_CLASS}
-      mobileSidebarLabel={
-        activeSectionDef
-          ? settingsSectionLabel(activeSectionDef, t)
-          : t("nav.settings")
-      }
-    >
-      <div ref={shellRef} className={`w-full ${SETTINGS_SECTION_STACK_CLASS}`}>
-        {visibleSections.map((section) => {
-          const Component = section.Component;
-          return (
-            <SettingsSection
-              key={section.id}
-              id={section.id}
-              title={settingsSectionTitle(section, t)}
-              bodyClassName={section.bodyClassName}
-              ref={registerContentItem(section.id)}
-            >
-              <Component />
-            </SettingsSection>
-          );
-        })}
-      </div>
-    </PageLayout>
+    <ShellViewAgentSurface viewId="settings">
+      <PageLayout
+        className={cn("h-full", inModal && "min-h-0")}
+        data-testid="settings-shell"
+        sidebar={settingsSidebar}
+        contentRef={contentContainerRef}
+        contentClassName={SETTINGS_CONTENT_CLASS}
+        contentInnerClassName={SETTINGS_CONTENT_WIDTH_CLASS}
+        mobileSidebarLabel={
+          activeSectionDef
+            ? settingsSectionLabel(activeSectionDef, t)
+            : t("nav.settings")
+        }
+      >
+        <div
+          ref={shellRef}
+          className={`w-full ${SETTINGS_SECTION_STACK_CLASS}`}
+        >
+          {visibleSections.map((section) => {
+            const Component = section.Component;
+            return (
+              <SettingsSection
+                key={section.id}
+                id={section.id}
+                title={settingsSectionTitle(section, t)}
+                bodyClassName={section.bodyClassName}
+                ref={registerContentItem(section.id)}
+              >
+                <Component />
+              </SettingsSection>
+            );
+          })}
+        </div>
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }
