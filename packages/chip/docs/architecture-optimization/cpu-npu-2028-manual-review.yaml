@@ -1,5 +1,13 @@
 schema: eliza.cpu_npu_2028_manual_review.v1
 status: modeled_review_release_blocked
+release_claim_allowed: false
+target_benchmark_claim_allowed: false
+aosp_runtime_claim_allowed: false
+pdk_signoff_claim_allowed: false
+post_route_signoff_claim_allowed: false
+silicon_claim_allowed: false
+phone_class_claim_allowed: false
+production_readiness_claim_allowed: false
 claim_boundary: 'Engineering review of the modeled CPU+NPU 2028 operating point. This review can approve
   the local model recommendation for continued implementation, but it is not AOSP, target benchmark, PDK,
   post-route, silicon, or phone-class performance evidence.
@@ -96,6 +104,11 @@ modeled_review_findings:
     status: blocked
     evidence: Generated Linux-capable AP manifest and boot/benchmark transcripts are still absent.
     release_gate: make cpu-ap-completion-gate
+  - id: npu_nnapi_evidence_blocked
+    status: blocked
+    evidence: Real e1-npu Android NNAPI proof, unsupported-operator accounting, and zero CPU fallback
+      evidence are still absent.
+    release_gate: make e1-npu-nnapi-proof-check
   - id: aosp_simulator_evidence_blocked
     status: blocked
     evidence: Local AOSP virtual-device boot, VINTF/SELinux, CTS/VTS intake, QEMU, Cuttlefish, and Renode

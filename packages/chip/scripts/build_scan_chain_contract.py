@@ -5,13 +5,17 @@
 build/dft/e1_chip_top.scan.csv`` as a required input for Fault. That CSV
 enumerates the scan flops in shift order. The chain order itself is produced
 by Fault's stitching pass, which is BLOCKED (Fault is not vendored under
-external/). Until then this builder derives the *candidate* scan-flop set by
-parsing the scan-inserted Yosys netlist (``build/dft/<top>.scan.v`` or a
-``*.scan_ready.v`` leaf netlist), recording each scan-capable flop instance.
+external/). Fault also performs the scan-flop substitution: the Yosys prep pass
+(``pd/dft/scan_insertion.tcl`` / ``dfflibmap``) maps to *ordinary* library
+flops, not scan (``sdf*``) cells. Until Fault runs this builder derives the
+*candidate* scan-flop set by parsing the prepped Yosys netlist
+(``build/dft/<top>.scan.v`` or a ``*.scan_ready.v`` leaf netlist) and recording
+each scan-capable (``sdf*``) flop instance.
 
 The emitted CSV is explicitly marked as a pre-stitch candidate set, not a
-stitched chain. If the netlist is missing, contains no scan-capable flops, or
-Yosys never ran, the builder fails closed: it does not invent a chain.
+stitched chain. If the netlist is missing, contains no scan-capable flops (the
+expected state until Fault retargets the ordinary flops), or Yosys never ran,
+the builder fails closed: it does not invent a chain.
 """
 
 from __future__ import annotations

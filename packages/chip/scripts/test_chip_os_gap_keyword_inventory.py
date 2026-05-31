@@ -191,6 +191,33 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["summary"]["findings"], 1)
         self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
 
+    def test_project_roadmap_and_todo_audits_are_not_source_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            roadmap = repo / "packages/chip/docs/project/road-to-mediatek.md"
+            roadmap.parent.mkdir(parents=True)
+            roadmap.write_text(
+                "# Roadmap\n\n"
+                "Current scaffold remains blocked until AP and benchmark evidence lands.\n",
+                encoding="utf-8",
+            )
+            todo = repo / "packages/chip/docs/project/android-on-simulated-chip-todo.md"
+            todo.write_text(
+                "# TODO audit\n\n"
+                "| TODO | placeholder evidence remains blocked |\n",
+                encoding="utf-8",
+            )
+            source_doc = repo / "packages/chip/docs/arch/npu.md"
+            source_doc.parent.mkdir(parents=True, exist_ok=True)
+            source_doc.write_text("NPU placeholder text that still needs resolution.\n", encoding="utf-8")
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+
     def test_generated_traceability_outputs_are_not_scanned_as_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -200,6 +227,34 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
             with mock.patch.object(inv, "REPO", repo):
                 report = inv.build_report(["packages/chip/docs"])
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["findings"], 0)
+
+    def test_evidence_manifests_and_pb_placeholder_fields_are_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            manifest = repo / "packages/chip/docs/android/bsp-log-evidence-manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "claim_boundary": "expected future log markers only",
+                        "forbidden_strings": ["placeholder transcript", "placeholder evidence"],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            converter = repo / "packages/chip/scripts/alphachip/convert_lefdef_to_pb.sh"
+            converter.parent.mkdir(parents=True)
+            converter.write_text(
+                "sed -e 's/placeholder: \"macro\"/placeholder: \"MACRO\"/g'\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs", "packages/chip/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -253,6 +308,27 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
+
+    def test_generator_template_vocabulary_is_classified_but_todos_still_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            generator = repo / "packages/chip/scripts/generate_e1_phone_demo.py"
+            generator.parent.mkdir(parents=True)
+            generator.write_text(
+                '"""Generate non-release placeholder artifacts."""\n'
+                'line = "NON-RELEASE placeholder footprint generated from template"\n'
+                'note = "Replace E1Phone placeholder footprints with supplier land patterns"\n'
+                "# Placeholder footprints are emitted for generated demo artifacts.\n"
+                "# TODO remove this real generator maintenance gap\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/scripts"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["marker"], "TODO")
 
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {

@@ -15,6 +15,17 @@ BURST_TRANSIENT = ROOT / "benchmarks/results/cpu-npu-2028-burst-thermal-transien
 AOSP_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json"
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_class_release_claim_allowed": False,
+    "measured_benchmark_claim_allowed": False,
+    "google_pixel_product_claim_allowed": False,
+    "purchasing_comparison_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
+
 PLANNING_TARGETS = {
     "cpu_sota_ipc_min": 2.35,
     "cpu_process_derated_ipc_min": 2.25,
@@ -307,6 +318,7 @@ def build_report() -> dict[str, Any]:
         else "modeled_competitive_envelope_release_blocked"
         if blocked
         else "pass",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Local 2028 compact flagship planning envelope only; not measured benchmark evidence, "
             "not a Google Pixel product claim, and not a release or purchasing comparison."
@@ -341,6 +353,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         )
     if "not a Google Pixel product claim" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block Google Pixel product claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     metrics = data.get("envelope_metrics")
     if not isinstance(metrics, dict):
         errors.append("envelope_metrics must be a mapping")

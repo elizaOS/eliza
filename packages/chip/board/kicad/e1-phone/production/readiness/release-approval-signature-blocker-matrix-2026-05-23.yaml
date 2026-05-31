@@ -3,6 +3,13 @@ status: blocked
 date: '2026-05-23'
 claim_boundary: Approval/signature blocker matrix only. This file does not grant fabrication,
   enclosure, factory, first-article, or release approval.
+release_claim_allowed: false
+release_approval_claim_allowed: false
+fabrication_release_claim_allowed: false
+enclosure_release_claim_allowed: false
+factory_release_claim_allowed: false
+first_article_release_claim_allowed: false
+production_readiness_claim_allowed: false
 inputs:
   content_contract: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
   json_report: build/reports/e1_phone_release_approval_signatures.json

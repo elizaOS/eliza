@@ -155,8 +155,8 @@
       "kernel_syscall_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-29T03:03:39.913211+00:00",
-  "generated_utc": "2026-05-29T03:03:39Z",
+  "generated_at_utc": "2026-05-29T08:38:16.314876+00:00",
+  "generated_utc": "2026-05-30T23:52:11Z",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -272,7 +272,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "f9184d51cc60210ad6be388f3b1f1eae529a9904",
+  "source_revision": "794c69d5fcc99aeff6375e4d9f7f4a2ff7a5452c",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",

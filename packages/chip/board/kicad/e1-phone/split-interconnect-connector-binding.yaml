@@ -19,6 +19,8 @@ upstream_status:
   supplier_intake_status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
 binding_policy:
   contact_count: 49
+  contact_count_is_planning_minimum_not_orderable_part_count: true
+  orderable_supplier_connector_count_required: 50_or_greater
   top_and_bottom_connectors_use_same_logical_pin_order: true
   mated_flex_mirror_review_required_before_supplier_release: true
   placeholder_pad_order_can_drive_trial_route_only: true
@@ -41,7 +43,7 @@ connector_bindings:
         - 1
         - 4
     required_release_evidence:
-      - real 49-contact or greater supplier connector symbol with electrical pin types
+      - real 50-contact or greater supplier connector symbol with electrical pin types
       - supplier land pattern with pad numbering checked against this allocation
       - mated connector STEP and flex stiffener model bound to footprint
       - ERC cross-probe proving both top and bottom connector pins share the same nets
@@ -63,7 +65,7 @@ connector_bindings:
         - 1
         - 4
     required_release_evidence:
-      - real 49-contact or greater supplier connector symbol with electrical pin types
+      - real 50-contact or greater supplier connector symbol with electrical pin types
       - supplier land pattern with pad numbering checked against this allocation
       - mated connector STEP and flex stiffener model bound to footprint
       - ERC cross-probe proving both top and bottom connector pins share the same nets
@@ -75,7 +77,7 @@ schematic_binding:
   bottom_connector_text_present: true
   real_symbol_present: false
   erc_ready: false
-  required_update: replace text scaffold with reviewed 49-pin connector symbols using this pin allocation
+  required_update: replace text scaffold with reviewed 50-contact-or-greater connector symbols using this pin allocation plus spare or grounded surplus contacts
 pcb_binding:
   board: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   evidence_class: non_release_placeholder_footprints
@@ -86,6 +88,7 @@ pcb_binding:
   drc_ready: false
 cross_checks:
   allocation_contact_count_is_49: true
+  allocation_is_planning_minimum_pending_50_or_greater_orderable_connector: true
   both_connector_placeholders_present: true
   both_connector_pad_counts_are_49: true
   both_connector_pad_orders_match_allocation: true
@@ -95,7 +98,7 @@ cross_checks:
   symbol_footprint_closure_still_blocks_release: true
   supplier_intake_still_blocks_real_footprints: true
 release_blockers:
-  - schematic split-interconnect sheet is still a text scaffold, not real 49-pin connector symbols
+  - schematic split-interconnect sheet is still a text scaffold, not real 50-contact-or-greater connector symbols
   - placeholder PCB footprints are not supplier land patterns, courtyards, paste, or STEP models
   - mated top/bottom connector orientation and mirrored flex pin numbering are not supplier-reviewed
   - ERC cross-probe and KiCad symbol-to-footprint pin-map report are missing

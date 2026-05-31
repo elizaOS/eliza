@@ -87,6 +87,24 @@ INCOMPLETE_STATUSES = {
     "missing_board_artifact",
     "draft_local_plan",
 }
+FALSE_MANUFACTURING_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "tapeout_claim_allowed",
+    "board_fabrication_claim_allowed",
+    "silicon_claim_allowed",
+    "production_readiness_claim_allowed",
+}
+FALSE_PD_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "tapeout_claim_allowed",
+    "pd_signoff_claim_allowed",
+    "silicon_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def load_yaml(path: Path) -> dict:
@@ -139,6 +157,9 @@ def validate_gate_map(name: str, gates: object, failures: list[str]) -> None:
 def validate_gap_manifest(manifest: dict, failures: list[str]) -> None:
     if manifest.get("status") != "release_blocked":
         failures.append("gap manifest status must be release_blocked")
+    for flag in sorted(FALSE_MANUFACTURING_CLAIM_FLAGS):
+        if manifest.get(flag) is not False:
+            failures.append(f"gap manifest {flag} must be false")
     categories = manifest.get("required_gap_categories")
     if not isinstance(categories, list):
         failures.append("gap manifest must list required_gap_categories")
@@ -256,6 +277,13 @@ def validate_work_order_link(gaps: dict, failures: list[str]) -> None:
 
 
 def validate_manifest_consistency(gaps: dict, release: dict, pd: dict, failures: list[str]) -> None:
+    for flag in sorted(FALSE_MANUFACTURING_CLAIM_FLAGS):
+        if release.get(flag) is not False:
+            failures.append(f"manufacturing release manifest {flag} must be false")
+    for flag in sorted(FALSE_PD_CLAIM_FLAGS):
+        if pd.get(flag) is not False:
+            failures.append(f"pd signoff manifest {flag} must be false")
+
     validate_gate_map("manufacturing.blocked_gates", release.get("blocked_gates"), failures)
     validate_gate_map("pd.blocked_gates", pd.get("blocked_gates"), failures)
 

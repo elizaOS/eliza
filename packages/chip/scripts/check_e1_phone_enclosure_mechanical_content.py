@@ -43,6 +43,15 @@ CANDIDATE_MANIFEST = (
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_enclosure_mechanical_release_burndown.v1"
 CLAIM_BOUNDARY = "release_gate_blocker_report_only_not_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "enclosure_release_claim_allowed": False,
+    "mechanical_release_claim_allowed": False,
+    "routed_step_release_claim_allowed": False,
+    "supplier_geometry_claim_allowed": False,
+    "first_article_fit_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 RELEASE_POLICY_FLAGS = {
     "ready_for_enclosure",
     "ready_for_routed_step_export",
@@ -199,6 +208,8 @@ def parse_args() -> argparse.Namespace:
 def write_report(payload: dict[str, Any], report_path: Path) -> None:
     payload.setdefault("generated_utc", datetime.now(UTC).isoformat())
     payload.setdefault("claim_boundary", CLAIM_BOUNDARY)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        payload.setdefault(key, expected)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -1084,6 +1095,16 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
         "supplier_step_intake_release_credit": (
             record.get("supplier_step_intake_release_credit") is True
         ),
+        "public_cad_step_overlay_status": record.get("public_cad_step_overlay_status"),
+        "public_cad_step_overlay_file": record.get("public_cad_step_overlay_file"),
+        "public_cad_step_overlay_sha256": record.get("public_cad_step_overlay_sha256"),
+        "public_cad_step_overlay_bytes": int(
+            record.get("public_cad_step_overlay_bytes") or 0
+        ),
+        "public_cad_source_record": record.get("public_cad_source_record"),
+        "public_cad_step_overlay_release_credit": (
+            record.get("public_cad_step_overlay_release_credit") is True
+        ),
         "source_routed_step": record.get("source_routed_step"),
         "release_credit": record.get("release_credit") is True,
     }
@@ -1875,9 +1896,14 @@ def main() -> int:
             expected_kicad_preflight = {
                 "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
                 "tool": "kicad-cli",
-                "available": False,
-                "drc_status": "blocked_tool_unavailable",
-                "erc_status": "blocked_tool_unavailable",
+                "available": True,
+                "sch_erc_available": False,
+                "pcb_drc_available": False,
+                "pcb_step_export_available": True,
+                "required_release_commands_available": False,
+                "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
+                "erc_status": "blocked_kicad_cli_lacks_sch_erc",
+                "step_export_status": "blocked_kicad_cli_7_cannot_open_current_board",
                 "release_credit": False,
             }
             for key, expected in expected_kicad_preflight.items():

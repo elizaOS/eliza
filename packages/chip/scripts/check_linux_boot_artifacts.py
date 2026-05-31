@@ -46,6 +46,15 @@ DEFAULT_EXTERNAL_PATHS = {
         ROOT / "external/chipyard/software/firemarshal/boards/firechip/firmware/opensbi",
     ),
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "silicon_claim_allowed",
+    "board_claim_allowed",
+    "android_boot_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def rel(path: Path) -> str:
@@ -60,7 +69,13 @@ def utc_now() -> str:
 
 
 def load_manifest() -> dict[str, Any]:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise SystemExit("linux boot artifacts manifest root must be an object")
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if manifest.get(flag) is not False:
+            raise SystemExit(f"linux boot artifacts manifest {flag} must be false")
+    return manifest
 
 
 def env_path(name: str) -> Path | None:
@@ -426,6 +441,7 @@ def build_report() -> dict[str, Any]:
         "generated_utc": utc_now(),
         "manifest": rel(MANIFEST),
         "claim_boundary": manifest.get("claim_boundary"),
+        **{flag: False for flag in sorted(FALSE_CLAIM_FLAGS)},
         "status": state,
         "findings": findings,
         "preflight": preflight,

@@ -1470,13 +1470,42 @@ def android_archive_source_member_inventory(umbrella: dict[str, Any]) -> dict[st
 def android_archive_source_dependency(source_inventory: dict[str, Any]) -> str:
     records = source_inventory.get("records")
     if not isinstance(records, list):
-        return "repo_artifact_generation"
+        return "actionable_external_dependency"
     for record in records:
         if not isinstance(record, dict):
             continue
         if record.get("readyToArchive") is False:
-            return "repo_artifact_generation"
+            return "actionable_external_dependency"
     return "repo_artifact_generation"
+
+
+def android_archive_source_next_step(source_inventory: dict[str, Any]) -> str:
+    records = source_inventory.get("records")
+    if not isinstance(records, list):
+        return (
+            "Build the target product_out directories, stage the release archives, then populate "
+            "real byte sizes and SHA-256 values."
+        )
+    incomplete: list[str] = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("readyToArchive") is not False:
+            continue
+        artifact_id = str(record.get("artifactId") or "<unknown>")
+        source_dir = str(record.get("sourceDirectory") or "<unknown>")
+        missing = record.get("missingMembers")
+        missing_members = ", ".join(str(member) for member in missing) if isinstance(missing, list) else ""
+        incomplete.append(f"{artifact_id} from {source_dir} missing [{missing_members}]")
+    if incomplete:
+        return (
+            "No release archive should be generated from incomplete product_out trees. Complete the "
+            "source product_out members first: "
+            + "; ".join(incomplete[:3])
+            + ". Then stage archives and copy only measured size/SHA-256 values into manifests."
+        )
+    return (
+        "All source product_out members are present; stage the archives and copy only measured "
+        "byte sizes and SHA-256 values into manifests."
+    )
 
 
 def live_launcher_agent_capture_commands() -> dict[str, Any]:
@@ -2037,6 +2066,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     archive_source_inventory = android_archive_source_member_inventory(umbrella_manifest)
     archive_source_dependency = android_archive_source_dependency(archive_source_inventory)
+    archive_source_next_step = android_archive_source_next_step(archive_source_inventory)
     live_launcher_missing_inventory = live_launcher_agent_missing_evidence(umbrella_manifest)
     aosp_chip_inventory = aosp_chip_build_artifact_inventory()
 
@@ -2105,7 +2135,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "umbrella_android_artifacts_missing_integrity",
         "umbrella release manifest Android artifacts lack hash or size metadata",
         f"missing_hashes={umbrella_missing_hashes} missing_sizes={umbrella_missing_sizes}",
-        "Populate hash and size fields only from staged Android archives built from complete target product_out directories.",
+        archive_source_next_step,
         archive_source_dependency,
         "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
         "&& jq '.evidence.android_release_artifact_inventory.commands.populateIntegrity' "
@@ -2117,7 +2147,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "android_release_artifacts_missing_from_expected_paths",
         "Android release artifacts are absent from the expected publish staging paths",
         f"missing={artifact_inventory['missing']}",
-        "Build and stage the exact partition images and Android archives listed in evidence.android_release_artifact_inventory.commands, then populate real byte sizes and SHA-256 values.",
+        archive_source_next_step,
         archive_source_dependency,
         "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
         "&& jq '.evidence.android_release_artifact_inventory.commands' "

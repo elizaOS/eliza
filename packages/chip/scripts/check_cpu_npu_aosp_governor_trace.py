@@ -15,6 +15,17 @@ MAX_DIE_C = 95.0
 BURST_ENTRY_DIE_C = 93.0
 COOLDOWN_EXIT_DIE_C = 90.0
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "local_aosp_runtime_claim_allowed": False,
+    "cuttlefish_claim_allowed": False,
+    "qemu_claim_allowed": False,
+    "renode_claim_allowed": False,
+    "android_framework_claim_allowed": False,
+    "kernel_thermal_claim_allowed": False,
+    "device_evidence_claim_allowed": False,
+}
+
 
 def check_row(row_id: str, status: str, evidence: str) -> dict[str, str]:
     return {"id": row_id, "status": status, "evidence": evidence}
@@ -236,6 +247,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_npu_2028_aosp_governor_trace.v1",
         "status": "fail" if failed else "modeled_aosp_trace_release_blocked" if blocked else "pass",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Deterministic AOSP-style scheduler and thermal HAL trace only; not Cuttlefish, "
             "QEMU, Renode, Android framework, kernel thermal, or device evidence."
@@ -280,6 +292,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("AOSP governor trace must remain modeled_aosp_trace_release_blocked")
     if "not Cuttlefish" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block local AOSP simulator claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     trace = data.get("trace")
     if not isinstance(trace, list) or len(trace) < 8:
         errors.append("trace must include at least eight samples")

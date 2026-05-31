@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +13,17 @@ import check_linux_boot_artifacts as check
 
 
 class LinuxBootArtifactsStatusTests(unittest.TestCase):
+    def test_manifest_claim_flags_are_required_and_reported(self) -> None:
+        manifest = json.loads(check.MANIFEST.read_text(encoding="utf-8"))
+        flags = {flag: manifest.get(flag) for flag in check.FALSE_CLAIM_FLAGS}
+        self.assertEqual(flags, {flag: False for flag in check.FALSE_CLAIM_FLAGS})
+
+        with mock.patch.object(check, "payload_locator_status", return_value={"state": "pass"}):
+            report = check.build_report()
+
+        for flag in check.FALSE_CLAIM_FLAGS:
+            self.assertIs(report[flag], False)
+
     def test_structured_findings_cover_preflight_payload_and_artifacts(self) -> None:
         findings = check.structured_findings(
             [

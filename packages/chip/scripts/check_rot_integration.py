@@ -221,6 +221,62 @@ EXPECTED_COCOTB_TESTS = (
     "ap_cannot_write_response_bank",
 )
 
+FALSE_CLAIM_FLAGS = {
+    "secure_boot_claim_allowed": False,
+    "hardware_key_claim_allowed": False,
+    "attestation_claim_allowed": False,
+    "fips_entropy_claim_allowed": False,
+    "provisioned_identity_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "release_claim_allowed": False,
+}
+
+
+def structured_findings(
+    *,
+    checks: list[dict],
+    shimmed: list[dict],
+    blocker_id: str | None,
+    blocker_reason: str | None,
+    evidence_paths: list[str],
+) -> list[dict]:
+    findings: list[dict] = []
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        check_id = str(check.get("id", "check"))
+        findings.append(
+            {
+                "code": f"rot_integration_check_{check.get('status')}_{check_id}",
+                "severity": "blocker" if check.get("status") == "blocked" else "error",
+                "message": str(check.get("detail", "")),
+                "evidence": check_id,
+                "next_step": "Repair or rerun the named RoT integration subcheck.",
+            }
+        )
+    for item in shimmed:
+        block = str(item.get("block", "crypto_block"))
+        findings.append(
+            {
+                "code": f"rot_integration_crypto_block_shimmed_{block}",
+                "severity": "blocker",
+                "message": str(item.get("missing_dependency", "crypto block remains shimmed")),
+                "evidence": block,
+                "next_step": "Elaborate the real OpenTitan block through its harness before claiming RoT integration.",
+            }
+        )
+    if blocker_id:
+        findings.append(
+            {
+                "code": f"rot_integration_blocker_{blocker_id}",
+                "severity": "blocker",
+                "message": blocker_reason or blocker_id,
+                "evidence": evidence_paths,
+                "next_step": "Close the named RoT blocker with real evidence before promoting security claims.",
+            }
+        )
+    return findings
+
 
 def _verilator() -> str | None:
     v = shutil.which("verilator")
@@ -1081,6 +1137,7 @@ def main() -> int:
         ],
         "as_of": _now(),
         "subsystem": "security",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "The RoT INTEGRATION SPINE is real: the Ibex RV32IMC RoT core, the "
             "W4 OTP controller, the W5 lifecycle binding, the AP<->RoT TL-UL "
@@ -1100,6 +1157,13 @@ def main() -> int:
         },
         "checks": checks,
     }
+    report["findings"] = structured_findings(
+        checks=checks,
+        shimmed=shimmed,
+        blocker_id=blocker_id,
+        blocker_reason=blocker_reason,
+        evidence_paths=report["evidence_paths"],
+    )
     REPORT.write_text(json.dumps(report, indent=2) + "\n")
 
     print(f"STATUS: {status} rot-integration-check -> {REPORT.relative_to(ROOT)}")

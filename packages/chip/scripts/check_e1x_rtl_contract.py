@@ -42,6 +42,15 @@ EVIDENCE_PATHS = [str(path.relative_to(ROOT)) for path in RTL_FILES] + [
     "compiler/runtime/e1x_wafer_model.py",
     "scripts/check_e1x_rtl_contract.py",
 ]
+FALSE_CLAIM_FLAGS = {
+    "full_riscv_compliance_claim_allowed": False,
+    "wafer_scale_rtl_claim_allowed": False,
+    "pd_signoff_claim_allowed": False,
+    "dft_claim_allowed": False,
+    "package_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 def read_param(text: str, name: str) -> int:
@@ -736,6 +745,7 @@ def main() -> int:
             "+00:00", "Z"
         ),
         "subsystem": "e1x",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": "E1X RTL contract and architecture-model consistency only; RV64IM_Zicsr_Zifencei PE core is present but this is not full RISC-V compliance, wafer-scale RTL, PD, DFT, package, or silicon evidence.",
         "evidence_paths": EVIDENCE_PATHS,
         "checks": checks,

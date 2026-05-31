@@ -30,6 +30,20 @@ READINESS_MATRIX = (
 REPORT_SCHEMA = "eliza.e1_phone_release_approval_signatures.v1"
 READINESS_MATRIX_SCHEMA = "eliza.e1_phone_release_approval_signature_blocker_matrix.v1"
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_release_approval_signatures.py"
+CLAIM_BOUNDARY = "e1_phone_release_content_blocker_report_only_not_release_evidence"
+MATRIX_CLAIM_BOUNDARY = (
+    "Approval/signature blocker matrix only. This file does not grant "
+    "fabrication, enclosure, factory, first-article, or release approval."
+)
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "release_approval_claim_allowed": False,
+    "fabrication_release_claim_allowed": False,
+    "enclosure_release_claim_allowed": False,
+    "factory_release_claim_allowed": False,
+    "first_article_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 SUPPLIER_RETURN_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_supplier_return_content.py"
 FIRST_ARTICLE_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_first_article_content.py"
 ENCLOSURE_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_enclosure_mechanical_content.py"
@@ -608,6 +622,8 @@ def write_report(
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
         "release_credit": False,
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "approval_contract": {
             "content_contract": CONTRACT.relative_to(ROOT).as_posix(),
             "required_signed_metadata_fields": sorted(REQUIRED_SIGNED_METADATA_FIELDS),
@@ -652,7 +668,6 @@ def write_report(
             "release_credit": False,
         },
         "next_unblock_actions": (blocked_inventory or [])[:20],
-        "claim_boundary": "e1_phone_release_content_blocker_report_only_not_release_evidence",
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -665,10 +680,8 @@ def write_report(
         "schema": READINESS_MATRIX_SCHEMA,
         "status": status,
         "date": "2026-05-23",
-        "claim_boundary": (
-            "Approval/signature blocker matrix only. This file does not grant "
-            "fabrication, enclosure, factory, first-article, or release approval."
-        ),
+        "claim_boundary": MATRIX_CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "inputs": {
             "content_contract": CONTRACT.relative_to(ROOT).as_posix(),
             "json_report": REPORT.relative_to(ROOT).as_posix(),

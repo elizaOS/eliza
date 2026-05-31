@@ -19,6 +19,17 @@ MATRIX = (
 )
 REPORT = ROOT / "build/reports/e1_phone_first_article_content.json"
 EXPECTED_SCHEMA = "eliza.e1_phone_first_article_bench_acceptance_matrix.v1"
+CLAIM_BOUNDARY = (
+    "first_article_content_validation_only_not_factory_or_production_release_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "first_article_release_claim_allowed": False,
+    "factory_release_claim_allowed": False,
+    "serialized_hardware_execution_claim_allowed": False,
+    "bench_validation_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 COMMON_FIELDS = {
     "artifact_id",
     "source_requirement_id",
@@ -147,6 +158,9 @@ def has_placeholder(value: Any) -> bool:
 
 
 def write_report(payload: dict[str, Any]) -> None:
+    payload.setdefault("claim_boundary", CLAIM_BOUNDARY)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        payload.setdefault(key, expected)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

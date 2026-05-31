@@ -18,6 +18,15 @@ MANIFEST = ROOT / "board/fpga/artifact-manifest.yaml"
 REPORT = ROOT / "build/reports/fpga_release.json"
 SCHEMA = "eliza.fpga_release.v1"
 CLAIM_BOUNDARY = "fpga_release_validation_only_not_board_fabrication_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fpga_bitstream_release_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "timing_closure_claim_allowed": False,
+    "route_closure_claim_allowed": False,
+    "programming_validation_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 DIAGNOSTIC_REPORT_DIR = ROOT / "board/fpga/reports/diagnostics"
 FPGA_BUILD_ARCHIVE_DIR = ROOT / "build/fpga/e1_demo/archive"
 OSS_CAD_SUITE_BIN = ROOT / "external/oss-cad-suite/bin"
@@ -1174,6 +1183,7 @@ def write_report(
         ),
         "release_credit": status == "pass" and release,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": "release" if release else "preflight",
         "inputs": {
             "target": CFG.relative_to(ROOT).as_posix(),

@@ -67,6 +67,16 @@ REQUIRED_FORBIDDEN_PACKAGING = {
     "SoW_wafer_scale",
     "CoWoS_L_with_silicon_bridge",
 }
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "physical_signoff_claim_allowed": False,
+    "manufacturing_claim_allowed": False,
+    "reliability_qualification_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -346,6 +356,9 @@ def main() -> int:
         boundary = data.get("claim_boundary")
         if not isinstance(boundary, str) or "not proof" not in boundary:
             errors.append("claim_boundary must state this spec is not proof")
+        for field, expected in FALSE_CLAIM_FLAGS.items():
+            if data.get(field) is not expected:
+                errors.append(f"{field} must be exactly false")
         check_node_target(data, errors)
         check_sources(data, errors)
         check_effects(data, errors)

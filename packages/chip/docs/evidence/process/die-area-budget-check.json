@@ -1,6 +1,6 @@
 {
   "schema": "eliza.process_die_area_budget_check.v1",
-  "generated_utc": "2026-05-29T07:04:44.526505+00:00",
+  "generated_utc": "2026-05-30T23:53:01.221827+00:00",
   "claim_boundary": "die_area_budget_envelope_check_only_not_pdk_or_layout_signoff",
   "evidence_class": "envelope_target_real_no_signoff",
   "envelope": {

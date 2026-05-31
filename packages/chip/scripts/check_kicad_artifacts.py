@@ -23,6 +23,16 @@ MANIFEST = "board/kicad/e1-demo/artifact-manifest.yaml"
 PRINTABLE_SOURCE_LABELS = {"project", "schematic", "pcb"}
 REPORT = ROOT / "build/reports/kicad_artifacts.json"
 REPORT_SCHEMA = "eliza.kicad_artifacts.v1"
+CLAIM_BOUNDARY = "kicad_artifact_inventory_only_not_fabrication_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "dfm_claim_allowed": False,
+    "assembly_claim_allowed": False,
+    "package_vendor_approval_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 LOCAL_TMP_KICAD_CLI = Path("/tmp/eliza-kicad-cli-check/root/usr/bin/kicad-cli")
 LOCAL_TMP_KICAD_LIB = Path("/tmp/eliza-kicad-cli-check/root/usr/lib/x86_64-linux-gnu")
 LOCAL_TMP_KICAD10_APPIMAGE_CLI = Path("/tmp/eliza-kicad-10/extract/AppDir/bin/kicad-cli")
@@ -756,6 +766,8 @@ def write_report(status: str, failures: list[str], blockers: list[str], release:
         "schema": REPORT_SCHEMA,
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "release_mode": release,
             "failure_count": len(failures),
@@ -794,7 +806,6 @@ def write_report(status: str, failures: list[str], blockers: list[str], release:
         },
         "blocker_groups": blocker_groups(blockers, inventory),
         "findings": findings,
-        "claim_boundary": "kicad_artifact_inventory_only_not_fabrication_release_evidence",
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(

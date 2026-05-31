@@ -14,6 +14,17 @@ import optimize_soc_operating_point as opt  # noqa: E402
 
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-design-space-frontier.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "target_benchmark_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "post_route_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def default_args() -> Namespace:
     return Namespace(
@@ -171,6 +182,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_npu_2028_design_space_frontier.v1",
         "status": "fail" if failed else "modeled_frontier_release_blocked",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Deterministic modeled CPU/NPU design-space frontier only; not target benchmark, "
             "AOSP, PDK, post-route, silicon, or phone-class evidence."
@@ -214,6 +226,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("frontier status must remain modeled_frontier_release_blocked")
     if "not target benchmark" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block target benchmark claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     search = data.get("search_space")
     if not isinstance(search, dict):
         errors.append("search_space must be a mapping")

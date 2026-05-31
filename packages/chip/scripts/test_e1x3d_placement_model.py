@@ -21,13 +21,15 @@ def test_via_capacity_scales_with_pitch() -> None:
     assert via_capacity_per_mm2(0.1, 30.0e6) == 30.0e6  # MIV capped at demonstrated density
 
 
-def test_block_split_shrinks_xy_and_fits_hybrid_bond() -> None:
+def test_block_split_shrinks_xy_but_configured_bond_blocks() -> None:
     report = build_placement_report()
     block = report["tier_splits"]["block_sram_on_logic"]
     # Moving SRAM off the logic plane must shrink the XY footprint meaningfully.
     assert block["xy_footprint_shrink"] >= 0.30
     assert report["findings"]["block_fits_hybrid_bond"] is True
-    assert report["gate"]["status"] == "PASS"
+    assert block["configured_bonding_sufficient"] is False
+    assert report["gate"]["status"] == "BLOCKED"
+    assert "configured" in " ".join(report["gate"]["reasons"])
 
 
 def test_fine_logic_fold_needs_finer_bonding_than_block() -> None:
@@ -38,7 +40,8 @@ def test_fine_logic_fold_needs_finer_bonding_than_block() -> None:
     # density, so a fine fold needs a finer bonding pitch than a block split.
     assert fine["required_via_density_per_mm2"] > block["required_via_density_per_mm2"]
     assert fine["inter_tier_vias"] > block["inter_tier_vias"]
-    assert fine["feasible_bondings"]  # MIV is always a backstop
+    assert fine["feasible_bondings"] == []
+    assert fine["recommended_bonding"] is None
 
 
 def test_more_memory_tiers_shrink_footprint_further() -> None:
@@ -55,18 +58,19 @@ def test_placement_report_records_blocked_signoff_path() -> None:
     assert report["open_prototype_path"]
 
 
-def test_placement_gate_emits_pass(tmp_path: Path) -> None:
+def test_placement_gate_emits_blocked(tmp_path: Path) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/check_e1x3d_placement.py"],
         cwd=ROOT,
-        check=True,
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
     )
-    assert "PASS: E1X3D placement" in result.stdout
+    assert result.returncode == 1
+    assert "BLOCKED: E1X3D placement" in result.stdout
     report = json.loads((ROOT / "build/reports/e1x3d_placement.json").read_text())
-    assert report["status"] == "PASS"
-    assert report["summary"]["failing_check_count"] == 0
+    assert report["status"] == "BLOCKED"
+    assert report["summary"]["failing_check_count"] == 2
 
 
 def _floorplan():

@@ -48,6 +48,13 @@ LOADER_MARKERS = (
     "word_i",
     "E1X_REPAIR_MAGIC",
 )
+FALSE_CLAIM_FLAGS = {
+    "silicon_fuse_burning_claim_allowed": False,
+    "foundry_otp_macro_claim_allowed": False,
+    "wafer_sort_claim_allowed": False,
+    "measured_silicon_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -258,6 +265,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X repair fuse/OTP read-port controller RTL and behavioral stream "
             "evidence against generated normal/high-failure repair images. This "

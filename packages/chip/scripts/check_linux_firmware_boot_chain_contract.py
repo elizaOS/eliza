@@ -10,6 +10,7 @@ or when reference-only qemu-virt evidence can be mistaken for chip boot proof.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import hashlib
 import json
 import re
@@ -556,6 +557,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),

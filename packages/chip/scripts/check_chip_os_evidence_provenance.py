@@ -75,21 +75,53 @@ LINE_MARKER_EXCLUDED_FILENAMES = {
     "chip-os-objective-evidence-matrix.json",
     "chip-os-optimization-gap-inventory.json",
     "chip-tapeout-readiness-current.json",
+    "cpu_ap_blocker_inventory.json",
+    "cpu-ap-evidence-manifest.json",
+    "cpu-ap-rva23-profile-plan.json",
+    "live_runtime_capture_contracts.json",
+    "minimum_linux_npu_target.json",
+    "mlperf-inference-harness-evidence.yaml",
+    "mvp_npu_ml_smoke.log",
+    "mvp_npu_scale_sim.json",
+    "mvp_simulator.json",
+    "phone_runtime_planned_evidence_templates.json",
     "phone-release-readiness-current.json",
     "phone-release-readiness.json",
+    "software-bsp-evidence-manifest.json",
+    "stub_audit.json",
     "tapeout-readiness-chip.json",
     "tapeout-readiness-current.json",
     "tapeout-readiness.json",
 }
 LINE_MARKER_EXCLUDED_SUFFIXES = (
     "gap_keyword_inventory.json",
+    ".template.log",
 )
 MAX_FILE_BYTES = 750_000
 HOST_PATH_RE = re.compile(r"(?<![\w/>])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
 PLACEHOLDER_RE = re.compile(r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I)
 BLOCKED_RE = re.compile(r"\b(BLOCKED|FAIL|blocked until|not yet|missing required)\b", re.I)
+KERNEL_BUILD_PLACEHOLDER_PATH_RE = re.compile(
+    r"\bdrivers/(?:firmware/efi/libstub/|net/dummy(?:\.|/)|iio/dummy/)", re.I
+)
+KERNEL_BUILD_OUTPUT_RE = re.compile(r"^\s*(?:CC|AR|LD|STUBCPY)(?:\s|\[)", re.I)
+LINUX_RUNTIME_PLACEHOLDER_FALSE_POSITIVE_RE = re.compile(
+    r"(EFI stub:|Console: colour dummy device|dummy_hcd(?:\.|\s)|Dummy host controller|"
+    r"dummy-cpufreq\.ko|\bFAKE/|\bFake: out/target/product/)",
+    re.I,
+)
+REPORT_REFERENCE_PLACEHOLDER_FALSE_POSITIVE_RE = re.compile(
+    r"(stub[-_ ]audit|stub_audit|pd/(?:n2p|a14|intel-14a|sf2p)-stub/access-gate\.yaml)",
+    re.I,
+)
+LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE = re.compile(
+    r"(fail-safe mode|serial port \d+ not yet initialized)",
+    re.I,
+)
 REFERENCE_ONLY_RE = re.compile(
-    r"(reference[_ -]?only|no[_ -]?(?:silicon|hardware|chip|boot)|not[_ -]?(?:rtl|chip|boot|launcher|runtime))",
+    r"(reference[_ -]?only|no[_ -]?(?:silicon|hardware|chip|boot)|"
+    r"not[_ -]?(?:rtl|chip|boot|launcher|runtime|live[_ -]?runtime)|"
+    r"not[_ -]?measured[_ -]?(?:rtl|silicon|hardware|power|benchmark))",
     re.I,
 )
 TIMESTAMP_KEYS = {
@@ -103,6 +135,7 @@ TIMESTAMP_KEYS = {
     "created_at",
     "updated_at",
     "date",
+    "result_recorded_at",
 }
 
 
@@ -245,7 +278,13 @@ def is_nonpassing_status(status: str | None) -> bool:
         or "blocked" in lowered
         or lowered.startswith("fail")
         or lowered.endswith("_fail")
+        or lowered.endswith("_draft")
     )
+
+
+def code_slug(text: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return "_".join(part for part in cleaned.split("_") if part)[:120] or "value"
 
 
 def has_claim_boundary(value: object) -> bool:
@@ -282,6 +321,41 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
                 path=path,
                 message=f"structured evidence status is {status}",
                 evidence=f"status={status}",
+            )
+        )
+
+    completion_claim = data.get("completion_claim")
+    if isinstance(completion_claim, str) and is_nonpassing_status(completion_claim):
+        rows.append(
+            finding(
+                category="nonpassing_status",
+                code=f"nonpassing_completion_claim_{code_slug(completion_claim)}",
+                path=path,
+                message=f"structured evidence completion_claim is {completion_claim}",
+                evidence=f"completion_claim={completion_claim}",
+            )
+        )
+
+    active_blockers = data.get("active_blockers")
+    if isinstance(active_blockers, list) and active_blockers:
+        rows.append(
+            finding(
+                category="nonpassing_status",
+                code="structured_active_blockers_present",
+                path=path,
+                message=f"structured blocker inventory lists {len(active_blockers)} active blockers",
+                evidence=f"active_blockers={len(active_blockers)}",
+            )
+        )
+
+    if data.get("current_claim_allowed") is False:
+        rows.append(
+            finding(
+                category="nonpassing_status",
+                code="structured_current_claim_disallowed",
+                path=path,
+                message="structured evidence explicitly disallows the current claim",
+                evidence="current_claim_allowed=false",
             )
         )
 
@@ -348,7 +422,7 @@ def line_findings(
         if skip_marker_lines:
             continue
         placeholder_match = PLACEHOLDER_RE.search(line)
-        if placeholder_match:
+        if placeholder_match and not is_false_positive_placeholder_line(line):
             rows.append(
                 finding(
                     category="placeholder_marker",
@@ -360,7 +434,7 @@ def line_findings(
                 )
             )
         blocked_match = BLOCKED_RE.search(line)
-        if blocked_match:
+        if blocked_match and not is_false_positive_blocked_line(line):
             rows.append(
                 finding(
                     category="blocked_marker",
@@ -372,6 +446,25 @@ def line_findings(
                 )
             )
     return rows
+
+
+def is_kernel_build_placeholder_output(line: str) -> bool:
+    return bool(
+        KERNEL_BUILD_OUTPUT_RE.search(line)
+        and KERNEL_BUILD_PLACEHOLDER_PATH_RE.search(line)
+    )
+
+
+def is_false_positive_placeholder_line(line: str) -> bool:
+    return bool(
+        is_kernel_build_placeholder_output(line)
+        or LINUX_RUNTIME_PLACEHOLDER_FALSE_POSITIVE_RE.search(line)
+        or REPORT_REFERENCE_PLACEHOLDER_FALSE_POSITIVE_RE.search(line)
+    )
+
+
+def is_false_positive_blocked_line(line: str) -> bool:
+    return bool(LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE.search(line))
 
 
 def scan_path(path: Path) -> list[dict[str, Any]]:

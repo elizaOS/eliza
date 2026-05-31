@@ -152,6 +152,9 @@ const McpsPage = lazyWithPreload(() => import("./dashboard/mcps/Page"));
 const DocumentsPage = lazyWithPreload(
   () => import("./dashboard/documents/Page"),
 );
+const AssistantConceptsPage = lazyWithPreload(
+  () => import("./dashboard/assistant-concepts/Page"),
+);
 
 const AnalyticsPage = lazyWithPreload(
   () => import("./dashboard/analytics/Page"),
@@ -291,6 +294,10 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, DocumentsPage.preload),
   },
   {
+    path: "/dashboard/assistant-concepts",
+    preload: preloadAll(DashboardLayout.preload, AssistantConceptsPage.preload),
+  },
+  {
     path: "/dashboard/mcps",
     preload: preloadAll(DashboardLayout.preload, McpsPage.preload),
   },
@@ -355,6 +362,7 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   { path: "/auth/error", preload: AuthError.preload },
   { path: "/auth/callback/email", preload: AuthEmailCallback.preload },
   { path: "/app-auth/authorize", preload: AppAuthAuthorize.preload },
+  { path: "/assistant-concepts", preload: AssistantConceptsPage.preload },
   { path: "/chat/:characterRef", preload: PublicChat.preload },
   { path: "/sandbox-proxy", preload: SandboxProxy.preload },
   { path: "/privacy-policy", preload: PrivacyPolicy.preload },
@@ -588,6 +596,10 @@ function App() {
           path="chat/:characterRef"
           element={<SuspenseRoute component={PublicChat} />}
         />
+        <Route
+          path="assistant-concepts"
+          element={<SuspenseRoute component={AssistantConceptsPage} />}
+        />
 
         <Route
           path="auth/success"
@@ -696,6 +708,10 @@ function App() {
           <Route path="api-keys" element={<ApiKeysPage />} />
           <Route path="mcps" element={<McpsPage />} />
           <Route path="documents" element={<DocumentsPage />} />
+          <Route
+            path="assistant-concepts"
+            element={<AssistantConceptsPage />}
+          />
 
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="earnings" element={<EarningsPage />} />

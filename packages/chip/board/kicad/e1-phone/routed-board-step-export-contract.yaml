@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_board_step_export_contract.v1
 status: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
-date: '2026-05-21'
+date: '2026-05-28'
 claim_boundary: >
   Contract for the exact supplier-approved routed KiCad STEP export the
   mechanical CAD package needs before enclosure clearance can become release
@@ -40,7 +40,7 @@ current_state:
   full_cad_boolean_status: blocked_boolean_interference_incomplete
   full_cad_concept_aabb_interference_scan_pass: true
   full_cad_concept_aabb_interference_count: 0
-  full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  full_cad_boolean_evidence_class: incomplete_brep_boolean_interference_result
   full_cad_boolean_parts_loaded: 0
   full_cad_boolean_pair_count_brep_evaluated: 0
   full_cad_boolean_unintentional_clash_count: 0
@@ -134,9 +134,9 @@ export_contract:
     required_transform_record: production report must record STEP import transform and confirm no manual offset.
   board_geometry_required:
     board_bbox_mm: {width: 64.0, height: 132.0}
-    top_island_mm: {width: 64.0, height: 34.0}
-    bottom_island_mm: {width: 64.0, height: 45.0}
-    battery_window_mm: {width: 64.0, height: 87.0}
+    top_island_mm: {x: 0.0, y: 0.0, width: 64.0, height: 29.0, area_mm2: 1856.0}
+    bottom_island_mm: {x: 0.0, y: 117.0, width: 64.0, height: 15.0, area_mm2: 960.0}
+    battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, area_mm2: 5568.0}
     production_tracks_required: true
     filled_zones_required: true
     placeholder_footprints_allowed: false

@@ -17,6 +17,20 @@ PD_SIGNOFF_MANIFEST = ROOT / "pd/signoff/manifest.yaml"
 TAPEOUT_AGGREGATOR = ROOT / "scripts/aggregate_tapeout_readiness.py"
 MANUFACTURING_ARTIFACT_CHECKER = ROOT / "scripts/check_manufacturing_artifacts.py"
 OUT = ROOT / "build/reports/manufacturing_tapeout_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "tapeout_ready_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "foundry_pdk_signoff_claim_allowed": False,
+    "drc_lvs_antenna_sta_claim_allowed": False,
+    "ir_em_claim_allowed": False,
+    "si_pi_claim_allowed": False,
+    "package_vendor_approval_claim_allowed": False,
+    "foundry_padframe_approval_claim_allowed": False,
+    "first_article_claim_allowed": False,
+    "silicon_proof_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 REQUIRED_BLOCKED_GATES = {"pd_release", "tapeout_release", "board_fabrication_release"}
 REQUIRED_READINESS_SECTIONS = {
@@ -297,6 +311,7 @@ def build_report() -> dict[str, Any]:
             "closure, not package-vendor approval, not foundry padframe approval, "
             "not first-article evidence, and not silicon proof."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffolds": {
             "release_manifest": rel(RELEASE_MANIFEST),
             "physical_closure_work_order": rel(WORK_ORDER),
@@ -341,6 +356,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not silicon proof",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

@@ -26,6 +26,15 @@ GENERATED_PLATFORM_HEADER = ROOT / "sw/platform/generated/e1_platform.h"
 VERILATOR_GEMM = ROOT / "verify/verilator/test_npu_gemm.cpp"
 NNAPI_PROOF = ROOT / "benchmarks/capabilities/e1_npu_nnapi.proof.json"
 
+FALSE_CONTRACT_CLAIM_FLAGS = {
+    "android_nnapi_claim_allowed": False,
+    "phone_class_ai_accelerator_claim_allowed": False,
+    "production_compiler_claim_allowed": False,
+    "production_dma_tensor_execution_claim_allowed": False,
+    "release_claim_allowed": False,
+    "sustained_performance_claim_allowed": False,
+}
+
 
 def load_runtime_class():
     spec = importlib.util.spec_from_file_location("e1_npu_runtime", RUNTIME)
@@ -74,6 +83,9 @@ def main() -> int:
     boundary = contract.get("claim_boundary", "")
     if "not_phone_class_ai_accelerator" not in boundary:
         errors.append("contract must stay fail-closed for phone-class accelerator claims")
+    for flag, expected in FALSE_CONTRACT_CLAIM_FLAGS.items():
+        if contract.get(flag) is not expected:
+            errors.append(f"runtime contract must keep {flag}=false")
 
     stablehlo_import = contract.get("stablehlo_subset_import", {})
     expected_stablehlo_precisions = {

@@ -18,6 +18,13 @@ PINOUTS = [
     ROOT / "package/e1-demo-pinout.yaml",
     ROOT / "package/e1-phone-bga-pinout.yaml",
 ]
+FALSE_CLAIM_FLAGS = {
+    "foundry_io_cell_release_claim_allowed": False,
+    "esd_latchup_signoff_claim_allowed": False,
+    "ibis_si_claim_allowed": False,
+    "padframe_tapeout_claim_allowed": False,
+    "board_package_release_claim_allowed": False,
+}
 
 IO_CELL_CLASSES = [
     "LVCMOS_3V3",
@@ -215,6 +222,7 @@ def build_report() -> dict[str, Any]:
         "pad_types_unmapped": unmapped,
         "class_statuses": statuses,
         "status": "PASS" if not blocked and not unmapped and CONTRACT_PATH.is_file() else "BLOCKED",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "IO-cell contract audit only; not foundry IO-cell release, not ESD "
             "or latchup signoff, not IBIS/SI proof, not padframe tapeout "
@@ -238,6 +246,9 @@ def validate_report(report: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if report.get("status") not in {"PASS", "BLOCKED"}:
         errors.append("status must be PASS or BLOCKED")
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if report.get(flag) is not expected:
+            errors.append(f"{flag} must be false")
     if report.get("status") == "PASS" and report.get("findings"):
         errors.append("PASS report must not have findings")
     summary = report.get("summary")

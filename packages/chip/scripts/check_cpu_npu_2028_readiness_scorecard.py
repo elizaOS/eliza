@@ -97,6 +97,18 @@ def number_matches(left: Any, right: Any, field: str, errors: list[str]) -> None
         errors.append(f"{field} drifted: scorecard={left}, optimizer={right}")
 
 
+def without_generated_timestamps(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: without_generated_timestamps(item)
+            for key, item in value.items()
+            if key != "generated_utc"
+        }
+    if isinstance(value, list):
+        return [without_generated_timestamps(item) for item in value]
+    return value
+
+
 def check_modeled_values(
     scorecard: dict[str, Any], optimizer: dict[str, Any], errors: list[str]
 ) -> None:
@@ -319,11 +331,11 @@ def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
         current_schema_errors = phone_gate.validate_l5_l6_report(report)
         if current_schema_errors:
             errors.extend("phone CPU L5/L6 report " + error for error in current_schema_errors)
-        if gate != expected_gate:
+        if without_generated_timestamps(gate) != without_generated_timestamps(expected_gate):
             errors.append(
                 "phone CPU benchmark gate report is stale; run make cpu-phone-l5-l6-benchmark-report"
             )
-        if report != expected_l5_l6:
+        if without_generated_timestamps(report) != without_generated_timestamps(expected_l5_l6):
             errors.append(
                 "phone CPU L5/L6 report is stale; run make cpu-phone-l5-l6-benchmark-report"
             )

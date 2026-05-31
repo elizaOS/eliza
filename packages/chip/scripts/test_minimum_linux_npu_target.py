@@ -42,6 +42,16 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
         self.assertNotIn("/tmp/", json.dumps(report))
         self.assertIn(report["status"], {"blocked", "pass"})
         self.assertEqual(report["integrated_linux_npu_ml_claim"], report["status"] == "pass")
+        for claim_key in (
+            "phone_class_performance_claim_allowed",
+            "release_claim_allowed",
+            "android_boot_claim_allowed",
+            "android_nnapi_claim_allowed",
+            "sustained_performance_claim_allowed",
+            "silicon_claim_allowed",
+            "production_readiness_claim_allowed",
+        ):
+            self.assertIs(report[claim_key], False, claim_key)
         self.assertIn("remaining_blockers", report)
         names = {gate["name"] for gate in report["gates"]}
         for required in (

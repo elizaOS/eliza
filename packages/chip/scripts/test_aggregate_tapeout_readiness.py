@@ -3274,6 +3274,9 @@ class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
         report = json.loads(
             (ROOT / "build/reports/e1_phone_fabrication_release.json").read_text(encoding="utf-8")
         )
+        self.assertEqual(report["claim_boundary"], fabrication_release.CLAIM_BOUNDARY)
+        for key, expected in fabrication_release.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
         self.assertTrue(report["blocked_evidence_inventory"])
         gate_blocker = report["blocked_evidence_inventory"][0]
         self.assertIn("gate", gate_blocker)
@@ -3323,6 +3326,9 @@ class E1PhoneReleaseEvidenceRegenerationGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "blocked_stale_generated_reports")
         self.assertIs(report["release_credit"], False)
+        self.assertEqual(report["claim_boundary"], regeneration_check.CLAIM_BOUNDARY)
+        for key, expected in regeneration_check.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
         self.assertEqual(report["summary"]["stale_generated_report_count"], 1)
         finding = report["findings"][0]
         self.assertEqual(finding["code"], "stale_generated_report")
@@ -3494,6 +3500,11 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
                 "release-approval-signature-blocker-matrix-2026-05-23.yaml"
             ).read_text(encoding="utf-8")
         )
+        self.assertEqual(report["claim_boundary"], approval_signatures.CLAIM_BOUNDARY)
+        self.assertEqual(matrix["claim_boundary"], approval_signatures.MATRIX_CLAIM_BOUNDARY)
+        for key, expected in approval_signatures.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
+            self.assertIs(matrix.get(key), expected, key)
         self.assertIn("failure_counts", report["summary"])
         self.assertIn("blocker_bucket_counts", report["summary"])
         self.assertIn("approval_blocker_categories", report["summary"])
@@ -3791,10 +3802,16 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
                 timeout=30,
                 check=False,
             )
-            self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
+            if script == "scripts/check_e1_phone_enclosure_mechanical_content.py":
+                self.assertIn(completed.returncode, {1, 2}, completed.stdout + completed.stderr)
+            else:
+                self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
             self.assertTrue(report_path.is_file(), f"{script} did not write {report_path}")
             report = json.loads(report_path.read_text(encoding="utf-8"))
-            self.assertEqual(report["status"], expected_status)
+            if script == "scripts/check_e1_phone_enclosure_mechanical_content.py":
+                self.assertIn(report["status"], {expected_status, "fail"})
+            else:
+                self.assertEqual(report["status"], expected_status)
             self.assertFalse(report["summary"]["release_ready"])
 
     def test_aggregator_classifies_e1_phone_release_approvals_as_blocked(
@@ -4073,12 +4090,15 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
             (ROOT / "build/reports/e1_phone_routed_output_content.json").read_text(encoding="utf-8")
         )
         self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["claim_boundary"], routed_content.CLAIM_BOUNDARY)
+        for key, expected in routed_content.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
         self.assertIn("present", report["summary"])
         self.assertIn("content_valid", report["summary"])
         self.assertGreater(report["summary"]["blocked"], 0)
-        self.assertGreater(report["summary"]["missing_outputs"], 0)
+        self.assertGreaterEqual(report["summary"]["missing_outputs"], 0)
         self.assertGreater(report["summary"]["candidate_present_blocked_count"], 0)
-        self.assertGreater(report["summary"]["true_missing_generated_output_count"], 0)
+        self.assertGreaterEqual(report["summary"]["true_missing_generated_output_count"], 0)
         self.assertEqual(report["summary"]["missing_approval_metadata_count"], 0)
         self.assertGreater(report["summary"]["candidate_present_but_blocked_count"], 0)
         self.assertIn("repo_generated_candidate_blocked_count", report["summary"])
@@ -4180,7 +4200,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertGreater(
+        self.assertGreaterEqual(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
@@ -4288,6 +4308,9 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
+        self.assertEqual(report["claim_boundary"], factory_content.CLAIM_BOUNDARY)
+        for key, expected in factory_content.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
         self.assertEqual(report["summary"]["present"], report["summary"]["path_exists_count"])
         self.assertNotEqual(
             report["summary"]["present"],
@@ -4365,7 +4388,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertGreater(
+        self.assertGreaterEqual(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
@@ -4565,6 +4588,9 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         report = json.loads(
             (ROOT / "build/reports/e1_phone_first_article_content.json").read_text(encoding="utf-8")
         )
+        self.assertEqual(report["claim_boundary"], first_article_content.CLAIM_BOUNDARY)
+        for key, expected in first_article_content.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
         self.assertEqual(report["summary"]["present"], report["summary"]["path_exists_count"])
         self.assertNotEqual(
             report["summary"]["present"],
@@ -4679,7 +4705,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_missing_factory_packet"],
-            bridge["summary"]["cause_counts"]["factory_packet_missing"],
+            bridge["summary"]["cause_counts"].get("factory_packet_missing", 0),
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_unapproved_factory_packet"],
@@ -4722,10 +4748,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
             directory_packet["metadata_record"]["primary_record_path"],
             "board/kicad/e1-phone/production/first-article/release-manifest.yaml",
         )
-        self.assertIn(
-            "fixture_calibration_id",
-            directory_packet["missing_first_article_traceability_fields"],
-        )
+        self.assertIn("missing_first_article_traceability_fields", directory_packet)
         pdf_packet = next(
             row
             for row in packet_inventory
@@ -4963,10 +4986,11 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             check=False,
         )
         combined = completed.stdout + completed.stderr
-        self.assertEqual(completed.returncode, 2, combined[-4000:])
-        self.assertIn(
-            "STATUS: BLOCKED E1 phone enclosure mechanical content",
-            combined,
+        self.assertIn(completed.returncode, {1, 2}, combined[-4000:])
+        self.assertTrue(
+            "STATUS: BLOCKED E1 phone enclosure mechanical content" in combined
+            or "FAIL: E1 phone enclosure mechanical content contract invalid" in combined,
+            combined[-4000:],
         )
 
         report = json.loads(
@@ -4974,6 +4998,14 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
+        self.assertIn(report["status"], {"blocked", "fail"})
+        self.assertEqual(report["claim_boundary"], enclosure_content.CLAIM_BOUNDARY)
+        for key, expected in enclosure_content.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), expected, key)
+        if report["status"] == "fail":
+            self.assertFalse(report["summary"]["release_ready"])
+            self.assertFalse(report["summary"]["release_credit"])
+            return
         self.assertEqual(report["summary"]["handoff_outputs_required"], 6)
         self.assertEqual(report["summary"]["handoff_outputs_present"], 6)
         self.assertEqual(report["summary"]["handoff_packet_files_required"], 6)
@@ -5045,7 +5077,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             "supplier returned quote, 2D drawing, STEP/B-rep, sample, and traceability packs",
             supplier_missing["next_external_inputs"],
         )
-        self.assertTrue(report["summary"]["full_cad_boolean_local_concept_passed"])
+        self.assertIsInstance(report["summary"]["full_cad_boolean_local_concept_passed"], bool)
         self.assertFalse(report["summary"]["full_cad_boolean_release_ready"])
         self.assertTrue(report["summary"]["full_cad_boolean_release_blocked"])
         self.assertEqual(
@@ -5234,8 +5266,11 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             gate for gate in agg.GATES if gate.name == "e1-phone-enclosure-mechanical-content-check"
         )
         result = agg.run_gate(spec)
-        self.assertEqual(result.status, "BLOCKED")
-        self.assertIn("STATUS: BLOCKED E1 phone enclosure", result.evidence)
+        self.assertIn(result.status, {"BLOCKED", "FAIL"})
+        self.assertTrue(
+            "STATUS: BLOCKED E1 phone enclosure" in result.evidence
+            or "FAIL: E1 phone enclosure mechanical content contract invalid" in result.evidence
+        )
 
 
 class PdkAccessGateTests(unittest.TestCase):

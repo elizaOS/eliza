@@ -15,6 +15,17 @@ import run_soc_thermal_sweep as soc  # noqa: E402
 
 DEFAULT_OUT = ROOT / "benchmarks/results/soc-optimized-operating-point.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_score_claim_allowed": False,
+    "rtl_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "sustained_power_thermal_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def frange(start: float, stop: float, step: float) -> list[float]:
     values: list[float] = []
@@ -253,6 +264,7 @@ def optimize(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": "eliza.soc_cpu_npu_operating_point_optimization.v1",
         "status": "pass",
+        **FALSE_CLAIM_FLAGS,
         "evidence_class": "deterministic_combined_cpu_npu_arch_model_optimization",
         "claim_boundary": "modeled_only_not_rtl_pdk_silicon_sustained_or_phone_score_evidence",
         "benchmark_success_allowed": True,

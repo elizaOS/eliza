@@ -15,8 +15,14 @@
 // to I on probe inv, and downgrades M->S on probe shr (writes back dirty).
 //
 // Miss handler: 4-entry MSHR for non-blocking misses. Each MSHR tracks one
-// outstanding line fill plus a small per-MSHR pending-request FIFO (≤2) so
-// secondary misses on the same line coalesce.
+// outstanding line fill plus a small per-MSHR pending-request FIFO
+// (MSHR_PEND_DEPTH deep) so secondary misses on the same line coalesce onto
+// the primary MSHR instead of allocating a second entry or issuing a second
+// L2 acquire. The FIFO records each coalesced secondary request's LSU tag
+// and load/store class. After the primary fill installs the line, the FIFO
+// is drained one entry per idle port-0 cycle: each coalesced tag is replayed
+// to the LSU so the request is re-presented against the now-resident line.
+// The MSHR frees once its fill is done and its FIFO is empty.
 //
 // This is the canonical pipeline:
 //   stage 0 : LSU presents request, TLB-translated paddr already supplied
@@ -33,7 +39,8 @@ module e1_l1d_cache
     parameter int unsigned LINE_BYTES = L1D_LINE_BYTES,
     parameter int unsigned PADDR_W    = PADDR_W_DEFAULT,
     parameter int unsigned BANKS      = 8,
-    parameter int unsigned MSHR_DEPTH = 4
+    parameter int unsigned MSHR_DEPTH = 4,
+    parameter int unsigned MSHR_PEND_DEPTH = 2  // per-MSHR secondary-miss FIFO
 ) (
     input  logic                  clk,
     input  logic                  rst_n,
@@ -130,6 +137,25 @@ module e1_l1d_cache
 
     mshr_t mshr [MSHR_DEPTH];
 
+    // Per-MSHR pending-request FIFO for secondary misses on the same line.
+    // A secondary miss does not allocate a new MSHR or issue a second
+    // acquire; it enqueues here against the primary MSHR. Each slot records
+    // the coalesced request's LSU tag and load/store class.
+    //
+    // After the line fills, the FIFO is drained one entry per idle port-0
+    // cycle: each coalesced request's LSU tag is replayed so the LSU
+    // re-presents it against the now-resident line. The MSHR is freed once
+    // its primary fill is done and the FIFO is empty.
+    localparam int unsigned PEND_CNT_W = $clog2(MSHR_PEND_DEPTH + 1);
+    localparam int unsigned PEND_IDX_W = (MSHR_PEND_DEPTH > 1) ? $clog2(MSHR_PEND_DEPTH) : 1;
+    logic [PEND_CNT_W-1:0]  mshr_pend_count [MSHR_DEPTH];
+    logic [PEND_IDX_W-1:0]  mshr_pend_head  [MSHR_DEPTH];
+    logic                   mshr_filled     [MSHR_DEPTH];
+    logic [L1D_TAG_W-1:0]   mshr_pend_tag   [MSHR_DEPTH][MSHR_PEND_DEPTH];
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic                   mshr_pend_load  [MSHR_DEPTH][MSHR_PEND_DEPTH];
+    /* verilator lint_on UNUSEDSIGNAL */
+
     // Outgoing acq channel single-shot driver
 	    logic                          acq_pending_q;
 	    logic [MSHR_IDX_W-1:0]         acq_mshr_q;
@@ -160,6 +186,35 @@ module e1_l1d_cache
 	            end
 	        end
 	    end
+
+    // Same-line match for an incoming port-0 miss: a secondary miss to a
+    // line already tracked by a valid MSHR coalesces onto that MSHR rather
+    // than allocating a new one. Port 1 misses already replay without
+    // allocating, so port 0 is the only MSHR allocation source and the only
+    // path that can create a duplicate same-line MSHR.
+    function automatic logic [PADDR_W-1:0] line_of(input logic [PADDR_W-1:0] paddr);
+        return {paddr[PADDR_W-1:OFFSET_W], {OFFSET_W{1'b0}}};
+    endfunction
+
+    logic                  p0_mshr_line_hit_c;
+    logic [MSHR_IDX_W-1:0] p0_mshr_line_idx_c;
+    always_comb begin
+        p0_mshr_line_hit_c = 1'b0;
+        p0_mshr_line_idx_c = '0;
+        for (int m = 0; m < MSHR_DEPTH; m++) begin
+            if (mshr[m].valid &&
+                mshr[m].paddr_line == line_of(lsu_p0_req.paddr) &&
+                !p0_mshr_line_hit_c) begin
+                p0_mshr_line_hit_c = 1'b1;
+                p0_mshr_line_idx_c = m[MSHR_IDX_W-1:0];
+            end
+        end
+    end
+    // A secondary miss coalesces only while its primary MSHR's FIFO has
+    // room; otherwise it replays without consuming a new MSHR.
+    logic p0_can_coalesce_c;
+    assign p0_can_coalesce_c = p0_mshr_line_hit_c &&
+        (mshr_pend_count[p0_mshr_line_idx_c] < PEND_CNT_W'(MSHR_PEND_DEPTH));
 
     // -----------------------------------------------------------------
     // Per-port lookup helpers
@@ -225,7 +280,11 @@ module e1_l1d_cache
                               addr_bank(lsu_p1_req.paddr));
     assign p1_active_c     = lsu_p1_valid && !bank_conflict_c;
 
-	    assign lsu_p0_ready    = mshr_alloc_available_c || !p0_active_c;
+	    // Port 0 accepts a request when it is idle, when an MSHR slot is
+	    // free, or when a secondary miss can coalesce onto an in-flight
+	    // same-line MSHR (no new slot needed).
+	    assign lsu_p0_ready    = !p0_active_c || mshr_alloc_available_c ||
+	                             p0_can_coalesce_c;
 	    assign lsu_p1_ready    = !bank_conflict_c &&
 	                             (mshr_alloc_available_c || !p1_active_c);
 
@@ -325,6 +384,11 @@ module e1_l1d_cache
             ecc_array   <= '{default: '{default: '{default: '0}}};
             plru        <= '{default: '0};
             mshr        <= '{default: '0};
+            mshr_pend_count <= '{default: '0};
+            mshr_pend_head  <= '{default: '0};
+            mshr_filled     <= '{default: 1'b0};
+            mshr_pend_tag   <= '{default: '{default: '0}};
+            mshr_pend_load  <= '{default: '{default: '0}};
 
             acq_pending_q     <= 1'b0;
             acq_mshr_q        <= '0;
@@ -397,7 +461,7 @@ module e1_l1d_cache
                     plru[addr_index(lsu_p0_req.paddr)] <=
                         plru_update(plru[addr_index(lsu_p0_req.paddr)], r0.way);
                 end else begin
-                    // Miss or upgrade-required: issue MSHR
+                    // Miss or upgrade-required.
                     hpm_l1d_miss <= 1'b1;
                     lsu_p0_resp_valid <= 1'b1;
                     lsu_p0_resp.ack   <= 1'b0;
@@ -405,8 +469,26 @@ module e1_l1d_cache
                     lsu_p0_resp.tag   <= lsu_p0_req.tag;
                     lsu_p0_resp.ecc_uncorrectable <= r0.ecc_double;
                     if (r0.ecc_double) hpm_l1d_ecc_uncorr <= 1'b1;
-	                    if (mshr_alloc_available_c) begin
-	                        mshr[mshr_alloc_idx_c] <= '{
+                    if (p0_mshr_line_hit_c) begin
+                        // Secondary miss on an in-flight line: coalesce onto
+                        // the primary MSHR. No second MSHR, no second acquire.
+                        if (p0_can_coalesce_c) begin
+                            automatic logic [PEND_IDX_W-1:0] tail =
+                                PEND_IDX_W'(mshr_pend_head[p0_mshr_line_idx_c] +
+                                            mshr_pend_count[p0_mshr_line_idx_c]);
+                            mshr_pend_tag[p0_mshr_line_idx_c][tail]
+                                <= lsu_p0_req.tag;
+                            mshr_pend_load[p0_mshr_line_idx_c][tail]
+                                <= lsu_p0_req.is_load;
+                            mshr_pend_count[p0_mshr_line_idx_c]
+                                <= mshr_pend_count[p0_mshr_line_idx_c] + PEND_CNT_W'(1);
+                        end
+                        // FIFO full: the request still replays and will
+                        // coalesce on a later cycle once a slot frees.
+                    end else if (mshr_alloc_available_c) begin
+                        // Primary miss: allocate a fresh MSHR with an empty
+                        // pending FIFO.
+                        mshr[mshr_alloc_idx_c] <= '{
                             valid: 1'b1,
                             paddr_line: {lsu_p0_req.paddr[PADDR_W-1:OFFSET_W],
                                          {OFFSET_W{1'b0}}},
@@ -417,6 +499,9 @@ module e1_l1d_cache
                             set_idx: addr_index(lsu_p0_req.paddr),
                             granted: 1'b0
                         };
+                        mshr_pend_count[mshr_alloc_idx_c] <= '0;
+                        mshr_pend_head[mshr_alloc_idx_c]  <= '0;
+                        mshr_filled[mshr_alloc_idx_c]     <= 1'b0;
                     end
                 end
             end
@@ -504,8 +589,53 @@ module e1_l1d_cache
                 end
                 plru[m.set_idx] <=
                     plru_update(plru[m.set_idx], m.victim_way);
-	                mshr[grant_mshr_idx_c] <= '0;
+	                // Fill installs the line for the primary miss. If no
+	                // secondary request coalesced, free the MSHR now. Otherwise
+	                // mark it filled and let the drain step replay each pending
+	                // request before freeing it.
+	                if (mshr_pend_count[grant_mshr_idx_c] == '0) begin
+	                    mshr[grant_mshr_idx_c] <= '0;
+	                    mshr_filled[grant_mshr_idx_c] <= 1'b0;
+	                end else begin
+	                    mshr_filled[grant_mshr_idx_c] <= 1'b1;
+	                    mshr[grant_mshr_idx_c].granted <= 1'b1;
+	                end
 	            end
+
+            // ------ Drain coalesced secondary requests ------
+            // On an idle port-0 cycle, replay one pending request from a
+            // filled MSHR's FIFO. The replayed tag tells the LSU to
+            // re-present the request; the line is resident so the replay
+            // hits. The MSHR frees when its FIFO empties.
+            // Port 0 sets lsu_p0_resp_valid only inside its accept branch
+            // (lsu_p0_valid && lsu_p0_ready); when that branch did not run
+            // the response slot is free for the drain to use this cycle.
+            if (!(lsu_p0_valid && lsu_p0_ready)) begin
+                automatic logic                  drain_hit  = 1'b0;
+                automatic logic [MSHR_IDX_W-1:0] drain_idx  = '0;
+                for (int m = 0; m < MSHR_DEPTH; m++) begin
+                    if (mshr[m].valid && mshr_filled[m] &&
+                        mshr_pend_count[m] != '0 && !drain_hit) begin
+                        drain_hit = 1'b1;
+                        drain_idx = m[MSHR_IDX_W-1:0];
+                    end
+                end
+                if (drain_hit) begin
+                    lsu_p0_resp_valid <= 1'b1;
+                    lsu_p0_resp.ack   <= 1'b0;
+                    lsu_p0_resp.replay<= 1'b1;
+                    lsu_p0_resp.tag   <= mshr_pend_tag[drain_idx][mshr_pend_head[drain_idx]];
+                    mshr_pend_head[drain_idx] <=
+                        PEND_IDX_W'(mshr_pend_head[drain_idx] + PEND_IDX_W'(1));
+                    mshr_pend_count[drain_idx] <=
+                        mshr_pend_count[drain_idx] - PEND_CNT_W'(1);
+                    if (mshr_pend_count[drain_idx] == PEND_CNT_W'(1)) begin
+                        // Last pending entry drained: free the MSHR.
+                        mshr[drain_idx]        <= '0;
+                        mshr_filled[drain_idx] <= 1'b0;
+                    end
+                end
+            end
 
             // ------ Probe handling ------
             if (probe_valid && probe_ready) begin

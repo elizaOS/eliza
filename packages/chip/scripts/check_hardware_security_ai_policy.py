@@ -61,6 +61,14 @@ REQUIRED_GATES = {
     "make formal",
     "make no-hardware-action-check",
 }
+FALSE_CLAIM_FLAGS = {
+    "security_scanner_claim_allowed": False,
+    "fuzzer_claim_allowed": False,
+    "trojan_detection_claim_allowed": False,
+    "vulnerability_claim_allowed": False,
+    "no_vulnerability_claim_allowed": False,
+    "release_or_tapeout_security_claim_allowed": False,
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -100,6 +108,9 @@ def main() -> int:
             fail(errors, "unsafe claim boundary")
         if policy.get("status") != "DRAFT_CAPTURE_ONLY":
             fail(errors, "status must be DRAFT_CAPTURE_ONLY")
+        for flag, expected in FALSE_CLAIM_FLAGS.items():
+            if policy.get(flag) is not expected:
+                fail(errors, f"{flag} must be false")
         require_set(
             policy.get("blocked_actions"),
             "blocked_actions",

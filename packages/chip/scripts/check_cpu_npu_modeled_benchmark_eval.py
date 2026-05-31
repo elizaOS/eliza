@@ -15,6 +15,17 @@ OPTIMIZER_REPORT = ROOT / "benchmarks/results/soc-optimized-operating-point.json
 TARGET_SPEC = ROOT / "docs/spec-db/npu-2028-target.yaml"
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_class_release_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "rtl_implementation_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "measured_power_thermal_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "benchmark_leadership_claim_allowed": False,
+}
+
 
 def result_by_name(report: dict[str, Any], name: str) -> dict[str, Any]:
     for row in report.get("results", []):
@@ -240,6 +251,7 @@ def build_eval() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_npu_2028_modeled_benchmark_eval.v1",
         "status": status,
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Simulator and deterministic architecture model evaluation only; not AOSP, RTL, "
             "PDK, sustained measured power/thermal, silicon, or phone-class release evidence."
@@ -302,6 +314,9 @@ def validate_eval(data: dict[str, Any]) -> list[str]:
         errors.append("modeled evaluation must not fail")
     if "not AOSP" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block AOSP evidence use")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     checks = data.get("checks")
     if not isinstance(checks, list) or len(checks) < 10:
         errors.append("checks must list the modeled CPU/NPU/memory/power evaluations")

@@ -124,6 +124,8 @@ tasks:
       foot_clearance_weight: 1.0
       alternating_contact_weight: 4.0
       locomotion_no_progress_penalty: 5.0
+      late_hold_progress_start: 0.65
+      goal_hold_progress_start: 0.65
       no_support_weight: 3.0
       double_support_weight: 2.0
       action_rate_weight: -0.01

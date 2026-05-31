@@ -7,6 +7,12 @@ from unittest import mock
 import check_pd_release_evidence
 
 
+def assert_false_claim_flags(payload: dict[str, object]) -> None:
+    assert payload["claim_boundary"] == check_pd_release_evidence.CLAIM_BOUNDARY
+    for key, expected in check_pd_release_evidence.FALSE_CLAIM_FLAGS.items():
+        assert payload.get(key) is expected, key
+
+
 def test_manifest_diagnostic_maps_pd_blocker_classes() -> None:
     item = {
         "path": "docs/evidence/pd/example.yaml",
@@ -43,6 +49,7 @@ def test_missing_manifests_are_blocked_not_release_credit() -> None:
         payload = json.loads(report.read_text(encoding="utf-8"))
         assert rc == 2
         assert payload["status"] == "blocked"
+        assert_false_claim_flags(payload)
         assert payload["release_credit"] is False
         assert payload["summary"]["release_credit"] is False
         assert payload["findings"][0]["code"] == "pd_release_evidence_missing_manifest"
@@ -85,6 +92,7 @@ def test_blocked_report_buckets_manifest_blockers_without_stale_fixed_bootrom() 
         diagnostic = payload["findings"][0]["diagnostic"]
         assert rc == 2
         assert payload["status"] == "blocked"
+        assert_false_claim_flags(payload)
         assert payload["release_credit"] is False
         assert "release_run_missing_final_artifacts" in bucket_counts
         assert "drc_lvs_antenna_signoff" in bucket_counts

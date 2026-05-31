@@ -316,6 +316,37 @@ def check_evidence_rows_collected(
     return out
 
 
+def check_collected_evidence_paths(manifest: dict, variant_dir: Path) -> list[GateResult]:
+    """Collected manifest evidence rows must name evidence files that exist."""
+
+    rows = _evidence_index(manifest)
+    out: list[GateResult] = []
+    for evidence_id in REQUIRED_EVIDENCE_IDS:
+        row = rows.get(evidence_id)
+        if not row or row.get("status") != "collected":
+            continue
+        path_value = row.get("path")
+        if not isinstance(path_value, str) or not path_value:
+            out.append(
+                GateResult(
+                    "FAIL",
+                    f"collected evidence row {evidence_id} does not declare a path",
+                )
+            )
+            continue
+        evidence_path = _resolve_evidence_path(variant_dir, path_value)
+        if not evidence_path.is_file():
+            out.append(
+                GateResult(
+                    "BLOCKED",
+                    f"collected evidence row {evidence_id} path not present: {evidence_path}",
+                )
+            )
+    if not out:
+        out.append(GateResult("PASS", "collected evidence row paths exist"))
+    return out
+
+
 def _resolve_evidence_path(variant_dir: Path, path_value: str) -> Path:
     """Resolve an evidence path relative to the variant directory."""
     if path_value.startswith("<repo>/"):
@@ -778,6 +809,7 @@ def run_checks(variant_dir: Path) -> tuple[Status, list[GateResult], Path, bool]
     results.extend(check_schema(manifest, schema))
     results.extend(check_required_evidence_rows(manifest))
     results.extend(check_evidence_rows_collected(manifest, is_template))
+    results.extend(check_collected_evidence_paths(manifest, variant_dir))
     results.extend(check_qemu_virt_evidence(manifest, is_template, variant_dir))
     results.extend(check_grub_efi_evidence(manifest, is_template, variant_dir))
     results.extend(check_riscv64_agent_runtime_evidence(manifest, is_template, variant_dir))

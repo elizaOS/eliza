@@ -16,6 +16,17 @@ MAX_WINDOW_S = 120.0
 RECOMMENDED_FRACTION = 0.5
 MAX_RECOMMENDED_BURST_S = 10.0
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "measured_skin_claim_allowed": False,
+    "rail_measurement_claim_allowed": False,
+    "package_validation_claim_allowed": False,
+    "enclosure_validation_claim_allowed": False,
+    "aosp_thermal_hal_claim_allowed": False,
+    "silicon_burst_duration_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def check_row(row_id: str, status: str, evidence: str) -> dict[str, str]:
     return {"id": row_id, "status": status, "evidence": evidence}
@@ -174,6 +185,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_npu_2028_burst_thermal_transient.v1",
         "status": "fail" if failed else "modeled_transient_release_blocked" if blocked else "pass",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Deterministic RC burst thermal transient model only; not measured skin, rail, "
             "package, enclosure, AOSP thermal HAL, or silicon burst-duration evidence."
@@ -217,6 +229,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("transient report must remain modeled_transient_release_blocked")
     if "not measured" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block measured thermal claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     recommended = data.get("recommended")
     if not isinstance(recommended, dict):
         errors.append("recommended section missing")

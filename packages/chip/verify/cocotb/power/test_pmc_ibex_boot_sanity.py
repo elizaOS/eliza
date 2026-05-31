@@ -6,11 +6,16 @@ the upstream Ibex source files reachable from the include path (i.e. after
 ``scripts/bootstrap_ibex.sh`` has populated ``external/ibex/ibex``).
 
 When the guard is active the wrapper instantiates ``ibex_top`` with
-``boot_addr_i = 32'h0`` and ``fetch_enable_i = ibex_pkg::IbexMuBiOn``. The
+``boot_addr_i = PMC_BOOT_ADDR = 32'h1005_0000`` (``pmc_top.sv``) and
+``fetch_enable_i = ibex_pkg::IbexMuBiOn``. Ibex treats ``boot_addr_i`` as
+the base of the interrupt vector table and forces the reset fetch to
+``{boot_addr_i[31:8], 8'h80}`` (``ibex_if_stage.sv`` ``PC_BOOT``), so the
+first ``instr_addr_o`` is ``PMC_BOOT_ADDR + 0x80 = 0x1005_0080``. The
 contract checked here is the minimal one any silicon-bringup smoke test
 relies on: after the reset is released, the core asserts ``instr_req_o``
-and presents the boot vector ``0x0`` on ``instr_addr_o`` within a bounded
-number of clk_aon cycles.
+and presents that reset entry on ``instr_addr_o`` within a bounded number
+of clk_aon cycles. This matches the SoC-level counterpart
+``verify/cocotb/integration/test_pmc_ibex_boots_in_soc.py``.
 
 When the guard is NOT active the test reports ``skip`` with an explicit
 rationale, leaving the BLOCKED status surfaced by docs/evidence/power
@@ -22,12 +27,16 @@ import os
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, Timer
 from power_pkg_constants import DVFS_RAIL_COUNT, PMC_REG_CTRL
 
 CLK_AON_PERIOD_NS = 30
 CLK_SAMPLE_PERIOD_NS = 5
-BOOT_VECTOR_ADDR = 0x00000000
+# pmc_top wires ibex boot_addr_i = PMC_BOOT_ADDR. Ibex's reset fetch is at
+# {boot_addr_i[31:8], 8'h80} (ibex_if_stage.sv PC_BOOT), so the first
+# instruction address is PMC_BOOT_ADDR + 0x80.
+PMC_BOOT_ADDR = 0x1005_0000
+BOOT_VECTOR_ADDR = PMC_BOOT_ADDR + 0x80
 
 
 def _ibex_guard_active() -> bool:
@@ -54,8 +63,9 @@ async def _reset(dut):
     for _ in range(8):
         await RisingEdge(dut.clk_aon)
     dut.rst_n.value = 1
-    for _ in range(4):
-        await RisingEdge(dut.clk_aon)
+    # Return immediately on reset deassert so the caller can observe the very
+    # first instruction fetch; the Ibex begins fetching the reset vector on the
+    # first clk_aon edge after rst_n rises.
 
 
 async def _mbox_write(dut, addr, data):
@@ -87,20 +97,33 @@ async def ibex_boot_vector_reaches_first_instruction_fetch(dut):
     cocotb.start_soon(Clock(dut.clk_sample, CLK_SAMPLE_PERIOD_NS, units="ns").start())
     await _reset(dut)
 
+    # Capture the boot fetch directly out of reset. fetch_enable_i is held high
+    # in the wrapper, so the core begins fetching immediately; the mailbox write
+    # is deferred until after capture so it cannot consume the reset-fetch
+    # cycles. The very first request the prefetch buffer issues is the reset
+    # vector; subsequent cycles stream sequentially upward. instr_req/instr_addr
+    # are combinational outputs of the core, so settle 1 ns past each clk_aon
+    # edge before sampling to read the value the core drives this cycle (a
+    # zero-delay read after the edge would observe the previous cycle's value).
+    saw_req = False
+    boot_pc: int | None = None
+    for _ in range(32):
+        await RisingEdge(dut.clk_aon)
+        await Timer(1, units="ns")
+        if int(dut.ibex_instr_req.value) == 1:
+            saw_req = True
+            boot_pc = int(dut.ibex_instr_addr.value)
+            break
+
+    assert saw_req, "Ibex did not raise instr_req within 32 clk_aon cycles of reset release"
+    assert boot_pc == BOOT_VECTOR_ADDR, (
+        f"Ibex first instr_addr = {boot_pc:#x}, "
+        f"expected reset vector {BOOT_VECTOR_ADDR:#x} "
+        f"(PMC_BOOT_ADDR={PMC_BOOT_ADDR:#x} + 0x80)"
+    )
+
     # Mailbox-issued CTRL[0]=1 is documented as the SPMI enable bit. The
     # core's fetch_enable_i is held high in the wrapper, so this write is
     # purely a sanity check that the AON mailbox is also wired correctly.
     await _mbox_write(dut, PMC_REG_CTRL, 0x1)
-
-    saw_req = False
-    for _ in range(32):
-        await RisingEdge(dut.clk_aon)
-        if int(dut.ibex_instr_req.value) == 1:
-            saw_req = True
-            break
-
-    assert saw_req, "Ibex did not raise instr_req within 32 clk_aon cycles of reset release"
-    assert int(dut.ibex_instr_addr.value) == BOOT_VECTOR_ADDR, (
-        f"Ibex first instr_addr = {int(dut.ibex_instr_addr.value):#x}, "
-        f"expected boot vector {BOOT_VECTOR_ADDR:#x}"
-    )
+    assert int(dut.spmi_enable_o.value) == 1, "SPMI enable did not follow CTRL[0]"

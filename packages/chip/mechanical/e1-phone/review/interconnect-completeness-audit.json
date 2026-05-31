@@ -1,8 +1,8 @@
 {
   "schema": "eliza.e1_phone_interconnect_completeness_audit.v1",
-  "date": "2026-05-21",
+  "date": "2026-05-28",
   "evidence_class": "cross_artifact_paper_audit_for_evt_planning_not_measured_hardware",
-  "claim_boundary": "Read+review reconciliation of the electrical block-netlist + BOM against the mechanical CAD assembly-manifest (222 parts). It is not routed copper, not ERC/DRC, not a fabricated flex drawing, not a built unit. ACCOUNTED means the interconnect appears in the electrical plan, has a BOM line, and has a mechanical representation (part or modeled keepout/connector); it does NOT mean release-ready.",
+  "claim_boundary": "Read+review reconciliation of the electrical block-netlist + BOM against the mechanical CAD assembly-manifest (258 parts) and cad-connection-coverage.json (32 modeled CAD connection records, 32/32 passing local marker checks). It is not routed copper, not ERC/DRC, not a fabricated flex drawing, not a built unit. ACCOUNTED means the high-level interconnect family appears in the electrical plan, has a BOM line, and has a mechanical representation (part, flex/cable marker, RF-feed marker, or modeled keepout/connector); it does NOT mean release-ready.",
   "sources": [
     "cad/e1_phone_params.yaml",
     "mechanical/e1-phone/out/assembly-manifest.json",
@@ -13,12 +13,13 @@
     "board/kicad/e1-phone/split-interconnect-pin-allocation.yaml",
     "board/kicad/e1-phone/split-interconnect-connector-binding.yaml",
     "board/kicad/e1-phone/board-topology-decision.yaml",
+    "mechanical/e1-phone/review/cad-connection-coverage.json",
     "review/compute-sourcing-resolution.md",
     "review/component-review-optical.md",
     "review/component-review-audio.md",
     "review/component-review-io-buttons.md"
   ],
-  "totals": {"interconnects": 19, "accounted": 19, "partial": 0, "missing": 0},
+  "totals": {"interconnect_families": 19, "accounted": 19, "partial": 0, "missing": 0, "cad_connection_records": 32, "cad_connection_records_passing_local_marker_checks": 32, "assembly_manifest_part_count": 258},
   "register": [
     {
       "interconnect": "Display MIPI-DSI + touch I2C + backlight FPC (40-pin)",
@@ -131,11 +132,11 @@
     {
       "interconnect": "Bottom speaker electrical (SPK_P/N)",
       "type": "spring contacts or solder pads to bottom-island audio amp",
-      "cad_part": "bottom_speaker_module + acoustic_chamber; NO discrete contact/pad/flex part",
+      "cad_part": "bottom_speaker_module + acoustic_chamber + bottom_speaker_lead_pair CAD connection marker",
       "mate": "U_AUDIO_HAPTIC SPK_P/SPK_N (analog)",
       "bom_line": "bom-unit-cost speaker_module_1115_with_chamber",
       "status": "ACCOUNTED",
-      "gap": "Module on bottom island near the amp; spring/solder contacts not separately modeled but are integral to the module per audio review (commodity 1115 box). Accepted as accounted; contact method (spring vs solder tab) should be frozen with vendor drawing."
+      "gap": "Module on bottom island near the amp and bottom_speaker_lead_pair is represented in cad-connection-coverage.json for local collision review. Exact spring/solder-tab method, contact metallurgy, pad geometry, and vendor drawing still need release freeze."
     },
     {
       "interconnect": "Earpiece receiver electrical",

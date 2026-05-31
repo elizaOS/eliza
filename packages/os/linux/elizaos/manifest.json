@@ -1,0 +1,55 @@
+{
+  "id": "elizaos-linux-riscv64-gui-20260527t181540z",
+  "kind": "raw-image",
+  "target": {
+    "platform": "linux",
+    "architecture": "riscv64",
+    "device": "qemu-virt-riscv64",
+    "hypervisor": "qemu",
+    "firmware": "GRUB EFI RISC-V"
+  },
+  "filename": "elizaos-linux-riscv64-gui-20260527T181540Z.iso",
+  "downloadUrl": null,
+  "status": "candidate",
+  "sizeBytes": 926879744,
+  "sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7",
+  "signature": {
+    "status": "pending",
+    "url": null
+  },
+  "validation": {
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live",
+      "riscv64-agent-runtime"
+    ],
+    "evidence": [
+      {
+        "id": "qemu-virt-boot",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "Generic qemu-virt OS boot evidence; not chip/AP objective evidence."
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "GRUB EFI RISC-V markers from the generic qemu-virt boot transcript."
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "Generic qemu-virt transcript contains elizaos-curl-health-ready, elizaos-agent-ready, and elizaos-tui-ready markers; not generated Eliza AP evidence."
+      },
+      {
+        "id": "riscv64-agent-runtime",
+        "status": "collected",
+        "path": "evidence/riscv64_agent_runtime_smoke.json",
+        "notes": "Staged RV64 agent runtime smoke and Bun/Node provenance."
+      }
+    ]
+  },
+  "notes": "Candidate manifest populated from current repo-local qemu-virt evidence and local ISO hash. This does not claim generated Eliza AP, chip-emulator, phone, silicon, or physical board boot evidence."
+}

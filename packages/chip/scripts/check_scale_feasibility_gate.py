@@ -38,6 +38,14 @@ REQUIRED_COMMANDS = {
         "make pd-signoff-check",
     },
 }
+FALSE_CLAIM_FLAGS = {
+    "linux_capable_cpu_claim_allowed": False,
+    "npu_2028_class_claim_allowed": False,
+    "physical_feasibility_claim_allowed": False,
+    "production_ram_claim_allowed": False,
+    "release_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+}
 
 
 def valid_relative_path(value: object) -> bool:
@@ -75,6 +83,8 @@ def main() -> int:
         "scale gate status must keep 2028-class claims blocked",
         errors,
     )
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(flag) is expected, f"{flag} must be false", errors)
 
     boundary = data.get("claim_boundary")
     require(isinstance(boundary, dict), "claim_boundary must be a mapping", errors)

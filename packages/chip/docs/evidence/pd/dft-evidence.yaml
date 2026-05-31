@@ -5,13 +5,19 @@ acceptance_criteria:
 - JTAG boundary scan chain length == finalized pad count.
 - build/dft/atpg/coverage.json reports stuck_at_percent >= 95.0.
 claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
-description: 'DFT evidence gate. Requires scan-flop mapping (Yosys dfflibmap onto
+description: 'DFT evidence gate. The Yosys-side prep (pd/dft/scan_insertion.tcl
 
-  sky130_fd_sc_hd scan-capable cells), Fault-driven scan chain stitching,
+  dfflibmap) only performs ordinary D-FF library mapping, not scan-flop
 
-  per-SRAM MBIST controllers (tied to pd/macros/manifest.yaml), and JTAG
+  retargeting -- it emits non-scan sky130_fd_sc_hd flops (e.g. dfrtp_1), not
 
-  boundary scan for all pads. Fault or commercial ATPG must produce
+  sky130_fd_sc_hd__sdfxxx scan cells. Scan-flop substitution, scan chain
+
+  stitching, per-SRAM MBIST controllers (tied to pd/macros/manifest.yaml), and
+
+  JTAG boundary scan for all pads are all BLOCKED on Fault (not vendored under
+
+  external/) or commercial ATPG. Fault or commercial ATPG must produce
 
   coverage.json >= 95 % stuck-at before this gate unblocks.
 
@@ -48,27 +54,42 @@ local_findings:
   scan_insertion:
     evidence_boundary: 'pd/dft/scan_insertion.tcl runs cleanly on rtl/bootrom/e1_bootrom.sv
 
-      through Yosys 0.64 with the Sky130 sky130_fd_sc_hd typical Liberty,
+      through Yosys with the Sky130 sky130_fd_sc_hd typical Liberty, producing
 
-      producing build/dft/e1_bootrom.scan_ready.v. dfflibmap was the active
+      build/dft/e1_bootrom.scan_ready.v. dfflibmap was the active pass (not the
 
-      pass (not the non-existent `scanchain`). Full-design scan stitching
+      non-existent `scanchain`), but dfflibmap only maps to ordinary library
 
-      still requires Fault (https://github.com/AUCOHL/Fault), which is not
+      flops, NOT scan (sdf*) cells: e1_bootrom is a flop-less ROM (no flops at
 
-      vendored under external/. Not yet hooked into the OpenLane release
+      all), and on a flop-bearing module (rtl/peripherals/e1_peripherals.sv,
 
-      config via SYNTH_EXTRA_SCRIPT.
+      104 flops) the same pass emits only sky130_fd_sc_hd__dfrtp_1 / dfxtp_1 /
+
+      dfstp_2 / dfbbn_1 ordinary flops and zero sdf* scan cells. Confirmed via
+
+      scripts/build_scan_chain_contract.py, which fails closed (exit 2, no
+
+      chain invented) because no scan-capable flops exist in the netlist.
+
+      Scan-flop retargeting + chain stitching require Fault
+
+      (https://github.com/AUCOHL/Fault), which is not vendored under external/.
+
+      Not yet hooked into the OpenLane release config via SYNTH_EXTRA_SCRIPT.
 
       '
-    status: validated_on_leaf_module
+    status: standard_ff_mapping_only_scan_retargeting_blocked_on_fault
     validation_command: 'LIB_TYPICAL_FAST_LIBERTY=$PWD/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
 
       yosys -c pd/dft/run_e1_bootrom_scan_prep.tcl
 
       '
 release_blockers:
-- Scan insertion pass not yet invoked from OpenLane synth flow.
+- Scan-flop retargeting is not done; pd/dft/scan_insertion.tcl dfflibmap emits
+  ordinary (non-scan) flops only. True sdf* substitution + chain stitching are
+  blocked on Fault (not vendored under external/).
+- Scan-prep pass not yet invoked from OpenLane synth flow via SYNTH_EXTRA_SCRIPT.
 - OpenRAM SRAM macros unbuilt; MBIST controllers cannot be generated.
 - Pad inventory not finalized; JTAG boundary register width unknown.
 - Fault ATPG not vendored; commercial alternative blocked on commercial-eda-gate.

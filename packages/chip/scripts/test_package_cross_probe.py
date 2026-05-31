@@ -7,6 +7,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/package_cross_probe.json"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "package_vendor_release_claim_allowed": False,
+    "padframe_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "cross_probe_signoff_claim_allowed": False,
+    "foundry_io_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
+
+def assert_false_claim_flags(testcase: unittest.TestCase, payload: dict[str, object]) -> None:
+    testcase.assertEqual(
+        payload["claim_boundary"],
+        "package_padframe_board_cross_probe_only_not_vendor_package_release_evidence",
+    )
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(payload.get(key), expected, key)
 
 
 class PackageCrossProbeReleaseTests(unittest.TestCase):
@@ -27,6 +45,7 @@ class PackageCrossProbeReleaseTests(unittest.TestCase):
         payload = json.loads(REPORT.read_text())
         self.assertEqual(payload["status"], "blocked")
         self.assertEqual(payload["mode"], "release")
+        assert_false_claim_flags(self, payload)
         self.assertIs(payload["release_credit"], False)
         self.assertGreater(payload["summary"]["blockers"], 0)
         self.assertTrue(payload["release_unblock_action_inventory"])
@@ -50,6 +69,7 @@ class PackageCrossProbeReleaseTests(unittest.TestCase):
         payload = json.loads(REPORT.read_text())
         self.assertEqual(payload["status"], "blocked")
         self.assertEqual(payload["mode"], "preflight")
+        assert_false_claim_flags(self, payload)
         self.assertIs(payload["summary"]["release_credit"], False)
 
     def test_action_inventory_names_vendor_and_bond_evidence(self) -> None:
