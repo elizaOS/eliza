@@ -24,9 +24,10 @@ describe("Cerebras first-run provider", () => {
     expect(entry?.family).toBe("cerebras");
   });
 
-  it("normalizes its id (case-insensitively)", () => {
+  it("normalizes its id, casing, and the linked-account alias", () => {
     expect(normalizeFirstRunProviderId("cerebras")).toBe("cerebras");
     expect(normalizeFirstRunProviderId("CEREBRAS")).toBe("cerebras");
+    expect(normalizeFirstRunProviderId("cerebras-api")).toBe("cerebras");
     expect(getFirstRunProviderOption("cerebras")?.id).toBe("cerebras");
   });
 

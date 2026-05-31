@@ -739,6 +739,9 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
   moonshot: "moonshot",
   moonshotai: "moonshot",
   "moonshot-ai": "moonshot",
+  cerebras: "cerebras",
+  // Tolerate the linked-account form so env/integration callers normalize too.
+  "cerebras-api": "cerebras",
 };
 
 export function isSubscriptionProviderSelectionId(
