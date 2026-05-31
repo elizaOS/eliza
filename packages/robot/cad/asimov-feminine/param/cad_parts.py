@@ -28,9 +28,37 @@ import connections as C  # noqa: E402
 
 ROBOT = "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot"
 RINGS = os.path.join(ROBOT, "cad/asimov-feminine/param/source_fitted_parts")
+SRC = os.path.join(ROBOT, "assets/profiles/asimov-1/meshes")
 OUT = os.path.join(ROBOT, "cad/asimov-feminine/output/stl")
 STEP = os.path.join(ROBOT, "cad/asimov-feminine/output/step")
+MJCF = os.path.join(ROBOT, "assets/profiles/asimov-1/mjcf/asimov_eliza.xml")
 AXIS_IDX = {"x": 0, "y": 1, "z": 2}
+
+
+def _parse_children():
+    """parent-link -> [(child-link, joint-pos in parent frame, child spine axis)].
+    Read straight from the canonical asimov tree so the bosses land on the exact
+    joint each neighbour plugs into."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(MJCF).getroot()
+    name2file = {m.get("name"): m.get("file") for m in root.iter("mesh")}
+    out, stack = {}, [(root.find("worldbody"), None, None)]
+    while stack:
+        elem, par_link, _ = stack.pop()
+        for b in elem.findall("body"):
+            link = None
+            for g in b.findall("geom"):
+                if g.get("type") == "mesh" and g.get("mesh") in name2file:
+                    link = name2file[g.get("mesh")][:-4]  # strip .STL
+            pos = np.array([float(x) for x in (b.get("pos") or "0 0 0").split()])
+            if par_link and link and link in C.LINKS:
+                ax = AXIS_IDX[C.LINKS[link]["spine"]]
+                out.setdefault(par_link, []).append((link, pos, ax))
+            stack.append((b, link or par_link, None))
+    return out
+
+
+CHILDREN = _parse_children()
 
 SLIM = {
     "NECK_YAW": 0.86, "NECK_PITCH": 0.95,
@@ -80,6 +108,41 @@ def _collar(L, reserved, ramp=0.022):
     return w * w * (3 - 2 * w)
 
 
+def _boss_radius(link, p, axis, band=0.013, pct=80):
+    """Original part's footprint radius around joint point `p` (perp to `axis`),
+    from the source mesh -- the size of the real mounting boss the slim loft
+    flattened away."""
+    me = trimesh.load(os.path.join(SRC, f"{link}.STL"), force="mesh")
+    v = np.asarray(me.vertices, float)
+    pd = [i for i in range(3) if i != axis]
+    sel = np.abs(v[:, axis] - p[axis]) < band
+    if sel.sum() < 8:
+        sel = np.zeros(len(v), bool)
+        sel[np.argsort(np.abs(v[:, axis] - p[axis]))[:200]] = True
+    q = v[sel][:, pd] - np.array([p[pd[0]], p[pd[1]]])
+    return float(np.percentile(np.hypot(q[:, 0], q[:, 1]), pct))
+
+
+def _add_bosses(solid, link, inward=0.055, overlap=0.007):
+    """Union a real mounting boss at every joint this part owns (its own origin +
+    each child joint) so the slim body reaches each neighbour at full original
+    size -- no free-floating parts."""
+    jobs = [(link, np.zeros(3), AXIS_IDX[C.LINKS[link]["spine"]])]  # own proximal mate
+    jobs += [(link, p, ax) for (_c, p, ax) in CHILDREN.get(link, [])]
+    for src_link, p, ax in jobs:
+        r = _boss_radius(src_link, p, ax)
+        if r < 0.012:
+            continue
+        ctr = solid.Center()
+        out = 1.0 if p[ax] >= (ctr.x, ctr.y, ctr.z)[ax] else -1.0
+        u = np.zeros(3); u[ax] = out
+        base = p - inward * u
+        boss = cq.Solid.makeCylinder(
+            r, inward + overlap, cq.Vector(*base), cq.Vector(*u))
+        solid = solid.fuse(boss)
+    return solid.clean()
+
+
 def build_cad_part(link):
     ai, pd, bins, L, C0, C1, R = _aligned_profiles(link)
     if len(L) < 3:
@@ -97,6 +160,7 @@ def build_cad_part(link):
         edge = cq.Edge.makeSpline([cq.Vector(*p) for p in P], periodic=True)
         wires.append(cq.Wire.assembleEdges([edge]))
     solid = cq.Solid.makeLoft(wires, ruled=False)
+    solid = _add_bosses(solid, link)
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
         zmin = solid.BoundingBox().zmin
         solid = solid.cut(cq.Solid.makeBox(1.0, 1.0, 1.0, cq.Vector(-0.5, -0.5, zmin + 0.006 - 1.0)))
