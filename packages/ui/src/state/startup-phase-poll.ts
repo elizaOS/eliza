@@ -389,6 +389,10 @@ export async function runPollingBackend(
               client.getFirstRunOptions(),
               client.getConfig().catch(() => null),
             ]);
+            // The effect may have been torn down (unmount / re-run) while the
+            // fetch was in flight — bail before mutating state or dispatching,
+            // matching the guards after the auth/first-run awaits above.
+            if (cancelled.current) return;
             if (deps.firstRunCompletionCommittedRef.current) {
               deps.setFirstRunLoading(false);
               dispatch({ type: "FIRST_RUN_COMPLETE" });
