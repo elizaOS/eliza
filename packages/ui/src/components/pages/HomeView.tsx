@@ -11,6 +11,10 @@ import { useTranslation } from "../../state/TranslationContext";
 import { AppIdentityTile } from "../apps/app-identity";
 import { getHomeGridApps } from "../apps/home-grid-apps";
 import { formatEta } from "../local-inference/hub-utils";
+import {
+  GLASS_COMPOSER_CLASS,
+  GlassIconButton,
+} from "../shell/glass-composer";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { usePullGesture } from "../shell/use-pull-gesture";
 import { Button } from "../ui/button";
@@ -115,12 +119,13 @@ function ExpandedOrbOverlay({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-30 transition-[background,backdrop-filter] duration-500",
+        "absolute inset-0 z-30 transition-[background-color] duration-500",
         isOpen ? "bg-black/35 backdrop-blur-sm" : "bg-transparent",
       )}
       data-testid="home-orb-expanded"
       onPointerDown={onOverlayPointerDown}
       onPointerUp={onOverlayPointerUp}
+      onPointerCancel={() => { dragStart.current = null; }}
     >
       {/* Controls — above the orb, fade in after orb starts expanding */}
       <div
@@ -188,7 +193,7 @@ function ExpandedOrbOverlay({
         }
       >
         {/* Inner ring pulses while voice is active */}
-        <div className="absolute inset-0 animate-pulse rounded-full border border-white/15" />
+        <div className="absolute inset-0 animate-pulse rounded-full border border-white/10" />
         <div
           className="absolute inset-[12%] rounded-full border border-white/10"
           style={{ animation: "pulse 2.4s ease-in-out 0.6s infinite" }}
@@ -268,13 +273,6 @@ export function HomeView(): React.JSX.Element {
     return /something went wrong on my end/i.test(latestAssistant.content);
   }, [latestAssistant]);
 
-  // Last 8 words of the latest assistant message — shown beneath the orb overlay.
-  const latestAssistantWords = useMemo(() => {
-    const text = latestAssistant?.content.trim() ?? "";
-    if (!text) return null;
-    const words = text.split(/\s+/).slice(-8);
-    return words.join(" ");
-  }, [latestAssistant]);
 
   // Transcript line: chunk long assistant text into ~14-word groups and cycle
   // through them, so we never render a long paragraph on the homescreen.
@@ -365,7 +363,11 @@ export function HomeView(): React.JSX.Element {
           onMuteToggle={toggleOrbMute}
           muted={orbMuted}
           transcription={latestUserText}
-          assistantText={latestAssistantWords ?? ""}
+          assistantText={
+            (latestAssistant?.content.trim().length ?? 0) <= 60
+              ? (latestAssistant?.content.trim() ?? "")
+              : ""
+          }
         />
       ) : null}
 
@@ -377,6 +379,7 @@ export function HomeView(): React.JSX.Element {
           editingHome && "pointer-events-none opacity-0",
           orbExpanded && "pointer-events-none translate-y-12 opacity-0",
         )}
+        {...pullBindings}
       >
         {/* Transparent hit target over the WebGL orb — the canvas renders the
             actual glass orb visual; this sits invisibly on top for click/tap.
@@ -395,7 +398,6 @@ export function HomeView(): React.JSX.Element {
             Pull up here to open the chat, pull down to close it. */}
         <div
           className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-6 pt-[calc(var(--safe-area-top,0px)+22vh)]"
-          {...pullBindings}
         >
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -433,7 +435,7 @@ export function HomeView(): React.JSX.Element {
 
           <div className="flex-1" aria-hidden />
 
-          <HomeNotifications />
+          {!chatOpen && <HomeNotifications />}
         </div>
 
         <HomeChatPill
@@ -949,7 +951,7 @@ function HomeChatPill({
           {/* Recent messages */}
           {recentMessages.length > 0 ? (
             <ol
-              className="flex flex-col gap-1 px-3 pb-2"
+              className="flex flex-col gap-1 px-3 pb-2 overflow-y-auto max-h-[35vh]"
               data-testid="home-recent-chats"
               aria-label={t("homeview.composer.recentChat", {
                 defaultValue: "Recent chat",
@@ -973,63 +975,63 @@ function HomeChatPill({
             </ol>
           ) : null}
 
-          {/* Composer — draft text stays in input until sent, no bubble preview */}
-          <div className="flex items-center gap-1.5 border-t border-white/10 px-2 py-2">
-            <Input
-              ref={inputRef}
-              type="text"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  sendDraft();
+          {/* Composer — refractive glass bar; draft text stays in input until sent, no bubble preview */}
+          <div className="mx-2">
+            <div className={cn("px-2 py-1.5", GLASS_COMPOSER_CLASS)}>
+              <Input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendDraft();
+                  }
+                }}
+                placeholder={
+                  agentBooting
+                    ? t("chat.agentStarting", {
+                        defaultValue: "Starting Eliza...",
+                      })
+                    : t("homeview.composer.placeholder", {
+                        defaultValue: "Ask Eliza...",
+                      })
                 }
-              }}
-              placeholder={
-                agentBooting
-                  ? t("chat.agentStarting", {
-                      defaultValue: "Starting Eliza...",
-                    })
-                  : t("homeview.composer.placeholder", {
-                      defaultValue: "Ask Eliza...",
-                    })
-              }
-              aria-label={t("homeview.composer.messageLabel", {
-                defaultValue: "Message Eliza",
-              })}
-              data-testid="home-chat-input"
-              style={{ outline: "none" }}
-              className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-white placeholder:text-white/45 focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-            {hasDraft ? (
-              <Button
-                type="button"
-                size="icon"
-                aria-label={t("homeview.composer.send", {
-                  defaultValue: "Send message",
+                aria-label={t("homeview.composer.messageLabel", {
+                  defaultValue: "Message Eliza",
                 })}
-                disabled={!canSend}
-                onClick={sendDraft}
-                className="shrink-0 rounded text-bg disabled:opacity-45"
-              >
-                <Send className="h-4 w-4" aria-hidden />
-              </Button>
-            ) : (
-              <MicButton
-                recording={controller?.recording ?? false}
-                disabled={!canUseComposer}
-                onTap={() => controller?.toggleRecording()}
-                onHoldStart={() => controller?.startRecording()}
-                onHoldEnd={() => controller?.stopRecording()}
-                startLabel={t("homeview.composer.startVoice", {
-                  defaultValue: "Start voice input",
-                })}
-                stopLabel={t("homeview.composer.stopVoice", {
-                  defaultValue: "Stop voice input",
-                })}
+                data-testid="home-chat-input"
+                style={{ outline: "none" }}
+                className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-txt placeholder:text-txt/50 focus-visible:ring-0 focus-visible:ring-offset-0"
               />
-            )}
+              {hasDraft ? (
+                <GlassIconButton
+                  icon="send"
+                  label={t("homeview.composer.send", {
+                    defaultValue: "Send message",
+                  })}
+                  disabled={!canSend}
+                  onClick={sendDraft}
+                />
+              ) : (
+                <GlassIconButton
+                  icon="mic"
+                  active={controller?.recording ?? false}
+                  disabled={!canUseComposer}
+                  label={
+                    controller?.recording
+                      ? t("homeview.composer.stopVoice", {
+                          defaultValue: "Stop voice input",
+                        })
+                      : t("homeview.composer.startVoice", {
+                          defaultValue: "Start voice input",
+                        })
+                  }
+                  onClick={() => controller?.toggleRecording()}
+                />
+              )}
+            </div>
           </div>
         </div>
       ) : null}

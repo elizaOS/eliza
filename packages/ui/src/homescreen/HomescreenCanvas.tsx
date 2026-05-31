@@ -320,31 +320,13 @@ export function HomescreenCanvas({
     setSceneRef.current?.(scene);
   }, [scene]);
 
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    pointerRef.current.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-  };
-
   return (
     <div
       ref={containerRef}
       data-testid="homescreen-canvas"
       className={className}
       style={{ position: "absolute", inset: 0 }}
-      onPointerMove={onPointerMove}
-      onPointerDown={() => {
-        pointerRef.current.down = true;
-      }}
-      onPointerUp={() => {
-        pointerRef.current.down = false;
-      }}
-      onPointerCancel={() => {
-        pointerRef.current.down = false;
-      }}
       onPointerLeave={() => {
-        // A release outside the canvas never fires pointerup here; clear the
-        // held state on exit so scenes don't latch a stuck "pressed" pointer.
         pointerRef.current.down = false;
       }}
     />

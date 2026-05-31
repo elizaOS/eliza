@@ -230,7 +230,7 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   const fg = faceCanvas.getContext("2d");
   // Background matches the sky so the disk blends into the refracted
   // environment — the face reads as a glowing mark, not a dark card.
-  const cardBg = `#${sky.clone().multiplyScalar(0.55).getHexString()}`;
+  const cardBg = `#${sky.clone().multiplyScalar(0.9).getHexString()}`;
   const paintFaceCard = (): void => {
     if (!fg) return;
     fg.fillStyle = cardBg;

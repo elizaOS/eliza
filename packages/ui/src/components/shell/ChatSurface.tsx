@@ -1,8 +1,8 @@
-import { Send } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext";
+import { GLASS_COMPOSER_CLASS, GlassIconButton } from "./glass-composer";
 import type { ShellMessage } from "./shell-state";
 
 export interface ChatSurfaceProps {
@@ -95,66 +95,49 @@ export function ChatSurface({
           </ul>
         )}
       </div>
-      <div className="border-t border-border/30 p-2">
-        <div className="mb-1 flex justify-center">
-          <button
-            type="button"
-            aria-label={
-              recording
-                ? t("chatsurface.stopVoice", {
-                    defaultValue: "Stop voice input",
-                  })
-                : t("chatsurface.startVoice", {
-                    defaultValue: "Start voice input",
-                  })
+      {/* Refractive-glass composer: a well-defined glass bar (no plain top
+          border) holding the input and the matching mic + send buttons. */}
+      <div className={cn("m-2", GLASS_COMPOSER_CLASS)}>
+        <input
+          type="text"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              handleSend();
             }
-            aria-pressed={recording}
-            disabled={!onToggleRecording}
-            onClick={onToggleRecording}
-            className={cn(
-              "min-h-8 bg-transparent px-2 text-xs font-semibold transition-colors [text-shadow:0_2px_8px_rgba(0,0,0,0.55)]",
-              onToggleRecording ? "cursor-pointer" : "opacity-60",
-              recording ? "animate-pulse text-txt" : "text-muted",
-              "focus-visible:outline-none focus-visible:underline",
-            )}
-          >
-            {recording
-              ? t("chatsurface.listening", { defaultValue: "Listening" })
-              : t("chatsurface.notListening", {
-                  defaultValue: "Not listening",
-                })}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={t("chatsurface.inputPlaceholder", {
-              defaultValue: "Ask Eliza…",
-            })}
-            disabled={!canSend}
-            aria-label={t("chatsurface.messageLabel", {
-              defaultValue: "Message Eliza",
-            })}
-            className="flex-1 rounded-xs border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
-          />
-          <button
-            type="button"
-            aria-label={t("chatsurface.send", { defaultValue: "Send message" })}
-            disabled={!canSendNow}
-            onClick={handleSend}
-            className="grid h-10 w-10 place-items-center rounded-full bg-accent text-bg disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-          >
-            <Send className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
+          }}
+          placeholder={t("chatsurface.inputPlaceholder", {
+            defaultValue: "Ask Eliza…",
+          })}
+          disabled={!canSend}
+          aria-label={t("chatsurface.messageLabel", {
+            defaultValue: "Message Eliza",
+          })}
+          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50 focus-visible:outline-none focus-visible:ring-0 disabled:opacity-50"
+        />
+        <GlassIconButton
+          icon="mic"
+          label={
+            recording
+              ? t("chatsurface.stopVoice", {
+                  defaultValue: "Stop voice input",
+                })
+              : t("chatsurface.startVoice", {
+                  defaultValue: "Start voice input",
+                })
+          }
+          active={recording}
+          disabled={!onToggleRecording}
+          onClick={onToggleRecording}
+        />
+        <GlassIconButton
+          icon="send"
+          label={t("chatsurface.send", { defaultValue: "Send message" })}
+          disabled={!canSendNow}
+          onClick={handleSend}
+        />
       </div>
     </div>
   );
