@@ -452,7 +452,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * method wraps this in a retry loop to handle port collisions automatically.
    */
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
-    const { agentId, agentName, environmentVars, organizationId } = config;
+    const { agentId, agentName, environmentVars, organizationId, agentConfig } = config;
 
     // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -576,6 +576,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...proxyEnv,
       AGENT_NAME: agentName,
       ELIZA_CLOUD_PROVISIONED: "1",
+      // Path A: inject the full character so the container boots AS this
+      // agent (e.g. "Nyx") instead of the bundled default "Eliza" preset.
+      // Consumed by packages/agent/src/runtime/sandbox-character.ts. Omitted
+      // when the caller has no agent_config (the runtime then keeps its prior
+      // default-character behaviour).
+      ...(agentConfig && typeof agentConfig === "object"
+        ? { ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(agentConfig) }
+        : {}),
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
       // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both

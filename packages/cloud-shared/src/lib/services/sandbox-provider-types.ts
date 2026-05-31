@@ -19,6 +19,13 @@ export interface SandboxCreateConfig {
   agentName: string;
   organizationId: string;
   environmentVars: Record<string, string>;
+  /**
+   * Full character config for this agent (the `agent_sandboxes.agent_config`
+   * row). When present, the provider injects it as ELIZA_AGENT_CHARACTER_JSON
+   * so the container boots AS this character instead of the bundled default
+   * preset. See packages/agent/src/runtime/sandbox-character.ts.
+   */
+  agentConfig?: Record<string, unknown> | null;
   snapshotId?: string;
   resources?: { vcpus?: number; memoryMb?: number };
   timeout?: number;
