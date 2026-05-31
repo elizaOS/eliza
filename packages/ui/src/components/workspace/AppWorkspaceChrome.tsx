@@ -21,7 +21,6 @@ import {
   type WorkspaceMobileSidebarControls,
   WorkspaceMobileSidebarControlsContext,
 } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls";
-import { ChatView } from "../pages/ChatView.js";
 import {
   PageScopedChatPane,
   type PageScopedChatPaneProps,
@@ -452,13 +451,15 @@ export function AppWorkspaceChrome({
     [effectiveCollapsed, handleToggle],
   );
 
+  // Chat is the global floating pill — the chrome no longer falls back to an
+  // in-view ChatView. A page may still pass an explicit `chat` node or a
+  // `chatScope` page-scoped pane, but every current caller passes chatDisabled
+  // so this content is not rendered.
   const chatContent =
     chat ??
     (chatScope ? (
       <PageScopedChatPane {...pageScopedChatPaneProps} scope={chatScope} />
-    ) : (
-      <ChatView variant="default" />
-    ));
+    ) : null);
 
   return (
     <WorkspaceMobileSidebarControlsContext.Provider
