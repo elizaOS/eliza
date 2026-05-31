@@ -203,6 +203,9 @@ const CONNECTOR_TOKEN_ENV_KEYS = [
   "TELEGRAM_BOT_TOKEN",
 ] as const;
 
+/** Connector keys whose config blocks would let the runtime re-derive a token. */
+const CONNECTOR_CONFIG_KEYS = ["discord", "telegram"] as const;
+
 /**
  * Resolve the double-connect seam for a provisioned container.
  *
@@ -211,15 +214,20 @@ const CONNECTOR_TOKEN_ENV_KEYS = [
  * ALSO connected with the same bot token we would get token contention and
  * duplicate replies. So, unless the operator has explicitly made the
  * container the connector owner (ELIZA_SANDBOX_OWNS_CONNECTORS=1), we strip
- * the connector bot tokens from the environment BEFORE plugin auto-enable, so
- * the container runs purely as an inference target reached via
- * /agents/<id>/message.
+ * the connector bot tokens from the environment AND clear the matching
+ * config.connectors blocks so the container runs purely as an inference
+ * target reached via /agents/<id>/message.
+ *
+ * IMPORTANT: callers must run this AFTER applyConnectorSecretsToEnv (which can
+ * repopulate the env tokens from config.connectors) and BEFORE plugin
+ * auto-enable / resolvePlugins.
  *
  * No-op outside a provisioned container (ELIZA_CLOUD_PROVISIONED != "1"), so
  * local dev and the in-worker path are unaffected.
  */
 export function applySandboxConnectorOwnership(
   env: NodeJS.ProcessEnv = process.env,
+  config?: ElizaConfig,
 ): void {
   if (env.ELIZA_CLOUD_PROVISIONED !== "1") return;
   if (sandboxOwnsConnectors(env)) return;
@@ -231,6 +239,19 @@ export function applySandboxConnectorOwnership(
       stripped.push(key);
     }
   }
+
+  // Also drop the connector config blocks so nothing downstream
+  // (plugin auto-enable, a later applyConnectorSecretsToEnv) re-derives the
+  // token from config and reconnects.
+  if (config?.connectors && typeof config.connectors === "object") {
+    for (const key of CONNECTOR_CONFIG_KEYS) {
+      if (key in config.connectors) {
+        delete (config.connectors as Record<string, unknown>)[key];
+        stripped.push(`config.connectors.${key}`);
+      }
+    }
+  }
+
   if (stripped.length > 0) {
     logger.info(
       `[sandbox-character] Gateway owns connectors; not connecting directly (cleared ${stripped.join(", ")} to avoid double-connect). Set ELIZA_SANDBOX_OWNS_CONNECTORS=1 to connect from the container instead.`,

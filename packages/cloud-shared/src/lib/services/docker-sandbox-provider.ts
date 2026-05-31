@@ -151,6 +151,39 @@ function resolveStewardRefreshServiceToken(): string {
   return "";
 }
 
+/**
+ * Strip secret-bearing fields from a persisted character before it is injected
+ * into the container as ELIZA_AGENT_CHARACTER_JSON. The container receives the
+ * actual connector tokens / API keys via dedicated env vars; embedding them in
+ * the character JSON would expose them via /proc/<pid>/environ and crash
+ * diagnostics for no benefit. Redacts:
+ *   - top-level `secrets`
+ *   - `settings.secrets`
+ *   - per-connector `token` / `botToken` / `apiToken` under `connectors.*`
+ * Persona + connector POLICY fields (dmPolicy, messagePrefix, enabled, etc.)
+ * are preserved so the runtime still loads the right character + behaviour.
+ */
+function redactCharacterSecrets(character: Record<string, unknown>): Record<string, unknown> {
+  // Deep clone so we never mutate the caller's DB-derived object.
+  const clone = JSON.parse(JSON.stringify(character)) as Record<string, unknown>;
+  delete clone.secrets;
+  if (clone.settings && typeof clone.settings === "object") {
+    delete (clone.settings as Record<string, unknown>).secrets;
+  }
+  const connectors = clone.connectors;
+  if (connectors && typeof connectors === "object") {
+    for (const value of Object.values(connectors as Record<string, unknown>)) {
+      if (value && typeof value === "object") {
+        const c = value as Record<string, unknown>;
+        delete c.token;
+        delete c.botToken;
+        delete c.apiToken;
+      }
+    }
+  }
+  return clone;
+}
+
 function resolveStewardElizaPluginPackage(): string {
   const env = getCloudAwareEnv();
   return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
@@ -577,13 +610,19 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...proxyEnv,
       AGENT_NAME: agentName,
       ELIZA_CLOUD_PROVISIONED: "1",
-      // Path A: inject the full character so the container boots AS this
-      // agent (e.g. "Nyx") instead of the bundled default "Eliza" preset.
-      // Consumed by packages/agent/src/runtime/sandbox-character.ts. Omitted
-      // when the caller has no agent_config (the runtime then keeps its prior
-      // default-character behaviour).
+      // Path A: inject the character so the container boots AS this agent
+      // (e.g. "Nyx") instead of the bundled default "Eliza" preset. Consumed
+      // by packages/agent/src/runtime/sandbox-character.ts. Secret-bearing
+      // fields (connector tokens, secrets, settings.secrets) are redacted
+      // first — the runtime receives connector tokens via dedicated env vars
+      // (DISCORD_API_TOKEN, TELEGRAM_BOT_TOKEN) and never needs them embedded
+      // in the character JSON, which would otherwise be visible via
+      // /proc/<pid>/environ and crash diagnostics. Omitted when the caller has
+      // no agent_config (the runtime keeps its default-character behaviour).
       ...(agentConfig && typeof agentConfig === "object"
-        ? { ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(agentConfig) }
+        ? {
+            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
+          }
         : {}),
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,

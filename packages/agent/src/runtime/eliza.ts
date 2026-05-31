@@ -3282,18 +3282,21 @@ export async function startEliza(
   }
 
   // 2. Push channel secrets into process.env for plugin discovery
+  applyConnectorSecretsToEnv(config);
   // Cloud sandbox (Path A / double-connect): in a provisioned container that
-  // does NOT own its connectors, strip the connector bot tokens BEFORE
-  // auto-enable so the container does not also connect to Discord/Telegram
-  // while the gateway holds the connection. No-op outside a provisioned
-  // container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
+  // does NOT own its connectors, strip the connector bot tokens so the
+  // container does not also connect to Discord/Telegram while the gateway
+  // holds the connection. MUST run AFTER applyConnectorSecretsToEnv (which can
+  // repopulate the tokens from config.connectors) and BEFORE plugin
+  // auto-enable / resolvePlugins below. Also clears the matching config
+  // connector blocks so nothing downstream re-derives the token. No-op
+  // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
   {
     const { applySandboxConnectorOwnership } = await import(
       "./sandbox-character.ts"
     );
-    applySandboxConnectorOwnership();
+    applySandboxConnectorOwnership(process.env, config);
   }
-  applyConnectorSecretsToEnv(config);
   // Kick off the Discord App ID lookup (network, up to a 10s timeout) without
   // blocking. It only writes DISCORD_APPLICATION_ID, which nothing reads until
   // the Discord connector initializes during plugin resolution — so we await it

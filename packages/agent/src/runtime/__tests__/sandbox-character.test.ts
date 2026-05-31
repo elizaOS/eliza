@@ -108,7 +108,7 @@ describe("connector ownership (double-connect resolution)", () => {
 });
 
 describe("applySandboxConnectorOwnership", () => {
-  it("strips connector tokens in a provisioned container by default", async () => {
+  it("strips connector tokens AND config blocks in a provisioned container by default", async () => {
     const { applySandboxConnectorOwnership } = await import(
       "../sandbox-character.ts"
     );
@@ -118,10 +118,18 @@ describe("applySandboxConnectorOwnership", () => {
       DISCORD_BOT_TOKEN: "tok",
       TELEGRAM_BOT_TOKEN: "tg",
     };
-    applySandboxConnectorOwnership(env);
+    const config = {
+      connectors: { discord: { token: "x" }, telegram: { botToken: "y" } },
+    } as never;
+    applySandboxConnectorOwnership(env, config);
     expect(env.DISCORD_API_TOKEN).toBeUndefined();
     expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
     expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    // Config connector blocks must be cleared so nothing re-derives the token.
+    const conns = (config as { connectors: Record<string, unknown> })
+      .connectors;
+    expect(conns.discord).toBeUndefined();
+    expect(conns.telegram).toBeUndefined();
   });
 
   it("keeps connector tokens when the container owns connectors", async () => {
