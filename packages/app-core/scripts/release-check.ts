@@ -87,7 +87,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "canary"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -216,7 +216,7 @@ const requiredWorkflowSnippets = [
   "bun run test:desktop:playwright",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
-  "https://github.com/blackboardsh/electrobun.git",
+  "https://github.com/elizaOS/electrobun.git",
   '"sparse-checkout", "set", "package"',
   'writeGitHubEnv("ELECTROBUN_RCEDIT_PACKAGE_JSON", resolvedRceditPackageJson);',
   'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
@@ -273,7 +273,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "canary"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
   'run-postinstall: "true"',
