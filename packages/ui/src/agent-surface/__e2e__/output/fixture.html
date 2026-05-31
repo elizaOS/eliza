@@ -26,291 +26,6 @@
     mod
   ));
 
-  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
-  var require_scheduler_production = __commonJS({
-    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
-      "use strict";
-      function push(heap, node) {
-        var index = heap.length;
-        heap.push(node);
-        a: for (; 0 < index; ) {
-          var parentIndex = index - 1 >>> 1, parent = heap[parentIndex];
-          if (0 < compare(parent, node))
-            heap[parentIndex] = node, heap[index] = parent, index = parentIndex;
-          else break a;
-        }
-      }
-      function peek(heap) {
-        return 0 === heap.length ? null : heap[0];
-      }
-      function pop(heap) {
-        if (0 === heap.length) return null;
-        var first = heap[0], last = heap.pop();
-        if (last !== first) {
-          heap[0] = last;
-          a: for (var index = 0, length = heap.length, halfLength = length >>> 1; index < halfLength; ) {
-            var leftIndex = 2 * (index + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
-            if (0 > compare(left, last))
-              rightIndex < length && 0 > compare(right, left) ? (heap[index] = right, heap[rightIndex] = last, index = rightIndex) : (heap[index] = left, heap[leftIndex] = last, index = leftIndex);
-            else if (rightIndex < length && 0 > compare(right, last))
-              heap[index] = right, heap[rightIndex] = last, index = rightIndex;
-            else break a;
-          }
-        }
-        return first;
-      }
-      function compare(a, b) {
-        var diff = a.sortIndex - b.sortIndex;
-        return 0 !== diff ? diff : a.id - b.id;
-      }
-      exports.unstable_now = void 0;
-      if ("object" === typeof performance && "function" === typeof performance.now) {
-        localPerformance = performance;
-        exports.unstable_now = function() {
-          return localPerformance.now();
-        };
-      } else {
-        localDate = Date, initialTime = localDate.now();
-        exports.unstable_now = function() {
-          return localDate.now() - initialTime;
-        };
-      }
-      var localPerformance;
-      var localDate;
-      var initialTime;
-      var taskQueue = [];
-      var timerQueue = [];
-      var taskIdCounter = 1;
-      var currentTask = null;
-      var currentPriorityLevel = 3;
-      var isPerformingWork = false;
-      var isHostCallbackScheduled = false;
-      var isHostTimeoutScheduled = false;
-      var needsPaint = false;
-      var localSetTimeout = "function" === typeof setTimeout ? setTimeout : null;
-      var localClearTimeout = "function" === typeof clearTimeout ? clearTimeout : null;
-      var localSetImmediate = "undefined" !== typeof setImmediate ? setImmediate : null;
-      function advanceTimers(currentTime) {
-        for (var timer = peek(timerQueue); null !== timer; ) {
-          if (null === timer.callback) pop(timerQueue);
-          else if (timer.startTime <= currentTime)
-            pop(timerQueue), timer.sortIndex = timer.expirationTime, push(taskQueue, timer);
-          else break;
-          timer = peek(timerQueue);
-        }
-      }
-      function handleTimeout(currentTime) {
-        isHostTimeoutScheduled = false;
-        advanceTimers(currentTime);
-        if (!isHostCallbackScheduled)
-          if (null !== peek(taskQueue))
-            isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline());
-          else {
-            var firstTimer = peek(timerQueue);
-            null !== firstTimer && requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
-          }
-      }
-      var isMessageLoopRunning = false;
-      var taskTimeoutID = -1;
-      var frameInterval = 5;
-      var startTime = -1;
-      function shouldYieldToHost() {
-        return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
-      }
-      function performWorkUntilDeadline() {
-        needsPaint = false;
-        if (isMessageLoopRunning) {
-          var currentTime = exports.unstable_now();
-          startTime = currentTime;
-          var hasMoreWork = true;
-          try {
-            a: {
-              isHostCallbackScheduled = false;
-              isHostTimeoutScheduled && (isHostTimeoutScheduled = false, localClearTimeout(taskTimeoutID), taskTimeoutID = -1);
-              isPerformingWork = true;
-              var previousPriorityLevel = currentPriorityLevel;
-              try {
-                b: {
-                  advanceTimers(currentTime);
-                  for (currentTask = peek(taskQueue); null !== currentTask && !(currentTask.expirationTime > currentTime && shouldYieldToHost()); ) {
-                    var callback = currentTask.callback;
-                    if ("function" === typeof callback) {
-                      currentTask.callback = null;
-                      currentPriorityLevel = currentTask.priorityLevel;
-                      var continuationCallback = callback(
-                        currentTask.expirationTime <= currentTime
-                      );
-                      currentTime = exports.unstable_now();
-                      if ("function" === typeof continuationCallback) {
-                        currentTask.callback = continuationCallback;
-                        advanceTimers(currentTime);
-                        hasMoreWork = true;
-                        break b;
-                      }
-                      currentTask === peek(taskQueue) && pop(taskQueue);
-                      advanceTimers(currentTime);
-                    } else pop(taskQueue);
-                    currentTask = peek(taskQueue);
-                  }
-                  if (null !== currentTask) hasMoreWork = true;
-                  else {
-                    var firstTimer = peek(timerQueue);
-                    null !== firstTimer && requestHostTimeout(
-                      handleTimeout,
-                      firstTimer.startTime - currentTime
-                    );
-                    hasMoreWork = false;
-                  }
-                }
-                break a;
-              } finally {
-                currentTask = null, currentPriorityLevel = previousPriorityLevel, isPerformingWork = false;
-              }
-              hasMoreWork = void 0;
-            }
-          } finally {
-            hasMoreWork ? schedulePerformWorkUntilDeadline() : isMessageLoopRunning = false;
-          }
-        }
-      }
-      var schedulePerformWorkUntilDeadline;
-      if ("function" === typeof localSetImmediate)
-        schedulePerformWorkUntilDeadline = function() {
-          localSetImmediate(performWorkUntilDeadline);
-        };
-      else if ("undefined" !== typeof MessageChannel) {
-        channel = new MessageChannel(), port = channel.port2;
-        channel.port1.onmessage = performWorkUntilDeadline;
-        schedulePerformWorkUntilDeadline = function() {
-          port.postMessage(null);
-        };
-      } else
-        schedulePerformWorkUntilDeadline = function() {
-          localSetTimeout(performWorkUntilDeadline, 0);
-        };
-      var channel;
-      var port;
-      function requestHostTimeout(callback, ms) {
-        taskTimeoutID = localSetTimeout(function() {
-          callback(exports.unstable_now());
-        }, ms);
-      }
-      exports.unstable_IdlePriority = 5;
-      exports.unstable_ImmediatePriority = 1;
-      exports.unstable_LowPriority = 4;
-      exports.unstable_NormalPriority = 3;
-      exports.unstable_Profiling = null;
-      exports.unstable_UserBlockingPriority = 2;
-      exports.unstable_cancelCallback = function(task) {
-        task.callback = null;
-      };
-      exports.unstable_forceFrameRate = function(fps) {
-        0 > fps || 125 < fps ? console.error(
-          "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
-        ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
-      };
-      exports.unstable_getCurrentPriorityLevel = function() {
-        return currentPriorityLevel;
-      };
-      exports.unstable_next = function(eventHandler) {
-        switch (currentPriorityLevel) {
-          case 1:
-          case 2:
-          case 3:
-            var priorityLevel = 3;
-            break;
-          default:
-            priorityLevel = currentPriorityLevel;
-        }
-        var previousPriorityLevel = currentPriorityLevel;
-        currentPriorityLevel = priorityLevel;
-        try {
-          return eventHandler();
-        } finally {
-          currentPriorityLevel = previousPriorityLevel;
-        }
-      };
-      exports.unstable_requestPaint = function() {
-        needsPaint = true;
-      };
-      exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
-        switch (priorityLevel) {
-          case 1:
-          case 2:
-          case 3:
-          case 4:
-          case 5:
-            break;
-          default:
-            priorityLevel = 3;
-        }
-        var previousPriorityLevel = currentPriorityLevel;
-        currentPriorityLevel = priorityLevel;
-        try {
-          return eventHandler();
-        } finally {
-          currentPriorityLevel = previousPriorityLevel;
-        }
-      };
-      exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
-        var currentTime = exports.unstable_now();
-        "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
-        switch (priorityLevel) {
-          case 1:
-            var timeout = -1;
-            break;
-          case 2:
-            timeout = 250;
-            break;
-          case 5:
-            timeout = 1073741823;
-            break;
-          case 4:
-            timeout = 1e4;
-            break;
-          default:
-            timeout = 5e3;
-        }
-        timeout = options + timeout;
-        priorityLevel = {
-          id: taskIdCounter++,
-          callback,
-          priorityLevel,
-          startTime: options,
-          expirationTime: timeout,
-          sortIndex: -1
-        };
-        options > currentTime ? (priorityLevel.sortIndex = options, push(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
-        return priorityLevel;
-      };
-      exports.unstable_shouldYield = shouldYieldToHost;
-      exports.unstable_wrapCallback = function(callback) {
-        var parentPriorityLevel = currentPriorityLevel;
-        return function() {
-          var previousPriorityLevel = currentPriorityLevel;
-          currentPriorityLevel = parentPriorityLevel;
-          try {
-            return callback.apply(this, arguments);
-          } finally {
-            currentPriorityLevel = previousPriorityLevel;
-          }
-        };
-      };
-    }
-  });
-
-  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
-  var require_scheduler = __commonJS({
-    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
-      "use strict";
-      if (true) {
-        module.exports = require_scheduler_production();
-      } else {
-        module.exports = null;
-      }
-    }
-  });
-
   // node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js
   var require_react_production = __commonJS({
     "node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js"(exports) {
@@ -758,6 +473,291 @@
       "use strict";
       if (true) {
         module.exports = require_react_production();
+      } else {
+        module.exports = null;
+      }
+    }
+  });
+
+  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
+  var require_scheduler_production = __commonJS({
+    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
+      "use strict";
+      function push(heap, node) {
+        var index = heap.length;
+        heap.push(node);
+        a: for (; 0 < index; ) {
+          var parentIndex = index - 1 >>> 1, parent = heap[parentIndex];
+          if (0 < compare(parent, node))
+            heap[parentIndex] = node, heap[index] = parent, index = parentIndex;
+          else break a;
+        }
+      }
+      function peek(heap) {
+        return 0 === heap.length ? null : heap[0];
+      }
+      function pop(heap) {
+        if (0 === heap.length) return null;
+        var first = heap[0], last = heap.pop();
+        if (last !== first) {
+          heap[0] = last;
+          a: for (var index = 0, length = heap.length, halfLength = length >>> 1; index < halfLength; ) {
+            var leftIndex = 2 * (index + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
+            if (0 > compare(left, last))
+              rightIndex < length && 0 > compare(right, left) ? (heap[index] = right, heap[rightIndex] = last, index = rightIndex) : (heap[index] = left, heap[leftIndex] = last, index = leftIndex);
+            else if (rightIndex < length && 0 > compare(right, last))
+              heap[index] = right, heap[rightIndex] = last, index = rightIndex;
+            else break a;
+          }
+        }
+        return first;
+      }
+      function compare(a, b) {
+        var diff = a.sortIndex - b.sortIndex;
+        return 0 !== diff ? diff : a.id - b.id;
+      }
+      exports.unstable_now = void 0;
+      if ("object" === typeof performance && "function" === typeof performance.now) {
+        localPerformance = performance;
+        exports.unstable_now = function() {
+          return localPerformance.now();
+        };
+      } else {
+        localDate = Date, initialTime = localDate.now();
+        exports.unstable_now = function() {
+          return localDate.now() - initialTime;
+        };
+      }
+      var localPerformance;
+      var localDate;
+      var initialTime;
+      var taskQueue = [];
+      var timerQueue = [];
+      var taskIdCounter = 1;
+      var currentTask = null;
+      var currentPriorityLevel = 3;
+      var isPerformingWork = false;
+      var isHostCallbackScheduled = false;
+      var isHostTimeoutScheduled = false;
+      var needsPaint = false;
+      var localSetTimeout = "function" === typeof setTimeout ? setTimeout : null;
+      var localClearTimeout = "function" === typeof clearTimeout ? clearTimeout : null;
+      var localSetImmediate = "undefined" !== typeof setImmediate ? setImmediate : null;
+      function advanceTimers(currentTime) {
+        for (var timer = peek(timerQueue); null !== timer; ) {
+          if (null === timer.callback) pop(timerQueue);
+          else if (timer.startTime <= currentTime)
+            pop(timerQueue), timer.sortIndex = timer.expirationTime, push(taskQueue, timer);
+          else break;
+          timer = peek(timerQueue);
+        }
+      }
+      function handleTimeout(currentTime) {
+        isHostTimeoutScheduled = false;
+        advanceTimers(currentTime);
+        if (!isHostCallbackScheduled)
+          if (null !== peek(taskQueue))
+            isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline());
+          else {
+            var firstTimer = peek(timerQueue);
+            null !== firstTimer && requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
+          }
+      }
+      var isMessageLoopRunning = false;
+      var taskTimeoutID = -1;
+      var frameInterval = 5;
+      var startTime = -1;
+      function shouldYieldToHost() {
+        return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
+      }
+      function performWorkUntilDeadline() {
+        needsPaint = false;
+        if (isMessageLoopRunning) {
+          var currentTime = exports.unstable_now();
+          startTime = currentTime;
+          var hasMoreWork = true;
+          try {
+            a: {
+              isHostCallbackScheduled = false;
+              isHostTimeoutScheduled && (isHostTimeoutScheduled = false, localClearTimeout(taskTimeoutID), taskTimeoutID = -1);
+              isPerformingWork = true;
+              var previousPriorityLevel = currentPriorityLevel;
+              try {
+                b: {
+                  advanceTimers(currentTime);
+                  for (currentTask = peek(taskQueue); null !== currentTask && !(currentTask.expirationTime > currentTime && shouldYieldToHost()); ) {
+                    var callback = currentTask.callback;
+                    if ("function" === typeof callback) {
+                      currentTask.callback = null;
+                      currentPriorityLevel = currentTask.priorityLevel;
+                      var continuationCallback = callback(
+                        currentTask.expirationTime <= currentTime
+                      );
+                      currentTime = exports.unstable_now();
+                      if ("function" === typeof continuationCallback) {
+                        currentTask.callback = continuationCallback;
+                        advanceTimers(currentTime);
+                        hasMoreWork = true;
+                        break b;
+                      }
+                      currentTask === peek(taskQueue) && pop(taskQueue);
+                      advanceTimers(currentTime);
+                    } else pop(taskQueue);
+                    currentTask = peek(taskQueue);
+                  }
+                  if (null !== currentTask) hasMoreWork = true;
+                  else {
+                    var firstTimer = peek(timerQueue);
+                    null !== firstTimer && requestHostTimeout(
+                      handleTimeout,
+                      firstTimer.startTime - currentTime
+                    );
+                    hasMoreWork = false;
+                  }
+                }
+                break a;
+              } finally {
+                currentTask = null, currentPriorityLevel = previousPriorityLevel, isPerformingWork = false;
+              }
+              hasMoreWork = void 0;
+            }
+          } finally {
+            hasMoreWork ? schedulePerformWorkUntilDeadline() : isMessageLoopRunning = false;
+          }
+        }
+      }
+      var schedulePerformWorkUntilDeadline;
+      if ("function" === typeof localSetImmediate)
+        schedulePerformWorkUntilDeadline = function() {
+          localSetImmediate(performWorkUntilDeadline);
+        };
+      else if ("undefined" !== typeof MessageChannel) {
+        channel = new MessageChannel(), port = channel.port2;
+        channel.port1.onmessage = performWorkUntilDeadline;
+        schedulePerformWorkUntilDeadline = function() {
+          port.postMessage(null);
+        };
+      } else
+        schedulePerformWorkUntilDeadline = function() {
+          localSetTimeout(performWorkUntilDeadline, 0);
+        };
+      var channel;
+      var port;
+      function requestHostTimeout(callback, ms) {
+        taskTimeoutID = localSetTimeout(function() {
+          callback(exports.unstable_now());
+        }, ms);
+      }
+      exports.unstable_IdlePriority = 5;
+      exports.unstable_ImmediatePriority = 1;
+      exports.unstable_LowPriority = 4;
+      exports.unstable_NormalPriority = 3;
+      exports.unstable_Profiling = null;
+      exports.unstable_UserBlockingPriority = 2;
+      exports.unstable_cancelCallback = function(task) {
+        task.callback = null;
+      };
+      exports.unstable_forceFrameRate = function(fps) {
+        0 > fps || 125 < fps ? console.error(
+          "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
+        ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
+      };
+      exports.unstable_getCurrentPriorityLevel = function() {
+        return currentPriorityLevel;
+      };
+      exports.unstable_next = function(eventHandler) {
+        switch (currentPriorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+            var priorityLevel = 3;
+            break;
+          default:
+            priorityLevel = currentPriorityLevel;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_requestPaint = function() {
+        needsPaint = true;
+      };
+      exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
+        switch (priorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+          case 4:
+          case 5:
+            break;
+          default:
+            priorityLevel = 3;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
+        var currentTime = exports.unstable_now();
+        "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
+        switch (priorityLevel) {
+          case 1:
+            var timeout = -1;
+            break;
+          case 2:
+            timeout = 250;
+            break;
+          case 5:
+            timeout = 1073741823;
+            break;
+          case 4:
+            timeout = 1e4;
+            break;
+          default:
+            timeout = 5e3;
+        }
+        timeout = options + timeout;
+        priorityLevel = {
+          id: taskIdCounter++,
+          callback,
+          priorityLevel,
+          startTime: options,
+          expirationTime: timeout,
+          sortIndex: -1
+        };
+        options > currentTime ? (priorityLevel.sortIndex = options, push(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
+        return priorityLevel;
+      };
+      exports.unstable_shouldYield = shouldYieldToHost;
+      exports.unstable_wrapCallback = function(callback) {
+        var parentPriorityLevel = currentPriorityLevel;
+        return function() {
+          var previousPriorityLevel = currentPriorityLevel;
+          currentPriorityLevel = parentPriorityLevel;
+          try {
+            return callback.apply(this, arguments);
+          } finally {
+            currentPriorityLevel = previousPriorityLevel;
+          }
+        };
+      };
+    }
+  });
+
+  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
+  var require_scheduler = __commonJS({
+    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
+      "use strict";
+      if (true) {
+        module.exports = require_scheduler_production();
       } else {
         module.exports = null;
       }
@@ -12749,8 +12749,12 @@
   });
 
   // packages/ui/src/agent-surface/__e2e__/fixture.tsx
-  var import_client = __toESM(require_client(), 1);
   var import_react4 = __toESM(require_react(), 1);
+  var import_client = __toESM(require_client(), 1);
+
+  // packages/ui/src/agent-surface/AgentElementOverlay.tsx
+  var import_react2 = __toESM(require_react(), 1);
+  var import_react_dom = __toESM(require_react_dom(), 1);
 
   // packages/ui/src/agent-surface/AgentSurfaceContext.tsx
   var import_react = __toESM(require_react(), 1);
@@ -13030,8 +13034,6 @@
   }
 
   // packages/ui/src/agent-surface/AgentElementOverlay.tsx
-  var import_react2 = __toESM(require_react(), 1);
-  var import_react_dom = __toESM(require_react_dom(), 1);
   var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
   var noopSubscribe = () => () => {
   };
@@ -13116,6 +13118,71 @@
       ),
       document.body
     );
+  }
+
+  // packages/ui/src/agent-surface/capabilities.ts
+  function asString(value) {
+    return typeof value === "string" ? value : null;
+  }
+  function handleAgentSurfaceCapability(registry, capability, params) {
+    switch (capability) {
+      case "list-elements": {
+        const snapshot = registry.snapshot();
+        const role = asString(params?.role);
+        const group = asString(params?.group);
+        let elements = snapshot.elements;
+        if (role) elements = elements.filter((e) => e.role === role);
+        if (group) elements = elements.filter((e) => e.group === group);
+        return elements;
+      }
+      case "get-agent-state":
+        return registry.snapshot();
+      case "describe-element": {
+        const id = asString(params?.id);
+        if (!id) throw new Error("describe-element requires an `id` parameter");
+        const element = registry.describe(id);
+        if (!element) throw new Error(`No element registered with id "${id}"`);
+        return element;
+      }
+      case "get-focus": {
+        const focusedId = registry.getFocusedId();
+        return {
+          focusedId,
+          element: focusedId ? registry.describe(focusedId) : null
+        };
+      }
+      case "agent-click": {
+        const id = asString(params?.id);
+        if (!id) throw new Error("agent-click requires an `id` parameter");
+        return registry.click(id);
+      }
+      case "agent-fill": {
+        const id = asString(params?.id);
+        const value = asString(params?.value);
+        if (!id) throw new Error("agent-fill requires an `id` parameter");
+        if (value === null) {
+          throw new Error("agent-fill requires a string `value` parameter");
+        }
+        return registry.fill(id, value);
+      }
+      case "agent-focus": {
+        const id = asString(params?.id);
+        if (!id) throw new Error("agent-focus requires an `id` parameter");
+        return registry.focus(id);
+      }
+      case "agent-scroll-to": {
+        const id = asString(params?.id);
+        if (!id) throw new Error("agent-scroll-to requires an `id` parameter");
+        return registry.scrollTo(id);
+      }
+      case "set-highlight": {
+        const on = params?.on !== false;
+        registry.setHighlight(on);
+        return { highlighting: registry.isHighlighting() };
+      }
+      default:
+        throw new Error(`Unknown agent-surface capability "${capability}"`);
+    }
   }
 
   // node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
@@ -16293,71 +16360,6 @@
     );
   }
 
-  // packages/ui/src/agent-surface/capabilities.ts
-  function asString(value) {
-    return typeof value === "string" ? value : null;
-  }
-  function handleAgentSurfaceCapability(registry, capability, params) {
-    switch (capability) {
-      case "list-elements": {
-        const snapshot = registry.snapshot();
-        const role = asString(params?.role);
-        const group = asString(params?.group);
-        let elements = snapshot.elements;
-        if (role) elements = elements.filter((e) => e.role === role);
-        if (group) elements = elements.filter((e) => e.group === group);
-        return elements;
-      }
-      case "get-agent-state":
-        return registry.snapshot();
-      case "describe-element": {
-        const id = asString(params?.id);
-        if (!id) throw new Error("describe-element requires an `id` parameter");
-        const element = registry.describe(id);
-        if (!element) throw new Error(`No element registered with id "${id}"`);
-        return element;
-      }
-      case "get-focus": {
-        const focusedId = registry.getFocusedId();
-        return {
-          focusedId,
-          element: focusedId ? registry.describe(focusedId) : null
-        };
-      }
-      case "agent-click": {
-        const id = asString(params?.id);
-        if (!id) throw new Error("agent-click requires an `id` parameter");
-        return registry.click(id);
-      }
-      case "agent-fill": {
-        const id = asString(params?.id);
-        const value = asString(params?.value);
-        if (!id) throw new Error("agent-fill requires an `id` parameter");
-        if (value === null) {
-          throw new Error("agent-fill requires a string `value` parameter");
-        }
-        return registry.fill(id, value);
-      }
-      case "agent-focus": {
-        const id = asString(params?.id);
-        if (!id) throw new Error("agent-focus requires an `id` parameter");
-        return registry.focus(id);
-      }
-      case "agent-scroll-to": {
-        const id = asString(params?.id);
-        if (!id) throw new Error("agent-scroll-to requires an `id` parameter");
-        return registry.scrollTo(id);
-      }
-      case "set-highlight": {
-        const on = params?.on !== false;
-        registry.setHighlight(on);
-        return { highlighting: registry.isHighlighting() };
-      }
-      default:
-        throw new Error(`Unknown agent-surface capability "${capability}"`);
-    }
-  }
-
   // packages/ui/src/agent-surface/__e2e__/fixture.tsx
   var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
   var VIEW = "e2e";
@@ -16394,7 +16396,7 @@
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(IconTag, { label: "finance", tone: "accent" }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(IconTag, { label: "error", tone: "danger", status: "error" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { fontSize: 12, opacity: 0.8 }, children: "Name" }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           AgentInput,
@@ -16457,10 +16459,10 @@
 })();
 /*! Bundled license information:
 
-scheduler/cjs/scheduler.production.js:
+react/cjs/react.production.js:
   (**
    * @license React
-   * scheduler.production.js
+   * react.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
@@ -16468,10 +16470,10 @@ scheduler/cjs/scheduler.production.js:
    * LICENSE file in the root directory of this source tree.
    *)
 
-react/cjs/react.production.js:
+scheduler/cjs/scheduler.production.js:
   (**
    * @license React
-   * react.production.js
+   * scheduler.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *

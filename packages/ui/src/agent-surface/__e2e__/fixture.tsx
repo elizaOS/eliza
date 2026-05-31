@@ -52,7 +52,7 @@ function ViewBody() {
         <IconTag label="finance" tone="accent" />
         <IconTag label="error" tone="danger" status="error" />
       </div>
-      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 12, opacity: 0.8 }}>Name</span>
         <AgentInput
           agentId="name"
@@ -61,7 +61,7 @@ function ViewBody() {
           onChange={(e) => setName(e.target.value)}
           style={{ padding: "6px 10px", borderRadius: 6 }}
         />
-      </label>
+      </div>
       <output data-testid="name-mirror" style={{ fontSize: 13 }}>
         name={name || "(empty)"}
       </output>
