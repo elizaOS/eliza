@@ -180,6 +180,20 @@ describe("parseMessageHandlerOutput — fabricated-moderation suppression on the
 		);
 	});
 
+	it("preserves a genuine runtime-error description when phrased as the user's request", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText:
+				"Your request was blocked by CORS — trying the API origin now.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe(
+			"Your request was blocked by CORS — trying the API origin now.",
+		);
+	});
+
 	it("preserves a fabricated-moderation reply on the simple path (model may decline there)", () => {
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",

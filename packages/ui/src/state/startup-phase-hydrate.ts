@@ -81,6 +81,8 @@ export interface ReadyPhaseDeps {
   ) => void;
   /** Ref whose .current is true when there are active PTY sessions. */
   hasPtySessionsRef: React.MutableRefObject<boolean>;
+  /** Ref whose .current is true when the agent runtime state is "running". */
+  agentRunningRef: React.MutableRefObject<boolean>;
   setTabRaw: (t: Tab) => void;
   setConversationMessages: (
     v:
@@ -289,7 +291,7 @@ export function bindReadyPhase(
   let ptyPollInterval: ReturnType<typeof setInterval> | null = null;
   let handleVis: (() => void) | null = null;
 
-  const hydratePty = () => {
+  const doHydratePty = () => {
     client
       .getCodingAgentStatus()
       .then((s) => {
@@ -298,23 +300,34 @@ export function bindReadyPhase(
       })
       .catch(() => {});
   };
-  // Defer the initial hydration by 2 s. The orchestrator/ACP services complete
-  // their async init (setTimeout(0) + getServiceLoadPromise) a tick after the
-  // agent reports "running". Calling getCodingAgentStatus() in that gap hits
-  // routes that are still returning 503, and even though the .catch() above
-  // swallows the JS error, the browser logs every non-2xx fetch as a red
-  // console error. The WS "status" event independently triggers hydratePty()
-  // once the WebSocket connects, so deferring here does not miss session data.
-  let initialHydrateTimer: ReturnType<typeof setTimeout> | null = setTimeout(
-    hydratePty,
-    2_000,
-  );
-  let ptyHydratedViaWs = false;
-  // Only re-poll when sessions are active — avoids unnecessary 5-second API
-  // calls during idle. WS events handle session discovery; ws-reconnected and
-  // visibility-change handlers trigger an unconditional hydrate on recovery.
+  // Recovery/refresh triggers (reconnect, visibility, periodic) only hit the
+  // orchestrator/ACP routes once the agent runtime is running. Before that those
+  // routes return 404 (runtime not yet wired) or 503 (services still finishing
+  // start()); the browser logs every non-2xx fetch as a red console error
+  // regardless of the .catch below, so gating the request — not catching it — is
+  // what keeps the startup console clean.
+  const hydratePty = () => {
+    if (depsRef.current?.agentRunningRef.current) doHydratePty();
+  };
+  // Fire the initial (and post-restart) hydrate exactly once each time the agent
+  // enters "running". Driven by the live status event below, with the poll
+  // interval as a catch-all — no fixed delay guessing how long boot takes.
+  let ptyRunning = false;
+  const hydrateOnRunning = (running: boolean) => {
+    if (running && !ptyRunning) {
+      ptyRunning = true;
+      doHydratePty();
+    } else if (!running && ptyRunning) {
+      ptyRunning = false; // re-arm so a restart re-hydrates once the agent is back
+    }
+  };
+  // Re-poll only while sessions are active — avoids idle 5-second API calls. Also
+  // the catch-all that hydrates once the agent is running if the live status
+  // event was missed (e.g. status delivered via a non-WS source).
   ptyPollInterval = setInterval(() => {
-    if (depsRef.current?.hasPtySessionsRef.current) hydratePty();
+    const running = depsRef.current?.agentRunningRef.current ?? false;
+    hydrateOnRunning(running);
+    if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
   }, 5_000);
 
   client.connectWs();
@@ -366,13 +379,9 @@ export function bindReadyPhase(
           void d.loadPlugins();
           void d.loadWalletConfig();
           void d.pollCloudCredits();
-          hydratePty();
-          ptyHydratedViaWs = true;
+          ptyRunning = false; // force re-hydrate now that the agent restarted
         }
-      }
-      if (!ptyHydratedViaWs) {
-        ptyHydratedViaWs = true;
-        hydratePty();
+        hydrateOnRunning(ns.state === "running");
       }
       if (typeof data.pendingRestart === "boolean")
         d.setPendingRestart((p: boolean) =>
@@ -742,10 +751,6 @@ export function bindReadyPhase(
     unbindViewInteract();
     unbindConvUp();
     unbindPty();
-    if (initialHydrateTimer) {
-      clearTimeout(initialHydrateTimer);
-      initialHydrateTimer = null;
-    }
     if (ptyPollInterval) clearInterval(ptyPollInterval);
     if (handleVis) document.removeEventListener("visibilitychange", handleVis);
     client.disconnectWs();

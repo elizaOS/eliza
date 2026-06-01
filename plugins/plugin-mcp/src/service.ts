@@ -1,5 +1,5 @@
-import { validateMcpServerConfig } from "@elizaos/agent/security/mcp-server-config";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

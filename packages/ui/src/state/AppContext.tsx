@@ -1686,6 +1686,11 @@ function AppProviderInner({
   // calls when no sessions are active.
   const hasPtySessionsRef = useRef(ptySessions.length > 0);
   hasPtySessionsRef.current = ptySessions.length > 0;
+  // Lets the startup coordinator's PTY hydration gate the orchestrator/coding-agent
+  // routes until the agent runtime is running, avoiding the 404/503 console burst
+  // during the post-(re)start window before those services finish starting.
+  const agentRunningRef = useRef(agentStatus?.state === "running");
+  agentRunningRef.current = agentStatus?.state === "running";
 
   // ── StartupCoordinator (sole startup authority) ──────────────────────
   // Called after all dependency hooks so every setter/callback is available.
@@ -1741,6 +1746,7 @@ function AppProviderInner({
     setWalletAddresses,
     setPtySessions,
     hasPtySessionsRef,
+    agentRunningRef,
     setTab,
     setTabRaw,
     setConversationMessages,

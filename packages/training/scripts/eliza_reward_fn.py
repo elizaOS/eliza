@@ -230,6 +230,13 @@ def _score_tool_calls(
         return 0.0, 0.0, ["missing_native_tool_calls"]
     if len(predicted_calls) < len(expected_calls):
         notes.append("too_few_tool_calls")
+    # Extra/spurious calls beyond the expected set are never inspected by the
+    # name/arg checks below (which only iterate over expected_calls), so without
+    # this an appended call gets full content credit. Penalize them explicitly so
+    # RL cannot reward-hack by emitting extra (potentially destructive) calls.
+    has_extra_calls = len(predicted_calls) > len(expected_calls)
+    if has_extra_calls:
+        notes.append("too_many_tool_calls")
     names_ok = [
         index < len(predicted_calls)
         and predicted_calls[index]["name"] == expected["name"]
@@ -240,7 +247,9 @@ def _score_tool_calls(
         and _deep_contains(expected.get("arguments", {}), predicted_calls[index].get("arguments", {}))
         for index, expected in enumerate(expected_calls)
     ]
-    content_ok = 1.0 if all(names_ok) and all(args_ok) else 0.0
+    # Full content credit requires an exact-length match: the predicted calls must
+    # be the expected calls and nothing more.
+    content_ok = 1.0 if all(names_ok) and all(args_ok) and not has_extra_calls else 0.0
     if not all(names_ok):
         notes.append("tool_name_mismatch")
     if not all(args_ok):

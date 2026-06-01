@@ -41,6 +41,7 @@ function makeDeps(): ReadyPhaseDeps {
     showRestartBanner: vi.fn(),
     setPtySessions: vi.fn(),
     hasPtySessionsRef: { current: false },
+    agentRunningRef: { current: false },
     setTabRaw: vi.fn(),
     setConversationMessages: vi.fn(),
     setUnreadConversations: vi.fn(),
@@ -56,6 +57,31 @@ function makeDeps(): ReadyPhaseDeps {
     elizaCloudLoginPollTimer: { current: null },
   };
 }
+
+describe("bindReadyPhase pty hydration readiness gate", () => {
+  it("only polls coding-agent status once the agent is running", () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    vi.useFakeTimers();
+    try {
+      const deps = makeDeps();
+      const cleanup = bindReadyPhase({ current: deps });
+
+      // Agent not running: the periodic poll must not touch the orchestrator/ACP
+      // routes (they 404/503 during the boot window).
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
+
+      // Agent enters "running": the poll's catch-all hydrates exactly once.
+      deps.agentRunningRef.current = true;
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("bindReadyPhase view interaction bridge", () => {
   beforeEach(() => {

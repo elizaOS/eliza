@@ -1,4 +1,4 @@
-import { validateMcpServerConfig } from "@elizaos/agent/security/mcp-server-config";
+import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
 import { describe, expect, it } from "vitest";
 
 describe("MCP spawn-time validation", () => {

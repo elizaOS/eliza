@@ -19,7 +19,6 @@ describe("looksLikeFabricatedModeration", () => {
 			"The system flagged that message.",
 			"Your previous message contained hateful language.",
 			"My content moderation system caught that.",
-			"It was flagged as harmful.",
 		];
 		for (const text of fabrications) {
 			it(`matches: "${text.slice(0, 60)}"`, () => {
@@ -33,7 +32,11 @@ describe("looksLikeFabricatedModeration", () => {
 			"Stripe's usage policies require a verified business account.",
 			"Their content guidelines are stricter than ours used to be.",
 			"The request was blocked by CORS — try the API origin instead.",
+			"Your request was blocked by CORS — try the API origin instead.",
+			"The auth system blocked the request because the token expired.",
 			"The firewall blocked the connection on port 8080.",
+			"It was flagged as harmful by Reddit's moderation queue.",
+			"The dataset contained hateful content in several rows.",
 			"I'd rather not get into that one.",
 			"I'm not going to help with that.",
 			"That's not something I'll do, but here's an alternative.",

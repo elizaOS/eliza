@@ -23,6 +23,7 @@ import {
  * - `GET /api/dev/cursor-screenshot`
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
+ * - `GET /api/dev/boot-history` (alias `GET /api/dev/health`)
  */
 export async function handleDevCompatRoutes(
   req: http.IncomingMessage,
@@ -206,6 +207,28 @@ export async function handleDevCompatRoutes(
         : undefined,
     );
     sendJsonResponse(res, 200, payload);
+    return true;
+  }
+
+  // ── GET /api/dev/boot-history (alias /api/dev/health) ───────────────
+  // Boot phase timings, memory growth, restart count + cause, and the exact
+  // error for any plugin that failed to load — read back from the telemetry the
+  // runtime already writes under <stateDir>/telemetry/. latestBoot===null means
+  // a boot has not completed since process start (restart storm or hard crash).
+  if (
+    method === "GET" &&
+    (url.pathname === "/api/dev/boot-history" ||
+      url.pathname === "/api/dev/health")
+  ) {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const { buildBootHistoryPayload } = await import("./dev-boot-history");
+    sendJsonResponse(res, 200, await buildBootHistoryPayload());
     return true;
   }
 
