@@ -113,6 +113,7 @@ describe("ChatSurface", () => {
     expect(voiceToggle.disabled).toBe(false);
     expect(voiceToggle.querySelector("svg")).not.toBeNull();
     const input = screen.getByLabelText("Message Eliza");
+    // The mic is a trailing control: it follows the text input in the composer.
     expect(
       input.compareDocumentPosition(voiceToggle) &
         Node.DOCUMENT_POSITION_FOLLOWING,
