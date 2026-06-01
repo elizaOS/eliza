@@ -492,16 +492,27 @@ export class MessageManager {
     if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
-        const photo = message.photo[message.photo.length - 1];
-        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
-        attachments.push({
-          id: photo.file_id,
-          url: fileLink.toString(),
-          title: "Image Attachment",
-          source: "Image",
-          description: imageInfo.description,
-          text: imageInfo.description,
-        });
+        try {
+          const photo = message.photo[message.photo.length - 1];
+          const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
+          attachments.push({
+            id: photo.file_id,
+            url: fileLink.toString(),
+            title: "Image Attachment",
+            source: "Image",
+            description: imageInfo.description,
+            text: imageInfo.description,
+          });
+        } catch (error) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Error attaching processed image",
+          );
+        }
       }
     }
 

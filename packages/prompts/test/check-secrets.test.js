@@ -1,6 +1,9 @@
 import assert from "node:assert";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
-import { scanContent } from "../scripts/check-secrets.js";
+import { scanContent, walkFiles } from "../scripts/check-secrets.js";
 
 describe("prompt secret scanner", () => {
   it("flags concrete credential material as errors with source locations", () => {
@@ -40,6 +43,17 @@ describe("prompt secret scanner", () => {
     );
   });
 
+  it("does not duplicate a hard secret as a generic assignment warning", () => {
+    const result = scanContent(
+      "prompts/config.ts",
+      "const OPENAI_API_KEY = 'sk-abcdefghijklmnopqrstuvwxyz';",
+    );
+
+    assert.strictEqual(result.errors.length, 1);
+    assert.match(result.errors[0], /OpenAI-style key/);
+    assert.deepStrictEqual(result.warnings, []);
+  });
+
   it("does not flag plain prompt text that merely names env vars", () => {
     const result = scanContent(
       "prompts/instructions.ts",
@@ -47,5 +61,28 @@ describe("prompt secret scanner", () => {
     );
 
     assert.deepStrictEqual(result, { errors: [], warnings: [] });
+  });
+});
+
+describe("prompt secret scanner file walking", () => {
+  it("walks matching files while skipping generated and build output directories", async () => {
+    const root = await mkdtemp(join(tmpdir(), "eliza-prompts-scan-"));
+    try {
+      await mkdir(join(root, "src", "prompts"), { recursive: true });
+      await mkdir(join(root, "src", "generated"), { recursive: true });
+      await mkdir(join(root, "dist"), { recursive: true });
+      await writeFile(join(root, "src", "prompts", "safe.ts"), "export {};\n");
+      await writeFile(join(root, "src", "generated", "ignored.ts"), "x\n");
+      await writeFile(join(root, "dist", "ignored.ts"), "x\n");
+
+      const files = await walkFiles(root, (_abs, rel) => rel.endsWith(".ts"));
+
+      assert.deepStrictEqual(
+        files.map((file) => file.slice(root.length + 1)).sort(),
+        [join("src", "prompts", "safe.ts")],
+      );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });

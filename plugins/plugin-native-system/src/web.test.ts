@@ -39,13 +39,28 @@ describe("SystemWeb fallback", () => {
       system.setScreenBrightness({ brightness: Number.NaN }),
     ).rejects.toThrow("brightness must be a number between 0 and 1");
     await expect(
+      system.setScreenBrightness({ brightness: -0.1 }),
+    ).rejects.toThrow("brightness must be a number between 0 and 1");
+    await expect(
+      system.setScreenBrightness({ brightness: 1.1 }),
+    ).rejects.toThrow("brightness must be a number between 0 and 1");
+    await expect(
       system.setVolume({ stream: "../../music" as never, volume: 1 }),
     ).rejects.toThrow(
       "stream must be one of music, ring, alarm, notification, system, voiceCall",
     );
     await expect(
       system.setVolume({ stream: "music", volume: Number.POSITIVE_INFINITY }),
-    ).rejects.toThrow("volume is required");
+    ).rejects.toThrow("volume must be a non-negative finite integer");
+    await expect(
+      system.setVolume({ stream: "music", volume: 1.5 }),
+    ).rejects.toThrow("volume must be a non-negative finite integer");
+    await expect(
+      system.setVolume({ stream: "music", volume: -1 }),
+    ).rejects.toThrow("volume must be a non-negative finite integer");
+    await expect(
+      system.setScreenBrightness({ brightness: 0.5 }),
+    ).rejects.toThrow("Brightness control is only available on Android.");
     await expect(
       system.setVolume({ stream: "music", volume: 1 }),
     ).rejects.toThrow("music volume control is only available on Android.");

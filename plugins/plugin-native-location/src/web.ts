@@ -39,6 +39,19 @@ export class LocationWeb extends WebPlugin {
     };
   }
 
+  private validateWatchOptions(options?: WatchLocationOptions): void {
+    if (options?.minDistance !== undefined) {
+      if (!Number.isFinite(options.minDistance) || options.minDistance < 0) {
+        throw new Error("minDistance must be a non-negative finite number");
+      }
+    }
+    if (options?.minInterval !== undefined) {
+      if (!Number.isFinite(options.minInterval) || options.minInterval < 0) {
+        throw new Error("minInterval must be a non-negative finite number");
+      }
+    }
+  }
+
   async getCurrentPosition(options?: LocationOptions): Promise<LocationResult> {
     const geolocation = this.getGeolocation();
     const geoOptions = this.normalizePositionOptions(options);
@@ -90,6 +103,7 @@ export class LocationWeb extends WebPlugin {
   ): Promise<{ watchId: string }> {
     const watchId = `watch-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const geolocation = this.getGeolocation();
+    this.validateWatchOptions(options);
     const geoOptions = this.normalizePositionOptions(options);
 
     const nativeWatchId = geolocation.watchPosition(

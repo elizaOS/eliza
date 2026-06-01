@@ -11,32 +11,22 @@ describe("Signal RPC helpers", () => {
   });
 
   it("normalizes explicit and shorthand base URLs without trailing slash runs", () => {
-    expect(normalizeBaseUrl(" https://signal.local:8080//// ")).toBe(
-      "https://signal.local:8080",
-    );
-    expect(normalizeBaseUrl("127.0.0.1:8080///")).toBe(
-      "http://127.0.0.1:8080",
-    );
-    expect(() => normalizeBaseUrl("    ")).toThrow(
-      "Signal base URL is required",
-    );
+    expect(normalizeBaseUrl(" https://signal.local:8080//// ")).toBe("https://signal.local:8080");
+    expect(normalizeBaseUrl("127.0.0.1:8080///")).toBe("http://127.0.0.1:8080");
+    expect(() => normalizeBaseUrl("    ")).toThrow("Signal base URL is required");
 
     const hostChar = fc.constantFrom(
-      ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-",
+      ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
     );
     fc.assert(
       fc.property(
-        fc.array(hostChar, { minLength: 1, maxLength: 80 }).map((chars) =>
-          chars.join(""),
-        ),
+        fc.array(hostChar, { minLength: 1, maxLength: 80 }).map((chars) => chars.join("")),
         fc.integer({ min: 0, max: 256 }),
         (host, slashCount) => {
-          expect(normalizeBaseUrl(`${host}${"/".repeat(slashCount)}`)).toBe(
-            `http://${host}`,
-          );
-        },
+          expect(normalizeBaseUrl(`${host}${"/".repeat(slashCount)}`)).toBe(`http://${host}`);
+        }
       ),
-      { numRuns: 150 },
+      { numRuns: 150 }
     );
   });
 
@@ -48,10 +38,9 @@ describe("Signal RPC helpers", () => {
         params: { account: "+15551234567", message: "hi" },
         id: expect.any(String),
       });
-      return new Response(
-        JSON.stringify({ jsonrpc: "2.0", result: { timestamp: 123 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ jsonrpc: "2.0", result: { timestamp: 123 } }), {
+        status: 200,
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -59,15 +48,15 @@ describe("Signal RPC helpers", () => {
       signalRpcRequest(
         "send",
         { account: "+15551234567", message: "hi" },
-        { baseUrl: "localhost:8080///" },
-      ),
+        { baseUrl: "localhost:8080///" }
+      )
     ).resolves.toEqual({ timestamp: 123 });
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8080/api/v1/rpc",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      }),
+      })
     );
   });
 
@@ -82,20 +71,20 @@ describe("Signal RPC helpers", () => {
             jsonrpc: "2.0",
             error: { code: -32602, message: "bad params" },
           }),
-          { status: 200 },
-        ),
+          { status: 200 }
+        )
       );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      signalRpcRequest("noop", undefined, { baseUrl: "http://localhost" }),
+      signalRpcRequest("noop", undefined, { baseUrl: "http://localhost" })
     ).resolves.toBeUndefined();
     await expect(
-      signalRpcRequest("empty", undefined, { baseUrl: "http://localhost" }),
+      signalRpcRequest("empty", undefined, { baseUrl: "http://localhost" })
     ).rejects.toThrow("Signal RPC empty response (status 200)");
-    await expect(
-      signalRpcRequest("bad", {}, { baseUrl: "http://localhost" }),
-    ).rejects.toThrow("Signal RPC -32602: bad params");
+    await expect(signalRpcRequest("bad", {}, { baseUrl: "http://localhost" })).rejects.toThrow(
+      "Signal RPC -32602: bad params"
+    );
   });
 
   it("reports Signal health failures for non-OK and aborted checks", async () => {

@@ -44,6 +44,30 @@ const assertPositiveFinite = (value: number, name: string): void => {
   }
 };
 
+const assertRecordingOptions = (options?: VideoCaptureOptions): void => {
+  if (!options) return;
+
+  if (
+    options.quality !== undefined &&
+    !["low", "medium", "high", "highest"].includes(options.quality)
+  ) {
+    throw new Error("quality must be one of low, medium, high, or highest");
+  }
+
+  if (options.maxDuration !== undefined) {
+    assertPositiveFinite(options.maxDuration, "maxDuration");
+  }
+  if (options.maxFileSize !== undefined) {
+    assertPositiveFinite(options.maxFileSize, "maxFileSize");
+  }
+  if (options.bitrate !== undefined) {
+    assertPositiveFinite(options.bitrate, "bitrate");
+  }
+  if (options.frameRate !== undefined) {
+    assertPositiveFinite(options.frameRate, "frameRate");
+  }
+};
+
 export class CameraWeb extends WebPlugin {
   private mediaStream: MediaStream | null = null;
   private videoElement: HTMLVideoElement | null = null;
@@ -116,73 +140,6 @@ export class CameraWeb extends WebPlugin {
       return "back";
     }
     return "external";
-  }
-
-  private async getDeviceCapabilities(deviceId: string): Promise<{
-    zoom?: { min: number; max: number };
-    resolutions?: Array<{ width: number; height: number }>;
-    frameRates?: number[];
-    hasFlash?: boolean;
-  } | null> {
-    let stream: MediaStream;
-    try {
-      stream = await getMediaDevices().getUserMedia({
-        video: { deviceId: { exact: deviceId } },
-      });
-    } catch {
-      return null; // Device not accessible
-    }
-
-    const track = stream.getVideoTracks()[0];
-    if (!track) {
-      stream.getTracks().forEach((t) => {
-        t.stop();
-      });
-      return null;
-    }
-
-    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-    stream.getTracks().forEach((t) => {
-      t.stop();
-    });
-
-    type MediaTrackCapabilitiesExtended = MediaTrackCapabilities & {
-      zoom?: { min: number; max: number };
-      width?: { min: number; max: number };
-      height?: { min: number; max: number };
-      frameRate?: { min: number; max: number };
-      torch?: boolean; // Flash/torch capability
-    };
-    const caps = capabilities as MediaTrackCapabilitiesExtended;
-
-    // Build resolutions from actual device capabilities only
-    const resolutions: Array<{ width: number; height: number }> = [];
-    if (caps.width?.max && caps.height?.max) {
-      resolutions.push({ width: caps.width.max, height: caps.height.max });
-      // Add common lower resolutions only if device supports them
-      if (caps.width.max >= 1280 && caps.height.max >= 720) {
-        resolutions.push({ width: 1280, height: 720 });
-      }
-      if (caps.width.max >= 640 && caps.height.max >= 480) {
-        resolutions.push({ width: 640, height: 480 });
-      }
-    }
-
-    // Build frameRates from actual device capabilities only
-    const frameRates: number[] = [];
-    if (caps.frameRate?.max) {
-      if (caps.frameRate.max >= 60) frameRates.push(60);
-      if (caps.frameRate.max >= 30) frameRates.push(30);
-      if (caps.frameRate.max >= 24) frameRates.push(24);
-      if (caps.frameRate.max >= 15) frameRates.push(15);
-    }
-
-    return {
-      zoom: caps.zoom,
-      resolutions: resolutions.length > 0 ? resolutions : undefined,
-      frameRates: frameRates.length > 0 ? frameRates : undefined,
-      hasFlash: caps.torch === true, // Torch capability indicates flash support
-    };
   }
 
   async startPreview(
@@ -378,6 +335,8 @@ export class CameraWeb extends WebPlugin {
     if (this.isRecording) {
       throw new Error("Recording already in progress");
     }
+
+    assertRecordingOptions(options);
 
     let streamToRecord = this.mediaStream;
 

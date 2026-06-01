@@ -702,7 +702,14 @@ export class OrchestratorTaskService extends Service {
     if (doc.task.status !== "validating" && !result.humanOverride) {
       throw new Error("Task must be validating before validation can finish");
     }
-    const evidence = result.evidence ?? result.summary;
+    const evidence =
+      result.evidence ??
+      result.summary ??
+      (result.humanOverride
+        ? result.passed
+          ? "Human approved in the orchestrator UI."
+          : "Human rejected in the orchestrator UI."
+        : undefined);
     if (!evidence) {
       throw new Error("validation evidence is required");
     }

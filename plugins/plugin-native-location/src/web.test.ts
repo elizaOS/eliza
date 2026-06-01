@@ -141,6 +141,8 @@ describe("LocationWeb", () => {
     ["getCurrentPosition", { maxAge: -1 }],
     ["watchPosition", { timeout: 0 }],
     ["watchPosition", { maxAge: Number.NaN }],
+    ["watchPosition", { minDistance: -1 }],
+    ["watchPosition", { minInterval: Number.POSITIVE_INFINITY }],
   ] as const)("rejects hostile %s options %#", async (method, options) => {
     setNavigator({
       geolocation: {
@@ -154,6 +156,36 @@ describe("LocationWeb", () => {
     await expect(plugin[method](options)).rejects.toThrow(
       /must be .*finite number/,
     );
+  });
+
+  it("emits structured watch errors for geolocation failures", async () => {
+    const watchPosition = vi.fn((_success: GeoSuccess, error: GeoError) => {
+      error(geoError(2, "offline"));
+      return 7;
+    });
+    const plugin = new LocationWeb();
+    const notify = vi
+      .spyOn(
+        plugin as unknown as {
+          notifyListeners: (...args: unknown[]) => Promise<void>;
+        },
+        "notifyListeners",
+      )
+      .mockResolvedValue(undefined);
+    setNavigator({
+      geolocation: {
+        watchPosition,
+        clearWatch: vi.fn(),
+      } as unknown as Geolocation,
+    });
+
+    await expect(plugin.watchPosition()).resolves.toEqual({
+      watchId: expect.stringMatching(/^watch-/),
+    });
+    expect(notify).toHaveBeenCalledWith("error", {
+      code: "POSITION_UNAVAILABLE",
+      message: "offline",
+    });
   });
 
   it("fails explicitly when the geolocation API is unavailable", async () => {

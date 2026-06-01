@@ -29,6 +29,8 @@ from .scenarios import (
     ALL_SCENARIOS,
     SCENARIOS_BY_DOMAIN,
     SCENARIOS_BY_ID,
+    count_lifeops_scenarios,
+    validate_lifeops_scenarios,
 )
 from .suites import SUITES, resolve_suite
 from .types import Domain, MessageTurn, ScenarioMode
@@ -224,6 +226,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list-scenarios",
         action="store_true",
         help="List available scenarios and exit",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total LifeOpsBench scenario counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate base and expanded LifeOpsBench scenario definitions and exit",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -676,6 +688,19 @@ def main() -> None:
 
     if args.list_scenarios:
         _list_scenarios()
+        return
+    if args.count_scenarios:
+        import json
+
+        print(json.dumps(count_lifeops_scenarios(), sort_keys=True))
+        return
+    if args.validate_scenarios:
+        import json
+
+        result = validate_lifeops_scenarios()
+        print(json.dumps(result, sort_keys=True))
+        if not result.get("valid"):
+            sys.exit(1)
         return
 
     asyncio.run(_run(args))

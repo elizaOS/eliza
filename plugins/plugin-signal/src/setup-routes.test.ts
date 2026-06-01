@@ -65,7 +65,7 @@ function sanitizeAccountId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
   if (!cleaned || cleaned !== raw) {
     throw new Error(
-      "Invalid accountId: must only contain alphanumeric characters, dashes, and underscores",
+      "Invalid accountId: must only contain alphanumeric characters, dashes, and underscores"
     );
   }
   return cleaned;
@@ -102,11 +102,11 @@ function createRuntime(setupService: unknown, signalService: unknown = null) {
   } as unknown as IAgentRuntime;
 }
 
-async function loadSetupRoutes() {
+async function loadSetupRoutes(overrides: { signalLogout?: ReturnType<typeof vi.fn> } = {}) {
   vi.resetModules();
   FakePairingSession.instances = [];
   const signalAuthExists = vi.fn(() => false);
-  const signalLogout = vi.fn();
+  const signalLogout = overrides.signalLogout ?? vi.fn();
   vi.doMock("./pairing-service", () => ({
     SignalPairingSession: FakePairingSession,
     sanitizeAccountId,
@@ -130,7 +130,7 @@ describe("Signal setup routes", () => {
     await signalSetupRoutes[0].handler(
       { url: "/api/setup/signal/status?accountId=../prod" } as RouteRequest,
       response,
-      createRuntime(null),
+      createRuntime(null)
     );
 
     expect(response.statusCode).toBe(400);
@@ -170,7 +170,7 @@ describe("Signal setup routes", () => {
     await signalSetupRoutes[1].handler(
       { body: { accountId: "work" } } as RouteRequest,
       response,
-      createRuntime(setupService),
+      createRuntime(setupService)
     );
 
     expect(response.statusCode).toBe(200);
@@ -220,9 +220,7 @@ describe("Signal setup routes", () => {
       source: "signal",
       channelId: "+15551234567",
     });
-    expect(setupService.registerEscalationChannel).toHaveBeenCalledWith(
-      "signal",
-    );
+    expect(setupService.registerEscalationChannel).toHaveBeenCalledWith("signal");
   });
 
   it("cancels pairing, logs out, and removes only the requested account config", async () => {
@@ -253,7 +251,7 @@ describe("Signal setup routes", () => {
     await signalSetupRoutes[1].handler(
       { body: { accountId: "work" } } as RouteRequest,
       createResponse(),
-      createRuntime(setupService),
+      createRuntime(setupService)
     );
     const session = FakePairingSession.instances[0];
     const response = createResponse();
@@ -261,7 +259,7 @@ describe("Signal setup routes", () => {
     await signalSetupRoutes[2].handler(
       { body: { accountId: "work" } } as RouteRequest,
       response,
-      createRuntime(setupService),
+      createRuntime(setupService)
     );
 
     expect(session.stop).toHaveBeenCalled();
@@ -274,6 +272,69 @@ describe("Signal setup routes", () => {
       connector: "signal",
       state: "idle",
       detail: { accountId: "work" },
+    });
+  });
+
+  it("returns structured errors when cancel cannot log out", async () => {
+    const signalLogout = vi.fn(() => {
+      throw new Error("auth locked");
+    });
+    const { signalSetupRoutes } = await loadSetupRoutes({ signalLogout });
+    const setupService = {
+      getConfig: vi.fn(() => ({})),
+      persistConfig: vi.fn(),
+      updateConfig: vi.fn(),
+      registerEscalationChannel: vi.fn(() => true),
+      setOwnerContact: vi.fn(() => true),
+      getWorkspaceDir: vi.fn(() => "/tmp/eliza-workspace"),
+      broadcastWs: vi.fn(),
+    };
+    const response = createResponse();
+
+    await signalSetupRoutes[2].handler(
+      { body: { accountId: "work" } } as RouteRequest,
+      response,
+      createRuntime(setupService)
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({
+      error: {
+        code: "internal_error",
+        message: "Failed to disconnect Signal: auth locked",
+      },
+    });
+    expect(setupService.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("returns structured errors when cancel config persistence fails", async () => {
+    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
+    const setupService = {
+      getConfig: vi.fn(() => ({})),
+      persistConfig: vi.fn(),
+      updateConfig: vi.fn(() => {
+        throw new Error("disk full");
+      }),
+      registerEscalationChannel: vi.fn(() => true),
+      setOwnerContact: vi.fn(() => true),
+      getWorkspaceDir: vi.fn(() => "/tmp/eliza-workspace"),
+      broadcastWs: vi.fn(),
+    };
+    const response = createResponse();
+
+    await signalSetupRoutes[2].handler(
+      { body: { accountId: "work" } } as RouteRequest,
+      response,
+      createRuntime(setupService)
+    );
+
+    expect(signalLogout).toHaveBeenCalledWith("/tmp/eliza-workspace", "work");
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({
+      error: {
+        code: "internal_error",
+        message: "Failed to persist Signal disconnect: disk full",
+      },
     });
   });
 });

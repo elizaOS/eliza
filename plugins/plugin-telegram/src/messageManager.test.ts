@@ -115,7 +115,9 @@ describe("MessageManager malformed payload handling", () => {
   });
 
   it("does not throw when image description or file lookup fails", async () => {
-    const getFileLink = vi.fn(async () => new URL("https://files.test/photo.jpg"));
+    const getFileLink = vi.fn(
+      async () => new URL("https://files.test/photo.jpg"),
+    );
     const useModel = vi.fn(async () => {
       throw new Error("vision failed");
     });
@@ -133,6 +135,35 @@ describe("MessageManager malformed payload handling", () => {
       } as never),
     ).resolves.toEqual({ processedContent: "", attachments: [] });
     expect(useModel).toHaveBeenCalled();
+  });
+
+  it("does not throw when Telegram fails the second image file lookup", async () => {
+    const getFileLink = vi
+      .fn()
+      .mockResolvedValueOnce(new URL("https://files.test/photo.jpg"))
+      .mockRejectedValueOnce(new Error("telegram file expired"));
+    const useModel = vi.fn(async () => ({
+      title: "Receipt",
+      description: "Total is visible",
+    }));
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      { agentId: "agent-1", useModel } as never,
+    );
+
+    await expect(
+      manager.processMessage({
+        message_id: 1,
+        date: 1,
+        chat: { id: 123, type: "private" },
+        photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
+      } as never),
+    ).resolves.toEqual({ processedContent: "", attachments: [] });
+    expect(getFileLink).toHaveBeenCalledTimes(2);
+    expect(useModel).toHaveBeenCalledWith(
+      "IMAGE_DESCRIPTION",
+      "https://files.test/photo.jpg",
+    );
   });
 
   it("awaits attachment send failures instead of dropping rejected promises", async () => {
@@ -204,5 +235,52 @@ describe("MessageManager malformed payload handling", () => {
         MediaType.PHOTO,
       ),
     ).rejects.toThrow("sendMedia: ctx.chat is undefined");
+  });
+
+  it("persists hostile text input after stripping null characters", async () => {
+    const ensureConnection = vi.fn(async () => undefined);
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection,
+      createMemory,
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager({ telegram: {} } as never, runtime);
+    const text = "hello\u0000 ```unterminated\n[link](javascript:alert(1))";
+
+    await manager.handleMessage({
+      from: {
+        id: 42,
+        first_name: "Ada\u0000",
+        username: "ada",
+        is_bot: false,
+      },
+      chat: { id: 123, type: "private", first_name: "Ada" },
+      message: {
+        message_id: 99,
+        date: 1_700_000_000,
+        text,
+        chat: { id: 123, type: "private", first_name: "Ada" },
+      },
+    } as never);
+
+    expect(ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "123",
+        type: "DM",
+        userId: "42",
+      }),
+    );
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    const memory = createMemory.mock.calls[0][0];
+    expect(memory.content.text).toBe(
+      "hello ```unterminated\n[link](javascript:alert(1))",
+    );
+    expect(memory.content.text).not.toContain("\u0000");
+    expect(memory.metadata.telegram).toMatchObject({
+      chatId: "123",
+      messageId: "99",
+    });
   });
 });

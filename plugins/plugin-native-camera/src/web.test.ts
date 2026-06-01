@@ -47,10 +47,11 @@ function makeMediaStream(videoTracks = [makeVideoTrack()]) {
 
 function installMediaDevices(
   devices: MediaDeviceInfo[],
-  getUserMediaImpl: (constraints: MediaStreamConstraints) => Promise<MediaStream> =
-    () => {
-      throw new Error("getUserMedia should not be called during enumeration");
-    },
+  getUserMediaImpl: (
+    constraints: MediaStreamConstraints,
+  ) => Promise<MediaStream> = () => {
+    throw new Error("getUserMedia should not be called during enumeration");
+  },
 ) {
   const enumerateDevices = vi.fn(() => Promise.resolve(devices));
   const getUserMedia = vi.fn(getUserMediaImpl);
@@ -215,7 +216,9 @@ describe("CameraWeb.startPreview", () => {
 describe("CameraWeb.capturePhoto", () => {
   it("rejects capture when media settings cannot provide positive dimensions", async () => {
     installMediaDevices([], () =>
-      Promise.resolve(makeMediaStream([makeVideoTrack({ width: 0, height: 0 })])),
+      Promise.resolve(
+        makeMediaStream([makeVideoTrack({ width: 0, height: 0 })]),
+      ),
     );
 
     const camera = new CameraWeb();
@@ -241,6 +244,34 @@ describe("CameraWeb.capturePhoto", () => {
   });
 });
 
+describe("CameraWeb.startRecording", () => {
+  it.each([
+    [{ maxDuration: 0 }, "maxDuration must be a positive finite number"],
+    [
+      { maxFileSize: Number.NaN },
+      "maxFileSize must be a positive finite number",
+    ],
+    [{ bitrate: -1 }, "bitrate must be a positive finite number"],
+    [{ frameRate: Infinity }, "frameRate must be a positive finite number"],
+    [
+      { quality: "ultra" },
+      "quality must be one of low, medium, high, or highest",
+    ],
+  ])("rejects malformed recording options before requesting microphone access: %#", async (options, message) => {
+    const { getUserMedia } = installMediaDevices([], () =>
+      Promise.resolve(makeMediaStream()),
+    );
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    await expect(camera.startRecording(options as never)).rejects.toThrow(
+      message,
+    );
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("CameraWeb settings validation", () => {
   it("rejects malformed settings payloads without changing existing settings", async () => {
     const camera = new CameraWeb();
@@ -249,9 +280,9 @@ describe("CameraWeb settings validation", () => {
     await expect(
       camera.setSettings({ settings: undefined as never }),
     ).rejects.toThrow("settings object is required");
-    await expect(camera.setSettings({ settings: { zoom: -1 } })).rejects.toThrow(
-      "Invalid zoom value",
-    );
+    await expect(
+      camera.setSettings({ settings: { zoom: -1 } }),
+    ).rejects.toThrow("Invalid zoom value");
 
     await expect(camera.getSettings()).resolves.toEqual(original);
   });

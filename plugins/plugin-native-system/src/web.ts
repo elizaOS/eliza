@@ -99,7 +99,9 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   }): Promise<DeviceSettingsStatus> {
     if (
       typeof _options?.brightness !== "number" ||
-      !Number.isFinite(_options.brightness)
+      !Number.isFinite(_options.brightness) ||
+      _options.brightness < 0 ||
+      _options.brightness > 1
     ) {
       throw new Error("brightness must be a number between 0 and 1");
     }
@@ -114,9 +116,11 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
     const stream = validateVolumeStream(options?.stream);
     if (
       typeof options?.volume !== "number" ||
-      !Number.isFinite(options.volume)
+      !Number.isFinite(options.volume) ||
+      !Number.isInteger(options.volume) ||
+      options.volume < 0
     ) {
-      throw new Error("volume is required");
+      throw new Error("volume must be a non-negative finite integer");
     }
     throw new Error(`${stream} volume control is only available on Android.`);
   }

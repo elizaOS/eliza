@@ -16,9 +16,7 @@ describe("runDomAction", () => {
     input.addEventListener("change", () => events.push("change"));
 
     const text = `<img src=x onerror=alert(1)>\nhello`;
-    expect(
-      runDomAction({ kind: "type", selector: "#target", text }),
-    ).toEqual({
+    expect(runDomAction({ kind: "type", selector: "#target", text })).toEqual({
       selector: "message",
       valueLength: text.length,
     });
@@ -43,6 +41,31 @@ describe("runDomAction", () => {
 
     expect(editor.textContent).toBe("<script>alert(1)</script>");
     expect(editor.innerHTML).not.toContain("<script>");
+  });
+
+  it("clicks enabled elements after scrolling them into view", () => {
+    document.body.innerHTML = `<button id="target" type="button">Run</button>`;
+    const button = document.querySelector("#target") as HTMLButtonElement;
+    Object.defineProperty(button, "scrollIntoView", {
+      configurable: true,
+      value: () => undefined,
+    });
+    const scrollIntoView = vi
+      .spyOn(button, "scrollIntoView")
+      .mockImplementation(() => undefined);
+    const clicks: string[] = [];
+    button.addEventListener("click", () => clicks.push("clicked"));
+
+    expect(runDomAction({ kind: "click", selector: "#target" })).toEqual({
+      selector: "#target",
+      tagName: "button",
+    });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "center",
+      inline: "center",
+    });
+    expect(clicks).toEqual(["clicked"]);
   });
 
   it("rejects invalid selectors, disabled controls, readonly inputs, and unsupported targets", () => {

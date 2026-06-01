@@ -250,11 +250,7 @@ describe("dispatcher permission gating", () => {
     } as WorkerRpcMessage);
 
     expect(calls).toEqual([
-      [
-        runtime,
-        { id: "message-1", text: "hello" },
-        { roomId: "room-1" },
-      ],
+      [runtime, { id: "message-1", text: "hello" }, { roomId: "room-1" }],
     ]);
     expect(channel.outbox[0]).toMatchObject({
       type: "worker-rpc-result",

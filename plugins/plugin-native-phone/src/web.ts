@@ -13,14 +13,36 @@ function nonEmptyString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function validateCallTarget(options?: Partial<PlaceCallOptions>): void {
-  if (options?.number !== undefined && !nonEmptyString(options.number)) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function validateCallTarget(
+  options: unknown,
+  { requireNumber }: { requireNumber: boolean },
+): void {
+  if (!isRecord(options)) {
+    if (requireNumber) {
+      throw new Error("number is required");
+    }
+    return;
+  }
+  if (
+    (requireNumber && options.number === undefined) ||
+    (options.number !== undefined && !nonEmptyString(options.number))
+  ) {
     throw new Error("number is required");
   }
 }
 
 function validateRecentCallsOptions(options?: ListRecentCallsOptions): void {
-  if (options?.limit !== undefined) {
+  if (options === undefined) {
+    return;
+  }
+  if (!isRecord(options)) {
+    throw new Error("options must be an object");
+  }
+  if (options.limit !== undefined) {
     if (
       typeof options.limit !== "number" ||
       !Number.isFinite(options.limit) ||
@@ -30,16 +52,16 @@ function validateRecentCallsOptions(options?: ListRecentCallsOptions): void {
       throw new Error("limit must be between 1 and 500");
     }
   }
-  if (options?.number !== undefined && !nonEmptyString(options.number)) {
+  if (options.number !== undefined && !nonEmptyString(options.number)) {
     throw new Error("number must be a non-empty string");
   }
 }
 
 function validateTranscriptOptions(options: SaveCallTranscriptOptions): void {
-  if (!nonEmptyString(options?.callId)) {
+  if (!isRecord(options) || !nonEmptyString(options.callId)) {
     throw new Error("callId is required");
   }
-  if (!nonEmptyString(options?.transcript)) {
+  if (!nonEmptyString(options.transcript)) {
     throw new Error("transcript is required");
   }
 }
@@ -55,12 +77,12 @@ export class PhoneWeb extends WebPlugin implements PhonePlugin {
   }
 
   async placeCall(options: PlaceCallOptions): Promise<void> {
-    validateCallTarget(options);
+    validateCallTarget(options, { requireNumber: true });
     throw new Error("Phone calls are only available on Android.");
   }
 
   async openDialer(options?: Partial<PlaceCallOptions>): Promise<void> {
-    validateCallTarget(options);
+    validateCallTarget(options, { requireNumber: false });
     throw new Error("Phone dialer is only available on Android.");
   }
 

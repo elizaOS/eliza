@@ -37,14 +37,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function isSignalCliReceiveResponse(
-  value: unknown,
-): value is SignalCliReceiveResponse {
+function isSignalCliReceiveResponse(value: unknown): value is SignalCliReceiveResponse {
   return isRecord(value);
 }
 
 export function readSignalLocalClientConfigFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): SignalLocalClientConfig | null {
   const accountNumber = env.SIGNAL_ACCOUNT_NUMBER?.trim();
   if (!accountNumber) return null;
@@ -56,12 +54,10 @@ export function readSignalLocalClientConfigFromEnv(
 
 export async function readSignalInboundMessages(
   config: SignalLocalClientConfig,
-  limit = DEFAULT_RECEIVE_LIMIT,
+  limit = DEFAULT_RECEIVE_LIMIT
 ): Promise<SignalRecentMessage[]> {
-  const receiveLimit = Math.min(
-    Math.max(1, Math.floor(limit)),
-    MAX_RECEIVE_LIMIT,
-  );
+  const parsedLimit = Number.isFinite(limit) ? Math.floor(limit) : DEFAULT_RECEIVE_LIMIT;
+  const receiveLimit = Math.min(Math.max(1, parsedLimit), MAX_RECEIVE_LIMIT);
   const baseUrl = config.httpUrl.replace(/\/$/, "");
   const account = encodeURIComponent(config.accountNumber);
   const response = await fetch(`${baseUrl}/v1/receive/${account}`, {
@@ -92,8 +88,7 @@ export async function readSignalInboundMessages(
     const channelId = groupId ?? senderNumber ?? senderUuid;
     if (!channelId) continue;
 
-    const speakerName =
-      envelope.sourceName ?? senderNumber ?? senderUuid ?? "Signal";
+    const speakerName = envelope.sourceName ?? senderNumber ?? senderUuid ?? "Signal";
     const createdAt = dataMessage.timestamp ?? envelope.timestamp ?? Date.now();
     const threadId = `signal:${channelId}`;
 
