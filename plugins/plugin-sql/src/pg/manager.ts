@@ -104,7 +104,11 @@ export class PostgresConnectionManager {
         }
 
         try {
-          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
+          // Use parameterized set_config() (transaction-scoped via is_local=true)
+          // instead of string-interpolated SET LOCAL, matching the Neon adapter.
+          // SET LOCAL cannot take a bind parameter; set_config() can, removing
+          // the only interpolated SQL in the RLS path.
+          await tx.execute(sql`SELECT set_config('app.entity_id', ${entityId}, true)`);
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

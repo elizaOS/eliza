@@ -56,6 +56,24 @@ describe("PgliteVaultImpl", () => {
     );
   });
 
+  it("close zeroes the cached master key", async () => {
+    // inMemoryMasterKey.load() returns the same Buffer the vault caches, so a
+    // fill(0) on close is observable on the buffer this test holds a ref to.
+    const keyBuf = generateMasterKey();
+    const v = new PgliteVaultImpl({
+      dataDir: join(workDir, ".vault-pglite-zero"),
+      masterKey: inMemoryMasterKey(keyBuf),
+      auditPath: join(workDir, "audit", "vault.jsonl"),
+    });
+    // Touch a sensitive value so the master key is loaded + cached.
+    await v.set("k", "secret", { sensitive: true });
+    expect(await v.get("k")).toBe("secret");
+    expect(keyBuf.some((b) => b !== 0)).toBe(true);
+
+    await v.close();
+    expect(keyBuf.every((b) => b === 0)).toBe(true);
+  });
+
   it("has returns true/false correctly", async () => {
     expect(await vault.has("k")).toBe(false);
     await vault.set("k", "v");
