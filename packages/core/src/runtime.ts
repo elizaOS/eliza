@@ -1655,8 +1655,24 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.providers) {
+			const existingProviderNames = new Set(
+				this.providers.map((provider) => provider.name),
+			);
 			for (const provider of pluginToRegister.providers) {
+				if (existingProviderNames.has(provider.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: provider.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin provider",
+					);
+					continue;
+				}
 				this.registerProvider(provider);
+				existingProviderNames.add(provider.name);
 			}
 		}
 		if (pluginToRegister.evaluators) {
@@ -2680,6 +2696,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerProvider(provider: Provider) {
 		const canonical = withCanonicalProviderDocs(provider);
+		if (this.providers.find((p) => p.name === canonical.name)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, provider: canonical.name },
+				"Provider already registered, skipping",
+			);
+			return;
+		}
 		this.providers.push(canonical);
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, provider: canonical.name },
