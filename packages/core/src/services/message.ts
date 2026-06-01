@@ -9210,7 +9210,15 @@ export class DefaultMessageService implements IMessageService {
 					// threw before reaching its own cleanup at the end of the method.
 					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 					if (message.id) {
+						// Evict both per-turn stateCache entries for this message:
+						// the action-results scratch key AND the base composed-state
+						// key set by composeState (runtime.ts). Without deleting the
+						// base key here it is only cleared when an
+						// `incoming_before_compose` pipeline hook happens to be
+						// registered, so in the common (no-hook) path the Map grew
+						// unbounded — one stale State per processed message.
 						runtime.stateCache.delete(`${message.id}_action_results`);
+						runtime.stateCache.delete(message.id);
 					}
 				}
 			},
