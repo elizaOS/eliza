@@ -12,6 +12,8 @@ import {
 import {
   AGENT_STATES,
   type ApiLikeError,
+  type LifeOpsGoalCommandStyle,
+  type ParsedLifeOpsGoalCommand,
   type SlashCommandInput,
 } from "./types";
 
@@ -318,6 +320,111 @@ export function parseSlashCommandInput(text: string): SlashCommandInput | null {
     name: normalizeSlashCommandName(body.slice(0, firstSpace)),
     argsRaw: body.slice(firstSpace + 1).trim(),
   };
+}
+
+const LIFEOPS_GOAL_COMMAND_STYLE_LABELS = {
+  ongoing: "Ongoing",
+  sprint: "Sprint",
+  milestone: "Milestone",
+  maintenance: "Maintenance",
+} as const satisfies Record<LifeOpsGoalCommandStyle, string>;
+
+const LIFEOPS_GOAL_COMMAND_STYLE_HINTS = {
+  ongoing: [
+    "Keep this goal visible in recurring LifeOps review context.",
+    "Look for progress signals and blockers over time.",
+  ],
+  sprint: [
+    "Treat this as a short, time-boxed push.",
+    "Prefer concrete next actions and frequent progress checks.",
+  ],
+  milestone: [
+    "Track this as a finishable outcome with a clear done state.",
+    "Connect tasks and reminders that move the outcome forward.",
+  ],
+  maintenance: [
+    "Treat this as a recurring upkeep objective.",
+    "Watch for drift, missed routines, and stale supporting tasks.",
+  ],
+} as const satisfies Record<LifeOpsGoalCommandStyle, readonly string[]>;
+
+const LIFEOPS_GOAL_COMMAND_STYLES = new Set<LifeOpsGoalCommandStyle>(
+  Object.keys(LIFEOPS_GOAL_COMMAND_STYLE_LABELS) as LifeOpsGoalCommandStyle[],
+);
+
+function normalizeLifeOpsGoalCommandStyle(
+  value: string,
+): LifeOpsGoalCommandStyle | null {
+  const normalized = value.trim().toLowerCase();
+  return LIFEOPS_GOAL_COMMAND_STYLES.has(normalized as LifeOpsGoalCommandStyle)
+    ? (normalized as LifeOpsGoalCommandStyle)
+    : null;
+}
+
+export function getLifeOpsGoalCommandStyleLabel(
+  goalStyle: LifeOpsGoalCommandStyle,
+): string {
+  return LIFEOPS_GOAL_COMMAND_STYLE_LABELS[goalStyle];
+}
+
+export function buildLifeOpsGoalCommandMetadata(
+  goalStyle: LifeOpsGoalCommandStyle,
+): Record<string, unknown> {
+  return {
+    source: "chat_command",
+    command: "/goal",
+    lifeopsGoalStyle: {
+      kind: goalStyle,
+      label: getLifeOpsGoalCommandStyleLabel(goalStyle),
+      promptHints: [...LIFEOPS_GOAL_COMMAND_STYLE_HINTS[goalStyle]],
+    },
+  };
+}
+
+export function parseLifeOpsGoalCommandArgs(
+  argsRaw: string,
+): ParsedLifeOpsGoalCommand | null {
+  const tokens = splitCommandArgs(argsRaw);
+  let goalStyle: LifeOpsGoalCommandStyle = "ongoing";
+  const titleTokens: string[] = [];
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] ?? "";
+    const lower = token.toLowerCase();
+    const directStyle = normalizeLifeOpsGoalCommandStyle(token);
+    if (index === 0 && directStyle) {
+      goalStyle = directStyle;
+      continue;
+    }
+
+    if (lower === "--style" || lower === "style") {
+      const nextStyle = normalizeLifeOpsGoalCommandStyle(
+        tokens[index + 1] ?? "",
+      );
+      if (nextStyle) {
+        goalStyle = nextStyle;
+        index += 1;
+        continue;
+      }
+    }
+
+    const styleAssignment = token.match(/^--?style[=:](.+)$/i);
+    if (styleAssignment) {
+      const assignedStyle = normalizeLifeOpsGoalCommandStyle(
+        styleAssignment[1] ?? "",
+      );
+      if (assignedStyle) {
+        goalStyle = assignedStyle;
+        continue;
+      }
+    }
+
+    titleTokens.push(token);
+  }
+
+  const title = titleTokens.join(" ").replace(/\s+/g, " ").trim();
+  if (!title) return null;
+  return { title, goalStyle };
 }
 
 export function normalizeCustomActionName(value: string): string {

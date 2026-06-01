@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   client: {
     abortConversationTurn: vi.fn(),
     createConversation: vi.fn(),
+    createLifeOpsGoal: vi.fn(),
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
@@ -157,6 +158,7 @@ describe("useChatSend stop handling", () => {
       roomId: "room-1",
       reason: "ui-chat-stop",
     });
+    mocks.client.createLifeOpsGoal.mockReset();
     mocks.client.stopCodingAgent.mockResolvedValue(undefined);
   });
 
@@ -219,6 +221,65 @@ describe("useChatSend stop handling", () => {
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
       "room-new",
       "ui-chat-stop",
+    );
+  });
+});
+
+describe("useChatSend LifeOps commands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.createLifeOpsGoal.mockResolvedValue({
+      goal: {
+        title: "ship the upstream patches",
+      },
+      links: [],
+    });
+  });
+
+  it("creates a LifeOps goal through the real client path", async () => {
+    const deps = makeDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText(
+        "/goal sprint ship the upstream patches",
+      );
+    });
+
+    expect(mocks.client.createLifeOpsGoal).toHaveBeenCalledTimes(1);
+    expect(mocks.client.createLifeOpsGoal).toHaveBeenCalledWith({
+      title: "ship the upstream patches",
+      metadata: expect.objectContaining({
+        source: "chat_command",
+        command: "/goal",
+        lifeopsGoalStyle: expect.objectContaining({
+          kind: "sprint",
+          label: "Sprint",
+        }),
+      }),
+    });
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(
+      deps.conversationMessagesRef.current.map((message) => message.text),
+    ).toContain(
+      "Created LifeOps goal: ship the upstream patches\nStyle: Sprint",
+    );
+  });
+
+  it("returns usage without creating a goal when the title is missing", async () => {
+    const deps = makeDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("/goal sprint");
+    });
+
+    expect(mocks.client.createLifeOpsGoal).not.toHaveBeenCalled();
+    expect(
+      deps.conversationMessagesRef.current.map((message) => message.text),
+    ).toContain(
+      "Usage: /goal [ongoing|sprint|milestone|maintenance] <goal title>",
     );
   });
 });

@@ -218,6 +218,17 @@ export type SlashCommandInput = {
   argsRaw: string;
 };
 
+export type LifeOpsGoalCommandStyle =
+  | "ongoing"
+  | "sprint"
+  | "milestone"
+  | "maintenance";
+
+export type ParsedLifeOpsGoalCommand = {
+  title: string;
+  goalStyle: LifeOpsGoalCommandStyle;
+};
+
 export type StartupPhase = "starting-backend" | "initializing-agent" | "ready";
 
 export type StartupErrorReason =

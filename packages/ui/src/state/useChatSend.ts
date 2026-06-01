@@ -25,11 +25,14 @@ import { clearChatDraft } from "./ChatComposerContext";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,
+  buildLifeOpsGoalCommandMetadata,
   formatSearchBullet,
+  getLifeOpsGoalCommandStyleLabel,
   type LoadConversationMessagesResult,
   mergeStreamingText,
   normalizeCustomActionName,
   parseCustomActionParams,
+  parseLifeOpsGoalCommandArgs,
   parseSlashCommandInput,
   shouldApplyFinalStreamText,
 } from "./internal";
@@ -393,8 +396,34 @@ export function useChatSend(deps: UseChatSendDeps) {
     ): Promise<{ handled: boolean; rewrittenText?: string }> => {
       const slash = parseSlashCommandInput(rawText);
       if (slash) {
+        if (slash.name === "/goal" || slash.name === "goal") {
+          const parsedGoal = parseLifeOpsGoalCommandArgs(slash.argsRaw);
+          if (!parsedGoal) {
+            appendLocalCommandTurn(
+              rawText,
+              "Usage: /goal [ongoing|sprint|milestone|maintenance] <goal title>",
+            );
+            return { handled: true };
+          }
+
+          const record = await client.createLifeOpsGoal({
+            title: parsedGoal.title,
+            metadata: buildLifeOpsGoalCommandMetadata(parsedGoal.goalStyle),
+          });
+          appendLocalCommandTurn(
+            rawText,
+            [
+              `Created LifeOps goal: ${record.goal.title}`,
+              `Style: ${getLifeOpsGoalCommandStyleLabel(parsedGoal.goalStyle)}`,
+            ].join("\n"),
+          );
+          return { handled: true };
+        }
+
         const savedCommand = loadSavedCustomCommands().find(
-          (command) => normalizeSlashCommandName(command.name) === slash.name,
+          (command) =>
+            normalizeSlashCommandName(command.name) ===
+            normalizeSlashCommandName(slash.name),
         );
         if (savedCommand) {
           const rewrittenText = expandSavedCustomCommand(
@@ -404,14 +433,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           if (!rewrittenText.trim()) {
             appendLocalCommandTurn(
               rawText,
-              `Saved command "/${slash.name}" is empty.`,
+              `Saved command "/${normalizeSlashCommandName(slash.name)}" is empty.`,
             );
             return { handled: true };
           }
           return { handled: false, rewrittenText };
         }
 
-        if (slash.name === "commands") {
+        if (slash.name === "/commands" || slash.name === "commands") {
           const customActions = (await client.listCustomActions()).filter(
             (action) => action.enabled,
           );
@@ -422,6 +451,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             .map((command) => `/${normalizeSlashCommandName(command.name)}`)
             .sort();
           const lines = [
+            "Built-in / commands: /goal, /commands",
             formatSearchBullet("Saved / commands", savedCommandNames),
             formatSearchBullet("Custom action / commands", customCommandNames),
             "Use #remember ... to save memory notes. Use #memory or #documents to target retrieval.",

@@ -234,6 +234,7 @@ import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
 import "./client-imessage";
+import "./client-lifeops";
 import "./client-local-inference";
 import "./client-voice-models";
 import "./client-workflow";
