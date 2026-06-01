@@ -58,9 +58,7 @@ src/
   ModelConfigSection.tsx           Model config controls
   GitHubConnectionCard.tsx         GitHub connection status card
   PtyConsoleBase.tsx               PTY output streamer (drawer/side-panel/full variants)
-  PtyConsoleDrawer.tsx             Drawer variant wrapper
-  PtyConsoleSidePanel.tsx          Side-panel variant wrapper
-  PtyTerminalPane.tsx              Full terminal pane variant
+  PtyTerminalPane.tsx              Full xterm.js terminal pane (lazy-loaded; wired by the orchestrator terminal surface)
   orchestrator-stream.tsx          Conversation-view builder for orchestrator event/message records
   orchestrator-diff.tsx            Diff view component for file-change tool cards
   view-format.ts                   Pure display formatters (time, tokens, USD, ANSI-strip)
