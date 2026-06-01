@@ -632,9 +632,47 @@ function ensureResolvedInsideRoot(
   }
 }
 
+class AcpRequestError extends Error {
+  readonly code?: number;
+  readonly data?: unknown;
+
+  constructor(message: string, code?: number, data?: unknown) {
+    super(message);
+    this.name = "AcpRequestError";
+    this.code = code;
+    this.data = data;
+  }
+}
+
 function jsonRpcError(error: unknown): Error {
   const record = asRecord(error);
-  return new Error(stringValue(record?.message) ?? "ACP request failed");
+  const baseMessage = stringValue(record?.message) ?? "ACP request failed";
+  const code = numberValue(record?.code);
+  const data = record?.data;
+  // JSON-RPC error.data carries the diagnostic detail (e.g. a ZodError for
+  // -32602 "Invalid params"). Surface a compact form of it in the message so
+  // failures stay debuggable, and keep the structured value on the error.
+  if (data === undefined) {
+    return new AcpRequestError(baseMessage, code);
+  }
+  const detail = compactJson(data);
+  const message = detail ? `${baseMessage} (data: ${detail})` : baseMessage;
+  return new AcpRequestError(message, code, data);
+}
+
+function compactJson(value: unknown): string | undefined {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      return undefined;
+    }
+    const limit = 2000;
+    return serialized.length > limit
+      ? `${serialized.slice(0, limit)}…`
+      : serialized;
+  } catch {
+    return undefined;
+  }
 }
 
 function extractAgentSessionId(meta: unknown): string | undefined {

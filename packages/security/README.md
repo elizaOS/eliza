@@ -1,12 +1,12 @@
 # @elizaos/security
 
-Foundation package for Eliza's SOC2 compliance work. Provides three things:
+Foundation package for elizaOS SOC2 compliance. Provides three things:
 
-1. A single `KmsClient` interface that every encryption/signing/HMAC call in Eliza must flow through.
+1. A single `KmsClient` interface that every encryption/signing/HMAC call in elizaOS must flow through.
 2. An `AuditDispatcher` + `AuditEvent` schema that every privileged action must emit through.
 3. Low-level AEAD/HKDF primitives used internally by the adapters.
 
-Open-source only. Production backs onto [Steward](https://github.com/Steward-Fi/steward) — Eliza's agent-wallet / credential-proxy / auth platform. No AWS KMS, no GCP KMS, no proprietary services.
+Open-source only. Production backs onto [Steward](https://github.com/Steward-Fi/steward) — elizaOS's agent-wallet / credential-proxy / auth platform. No AWS KMS, no GCP KMS, no proprietary services.
 
 ## KMS
 
@@ -116,7 +116,10 @@ Additionally, a separate `TODO(audit-sink)` covers Steward (or Steward-fronted) 
 
 ## SOC2 controls
 
-- **CC6.1** (logical access) — all sensitive material is gated behind a single `KmsClient`.
-- **CC6.7** (data in transit / at rest) — AES-256-GCM with mandatory AAD; Steward-held keys for production.
-- **CC4.1** (monitoring) — every privileged action emits an `AuditEvent`.
-- **C1.1** (confidentiality) — key namespace forces scoping (system / org / user) and version-aware rotation.
+The control surface this package serves is mapped in [`docs/SOC2.md`](docs/SOC2.md):
+
+- **C1.1** (encryption at rest) — AES-256-GCM envelope encryption with mandatory AAD for all Confidential / Restricted data.
+- **CC6.7** (encryption in transit) — HMAC-SHA256 and Ed25519 signing primitives used by webhook ingress and plugin manifest verification.
+- **CC6.8** (integrity) — DSPy prompt HMAC verification and plugin manifest verification ride this package's primitives.
+
+Audit-on-use is enforced by the `AuditDispatcher`: every privileged action emits an `AuditEvent` through it.

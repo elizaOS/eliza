@@ -4,10 +4,8 @@
 // warning and remove the unnecessary Suspense boundary overhead.
 import {
   CharacterEditor,
-  ChatModalView,
   type OverlayAppContext,
   useApp,
-  usePtySessions,
   useRenderGuard,
 } from "@elizaos/ui";
 import { memo, Suspense, useCallback, useMemo, useState } from "react";
@@ -17,27 +15,6 @@ import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
-
-const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
-
-/**
- * Isolated PTY panel — avoids polling ptySessions in the main overlay.
- * The host-side console UI was removed from @elizaos/plugin-task-coordinator
- * in 355be0ed1a ("update agent" — drop the PtyConsole component family).
- * Keep the hook subscription so the dock pulls in PTY session metadata,
- * but render nothing until the replacement UI lands. The render-gate
- * below relies on `ptySidePanelSessionId` so users only hit this path
- * after clicking a session pill — the no-op simply means clicking the
- * pill currently does nothing visible, which matches the underlying
- * "no console UI exists" reality and avoids a build break.
- */
-const CompanionPtyPanel = memo(function CompanionPtyPanel(
-  _props: Readonly<{ sessionId: string; onClose: () => void }>,
-) {
-  const { ptySessions } = usePtySessions();
-  if (ptySessions.length === 0) return null;
-  return null;
-});
 
 /**
  * Inner overlay — subscribes to useApp() for chat state.
@@ -69,23 +46,6 @@ const CompanionOverlay = memo(function CompanionOverlay() {
 
   const [companionView, setCompanionView] =
     useState<CompanionShellView>("companion");
-
-  const [ptySidePanelSessionId, setPtySidePanelSessionId] = useState<
-    string | null
-  >(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const handleSidebarClose = useCallback(() => setHistoryOpen(false), []);
-  const handlePtySessionClick = useCallback(
-    (id: string) =>
-      setPtySidePanelSessionId((prev: string | null) =>
-        prev === id ? null : id,
-      ),
-    [],
-  );
-  const handlePtyPanelClose = useCallback(
-    () => setPtySidePanelSessionId(null),
-    [],
-  );
 
   const hasInterruptedAssistant = useMemo(
     () =>
@@ -190,27 +150,8 @@ const CompanionOverlay = memo(function CompanionOverlay() {
         />
       </div>
 
-      {companionView === "companion" && (
-        <div
-          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex justify-center px-1.5 sm:px-4"
-          style={{
-            paddingBottom: "calc(var(--safe-area-bottom, 0px) + 0.75rem)",
-          }}
-        >
-          <div
-            data-testid="companion-chat-dock"
-            className="relative w-full max-w-5xl min-w-0"
-            style={{ height: COMPANION_DOCK_HEIGHT, minHeight: "17rem" }}
-          >
-            <ChatModalView
-              variant="companion-dock"
-              showSidebar={historyOpen}
-              onSidebarClose={handleSidebarClose}
-              onPtySessionClick={handlePtySessionClick}
-            />
-          </div>
-        </div>
-      )}
+      {/* In-view chat removed — the global floating pill is the only chat
+          surface. Chat/voice happen in the pill on top of every view. */}
 
       {companionView === "character" && (
         <Suspense fallback={null}>
@@ -219,15 +160,6 @@ const CompanionOverlay = memo(function CompanionOverlay() {
       )}
 
       {companionView === "settings" && <CompanionSettingsPanel />}
-
-      {ptySidePanelSessionId && companionView === "companion" && (
-        <div className="pointer-events-auto">
-          <CompanionPtyPanel
-            sessionId={ptySidePanelSessionId}
-            onClose={handlePtyPanelClose}
-          />
-        </div>
-      )}
 
       <EmotePicker />
 

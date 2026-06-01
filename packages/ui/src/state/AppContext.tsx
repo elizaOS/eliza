@@ -76,9 +76,20 @@ import { useNavigationState } from "./useNavigationState";
 import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
+import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
-import { useVincentState } from "./useVincentState";
 import { useWalletState } from "./useWalletState";
+
+/**
+ * DOM event dispatched after a WebSocket reconnect so conversation views can
+ * refetch their recent messages and repair state that drifted during the gap.
+ * `detail.conversationId` is the active conversation at reconnect time (or null).
+ */
+export const RESYNC_EVENT = "elizaos:needs-resync";
+
+export interface ResyncEventDetail {
+  conversationId: string | null;
+}
 
 export {
   type ActionNotice,
@@ -1100,15 +1111,6 @@ function AppProviderInner({
     disconnectLocked: brandingOverride?.cloudOnly === true,
   });
 
-  // ── Vincent state (extracted to useVincentState) ──────────────────
-  const vincentHook = useVincentState({ setActionNotice, t });
-  const {
-    vincentConnected,
-    vincentLoginBusy,
-    vincentLoginError,
-    handleVincentLogin,
-    handleVincentDisconnect,
-  } = vincentHook;
   const {
     elizaCloudEnabled,
     setElizaCloudEnabled,
@@ -1380,6 +1382,60 @@ function AppProviderInner({
   useEffect(() => {
     triggerRestartRef.current = triggerRestart;
   }, [triggerRestart]);
+
+  // ── Cross-window sync + reconnect reconciliation ───────────────────
+  // Track whether the last active-conversation change came from another window
+  // so applying it doesn't echo straight back out and loop between tabs.
+  const tabSyncActiveConvRef = useRef<string | null>(null);
+  const tabSync = useTabSync({
+    onActiveConversation: (id) => {
+      tabSyncActiveConvRef.current = id;
+      setActiveConversationId(id);
+    },
+    onPrefs: (prefs) => {
+      if (prefs.language) {
+        setUiLanguage(prefs.language as UiLanguage);
+      }
+    },
+  });
+
+  // Mirror this window's active conversation to the other windows. Suppress the
+  // mirror when the change itself arrived via sync (no echo).
+  useEffect(() => {
+    if (tabSyncActiveConvRef.current === activeConversationId) {
+      tabSyncActiveConvRef.current = null;
+      return;
+    }
+    tabSync.publishActiveConversation(activeConversationId);
+  }, [activeConversationId, tabSync]);
+
+  // Mirror the UI language to the other windows.
+  useEffect(() => {
+    tabSync.publishPrefs({ language: uiLanguage });
+  }, [uiLanguage, tabSync]);
+
+  // Reconnect reconciliation: when the socket comes back after a drop, re-arm
+  // this window's per-connection active conversation on the server (the fresh
+  // connection has no memory of it) and ask conversation views to refetch their
+  // recent messages so the UI repairs state lost during the gap. Fires once per
+  // reconnect — no polling.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once on mount; the current conversation is read through a ref, and `client` is module-stable.
+  useEffect(() => {
+    return client.onReconnect(() => {
+      const convId = activeConversationIdRef.current;
+      client.sendWsMessage({
+        type: "active-conversation",
+        conversationId: convId,
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, {
+            detail: { conversationId: convId },
+          }),
+        );
+      }
+    });
+  }, []);
 
   // ── Pairing ────────────────────────────────────────────────────────
 
@@ -2269,11 +2325,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2680,11 +2731,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,

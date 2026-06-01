@@ -13,6 +13,17 @@ const packageRoot = path.resolve(
 const finalDistDir = path.join(packageRoot, ".next");
 const tempDistDirName = ".next-build";
 const tempDistDir = path.join(packageRoot, tempDistDirName);
+const appRouteFiles = [
+  "api/analyze-photo/route",
+  "api/create-character/route",
+  "api/generate-field/route",
+  "api/generate-photo/route",
+  "api/generate-scene/route",
+  "cloning/page",
+  "layout",
+  "page",
+];
+const pagesRouteFiles = ["_app", "_document", "_error"];
 
 const compatibilityFiles = [
   {
@@ -71,6 +82,24 @@ const compatibilityFiles = [
     ),
     content: '{"version":1,"files":[]}\n',
   },
+  ...appRouteFiles.map((relativeFile) => ({
+    file: path.join(
+      tempDistDir,
+      "server",
+      "app",
+      `${relativeFile}.js.nft.json`,
+    ),
+    content: '{"version":1,"files":[]}\n',
+  })),
+  ...pagesRouteFiles.map((relativeFile) => ({
+    file: path.join(
+      tempDistDir,
+      "server",
+      "pages",
+      `${relativeFile}.js.nft.json`,
+    ),
+    content: '{"version":1,"files":[]}\n',
+  })),
   ...[
     "api/analyze-photo/route.ts",
     "api/create-character/route.ts",

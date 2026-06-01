@@ -19,6 +19,7 @@ import {
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Input } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
@@ -229,6 +230,47 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
     [refresh],
   );
 
+  const backLabel =
+    mode === "list"
+      ? t("nav.back", { defaultValue: "Back" })
+      : t("nav.backToList", { defaultValue: "Back to list" });
+  const back = useAgentElement<HTMLButtonElement>({
+    id: "nav-back",
+    role: "button",
+    label: backLabel,
+    group: "contacts-nav",
+    description:
+      mode === "list"
+        ? "Leave the contacts app"
+        : "Return to the contacts list",
+  });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const refreshEl = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "contacts-actions",
+    description: "Reload the contacts list",
+  });
+  const newLabel = t("contacts.new", { defaultValue: "New contact" });
+  const newEl = useAgentElement<HTMLButtonElement>({
+    id: "action-new",
+    role: "button",
+    label: newLabel,
+    group: "contacts-actions",
+    description: "Open the new contact form",
+  });
+  const searchLabel = t("contacts.search", {
+    defaultValue: "Search contacts",
+  });
+  const searchEl = useAgentElement<HTMLInputElement>({
+    id: "input-search",
+    role: "text-input",
+    label: searchLabel,
+    group: "contacts-actions",
+    description: "Filter contacts by name, phone, or email",
+  });
+
   return (
     <div
       data-testid="contacts-shell"
@@ -245,15 +287,13 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
       <header className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           <Button
+            ref={back.ref}
+            {...back.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
             onClick={mode === "list" ? exitToApps : handleBackToList}
-            aria-label={
-              mode === "list"
-                ? t("nav.back", { defaultValue: "Back" })
-                : t("nav.backToList", { defaultValue: "Back to list" })
-            }
+            aria-label={backLabel}
           >
             {mode === "list" ? (
               <ArrowLeft className="h-4 w-4" />
@@ -273,12 +313,14 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
         {mode === "list" && (
           <div className="flex items-center gap-2">
             <Button
+              ref={refreshEl.ref}
+              {...refreshEl.agentProps}
               variant="ghost"
               size="icon"
               className="h-9 w-9 rounded-xl text-muted hover:text-txt"
               onClick={refresh}
               disabled={loading}
-              aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+              aria-label={refreshLabel}
               data-testid="contacts-refresh"
             >
               <RefreshCw
@@ -286,11 +328,13 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               />
             </Button>
             <Button
+              ref={newEl.ref}
+              {...newEl.agentProps}
               variant="ghost"
               size="icon"
               className="h-9 w-9 rounded-xl text-muted hover:text-txt"
               onClick={handleOpenNew}
-              aria-label={t("contacts.new", { defaultValue: "New contact" })}
+              aria-label={newLabel}
               data-testid="contacts-new"
             >
               <Plus className="h-4 w-4" />
@@ -304,17 +348,15 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
+              ref={searchEl.ref}
+              {...searchEl.agentProps}
               value={query}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 setQuery(e.target.value)
               }
-              placeholder={t("contacts.search", {
-                defaultValue: "Search contacts",
-              })}
+              placeholder={searchLabel}
               className="pl-9"
-              aria-label={t("contacts.search", {
-                defaultValue: "Search contacts",
-              })}
+              aria-label={searchLabel}
               data-testid="contacts-search"
             />
           </div>
@@ -395,10 +437,7 @@ function ContactList({
         <div className="text-sm font-medium text-txt">
           {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
         </div>
-        <Button variant="default" onClick={onImport} className="mt-2">
-          <Upload className="mr-2 h-4 w-4" />
-          {t("contacts.import", { defaultValue: "Import vCard" })}
-        </Button>
+        <ImportVCardButton onImport={onImport} t={t} />
       </div>
     );
   }
@@ -415,43 +454,97 @@ function ContactList({
 
   return (
     <ul className="divide-y divide-border/20">
-      {contacts.map((contact) => {
-        const primaryPhone = contact.phoneNumbers[0] ?? "";
-        const primaryEmail = contact.emailAddresses[0] ?? "";
-        const subtitle = primaryPhone || primaryEmail;
-        return (
-          <li key={contact.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(contact.id)}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
-            >
-              <Avatar name={contact.displayName} photoUri={contact.photoUri} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium text-txt">
-                    {contact.displayName ||
-                      t("contacts.unnamed", { defaultValue: "Unnamed" })}
-                  </span>
-                  {contact.starred && (
-                    <Star
-                      className="h-3.5 w-3.5 shrink-0 text-amber-400"
-                      fill="currentColor"
-                      aria-label={t("contacts.starred", {
-                        defaultValue: "Starred",
-                      })}
-                    />
-                  )}
-                </div>
-                {subtitle && (
-                  <div className="truncate text-xs text-muted">{subtitle}</div>
-                )}
-              </div>
-            </button>
-          </li>
-        );
-      })}
+      {contacts.map((contact, index) => (
+        <ContactListItem
+          key={contact.id}
+          contact={contact}
+          index={index}
+          onSelect={onSelect}
+          t={t}
+        />
+      ))}
     </ul>
+  );
+}
+
+function ImportVCardButton({ onImport, t }: { onImport: () => void; t: TFn }) {
+  const label = t("contacts.import", { defaultValue: "Import vCard" });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "action-import",
+    role: "button",
+    label,
+    group: "contacts-actions",
+    description: "Import contacts from a vCard file",
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="default"
+      onClick={onImport}
+      className="mt-2"
+    >
+      <Upload className="mr-2 h-4 w-4" />
+      {label}
+    </Button>
+  );
+}
+
+function ContactListItem({
+  contact,
+  index,
+  onSelect,
+  t,
+}: {
+  contact: ContactSummary;
+  index: number;
+  onSelect: (id: string) => void;
+  t: TFn;
+}) {
+  const name =
+    contact.displayName || t("contacts.unnamed", { defaultValue: "Unnamed" });
+  const primaryPhone = contact.phoneNumbers[0] ?? "";
+  const primaryEmail = contact.emailAddresses[0] ?? "";
+  const subtitle = primaryPhone || primaryEmail;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `contact-${contact.id}`,
+    role: "list-item",
+    label: name,
+    group: "contacts-list",
+    description: "Open this contact's details",
+    order: index,
+  });
+  return (
+    <li>
+      <button
+        ref={ref}
+        {...agentProps}
+        type="button"
+        onClick={() => onSelect(contact.id)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
+      >
+        <Avatar name={contact.displayName} photoUri={contact.photoUri} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-txt">
+              {name}
+            </span>
+            {contact.starred && (
+              <Star
+                className="h-3.5 w-3.5 shrink-0 text-amber-400"
+                fill="currentColor"
+                aria-label={t("contacts.starred", {
+                  defaultValue: "Starred",
+                })}
+              />
+            )}
+          </div>
+          {subtitle && (
+            <div className="truncate text-xs text-muted">{subtitle}</div>
+          )}
+        </div>
+      </button>
+    </li>
   );
 }
 
@@ -571,6 +664,43 @@ function NewContactForm({
   const phoneId = useId();
   const emailId = useId();
 
+  const nameEl = useAgentElement<HTMLInputElement>({
+    id: "input-name",
+    role: "text-input",
+    label: t("contacts.form.name", { defaultValue: "Name" }),
+    group: "contacts-form",
+    description: "Display name for the new contact",
+  });
+  const phoneEl = useAgentElement<HTMLInputElement>({
+    id: "input-phone",
+    role: "text-input",
+    label: t("contacts.form.phone", { defaultValue: "Phone" }),
+    group: "contacts-form",
+    description: "Phone number for the new contact",
+  });
+  const emailEl = useAgentElement<HTMLInputElement>({
+    id: "input-email",
+    role: "text-input",
+    label: t("contacts.form.email", { defaultValue: "Email" }),
+    group: "contacts-form",
+    description: "Email address for the new contact",
+  });
+  const cancelEl = useAgentElement<HTMLButtonElement>({
+    id: "action-cancel",
+    role: "button",
+    label: t("actions.cancel", { defaultValue: "Cancel" }),
+    group: "contacts-form",
+    description: "Discard the new contact and return to the list",
+  });
+  const saveEl = useAgentElement<HTMLButtonElement>({
+    id: "action-save",
+    role: "button",
+    label: t("contacts.form.save", { defaultValue: "Save" }),
+    group: "contacts-form",
+    description: "Save the new contact",
+    status: canSubmit ? undefined : "disabled",
+  });
+
   return (
     <form
       onSubmit={onSubmit}
@@ -584,6 +714,8 @@ function NewContactForm({
           {t("contacts.form.name", { defaultValue: "Name" })}
         </label>
         <Input
+          ref={nameEl.ref}
+          {...nameEl.agentProps}
           id={nameId}
           value={form.displayName}
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -605,6 +737,8 @@ function NewContactForm({
           {t("contacts.form.phone", { defaultValue: "Phone" })}
         </label>
         <Input
+          ref={phoneEl.ref}
+          {...phoneEl.agentProps}
           id={phoneId}
           type="tel"
           inputMode="tel"
@@ -624,6 +758,8 @@ function NewContactForm({
           {t("contacts.form.email", { defaultValue: "Email" })}
         </label>
         <Input
+          ref={emailEl.ref}
+          {...emailEl.agentProps}
           id={emailId}
           type="email"
           inputMode="email"
@@ -637,6 +773,8 @@ function NewContactForm({
 
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button
+          ref={cancelEl.ref}
+          {...cancelEl.agentProps}
           type="button"
           variant="ghost"
           onClick={onCancel}
@@ -644,7 +782,12 @@ function NewContactForm({
         >
           {t("actions.cancel", { defaultValue: "Cancel" })}
         </Button>
-        <Button type="submit" disabled={!canSubmit}>
+        <Button
+          ref={saveEl.ref}
+          {...saveEl.agentProps}
+          type="submit"
+          disabled={!canSubmit}
+        >
           {submitting
             ? t("contacts.form.saving", { defaultValue: "Saving…" })
             : t("contacts.form.save", { defaultValue: "Save" })}

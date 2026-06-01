@@ -201,7 +201,7 @@ describe("postInferenceSpent", () => {
     expect(calls).toHaveLength(1);
     const sentBody = String(calls[0].init.body);
     const headers = calls[0].init.headers as Record<string, string>;
-    const expectedSig = signWaifuWebhook(sentBody, payload!.timestamp, CONFIG.secret);
+    const expectedSig = signWaifuWebhook(sentBody, payload?.timestamp, CONFIG.secret);
     expect(headers["X-Waifu-Webhook-Signature"]).toBe(expectedSig);
     // Only the canonical header is sent; the legacy duplicate is dropped.
     expect(headers["X-Waifu-Signature"]).toBeUndefined();

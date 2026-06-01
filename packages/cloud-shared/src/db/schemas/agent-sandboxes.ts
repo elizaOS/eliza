@@ -49,6 +49,14 @@ export type AgentSandboxStatus =
   | "provisioning"
   | "running"
   | "stopped"
+  /**
+   * Cold storage. The agent's full state has been backed up to object
+   * storage and its container removed, freeing the compute slot (the node
+   * autoscaler reclaims the now-empty Hetzner box). No compute cost accrues.
+   * An `agent_wake` job provisions a fresh container and restores state.
+   * Distinct from `stopped` (suspend), which keeps the container + node slot.
+   */
+  | "sleeping"
   | "disconnected"
   | "error"
   /**
@@ -159,6 +167,14 @@ export type AgentSandboxPoolStatus = "unclaimed";
 
 export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown";
 
+/**
+ * Whether a backup row stores the agent's complete state (`full`) or only the
+ * delta against `parent_backup_id` (`incremental`). Restoring an incremental
+ * backup replays its parent chain back to the nearest `full` backup. See
+ * `agent-backup-diff.ts` for the delta format and reconstruction.
+ */
+export type AgentBackupKind = "full" | "incremental";
+
 export interface AgentBackupStateData {
   memories: Array<{ role: string; text: string; timestamp: number }>;
   config: Record<string, unknown>;
@@ -173,15 +189,25 @@ export const agentSandboxBackups = pgTable(
       .notNull()
       .references(() => agentSandboxes.id, { onDelete: "cascade" }),
     snapshot_type: text("snapshot_type").$type<AgentBackupSnapshotType>().notNull(),
+    /**
+     * For `full` backups, `state_data` is the complete state. For
+     * `incremental` backups, it is the `BackupDelta` against `parent_backup_id`.
+     */
     state_data: jsonb("state_data").$type<AgentBackupStateData>().notNull(),
     state_data_storage: text("state_data_storage").notNull().default("inline"),
     state_data_key: text("state_data_key"),
     size_bytes: bigint("size_bytes", { mode: "number" }),
+    backup_kind: text("backup_kind").$type<AgentBackupKind>().notNull().default("full"),
+    /** Set only on `incremental` rows: the backup this delta builds on. */
+    parent_backup_id: uuid("parent_backup_id"),
+    /** sha256 of the reconstructed full state, for integrity verification. */
+    content_hash: text("content_hash"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     sandbox_record_idx: index("agent_sandbox_backups_sandbox_idx").on(table.sandbox_record_id),
     created_at_idx: index("agent_sandbox_backups_created_at_idx").on(table.created_at),
+    parent_backup_idx: index("agent_sandbox_backups_parent_idx").on(table.parent_backup_id),
   }),
 );
 

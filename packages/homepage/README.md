@@ -18,7 +18,7 @@ cp .env.example .env.local
 | `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username from @BotFather |
 | `VITE_TELEGRAM_BOT_ID` | Numeric Telegram bot ID (first part of bot token before `:`) |
 | `VITE_DISCORD_CLIENT_ID` | Discord Application ID (from Developer Portal → General Information) |
-| `VITE_WHATSAPP_PHONE_NUMBER` | WhatsApp Business phone number in E.164 format (e.g. `+14245074963`) |
+| `VITE_WHATSAPP_PHONE_NUMBER` | WhatsApp Business phone number in E.164 format (defaults to `+14159611510`) |
 
 ### Discord OAuth2 Setup
 

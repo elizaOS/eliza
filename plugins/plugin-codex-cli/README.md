@@ -2,7 +2,7 @@
 
 ChatGPT Codex model provider for elizaOS. This node-only plugin lets an Eliza agent use a user's ChatGPT Plus/Pro subscription as a frontier-model provider by reusing the OAuth token cache written by the official `codex` CLI.
 
-This is intentionally a model provider plugin. It does not add a reasoning runtime, planner loop, context manager, or any native-reasoning architecture. It sits alongside providers like `@elizaos/plugin-openai` and `@elizaos/plugin-anthropic` and registers handlers for text, response-handler, action-planner, and object model types.
+This is intentionally a model provider plugin. It does not add a reasoning runtime, planner loop, context manager, or any native-reasoning architecture. It sits alongside providers like `@elizaos/plugin-openai` and `@elizaos/plugin-anthropic` and registers handlers for text (`TEXT_SMALL`, `TEXT_NANO`, `TEXT_MEDIUM`, `TEXT_LARGE`, `TEXT_MEGA`), `RESPONSE_HANDLER`, and `ACTION_PLANNER` model types.
 
 ## How it works
 
@@ -85,4 +85,4 @@ To reduce account/session weirdness against the ChatGPT Codex backend, each back
 
 ## Scope
 
-This package is the salvaged CodexBackend piece from the closed native-reasoning PR #7435. Wave 1 on `develop` owns native tool calling and the agent loop. This plugin only provides a Codex-backed model provider surface for that architecture.
+This plugin provides a Codex-backed model provider surface. It does not own a reasoning loop, planner, or context manager — those concerns belong to the agent runtime and other plugins.

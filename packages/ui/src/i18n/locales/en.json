@@ -4669,6 +4669,7 @@
   "homeview.composer.recentChat": "Recent chat",
   "homeview.composer.stopVoice": "Stop voice input",
   "homeview.composer.startVoice": "Start voice input",
+  "homeview.orb.stop": "Stop voice input",
   "homeview.composer.listening": "Listening",
   "homeview.composer.notListening": "Not listening",
   "homeview.composer.placeholder": "Ask Eliza...",

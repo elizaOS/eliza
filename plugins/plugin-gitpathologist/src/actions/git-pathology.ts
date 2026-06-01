@@ -82,7 +82,7 @@ function buildOptions(params: Record<string, unknown>): Partial<AnalysisOptions>
 }
 
 function resolveRepoRoot(): string {
-  const fromEnv = process.env.MILADY_WORKSPACE_DIR ?? process.env.ELIZA_WORKSPACE_DIR;
+  const fromEnv = process.env.ELIZA_WORKSPACE_DIR ?? process.env.MILADY_WORKSPACE_DIR;
   const cwd = fromEnv?.trim() ? fromEnv.trim() : process.cwd();
   return path.resolve(cwd);
 }

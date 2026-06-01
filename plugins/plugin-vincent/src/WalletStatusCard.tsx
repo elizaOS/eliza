@@ -4,6 +4,7 @@
 
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { Button, StatusBadge } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Copy, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
@@ -21,11 +22,22 @@ function CopyableAddress({
   label,
   address,
   onCopy,
+  agentId,
+  agentLabel,
 }: {
   label: string;
   address: string;
   onCopy: (text: string, label: string) => void;
+  agentId: string;
+  agentLabel: string;
 }) {
+  const copy = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group: "vincent-wallet",
+    description: `${agentLabel} to the clipboard`,
+  });
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-bg/50 px-3 py-2.5">
       <div className="min-w-0 flex-1">
@@ -35,6 +47,8 @@ function CopyableAddress({
         </div>
       </div>
       <Button
+        ref={copy.ref}
+        {...copy.agentProps}
         variant="ghost"
         size="icon"
         className="h-7 w-7 shrink-0 text-muted hover:text-txt"
@@ -180,6 +194,8 @@ export function WalletStatusCard({
               label={copiedField === "EVM Address" ? "Copied!" : "EVM Address"}
               address={evmAddress}
               onCopy={handleCopy}
+              agentId="action-copy-evm-address"
+              agentLabel="Copy EVM address"
             />
           )}
           {solanaAddress && (
@@ -189,6 +205,8 @@ export function WalletStatusCard({
               }
               address={solanaAddress}
               onCopy={handleCopy}
+              agentId="action-copy-solana-address"
+              agentLabel="Copy Solana address"
             />
           )}
         </div>

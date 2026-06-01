@@ -19,6 +19,11 @@ const CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b";
 // answer instead of fetching live data. Allowing the read-only fetch lets
 // sub-agents retrieve real live data on any provider without granting
 // write/exec (`bash`, `edit`) permissions, which stay gated by the preset.
+//
+// SECURITY: read-only does not mean safe-target. opencode's own SSRF guard is
+// what blocks fetches to loopback, private ranges, and cloud metadata
+// (169.254.169.254). This grant assumes that guard is deployed in the bundled
+// opencode build; without it a spawned sub-agent can reach internal endpoints.
 const OPENCODE_SPAWN_PERMISSION = { webfetch: "allow" } as const;
 
 type RuntimeLike = Pick<IAgentRuntime, "getSetting">;

@@ -83,8 +83,20 @@ function installCliPackage(smokeDir, tarballPath) {
   run(bunCommand, ["add", tarballPath], { cwd: smokeDir });
 }
 
-function installCliPackageGlobally(prefixDir, tarballPath) {
-  if (commandExists(npmCommand)) {
+function availableGlobalManagers() {
+  const managers = [];
+  if (commandExists(npmCommand)) managers.push("npm");
+  if (commandExists(bunCommand)) managers.push("bun");
+  if (managers.length === 0) {
+    throw new Error(
+      "Neither npm nor bun is available for global packaged smoke test",
+    );
+  }
+  return managers;
+}
+
+function installCliPackageGlobally(manager, prefixDir, tarballPath) {
+  if (manager === "npm") {
     run(npmCommand, [
       "install",
       "--global",
@@ -95,12 +107,6 @@ function installCliPackageGlobally(prefixDir, tarballPath) {
       tarballPath,
     ]);
     return;
-  }
-
-  if (!commandExists(bunCommand)) {
-    throw new Error(
-      "Neither npm nor bun is available for global packaged smoke test",
-    );
   }
 
   run(bunCommand, ["add", "--global", tarballPath], {
@@ -155,13 +161,19 @@ function runGlobalCli(prefixDir, cwd, args) {
 }
 
 function smokeGlobalInstall(tarballPath) {
-  const prefixDir = path.join(tmpRoot, "global");
-  fs.mkdirSync(prefixDir, { recursive: true });
-  installCliPackageGlobally(prefixDir, tarballPath);
+  // Exercise EVERY available package manager: a global bin resolves through a
+  // stricter ESM path than a local install, and npm vs bun differ there. The
+  // ERR_PACKAGE_PATH_NOT_EXPORTED class (elizaOS/eliza#8000) only reproduces on
+  // global install, so testing a single manager can miss it.
+  for (const manager of availableGlobalManagers()) {
+    const prefixDir = path.join(tmpRoot, `global-${manager}`);
+    fs.mkdirSync(prefixDir, { recursive: true });
+    installCliPackageGlobally(manager, prefixDir, tarballPath);
 
-  const globalCli = getGloballyInstalledCli(prefixDir);
-  assertPathExists(globalCli);
-  runGlobalCli(prefixDir, tmpRoot, ["--version"]);
+    const globalCli = getGloballyInstalledCli(prefixDir);
+    assertPathExists(globalCli);
+    runGlobalCli(prefixDir, tmpRoot, ["--version"]);
+  }
 }
 
 function main() {

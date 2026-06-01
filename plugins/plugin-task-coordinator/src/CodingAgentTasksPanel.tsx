@@ -1,15 +1,5 @@
-import {
-  Badge,
-  Button,
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  client,
-  EmptyWidgetState,
-  TerminalPluginView,
-  useApp,
-  WidgetSection,
-} from "@elizaos/ui";
+import { Badge, Button, type CodingAgentSession, type CodingAgentTaskThread, type CodingAgentTaskThreadDetail, client, EmptyWidgetState, TerminalPluginView, useApp, WidgetSection } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
   type ReactNode,
@@ -258,6 +248,46 @@ function DetailList({
       </div>
       {children}
     </div>
+  );
+}
+
+function ThreadActionButton({
+  agentId,
+  label,
+  description,
+  variant,
+  disabled,
+  onClick,
+  className,
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  variant: "secondary";
+  disabled: boolean;
+  onClick: () => void;
+  className: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "thread-actions",
+    description,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size="sm"
+      disabled={disabled}
+      onClick={onClick}
+      className={className}
+      aria-label={label}
+      {...agentProps}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -524,29 +554,29 @@ function ThreadDetailContent({
 
       <div className="flex gap-2 pt-1">
         {detail.status === "archived" ? (
-          <Button
+          <ThreadActionButton
+            agentId="action-reopen-thread"
+            label={t("codingagenttaskspanel.reopen", {
+              defaultValue: "Reopen",
+            })}
+            description="Reopen the selected archived task thread"
             variant="secondary"
-            size="sm"
             disabled={busy}
             onClick={onReopen}
             className="h-7 px-2 text-xs-tight"
-          >
-            {t("codingagenttaskspanel.reopen", {
-              defaultValue: "Reopen",
-            })}
-          </Button>
+          />
         ) : (
-          <Button
+          <ThreadActionButton
+            agentId="action-delete-thread"
+            label={t("codingagenttaskspanel.delete", {
+              defaultValue: "Delete",
+            })}
+            description="Delete (archive) the selected task thread"
             variant="secondary"
-            size="sm"
             disabled={busy}
             onClick={onDelete}
             className="h-7 px-2 text-xs-tight text-danger hover:bg-danger/10"
-          >
-            {t("codingagenttaskspanel.delete", {
-              defaultValue: "Delete",
-            })}
-          </Button>
+          />
         )}
       </div>
     </div>
@@ -576,6 +606,15 @@ function TaskThreadCard({
   t: typeof fallbackTranslate;
   locale?: string;
 }) {
+  const { ref: selectRef, agentProps: selectAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `thread-select-${thread.id}`,
+      role: "list-item",
+      label: thread.title,
+      group: "task-threads",
+      status: selected ? "active" : "inactive",
+      description: `Open the "${thread.title}" task thread`,
+    });
   return (
     <div
       className={`flex flex-col rounded-lg border transition-colors ${
@@ -585,9 +624,12 @@ function TaskThreadCard({
       }`}
     >
       <button
+        ref={selectRef}
         type="button"
         onClick={() => onSelect(thread.id)}
         className="flex w-full flex-col gap-1 p-3 text-left hover:bg-bg-hover/30"
+        aria-current={selected ? "true" : undefined}
+        {...selectAgentProps}
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -681,6 +723,28 @@ export function CodingAgentTasksPanel({
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
     [selectedThreadId, threads],
   );
+  const searchLabel = t("codingagenttaskspanel.searchPlaceholder", {
+    defaultValue: "Search tasks",
+  });
+  const openViewLabel = t("taskseventspanel.OpenView", {
+    defaultValue: "Open Tasks view",
+  });
+  const { ref: searchRef, agentProps: searchAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "input-search-tasks",
+      role: "text-input",
+      label: searchLabel,
+      group: "task-filters",
+      description: "Filter task threads by title or request text",
+    });
+  const { ref: openViewRef, agentProps: openViewAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "action-open-tasks-view",
+      role: "button",
+      label: openViewLabel,
+      group: "task-actions",
+      description: "Open the full Tasks view",
+    });
 
   useEffect(() => {
     let cancelled = false;
@@ -877,13 +941,13 @@ export function CodingAgentTasksPanel({
       action={
         !fullPage ? (
           <Button
+            ref={openViewRef}
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
             onClick={() => setTab("tasks")}
-            aria-label={t("taskseventspanel.OpenView", {
-              defaultValue: "Open Tasks view",
-            })}
+            aria-label={openViewLabel}
+            {...openViewAgentProps}
           >
             <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </Button>
@@ -893,12 +957,13 @@ export function CodingAgentTasksPanel({
     >
       <div className="mb-2">
         <input
+          ref={searchRef}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder={t("codingagenttaskspanel.searchPlaceholder", {
-            defaultValue: "Search tasks",
-          })}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
           className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+          {...searchAgentProps}
         />
       </div>
       {loadError ? (

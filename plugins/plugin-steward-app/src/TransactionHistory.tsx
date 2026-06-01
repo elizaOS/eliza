@@ -2,14 +2,8 @@
  * Transaction history table — lists all transactions for the agent from Steward vault.
  */
 
-import {
-  Button,
-  PagePanel,
-  Spinner,
-  StatusBadge,
-  statusLabelForState,
-  statusToneForState,
-} from "@elizaos/ui";
+import { Button, PagePanel, Spinner, StatusBadge, statusLabelForState, statusToneForState } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -74,6 +68,44 @@ export function TransactionHistory({
   const [chainFilter, setChainFilter] = useState<number | "">("");
   const [page, setPage] = useState(0);
   const pageSize = 25;
+
+  const statusFilterElement = useAgentElement<HTMLSelectElement>({
+    id: "filter-status",
+    role: "select",
+    label: "Status filter",
+    group: "history-filters",
+    description: "Filter transactions by status",
+    options: STATUS_OPTIONS.map((opt) => opt.value),
+  });
+  const chainFilterElement = useAgentElement<HTMLSelectElement>({
+    id: "filter-chain",
+    role: "select",
+    label: "Chain filter",
+    group: "history-filters",
+    description: "Filter transactions by chain",
+    options: CHAIN_OPTIONS.map((opt) => String(opt.value)),
+  });
+  const refreshElement = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: "Refresh transactions",
+    group: "history-actions",
+    description: "Reload the transaction history",
+  });
+  const prevPageElement = useAgentElement<HTMLButtonElement>({
+    id: "page-previous",
+    role: "button",
+    label: "Previous page",
+    group: "history-pagination",
+    description: "Go to the previous page of transactions",
+  });
+  const nextPageElement = useAgentElement<HTMLButtonElement>({
+    id: "page-next",
+    role: "button",
+    label: "Next page",
+    group: "history-pagination",
+    description: "Go to the next page of transactions",
+  });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -165,11 +197,14 @@ export function TransactionHistory({
         <>
           <PagePanel.Toolbar>
             <select
+              ref={statusFilterElement.ref}
+              {...statusFilterElement.agentProps}
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setPage(0);
               }}
+              aria-label="Status filter"
               className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt shadow-sm focus:border-accent/40 focus:outline-none"
             >
               {STATUS_OPTIONS.map((opt) => (
@@ -180,6 +215,8 @@ export function TransactionHistory({
             </select>
 
             <select
+              ref={chainFilterElement.ref}
+              {...chainFilterElement.agentProps}
               value={chainFilter}
               onChange={(e) => {
                 setChainFilter(
@@ -187,6 +224,7 @@ export function TransactionHistory({
                 );
                 setPage(0);
               }}
+              aria-label="Chain filter"
               className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt shadow-sm focus:border-accent/40 focus:outline-none"
             >
               {CHAIN_OPTIONS.map((opt) => (
@@ -197,11 +235,14 @@ export function TransactionHistory({
             </select>
 
             <Button
+              ref={refreshElement.ref}
+              {...refreshElement.agentProps}
               variant="outline"
               size="sm"
               className="h-9 rounded-xl px-3 text-xs font-semibold"
               onClick={() => void loadData()}
               disabled={loading}
+              aria-label="Refresh transactions"
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -299,11 +340,14 @@ export function TransactionHistory({
             {pageCount > 1 && (
               <div className="flex items-center justify-between border-t border-border/20 px-4 py-3">
                 <Button
+                  ref={prevPageElement.ref}
+                  {...prevPageElement.agentProps}
                   variant="ghost"
                   size="sm"
                   disabled={page === 0}
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   className="h-8 rounded-lg px-3 text-xs"
+                  aria-label="Previous page"
                 >
                   Previous
                 </Button>
@@ -311,11 +355,14 @@ export function TransactionHistory({
                   Page {page + 1} of {pageCount}
                 </span>
                 <Button
+                  ref={nextPageElement.ref}
+                  {...nextPageElement.agentProps}
                   variant="ghost"
                   size="sm"
                   disabled={page >= pageCount - 1}
                   onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                   className="h-8 rounded-lg px-3 text-xs"
+                  aria-label="Next page"
                 >
                   Next
                 </Button>

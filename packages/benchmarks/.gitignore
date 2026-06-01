@@ -101,3 +101,15 @@ framework/results/*.json
 
 # SWE-bench cloned task workspaces (nested git repos; local checkout only)
 swe-bench-workspace/
+
+# --- Per-benchmark committed run output (regenerated locally; never commit) ---
+# Underscore-prefixed smoke output dirs (the smoke_*/ rule above misses these).
+**/_smoke_*/
+**/_cli_smoke/
+# CompactBench --output captures
+compactbench/results*.jsonl
+compactbench/results*.json
+# Trust handler result captures
+trust/results*.json
+# VoiceBench synthesized dataset (rebuilt by run.sh)
+voicebench/shared/generated/

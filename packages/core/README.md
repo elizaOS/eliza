@@ -2,17 +2,16 @@
 
 ## Overview
 
-The `@elizaos/core` package provides a robust foundation for building AI agents with dynamic interaction capabilities. It enables agents to manage entities, memories, and context, and to interact with external systems, going beyond simple message responses to handle complex scenarios and execute tasks effectively.
+`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the CLI), and every `@elizaos/*` plugin.
 
-## Key Features
+## Key concepts
 
-- **AgentRuntime:** Central orchestrator for managing agent lifecycle, plugins, and interactions.
-- **Actions:** Define tasks the agent can perform, with validation and execution logic.
-- **Providers:** Supply real-time data and context to the agent, enabling interaction with dynamic environments and external APIs.
-- **Evaluators:** Process conversation data to extract insights, build long-term memory, and maintain contextual awareness.
-- **Plugin System:** Extensible architecture allowing for modular addition of functionalities.
-- **Entity and Memory Management:** Core support for tracking entities and their associated information.
-- **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
+- **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
+- **Actions:** Tasks the agent can perform, each with a `validate` and `handler` function.
+- **Providers:** Supply data and context to the runtime and its components.
+- **Evaluators:** Process conversation data to extract facts, build memory, and reflect.
+- **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
+- **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
 ## Installation
 
@@ -36,20 +35,15 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
     bun run build
     ```
 
-## Browser and Node.js Compatibility
+## Build targets (Node, Browser, Edge)
 
-The `@elizaos/core` package features a dual build system that provides optimized builds for both Node.js and browser environments:
+`@elizaos/core` builds to three targets via conditional exports:
 
-- **Node.js Build**: Full API surface with all features including server utilities
-- **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
+- **Node.js Build**: Full API surface with all features including server utilities (`index.node.ts`)
+- **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
+- **Edge Build**: Edge-runtime subset (`index.edge.ts`)
 
 The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
-
-```bash
-npm install buffer
-```
-
-The dual build system uses conditional exports in package.json to automatically select the appropriate build based on the runtime environment.
 
 ## Configuration
 
@@ -57,12 +51,11 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
-- `SECRET_SALT`: Secret salt for encryption purposes.
+- `SECRET_SALT`: Encryption salt, read by `getSalt()` in `src/settings.ts`. In production it must be set to a non-default value unless `ELIZA_ALLOW_DEFAULT_SECRET_SALT=true`.
 - `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
-- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
-- `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Basic-capabilities-related; see plugin docs. Shown in the basic-capabilities banner when set.
+- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
 
 **Example `.env`:**
 
@@ -78,15 +71,7 @@ LOG_FILE=true
 
 ### Design and rationale (WHY)
 
-Key behaviors and APIs are documented with their **reasons** so future changes stay consistent with intent:
-
-- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, batch-queue consolidation, and what we don’t do.
-- **[docs/BATCH_QUEUE.md](docs/BATCH_QUEUE.md)** — Why `utils/batch-queue` exists (forward-looking consolidation vs one-line fixes), layer breakdown (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`), and where each is used. Published copy: [docs.elizaos.ai/runtime/batch-queue](https://docs.elizaos.ai/runtime/batch-queue).
-- **[docs/PIPELINE_HOOKS.md](docs/PIPELINE_HOOKS.md)** — Unified pipeline hooks: phases, `outgoing_before_deliver` (sources, streaming, secrets), Node stream dedupe (`useModel` vs message service), DPE traces/score hooks, observability, contributor checklist.
-- **[CHANGELOG.md](CHANGELOG.md)** — Per-change notes with WHY for each addition or fix.
-- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance). Shipped items remain documented in CHANGELOG and design docs.
-
-When adding or changing behavior, update these docs so the WHY stays accurate.
+Per-change notes with the WHY for each addition or fix live in [CHANGELOG.md](CHANGELOG.md). The sections below document the reasoning behind the major subsystems so future changes stay consistent with intent.
 
 ### Benchmark & Trajectory Tracing
 
@@ -123,8 +108,6 @@ The core can pass **prompt segments** to model providers so they can use prompt-
 - When using segments in the API (e.g. messages or reordered prompt), ensure the final text seen by the model equals the intended full prompt (e.g. `params.prompt` or the stable-first concatenation).
 - Only mark content as `stable: true` if it is identical across calls for the same schema/character. **Why:** Content that includes per-call UUIDs or changing state will never cache; mislabeling it as stable wastes cache capacity and can confuse operators.
 
-For more detail, implementer pitfalls, and rollback, see [docs/PROMPT_CACHE_HINTS.md](docs/PROMPT_CACHE_HINTS.md).
-
 ## Core Architecture
 
 `@elizaos/core` is built around a few key concepts that work together within the `AgentRuntime`.
@@ -159,17 +142,17 @@ Important behavior:
 - Context is declarative and composable: `providers`, `contextBuilder`, and `contextResolvers` can be mixed.
 - Dispatching is affinity-aware, so unrelated prompt sections are not merged into the same call just because they arrived at the same time.
 
-Relevant runtime knobs:
+Relevant runtime knobs (all `PROMPT_BATCHER_*`, read in `src/runtime.ts`):
 
-- `PROMPT_BATCH_SIZE`
-- `PROMPT_MAX_DRAIN_INTERVAL_MS`
-- `PROMPT_MAX_SECTIONS_PER_CALL`
-- `PROMPT_PACKING_DENSITY`
-- `PROMPT_MAX_TOKENS_PER_CALL`
-- `PROMPT_MAX_PARALLEL_CALLS`
-- `PROMPT_MODEL_SEPARATION`
+- `PROMPT_BATCHER_BATCH_SIZE`
+- `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`
+- `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`
+- `PROMPT_BATCHER_PACKING_DENSITY`
+- `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`
+- `PROMPT_BATCHER_MAX_PARALLEL_CALLS`
+- `PROMPT_BATCHER_MODEL_SEPARATION`
 
-For the deeper design rationale and rollout details, see `DESIGN.md`, `docs/BATCH_QUEUE.md`, `ROADMAP.md`, and `CHANGELOG.md` in this package.
+The prompt batcher implementation lives in `src/utils/prompt-batcher/` (`batcher.ts`, `dispatcher.ts`). The lower-level queue primitives (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`) live in `src/utils/batch-queue/`.
 
 ### Task system
 
@@ -183,7 +166,7 @@ The **task system** is the single place for *when* scheduled work runs. Only tas
 
 - Tasks with `tags: ["queue"]` are fetched every tick. Non-repeat tasks run when `now >= dueAt` (or `metadata.scheduledAt`) then are deleted; repeat tasks use `updateInterval`/`baseInterval` and `metadata.updatedAt` as last-run time. **Why:** One-shot "run at time X" (e.g. follow-up) uses `dueAt`; interval-based scheduling covers batcher drains and recurring use.
 
-**Why `utils/batch-queue`’s `TaskDrain`:** several services create the same style of repeat drain task (`queue` + `repeat`, `maxFailures: -1`, interval metadata). Centralizing find/create/update/delete avoids each caller re-implementing JSON/metadata edge cases and keeps worker registration rules explicit (`skipRegisterWorker` when TaskService already owns the worker name). See `docs/BATCH_QUEUE.md`.
+**Why `utils/batch-queue`’s `TaskDrain`:** several services create the same style of repeat drain task (`queue` + `repeat`, `maxFailures: -1`, interval metadata). Centralizing find/create/update/delete avoids each caller re-implementing JSON/metadata edge cases and keeps worker registration rules explicit (`skipRegisterWorker` when TaskService already owns the worker name). Implementation in `src/utils/batch-queue/`.
 
 **Cross-runtime scheduling (three modes):**
 
@@ -193,7 +176,7 @@ The **task system** is the single place for *when* scheduled work runs. Only tas
 
 **Public API (TaskService):** `executeTaskById`, `pauseTask`, `resumeTask`, `getTaskStatus`, `markDirty`, `runDueTasks()` (serverless). **Why:** Operators and UIs can run, pause, resume, and inspect tasks without touching the DB directly.
 
-See `docs/TASK_SCHEDULER.md` for full architecture, WHYs, and daemon/serverless usage. See `DESIGN.md` (§ Task system upgrades and batcher-on-tasks) for full rationale and consumer fit.
+The implementation lives in `src/services/task.ts` and `src/services/task-scheduler.ts`.
 
 ### Autonomy
 
@@ -205,7 +188,7 @@ Why batcher-only:
 
 ### AgentRuntime
 
-The `AgentRuntime` is the heart of the system. It manages the agent's lifecycle, loads plugins, orchestrates interactions, and provides a central point for actions, providers, and evaluators to operate. It's typically initialized with a set of plugins, including the `corePlugin` which provides foundational capabilities.
+The `AgentRuntime` (`src/runtime.ts`, `class AgentRuntime implements IAgentRuntime`) is the heart of the system. It manages the agent's lifecycle, loads plugins, orchestrates the message loop, and is the central point for actions, providers, and evaluators. It is initialized with a set of `Plugin`s; foundational actions, providers, evaluators, and services ship as the `basicCapabilities` bundle (`src/features/basic-capabilities/index.ts`).
 
 ### Actions
 
@@ -245,121 +228,56 @@ The runtime talks to persistence through the `IDatabaseAdapter` interface. Adapt
 
 ## Getting Started
 
-### Initializing with `corePlugin`
-
-The `corePlugin` bundles essential actions, providers, and evaluators from `@elizaos/core`. To use it, add it to the `AgentRuntime` during initialization:
+### Initializing a runtime
 
 ```typescript
-import { AgentRuntime, corePlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 
-const agentRuntime = new AgentRuntime({
+const runtime = new AgentRuntime({
+  character,           // a Character (type in src/types/agent.ts; helpers in src/character.ts)
   plugins: [
-    corePlugin,
-    // You can add other custom or third-party plugins here
+    // your plugins; each contributes actions/providers/evaluators/services
   ],
-  // Other AgentRuntime configurations can be specified here
+  // other AgentRuntime options
 });
 
-// After initialization, agentRuntime is ready to be used.
-// You should see console messages like "✓ Registering action: <plugin actions>"
-// indicating successful plugin registration.
+await runtime.initialize();
 ```
 
-### Example: Defining a Custom Action (Conceptual)
+Foundational actions, providers, evaluators, and services are available as the `basicCapabilities` bundle and its parts (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`) exported from `@elizaos/core`. There is no `corePlugin` singleton — compose the bundles you need or rely on a higher-level package (e.g. `@elizaos/agent`) to wire them.
 
-While `corePlugin` provides many actions, you might need to define custom actions for specific agent behaviors. Here's a conceptual outline:
+### Defining a custom capability
+
+A custom action implements the `Action` type (`src/types/`):
 
 ```typescript
-// myCustomAction.ts
-// (This is a simplified conceptual example)
+import type { Action } from "@elizaos/core";
 
-export const myCustomAction = {
-  name: "customGreet",
+export const customGreet: Action = {
+  name: "CUSTOM_GREET",
   description: "Greets a user in a special way.",
-  validate: async ({ context }) => {
-    // Logic to determine if this action should run
-    // e.g., return context.message.text.includes('special hello');
-    return true; // Placeholder
+  validate: async (runtime, message) => message.content.text?.includes("special hello") ?? false,
+  handler: async (runtime, message, state, options, callback) => {
+    await callback?.({ text: "A very special hello to you!" });
+    return { success: true };
   },
-  handler: async ({ runtime, context }) => {
-    // Logic to execute the action
-    // e.g., runtime.sendMessage(context.roomId, "A very special hello to you!");
-    console.log("Custom Greet action executed!");
-    return { success: true, message: "Custom greeting sent." };
-  },
+  examples: [],
 };
-
-// Then, this action would be registered with the AgentRuntime, typically via a custom plugin.
 ```
 
-For detailed instructions on creating and registering plugins and actions, refer to the specific documentation or examples within the codebase.
+Register it via a `Plugin` (`{ name, actions: [customGreet] }`) passed to the runtime. Providers and evaluators follow the same pattern against the `Provider` / `Evaluator` types.
 
 ## Development & Testing
 
-### Running Tests
+The package uses **vitest**. From the repo root:
 
-The `@elizaos/core` package uses **vitest** for testing.
+```bash
+bun run --cwd packages/core test          # vitest run
+bun run --cwd packages/core test:watch    # watch mode
+bun run --cwd packages/core test:coverage # with v8 coverage
+bun run --cwd packages/core typecheck     # tsgo --noEmit
+```
 
-1.  **Prerequisites**:
-    - Ensure `bun` is installed (`npm install -g bun`).
-    - Environment variables in `.env` (as described in Configuration) are generally **not required** for most core tests but might be for specific integration tests if any.
-
-2.  **Setup**:
-    - Navigate to the `packages/core` directory: `cd packages/core`
-    - Install dependencies: `bun install`
-
-3.  **Execute Tests**:
-    ```bash
-    npx vitest
-    ```
-    Test results will be displayed in the terminal.
-
-### TODO Items
-
-The following improvements and features are planned for `@elizaos/core`:
-
-- **Feature**: Add ability for plugins to register their sources (Context: Exporting a default `sendMessageAction`).
-- **Enhancement**: Improve formatting of posts (Context: Returning formatted posts joined by a newline).
-- **Bug**: Resolve server ID creation/retrieval issues (Context: Creating a room with specific world, name, and server IDs).
-- **Enhancement**: Refactor message sending logic to an `ensureConnection` approach (Context: Sending messages to room participants).
-
-## Troubleshooting & FAQ
-
-### Common Issues
-
-- **AgentRuntime not responding to triggers**:
-  - **Cause**: Improperly defined action `validate` functions or handlers. Trigger conditions might not be met.
-  - **Solution**: Verify `validate` functions correctly identify trigger conditions. Ensure `handler` functions execute as intended. Check console logs for errors during validation/handling.
-
-- **Provider data is outdated/incorrect**:
-  - **Cause**: Issues with external data source integration or API failures.
-  - **Solution**: Check API connections and ensure the provider's data fetching logic is accurate. Review network configurations if needed.
-
-- **Evaluator fails to maintain context**:
-  - **Cause**: Evaluator not capturing necessary facts/relationships correctly.
-  - **Solution**: Review evaluator configuration. Ensure it uses correct data from `AgentRuntime` and is updated with the latest configuration for accurate context.
-
-### Frequently Asked Questions
-
-- **Q: How do I define and use a new Action?**
-  - **A**: Define an action object with `name`, `description`, `validate`, and `handler` functions. Integrate it into `AgentRuntime` usually by creating a plugin that registers the action. Ensure the action's name and description clearly align with its task for proper triggering.
-
-- **Q: My action is registered, but the agent is not calling it.**
-  - **A**: Double-check the action's `name` and `description` for clarity and relevance to the triggering conditions. Verify that the `validate` function correctly returns `true` (or a truthy value indicating applicability) under the desired conditions. Inspect logs for any errors or warnings related to your action.
-
-- **Q: Can Providers access external API data?**
-  - **A**: Yes, Providers are designed to interact with external systems, including fetching data from external APIs. This enables the agent to use real-time, dynamic context.
-
-- **Q: How do I extend the agent's evaluation capabilities?**
-  - **A**: Implement custom evaluators and integrate them with `AgentRuntime` (typically via a plugin). These can be tailored to extract specific information, enhancing the agent's memory and contextual understanding.
-
-- **Q: How can I create a mock environment for testing?**
-  - **A**: The package may include mock adapters (e.g., `MockDatabaseAdapter` if it's part of core utilities) that simulate interactions (like database connections) without actual external dependencies, facilitating controlled testing.
-
-### Debugging Tips
-
-- Utilize console logs (`LOG_LEVEL=debug`) for detailed error messages and execution flow during action validation and handler execution.
-- Use mock classes/adapters where available to simulate environments and isolate functions for testing specific behaviors.
-- Ensure `AgentRuntime` is loaded with the correct configurations and plugins.
+For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md).
 
 ---

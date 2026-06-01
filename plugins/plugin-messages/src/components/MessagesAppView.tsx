@@ -1,6 +1,7 @@
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
@@ -111,6 +112,58 @@ async function loadMessagesState(limit = 200) {
   };
 }
 
+function MessagesThreadButton({
+  thread,
+  selected,
+  onOpen,
+}: {
+  thread: ThreadSummary;
+  selected: boolean;
+  onOpen: (thread: ThreadSummary) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `thread-${thread.id}`,
+    role: "list-item",
+    label: thread.address || "Unknown",
+    group: "messages-threads",
+    status: selected ? "active" : undefined,
+    description: `Open the SMS thread with ${thread.address || "Unknown"}`,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onOpen(thread)}
+      aria-current={selected ? "true" : undefined}
+      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors hover:bg-bg-accent/50 focus:bg-bg-accent/50 focus:outline-none"
+      data-testid={`messages-thread-${thread.id}`}
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-accent">
+        <Smartphone className="h-4 w-4 text-muted" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-semibold text-txt">
+            {thread.address || "Unknown"}
+          </span>
+          <span className="shrink-0 text-2xs text-muted">
+            {formatTime(thread.lastMessage.date)}
+          </span>
+        </span>
+        <span className="mt-1 line-clamp-2 text-xs text-muted">
+          {thread.lastMessage.body}
+        </span>
+      </span>
+      {thread.unreadCount > 0 ? (
+        <span className="rounded-full bg-info px-1.5 py-0.5 text-2xs font-semibold text-bg">
+          {thread.unreadCount}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -219,6 +272,61 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       t("messages.new", { defaultValue: "New message" })
     : t("messages.title", { defaultValue: "Messages" });
 
+  const backLabel = showComposer
+    ? t("messages.backToThreads", { defaultValue: "Back to threads" })
+    : t("nav.back", { defaultValue: "Back" });
+  const back = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: backLabel,
+    group: "messages-header",
+    description: showComposer
+      ? "Return from the composer to the thread list"
+      : "Leave Messages and return to the apps grid",
+  });
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: t("actions.refresh", { defaultValue: "Refresh" }),
+    group: "messages-header",
+    description: "Reload SMS threads and system status",
+  });
+  const newMessage = useAgentElement<HTMLButtonElement>({
+    id: "action-new-message",
+    role: "button",
+    label: t("messages.newShort", { defaultValue: "New" }),
+    group: "messages-header",
+    description: "Open the composer to start a new text message",
+  });
+  const requestRole = useAgentElement<HTMLButtonElement>({
+    id: "action-set-default-sms",
+    role: "button",
+    label: t("messages.setDefaultSms", { defaultValue: "Set default SMS" }),
+    group: "messages-sms-role",
+    description: "Request the Android default SMS role for this app",
+  });
+  const addressInput = useAgentElement<HTMLInputElement>({
+    id: "input-recipient",
+    role: "text-input",
+    label: t("messages.to", { defaultValue: "To" }),
+    group: "messages-composer",
+    description: "Recipient phone number for the outgoing text message",
+  });
+  const bodyInput = useAgentElement<HTMLTextAreaElement>({
+    id: "input-message-body",
+    role: "textarea",
+    label: t("messages.placeholder", { defaultValue: "Message" }),
+    group: "messages-composer",
+    description: "Body text of the outgoing message",
+  });
+  const sendButton = useAgentElement<HTMLButtonElement>({
+    id: "action-send",
+    role: "button",
+    label: t("messages.send", { defaultValue: "Send" }),
+    group: "messages-composer",
+    description: "Send the composed text message",
+  });
+
   return (
     <div
       data-testid="messages-shell"
@@ -227,17 +335,13 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/24 bg-bg/90 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           <Button
+            ref={back.ref}
+            {...back.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-lg text-muted hover:text-txt"
             onClick={showComposer ? backToThreads : exitToApps}
-            aria-label={
-              showComposer
-                ? t("messages.backToThreads", {
-                    defaultValue: "Back to threads",
-                  })
-                : t("nav.back", { defaultValue: "Back" })
-            }
+            aria-label={backLabel}
           >
             {showComposer ? (
               <ChevronLeft className="h-4 w-4" />
@@ -260,6 +364,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
+            ref={refreshAgent.ref}
+            {...refreshAgent.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-lg text-muted hover:text-txt"
@@ -271,6 +377,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
           <Button
+            ref={newMessage.ref}
+            {...newMessage.agentProps}
             variant="default"
             size="sm"
             className="rounded-lg"
@@ -303,6 +411,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               </div>
             </div>
             <Button
+              ref={requestRole.ref}
+              {...requestRole.agentProps}
               variant="outline"
               size="sm"
               onClick={requestSmsRole}
@@ -369,35 +479,12 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
           ) : (
             <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto">
               {threads.map((thread) => (
-                <button
+                <MessagesThreadButton
                   key={thread.id}
-                  type="button"
-                  onClick={() => openThread(thread)}
-                  className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors hover:bg-bg-accent/50 focus:bg-bg-accent/50 focus:outline-none"
-                  data-testid={`messages-thread-${thread.id}`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-accent">
-                    <Smartphone className="h-4 w-4 text-muted" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold text-txt">
-                        {thread.address || "Unknown"}
-                      </span>
-                      <span className="shrink-0 text-2xs text-muted">
-                        {formatTime(thread.lastMessage.date)}
-                      </span>
-                    </span>
-                    <span className="mt-1 line-clamp-2 text-xs text-muted">
-                      {thread.lastMessage.body}
-                    </span>
-                  </span>
-                  {thread.unreadCount > 0 ? (
-                    <span className="rounded-full bg-info px-1.5 py-0.5 text-2xs font-semibold text-bg">
-                      {thread.unreadCount}
-                    </span>
-                  ) : null}
-                </button>
+                  thread={thread}
+                  selected={thread.id === selectedThreadId}
+                  onOpen={openThread}
+                />
               ))}
             </div>
           )}
@@ -417,6 +504,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                   {t("messages.to", { defaultValue: "To" })}
                 </label>
                 <Input
+                  ref={addressInput.ref}
+                  {...addressInput.agentProps}
                   id="messages-compose-address"
                   value={composeAddress}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -482,6 +571,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               <div className="shrink-0 border-t border-border/24 bg-bg/95 px-4 py-3">
                 <div className="mx-auto flex max-w-2xl items-end gap-2">
                   <Textarea
+                    ref={bodyInput.ref}
+                    {...bodyInput.agentProps}
                     value={composeBody}
                     onChange={(event) => setComposeBody(event.target.value)}
                     placeholder={t("messages.placeholder", {
@@ -492,6 +583,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                     data-testid="messages-compose-body"
                   />
                   <Button
+                    ref={sendButton.ref}
+                    {...sendButton.agentProps}
                     size="icon"
                     className="h-11 w-11 shrink-0 rounded-lg"
                     onClick={() => void send()}

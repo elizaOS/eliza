@@ -121,7 +121,16 @@ RUN set -eux; \
 # the x86_64 host std (for build.rs etc.) AND the riscv64gc-unknown-linux-musl
 # Tier-2 std for the actual cross-compile.
 # ----------------------------------------------------------------------------
+# RUST_NIGHTLY = the Zig-era v1.3.14 fallback channel (bun-version.json bun.tag
+# build). RUST_CORE_NIGHTLY = the Rust-core port channel
+# (bun-version.json rust_core_port.rust_channel). The same image serves BOTH
+# builds, so we pre-bake BOTH toolchains + their riscv64gc std as root here —
+# the build runs as the unprivileged `builder` user and (per the design note in
+# the builder-user layer below) must never have to write the root-owned
+# /usr/local/rustup/toolchains dir at runtime. Keep these in sync with
+# bun-version.json when bumping either channel.
 ARG RUST_NIGHTLY=nightly-2025-12-10
+ARG RUST_CORE_NIGHTLY=nightly-2026-05-06
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
@@ -132,8 +141,13 @@ RUN set -eux; \
         --component rust-src --component rustfmt --component clippy; \
     rm rustup-init.sh; \
     rustup target add --toolchain ${RUST_NIGHTLY} riscv64gc-unknown-linux-musl; \
+    rustup toolchain install ${RUST_CORE_NIGHTLY} \
+        --profile minimal \
+        --component rust-src --component rustfmt --component clippy; \
+    rustup target add --toolchain ${RUST_CORE_NIGHTLY} riscv64gc-unknown-linux-musl; \
     rustc +${RUST_NIGHTLY} --version; \
-    rustc +${RUST_NIGHTLY} --print target-list | grep riscv64 || true
+    rustc +${RUST_CORE_NIGHTLY} --version; \
+    rustc +${RUST_CORE_NIGHTLY} --print target-list | grep riscv64 || true
 
 # ----------------------------------------------------------------------------
 # Zig 0.14.1. Codegen runs on the build host; we never execute Zig under
@@ -377,11 +391,13 @@ RUN groupadd -g ${BUILDER_GID} builder && \
     # /usr/local/rustup/tmp otherwise. Make rustup's mutable dirs writable.
     mkdir -p /usr/local/rustup/tmp /usr/local/rustup/downloads && \
     chmod a+rwx /usr/local/rustup /usr/local/rustup/tmp /usr/local/rustup/downloads && \
-    # bun-v1.3.14's rust-toolchain.toml lists Android/FreeBSD targets; rustup
-    # auto-installs them when cargo runs in the bun tree. Pre-bake them here as
-    # root so the build (as `builder`) never has to write the root-owned
-    # toolchains dir (riscv64gc is already installed in the rust layer above).
-    rustup target add aarch64-linux-android x86_64-linux-android x86_64-unknown-freebsd
+    # bun's rust-toolchain.toml lists Android/FreeBSD targets; rustup
+    # auto-installs them for the ACTIVE toolchain when cargo runs in the bun
+    # tree. Pre-bake them here as root for BOTH nightlies so the build (as
+    # `builder`) never has to write the root-owned toolchains dir (riscv64gc is
+    # already installed for both in the rust layer above).
+    rustup target add --toolchain ${RUST_NIGHTLY} aarch64-linux-android x86_64-linux-android x86_64-unknown-freebsd && \
+    rustup target add --toolchain ${RUST_CORE_NIGHTLY} aarch64-linux-android x86_64-linux-android x86_64-unknown-freebsd
 
 USER builder
 WORKDIR /work

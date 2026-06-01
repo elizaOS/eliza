@@ -16,7 +16,43 @@ import {
   useApp,
 } from "@elizaos/app-core/ui-compat";
 import { Button, Input } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
+
+function HyperscapeSuggestedPromptButton({
+  prompt,
+  index,
+  disabled,
+  onSelect,
+}: {
+  prompt: string;
+  index: number;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "operator-relay",
+    description: `Relay the suggested operator prompt "${prompt}" to Hyperscape`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-10 rounded-xl px-3 shadow-sm"
+      onClick={() => onSelect(prompt)}
+      disabled={disabled}
+      aria-label={prompt}
+      {...agentProps}
+    >
+      {prompt}
+    </Button>
+  );
+}
 
 interface HyperscapeActivityEntry {
   id: string;
@@ -194,6 +230,38 @@ export function HyperscapeOperatorSurface({
     [run],
   );
 
+  const pauseControl = useAgentElement<HTMLButtonElement>({
+    id: "action-pause",
+    role: "button",
+    label: "Pause autonomy",
+    group: "operator-controls",
+    description: "Pause the Hyperscape agent's autonomous run",
+    status: controlAction === "pause" ? "active" : "inactive",
+  });
+  const resumeControl = useAgentElement<HTMLButtonElement>({
+    id: "action-resume",
+    role: "button",
+    label: "Resume autonomy",
+    group: "operator-controls",
+    description: "Resume the Hyperscape agent's autonomous run",
+    status: controlAction === "resume" ? "active" : "inactive",
+  });
+  const operatorInput = useAgentElement<HTMLInputElement>({
+    id: "input-operator-message",
+    role: "text-input",
+    label: "Operator message",
+    group: "operator-relay",
+    description:
+      "Type an operator message telling Hyperscape what to prioritize, avoid, or explain",
+  });
+  const sendControl = useAgentElement<HTMLButtonElement>({
+    id: "action-send",
+    role: "button",
+    label: "Send",
+    group: "operator-relay",
+    description: "Send the operator message to Hyperscape",
+  });
+
   if (!run) {
     return (
       <SurfaceEmptyState
@@ -338,42 +406,46 @@ export function HyperscapeOperatorSurface({
         <SurfaceSection title="Operator Relay">
           {session?.suggestedPrompts?.length ? (
             <div className="flex flex-wrap gap-2">
-              {session.suggestedPrompts.map((prompt) => (
-                <Button
+              {session.suggestedPrompts.map((prompt, index) => (
+                <HyperscapeSuggestedPromptButton
                   key={prompt}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-10 rounded-xl px-3 shadow-sm"
-                  onClick={() => void handleSuggestedPrompt(prompt)}
+                  prompt={prompt}
+                  index={index}
                   disabled={sending}
-                >
-                  {prompt}
-                </Button>
+                  onSelect={(value) => void handleSuggestedPrompt(value)}
+                />
               ))}
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {session?.controls?.includes("pause") ? (
               <Button
+                ref={pauseControl.ref}
                 type="button"
                 variant="outline"
                 size="sm"
                 className="min-h-10 rounded-xl px-3 shadow-sm"
                 onClick={() => void handleControl("pause")}
                 disabled={controlAction === "pause"}
+                aria-current={controlAction === "pause" ? "true" : undefined}
+                aria-label="Pause autonomy"
+                {...pauseControl.agentProps}
               >
                 {controlAction === "pause" ? "Pausing..." : "Pause autonomy"}
               </Button>
             ) : null}
             {session?.controls?.includes("resume") ? (
               <Button
+                ref={resumeControl.ref}
                 type="button"
                 variant="outline"
                 size="sm"
                 className="min-h-10 rounded-xl px-3 shadow-sm"
                 onClick={() => void handleControl("resume")}
                 disabled={controlAction === "resume"}
+                aria-current={controlAction === "resume" ? "true" : undefined}
+                aria-label="Resume autonomy"
+                {...resumeControl.agentProps}
               >
                 {controlAction === "resume" ? "Resuming..." : "Resume autonomy"}
               </Button>
@@ -381,6 +453,7 @@ export function HyperscapeOperatorSurface({
           </div>
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <Input
+              ref={operatorInput.ref}
               value={operatorMessage}
               onChange={(event) => setOperatorMessage(event.target.value)}
               placeholder="Tell Hyperscape what to prioritize, avoid, or explain."
@@ -392,8 +465,11 @@ export function HyperscapeOperatorSurface({
                 }
               }}
               disabled={!session?.canSendCommands}
+              aria-label="Operator message"
+              {...operatorInput.agentProps}
             />
             <Button
+              ref={sendControl.ref}
               type="button"
               className="min-h-11 rounded-xl px-4 shadow-sm"
               onClick={() => void handleSendMessage()}
@@ -402,6 +478,8 @@ export function HyperscapeOperatorSurface({
                 !session?.canSendCommands ||
                 operatorMessage.trim().length === 0
               }
+              aria-label="Send"
+              {...sendControl.agentProps}
             >
               {sending ? "Sending" : "Send"}
             </Button>
@@ -476,7 +554,7 @@ export function HyperscapeTuiView() {
   return (
     <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
       <div style={tuiRouteStyle}>elizaos://hyperscape --type=tui</div>
-      <div style={tuiMetaStyle}>
+      <div data-status={run?.status ?? "idle"} style={tuiMetaStyle}>
         {run?.status ?? "idle"} | {run?.viewerAttachment ?? "viewer pending"} |{" "}
         {run?.health.state ?? "unknown"}
       </div>

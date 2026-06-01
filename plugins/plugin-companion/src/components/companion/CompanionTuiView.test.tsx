@@ -36,6 +36,7 @@ const eventDispatchers = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   CharacterEditor: () => React.createElement("div"),
   ChatModalView: () => React.createElement("div"),
   dispatchAppEvent: eventDispatchers.dispatchAppEvent,

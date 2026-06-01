@@ -1,192 +1,175 @@
-# @elizaos/plugin-music-library
+# @elizaos/plugin-music
 
-A comprehensive plugin for elizaOS that provides music data storage, user preferences, analytics, external music metadata APIs, and YouTube search functionality.
+A comprehensive music plugin for elizaOS that provides music library management, playback, queue management, playlists, analytics, YouTube search, multi-source metadata APIs, AI music generation, and a streaming HTTP API for Eliza agents.
 
-## Features
+## Capabilities
 
-### Music Metadata & External APIs
-- **Track Information**: Extract metadata from YouTube URLs and track titles
-- **Artist Information**: Get artist details from multiple sources
-- **Album Information**: Retrieve album metadata
-- **Multiple Sources**: MusicBrainz, Last.fm, Genius, TheAudioDB, Wikipedia
-- **Fallback Chain**: Automatically tries multiple sources for best results
-- **Rate Limiting**: Built-in rate limiting for all APIs
-- **Retry Logic**: Automatic retry with exponential backoff
-- **Service Health Monitoring**: Tracks status of all integrated APIs
+### Music Playback
+- Stream audio from YouTube URLs or direct media URLs to Discord voice channels or web clients
+- Queue management: add, view, clear tracks
+- Transport controls: play, pause, resume, skip, stop
+- Multi-zone and multi-route audio (broadcast to multiple Discord guilds or web streams simultaneously)
+- Live HTTP streaming endpoint (OGG/Shoutcast/Icecast) for web players
 
-### YouTube Integration
-- **YouTube Search**: Search for tracks, artists, albums on YouTube
-- **Smart Query Parsing**: Detects artist, genre, mood intents
-- **URL Extraction**: Parse and validate YouTube URLs
+### Music Library & Playlists
+- Persistent song library with title, artist, album, and URL indexing
+- Create, save, load, and share user playlists
+- Play history and request tracking per user and room
+- Smart play query: find and queue the best match from YouTube for a natural-language request
+- Download audio to a local library archive
 
-### Music Library & Data Storage
-- **Track Database**: Store and discover tracks, albums, artists
-- **Play History**: Track what's been played and when
-- **Request Tracking**: Log who requested which tracks
-- **High-Quality Music Storage**: Store original high-quality audio files for archival
-  - Organized by artist/album/track
-  - Full metadata indexing
-  - Optional high-quality vs standard quality modes
+### Metadata & Discovery
+- Track, artist, and album metadata from MusicBrainz (no API key needed), Last.fm, Genius, TheAudioDB, and Wikipedia
+- YouTube search with smart query parsing (artist, genre, mood)
+- Spotify-backed recommendations
+- Automatic fallback chain across sources
 
-### Playlists
-- **Create & Save**: Save playlists for users
-- **Load & List**: Load and list playlists
-- **Share**: Share playlists between users
+### User Preferences & Analytics
+- Per-user favorite tracks and artists, disliked tracks, genre preferences
+- Aggregated room preferences for auto-fill and DJ logic
+- Anti-repetition scoring to encourage variety
+- Play count, session, and tip analytics
 
-### User Preferences
-- **Favorite Tracks**: Track user favorite tracks
-- **Favorite Artists**: Track favorite artists
-- **Disliked Tracks**: Remember what users don't like
-- **Genre Preferences**: Learn genre preferences over time
-- **Room Preferences**: Aggregate preferences across users in a room
-
-### Analytics
-- **Play Tracking**: Track every play with duration and requester
-- **Session Tracking**: Track listening sessions
-- **Statistics**: Get analytics for rooms (top tracks, artists, genres)
-
-### Anti-Repetition
-- **Repetition Control**: Prevent tracks from replaying too soon
-- **Variety Scoring**: Score tracks by variety to encourage diverse playlists
+### AI Music Generation (Suno)
+- Generate original music from a text prompt (`generate`)
+- Extend existing audio (`extend`)
+- Custom generation with style, BPM, key, and reference audio (`custom_generate`)
+- Requires `SUNO_API_KEY`
 
 ## Installation
 
-As this is a workspace package, it's installed as part of the elizaOS monorepo:
+This plugin is part of the elizaOS monorepo:
 
 ```bash
 bun install
 ```
 
-## Configuration
-
-The plugin works out of the box with MusicBrainz (free, no API key needed). For enhanced features, configure additional APIs:
-
-### Storage Configuration
-
-```bash
-# High-quality music storage directory (default: ./storage/music)
-MUSIC_STORAGE_DIR=/path/to/storage
-
-# Store highest quality available (default: true)
-MUSIC_STORAGE_HIGH_QUALITY=true
-```
-
-**Storage vs Cache**:
-- **Music Library Storage** (this plugin): Permanent high-quality storage for archival and library management
-  - Original quality files (WebM, MP4, etc.)
-  - Organized by artist/album/track
-  - Indexed for browsing and discovery
-  - No expiration
-- **Music Player Cache** (`plugin-music-player`): Temporary Discord-optimized cache for performance
-  - Pre-transcoded to Opus/WebM for Discord
-  - Flat cache directory
-  - 7-day TTL with automatic cleanup
-  - Trades disk space for reduced CPU/bandwidth
-
-### Optional Configuration
-
-Add these to your `.env` file for enhanced metadata:
-
-```bash
-# MusicBrainz (optional - custom User-Agent)
-MUSICBRAINZ_USER_AGENT=YourAppName/1.0.0 (https://yourapp.com)
-
-# Last.fm API (free tier with signup)
-LASTFM_API_KEY=your_lastfm_api_key
-
-# Genius API (free tier with signup) - for lyrics URLs
-GENIUS_API_KEY=your_genius_api_key
-
-# TheAudioDB API (free tier with signup) - for high-quality artwork
-THEAUDIODB_API_KEY=your_theaudiodb_api_key
-```
-
-## Usage
-
-Add the plugin to your character configuration:
+Add to a character config:
 
 ```json
 {
   "plugins": [
     "@elizaos/plugin-sql",
-    "@elizaos/plugin-music-library"
+    "@elizaos/plugin-music"
   ]
 }
 ```
 
-### Service Usage
+`@elizaos/plugin-sql` is recommended for persistent library, playlist, and preference storage.
 
-Access services directly in your code:
+## Auto-Enable
 
-```typescript
-const musicLibrary = runtime.getService('musicLibrary');
+The plugin auto-enables when any of these settings are present:
+`LASTFM_API_KEY`, `GENIUS_API_KEY`, `THEAUDIODB_API_KEY`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`.
 
-// Get track info
-const trackInfo = await musicLibrary.getTrackInfo('https://youtube.com/watch?v=...');
+## Configuration
 
-// Save a playlist
-const playlist = await musicLibrary.savePlaylist(userId, {
-  name: 'My Playlist',
-  tracks: [...]
-});
+### Required System Dependencies
 
-// Track analytics
-await musicLibrary.trackTrackPlayed(roomId, track, duration, requester);
+- **`yt-dlp`** — Must be in PATH for audio download and caching. Install via `brew install yt-dlp`, `pipx install yt-dlp`, or download from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp). Override path with `YT_DLP_PATH`.
+- **`ffmpeg` / `ffprobe`** — Bundled via `ffmpeg-static`/`ffprobe-static`; override with `FFMPEG_PATH` and `FFPROBE_PATH`.
 
-// Get user preferences
-const prefs = await musicLibrary.getUserPreferences(userId);
+### Optional API Keys
+
+Add to `.env` or character settings for enhanced metadata and features:
+
+```bash
+# Last.fm — artist/track metadata (free with signup)
+LASTFM_API_KEY=your_lastfm_api_key
+
+# Genius — lyrics URLs (free with signup)
+GENIUS_API_KEY=your_genius_api_key
+
+# TheAudioDB — high-quality artwork (free with signup)
+THEAUDIODB_API_KEY=your_theaudiodb_api_key
+
+# Spotify — recommendations
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+
+# Suno — AI music generation
+SUNO_API_KEY=your_suno_api_key
+
+# MusicBrainz — custom User-Agent (optional; free, no key needed)
+MUSICBRAINZ_USER_AGENT=YourAppName/1.0.0 (https://yourapp.com)
 ```
 
-### Actions
+### Other Settings
 
-Available actions:
-- `MUSIC_LIBRARY` - Planner-facing action.
-  - `op=playlist`, `subaction=save|load|delete|add` - Manage playlists.
-  - `op=search-youtube` - Search YouTube for music.
-  - `op=play-query` - Smart music query parser.
-  - `op=download` - Download music to the local library.
+```bash
+# Audio cache directory (default: <cwd>/cache/audio)
+AUDIO_CACHE_DIR=/path/to/cache
 
-Legacy planner action names such as `PLAYLIST_OP`, `PLAYLIST`,
-`SEARCH_YOUTUBE`, `PLAY_MUSIC_QUERY`, and `DOWNLOAD_MUSIC` are retained as
-similes for `MUSIC_LIBRARY`.
+# Download quality preference (default: mp3_320)
+MUSIC_QUALITY_PREFERENCE=mp3_320
 
-## Integration with Other Plugins
+# YouTube cookies file for age-restricted content
+YOUTUBE_COOKIES=/path/to/cookies.txt
 
-This plugin is designed to work with:
+# Proxy for yt-dlp
+YTDLP_PROXY=http://proxy:port
 
-- **@elizaos/plugin-music-player**: Provides data storage for playback
-- **@elizaos/plugin-radio**: Provides preferences and analytics for radio programming
-- **@elizaos/plugin-sql**: Required for data persistence
+# Enable verbose music debug logging
+ELIZA_MUSIC_DEBUG=1
+```
 
-## API
+## Actions
 
-### Services
+All music operations route through a single **`MUSIC`** action with a verb-shaped `action` parameter.
 
-#### MusicInfoService
-- `getTrackInfo(urlOrTitle: string)`: Get track metadata
-- `getArtistInfo(artistName: string)`: Get artist information
-- `getAlbumInfo(albumTitle: string, artistName?: string)`: Get album information
+| Subaction | Description |
+|-----------|-------------|
+| `play` | Play a track by URL or query |
+| `pause` | Pause current playback |
+| `resume` | Resume paused playback |
+| `skip` | Skip to next track (requires `confirmed: true`) |
+| `stop` | Stop playback (requires `confirmed: true`) |
+| `queue_view` | Show current queue |
+| `queue_add` | Add a track to the queue (requires `confirmed: true`) |
+| `queue_clear` | Clear the queue (requires `confirmed: true`) |
+| `playlist_play` | Load and play a saved playlist |
+| `playlist_save` | Save current queue as a playlist (requires `confirmed: true`) |
+| `search` | Search YouTube for music |
+| `play_query` | Smart natural-language music query (search + play) |
+| `download` | Download a track to the local library (requires `confirmed: true`) |
+| `play_audio` | Play a direct media URL |
+| `set_routing` | Configure audio routing mode |
+| `set_zone` | Configure audio zones |
+| `generate` | AI-generate music from prompt (Suno) |
+| `extend` | Extend existing Suno audio |
+| `custom_generate` | Custom Suno generation with style/BPM/key |
 
-#### YouTubeSearchService
-- `search(query: string, maxResults?: number)`: Search YouTube
-- `extractVideoId(url: string)`: Extract video ID from URL
+The `MUSIC` action aggregates similes from its sub-handlers, so legacy intent names such as `PAUSE_MUSIC`, `PLAY_YOUTUBE`, `PLAYLIST`, `SEARCH_YOUTUBE`, `PLAY_MUSIC_QUERY`, `DOWNLOAD_MUSIC`, and `GENERATE_MUSIC` still match. The verb-shaped aliases in `SUBACTION_ALIASES` (e.g. `playlist`, `search_youtube`, `routing`, `zones`, `next`, `unpause`) are also accepted for the `action` parameter.
 
-#### MusicLibraryService
-- `addSong(song)`, `getSong(url)`, `getRecentSongs(limit)`, `searchLibrary(query)`
-- `savePlaylist(entityId, playlist)`, `loadPlaylists(entityId)`
-- `trackTrackPlayed(roomId, track, duration)`, `trackTrackRequest(entityId, track)`
-- `getAggregatedRoomPreferences(roomId)` returns combined favorites/dislikes for auto-fill logic
-- Exposes `repetitionControl` utilities and a configured `spotifyClient`
+## HTTP Streaming API
 
-### Components
+The plugin registers routes on the agent's HTTP server (prefix `/api/<agentId>/music-player/`):
 
-See individual component files for detailed APIs:
-- `components/musicLibrary.ts` - Track/album/artist database
-- `components/playlists.ts` - Playlist management
-- `components/preferences.ts` - User preferences
-- `components/analytics.ts` - Analytics tracking
-- `components/repetitionControl.ts` - Anti-repetition logic
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/stream` | public | Live audio stream |
+| GET | `/now-playing` | public | Now-playing metadata |
+| GET | `/queue` | public | Queue JSON |
+| GET | `/status` | public | Playback status |
+| POST | `/control/pause` | authenticated | Pause |
+| POST | `/control/resume` | authenticated | Resume |
+| POST | `/control/stop` | authenticated | Stop |
+| POST | `/control/skip` | authenticated | Skip |
 
-## License
+Authenticated endpoints accept `Authorization: Bearer <token>`, `X-Eliza-Token`, or `X-Api-Key`.
 
-MIT
+## Services
+
+Access from agent code via `runtime.getService(...)`:
+
+- `runtime.getService('music')` → `MusicService` — playback engine, queue, routing
+- `runtime.getService('musicLibrary')` → `MusicLibraryService` — library, playlists, preferences, analytics
+
+## Integration
+
+This plugin works alongside:
+
+- **`@elizaos/plugin-discord`** — Provides voice channel playback (wired automatically on init)
+- **`@elizaos/plugin-sql`** — Required for persistent library and playlist storage
+- **`@elizaos/plugin-suno`** — Required for AI generation subactions
+

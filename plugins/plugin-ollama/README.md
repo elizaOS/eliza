@@ -1,17 +1,11 @@
 # Ollama Plugin
 
-This plugin connects [Ollama](https://ollama.com/) to ElizaOS so agents can use **local** LLMs for text, embeddings, and JSON object generation—without sending prompts to a third-party API.
-
-## Why this plugin exists
-
-- **Privacy and compliance:** All inference can stay on your LAN or laptop.
-- **Cost:** No per-token cloud billing for experimentation.
-- **Offline / air-gapped:** Works wherever Ollama runs, including containers and remote servers.
+This plugin connects [Ollama](https://ollama.com/) to elizaOS so agents can use **local** LLMs for text, embeddings, and structured output—without sending prompts to a third-party API.
 
 ## Requirements
 
 - [Ollama](https://ollama.com/) installed and reachable (same machine or network).
-- ElizaOS runtime with this package enabled.
+- elizaOS runtime with this package enabled.
 - At least one Eliza-1 model created, e.g. `ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m`.
 
 ## Installation
@@ -26,7 +20,7 @@ Ensure Ollama is running:
 ollama serve
 ```
 
-Register the plugin on your character / app config (exact shape depends on your ElizaOS version):
+Register the plugin on your character / app config (exact shape depends on your elizaOS version):
 
 ```json
 "plugins": ["@elizaos/plugin-ollama"]
@@ -34,7 +28,7 @@ Register the plugin on your character / app config (exact shape depends on your 
 
 ## Architecture: Vercel AI SDK + `ollama-ai-provider-v2`
 
-Handlers use **`generateText`** (completion, structured generation, and non-streaming fallbacks for schema-only stream contexts or toolChoice-only requests), **`streamText`** (plain SSE chat **or** `stream: true` **with native tools**), **`generateObject`**, and **`embed`** from the **`ai`** package, backed by **`ollama-ai-provider-v2`**.
+Handlers use **`generateText`** (completion, structured generation, and non-streaming fallbacks for schema-only stream contexts or toolChoice-only requests), **`streamText`** (plain SSE chat **or** `stream: true` **with native tools**), and **`embed`** from the **`ai`** package, backed by **`ollama-ai-provider-v2`**.
 
 ## Streaming chat (`TextStreamResult`)
 
@@ -61,7 +55,7 @@ This plugin returns **`TextStreamResult`** from **`streamText`** when **`stream:
 
 ### Why `ollama-ai-provider-v2` (not the old `ollama-ai-provider`)
 
-ElizaOS tracks **AI SDK 5/6**. Older `ollama-ai-provider` exposed **model specification v1**; current `ai` only accepts **v2+** models and throws:
+elizaOS tracks **AI SDK 5/6**. Older `ollama-ai-provider` exposed **model specification v1**; current `ai` only accepts **v2+** models and throws:
 
 `Unsupported model version v1 for provider "ollama.chat"`.
 
@@ -133,7 +127,6 @@ Set to `1`, `true`, `yes`, or `on` if:
 |------------|------|
 | `TEXT_*` | Chat / completion-style text. |
 | `TEXT_EMBEDDING` | Vector embeddings. |
-| `OBJECT_*` | `generateObject` with `output: "no-schema"` (best-effort JSON object). |
 | `RESPONSE_HANDLER` / `ACTION_PLANNER` | Same text path; v5 Stage 1 uses **messages + tools + `toolChoice`**; other pipelines may use **`responseSchema`** for JSON. |
 
 ### Text example
@@ -156,7 +149,7 @@ const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 
 ## Chat messages, native tools, and `toolChoice` (v5)
 
-ElizaOS v5 can call text models with **`messages`** (chat turns), **`tools`** (function / tool definitions), and **`toolChoice`** (for example `"required"` on the message-handler stage so the model must emit a planner tool call).
+elizaOS v5 can call text models with **`messages`** (chat turns), **`tools`** (function / tool definitions), and **`toolChoice`** (for example `"required"` on the message-handler stage so the model must emit a planner tool call).
 
 This plugin forwards those fields to the Vercel AI SDK **`generateText`** or **`streamText`** (when **`stream: true`** and tools are present) backed by **`ollama-ai-provider-v2`**, and when the call is “native shaped” (messages, tools, tool choice, or structured output), it may return a **`GenerateTextResult`-like object at runtime** or a **`TextStreamResult`** with **`toolCalls`** — TypeScript still types `useModel` text handlers as `string` for historical reasons.
 
@@ -186,16 +179,8 @@ This plugin forwards those fields to the Vercel AI SDK **`generateText`** or **`
 | **`streamText.textStream` failed** / **`AI_NoOutputGeneratedError`** / process exit after Ollama **500** | Ollama returned an error body (e.g. **insufficient system memory** for the model) during a **streaming** `/api/chat` call; AI SDK retried then failed. | Check logs for **`ollamaResponseBody`** (plugin now extracts it). Free RAM on the Ollama host, use a smaller model, or lower concurrency. Streaming errors occur while **`useModel`** consumes **`textStream`**, not only inside **`generateText`**. |
 | Connection errors | Ollama not running or wrong URL | `curl` the `/api/tags` endpoint; fix `OLLAMA_API_ENDPOINT`. |
 
-More context: [Ollama plugin docs](https://docs.eliza.ai/) (registry page: `plugin-registry/llm/ollama`).
-
-## API reference
-
-Ollama’s HTTP API: [Ollama API docs](https://github.com/ollama/ollama/blob/main/docs/api.md).
+More context: [elizaOS documentation](https://docs.elizaos.ai/).
 
 ## Changelog
 
 See **[CHANGELOG.md](./CHANGELOG.md)**.
-
-## License
-
-See [LICENSE](./LICENSE).

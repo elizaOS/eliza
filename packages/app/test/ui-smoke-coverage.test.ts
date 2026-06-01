@@ -40,7 +40,19 @@ const KEYLESS_WORKFLOW = path.join(
  * an entry here must guard itself behind that dependency (env flag, baseURL,
  * cloud sandbox, or running endpoint), not merely be unwired.
  */
-const LIVE_ONLY: Readonly<Record<string, string>> = {};
+const LIVE_ONLY: Readonly<Record<string, string>> = {
+  "multi-client-desync.spec.ts":
+    "needs a live shared messaging backend so two independent browser contexts " +
+    "(separate localStorage/page.route mocks) converge on one server-side " +
+    "channel; the keyless helper route layer echoes a fresh per-request fixture " +
+    "with no shared store, so the spec is test.fixme until a shared agent + " +
+    "channel stack (ELIZA_UI_SMOKE_LIVE_STACK=1) is available.",
+  "multi-window-sync.spec.ts":
+    "needs the cross-window sync layer (packages/ui/src/state/useTabSync.ts + " +
+    "BroadcastChannel) which does not exist in the renderer yet; the spec is " +
+    "test.fixme against the desired theme-toggle broadcast behavior and only " +
+    "activates once that feature ships.",
+};
 
 /**
  * Stub-capable specs that SHOULD run in keyless CI but are not yet wired into

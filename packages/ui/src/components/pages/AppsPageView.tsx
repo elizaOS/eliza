@@ -11,6 +11,7 @@ import {
 import { useApp } from "../../state";
 import { GameView } from "../apps/GameView";
 import { getAppSlug } from "../apps/helpers";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { AppsView } from "./AppsView";
 
 type AppsPageViewRenderer = () => React.ReactElement;
@@ -63,27 +64,33 @@ export function AppsPageView({
 
   if (inModal) {
     return (
-      <div
-        className="settings-content-area"
-        style={
-          {
-            "--accent": "var(--section-accent-apps, #10b981)",
-            "--surface": "rgba(255, 255, 255, 0.06)",
-            "--s-accent": "#10b981",
-            "--s-text-txt": "#10b981",
-            "--s-accent-glow": "rgba(16, 185, 129, 0.35)",
-            "--s-accent-subtle": "rgba(16, 185, 129, 0.12)",
-            "--s-grid-line": "rgba(16, 185, 129, 0.02)",
-            "--s-glow-edge": "rgba(16, 185, 129, 0.08)",
-          } as React.CSSProperties
-        }
-      >
-        <div className="settings-section-pane pt-4">
-          <AppsViewRenderer />
+      <ShellViewAgentSurface viewId="apps">
+        <div
+          className="settings-content-area"
+          style={
+            {
+              "--accent": "var(--section-accent-apps, #10b981)",
+              "--surface": "rgba(255, 255, 255, 0.06)",
+              "--s-accent": "#10b981",
+              "--s-text-txt": "#10b981",
+              "--s-accent-glow": "rgba(16, 185, 129, 0.35)",
+              "--s-accent-subtle": "rgba(16, 185, 129, 0.12)",
+              "--s-grid-line": "rgba(16, 185, 129, 0.02)",
+              "--s-glow-edge": "rgba(16, 185, 129, 0.08)",
+            } as React.CSSProperties
+          }
+        >
+          <div className="settings-section-pane pt-4">
+            <AppsViewRenderer />
+          </div>
         </div>
-      </div>
+      </ShellViewAgentSurface>
     );
   }
 
-  return <AppsViewRenderer />;
+  return (
+    <ShellViewAgentSurface viewId="apps">
+      <AppsViewRenderer />
+    </ShellViewAgentSurface>
+  );
 }

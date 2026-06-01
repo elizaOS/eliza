@@ -78,7 +78,7 @@ function StartupLoading(props: { phase: string; status: string }) {
 
 function BootstrapGateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-full w-full flex-col bg-[#F7F9FF] text-[#0B35F1]">
+    <div className="relative flex min-h-full w-full flex-col bg-[#F7F6F4] text-[#1b1b1b]">
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
           {children}

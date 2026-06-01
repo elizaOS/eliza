@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type BrowserBridgeCompanionPackageStatus,
   type BrowserBridgeCompanionStatus,
@@ -36,6 +37,7 @@ import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { Button } from "../ui/button";
 import { ConfirmDialog, useConfirm } from "../ui/confirm-dialog";
 import { Input } from "../ui/input";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
@@ -405,6 +407,162 @@ function resolveSolanaCluster(
   if (normalized.includes("testnet")) return "testnet";
   if (normalized.includes("mainnet")) return "mainnet";
   return undefined;
+}
+
+function BrowserNavButton({
+  agentId,
+  agentLabel,
+  agentDescription,
+  group,
+  status,
+  onActivate,
+  ...buttonProps
+}: {
+  agentId: string;
+  agentLabel: string;
+  agentDescription?: string;
+  group?: string;
+  status?: "active" | "inactive";
+  onActivate: () => void;
+} & React.ComponentProps<typeof Button>): React.JSX.Element {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group,
+    ...(agentDescription ? { description: agentDescription } : {}),
+    ...(status ? { status } : {}),
+    onActivate,
+  });
+  return <Button ref={ref} {...agentProps} {...buttonProps} />;
+}
+
+function BrowserAddressInput({
+  agentLabel,
+  agentDescription,
+  getValue,
+  onFill,
+  ...inputProps
+}: {
+  agentLabel: string;
+  agentDescription?: string;
+  getValue: () => string;
+  onFill: (value: string) => void;
+} & React.ComponentProps<typeof Input>): React.JSX.Element {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "address-input",
+    role: "text-input",
+    label: agentLabel,
+    ...(agentDescription ? { description: agentDescription } : {}),
+    getValue,
+    onFill,
+  });
+  return <Input ref={ref} {...agentProps} {...inputProps} />;
+}
+
+function BrowserTabRow({
+  tab,
+  active,
+  tabHasSessionFocus,
+  label,
+  description,
+  closeTabLabel,
+  agentActiveLabel,
+  monogram,
+  onActivate,
+  onClose,
+}: {
+  tab: BrowserWorkspaceTab;
+  active: boolean;
+  tabHasSessionFocus: boolean;
+  label: string;
+  description: string;
+  closeTabLabel: string;
+  agentActiveLabel: string;
+  monogram: string;
+  onActivate: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const tabIsInternal = isInternalBrowserWorkspaceTab(tab);
+  const { ref: activateRef, agentProps: activateAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `tab-${tab.id}`,
+      role: "tab",
+      label,
+      group: "browser-tabs",
+      description: `Activate browser tab: ${label}`,
+      status: active ? "active" : "inactive",
+      onActivate,
+    });
+  const { ref: closeRef, agentProps: closeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `tab-close-${tab.id}`,
+      role: "button",
+      label: `${closeTabLabel} ${label}`,
+      group: "browser-tabs",
+      description: `Close browser tab: ${label}`,
+      onActivate: onClose,
+    });
+
+  return (
+    <div className="group relative">
+      <button
+        ref={activateRef}
+        {...activateAgentProps}
+        type="button"
+        role="tab"
+        aria-selected={active}
+        aria-current={active ? "page" : undefined}
+        title={tab.url}
+        onClick={onActivate}
+        className={`flex w-full min-w-0 items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors ${
+          tabIsInternal ? "pr-1.5" : "pr-7"
+        } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
+      >
+        <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
+          {tabHasSessionFocus ? (
+            <>
+              <span aria-hidden className="h-2 w-2 rounded-full bg-accent " />
+              <span className="sr-only">{agentActiveLabel}</span>
+            </>
+          ) : (
+            <span className="text-[10px] font-semibold leading-none">
+              {monogram}
+            </span>
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs-tight font-medium leading-snug">
+            {label}
+          </span>
+          <span className="block truncate text-[11px] leading-snug text-muted/65">
+            {description}
+          </span>
+        </span>
+      </button>
+      {tabIsInternal ? null : (
+        <button
+          ref={closeRef}
+          {...closeAgentProps}
+          type="button"
+          aria-label={`${closeTabLabel} ${label}`}
+          title={`${closeTabLabel}: ${label}`}
+          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
+            active
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          }`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function BrowserWorkspaceView(): React.JSX.Element {
@@ -2046,6 +2204,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     defaultValue: "Go",
   });
 
+  const agentActiveLabel = t("browserworkspace.AgentActive", {
+    defaultValue: "Agent is on this tab",
+  });
+
   function renderBrowserWorkspaceTabRow(
     tab: BrowserWorkspaceTab,
   ): React.JSX.Element {
@@ -2053,72 +2215,29 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
     const label = getBrowserWorkspaceTabLabel(tab, t);
     const description = getBrowserWorkspaceTabDescription(tab, workspace.mode);
-    const tabIsInternal = isInternalBrowserWorkspaceTab(tab);
 
     return (
-      <div key={tab.id} className="group relative">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={active}
-          aria-current={active ? "page" : undefined}
-          title={tab.url}
-          onClick={() =>
-            void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
-              await activateBrowserWorkspaceTab(tab.id);
-            })
-          }
-          className={`flex w-full min-w-0 items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors ${
-            tabIsInternal ? "pr-1.5" : "pr-7"
-          } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
-        >
-          <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
-            {tabHasSessionFocus ? (
-              <>
-                <span aria-hidden className="h-2 w-2 rounded-full bg-accent " />
-                <span className="sr-only">
-                  {t("browserworkspace.AgentActive", {
-                    defaultValue: "Agent is on this tab",
-                  })}
-                </span>
-              </>
-            ) : (
-              <span className="text-[10px] font-semibold leading-none">
-                {getBrowserWorkspaceTabMonogram(label)}
-              </span>
-            )}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs-tight font-medium leading-snug">
-              {label}
-            </span>
-            <span className="block truncate text-[11px] leading-snug text-muted/65">
-              {description}
-            </span>
-          </span>
-        </button>
-        {tabIsInternal ? null : (
-          <button
-            type="button"
-            aria-label={`${closeTabLabel} ${label}`}
-            title={`${closeTabLabel}: ${label}`}
-            className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
-              active
-                ? "opacity-100"
-                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-            }`}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
-                await closeBrowserWorkspaceTabById(tab.id);
-              });
-            }}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        )}
-      </div>
+      <BrowserTabRow
+        key={tab.id}
+        tab={tab}
+        active={active}
+        tabHasSessionFocus={tabHasSessionFocus}
+        label={label}
+        description={description}
+        closeTabLabel={closeTabLabel}
+        agentActiveLabel={agentActiveLabel}
+        monogram={getBrowserWorkspaceTabMonogram(label)}
+        onActivate={() =>
+          void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
+            await activateBrowserWorkspaceTab(tab.id);
+          })
+        }
+        onClose={() =>
+          void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
+            await closeBrowserWorkspaceTabById(tab.id);
+          })
+        }
+      />
     );
   }
 
@@ -2280,7 +2399,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           even when the sidebar is fully collapsed — the rail's own
           expand button can sit behind the native OOPIF and become
           unclickable. */}
-      <Button
+      <BrowserNavButton
+        agentId="toggle-tabs"
+        agentLabel={
+          tabsSidebarCollapsed
+            ? t("browserworkspace.ExpandTabs", {
+                defaultValue: "Expand browser tabs",
+              })
+            : t("browserworkspace.CollapseTabs", {
+                defaultValue: "Collapse browser tabs",
+              })
+        }
+        agentDescription="Toggle the browser tabs sidebar"
+        group="browser-nav"
+        onActivate={() => setTabsSidebarCollapsed((current) => !current)}
         variant="ghost"
         size="icon"
         className="h-8 w-8 shrink-0"
@@ -2301,8 +2433,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         ) : (
           <PanelLeftClose className="h-4 w-4" />
         )}
-      </Button>
-      <Button
+      </BrowserNavButton>
+      <BrowserNavButton
+        agentId="new-tab"
+        agentLabel={newTabLabel}
+        agentDescription="Open a new browser tab"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("open:new", async () => {
+            await openNewBrowserWorkspaceTab(
+              newBrowserWorkspaceTabSeedUrl,
+              "user",
+            );
+          })
+        }
         variant="ghost"
         size="icon"
         className="h-8 w-8 shrink-0"
@@ -2319,8 +2463,17 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         data-testid="browser-workspace-nav-new-tab"
       >
         <Plus className="h-4 w-4" />
-      </Button>
-      <Button
+      </BrowserNavButton>
+      <BrowserNavButton
+        agentId="reload"
+        agentLabel={t("common.refresh", { defaultValue: "Refresh" })}
+        agentDescription="Reload the active browser tab"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("reload:selected", async () => {
+            await reloadSelectedBrowserWorkspaceTab();
+          })
+        }
         variant="ghost"
         size="icon"
         className="h-8 w-8"
@@ -2333,8 +2486,19 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
       >
         <RefreshCw className="h-4 w-4" />
-      </Button>
-      <Input
+      </BrowserNavButton>
+      <BrowserAddressInput
+        agentLabel={t("browserworkspace.AddressPlaceholder", {
+          defaultValue: selectedTabIsInternal
+            ? "Internal tab URL is managed by the app"
+            : "Enter a URL",
+        })}
+        agentDescription="The browser address bar for the active tab"
+        getValue={() => locationInput}
+        onFill={(value) => {
+          setLocationInput(value);
+          setLocationDirty(true);
+        }}
         value={locationInput}
         onChange={(event) => {
           setLocationInput(event.target.value);
@@ -2357,7 +2521,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         disabled={busyAction !== null || selectedTabIsInternal}
         className="h-8 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
-      <Button
+      <BrowserNavButton
+        agentId="go"
+        agentLabel={goLabel}
+        agentDescription="Navigate the active tab to the address bar URL"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("navigate:click", async () => {
+            await navigateSelectedBrowserWorkspaceTab(locationInput);
+          })
+        }
         variant="outline"
         size="sm"
         className="h-8 shrink-0 px-3"
@@ -2374,8 +2547,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
       >
         {goLabel}
-      </Button>
-      <Button
+      </BrowserNavButton>
+      <BrowserNavButton
+        agentId="open-external"
+        agentLabel={t("browserworkspace.OpenExternal", {
+          defaultValue: "Open external",
+        })}
+        agentDescription="Open the active tab URL in an external browser"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("open:external", async () => {
+            if (!selectedTab) return;
+            await openExternalUrl(selectedTab.url);
+          })
+        }
         variant="ghost"
         size="icon"
         className="h-8 w-8"
@@ -2391,7 +2576,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
       >
         <ExternalLink className="h-4 w-4" />
-      </Button>
+      </BrowserNavButton>
     </div>
   );
 
@@ -2788,7 +2973,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
 
   return (
-    <>
+    <ShellViewAgentSurface viewId="browser">
       <AppWorkspaceChrome
         testId="browser-workspace-view"
         main={mainNode}
@@ -2800,6 +2985,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />
-    </>
+    </ShellViewAgentSurface>
   );
 }

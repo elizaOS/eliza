@@ -209,6 +209,7 @@ export function detectIntentCategories(prompt: string): string[] {
  */
 export function buildFullParamActionSet(
   intentCategories: string[],
+  extraActions?: Iterable<string>,
 ): Set<string> {
   const fullActions = new Set(UNIVERSAL_ACTIONS);
   for (const cat of intentCategories) {
@@ -221,6 +222,11 @@ export function buildFullParamActionSet(
   if (intentCategories.includes("coding")) {
     for (const a of INTENT_ACTION_MAP.terminal) fullActions.add(a);
     for (const a of INTENT_ACTION_MAP.issues) fullActions.add(a);
+  }
+  // Caller-supplied actions (e.g. the active view's scoped actions) are kept at
+  // full detail regardless of detected intent.
+  if (extraActions) {
+    for (const a of extraActions) fullActions.add(a);
   }
   return fullActions;
 }
@@ -302,7 +308,10 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  * If no intents are detected (general chat), only universal actions
  * (REPLY, NONE, IGNORE) keep full params — all others are stubbed.
  */
-export function compactActionsForIntent(prompt: string): string {
+export function compactActionsForIntent(
+  prompt: string,
+  viewScopedActions?: Iterable<string>,
+): string {
   // Wallet / on-chain tasks need full action param schemas for reliable tool
   // invocation across providers and languages. Skip action compaction here.
   if (hasIntent(prompt, WALLET_INTENT_RE)) {
@@ -319,7 +328,12 @@ export function compactActionsForIntent(prompt: string): string {
   // When no specific intent is detected, it's general chat — only universal
   // actions (REPLY, NONE, IGNORE) need full detail. All other actions get
   // stubs so the LLM knows they exist but doesn't waste context on params.
-  const fullParamActions = buildFullParamActionSet(intentCategories);
+  // Actions scoped to the active view are also kept full so the planner can
+  // drive whatever the user is currently looking at.
+  const fullParamActions = buildFullParamActionSet(
+    intentCategories,
+    viewScopedActions,
+  );
 
   return compactStructuredActionsBlock(prompt, fullParamActions) ?? prompt;
 }

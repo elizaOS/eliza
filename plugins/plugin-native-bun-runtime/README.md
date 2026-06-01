@@ -26,9 +26,11 @@ bun add @elizaos/capacitor-bun-runtime
 
 Capacitor 8 auto-discovers the plugin via the package metadata. Re-run
 `pod install` after adding it so the `ElizaosCapacitorBunRuntime` pod links
-into your iOS workspace. The pod links `JavaScriptCore.framework` and
-`Network.framework`, depends on `Capacitor`, and uses `LlamaCppCapacitor` for
-the native llama.cpp symbols in local builds.
+into your iOS workspace. The pod depends on `Capacitor` and links system
+frameworks including `JavaScriptCore` (compat builds only), `Network`,
+`Accelerate`, `Metal`, `MetalKit`, `MetalPerformanceShaders`, `Foundation`,
+`CoreML`, and `NaturalLanguage`. When `ELIZA_IOS_INCLUDE_LLAMA=1`, it also
+depends on `LlamaCpp` and `LlamaCppCapacitor` for native llama.cpp symbols.
 
 ## Bundle layout
 
@@ -88,9 +90,9 @@ In production full Bun mode, the Swift host calls the directly linked
 `ElizaBunEngine` ABI, starts `agent-bundle.js ios-bridge --stdio`, and forwards
 React requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
-the native plugin is available. The foreground JSContext ITTP kernel is retained
-only for development/sideload compatibility builds; iOS store builds fail closed
-instead of falling back to ITTP.
+the native plugin is available. The JSContext compatibility host is retained
+only for development/sideload builds; iOS store builds fail closed instead of
+falling back to it.
 
 ## Llama backend
 

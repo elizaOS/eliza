@@ -7,6 +7,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   NativeToolCallEvent,
@@ -454,6 +455,16 @@ export function TrajectoryDetailView({
     );
   }, []);
 
+  const clearStageFilter = useAgentElement<HTMLButtonElement>({
+    id: "clear-stage-filter",
+    role: "button",
+    label: "Clear pipeline stage filter",
+    group: "trajectory-pipeline",
+    description:
+      "Reset the active pipeline stage filter and show all LLM calls",
+    onActivate: () => setActiveStage(null),
+  });
+
   if (loading) {
     return (
       <PagePanel.Loading
@@ -563,9 +574,11 @@ export function TrajectoryDetailView({
                 })}
               </span>
               <button
+                ref={clearStageFilter.ref}
                 type="button"
                 onClick={() => setActiveStage(null)}
                 className="rounded-sm p-0.5 hover:bg-muted/10"
+                {...clearStageFilter.agentProps}
               >
                 <X className="h-3 w-3" />
               </button>

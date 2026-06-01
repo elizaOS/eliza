@@ -19,6 +19,7 @@
 
 import { Play, Save, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import {
   isMissingCredentialsResponse,
@@ -179,6 +180,92 @@ export function WorkflowEditor({
     return `${invalid.message}${where}`;
   }, [parseState]);
 
+  const jsonEditor = useAgentElement<HTMLTextAreaElement>({
+    id: "workflow-json",
+    role: "textarea",
+    label: "Workflow JSON",
+    group: "workflow-editor",
+    description: "The workflow definition as editable JSON.",
+    status: isValid ? "active" : "error",
+    getValue: () => text,
+    onFill: (value) => setText(value),
+  });
+
+  const generateButton = useAgentElement<HTMLButtonElement>({
+    id: "generate-from-prompt",
+    role: "button",
+    label: "Generate from prompt",
+    group: "workflow-toolbar",
+    description: "Open the prompt-driven workflow generator.",
+    onActivate: generatorModal.open,
+  });
+
+  const formatButton = useAgentElement<HTMLButtonElement>({
+    id: "format-json",
+    role: "button",
+    label: "Format JSON",
+    group: "workflow-toolbar",
+    description: "Reformat the workflow JSON.",
+    onActivate: handleFormat,
+  });
+
+  const saveButton = useAgentElement<HTMLButtonElement>({
+    id: "save",
+    role: "button",
+    label: "Save",
+    group: "workflow-toolbar",
+    description: "Save the workflow definition.",
+    status: saving ? "busy" : undefined,
+    onActivate: () => void handleSave(),
+  });
+
+  const activateButton = useAgentElement<HTMLButtonElement>({
+    id: "activate-run",
+    role: "button",
+    label: "Activate",
+    group: "workflow-toolbar",
+    description: "Activate and run the saved workflow.",
+    onActivate: () => void handleActivateRun(),
+  });
+
+  const closeButton = useAgentElement<HTMLButtonElement>({
+    id: "close",
+    role: "button",
+    label: "Close",
+    group: "workflow-toolbar",
+    description: "Close the workflow editor.",
+    onActivate: () => onCancel?.(),
+  });
+
+  const generatorPromptField = useAgentElement<HTMLTextAreaElement>({
+    id: "generator-prompt",
+    role: "textarea",
+    label: "Workflow prompt",
+    group: "workflow-generator",
+    description: "Describe the workflow to generate.",
+    getValue: () => generatorPrompt,
+    onFill: (value) => setGeneratorPrompt(value),
+  });
+
+  const generatorSubmitButton = useAgentElement<HTMLButtonElement>({
+    id: "generator-generate",
+    role: "button",
+    label: "Generate",
+    group: "workflow-generator",
+    description: "Generate the workflow from the prompt.",
+    status: generating ? "busy" : undefined,
+    onActivate: () => void handleGenerate(),
+  });
+
+  const generatorCancelButton = useAgentElement<HTMLButtonElement>({
+    id: "generator-cancel",
+    role: "button",
+    label: "Cancel generation",
+    group: "workflow-generator",
+    description: "Close the workflow generator without generating.",
+    onActivate: generatorModal.close,
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {/* Toolbar */}
@@ -193,6 +280,8 @@ export function WorkflowEditor({
           />
         </div>
         <Button
+          ref={generateButton.ref}
+          {...generateButton.agentProps}
           variant="outline"
           size="sm"
           onClick={generatorModal.open}
@@ -202,6 +291,8 @@ export function WorkflowEditor({
           Generate from prompt
         </Button>
         <Button
+          ref={formatButton.ref}
+          {...formatButton.agentProps}
           variant="outline"
           size="sm"
           onClick={handleFormat}
@@ -211,6 +302,8 @@ export function WorkflowEditor({
           Format JSON
         </Button>
         <Button
+          ref={saveButton.ref}
+          {...saveButton.agentProps}
           variant="default"
           size="sm"
           onClick={() => void handleSave()}
@@ -225,6 +318,8 @@ export function WorkflowEditor({
         </Button>
         {initial?.id && (
           <Button
+            ref={activateButton.ref}
+            {...activateButton.agentProps}
             variant="outline"
             size="sm"
             onClick={() => void handleActivateRun()}
@@ -235,7 +330,13 @@ export function WorkflowEditor({
           </Button>
         )}
         {onCancel && (
-          <Button variant="ghost" size="sm" onClick={onCancel}>
+          <Button
+            ref={closeButton.ref}
+            {...closeButton.agentProps}
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+          >
             Close
           </Button>
         )}
@@ -258,6 +359,8 @@ export function WorkflowEditor({
             <span>{text.split("\n").length} lines</span>
           </div>
           <textarea
+            ref={jsonEditor.ref}
+            {...jsonEditor.agentProps}
             value={text}
             onChange={(e) => setText(e.target.value)}
             spellCheck={false}
@@ -299,6 +402,8 @@ export function WorkflowEditor({
           </DialogHeader>
           <div className="space-y-3">
             <Textarea
+              ref={generatorPromptField.ref}
+              {...generatorPromptField.agentProps}
               value={generatorPrompt}
               onChange={(e) => setGeneratorPrompt(e.target.value)}
               placeholder="When a new starred email arrives in Gmail, post a summary in #ops on Slack."
@@ -312,6 +417,8 @@ export function WorkflowEditor({
             )}
             <div className="flex items-center justify-end gap-2">
               <Button
+                ref={generatorCancelButton.ref}
+                {...generatorCancelButton.agentProps}
                 variant="ghost"
                 size="sm"
                 onClick={generatorModal.close}
@@ -320,6 +427,8 @@ export function WorkflowEditor({
                 Cancel
               </Button>
               <Button
+                ref={generatorSubmitButton.ref}
+                {...generatorSubmitButton.agentProps}
                 variant="default"
                 size="sm"
                 onClick={() => void handleGenerate()}

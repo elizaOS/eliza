@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { PluginsView } from "./PluginsView";
 
 export function PluginsPageView({
@@ -14,10 +15,12 @@ export function PluginsPageView({
   inModal?: boolean;
 } = {}) {
   return (
-    <PluginsView
-      contentHeader={contentHeader}
-      mode="all-social"
-      inModal={inModal ?? false}
-    />
+    <ShellViewAgentSurface viewId="plugins-page">
+      <PluginsView
+        contentHeader={contentHeader}
+        mode="all-social"
+        inModal={inModal ?? false}
+      />
+    </ShellViewAgentSurface>
   );
 }

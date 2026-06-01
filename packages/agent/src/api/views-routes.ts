@@ -30,6 +30,10 @@ import {
 } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
 import {
+  clearActiveViewContext,
+  setActiveViewContext,
+} from "../runtime/view-action-affinity.ts";
+import {
   PendingRequestMap,
   type ViewInteractResult,
 } from "./pending-request-map.ts";
@@ -203,6 +207,7 @@ export function getCurrentViewState(): CurrentViewState | null {
 
 export function clearCurrentViewState(): void {
   currentViewState = null;
+  clearActiveViewContext();
 }
 
 /**
@@ -737,6 +742,14 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       updatedAt: new Date().toISOString(),
     };
+    // Publish to the prompt-optimization layer so the planner upweights this
+    // view's scoped actions while it is on screen.
+    setActiveViewContext({
+      viewId: id,
+      viewLabel,
+      viewType: resolvedViewType,
+      viewPath,
+    });
 
     ctx.broadcastWs?.({
       type: "shell:navigate:view",

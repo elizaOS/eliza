@@ -600,4 +600,166 @@ describe("v5 tiered action surface", () => {
 			),
 		).toHaveLength(2);
 	});
+
+	it("force-includes the keyless WEB_FETCH action in the planner surface for a live-info turn", async () => {
+		// Live regression (the 4th and final live-info gate): WEB_FETCH is
+		// registered without declared contexts, so registration stamps it with the
+		// default ["general"] context. When the turn routes to a non-general
+		// context, the context gate drops WEB_FETCH from the candidate set, it
+		// never reaches the action catalog, and the planner is left with only
+		// TASKS — force-spawning a coding agent for an inline lookup. The
+		// `looksLikeWebSearchRequest` force-include pulls WEB_FETCH back into the
+		// surface so the planner can answer inline.
+		const webFetch = makeAction({
+			name: "WEB_FETCH",
+			description: "Fetch a public https URL or JSON data API inline.",
+			similes: ["LOOKUP_WEB", "WEB_LOOKUP"],
+			contexts: ["general" as AgentContext],
+		});
+		const tasks = makeAction({
+			name: "TASKS",
+			description: "Spawn and manage coding sub-agents.",
+			contexts: ["coding" as AgentContext],
+			contextGate: { anyOf: ["coding"] },
+		});
+		const runtime = makeRuntime({
+			actions: [webFetch, tasks],
+			responses: [
+				// Stage 1 routes the live-info ask to the coding context (which is
+				// what drops WEB_FETCH's general-only gate in the wild).
+				stage1Response({
+					contexts: ["coding"],
+					candidateActionNames: ["MESSAGE_SEARCH"],
+				}),
+				{
+					body: {
+						text: "Fetching price.",
+						toolCalls: [
+							{
+								id: "web-fetch-1",
+								name: "WEB_FETCH",
+								arguments: {
+									url: "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+								},
+							},
+						],
+					},
+				},
+				finishEvaluatorResponse("Bitcoin is about $X."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("whats the current price of bitcoin?"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const toolNames =
+			(
+				plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+			)?.tools
+				?.map((tool) => tool.name)
+				.filter(Boolean) ?? [];
+		expect(toolNames).toContain("WEB_FETCH");
+	});
+
+	it("does not force-include WEB_FETCH for a mixed build/live-info turn", async () => {
+		// Mixed requests like "build a weather app with today's forecast" match
+		// both live-info and coding-work heuristics. They must stay on the coding
+		// delegation path, not expose WEB_FETCH as an inline answer/fetch tool.
+		const webFetch = makeAction({
+			name: "WEB_FETCH",
+			description: "Fetch a public https URL or JSON data API inline.",
+			similes: ["LOOKUP_WEB", "WEB_LOOKUP"],
+			contexts: ["general" as AgentContext],
+		});
+		const tasks = makeAction({
+			name: "TASKS",
+			description: "Spawn and manage coding sub-agents.",
+			contexts: ["coding" as AgentContext],
+			contextGate: { anyOf: ["coding"] },
+		});
+		const runtime = makeRuntime({
+			actions: [webFetch, tasks],
+			responses: [
+				stage1Response({
+					contexts: ["coding"],
+					candidateActionNames: ["TASKS"],
+				}),
+				plannerToolResponse("TASKS", {}),
+				finishEvaluatorResponse("Spawning a sub-agent."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("build a weather app that shows today's forecast"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const toolNames =
+			(
+				plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+			)?.tools
+				?.map((tool) => tool.name)
+				.filter(Boolean) ?? [];
+		expect(toolNames).toContain("TASKS");
+		expect(toolNames).not.toContain("WEB_FETCH");
+	});
+
+	it("does not expose WEB_FETCH when its validation gate fails", async () => {
+		const validate = vi.fn(async () => false);
+		const webFetch = makeAction({
+			name: "WEB_FETCH",
+			description: "Fetch a public https URL or JSON data API inline.",
+			similes: ["LOOKUP_WEB", "WEB_LOOKUP"],
+			contexts: ["general" as AgentContext],
+			validate,
+		});
+		const tasks = makeAction({
+			name: "TASKS",
+			description: "Spawn and manage coding sub-agents.",
+			contexts: ["coding" as AgentContext],
+			contextGate: { anyOf: ["coding"] },
+		});
+		const runtime = makeRuntime({
+			actions: [webFetch, tasks],
+			responses: [
+				stage1Response({
+					contexts: ["coding"],
+					candidateActionNames: ["TASKS"],
+				}),
+				plannerToolResponse("TASKS", {}),
+				finishEvaluatorResponse("Spawning a sub-agent."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("what is the current price of bitcoin?"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const toolNames =
+			(
+				plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+			)?.tools
+				?.map((tool) => tool.name)
+				.filter(Boolean) ?? [];
+		expect(validate).toHaveBeenCalled();
+		expect(toolNames).not.toContain("WEB_FETCH");
+	});
 });

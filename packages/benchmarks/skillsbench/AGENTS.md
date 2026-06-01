@@ -1,6 +1,6 @@
 # SkillsBench
 
-Benchmark for evaluating how well AI agents use skills. 91 task definitions, working toward 100+.
+Benchmark for evaluating how well AI agents use skills. 62 task definitions in this snapshot (91 upstream, including tasks_excluded/).
 
 ## Commands
 
@@ -35,7 +35,8 @@ tasks/<task-id>/
 
 Default runnable tasks live in `tasks/`. Credential-dependent or
 integration-incompatible tasks live in `tasks_excluded/` and are included in
-integration sweeps only when `--no-default-excludes` is passed.
+integration sweeps only when `--no-default-excludes` is passed. Note:
+`tasks_excluded/` is not present in this snapshot (see INTEGRATION.md).
 
 ## Rules
 
@@ -50,6 +51,6 @@ integration sweeps only when `--no-default-excludes` is passed.
 ## Key References
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — full contributor guide, rubrics, authorship policy
-- [.agents/skills/task-review/](.agents/skills/task-review/) — task review skill: workflow + policy/implementation rubrics
-- [.claude/skills/skill-creator/SKILL.md](.claude/skills/skill-creator/SKILL.md) — how to write skills
+- `.agents/skills/task-review/` — task review skill: workflow + policy/implementation rubrics (stripped on clone; see upstream repo)
+- `.claude/skills/skill-creator/SKILL.md` — how to write skills (stripped on clone; see upstream repo)
 - [docs/unit-test-guidelines.md](docs/unit-test-guidelines.md) — test statistics and patterns

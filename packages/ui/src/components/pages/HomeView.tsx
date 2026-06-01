@@ -12,12 +12,14 @@ import { useTranslation } from "../../state/TranslationContext";
 import { AppIdentityTile } from "../apps/app-identity";
 import { getHomeGridApps } from "../apps/home-grid-apps";
 import { formatEta } from "../local-inference/hub-utils";
+import { GlassPill } from "../shell/GlassPill";
 import { GLASS_COMPOSER_CLASS, GlassIconButton } from "../shell/glass-composer";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { usePullGesture } from "../shell/use-pull-gesture";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import type {
   FrequencyAnalyser,
   VoiceWaveformMode,
@@ -53,15 +55,17 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   editRequestNonce: number;
 }): React.JSX.Element {
   return (
-    <Homescreen
-      analyser={analyser}
-      phase={phaseForMode(mode)}
-      userText={userText}
-      assistantText={assistantText}
-      onOrbAnchor={onOrbAnchor}
-      onEditModeChange={onEditModeChange}
-      editRequestNonce={editRequestNonce}
-    />
+    <ShellViewAgentSurface viewId="home">
+      <Homescreen
+        analyser={analyser}
+        phase={phaseForMode(mode)}
+        userText={userText}
+        assistantText={assistantText}
+        onOrbAnchor={onOrbAnchor}
+        onEditModeChange={onEditModeChange}
+        editRequestNonce={editRequestNonce}
+      />
+    </ShellViewAgentSurface>
   );
 });
 
@@ -285,10 +289,22 @@ export function HomeView(): React.JSX.Element {
               className="w-full shrink-0 transition-[height] duration-500"
               style={{ height: orbBandPx }}
             />
+            {transcriptChunk ? (
+              <p
+                className={cn(
+                  "mb-3 max-w-xl shrink-0 text-center text-sm font-medium text-txt/85 transition-opacity duration-1000",
+                  transcriptFaded && "opacity-0",
+                )}
+                aria-live="polite"
+                data-testid="home-assistant-transcript"
+              >
+                {transcriptChunk}
+              </p>
+            ) : null}
             <button
               type="button"
               aria-label={t("homeview.orb.stop", {
-                defaultValue: "Stop voice mode",
+                defaultValue: "Stop voice input",
               })}
               data-testid="home-voice-stop"
               onClick={exitVoice}
@@ -310,21 +326,7 @@ export function HomeView(): React.JSX.Element {
               />
             ) : noLlmConnection ? (
               <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
-            ) : (
-              <p
-                className={cn(
-                  "min-h-5 max-w-xl text-center text-sm font-medium text-txt/85 transition-opacity duration-1000 mb-2",
-                  transcriptFaded && "opacity-0",
-                )}
-                aria-live="polite"
-                data-testid="home-assistant-transcript"
-              >
-                {transcriptChunk ??
-                  t("homeview.assistant.prompt", {
-                    defaultValue: "hey, what's up?",
-                  })}
-              </p>
-            )}
+            ) : null}
 
             <HomeAppGrid onLaunch={setTab} />
 
@@ -764,7 +766,7 @@ function HomeChatPill({
     >
       {expanded ? (
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          className="flex min-h-0 flex-1 origin-bottom flex-col overflow-hidden animate-[slide-up_180ms_ease-out] motion-reduce:animate-none"
           data-testid="home-chat-panel"
         >
           {/* Messages fill from the top; the composer pins to the bottom. */}
@@ -798,7 +800,7 @@ function HomeChatPill({
 
           {/* Composer — refractive glass bar; draft text stays in input until sent, no bubble preview */}
           <div className="mx-2 mt-2">
-            <div className={cn("px-2 py-1.5", GLASS_COMPOSER_CLASS)}>
+            <div className={cn("px-2 py-0.5", GLASS_COMPOSER_CLASS)}>
               <Input
                 ref={inputRef}
                 type="text"
@@ -867,12 +869,9 @@ function HomeChatPill({
           aria-expanded={false}
           data-testid="home-chat-pill"
           className={cn(
-            "group mx-auto flex min-h-12 w-40 cursor-pointer items-center justify-center rounded-[6px] border border-white/20 px-4 py-3",
-            "bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.045))] backdrop-blur-2xl",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.38),inset_0_-1px_0_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.24),0_0_28px_rgba(255,255,255,0.08)]",
-            "transition-[transform,background-color,box-shadow] duration-200 ease-out",
-            "hover:scale-[1.04] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.23),rgba(255,255,255,0.07))] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(255,255,255,0.1),0_18px_44px_rgba(0,0,0,0.28),0_0_36px_rgba(255,255,255,0.12)]",
-            "active:scale-[1.04] focus:outline-none focus-visible:outline-none",
+            "group mx-auto flex min-h-12 w-40 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent px-4 py-3 shadow-none",
+            "transition-transform duration-200 ease-out hover:scale-[1.04] active:scale-[1.04]",
+            "focus:outline-none focus-visible:outline-none",
           )}
           onPointerDown={onPillPointerDown}
           onPointerUp={onPillPointerUp}
@@ -890,9 +889,9 @@ function HomeChatPill({
             }
           }}
         >
-          <span
-            aria-hidden
-            className="h-1.5 w-24 rounded-full bg-white/55 shadow-[0_0_18px_rgba(255,255,255,0.28)] transition-all duration-200 group-hover:w-28"
+          <GlassPill
+            testId="home-chat-pill-glass"
+            className="h-7 w-28 transition-[width] duration-200 ease-out group-hover:w-32"
           />
         </button>
       ) : null}

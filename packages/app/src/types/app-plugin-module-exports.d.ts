@@ -80,7 +80,6 @@ declare module "@elizaos/plugin-training" {
 }
 
 declare module "@elizaos/plugin-vincent" {
-  export function useVincentState(
-    args: import("@elizaos/ui").VincentStateHookArgs,
-  ): import("@elizaos/ui").VincentStateHookResult;
+  // Imported only for its self-registration side effect.
+  export {};
 }

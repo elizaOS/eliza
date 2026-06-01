@@ -1,5 +1,6 @@
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import {
   invokeDesktopBridgeRequest,
@@ -176,6 +177,79 @@ function isManagedWindowsChangedEvent(
 
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
   return isOverlayApp(app.name) || app.launchType === "overlay";
+}
+
+function AppWindowPinButton({
+  windowRecord,
+  busy,
+  onToggle,
+}: {
+  windowRecord: AppWindowRecord;
+  busy: boolean;
+  onToggle: (windowRecord: AppWindowRecord) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `window-pin-${windowRecord.id}`,
+    role: "toggle",
+    label: windowRecord.alwaysOnTop
+      ? `Let ${windowRecord.displayName} act like a normal window`
+      : `Keep ${windowRecord.displayName} on top`,
+    group: "app-windows",
+    status: windowRecord.alwaysOnTop ? "active" : "inactive",
+    description: `Toggle always-on-top for the ${windowRecord.displayName} app window`,
+    onActivate: () => onToggle(windowRecord),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      onClick={() => onToggle(windowRecord)}
+      disabled={busy}
+      aria-label={
+        windowRecord.alwaysOnTop
+          ? `Let ${windowRecord.displayName} act like a normal window`
+          : `Keep ${windowRecord.displayName} on top`
+      }
+      {...agentProps}
+    >
+      {windowRecord.alwaysOnTop ? (
+        <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      {windowRecord.alwaysOnTop ? "Normal" : "On top"}
+    </button>
+  );
+}
+
+function ActiveRunButton({
+  hasCurrentGame,
+  onOpen,
+}: {
+  hasCurrentGame: boolean;
+  onOpen: () => void;
+}) {
+  const label = hasCurrentGame ? "Live viewer" : "Active run";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "open-active-run",
+    role: "button",
+    label,
+    group: "apps-toolbar",
+    description: "Open the active app run's live viewer",
+    onActivate: onOpen,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
+      onClick={onOpen}
+      {...agentProps}
+    >
+      {label}
+    </button>
+  );
 }
 
 export function AppsView() {
@@ -1102,26 +1176,13 @@ export function AppsView() {
                   <span className="max-w-44 truncate font-medium text-foreground">
                     {windowRecord.displayName}
                   </span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() =>
-                      void handleToggleAppWindowAlwaysOnTop(windowRecord)
+                  <AppWindowPinButton
+                    windowRecord={windowRecord}
+                    busy={busy}
+                    onToggle={(record) =>
+                      void handleToggleAppWindowAlwaysOnTop(record)
                     }
-                    disabled={busy}
-                    aria-label={
-                      windowRecord.alwaysOnTop
-                        ? `Let ${windowRecord.displayName} act like a normal window`
-                        : `Keep ${windowRecord.displayName} on top`
-                    }
-                  >
-                    {windowRecord.alwaysOnTop ? (
-                      <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
-                    ) : (
-                      <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-                    )}
-                    {windowRecord.alwaysOnTop ? "Normal" : "On top"}
-                  </button>
+                  />
                 </div>
               );
             })}
@@ -1130,13 +1191,10 @@ export function AppsView() {
 
         {hasActiveRun ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
-              onClick={handleOpenCurrentGame}
-            >
-              {hasCurrentGame ? "Live viewer" : "Active run"}
-            </button>
+            <ActiveRunButton
+              hasCurrentGame={hasCurrentGame}
+              onOpen={handleOpenCurrentGame}
+            />
           </div>
         ) : null}
 

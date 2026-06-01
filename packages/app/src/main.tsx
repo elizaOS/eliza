@@ -50,8 +50,6 @@ import type {
   StewardApprovalQueueProps,
   StewardLogoProps,
   StewardTransactionHistoryProps,
-  VincentStateHookArgs,
-  VincentStateHookResult,
 } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
@@ -277,20 +275,7 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
   async () => (await importAppTraining()).FineTuningView,
 );
 
-const DEFAULT_LAZY_VINCENT_STATE: VincentStateHookResult = {
-  vincentConnected: false,
-  vincentLoginBusy: false,
-  vincentLoginError: null,
-  vincentConnectedAt: null,
-  handleVincentLogin: async () => {},
-  handleVincentDisconnect: async () => {},
-  pollVincentStatus: async () => false,
-};
-
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let loadedVincentStateHook:
-  | ((args: VincentStateHookArgs) => VincentStateHookResult)
-  | null = null;
 let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
@@ -300,12 +285,6 @@ function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
       teleportKey: "",
     }
   );
-}
-
-function useLoadedVincentState(
-  args: VincentStateHookArgs,
-): VincentStateHookResult {
-  return loadedVincentStateHook?.(args) ?? DEFAULT_LAZY_VINCENT_STATE;
 }
 
 const BRANDED_WINDOW_KEYS = {
@@ -499,7 +478,6 @@ function buildAppBootConfig({
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
     fineTuningView: FineTuningView,
-    useVincentState: useLoadedVincentState,
     stewardLogo: StewardLogo,
     stewardApprovalQueue: ApprovalQueue,
     stewardTransactionHistory: TransactionHistory,
@@ -522,25 +500,23 @@ function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
-    const [companionModule, lifeOpsModule, vincentModule] = await Promise.all([
+    const [companionModule, lifeOpsModule] = await Promise.all([
       importAppCompanion(),
       importAppLifeOps(),
+      // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
       importAppTaskCoordinator(),
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),
-    ]);
-    await Promise.all(
-      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
+      ...SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
         importSideEffectAppModule(key, load),
       ),
-    );
+    ]);
 
     companionModule.registerCompanionApp();
     lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    loadedVincentStateHook = vincentModule.useVincentState;
     dispatchQueuedLifeOpsGithubCallback =
       lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 

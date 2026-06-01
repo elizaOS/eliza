@@ -1,12 +1,23 @@
-# Plugin Training
+# @elizaos/plugin-training
 
-`@elizaos/plugin-training` collects training data, trajectories, model
-metadata, and Eliza harness benchmark evidence into one inspectable run folder.
-The fine-tuning dashboard uses the same collection APIs as the CLI, so a run can
-be started from the app or from a terminal and reviewed in the generated HTML
-viewers.
+`@elizaos/plugin-training` adds fine-tuning, trajectory management, and
+prompt-optimization infrastructure to an Eliza agent. Capabilities:
 
-## End-to-end collection
+- **Auto-training** — `TrainingTriggerService` counts completed trajectories per
+  task and fires prompt optimization automatically when the configured threshold
+  is reached (default 100 trajectories, 12-hour cooldown).
+- **Native optimizer** — in-process prompt optimization via
+  `instruction-search`, `prompt-evolution`, `gepa`, `bootstrap-fewshot`, and
+  DSPy-native variants (COPRO, MIPRO). Writes artifacts to
+  `<stateDir>/optimized-prompts/` for live pickup by `OptimizedPromptService`.
+- **Vast.ai GPU training** — orchestrates remote training jobs via
+  `/api/training/vast/*` routes and the `VastTrainingService`.
+- **Fine-tuning dashboard** — developer-only UI view at `/training` showing
+  jobs, datasets, models, evals, benchmarks, and trajectory management.
+- **Data collection CLI** — collects Eliza harness benchmark evidence into
+  inspectable HTML+JSON run folders. The dashboard and CLI share the same APIs.
+
+## Data collection
 
 Run a dry collection first. It writes artifacts, summaries, and viewers without
 requiring live model endpoints:

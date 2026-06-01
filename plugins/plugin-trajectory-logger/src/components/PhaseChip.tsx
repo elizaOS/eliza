@@ -1,8 +1,11 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, CheckSquare, Inbox, Zap } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PhaseName, PhaseStatus } from "../phases";
+import type { Slot } from "./TrajectoryLoggerView";
 
 interface PhaseChipProps {
+  slot: Slot;
   phase: PhaseName;
   status: PhaseStatus;
   summary: string | null;
@@ -26,6 +29,7 @@ const ICON: Record<PhaseName, ComponentType<{ className?: string }>> = {
 };
 
 export function PhaseChip({
+  slot,
   phase,
   status,
   summary,
@@ -33,11 +37,23 @@ export function PhaseChip({
   onClick,
 }: PhaseChipProps) {
   const Icon = ICON[phase];
+  const slotLabel = slot === "now" ? "current turn" : "last turn";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `phase-${slot}-${phase.toLowerCase()}`,
+    role: "tab",
+    label: `${phase} (${slotLabel})`,
+    group: slot === "now" ? "phases-now" : "phases-last",
+    status: selected ? "active" : "inactive",
+    description: `Inspect the ${phase} phase of the ${slotLabel}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       title={phase}
+      aria-current={selected ? "true" : undefined}
+      {...agentProps}
       className={[
         "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors",
         selected

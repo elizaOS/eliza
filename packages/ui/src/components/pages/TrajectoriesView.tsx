@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -578,34 +579,36 @@ export function TrajectoriesView({
   );
 
   return (
-    <PageLayout
-      sidebar={trajectoriesSidebar}
-      contentHeader={contentHeader}
-      contentInnerClassName="mx-auto w-full max-w-[76rem]"
-      data-testid="trajectories-view"
-    >
-      {error ? (
-        <PagePanel.Notice tone="danger" className="mb-4">
-          {error}
-        </PagePanel.Notice>
-      ) : null}
+    <ShellViewAgentSurface viewId="trajectories">
+      <PageLayout
+        sidebar={trajectoriesSidebar}
+        contentHeader={contentHeader}
+        contentInnerClassName="mx-auto w-full max-w-[76rem]"
+        data-testid="trajectories-view"
+      >
+        {error ? (
+          <PagePanel.Notice tone="danger" className="mb-4">
+            {error}
+          </PagePanel.Notice>
+        ) : null}
 
-      {loading && trajectories.length === 0 ? (
-        <ListSkeleton rows={8} />
-      ) : !loading && trajectories.length === 0 ? (
-        <PagePanel.FeatureEmpty
-          className="rounded-sm"
-          features={TRAJECTORY_EMPTY_FEATURES}
-          icon={Route}
-          title={
-            hasActiveFilters
-              ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
-              : t("trajectoriesview.NoTrajectoriesYet")
-          }
-        />
-      ) : detailTrajectoryId ? (
-        <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
-      ) : null}
-    </PageLayout>
+        {loading && trajectories.length === 0 ? (
+          <ListSkeleton rows={8} />
+        ) : !loading && trajectories.length === 0 ? (
+          <PagePanel.FeatureEmpty
+            className="rounded-sm"
+            features={TRAJECTORY_EMPTY_FEATURES}
+            icon={Route}
+            title={
+              hasActiveFilters
+                ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
+                : t("trajectoriesview.NoTrajectoriesYet")
+            }
+          />
+        ) : detailTrajectoryId ? (
+          <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
+        ) : null}
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }

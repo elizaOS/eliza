@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
+import { recordBootTelemetry, startMemorySampler } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
@@ -510,12 +511,6 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-openai"),
-    },
-    {
-      packageName: "@elizaos/plugin-google",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-google"),
     },
     {
       packageName: "@elizaos/plugin-gitpathologist",
@@ -4411,15 +4406,33 @@ export async function startEliza(
     }
   };
 
-  const installAnthropicWebSearchIfAvailable = async (): Promise<void> => {
+  const installServerSideWebSearchIfAvailable = async (): Promise<void> => {
     try {
-      const { installAnthropicWebSearch } = await import(
+      const { installServerSideWebSearch } = await import(
         "./web-search-tools.ts"
       );
-      installAnthropicWebSearch(runtime);
+      installServerSideWebSearch();
     } catch (err) {
       logger.debug(
-        `[eliza] Anthropic web search setup skipped: ${formatError(err)}`,
+        `[eliza] Server-side web search setup skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
+  // Keyless inline live-info fetch for every runtime (not just Anthropic).
+  // Opt out with ELIZA_WEB_FETCH=0, mirroring ELIZA_WEB_SEARCH.
+  const registerWebFetchActionIfEnabled = async (): Promise<void> => {
+    if (process.env.ELIZA_WEB_FETCH === "0") {
+      logger.info("[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0");
+      return;
+    }
+    try {
+      const { webFetch } = await import("./actions/web-fetch.ts");
+      runtime.registerAction(webFetch);
+      logger.info("[eliza] Registered keyless WEB_FETCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_FETCH action registration skipped: ${formatError(err)}`,
       );
     }
   };
@@ -4637,7 +4650,8 @@ export async function startEliza(
     await registerConversationProximityProvider();
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
-    await installAnthropicWebSearchIfAvailable();
+    await installServerSideWebSearchIfAvailable();
+    await registerWebFetchActionIfEnabled();
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();
@@ -4696,6 +4710,8 @@ export async function startEliza(
   }
 
   bootTimer.summary();
+  void recordBootTelemetry(bootTimer.getSummary());
+  startMemorySampler({ intervalMs: 30_000 });
 
   installActionAliases(runtime);
 

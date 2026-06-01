@@ -25,7 +25,6 @@ export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 export { AppsPageView } from "./components/pages/AppsPageView";
 // AutomationsFeed, BrowserWorkspaceView removed: App.tsx lazy-loads them and
 // re-exporting from a barrel folds the lazy boundary back into main.
-export { ChatView } from "./components/pages/ChatView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export { DocumentsView } from "./components/pages/DocumentsView";
 // HeartbeatsView / HeartbeatsDesktopShell removed: App.tsx renders the

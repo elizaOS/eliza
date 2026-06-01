@@ -96,9 +96,7 @@ class RemoteForwardRequest extends http.IncomingMessage {
   }
 }
 
-function gatewayForward(
-  headers: Record<string, string>,
-): http.IncomingMessage {
+function gatewayForward(headers: Record<string, string>): http.IncomingMessage {
   return new RemoteForwardRequest(headers);
 }
 

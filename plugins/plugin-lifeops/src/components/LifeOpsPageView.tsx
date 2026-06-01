@@ -1,16 +1,5 @@
-import {
-  AppWorkspaceChrome,
-  Button,
-  type CloudOAuthConnection,
-  client,
-  isAppWindowRoute,
-  isWebPlatform,
-  openExternalUrl,
-  PagePanel,
-  PageScopedChatPane,
-  useApp,
-  useMediaQuery,
-} from "@elizaos/ui";
+import { AppWorkspaceChrome, Button, type CloudOAuthConnection, client, isAppWindowRoute, isWebPlatform, openExternalUrl, PagePanel, PageScopedChatPane, useApp, useMediaQuery } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -44,6 +33,16 @@ type EnablePromptProps = {
 };
 
 function EnablePrompt({ loading, onEnable, t }: EnablePromptProps) {
+  const enableLabel = t("lifeopspage.enable", {
+    defaultValue: "Enable LifeOps",
+  });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "action-enable",
+    role: "button",
+    label: enableLabel,
+    group: "lifeops-app",
+    description: "Enable LifeOps for the agent",
+  });
   return (
     <PagePanel variant="surface">
       <div className="flex flex-col gap-3 p-4">
@@ -58,10 +57,17 @@ function EnablePrompt({ loading, onEnable, t }: EnablePromptProps) {
               "Turn on LifeOps to let the agent manage your schedule, inbox, and calendar.",
           })}
         </div>
-        <Button onClick={onEnable} disabled={loading} className="self-start">
+        <Button
+          ref={ref}
+          onClick={onEnable}
+          disabled={loading}
+          className="self-start"
+          aria-label={enableLabel}
+          {...agentProps}
+        >
           {loading
             ? t("lifeopspage.enabling", { defaultValue: "Enabling…" })
-            : t("lifeopspage.enable", { defaultValue: "Enable LifeOps" })}
+            : enableLabel}
         </Button>
       </div>
     </PagePanel>
@@ -422,6 +428,69 @@ function buildAgentGithubSetup(params: {
   };
 }
 
+function RunSetupAgainButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "action-run-setup-again",
+    role: "button",
+    label,
+    group: "lifeops-settings",
+    description: "Restart the LifeOps setup flow",
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function DisableLifeOpsButton({
+  onClick,
+  disabled,
+  label,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "action-disable",
+    role: "button",
+    label,
+    group: "lifeops-settings",
+    description: "Disable LifeOps for the agent",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="surfaceDestructive"
+      size="sm"
+      className="h-8 w-8 rounded-xl p-0"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Power className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
 function LifeOpsSettingsSectionView({
   ownerGithub,
   agentGithub,
@@ -438,35 +507,19 @@ function LifeOpsSettingsSectionView({
           {t("lifeopspage.accessTitle", { defaultValue: "Access" })}
         </h2>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 w-8 rounded-xl p-0"
+          <RunSetupAgainButton
             onClick={onRunSetupAgain}
-            title={t("lifeopspage.runSetupAgain", {
+            label={t("lifeopspage.runSetupAgain", {
               defaultValue: "Run setup again",
             })}
-            aria-label={t("lifeopspage.runSetupAgain", {
-              defaultValue: "Run setup again",
-            })}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </Button>
-          <Button
-            variant="surfaceDestructive"
-            size="sm"
-            className="h-8 w-8 rounded-xl p-0"
+          />
+          <DisableLifeOpsButton
             onClick={onDisableLifeOps}
             disabled={disableLifeOpsDisabled}
-            title={t("lifeopspage.disable", {
+            label={t("lifeopspage.disable", {
               defaultValue: "Disable LifeOps",
             })}
-            aria-label={t("lifeopspage.disable", {
-              defaultValue: "Disable LifeOps",
-            })}
-          >
-            <Power className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          />
         </div>
       </div>
 

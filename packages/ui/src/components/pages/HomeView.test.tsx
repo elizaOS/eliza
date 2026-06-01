@@ -40,7 +40,7 @@ const controllerMock = vi.hoisted(() => ({
       },
     ],
     canSend: true,
-    isOpen: true,
+    isOpen: false,
     modelStatus: {
       kind: "not-required",
       blocksSend: false,
@@ -82,31 +82,31 @@ afterEach(() => {
   controllerMock.value.close.mockClear();
   controllerMock.value.recording = false;
   controllerMock.value.canSend = true;
-  controllerMock.value.isOpen = true;
+  controllerMock.value.isOpen = false;
   controllerMock.value.modelStatus = { ...NOT_REQUIRED_STATUS };
   backgroundRenders.count = 0;
 });
 
 function openHomeChatPanel() {
   const pill = screen.queryByTestId("home-chat-pill");
-  if (!pill) return;
-  fireEvent.pointerDown(pill, { clientY: 100 });
-  fireEvent.pointerUp(pill, { clientY: 100 });
+  if (pill) {
+    fireEvent.pointerDown(pill, { clientY: 100 });
+    fireEvent.pointerUp(pill, { clientY: 100 });
+  }
+  cleanup();
+  controllerMock.value.isOpen = true;
+  render(<HomeView />);
 }
 
 describe("HomeView", () => {
-  it("renders the homescreen canvas, concise assistant transcript, and the home composer", () => {
+  it("renders the homescreen canvas, apps, activity, and the home composer after opening", () => {
     render(<HomeView />);
 
     expect(screen.getByTestId("homescreen")).toBeTruthy();
-    expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
-      "I can open any view and keep the conversation moving.",
-    );
+    expect(screen.queryByTestId("home-assistant-transcript")).toBeNull();
+    expect(screen.getByTestId("home-app-grid")).toBeTruthy();
     openHomeChatPanel();
     expect(screen.getByTestId("home-chat-input")).toBeTruthy();
-    expect(screen.getByTestId("home-chat-panel").className).toContain(
-      "animate-[slide-up_180ms_ease-out]",
-    );
   });
 
   it("requests chat open from a direct collapsed-pill click", () => {
@@ -117,11 +117,14 @@ describe("HomeView", () => {
     const pill = screen.getByTestId("home-chat-pill");
     expect(pill.className).toContain("mx-auto");
     expect(pill.className).toContain("w-40");
-    expect(pill.className).toContain("backdrop-blur-2xl");
+    expect(pill.className).toContain("bg-transparent");
     expect(pill.className).toContain("hover:scale-[1.04]");
     expect(pill.className).toContain("focus-visible:outline-none");
     expect(pill.className).not.toContain("focus-visible:ring");
     expect(pill.textContent).not.toContain("Ask Eliza");
+    const glass = screen.getByTestId("home-chat-pill-glass");
+    expect(glass.className).toContain("h-7");
+    expect(glass.className).toContain("group-hover:w-32");
 
     fireEvent.click(pill);
 
@@ -140,17 +143,17 @@ describe("HomeView", () => {
     expect(controllerMock.value.open).toHaveBeenCalledTimes(1);
   });
 
-  it("clicking the orb closes home chat and starts centered voice mode", () => {
-    controllerMock.value.isOpen = true;
-
+  it("shows transcript only after entering voice mode", () => {
     render(<HomeView />);
+    expect(screen.queryByTestId("home-assistant-transcript")).toBeNull();
+    openHomeChatPanel();
 
-    fireEvent.click(screen.getByTestId("home-orb-hit"));
+    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
 
-    expect(controllerMock.value.close).toHaveBeenCalledTimes(1);
     expect(controllerMock.value.startRecording).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("home-orb-expanded")).toBeTruthy();
-    expect(screen.getByTestId("home-view").className).toContain("opacity-0");
+    expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
+      "I can open any view and keep the conversation moving.",
+    );
   });
 
   it("shows recent chats while typing and submits through the shared shell controller", () => {
@@ -176,6 +179,7 @@ describe("HomeView", () => {
 
     expect(backgroundRenders.count).toBe(1);
     openHomeChatPanel();
+    const countAfterOpening = backgroundRenders.count;
 
     const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
     fireEvent.focus(input);
@@ -188,7 +192,7 @@ describe("HomeView", () => {
     // The memoized WebGL homescreen must stay mounted without a single extra
     // render across all of the composer's state churn — remounting it would tear
     // down and rebuild the renderer on every keystroke.
-    expect(backgroundRenders.count).toBe(1);
+    expect(backgroundRenders.count).toBe(countAfterOpening);
   });
 
   it("shows a download progress bar under the avatar while the model installs", () => {
@@ -288,32 +292,21 @@ describe("HomeView", () => {
       input.compareDocumentPosition(mic) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // A quick (keyboard/synthetic) tap toggles open-voice capture — it must not
-    // start a push-to-talk session.
+    // A quick tap enters continuous voice mode.
     fireEvent.click(mic);
-    expect(controllerMock.value.toggleRecording).toHaveBeenCalledTimes(1);
-    expect(controllerMock.value.startRecording).not.toHaveBeenCalled();
+    expect(controllerMock.value.startRecording).toHaveBeenCalledTimes(1);
   });
 
-  it("push-to-talk records for the duration of the hold", () => {
-    vi.useFakeTimers();
-    try {
-      render(<HomeView />);
-      openHomeChatPanel();
-      const mic = screen.getByRole("button", { name: "Start voice input" });
+  it("does not start push-to-talk from pointer hold on the voice control", () => {
+    render(<HomeView />);
+    openHomeChatPanel();
+    const mic = screen.getByRole("button", { name: "Start voice input" });
 
-      fireEvent.pointerDown(mic, { pointerId: 1, button: 0 });
-      // Held past the push-to-talk threshold (200ms) → capture begins.
-      vi.advanceTimersByTime(300);
-      expect(controllerMock.value.startRecording).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(mic, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(mic, { pointerId: 1, button: 0 });
 
-      fireEvent.pointerUp(mic, { pointerId: 1, button: 0 });
-      // Release ends capture and must not also fire an open-voice toggle.
-      expect(controllerMock.value.stopRecording).toHaveBeenCalledTimes(1);
-      expect(controllerMock.value.toggleRecording).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(controllerMock.value.startRecording).not.toHaveBeenCalled();
+    expect(controllerMock.value.toggleRecording).not.toHaveBeenCalled();
   });
 
   it("morphs the mic into a send button once the user types", () => {

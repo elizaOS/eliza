@@ -1,4 +1,5 @@
 import { formatShortDate, SegmentedControl, Skeleton } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { useState } from "react";
 import type { ShopifyOrder } from "./useShopifyDashboard";
@@ -195,14 +196,25 @@ export function OrdersPanel({
     ORDER_TABS.some((t) => t.value === statusFilter) ? statusFilter : "any"
   ) as OrderTab;
 
+  const statusFilterControl = useAgentElement<HTMLDivElement>({
+    id: "select-order-status",
+    role: "select",
+    label: "Order status filter",
+    group: "orders",
+    description: "Filter orders by fulfillment status",
+    options: ORDER_TABS.map((t) => t.value),
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <SegmentedControl
-          value={activeTab}
-          onValueChange={(v) => onStatusFilterChange(v)}
-          items={ORDER_TABS}
-        />
+        <div ref={statusFilterControl.ref} {...statusFilterControl.agentProps}>
+          <SegmentedControl
+            value={activeTab}
+            onValueChange={(v) => onStatusFilterChange(v)}
+            items={ORDER_TABS}
+          />
+        </div>
         {!loading ? (
           <span className="text-xs text-muted">
             {total.toLocaleString()} order{total !== 1 ? "s" : ""}

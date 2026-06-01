@@ -4,6 +4,7 @@
 
 export { resolveAppBranding } from "@elizaos/shared";
 export * from "./App";
+export * from "./agent-surface";
 export type {
   AppLaunchDiagnostic,
   AppLaunchDiagnosticSeverity,
@@ -316,8 +317,6 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   ValidationFunction,
-  VincentStateHookArgs,
-  VincentStateHookResult,
   VisibilityOperator,
 } from "./config";
 export * from "./config/index";

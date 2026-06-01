@@ -1,6 +1,6 @@
 # @elizaos/plugin-discord
 
-A Discord plugin implementation for ElizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
+A Discord connector plugin for elizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
 
 ## Features
 
@@ -10,9 +10,7 @@ A Discord plugin implementation for ElizaOS, enabling rich integration with Disc
 - Slash command registration and interaction handling
 - Support for Discord attachments and media files
 - Voice channel join/leave functionality
-- Conversation summarization
-- Media transcription capabilities
-- Channel state and voice state providers
+- Media transcription for voice and attachments
 - Channel restriction support (limit bot to specific channels)
 - Robust permissions management and audit event tracking
 - Event-driven architecture with comprehensive event handling
@@ -20,7 +18,7 @@ A Discord plugin implementation for ElizaOS, enabling rich integration with Disc
 
 ## Installation
 
-As this is a workspace package, it's installed as part of the ElizaOS monorepo:
+As this is a workspace package, it is installed as part of the elizaOS monorepo:
 
 ```bash
 bun install
@@ -38,7 +36,6 @@ DISCORD_API_TOKEN=your_api_token
 # Channel Restrictions (Optional)
 # Comma-separated list of Discord channel IDs to restrict the bot to.
 # If not set, the bot operates in all channels.
-# These channels cannot be removed via the leaveChannel action.
 CHANNEL_IDS=123456789012345678,987654321098765432
 
 # Listen-only channels (Optional)
@@ -90,7 +87,7 @@ Settings can also be configured in your character file under `settings.discord`:
 
 ## Slash Command Permissions
 
-The plugin uses a hybrid permission system that combines Discord's native features with ElizaOS-specific controls.
+The plugin uses a hybrid permission system that combines Discord's native features with elizaOS-specific controls.
 
 ### Permission Layers
 
@@ -100,7 +97,7 @@ Commands go through multiple permission checks in this order:
    - User must have required Discord permissions
    - Command must be available in the current context (guild vs DM)
 
-2. **ElizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
+2. **elizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
    - Commands only work in whitelisted channels
    - Unless command has `bypassChannelWhitelist: true`
 
@@ -186,39 +183,9 @@ From Discord.js `PermissionFlagsBits`:
 - `ManageRoles` - Role management
 - `Administrator` - Full access
 
-### Design Rationale
+### Actions / Providers
 
-**Why Hybrid Approach?**
-
-- Discord's native permissions are powerful but limited to role-based access
-- ElizaOS needs programmatic control for channel restrictions and custom logic
-- Combining both gives developers the best of both worlds
-
-**Why Simple Flags?**
-
-- `guildOnly: true` is clearer than `contexts: [0]`
-- Abstracts Discord API details
-- Sensible defaults: zero config should "just work"
-
-**Why Keep Channel Whitelist?**
-
-- Discord's channel permissions are UI-based (Server Settings > Integrations)
-- Programmatic control is better for developer experience
-- Allows dynamic, runtime-based channel restrictions
-
-### Available Actions
-
-The plugin exposes shared connector actions only:
-
-| Action                           | Description                                              |
-| -------------------------------- | -------------------------------------------------------- |
-| **MESSAGE**                      | Send, read, search, list, react, edit, delete, pin, join, leave, or get user info through the Discord message connector |
-
-Credential pairing is handled by connector account providers and owner-only slash commands, not by a Discord-specific planner action.
-
-### Providers
-
-Discord message context is exposed through the MESSAGE connector hooks rather than Discord-specific prompt providers.
+No actions or providers are registered. The plugin operates entirely through services and events. Credential pairing is handled by connector account providers and owner-only slash commands.
 
 ### Event Types
 
@@ -247,7 +214,7 @@ The plugin emits the following Discord-specific events:
 
 ### DiscordService
 
-Main service class that extends ElizaOS Service:
+Main service class that extends elizaOS Service:
 
 - Handles authentication and session management
 - Manages Discord client connection
@@ -268,7 +235,7 @@ Main service class that extends ElizaOS Service:
 - Processes voice events and audio streams
 - Integrates with transcription services
 
-### Attachment Handler
+### AttachmentManager
 
 - Downloads and processes Discord attachments
 - Supports various media types
@@ -433,6 +400,7 @@ interface RoleLifecyclePayload {
 
 ```typescript
 import { DiscordEventTypes } from "@elizaos/plugin-discord";
+import { logger } from "@elizaos/core";
 
 // Alert on dangerous permission grants
 runtime.registerEvent({
@@ -445,12 +413,10 @@ runtime.registerEvent({
         dangerousPerms.includes(change.permission) &&
         change.newState === "ALLOW"
       ) {
-        console.warn(`⚠️ Dangerous permission granted!`, {
-          channel: payload.channel.name,
-          target: payload.target.name,
-          permission: change.permission,
-          grantedBy: payload.audit?.executorTag || "Unknown",
-        });
+        logger.warn(
+          { channel: payload.channel.name, target: payload.target.name, permission: change.permission, grantedBy: payload.audit?.executorTag || "Unknown" },
+          "[SecurityMonitor] Dangerous permission granted",
+        );
       }
     }
   },
@@ -465,10 +431,10 @@ runtime.registerEvent({
     );
 
     if (adminRoles.length > 0) {
-      console.warn(`⚠️ Admin role granted to ${payload.member.tag}`, {
-        roles: adminRoles.map((r) => r.name),
-        grantedBy: payload.audit?.executorTag || "Unknown",
-      });
+      logger.warn(
+        { member: payload.member.tag, roles: adminRoles.map((r) => r.name), grantedBy: payload.audit?.executorTag || "Unknown" },
+        "[SecurityMonitor] Admin role granted",
+      );
     }
   },
 });
@@ -477,10 +443,10 @@ runtime.registerEvent({
 runtime.registerEvent({
   name: DiscordEventTypes.ROLE_CREATED,
   handler: async (payload) => {
-    console.log(`New role created: ${payload.role.name}`, {
-      permissions: payload.role.permissions,
-      createdBy: payload.audit?.executorTag || "Unknown",
-    });
+    logger.info(
+      { role: payload.role.name, permissions: payload.role.permissions, createdBy: payload.audit?.executorTag || "Unknown" },
+      "[SecurityMonitor] New role created",
+    );
   },
 });
 ```
@@ -496,11 +462,10 @@ runtime.registerEvent({
     const botId = runtime.getSetting("DISCORD_APPLICATION_ID");
 
     if (payload.member.id === botId && payload.removed.length > 0) {
-      console.error(`🚨 Bot roles removed!`, {
-        removed: payload.removed.map((r) => r.name),
-        by: payload.audit?.executorTag || "Unknown",
-      });
-      // Could trigger alerts, notifications, etc.
+      logger.error(
+        { removed: payload.removed.map((r) => r.name), by: payload.audit?.executorTag || "Unknown" },
+        "[SecurityMonitor] Bot roles removed",
+      );
     }
   },
 });
@@ -508,13 +473,7 @@ runtime.registerEvent({
 
 ## Cross-Core Compatibility
 
-This plugin includes a compatibility layer (`compat.ts`) that allows it to work with both old and new versions of `@elizaos/core`. The compatibility layer:
-
-- Automatically handles `serverId` vs `messageServerId` differences
-- Uses a runtime proxy to intercept and adapt API calls
-- Requires no changes to existing code
-
-When migrating to a new core version, see the comments in `compat.ts` for removal instructions.
+This plugin includes a type-level compatibility layer (`compat.ts`) so it typechecks against both old and new versions of `@elizaos/core`. It exports widened types (`ICompatRuntime`, `WorldCompat`, `RoomCompat`) that allow either `serverId` or `messageServerId` on `World`/`Room` objects and on the `ensureConnection`/`ensureWorldExists`/`ensureRoomExists` runtime methods. There is no runtime proxy — it is purely TypeScript declarations consumed where the runtime is referenced (`service.ts`, `messages.ts`, `voice.ts`, `discord-interactions.ts`, `discord-history.ts`).
 
 ## Testing
 
@@ -529,5 +488,5 @@ bun run test
 - Ensure that your `.env` file includes the required `DISCORD_API_TOKEN`
 - The bot requires appropriate Discord permissions (send messages, connect to voice, etc.)
 - If no token is provided, the plugin will load but remain non-functional with appropriate warnings
-- The plugin uses Discord.js v14.18.0 with comprehensive intent support
+- The plugin uses discord.js v14 (`^14.26.4`) with comprehensive intent support
 - Slash commands and modal/component interactions bypass channel whitelists

@@ -94,6 +94,22 @@ export {
 } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
+export type {
+	ConfirmationDecision,
+	ConfirmationStatus,
+	DestructiveConfirmationGateResult,
+	RequireConfirmationArgs,
+} from "./utils/confirmation";
+// Unified two-phase confirmation helper for destructive actions. Pure
+// runtime-interface logic (no node builtins), so it is browser-safe and must
+// be exported from both entrypoints — plugins that gate destructive ops (e.g.
+// plugin-wallet) import it and may be bundled for the browser.
+export {
+	clearPendingConfirmation,
+	gateDestructiveConfirmation,
+	llmConfirmedFlagIsAuthoritative,
+	requireConfirmation,
+} from "./utils/confirmation";
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";

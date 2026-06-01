@@ -370,11 +370,14 @@ export interface CreditBalanceResponse {
   balance: number;
 }
 
+// Transport mirror of the DB `AgentSandboxStatus` in
+// db/schemas/agent-sandboxes.ts — keep the two unions in sync.
 export type AgentSandboxStatus =
   | "pending"
   | "provisioning"
   | "running"
   | "stopped"
+  | "sleeping"
   | "disconnected"
   | "error"
   | "deletion_pending"

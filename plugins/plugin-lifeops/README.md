@@ -3,9 +3,7 @@
 LifeOps is the elizaOS app that runs the user's day: routines, goals,
 calendar, email, messaging, follow-ups with people, blockers, watchers, and
 the operational glue around them. This README is the architecture summary
-for contributors. User-facing docs live in `docs/user/lifeops-setup.mdx`;
-the QA reference lives in `docs/launchdocs/14-lifeops-qa.md`; the REST
-contract lives in `docs/rest/lifeops.md`.
+for contributors.
 
 ## Scheduled items, not generic tasks
 
@@ -53,7 +51,9 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract lives in `docs/audit/wave1-interfaces.md` §1.
+The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
+(the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
+is a slightly diverged copy consumed only by the `first-run` module.
 
 ## Runtime layout
 
@@ -122,7 +122,7 @@ registers them when a health connector pairs.
    customize, list it in `getOfferedDefaultPacks`. If neither, the pack
    only seeds when invoked explicitly.
 5. Run `bun run lint:default-packs` (also runs as `pretest`). The lint
-   rules live in `docs/audit/prompt-content-lint.md`. CI rejects packs
+   rules are embedded in `scripts/lint-default-packs.mjs`. CI rejects packs
    that violate them, including raw `ScheduledTask` construction.
 6. Add a record-id constant export so consumers can target the records by
    stable ID.
@@ -143,7 +143,7 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
   `observeIdentity`; the merge engine in `entities/merge.ts` collapses
   entities with high-confidence identity matches. Manual merges go through
   `POST /api/lifeops/entities/merge` and are audited.
-- **REST surface** — see `docs/rest/lifeops.md`.
+- **REST surface** — routes live in `src/routes/`.
 
 ## Pause and handoff
 
@@ -179,12 +179,7 @@ plugin's public exports only. See `plugins/plugin-health/README.md`.
 
 ## Where to look next
 
-- Frozen interface contracts: `docs/audit/wave1-interfaces.md`.
-- Implementation plan: `docs/audit/IMPLEMENTATION_PLAN.md`.
-- Post-cleanup architecture summary: `docs/audit/post-cleanup-architecture.md`.
-- Coverage matrix: `coverage-matrix.md`.
-- Prompt-content lint rules: `docs/audit/prompt-content-lint.md`.
+- Frozen interface types: `src/lifeops/scheduled-task/types.ts`.
+- Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
-- REST: `docs/rest/lifeops.md`.
-- QA reference: `docs/launchdocs/14-lifeops-qa.md`.
-- User-facing setup: `docs/user/lifeops-setup.mdx`.
+- REST routes: `src/routes/`.

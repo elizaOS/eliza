@@ -11,19 +11,8 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
 import type { InventoryChainFilters } from "@elizaos/ui";
-import {
-  type ActivityEvent,
-  AppPageSidebar,
-  Button,
-  client,
-  cn,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useActivityEvents,
-  useApp,
-} from "@elizaos/ui";
+import { type ActivityEvent, AppPageSidebar, Button, client, cn, PageLayout, SidebarContent, SidebarPanel, SidebarScrollRegion, useActivityEvents, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
   ArrowDownLeft,
@@ -1576,21 +1565,73 @@ function WalletRailActionButton({
   icon: Icon,
   label,
   onClick,
+  agentId,
 }: {
   icon: LucideIcon;
   label: string;
   onClick: () => void;
+  /** Stable agent-surface id so the agent can invoke this action by name. */
+  agentId: string;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "wallet-actions",
+    description: `${label} from the wallet`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       className="flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border border-border/35 bg-bg/55 px-2 py-3 text-xs font-semibold text-txt transition-[transform,background-color,border-color,color,box-shadow] duration-150 hover:border-border/55 hover:bg-bg/80 hover:shadow-sm active:scale-[0.99]"
       onClick={onClick}
       aria-label={label}
       title={label}
+      {...agentProps}
     >
       <Icon className="h-4.5 w-4.5 text-accent" />
       <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function WalletRailTabButton({
+  tab,
+  active,
+  iconOnly,
+  onSelect,
+}: {
+  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
+  active: boolean;
+  iconOnly: boolean;
+  onSelect: (id: WalletRailTab) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tab-${tab.id}`,
+    role: "tab",
+    label: tab.label,
+    group: "wallet-tabs",
+    status: active ? "active" : "inactive",
+    description: `Show the ${tab.label} list`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={cn(
+        "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
+        iconOnly ? "px-2" : undefined,
+        active ? "bg-bg text-txt shadow-sm" : "text-muted hover:text-txt",
+      )}
+      onClick={() => onSelect(tab.id)}
+      aria-label={tab.label}
+      aria-current={active ? "true" : undefined}
+      title={tab.label}
+      {...agentProps}
+    >
+      <tab.icon className="h-3.5 w-3.5 shrink-0" />
+      {!iconOnly ? <span className="truncate">{tab.label}</span> : null}
     </button>
   );
 }
@@ -1870,41 +1911,32 @@ function TokenRail({
         <WalletRailActionButton
           icon={ArrowLeftRight}
           label="Swap"
+          agentId="action-swap"
           onClick={() => onWalletAction("swap")}
         />
         <WalletRailActionButton
           icon={Send}
           label="Send"
+          agentId="action-send"
           onClick={() => onWalletAction("send")}
         />
         <WalletRailActionButton
           icon={ArrowDownLeft}
           label="Receive"
+          agentId="action-receive"
           onClick={() => onWalletAction("receive")}
         />
       </div>
 
       <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
         {tabs.map((tab) => (
-          <button
+          <WalletRailTabButton
             key={tab.id}
-            type="button"
-            className={cn(
-              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
-              showIconOnlyTabs ? "px-2" : undefined,
-              activeTab === tab.id
-                ? "bg-bg text-txt shadow-sm"
-                : "text-muted hover:text-txt",
-            )}
-            onClick={() => setActiveTab(tab.id)}
-            aria-label={tab.label}
-            title={tab.label}
-          >
-            <tab.icon className="h-3.5 w-3.5 shrink-0" />
-            {!showIconOnlyTabs ? (
-              <span className="truncate">{tab.label}</span>
-            ) : null}
-          </button>
+            tab={tab}
+            active={activeTab === tab.id}
+            iconOnly={showIconOnlyTabs}
+            onSelect={setActiveTab}
+          />
         ))}
       </div>
     </div>

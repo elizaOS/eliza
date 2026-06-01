@@ -7,6 +7,7 @@ import {
   GameOperatorShell,
   useApp,
 } from "@elizaos/app-core/ui-compat";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;
@@ -345,6 +346,98 @@ export function DefenseAgentsOperatorSurface({
   );
 }
 
+function DefenseTacticalPromptButton({
+  prompt,
+  disabled,
+  onSend,
+}: {
+  prompt: string;
+  disabled: boolean;
+  onSend: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `prompt-${prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    role: "button",
+    label: prompt,
+    group: "defense-tactical-prompts",
+    description: `Send the "${prompt}" command to the hero`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={() => onSend(prompt)}
+      style={tuiButtonStyle}
+      aria-label={prompt}
+      {...agentProps}
+    >
+      {prompt}
+    </button>
+  );
+}
+
+function DefenseCommandInput({
+  value,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "input-command",
+    role: "text-input",
+    label: "Defense command",
+    group: "defense-command",
+    description: "Type a command for the hero, then send it",
+  });
+  return (
+    <input
+      ref={ref}
+      aria-label="Defense command"
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSubmit();
+      }}
+      placeholder="Command the hero..."
+      style={tuiInputStyle}
+      {...agentProps}
+    />
+  );
+}
+
+function DefenseSendCommandButton({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "action-send-command",
+    role: "button",
+    label: "Send command",
+    group: "defense-command",
+    description: "Send the typed command to the hero",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={tuiButtonStyle}
+      aria-label="Send command"
+      {...agentProps}
+    >
+      send command
+    </button>
+  );
+}
+
 export function DefenseAgentsTuiView() {
   const { appRuns, setActionNotice, setState } = useApp();
   const run = useMemo(
@@ -434,34 +527,22 @@ export function DefenseAgentsTuiView() {
         )
           .slice(0, 6)
           .map((prompt) => (
-            <button
+            <DefenseTacticalPromptButton
               key={prompt}
-              type="button"
+              prompt={prompt}
               disabled={!canSend || sending}
-              onClick={() => void sendDraft(prompt)}
-              style={tuiButtonStyle}
-            >
-              {prompt}
-            </button>
+              onSend={(value) => void sendDraft(value)}
+            />
           ))}
-        <input
-          aria-label="Defense command"
+        <DefenseCommandInput
           value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void sendDraft(draft);
-          }}
-          placeholder="Command the hero..."
-          style={tuiInputStyle}
+          onChange={setDraft}
+          onSubmit={() => void sendDraft(draft)}
         />
-        <button
-          type="button"
+        <DefenseSendCommandButton
           disabled={!canSend || sending || !draft.trim()}
           onClick={() => void sendDraft(draft)}
-          style={tuiButtonStyle}
-        >
-          send command
-        </button>
+        />
       </section>
     </div>
   );

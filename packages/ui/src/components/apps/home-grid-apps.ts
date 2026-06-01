@@ -64,7 +64,9 @@ const DEFAULT_PINNED_APPS: readonly HomeGridApp[] = [
  *
  * When `pinnedNames` is empty (default), only the 4 defaults are shown.
  */
-export function getHomeGridApps(pinnedNames: readonly string[] = []): HomeGridApp[] {
+export function getHomeGridApps(
+  pinnedNames: readonly string[] = [],
+): HomeGridApp[] {
   if (pinnedNames.length === 0) return [...DEFAULT_PINNED_APPS];
 
   const byName = new Map(getInternalToolApps().map((app) => [app.name, app]));

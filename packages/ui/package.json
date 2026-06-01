@@ -32,6 +32,7 @@
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
     "test:e2e": "bun run test:slow",
+    "test:agent-surface-e2e": "bun run src/agent-surface/__e2e__/run-e2e.mjs",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -63,6 +64,11 @@
       "types": "./dist/cloud-ui/*.d.ts",
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
+    },
+    "./agent-surface": {
+      "types": "./dist/agent-surface/index.d.ts",
+      "import": "./dist/agent-surface/index.js",
+      "default": "./dist/agent-surface/index.js"
     },
     "./app-shell-registry": {
       "types": "./dist/app-shell-registry.d.ts",

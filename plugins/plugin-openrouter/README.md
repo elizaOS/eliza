@@ -1,6 +1,6 @@
 # @elizaos/plugin-openrouter
 
-This plugin provides integration with various models available through the OpenRouter API via the ElizaOS platform.
+elizaOS plugin that routes text generation, image description, image generation, and text embedding through the [OpenRouter](https://openrouter.ai) API, giving Eliza agents access to hundreds of hosted models via a single API key.
 
 ## Usage
 
@@ -104,9 +104,9 @@ app.listen(3000);
 - `OPENROUTER_IMAGE_GENERATION_MODEL`: Specific model to use for `IMAGE` generation. Overrides `IMAGE_GENERATION_MODEL` if set.
 - `OPENROUTER_EMBEDDING_MODEL`: Specific model to use for `TEXT_EMBEDDING`. Overrides `EMBEDDING_MODEL` if set.
 - `OPENROUTER_EMBEDDING_DIMENSIONS`: Number of dimensions for embedding vectors. Supported values: 256, 384, 512, 768, 1024, 1536, 2048, 3072. Defaults to 1536.
-- `OPENROUTER_AUTO_CLEANUP_IMAGES`: Whether to automatically delete generated images after 30 seconds (default: "false"). Set to "true" to enable auto-cleanup.
+- `OPENROUTER_AUTO_CLEANUP_IMAGES`: Boolean flag for auto-cleanup of generated images, read by `shouldAutoCleanupImages()` in `utils/config.ts` (default: "false").
 - `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.0-flash-001"). Used if `OPENROUTER_SMALL_MODEL` is not set.
-- `LARGE_MODEL`: Fallback model for large tasks (default: "openai/gpt-5.1-nano"). Used if `OPENROUTER_LARGE_MODEL` is not set.
+- `LARGE_MODEL`: Fallback model for large tasks (default: "google/gemini-2.5-flash"). Used if `OPENROUTER_LARGE_MODEL` is not set.
 - `IMAGE_MODEL`: Fallback model for image analysis (default: "x-ai/grok-2-vision-1212"). Used if `OPENROUTER_IMAGE_MODEL` is not set.
 - `IMAGE_GENERATION_MODEL`: Fallback model for image generation (default: "google/gemini-2.5-flash-image-preview"). Used if `OPENROUTER_IMAGE_GENERATION_MODEL` is not set.
 - `EMBEDDING_MODEL`: Fallback model for text embeddings (default: "openai/text-embedding-3-small"). Used if `OPENROUTER_EMBEDDING_MODEL` is not set.
@@ -114,12 +114,17 @@ app.listen(3000);
 
 ## Provided Models
 
-The plugin currently provides these model types:
+The plugin registers these model types:
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective text generation using the configured small model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
-- `TEXT_LARGE`: For more complex text generation tasks requiring larger models, using the configured large model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
-- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text and titles, using the configured image model.
-- `IMAGE`: Generates images from text prompts using the configured image generation model (e.g., Gemini 2.5 Flash Image Preview).
-- `TEXT_EMBEDDING`: Generates vector embeddings for text input, supporting configurable dimensions from 256 to 3072, using the configured embedding model.
+- `TEXT_NANO`: Fastest/cheapest text generation; falls back to the small model when no nano override is set.
+- `TEXT_SMALL`: Fast, cost-effective text generation (default: `google/gemini-2.0-flash-001`). Supports `tools`, `toolChoice`, and `responseSchema`.
+- `TEXT_MEDIUM`: Mid-tier text generation; falls back to the small model when no medium override is set.
+- `TEXT_LARGE`: Complex text generation tasks (default: `google/gemini-2.5-flash`). Supports `tools`, `toolChoice`, and `responseSchema`.
+- `TEXT_MEGA`: Largest text tasks; falls back to the large model when no mega override is set.
+- `RESPONSE_HANDLER`: Should-respond decisions; falls back to the nano model.
+- `ACTION_PLANNER`: Action planning; falls back to the medium model.
+- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text (default: `x-ai/grok-2-vision-1212`).
+- `IMAGE`: Generates images from text prompts (default: `google/gemini-2.5-flash-image-preview`).
+- `TEXT_EMBEDDING`: Vector embeddings with configurable dimensions (default: `openai/text-embedding-3-small`, 1536 dims).
 
-_Note: Audio Transcription is not currently implemented in this specific OpenRouter plugin._
+Audio transcription is not implemented.

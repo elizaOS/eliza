@@ -359,9 +359,25 @@ export const terminalAction: Action = {
         capturedRun,
       );
 
+      // When the command succeeded cleanly (exit 0, no timeout, no
+      // truncation, empty stderr) the stdout *is* the answer. Mark it
+      // `verifiedUserFacing` so the planner echoes it verbatim instead of
+      // letting the evaluator meta-narrate ("Listed files as returned by
+      // grep") and drop the actual output. See elizaOS/eliza#7960.
+      const cleanStdout =
+        capturedRun.exitCode === 0 &&
+        !capturedRun.timedOut &&
+        !capturedRun.truncated &&
+        capturedRun.stderr.trim().length === 0
+          ? capturedRun.stdout.trim()
+          : "";
+
       return {
         text: buildCapturedResponseText(capturedRun, outputAttachment),
         success: true,
+        ...(cleanStdout
+          ? { userFacingText: cleanStdout, verifiedUserFacing: true }
+          : {}),
         data: {
           actionName: TERMINAL_ACTION_NAME,
           ...boundedRun,

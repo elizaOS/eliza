@@ -3,25 +3,6 @@
 Simple secrets/config vault for Eliza. **One** API for sensitive
 credentials and non-sensitive configuration.
 
-## Why this exists
-
-Eliza's Settings flow had four real bugs that all came from the same
-root cause — credentials and config were scattered across multiple
-writers, multiple file layouts, and a guess-which-field-is-the-key
-heuristic. The vault is the single seam those bugs disappear behind:
-
-1. **Model slug overwrote API key** — the save path used
-   `Object.values(config).find(non-empty)` to identify the credential,
-   so typing the model field before the API-key field corrupted the
-   key. The vault's typed API makes this structurally impossible.
-2. **Dual writer** — values landed in `env.X` AND `env.vars.X`. One
-   writer, one storage location.
-3. **Orphan `tts/media/embeddings/rpc` routes after Eliza Cloud
-   disconnect** — fixed at the disconnect-handler level by clearing
-   the routes when the account unlinks.
-4. **No reveal** — saved values were write-only. `vault.reveal(key)`
-   round-trips through the audit log.
-
 ## API
 
 ```ts
@@ -68,8 +49,8 @@ const statuses = await manager.detectBackends();
 //   [
 //     { id: "in-house",   available: true,  signedIn: true,  label: "Eliza (local, encrypted)" },
 //     { id: "1password",  available: true,  signedIn: true,  label: "1Password" },
-//     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "...not signed in. Run `bw login`." },
-//     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "...not installed (CLI in beta)." },
+//     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "`bw` is installed but not signed in. Use the Sign-in button." },
+//     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "`protonpass-cli` not installed (vendor CLI is in beta)." },
 //   ]
 
 // User picks their backends in Settings:
@@ -113,8 +94,8 @@ instead of silently falling back to local storage.
   key as additional authenticated data. Master key in OS keychain
   (cross-platform via `@napi-rs/keyring`: macOS Keychain, Windows
   Credential Manager, Linux libsecret).
-- **Non-sensitive values** — plaintext in `~/.eliza/vault.json`
-  (mode 0600). Atomic-rename writes.
+- **Non-sensitive values** — stored as plaintext in the `value` column
+  of the PGlite DB (`.vault-pglite/` under the state dir).
 - **References** — stored as `{ source, path }`. The actual value lives
   in 1Password / Proton Pass; resolved at use time via the vendor's
   CLI.
@@ -128,8 +109,10 @@ separate cloud sync.
 
 ## Audit log
 
-Every operation appends one JSONL line to
-`~/.eliza/audit/vault.jsonl`:
+Every value-touching operation (`set`, `setReference`, `get`, `reveal`,
+`remove`) appends one JSONL line to `<stateDir>/audit/vault.jsonl`
+(default state dir `~/.local/state/eliza`, overridable via
+`ELIZA_STATE_DIR`):
 
 ```jsonl
 {"ts":1714330000000,"action":"set","key":"openrouter.apiKey"}

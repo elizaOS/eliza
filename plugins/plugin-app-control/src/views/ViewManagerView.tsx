@@ -5,53 +5,20 @@
  * Built as a standalone ES-module view bundle; loaded dynamically by the
  * frontend shell via `import("/api/views/views-manager/bundle.js")`.
  *
- * External dependencies (react, lucide-react) are provided by the shell host
- * environment. No @elizaos/ui import — this bundle must stay self-contained.
+ * External dependencies (react, lucide-react, @elizaos/ui) are provided by the
+ * shell host environment and externalized from this bundle.
  */
 
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { LayoutGrid, PackageOpen, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+	fetchViewEntries,
+	requestViewNavigation,
+	type ViewEntry,
+} from "./viewManagerData";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface ViewEntry {
-	id: string;
-	label: string;
-	viewType?: "gui" | "tui";
-	description?: string;
-	icon?: string;
-	path?: string;
-	order?: number;
-	available: boolean;
-	bundleUrl?: string;
-	heroImageUrl?: string;
-	pluginName: string;
-}
-
-async function fetchViewEntries(
-	viewType?: "gui" | "tui",
-): Promise<ViewEntry[]> {
-	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetch(`/api/views${qs}`);
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const data = (await res.json()) as { views: ViewEntry[] };
-	return Array.isArray(data.views) ? data.views : [];
-}
-
-async function requestViewNavigation(
-	view: Pick<ViewEntry, "id" | "path" | "viewType">,
-) {
-	await fetch(
-		`/api/views/${encodeURIComponent(view.id)}/navigate${
-			view.viewType ? `?viewType=${view.viewType}` : ""
-		}`,
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ path: view.path, viewType: view.viewType }),
-		},
-	);
-}
+export { interact } from "./viewManagerData";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -149,6 +116,53 @@ function EmptyState() {
 	);
 }
 
+function RefreshButton({
+	loading,
+	onClick,
+}: {
+	loading: boolean;
+	onClick: () => void;
+}) {
+	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+		id: "action-refresh",
+		role: "button",
+		label: "Refresh views",
+		group: "view-manager-toolbar",
+		status: loading ? "active" : "inactive",
+		description: "Reload the list of registered plugin views",
+	});
+	return (
+		<button
+			ref={ref}
+			type="button"
+			onClick={onClick}
+			disabled={loading}
+			aria-label="Refresh views"
+			{...agentProps}
+			style={{
+				background: "transparent",
+				border: "1px solid rgba(255,255,255,0.12)",
+				borderRadius: 8,
+				color: "rgba(255,255,255,0.6)",
+				cursor: loading ? "not-allowed" : "pointer",
+				display: "flex",
+				alignItems: "center",
+				gap: 6,
+				fontSize: 13,
+				padding: "6px 12px",
+			}}
+		>
+			<RefreshCw
+				size={14}
+				style={{
+					animation: loading ? "spin 1s linear infinite" : "none",
+				}}
+			/>
+			Refresh
+		</button>
+	);
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export function ViewManagerView() {
@@ -206,31 +220,7 @@ export function ViewManagerView() {
 						</span>
 					)}
 				</div>
-				<button
-					type="button"
-					onClick={() => void fetchViews()}
-					disabled={loading}
-					style={{
-						background: "transparent",
-						border: "1px solid rgba(255,255,255,0.12)",
-						borderRadius: 8,
-						color: "rgba(255,255,255,0.6)",
-						cursor: loading ? "not-allowed" : "pointer",
-						display: "flex",
-						alignItems: "center",
-						gap: 6,
-						fontSize: 13,
-						padding: "6px 12px",
-					}}
-				>
-					<RefreshCw
-						size={14}
-						style={{
-							animation: loading ? "spin 1s linear infinite" : "none",
-						}}
-					/>
-					Refresh
-				</button>
+				<RefreshButton loading={loading} onClick={() => void fetchViews()} />
 			</div>
 
 			{/* Body */}
@@ -300,6 +290,44 @@ function TuiStatusBadge({ view }: { view: ViewEntry }) {
 	);
 }
 
+function TuiRefreshButton({
+	loading,
+	onClick,
+}: {
+	loading: boolean;
+	onClick: () => void;
+}) {
+	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+		id: "tui-action-refresh",
+		role: "button",
+		label: "Refresh TUI views",
+		group: "view-manager-tui-toolbar",
+		status: loading ? "active" : "inactive",
+		description: "Reload the list of registered terminal (TUI) views",
+	});
+	return (
+		<button
+			ref={ref}
+			type="button"
+			onClick={onClick}
+			disabled={loading}
+			aria-label="Refresh TUI views"
+			{...agentProps}
+			style={{
+				background: "transparent",
+				color: "#a7f3d0",
+				border: "1px solid rgba(167,243,208,0.45)",
+				borderRadius: 4,
+				padding: "4px 8px",
+				cursor: loading ? "not-allowed" : "pointer",
+				fontFamily: "inherit",
+			}}
+		>
+			refresh
+		</button>
+	);
+}
+
 function TuiViewRow({
 	view,
 	index,
@@ -309,6 +337,13 @@ function TuiViewRow({
 	index: number;
 	onOpen: (view: ViewEntry) => void;
 }) {
+	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+		id: `open-view-${view.id}`,
+		role: "button",
+		label: `Open ${view.label}`,
+		group: "view-manager-tui-rows",
+		description: `Navigate to the ${view.label} view`,
+	});
 	return (
 		<div
 			style={{
@@ -339,8 +374,11 @@ function TuiViewRow({
 				{view.description ?? view.pluginName}
 			</div>
 			<button
+				ref={ref}
 				type="button"
 				onClick={() => onOpen(view)}
+				aria-label={`Open ${view.label}`}
+				{...agentProps}
 				style={{
 					gridColumn: "5",
 					gridRow: "1 / span 2",
@@ -411,7 +449,10 @@ export function ViewManagerTuiView() {
 			<div style={{ color: "#7dd3fc", marginBottom: 4 }}>
 				elizaos://views-manager --type=tui
 			</div>
-			<div style={{ color: "#475569", marginBottom: 16 }}>
+			<div
+				data-status={lastAction}
+				style={{ color: "#475569", marginBottom: 16 }}
+			>
 				{loading ? "loading" : `${views.length} entries`} | {lastAction}
 			</div>
 
@@ -432,22 +473,10 @@ export function ViewManagerTuiView() {
 					}}
 				>
 					<strong style={{ color: "#e2e8f0" }}>registered tui views</strong>
-					<button
-						type="button"
+					<TuiRefreshButton
+						loading={loading}
 						onClick={() => void fetchViews()}
-						disabled={loading}
-						style={{
-							background: "transparent",
-							color: "#a7f3d0",
-							border: "1px solid rgba(167,243,208,0.45)",
-							borderRadius: 4,
-							padding: "4px 8px",
-							cursor: loading ? "not-allowed" : "pointer",
-							fontFamily: "inherit",
-						}}
-					>
-						refresh
-					</button>
+					/>
 				</div>
 
 				{error && <div style={{ color: "#fca5a5" }}>{error}</div>}
@@ -465,23 +494,4 @@ export function ViewManagerTuiView() {
 			</div>
 		</div>
 	);
-}
-
-export async function interact(
-	capability: string,
-	params?: Record<string, unknown>,
-): Promise<unknown> {
-	if (capability === "terminal-list-views") {
-		return { views: await fetchViewEntries("tui") };
-	}
-	if (capability === "terminal-open-view") {
-		const viewId = typeof params?.viewId === "string" ? params.viewId : null;
-		if (!viewId) throw new Error("viewId is required");
-		const views = await fetchViewEntries("tui");
-		const view = views.find((entry) => entry.id === viewId);
-		if (!view) throw new Error(`View "${viewId}" not found`);
-		await requestViewNavigation(view);
-		return { opened: true, viewId, viewType: view.viewType ?? "gui" };
-	}
-	throw new Error(`Unsupported capability "${capability}"`);
 }

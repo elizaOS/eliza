@@ -22,7 +22,7 @@ function Stop-ElizaProcesses() {
     Where-Object {
       $_.ProcessName -in @("launcher", "bun") -or
       $_.ProcessName -like "Eliza*" -or
-      $_.ProcessName -like "ElizaOSApp-Setup*"
+      $_.ProcessName -like "*-Setup*"
     } |
     Stop-Process -Force
 }
@@ -79,16 +79,11 @@ try {
   Stop-ElizaProcesses
   Remove-Item $ProofInstallDir -Recurse -Force -ErrorAction SilentlyContinue
 
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "*-Setup-*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $installer) {
-    $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Eliza-Setup-*.exe" -ErrorAction SilentlyContinue |
-      Sort-Object LastWriteTime -Descending |
-      Select-Object -First 1
-  }
-  if (-not $installer) {
-    throw "No canonical installer found in $resolvedArtifactsDir (ElizaOSApp-Setup-*.exe / Eliza-Setup-*.exe)."
+    throw "No canonical installer found in $resolvedArtifactsDir (*-Setup-*.exe)."
   }
 
   $summary.installer = $installer.FullName

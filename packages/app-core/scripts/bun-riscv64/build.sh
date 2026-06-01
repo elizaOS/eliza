@@ -250,9 +250,19 @@ log "── stage 3: cargo prefetch ──────────────�
 cd "$SRC_ROOT/bun"
 rustup target add --toolchain "${RUST_NIGHTLY}" riscv64gc-unknown-linux-musl
 # Pre-fetch cargo deps so a later `cargo build --offline` works even if
-# the registry hiccups mid-build.
+# the registry hiccups mid-build. This is a best-effort optimization only.
+#
+# The Rust-core workspace consumes some vendored C libraries as PATH
+# dependencies (e.g. `vendor/lolhtml/c-api`, declared in src/lolhtml_sys),
+# and `vendor/` is .gitignore'd — those trees are populated by Bun's own
+# build system (scripts/build/deps/*.ts) during stage 5, NOT by the git
+# checkout. So `cargo fetch` cannot resolve the workspace manifest yet and
+# fails with "failed to read vendor/.../Cargo.toml". That is expected: the
+# real cargo build in stage 5 runs after dep population and fetches what it
+# needs. Keep the prefetch non-fatal so it never blocks the build.
 if [ -f Cargo.toml ]; then
-    cargo +"${RUST_NIGHTLY}" fetch --target riscv64gc-unknown-linux-musl
+    cargo +"${RUST_NIGHTLY}" fetch --target riscv64gc-unknown-linux-musl \
+        || log "stage 3: cargo prefetch skipped — vendored path deps are populated by build.ts in stage 5; registry deps will fetch then."
 fi
 
 # ──────────────────────────────────────────────────────────────────────────

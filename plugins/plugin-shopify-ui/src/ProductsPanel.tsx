@@ -1,13 +1,5 @@
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Skeleton,
-} from "@elizaos/ui";
+import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Skeleton } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ChevronLeft,
   ChevronRight,
@@ -266,12 +258,28 @@ export function ProductsPanel({
   const [createOpen, setCreateOpen] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const searchInput = useAgentElement<HTMLInputElement>({
+    id: "input-product-search",
+    role: "text-input",
+    label: "Search products",
+    group: "products",
+    description: "Filter the product list by name",
+  });
+  const createButton = useAgentElement<HTMLButtonElement>({
+    id: "action-create-product",
+    role: "button",
+    label: "Create product",
+    group: "products",
+    description: "Open the dialog to create a new product",
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
           <Input
+            ref={searchInput.ref}
             placeholder="Search products…"
             value={search}
             onChange={(e) => {
@@ -279,13 +287,16 @@ export function ProductsPanel({
               onPageChange(1);
             }}
             className="pl-8"
+            {...searchInput.agentProps}
           />
         </div>
         <Button
+          ref={createButton.ref}
           type="button"
           size="sm"
           onClick={() => setCreateOpen(true)}
           className="shrink-0 gap-1.5"
+          {...createButton.agentProps}
         >
           <Plus className="h-4 w-4" />
           Create

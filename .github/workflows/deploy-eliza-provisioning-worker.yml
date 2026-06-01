@@ -9,7 +9,7 @@ name: Deploy Eliza Provisioning Worker
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
@@ -21,12 +21,24 @@ on:
       - 'packages/cloud-shared/src/lib/services/eliza-sandbox.ts'
       - 'packages/cloud-shared/src/db/repositories/agent-sandboxes.ts'
       - 'packages/cloud-shared/**'
+      - 'packages/cloud-sdk/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (host + secrets resolved from this)'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 
+# Per-env concurrency: a develop push (staging) and a main push (production)
+# can deploy in parallel without one cancelling the other.
 concurrency:
-  group: deploy-eliza-provisioning-worker
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -34,16 +46,38 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy worker to Hetzner host
+  determine-env:
+    name: Determine environment
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      branch: ${{ steps.env.outputs.branch }}
+    steps:
+      - id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            env="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            env="production"
+          else
+            env="staging"
+          fi
+          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch"   >> "$GITHUB_OUTPUT"
+          echo "Resolved: environment=$env branch=$branch"
+
+  deploy:
+    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: determine-env
+    environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 15
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-      DEPLOY_BRANCH: develop
+      DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -69,6 +103,49 @@ jobs:
             exit 0
           fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure host prereqs (Node 24, swap, bunx symlink)
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            # Idempotent safety net for hosts provisioned BEFORE the cloud-init
+            # template that pre-installs these. Each block is a no-op if already
+            # set up — runs on every deploy so any host drift self-heals.
+
+            # Node 24: the systemd unit calls `tsx` which spawns a Node process.
+            # New cloud-init template installs it via NodeSource; older hosts
+            # (eliza-staging-1 from the first TF apply) lack it.
+            if ! command -v node >/dev/null 2>&1; then
+              echo "[host-prereqs] installing Node 24"
+              curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash -
+              sudo apt-get install -y nodejs
+            fi
+
+            # Swap: smaller shapes (cpx22, cax11) OOM during `turbo run build`.
+            # 8 GB swap once and forever; harmless on bigger shapes.
+            if [ ! -f /swapfile ]; then
+              echo "[host-prereqs] adding 8GB swap"
+              sudo fallocate -l 8G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+            fi
+
+            # bunx symlink: the canary `bun.sh/install` tarball stopped shipping
+            # bunx as a separate binary at some point; build scripts that call
+            # `bunx tsc` etc. then fail with `bun: command not found: bunx`.
+            # `bunx` is just `bun` reading argv[0] — a symlink is sufficient.
+            if [ ! -e /home/deploy/.bun/bin/bunx ] && [ -e /home/deploy/.bun/bin/bun ]; then
+              echo "[host-prereqs] creating bunx symlink"
+              ln -sf bun /home/deploy/.bun/bin/bunx
+            fi
 
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
@@ -165,6 +242,17 @@ jobs:
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
             bun run --cwd plugins/plugin-sql build
+
+            # Defensive workspace symlinks: `bun install` should create these
+            # automatically for any workspace package the root or a sibling
+            # depends on, but the daemon (in packages/scripts/, which has NO
+            # package.json and so is invisible to bun's workspace graph)
+            # imports `@elizaos/cloud-shared` at runtime. On a fresh host the
+            # symlink was missing — daemon then crashes with
+            # `Cannot find package '@elizaos/cloud-shared'`. Recreate it here
+            # idempotently after `bun install` is done.
+            mkdir -p node_modules/@elizaos
+            ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \

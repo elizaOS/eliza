@@ -3167,6 +3167,7 @@ export async function startApiServer(opts?: {
     broadcastStatus: null,
     broadcastWs: null,
     broadcastWsToClientId: null,
+    broadcastWsToConversation: null,
     activeConversationId: null,
     permissionStates: {},
     shellEnabled: config.features?.shellEnabled !== false,
@@ -3925,11 +3926,42 @@ export async function startApiServer(opts?: {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
+  /**
+   * Per-connection active conversation. Each browser window/client owns its own
+   * active conversation, so two windows no longer fight over a single global.
+   * `state.activeConversationId` is kept as the "most recent active conversation"
+   * default for code paths that legitimately need *any* active conversation
+   * (autonomy routing, swarm synthesis) and don't target a specific client.
+   */
+  const wsActiveConversations = new WeakMap<WebSocket, string>();
   /** Per-WS-client PTY output subscriptions: sessionId → unsubscribe */
   const wsClientPtySubscriptions = new WeakMap<
     WebSocket,
     Map<string, () => void>
   >();
+  /**
+   * Short-window idempotency cache for client-tagged WS messages, keyed by
+   * `${clientId}:${msgId}`. A message resent after a reconnect (same id) is
+   * dropped if seen within the TTL. Entries expire so the map stays bounded.
+   */
+  const wsSeenMessageIds = new Map<string, number>();
+  const WS_DEDUPE_TTL_MS = 30_000;
+  const isDuplicateWsMessage = (
+    clientId: string | undefined,
+    msgId: unknown,
+  ): boolean => {
+    if (typeof msgId !== "string" || msgId.length === 0) return false;
+    const key = `${clientId ?? "anon"}:${msgId}`;
+    const now = Date.now();
+    if (wsSeenMessageIds.size > 0) {
+      for (const [seenKey, seenAt] of wsSeenMessageIds) {
+        if (now - seenAt > WS_DEDUPE_TTL_MS) wsSeenMessageIds.delete(seenKey);
+      }
+    }
+    if (wsSeenMessageIds.has(key)) return true;
+    wsSeenMessageIds.set(key, now);
+    return false;
+  };
   bindRuntimeStreams(opts?.runtime ?? null);
   bindTrainingStream();
 
@@ -4043,11 +4075,23 @@ export async function startApiServer(opts?: {
           }
           return;
         }
+        if (isDuplicateWsMessage(wsClientIds.get(ws), msg.msgId)) {
+          return;
+        }
         if (msg.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
         } else if (msg.type === "active-conversation") {
-          state.activeConversationId =
+          // Per-connection: only this client's active conversation changes.
+          const conversationId =
             typeof msg.conversationId === "string" ? msg.conversationId : null;
+          if (conversationId) {
+            wsActiveConversations.set(ws, conversationId);
+          } else {
+            wsActiveConversations.delete(ws);
+          }
+          // Keep the global as a sensible "any/most-recent active conversation"
+          // default for non-client-targeted routing (autonomy, swarm synthesis).
+          state.activeConversationId = conversationId;
         } else if (
           msg.type === "pty-subscribe" &&
           typeof msg.sessionId === "string"
@@ -4180,6 +4224,7 @@ export async function startApiServer(opts?: {
 
     ws.on("close", () => {
       wsClients.delete(ws);
+      wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
       const subs = wsClientPtySubscriptions.get(ws);
       if (subs) {
@@ -4197,6 +4242,7 @@ export async function startApiServer(opts?: {
         `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );
       wsClients.delete(ws);
+      wsActiveConversations.delete(ws);
       // Clean up PTY subscriptions on error too
       const subs = wsClientPtySubscriptions.get(ws);
       if (subs) {
@@ -4251,6 +4297,25 @@ export async function startApiServer(opts?: {
       } catch (err) {
         logger.error(
           `[eliza-api] WebSocket targeted send error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return delivered;
+  };
+
+  // Conversation-scoped push: only clients with this conversation active.
+  state.broadcastWsToConversation = (conversationId: string, data: object) => {
+    const message = JSON.stringify(data);
+    let delivered = 0;
+    for (const client of wsClients) {
+      if (client.readyState !== 1) continue;
+      if (wsActiveConversations.get(client) !== conversationId) continue;
+      try {
+        client.send(message);
+        delivered += 1;
+      } catch (err) {
+        logger.error(
+          `[eliza-api] WebSocket conversation send error: ${err instanceof Error ? err.message : err}`,
         );
       }
     }

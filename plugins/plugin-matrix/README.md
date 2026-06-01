@@ -1,36 +1,15 @@
 # @elizaos/plugin-matrix
 
-Matrix messaging integration plugin for ElizaOS agents.
+Matrix messaging integration plugin for elizaOS agents.
 
 ## Features
 
-- **Decentralized Messaging**: Connect to any Matrix homeserver
-- **End-to-End Encryption**: Optional E2EE support for secure communications
-- **Room Support**: Join, leave, and manage Matrix rooms
-- **Reactions**: React to messages with emoji
-- **Threading**: Support for Matrix threads
-- **Direct Messages**: Handle DMs and group rooms
-- **Typing Indicators**: Send typing notifications
-- **Read Receipts**: Mark messages as read
-
-## Installation
-
-```bash
-npm install @elizaos/plugin-matrix
-```
-
-## Prerequisites
-
-1. **Matrix Account**: A Matrix account on any homeserver
-2. **Access Token**: Generate an access token for your account
-
-### Getting an Access Token
-
-You can get an access token by:
-
-1. **Element/Web Client**: Settings -> Help & About -> Access Token
-2. **API Login**: Use the Matrix login API with your password
-3. **Command Line**: Use `curl` or a tool like `matrix-commander`
+- Connect to any Matrix homeserver via `matrix-js-sdk`
+- Receive and send messages in Matrix rooms
+- Room membership: join, leave, auto-join on invite
+- Reactions, threading, typing indicators, read receipts
+- Optional E2EE support
+- Multi-account configuration
 
 ## Configuration
 
@@ -46,110 +25,58 @@ Set the following environment variables:
 
 ### Optional
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MATRIX_DEVICE_ID` | Device ID for this session | Auto-generated |
-| `MATRIX_ROOMS` | Comma-separated room IDs/aliases to auto-join | - |
-| `MATRIX_AUTO_JOIN` | Auto-accept room invites | `false` |
-| `MATRIX_ENCRYPTION` | Enable E2EE support | `false` |
-| `MATRIX_REQUIRE_MENTION` | Only respond when mentioned in rooms | `false` |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MATRIX_DEVICE_ID` | Auto-generated | Device ID for this session |
+| `MATRIX_ROOMS` | — | Comma-separated room IDs/aliases to auto-join |
+| `MATRIX_AUTO_JOIN` | `false` | Auto-accept room invites |
+| `MATRIX_ENCRYPTION` | `false` | Enable E2EE support |
+| `MATRIX_REQUIRE_MENTION` | `false` | Only respond when mentioned in rooms |
+| `MATRIX_ACCOUNTS` | — | JSON array/object of per-account configs for multi-account setups |
+| `MATRIX_DEFAULT_ACCOUNT_ID` | — | Which account is the default when multiple are configured |
+| `MATRIX_ACCOUNT_ID` | — | Alias for `MATRIX_DEFAULT_ACCOUNT_ID` |
 
 ## Usage
 
-### Basic Setup
-
 ```typescript
 import matrixPlugin from "@elizaos/plugin-matrix";
-
-const agent = new Agent({
-  plugins: [matrixPlugin],
-});
+// Pass to the plugin list when constructing an AgentRuntime or character config.
 ```
 
-### Actions
+## Connector actions
 
-Matrix messaging is exposed through the canonical message connector actions.
-Use `source: "matrix"` when a request needs to target Matrix explicitly.
+Matrix messaging is exposed through the canonical message connector. Use `source: "matrix"` when a request needs to target Matrix explicitly.
 
-| Primary action | Operation | Description |
-|----------------|-----------|-------------|
-| `MESSAGE` | `send` | Send a message to a Matrix room, channel, thread, or DM |
-| `MESSAGE` | `react` | React to a Matrix message with an emoji |
-| `MESSAGE` | `list_channels` | List joined Matrix rooms |
-| `MESSAGE` | `join` | Join a Matrix room by ID or alias |
-| `MESSAGE` | `leave` | Leave a Matrix room |
+| Operation | Description |
+|-----------|-------------|
+| `send` | Send a message to a Matrix room, channel, thread, or DM |
+| `react` | React to a Matrix message with an emoji |
+| `list_channels` | List joined Matrix rooms |
+| `join` | Join a Matrix room by ID or alias |
+| `leave` | Leave a Matrix room |
 
-### Providers
+There are no registered `Provider` objects. Room context is surfaced through the connector's `getChatContext` and `listRooms` hooks.
 
-#### matrixRoomState
+## Events
 
-Provides context about the current Matrix room:
-- Room ID and name
-- Member count
-- Encryption status
-- Whether it's a DM
+The service emits these events via `runtime.emitEvent`:
 
-#### matrixUserContext
+| Event | Trigger |
+|-------|---------|
+| `MATRIX_MESSAGE_RECEIVED` | Incoming `m.room.message` (text only; filtered by `requireMention` if set) |
+| `MATRIX_MESSAGE_SENT` | Message sent via `sendMessage` |
+| `MATRIX_ROOM_JOINED` | `joinRoom` succeeds |
+| `MATRIX_ROOM_LEFT` | `leaveRoom` succeeds |
+| `MATRIX_SYNC_COMPLETE` | Matrix `PREPARED` sync state |
 
-Provides context about the user in the conversation:
-- User ID
-- Display name
-- Avatar URL
+Additional constants (`MATRIX_INVITE_RECEIVED`, `MATRIX_REACTION_RECEIVED`, `MATRIX_TYPING_RECEIVED`, `MATRIX_CONNECTION_READY`, `MATRIX_CONNECTION_LOST`) are defined in `MatrixEventTypes` but not currently emitted by the service.
 
-### Events
+## Message limits
 
-The plugin emits the following events:
+Maximum message length: `MAX_MATRIX_MESSAGE_LENGTH = 4000` characters (exported from `src/types.ts`). The service does not auto-split; callers must chunk before calling `sendMessage`.
 
-| Event | Description |
-|-------|-------------|
-| `MATRIX_MESSAGE_RECEIVED` | A message was received |
-| `MATRIX_MESSAGE_SENT` | A message was sent |
-| `MATRIX_ROOM_JOINED` | Joined a room |
-| `MATRIX_ROOM_LEFT` | Left a room |
-| `MATRIX_INVITE_RECEIVED` | Received a room invite |
-| `MATRIX_REACTION_RECEIVED` | Received a reaction |
-| `MATRIX_SYNC_COMPLETE` | Initial sync completed |
-| `MATRIX_CONNECTION_READY` | Client connected |
-| `MATRIX_CONNECTION_LOST` | Connection lost |
-
-## Message Limits
-
-- Maximum message length: 4000 characters
-- Longer messages are split automatically
-
-## Matrix ID Formats
+## Matrix ID formats
 
 - **User ID**: `@localpart:homeserver.org`
 - **Room ID**: `!opaque_id:homeserver.org`
 - **Room Alias**: `#human_readable:homeserver.org`
-
-## Security Considerations
-
-1. **Token Security**: Never expose your access token
-2. **Homeserver Trust**: Only connect to trusted homeservers
-3. **E2EE**: Enable encryption for sensitive communications
-4. **Room Verification**: Verify room members when using E2EE
-
-## Troubleshooting
-
-### Connection Issues
-
-1. Verify your homeserver URL is correct
-2. Check that your access token is valid
-3. Ensure your homeserver is reachable
-
-### Sync Issues
-
-1. The initial sync may take time for accounts with many rooms
-2. Check homeserver rate limits
-3. Verify network connectivity
-
-### Encryption Issues
-
-1. Ensure E2EE is enabled on both ends
-2. Verify device is properly set up
-3. Check for key verification requirements
-
-## License
-
-MIT

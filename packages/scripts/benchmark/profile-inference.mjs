@@ -644,6 +644,7 @@ async function runOneCombination({
     iterations: [],
     summary: null,
     error: null,
+    skipped: null,
   };
 
   // Document the config gap up front: the load endpoint can't currently
@@ -717,11 +718,20 @@ async function runOneCombination({
       estimatedTokens: summarize(tokenCounts),
     };
   } catch (err) {
-    record.error = {
-      message: err.message,
-      stack: err.stack ?? null,
-      loadResult: err.loadResult ?? null,
-    };
+    // "Model not installed" is an environment gap (the model isn't staged on
+    // the target agent), not a harness or inference failure. Classify it as a
+    // skip so the nightly report distinguishes a missing model from a real
+    // regression. Re-run with --ensure-models (or pre-stage the model) to
+    // profile it. See elizaOS/eliza#8063.
+    if (/Model not installed/i.test(err.message ?? "")) {
+      record.skipped = { reason: "model-not-installed", message: err.message };
+    } else {
+      record.error = {
+        message: err.message,
+        stack: err.stack ?? null,
+        loadResult: err.loadResult ?? null,
+      };
+    }
   } finally {
     if (conversation) await deleteConversation(client, conversation.id);
     await unloadModel(client, { loadTimeoutMs });
@@ -772,6 +782,7 @@ function buildMarkdownReport({
   for (const run of runs) {
     const s = run.summary;
     const notes = [];
+    if (run.skipped) notes.push(`skipped: ${run.skipped.reason}`);
     if (run.error) notes.push(`error: ${run.error.message}`);
     if (run.configGaps.length > 0) {
       notes.push(`gaps: ${run.configGaps.map((g) => g.kind).join(", ")}`);
@@ -806,6 +817,21 @@ function buildMarkdownReport({
       lines.push(
         `- **${kind}**: ${keys.length} runs affected. Workaround documented in profile.json.`,
       );
+    }
+  }
+  lines.push("");
+  lines.push("## Skipped");
+  lines.push("");
+  const skipped = runs.filter((r) => r.skipped);
+  if (skipped.length === 0) {
+    lines.push("No combination was skipped.");
+  } else {
+    lines.push(
+      "These combinations did not run because the model was not installed " +
+        "on the target. Re-run with `--ensure-models` or pre-stage the model.",
+    );
+    for (const run of skipped) {
+      lines.push(`- \`${run.key}\`: ${run.skipped.message}`);
     }
   }
   lines.push("");

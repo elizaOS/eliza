@@ -181,16 +181,29 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           errors: [] as Array<{ jobId: string; error: string }>,
         };
         const batchSize = Math.max(1, Math.floor(limit));
-        const provisionJobs = await jobsRepository.claimPendingJobs({
-          type: JOB_TYPES.AGENT_PROVISION,
-          limit: batchSize,
-        });
-        const deleteJobs = await jobsRepository.claimPendingJobs({
-          type: JOB_TYPES.AGENT_DELETE,
-          limit: Math.max(0, batchSize - provisionJobs.length),
-        });
+        const claim = (type: string) =>
+          jobsRepository.claimPendingJobs({ type, limit: batchSize });
+        // Provision/delete are reimplemented against the Hetzner mock; the
+        // remaining lifecycle jobs are reproduced as direct agent_sandboxes
+        // row transitions (mirroring the real handlers' DB effects), which is
+        // all the mock stack needs to assert status/backup outcomes.
+        const provisionJobs = await claim(JOB_TYPES.AGENT_PROVISION);
+        const deleteJobs = await claim(JOB_TYPES.AGENT_DELETE);
+        const suspendJobs = await claim(JOB_TYPES.AGENT_SUSPEND);
+        const resumeJobs = await claim(JOB_TYPES.AGENT_RESUME);
+        const sleepJobs = await claim(JOB_TYPES.AGENT_SLEEP);
+        const wakeJobs = await claim(JOB_TYPES.AGENT_WAKE);
+        const snapshotJobs = await claim(JOB_TYPES.AGENT_SNAPSHOT);
 
-        for (const job of [...provisionJobs, ...deleteJobs]) {
+        for (const job of [
+          ...provisionJobs,
+          ...deleteJobs,
+          ...suspendJobs,
+          ...resumeJobs,
+          ...sleepJobs,
+          ...wakeJobs,
+          ...snapshotJobs,
+        ]) {
           result.claimed += 1;
           try {
             if (job.type === JOB_TYPES.AGENT_DELETE) {
@@ -212,6 +225,169 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                   cloudAgentId: agentId,
                   containerStopped: true,
                   rowDeleted: true,
+                },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            if (job.type === JOB_TYPES.AGENT_SUSPEND) {
+              const agentId = readJobString(job, "agentId");
+              await agentSandboxesRepository.update(agentId, {
+                status: "stopped",
+                bridge_url: null,
+                health_url: null,
+              });
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: { cloudAgentId: agentId, containerStopped: true },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            if (job.type === JOB_TYPES.AGENT_RESUME) {
+              const agentId = readJobString(job, "agentId");
+              const organizationId = readJobString(job, "organizationId");
+              const existing = await agentSandboxesRepository.findByIdAndOrg(
+                agentId,
+                organizationId,
+              );
+              const sandboxId = existing?.sandbox_id ?? `memory-${agentId}`;
+              const bridgeUrl = `${origin}/api/compat/agents/${encodeURIComponent(sandboxId)}`;
+              await agentSandboxesRepository.update(agentId, {
+                status: "running",
+                sandbox_id: sandboxId,
+                bridge_url: bridgeUrl,
+                health_url: `${bridgeUrl}/health`,
+                last_heartbeat_at: now(),
+                error_message: null,
+              });
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: {
+                  cloudAgentId: agentId,
+                  containerStarted: true,
+                  reprovisioned: true,
+                },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            if (job.type === JOB_TYPES.AGENT_SLEEP) {
+              const agentId = readJobString(job, "agentId");
+              const organizationId = readJobString(job, "organizationId");
+              const existing = await agentSandboxesRepository.findByIdAndOrg(
+                agentId,
+                organizationId,
+              );
+              const stateData = {
+                memories: [],
+                config:
+                  (existing?.agent_config as Record<string, unknown> | null) ??
+                  {},
+                workspaceFiles: {},
+              };
+              const backup = await agentSandboxesRepository.createBackup({
+                sandbox_record_id: agentId,
+                snapshot_type: "pre-shutdown",
+                state_data: stateData,
+                size_bytes: Buffer.byteLength(
+                  JSON.stringify(stateData),
+                  "utf-8",
+                ),
+              });
+              await agentSandboxesRepository.update(agentId, {
+                status: "sleeping",
+                sandbox_id: null,
+                bridge_url: null,
+                health_url: null,
+                node_id: null,
+                container_name: null,
+                bridge_port: null,
+                web_ui_port: null,
+                last_backup_at: now(),
+              });
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: {
+                  cloudAgentId: agentId,
+                  containerRemoved: true,
+                  backupId: backup.id,
+                },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            if (job.type === JOB_TYPES.AGENT_WAKE) {
+              const agentId = readJobString(job, "agentId");
+              const organizationId = readJobString(job, "organizationId");
+              const userId = readJobString(job, "userId");
+              // Mirror provision: stand up a fresh mock sandbox, mark running.
+              const sandbox = store.createSandbox({
+                organizationId,
+                userId,
+                agentId,
+              });
+              store.updateSandbox(sandbox.id, { status: "running" });
+              const bridgeUrl = `${origin}/api/compat/agents/${encodeURIComponent(sandbox.id)}`;
+              await agentSandboxesRepository.update(agentId, {
+                status: "running",
+                sandbox_id: sandbox.id,
+                bridge_url: bridgeUrl,
+                health_url: `${bridgeUrl}/health`,
+                last_heartbeat_at: now(),
+                error_message: null,
+              });
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: { cloudAgentId: agentId, reprovisioned: true },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            if (job.type === JOB_TYPES.AGENT_SNAPSHOT) {
+              const agentId = readJobString(job, "agentId");
+              const organizationId = readJobString(job, "organizationId");
+              const data =
+                job.data && typeof job.data === "object"
+                  ? (job.data as Record<string, unknown>)
+                  : {};
+              const snapshotType =
+                data.snapshotType === "manual" ? "manual" : "auto";
+              const existing = await agentSandboxesRepository.findByIdAndOrg(
+                agentId,
+                organizationId,
+              );
+              const stateData = {
+                memories: [],
+                config:
+                  (existing?.agent_config as Record<string, unknown> | null) ??
+                  {},
+                workspaceFiles: {},
+              };
+              const backup = await agentSandboxesRepository.createBackup({
+                sandbox_record_id: agentId,
+                snapshot_type: snapshotType,
+                state_data: stateData,
+                size_bytes: Buffer.byteLength(
+                  JSON.stringify(stateData),
+                  "utf-8",
+                ),
+              });
+              await agentSandboxesRepository.update(agentId, {
+                last_backup_at: now(),
+              });
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: {
+                  cloudAgentId: agentId,
+                  backupId: backup.id,
+                  snapshotType,
+                  sizeBytes: backup.size_bytes ?? 0,
                 },
                 completed_at: now(),
               });

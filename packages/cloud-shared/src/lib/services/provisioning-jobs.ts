@@ -65,6 +65,18 @@ export interface AgentResumeJobData {
   userId: string;
 }
 
+export interface AgentSleepJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface AgentWakeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
 export interface AgentRestartJobData {
   agentId: string;
   organizationId: string;
@@ -138,6 +150,20 @@ export interface AgentResumeJobResult {
   error?: string;
 }
 
+export interface AgentSleepJobResult {
+  cloudAgentId: string;
+  containerRemoved: boolean;
+  backupId?: string;
+  error?: string;
+}
+
+export interface AgentWakeJobResult {
+  cloudAgentId: string;
+  reprovisioned: boolean;
+  restoredBackupId?: string;
+  error?: string;
+}
+
 export interface AgentRestartJobResult {
   cloudAgentId: string;
   containerStopped: boolean;
@@ -194,6 +220,22 @@ function agentResumeJobDataToRecord(data: AgentResumeJobData): Record<string, un
 }
 
 function agentResumeJobResultToRecord(result: AgentResumeJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentSleepJobDataToRecord(data: AgentSleepJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentSleepJobResultToRecord(result: AgentSleepJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentWakeJobDataToRecord(data: AgentWakeJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentWakeJobResultToRecord(result: AgentWakeJobResult): Record<string, unknown> {
   return { ...result };
 }
 
@@ -298,6 +340,40 @@ function readAgentResumeJobData(job: Job): AgentResumeJobData {
   return job.data;
 }
 
+function isAgentSleepJobData(value: unknown): value is AgentSleepJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
+function readAgentSleepJobData(job: Job): AgentSleepJobData {
+  if (!isAgentSleepJobData(job.data)) {
+    throw new Error(`Invalid agent sleep job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentWakeJobData(value: unknown): value is AgentWakeJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
+function readAgentWakeJobData(job: Job): AgentWakeJobData {
+  if (!isAgentWakeJobData(job.data)) {
+    throw new Error(`Invalid agent wake job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 function isAgentRestartJobData(value: unknown): value is AgentRestartJobData {
   return (
     typeof value === "object" &&
@@ -387,6 +463,16 @@ export interface EnqueueAgentSuspendResult {
 }
 
 export interface EnqueueAgentResumeResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentSleepResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentWakeResult {
   job: Job;
   created: boolean;
 }
@@ -736,6 +822,70 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Enqueue an Agent sleep job (deep, cold suspend).
+   *
+   * Daemon-side execution: durable backup → stop+remove container → clear the
+   * compute identity so the node slot frees (the autoscaler reclaims empty
+   * Hetzner boxes). Distinct from `agent_suspend`, which keeps the container.
+   */
+  async enqueueAgentSleepOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentSleepResult> {
+    return this.enqueueLifecycleJob<AgentSleepJobData>({
+      jobType: JOB_TYPES.AGENT_SLEEP,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentSleepJobDataToRecord,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // snapshot fetch (~15s) + docker stop (~5s) + DB update.
+      estimatedDurationMs: 30_000,
+      logName: "agent_sleep",
+    });
+  }
+
+  /**
+   * Enqueue an Agent wake job.
+   *
+   * Daemon-side execution provisions a fresh container (claiming a warm-pool
+   * slot when available) and restores the latest backup. The inverse of
+   * `agent_sleep`.
+   */
+  async enqueueAgentWakeOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentWakeResult> {
+    return this.enqueueLifecycleJob<AgentWakeJobData>({
+      jobType: JOB_TYPES.AGENT_WAKE,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentWakeJobDataToRecord,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // Fresh provision (~60-90s) + state restore.
+      estimatedDurationMs: 90_000,
+      logName: "agent_wake",
+    });
+  }
+
+  /**
    * Enqueue an Agent restart job.
    *
    * Daemon-side execution: SSH `docker stop` on the existing container
@@ -896,6 +1046,63 @@ export class ProvisioningJobService {
       logExtras: { snapshotType },
       idempotencyPredicates: [sql`${jobs.data}->>'snapshotType' = ${snapshotType}`],
     });
+  }
+
+  /**
+   * Scan running agents and enqueue an `auto` snapshot for any whose last
+   * backup is older than `minIntervalMs` (or who have never been backed up).
+   * Drives the scheduled-backups cron. Per-agent dedup is handled by the
+   * snapshot job's in-flight idempotency, so overlapping ticks are safe.
+   * Warm-pool rows (`pool_status IS NOT NULL`) are excluded — they have no
+   * user state worth backing up.
+   */
+  async enqueueScheduledBackups(params?: {
+    minIntervalMs?: number;
+    maxAgents?: number;
+  }): Promise<{ scanned: number; enqueued: number }> {
+    const minIntervalMs = params?.minIntervalMs ?? 6 * 60 * 60 * 1000; // 6h
+    const maxAgents = params?.maxAgents ?? 200;
+    const cutoff = new Date(Date.now() - minIntervalMs);
+
+    const due = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        userId: agentSandboxes.user_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "running"),
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
+        ),
+      )
+      .limit(maxAgents);
+
+    let enqueued = 0;
+    for (const agent of due) {
+      try {
+        await this.enqueueAgentSnapshotOnce({
+          agentId: agent.id,
+          organizationId: agent.organizationId,
+          userId: agent.userId,
+          snapshotType: "auto",
+        });
+        enqueued++;
+      } catch (error) {
+        logger.warn("[provisioning-jobs] Scheduled backup enqueue failed", {
+          agentId: agent.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    logger.info("[provisioning-jobs] Scheduled backups enqueued", {
+      scanned: due.length,
+      enqueued,
+    });
+    return { scanned: due.length, enqueued };
   }
 
   /**
@@ -1132,6 +1339,12 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_RESUME:
         await this.executeAgentResume(job);
         break;
+      case JOB_TYPES.AGENT_SLEEP:
+        await this.executeAgentSleep(job);
+        break;
+      case JOB_TYPES.AGENT_WAKE:
+        await this.executeAgentWake(job);
+        break;
       case JOB_TYPES.AGENT_RESTART:
         await this.executeAgentRestart(job);
         break;
@@ -1245,6 +1458,108 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       containerStarted: result.containerStarted,
       reprovisioned: result.reprovisioned,
+    });
+  }
+
+  private async executeAgentSleep(job: Job): Promise<void> {
+    const data = readAgentSleepJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_sleep", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const result = await elizaSandboxService.executeSleep(data.agentId, data.organizationId);
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentSleepJobResultToRecord({
+          cloudAgentId: data.agentId,
+          containerRemoved: result.containerRemoved,
+          backupId: result.backupId,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_sleep failure");
+    }
+
+    const jobResult: AgentSleepJobResult = {
+      cloudAgentId: data.agentId,
+      containerRemoved: result.containerRemoved,
+      backupId: result.backupId,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentSleepJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_sleep completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      backupId: result.backupId,
+      containerRemoved: result.containerRemoved,
+    });
+  }
+
+  private async executeAgentWake(job: Job): Promise<void> {
+    const data = readAgentWakeJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_wake", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId);
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentWakeJobResultToRecord({
+          cloudAgentId: data.agentId,
+          reprovisioned: result.reprovisioned,
+          restoredBackupId: result.restoredBackupId,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_wake failure");
+    }
+
+    const jobResult: AgentWakeJobResult = {
+      cloudAgentId: data.agentId,
+      reprovisioned: result.reprovisioned,
+      restoredBackupId: result.restoredBackupId,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentWakeJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_wake completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      reprovisioned: result.reprovisioned,
+      restoredBackupId: result.restoredBackupId,
     });
   }
 
@@ -1671,7 +1986,10 @@ export class ProvisioningJobService {
         // HMAC-SHA256 over `${timestamp}.${rawBody}` and requires a stable
         // idempotencyKey. Without this the provision-complete callback was
         // silently 401'd by waifu.
-        const agentId = typeof result.cloudAgentId === "string" ? result.cloudAgentId : null;
+        const agentId =
+          "cloudAgentId" in result && typeof result.cloudAgentId === "string"
+            ? result.cloudAgentId
+            : null;
         rawBody = JSON.stringify({
           event: "job.completed",
           timestamp: completedAt,

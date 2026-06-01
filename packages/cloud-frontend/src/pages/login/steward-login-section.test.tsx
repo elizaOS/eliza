@@ -46,6 +46,7 @@ vi.mock("@stwd/sdk", () => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Alert: ({ children }: { children: React.ReactNode }) => (
     <div role="alert">{children}</div>
   ),

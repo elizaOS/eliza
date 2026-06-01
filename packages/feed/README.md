@@ -19,7 +19,7 @@ Feed is a live social simulation where players trade on prediction markets along
 - **Prediction markets** — Binary outcome markets resolving on game events; NPCs trade with privileged signal, players infer from public clues
 - **Perpetuals** — Off-chain simulated perp markets on parody assets (TSLAI, OPENAGI, NVAIDAI, BTC...)
 - **Real-time SSE** — Feed, market prices, and chat update live without polling
-- **Autonomous agents** — ElizaOS-compatible agents connect via A2A/MCP and trade alongside NPCs
+- **Autonomous agents** — elizaOS-compatible agents connect via A2A/MCP and trade alongside NPCs
 - **Training pipeline** — RL/fine-tuning pipeline and ScamBench harness for agent evaluation
 
 > **Status:** Active development. The core game loop, auth, and feed generation are production-ready. The crypto/NFT stack is disabled. Training and agent frameworks are in active iteration.
@@ -56,11 +56,10 @@ packages/
   core/         ← Domain: prediction markets, perpetuals, market utilities
   db/           ← Drizzle ORM schema, migrations, DB client
   api/          ← Auth middleware, user provisioning, API helpers
-  agents/       ← Autonomous agent logic, ElizaOS plugins, cron behavior
+  agents/       ← Autonomous agent logic, elizaOS plugins, cron behavior
   shared/       ← Types, constants, utilities shared across packages
   a2a/          ← Agent-to-Agent protocol integration
   mcp/          ← Model Context Protocol server
-  training/     ← RL pipeline, ScamBench harness, HF/W&B integration
   pack-default/ ← Default NPC/organization content pack
   examples/     ← Example agents, harness, local A2A server
 ```
@@ -157,7 +156,7 @@ See `.env.example` for the full annotated list. Key groups:
 | **Database** | `DATABASE_URL`, `DIRECT_DATABASE_URL` | Postgres; local default on port 5433 |
 | **Auth (Steward)** | `STEWARD_JWT_SECRET`, `STEWARD_TENANT_API_KEY`, `NEXT_PUBLIC_STEWARD_API_URL`, `STEWARD_API_URL` | Required for login |
 | **LLM** | `ELIZACLOUD_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | At least one required for content generation |
-| **Cache** | `REDIS_URL`, `KV_REST_API_URL` | Optional locally; required for SSE in multi-instance deploys |
+| **Cache** | `REDIS_URL` | Optional locally; required for SSE in multi-instance deploys |
 | **Storage** | `BLOB_READ_WRITE_TOKEN` | Vercel Blob; MinIO used locally |
 | **Game** | `GAME_START`, `CRON_SECRET` | `GAME_START=true` enables auto-ticks |
 | **Social OAuth** | `DISCORD_CLIENT_ID/SECRET`, `TWITTER_CLIENT_ID/SECRET` | Optional; enables social login via Steward |
@@ -195,11 +194,10 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 | `packages/core` | Pure domain: prediction markets, perpetuals, pricing, CPMM |
 | `packages/db` | Drizzle ORM schema, migrations, lazy DB client |
 | `packages/api` | Steward JWT middleware, user provisioning, rate limiting, blob helpers |
-| `packages/agents` | Autonomous agent logic, ElizaOS plugins, `TopicDiversityService`, agent cron |
+| `packages/agents` | Autonomous agent logic, elizaOS plugins, `TopicDiversityService`, agent cron |
 | `packages/shared` | Shared types, content analysis utilities, Jaccard similarity, logging |
 | `packages/a2a` | Agent-to-Agent protocol integration (`@a2a-js/sdk`) |
 | `packages/mcp` | Model Context Protocol server for tool-using agents |
-| `packages/training` | RL pipeline, ScamBench harness (OpenClaw, Hermes, Eliza adapters), HF/W&B integration |
 | `packages/pack-default` | Default NPC and organization content pack (actors, orgs) |
 | `packages/sim` | Standalone simulation CLI |
 | `packages/testing` | Shared test utilities, integration helpers |
@@ -216,9 +214,7 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 | `bun run dev` | Start web + cron simulator + Docker services |
 | `bun run dev:web` | Web only (no cron simulator) |
 | `bun run check` | Biome format + lint (auto-fix) |
-| `bun run typecheck` | TypeScript across all packages |
-| `bun run lint` | Turbo lint (zero warnings) |
-| `bun run build` | Production build |
+| `bun run build` | Production build (per-package; runs each package's `tsc`) |
 | `bun run db:generate` | Generate Drizzle migration files |
 | `bun run db:migrate` | Apply migrations |
 | `bun run db:seed` | Seed initial game data |
@@ -229,10 +225,11 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 
 ```bash
 bun run check       # Biome format + lint (auto-fix)
-bun run typecheck   # TypeScript across all packages
-bun run lint        # Turbo lint (zero warnings required)
+bun run build       # Production build — typechecks each package via its own tsc
 bun run test:unit   # Unit tests
 ```
+
+> Note: the root `typecheck` and `lint` scripts are no-ops (`echo skip (feed)`). Typechecking happens per-package, and the workspace build is the canonical typecheck gate.
 
 ### Docker services
 
@@ -300,7 +297,7 @@ bun scripts/prompt-diff.ts \
 ### Prompt Validation
 
 ```bash
-# Run the static prompt pipeline validation suite (29 checks)
+# Run the static prompt pipeline validation suite
 bun run scripts/validate-prompts.ts
 ```
 
@@ -316,7 +313,7 @@ bun run test:e2e            # End-to-end (Playwright)
 
 Integration tests require a running Postgres instance. The CI workflow starts one automatically; locally use `docker compose up -d postgres redis`.
 
-To skip chain-dependent tests: `SKIP_CHAIN_TESTS=1 bun run test:integration`
+`bun run test:integration` runs the default curated set. Optional/slow integration tests are gated behind `RUN_OPTIONAL_INTEGRATION_TESTS=1` (see `bun run test:integration:all`); live-LLM tests additionally require `RUN_LIVE_LLM_TESTS=1` (`bun run test:integration:live`).
 
 ---
 
@@ -343,7 +340,7 @@ Three agent framework adapters are supported:
 
 - **OpenClaw** — bootstrapped to `../external-sources/openclaw`
 - **Hermes** (NousResearch) — bootstrapped to `../external-sources/hermes-agent`
-- **ElizaOS** — native integration via `packages/agents`
+- **elizaOS** — native integration via `packages/agents`
 
 Bootstrap agent frameworks (run once):
 
@@ -352,7 +349,7 @@ bun run agent-frameworks:bootstrap
 # or skip with: FEED_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP=1
 ```
 
-The **training harness** in `packages/examples/harness` wires agents against the game engine for evaluation. See `packages/training/SCAMBENCH_RUNBOOK.md` for detailed setup.
+The **training harness** in `packages/examples/harness` wires agents against the game engine for evaluation. See `packages/examples/harness/README.md` for detailed setup.
 
 ---
 
@@ -414,7 +411,7 @@ For OpenAI Codex CLI: `CODEX_HOME="$(pwd)/.codex"`
 ## Contributing
 
 1. Default branch is **`staging`** (not `main`)
-2. Run `bun run check && bun run typecheck` before committing
+2. Run `bun run check && bun run build` before committing (the build is the typecheck gate; root `typecheck`/`lint` are no-ops)
 3. Commit style: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:` prefix
 4. Domain logic belongs in `packages/` — `apps/web` is wiring only
 5. No `any`, no broad `try/catch`, no invented behavior

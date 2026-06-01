@@ -28,10 +28,9 @@ eliza plugins install @elizaos/plugin-zai
 
 Prefer `ZAI_API_KEY` for new configuration. `Z_AI_API_KEY` exists only for compatibility with older z.ai wiring.
 
-Use `zai-coding` / z.ai Coding Plan account support for subscription coding-plan workflows.
-Do not point this plugin at `https://api.z.ai/api/coding/paas/v4` or
-`https://api.z.ai/api/anthropic`; those are reserved for z.ai-supported coding
-tools and are intentionally blocked here.
+This plugin targets z.ai's general API only. Do not point it at
+`https://api.z.ai/api/coding/paas/v4` or `https://api.z.ai/api/anthropic`; those
+paths are reserved for z.ai's coding tools and `getBaseURL` rejects them.
 
 ## Usage
 

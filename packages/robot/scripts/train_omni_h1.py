@@ -15,11 +15,11 @@ Root causes (from the env's default_config + a 2026-05-28 SOTA review):
 Targeted, low-risk fixes (NOT the foot_slip-style overrides that trapped
 learning at reward ~5): full-command-zeroing `--stand-prob` of episodes, and a
 moderate `tracking_ang_vel` boost. Everything else stays at the proven default
-recipe that already walks. Train on GPU (MILADY_ROBOT_USE_GPU=1, ~8192 envs).
+recipe that already walks. Train on GPU (ELIZA_ROBOT_USE_GPU=1, ~8192 envs).
 
 Usage::
 
-    MILADY_ROBOT_USE_GPU=1 uv run python scripts/train_omni_h1.py \
+    ELIZA_ROBOT_USE_GPU=1 uv run python scripts/train_omni_h1.py \
         --num-timesteps 150000000 --num-envs 8192 --out /tmp/robotwalk/h1_omni
 """
 
@@ -36,7 +36,7 @@ import numpy as np
 
 
 def _resolve_jax_platform() -> None:
-    if os.environ.get("MILADY_ROBOT_USE_GPU") != "1":
+    if os.environ.get("ELIZA_ROBOT_USE_GPU", os.environ.get("MILADY_ROBOT_USE_GPU")) != "1":
         os.environ.setdefault("JAX_PLATFORMS", "cpu")
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 

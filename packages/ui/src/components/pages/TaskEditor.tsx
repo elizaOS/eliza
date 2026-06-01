@@ -12,6 +12,7 @@
 
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type { WorkbenchTask } from "../../api/client-types-config";
 import { useTranslation } from "../../state/TranslationContext";
@@ -80,6 +81,61 @@ export function TaskEditor({
     [scheduleKind, cron],
   );
 
+  const nameField = useAgentElement<HTMLInputElement>({
+    id: "task-title",
+    role: "text-input",
+    label: t("taskeditor.titleLabel", { defaultValue: "Title" }),
+    group: "task-editor",
+    description: "Task title",
+    getValue: () => name,
+    onFill: (value) => setName(value),
+  });
+  const promptField = useAgentElement<HTMLTextAreaElement>({
+    id: "task-prompt",
+    role: "textarea",
+    label: t("taskeditor.promptLabel", { defaultValue: "Prompt" }),
+    group: "task-editor",
+    description: "Prompt the agent runs for this task",
+    getValue: () => prompt,
+    onFill: (value) => setPrompt(value),
+  });
+  const cronField = useAgentElement<HTMLInputElement>({
+    id: "task-cron",
+    role: "text-input",
+    label: t("taskeditor.cronLabel", { defaultValue: "Cron expression" }),
+    group: "task-editor",
+    description: "Cron expression for the recurring schedule",
+    getValue: () => cron,
+    onFill: (value) => setCron(value),
+  });
+  const eventField = useAgentElement<HTMLSelectElement>({
+    id: "task-event",
+    role: "select",
+    label: t("taskeditor.eventLabel", { defaultValue: "Trigger event" }),
+    group: "task-editor",
+    description: "Trigger event that runs this task",
+    options: availableEvents.map((event) => event.id),
+    getValue: () => eventName,
+    onFill: (value) => setEventName(value),
+  });
+  const cancelButton = useAgentElement<HTMLButtonElement>({
+    id: "task-cancel",
+    role: "button",
+    label: t("taskeditor.cancel", { defaultValue: "Cancel" }),
+    group: "task-editor",
+    description: "Discard changes and close the editor",
+    onActivate: () => onCancel?.(),
+  });
+  const saveButton = useAgentElement<HTMLButtonElement>({
+    id: "task-save",
+    role: "button",
+    label: initial?.id
+      ? t("taskeditor.saveTask", { defaultValue: "Save task" })
+      : t("taskeditor.createTask", { defaultValue: "Create task" }),
+    group: "task-editor",
+    description: "Save the task",
+  });
+
   const submit = useCallback(async () => {
     const trimmedName = name.trim();
     const trimmedPrompt = prompt.trim();
@@ -146,6 +202,7 @@ export function TaskEditor({
           {t("taskeditor.titleLabel", { defaultValue: "Title" })}
         </FieldLabel>
         <Input
+          ref={nameField.ref}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("taskeditor.titlePlaceholder", {
@@ -153,6 +210,7 @@ export function TaskEditor({
           })}
           autoFocus
           data-testid="task-editor-name"
+          {...nameField.agentProps}
         />
       </div>
 
@@ -161,6 +219,7 @@ export function TaskEditor({
           {t("taskeditor.promptLabel", { defaultValue: "Prompt" })}
         </FieldLabel>
         <Textarea
+          ref={promptField.ref}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={t("taskeditor.promptPlaceholder", {
@@ -168,6 +227,7 @@ export function TaskEditor({
           })}
           rows={5}
           data-testid="task-editor-prompt"
+          {...promptField.agentProps}
         />
       </div>
 
@@ -206,26 +266,23 @@ export function TaskEditor({
           <div className="space-y-2">
             <div className="flex flex-wrap gap-1.5">
               {CRON_PRESETS.map((preset) => (
-                <button
+                <CronPresetButton
                   key={preset.expression}
-                  type="button"
-                  onClick={() => setCron(preset.expression)}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                    cron === preset.expression
-                      ? "border-accent bg-accent/10 text-accent"
-                      : "border-border/40 text-muted-strong hover:border-border"
-                  }`}
-                >
-                  {preset.label}
-                </button>
+                  label={preset.label}
+                  expression={preset.expression}
+                  active={cron === preset.expression}
+                  onSelect={setCron}
+                />
               ))}
             </div>
             <Input
+              ref={cronField.ref}
               value={cron}
               onChange={(e) => setCron(e.target.value)}
               placeholder="0 9 * * 1-5"
               className="font-mono text-xs"
               data-testid="task-editor-cron"
+              {...cronField.agentProps}
             />
             {cronPreview && (
               <div className="text-xs text-muted-strong">
@@ -238,10 +295,12 @@ export function TaskEditor({
 
         {scheduleKind === "event" && availableEvents.length > 0 && (
           <select
+            ref={eventField.ref}
             value={eventName}
             onChange={(e) => setEventName(e.target.value)}
             className="w-full rounded-sm border border-border/40 bg-bg px-3 py-2 text-sm text-txt"
             data-testid="task-editor-event"
+            {...eventField.agentProps}
           >
             {availableEvents.map((event) => (
               <option key={event.id} value={event.id}>
@@ -254,16 +313,25 @@ export function TaskEditor({
 
       <div className="flex items-center justify-end gap-2 border-t border-border/40 pt-4">
         {onCancel && (
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button
+            ref={cancelButton.ref}
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={busy}
+            {...cancelButton.agentProps}
+          >
             {t("taskeditor.cancel", { defaultValue: "Cancel" })}
           </Button>
         )}
         <Button
+          ref={saveButton.ref}
           variant="default"
           size="sm"
           onClick={() => void submit()}
           disabled={busy || !name.trim() || !prompt.trim()}
           data-testid="task-editor-save"
+          {...saveButton.agentProps}
         >
           {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
           {initial?.id
@@ -290,6 +358,15 @@ function ScheduleRadio({
   onSelect: () => void;
   disabled?: boolean;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id,
+    role: "tab",
+    label,
+    group: "task-schedule-kind",
+    description: `Set the schedule to ${label}`,
+    status: checked ? "active" : "inactive",
+    onActivate: onSelect,
+  });
   return (
     <label
       htmlFor={id}
@@ -302,6 +379,7 @@ function ScheduleRadio({
       }`}
     >
       <input
+        ref={ref}
         id={id}
         type="radio"
         name="task-schedule-kind"
@@ -309,9 +387,48 @@ function ScheduleRadio({
         checked={checked}
         onChange={onSelect}
         disabled={disabled}
+        aria-current={checked ? "true" : undefined}
+        {...agentProps}
       />
       {icon}
       {label}
     </label>
+  );
+}
+
+function CronPresetButton({
+  label,
+  expression,
+  active,
+  onSelect,
+}: {
+  label: string;
+  expression: string;
+  active: boolean;
+  onSelect: (expression: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `task-cron-preset-${expression.replace(/[^a-z0-9]+/gi, "-")}`,
+    role: "button",
+    label,
+    group: "task-cron-presets",
+    description: `Use the ${label} cron preset`,
+    status: active ? "active" : "inactive",
+    onActivate: () => onSelect(expression),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(expression)}
+      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+        active
+          ? "border-accent bg-accent/10 text-accent"
+          : "border-border/40 text-muted-strong hover:border-border"
+      }`}
+      {...agentProps}
+    >
+      {label}
+    </button>
   );
 }

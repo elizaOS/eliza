@@ -20,12 +20,19 @@ import {
   type AgentBackupStateData,
   agentSandboxBackups,
   agentSandboxes,
+  type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import {
+  computeStateHash,
+  estimateDeltaBytes,
+  incrementalChainDepth,
+  planIncrementalBackup,
+} from "./agent-backup-diff";
 import { apiKeysService } from "./api-keys";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
@@ -815,12 +822,21 @@ export class ElizaSandboxService {
 
         await this.ensureRuntimeAgentStarted(runtimeRec);
 
-        // 4. Restore from backup
+        // 4. Restore from backup (reconstructs incrementals back to a full).
         const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
-        if (backup)
-          await this.pushState(handle.bridgeUrl, backup.state_data as AgentBackupStateData, {
-            trusted: true,
-          });
+        if (backup) {
+          const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
+            backup.id,
+          );
+          if (restoreState) {
+            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+          } else {
+            logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
+              agentId: rec.id,
+              backupId: backup.id,
+            });
+          }
+        }
 
         // 5. Mark running + persist provider-specific metadata
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
@@ -2549,12 +2565,9 @@ export class ElizaSandboxService {
 
     const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
 
-    const backup = await agentSandboxesRepository.createBackup({
-      sandbox_record_id: rec.id,
-      snapshot_type: type,
-      state_data: stateData,
-      size_bytes: sizeBytes,
-    });
+    const backup = await agentSandboxesRepository.createBackup(
+      await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
+    );
 
     await agentSandboxesRepository.update(rec.id, {
       last_backup_at: new Date(),
@@ -2563,9 +2576,69 @@ export class ElizaSandboxService {
     logger.info("[agent-sandbox] Backup created", {
       agentId,
       type,
+      kind: backup.backup_kind,
       bytes: backup.size_bytes,
     });
     return { success: true, backup };
+  }
+
+  /**
+   * Decide whether a new snapshot of `stateData` is stored as a full backup or
+   * an incremental delta against the latest backup, and build the insert row.
+   * Falls back to a full backup whenever there is no parent, the parent chain
+   * can't be reconstructed, or the delta isn't worth it (see
+   * `planIncrementalBackup`). Full-backup behaviour is byte-identical to the
+   * pre-incremental path, so existing flows are unaffected.
+   */
+  private async buildBackupInput(
+    sandboxRecordId: string,
+    type: AgentBackupSnapshotType,
+    stateData: AgentBackupStateData,
+    sizeBytes: number,
+  ): Promise<NewAgentSandboxBackup> {
+    const contentHash = computeStateHash(stateData);
+    const latest = await agentSandboxesRepository.getLatestBackup(sandboxRecordId);
+    if (latest) {
+      try {
+        const baseState = await agentSandboxesRepository.getReconstructedBackupState(latest.id);
+        if (baseState) {
+          const all = await agentSandboxesRepository.listBackups(sandboxRecordId, 1000);
+          const nodes = all.map((b) => ({
+            id: b.id,
+            backupKind: b.backup_kind,
+            parentBackupId: b.parent_backup_id,
+            createdAtMs: b.created_at.getTime(),
+          }));
+          const chainDepth = incrementalChainDepth(nodes, latest.id);
+          const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
+          if (plan.kind === "incremental") {
+            return {
+              sandbox_record_id: sandboxRecordId,
+              snapshot_type: type,
+              // The state_data jsonb holds a BackupDelta for incremental rows.
+              state_data: plan.delta as unknown as AgentBackupStateData,
+              size_bytes: estimateDeltaBytes(plan.delta),
+              backup_kind: "incremental",
+              parent_backup_id: latest.id,
+              content_hash: contentHash,
+            };
+          }
+        }
+      } catch (error) {
+        logger.warn("[agent-sandbox] Incremental planning failed; storing full backup", {
+          sandboxRecordId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return {
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: type,
+      state_data: stateData,
+      size_bytes: sizeBytes,
+      backup_kind: "full",
+      content_hash: contentHash,
+    };
   }
 
   async restore(agentId: string, orgId: string, backupId?: string): Promise<SnapshotResult> {
@@ -2593,7 +2666,10 @@ export class ElizaSandboxService {
     }
 
     if (rec.status === "running" && rec.bridge_url) {
-      await this.pushState(rec, backup.state_data as AgentBackupStateData);
+      const restoreState =
+        (await agentSandboxesRepository.getReconstructedBackupState(backup.id)) ??
+        (backup.state_data as AgentBackupStateData);
+      await this.pushState(rec, restoreState);
       return { success: true, backup };
     }
 
@@ -2839,6 +2915,166 @@ export class ElizaSandboxService {
       };
     }
     return { success: true, containerStarted: true, reprovisioned: true };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_sleep` job — deep, cold suspend.
+   *
+   * Unlike `agent_suspend` (which keeps the container + node slot for a fast
+   * `docker start`), sleep frees the compute entirely:
+   *   1. Capture a durable backup. A live `/api/snapshot` pull when the agent
+   *      is reachable, otherwise the agent's persisted config, otherwise the
+   *      latest existing backup — a restore point ALWAYS exists before we
+   *      destroy compute, so sleep never loses recoverable state.
+   *   2. Stop + drop the container (the provider `stop` removes it from the
+   *      node).
+   *   3. Clear the compute identity (`sandbox_id`, `node_id`, `container_name`,
+   *      ports, bridge/health URLs) so the slot is freed; the node autoscaler
+   *      reclaims a now-empty Hetzner box on its next pass. The Neon DB,
+   *      `environment_vars`, and `docker_image` are retained for wake.
+   *   4. Flip status to `sleeping`. No compute cost accrues while sleeping.
+   *
+   * The inverse is `executeWake`.
+   */
+  async executeSleep(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    containerRemoved: boolean;
+    backupId?: string;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
+    if (rec.status === "sleeping") return { success: true, containerRemoved: true };
+    if (rec.status === "provisioning") {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent provisioning is in progress",
+      };
+    }
+
+    // 1. Durable backup before compute is freed.
+    let backupId: string | undefined;
+    if (rec.status === "running" && rec.bridge_url) {
+      try {
+        const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
+        const backup = await agentSandboxesRepository.createBackup({
+          sandbox_record_id: rec.id,
+          snapshot_type: "pre-shutdown",
+          state_data: stateData,
+          size_bytes: sizeBytes,
+        });
+        backupId = backup.id;
+      } catch (error) {
+        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; using fallback", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (!backupId) {
+      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+      if (existing) {
+        backupId = existing.id;
+      } else {
+        const fallback: AgentBackupStateData = {
+          memories: [],
+          config: (rec.agent_config as Record<string, unknown> | null) ?? {},
+          workspaceFiles: {},
+        };
+        const sizeBytes = Buffer.byteLength(JSON.stringify(fallback), "utf-8");
+        const backup = await agentSandboxesRepository.createBackup(
+          await this.buildBackupInput(rec.id, "pre-shutdown", fallback, sizeBytes),
+        );
+        backupId = backup.id;
+      }
+    }
+
+    // 2. Tear down compute.
+    let containerRemoved = false;
+    if (rec.sandbox_id) {
+      try {
+        await (await this.getProvider()).stop(rec.sandbox_id);
+        containerRemoved = true;
+      } catch (e) {
+        if (this.isIgnorableSandboxStopError(e)) {
+          containerRemoved = true;
+          logger.info("[agent-sandbox] Sandbox already absent during sleep", {
+            sandboxId: rec.sandbox_id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        } else {
+          return {
+            success: false,
+            containerRemoved: false,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      }
+    } else {
+      containerRemoved = true;
+    }
+
+    // 3. Free the slot; retain DB + env + image for wake.
+    await agentSandboxesRepository.update(rec.id, {
+      status: "sleeping",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      node_id: null,
+      container_name: null,
+      bridge_port: null,
+      web_ui_port: null,
+      last_backup_at: new Date(),
+    });
+    await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS).catch((error) => {
+      logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    logger.info("[agent-sandbox] Sleep complete", { agentId, backupId, containerRemoved });
+    return { success: true, containerRemoved, backupId };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_wake` job — the inverse of sleep.
+   *
+   * Provisions a fresh container (claiming a warm-pool slot when available)
+   * and relies on `provision()`'s built-in latest-backup restoration to
+   * rehydrate the agent's state. Idempotent: waking an already-running agent
+   * is a no-op.
+   */
+  async executeWake(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    reprovisioned: boolean;
+    restoredBackupId?: string;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) return { success: false, reprovisioned: false, error: "Agent not found" };
+    if (rec.status === "running" && rec.bridge_url) {
+      return { success: true, reprovisioned: false };
+    }
+
+    const latest = await agentSandboxesRepository.getLatestBackup(rec.id);
+    const provisionResult = await this.provision(agentId, orgId);
+    if (!provisionResult.success) {
+      return { success: false, reprovisioned: true, error: provisionResult.error };
+    }
+
+    logger.info("[agent-sandbox] Wake complete", {
+      agentId,
+      restoredBackupId: latest?.id,
+    });
+    return { success: true, reprovisioned: true, restoredBackupId: latest?.id };
   }
 
   /**

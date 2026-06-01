@@ -271,6 +271,8 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.13",
+    "@ai-sdk/google": "^3.0.75",
+    "@ai-sdk/openai": "^3.0.58",
     "@clack/prompts": "^1.0.0",
     "@elizaos/plugin-contacts": "workspace:*",
     "@elizaos/app-core": "workspace:*",

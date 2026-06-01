@@ -174,7 +174,7 @@ export type GitHubPrOp = "list" | "review";
  * and destructive actions surface a confirmation request distinctly.
  */
 export type GitHubActionResult<T = unknown> =
-  | { success: true; data: T }
+  | { success: true; data: T; text?: string }
   | { success: false; error: string }
   | { success: false; requiresConfirmation: true; preview: string };
 

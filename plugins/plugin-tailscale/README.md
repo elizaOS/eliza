@@ -7,17 +7,18 @@ Tailscale-backed implementations:
   `tailscale` CLI (`tailscale serve` for tailnet-internal HTTPS, `tailscale
 funnel` for public Internet exposure). The user must already be authenticated
   to a tailnet.
-- **Cloud backend (`CloudTailscaleService`)** — calls
-  `POST /v1/apis/tunnels/tailscale/auth-key` on Eliza Cloud to mint a scoped
+- **Cloud backend (`CloudTailscaleService`)** — POSTs to
+  `apis/tunnels/tailscale/auth-key` (relative to `ELIZAOS_CLOUD_BASE_URL`,
+  default `https://api.elizacloud.ai/api/v1`) on Eliza Cloud to mint a scoped
   ephemeral auth key for the configured `tag:eliza-tunnel` ACL, then runs
   `tailscale up --auth-key=...` followed by `tailscale serve`/`funnel` against
-  the local port. The cloud holds the Headscale API credential, charges the
-  user's organization a small on-demand credit debit for each provisioning, and
-  returns a generated public hostname.
+  the local port. The cloud holds the Headscale credential and returns a
+  `magicDnsName` the agent serves on. When the response includes a `billing`
+  payload it is retained and exposed via `getLastProvisioningBilling()`.
 
 Both backends register under `serviceType = "tunnel"` and implement the same
-`ITunnelService` shape, so consumers always go through
-`runtime.getService("tunnel")` and never reach for backend-specific APIs.
+`ITunnelService` shape, so consumers always go through `getTunnelService(runtime)`
+from `@elizaos/plugin-tunnel` and never reach for backend-specific APIs.
 
 > **Mutually exclusive with `@elizaos/plugin-ngrok`.** Both plugins register
 > under `serviceType = "tunnel"`. Enable only one at a time.
@@ -26,13 +27,11 @@ Both backends register under `serviceType = "tunnel"` and implement the same
 
 The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 
-| Value            | Behavior                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `local`          | Always register `LocalTailscaleService`.                                                                                                                                     |
-| `cloud`          | Always register `CloudTailscaleService`.                                                                                                                                     |
-| `auto` (default) | Register `CloudTailscaleService` when Eliza Cloud is connected (`ELIZAOS_CLOUD_API_KEY` set + `ELIZAOS_CLOUD_ENABLED=true`); otherwise fall back to `LocalTailscaleService`. |
-
-`isCloudConnected` from `@elizaos/cloud-routing` is the source of truth.
+| Value            | Behavior                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `local`          | Always register `LocalTailscaleService`.                                                                                          |
+| `cloud`          | Always register `CloudTailscaleService`.                                                                                          |
+| `auto` (default) | Register `CloudTailscaleService` when `isCloudConnected(runtime)` from `@elizaos/cloud-routing` returns true; otherwise `LocalTailscaleService`. |
 
 ## Settings
 
@@ -45,13 +44,12 @@ The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 | `TAILSCALE_DEFAULT_PORT`            | `3000`                             | Used when no port is extracted from the user message.                                                                   |
 | `TAILSCALE_AUTH_KEY_EXPIRY_SECONDS` | `3600`                             | Expiry hint passed to the cloud auth-key minter.                                                                        |
 | `ELIZAOS_CLOUD_API_KEY`             | —                                  | Required for the cloud backend.                                                                                         |
-| `ELIZAOS_CLOUD_BASE_URL`            | `https://www.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
-| `ELIZAOS_CLOUD_ENABLED`             | `false`                            | Required (truthy) for `auto` mode to pick the cloud backend.                                                            |
+| `ELIZAOS_CLOUD_BASE_URL`            | `https://api.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
 
-The cloud backend is not a subscription product. Each successful auth-key
-provisioning debits org credits once, using the Cloud Worker
-`TUNNEL_AUTH_KEY_COST_USD` setting, and Headscale failures are refunded by the
-Worker.
+Billing is owned by Eliza Cloud, not this plugin. The auth-key mint response
+may carry a `billing` object (`model: "on_demand"`, `unit`, `charged`,
+`amountUsd`, `subscription`); the plugin only records it for
+`getLastProvisioningBilling()`.
 
 ## Actions
 
@@ -62,21 +60,23 @@ operations go through the canonical `TUNNEL` action with
 
 ## Cloud backend wire format
 
-`POST /v1/apis/tunnels/tailscale/auth-key`:
+Request — `POST <ELIZAOS_CLOUD_BASE_URL>/apis/tunnels/tailscale/auth-key`
+(`Authorization: Bearer <ELIZAOS_CLOUD_API_KEY>`):
 
 ```json
 { "tags": ["tag:eliza-tunnel"], "expirySeconds": 3600 }
 ```
 
-Response:
+Response (`authKey`, `tailnet`, `magicDnsName` required; `loginServer`,
+`hostname`, `billing` optional):
 
 ```json
 {
-  "authKey": "tskey-auth-...",
+  "authKey": "hskey-auth-...",
   "tailnet": "https://headscale.elizacloud.ai",
   "loginServer": "https://headscale.elizacloud.ai",
-  "hostname": "eliza-orgpart-randomhex-expiry-signature",
-  "magicDnsName": "eliza-orgpart-randomhex-expiry-signature.tunnel.elizacloud.ai",
+  "hostname": "eliza-test-session",
+  "magicDnsName": "eliza-test-session.tunnel.elizacloud.ai",
   "billing": {
     "model": "on_demand",
     "unit": "tunnel_auth_key",
@@ -91,7 +91,7 @@ The plugin then runs locally, in this order:
 
 ```bash
 tailscale up --auth-key=<authKey> --login-server=<loginServer> --hostname=<hostname>
-tailscale serve --bg --https=443 localhost:<port>     # or `tailscale funnel <port>`
+tailscale serve --bg --https=443 localhost:<port>     # or `tailscale funnel --bg <port>`
 ```
 
 ## Development
@@ -102,7 +102,3 @@ bun run typecheck
 bun run lint
 bun run test
 ```
-
-## License
-
-MIT

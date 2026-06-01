@@ -6,6 +6,7 @@ import {
   type UiTheme,
   useMediaQuery,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   MessageCirclePlus,
   Monitor,
@@ -80,6 +81,7 @@ export const CompanionHeader = memo(function CompanionHeader(
   const shellOptions = [
     {
       view: "companion" as const,
+      agentId: "tab-companion",
       label: t("header.companionMode"),
       Icon: UserRound,
       onClick:
@@ -89,12 +91,14 @@ export const CompanionHeader = memo(function CompanionHeader(
     },
     {
       view: "character" as const,
+      agentId: "tab-character",
       label: t("header.characterMode"),
       Icon: PencilLine,
       onClick: activeView === "character" ? () => {} : onExitToCharacter,
     },
     {
       view: "settings" as const,
+      agentId: "tab-settings",
       label: "Companion settings",
       Icon: Settings,
       onClick:
@@ -102,6 +106,7 @@ export const CompanionHeader = memo(function CompanionHeader(
     },
     {
       view: "desktop" as const,
+      agentId: "tab-desktop",
       label: t("header.nativeMode"),
       Icon: isMobileViewport ? Smartphone : Monitor,
       onClick: onExitToDesktop,
@@ -132,8 +137,7 @@ export const CompanionHeader = memo(function CompanionHeader(
                 aria-label={t("aria.switchShellView")}
               >
                 <legend className="sr-only">{t("aria.switchShellView")}</legend>
-                {shellOptions.map(({ view, label, Icon, onClick }, index) => {
-                  const selected = view === activeView;
+                {shellOptions.map((option, index) => {
                   const edgeClass =
                     index === 0
                       ? "rounded-l-xl rounded-r-none"
@@ -141,31 +145,12 @@ export const CompanionHeader = memo(function CompanionHeader(
                         ? "rounded-l-none rounded-r-xl"
                         : "rounded-none";
                   return (
-                    <Button
-                      key={view}
-                      size="icon"
-                      onClick={onClick}
-                      onPointerDown={(event: React.PointerEvent) =>
-                        event.stopPropagation()
-                      }
-                      className={`h-11 min-h-touch min-w-touch px-3 transition-all duration-200 ${edgeClass} ${
-                        selected
-                          ? "border-[color:color-mix(in_srgb,var(--accent)_34%,var(--border))] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_20%,var(--card)),color-mix(in_srgb,var(--accent)_10%,var(--bg)))] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--accent)_22%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_20px_rgba(3,5,10,0.12)]"
-                          : "border border-transparent bg-transparent text-muted-strong hover:border-border/60 hover:bg-bg-hover/80 hover:text-txt"
-                      }`}
-                      style={{
-                        clipPath: "none",
-                        WebkitClipPath: "none",
-                        touchAction: "manipulation",
-                      }}
-                      aria-label={label}
-                      aria-pressed={selected}
-                      title={label}
-                      data-testid={`companion-shell-toggle-${view}`}
-                      data-no-camera-drag="true"
-                    >
-                      <Icon className="pointer-events-none h-4 w-4" />
-                    </Button>
+                    <CompanionShellToggleButton
+                      key={option.view}
+                      option={option}
+                      selected={option.view === activeView}
+                      edgeClass={edgeClass}
+                    />
                   );
                 })}
               </fieldset>
@@ -180,75 +165,39 @@ export const CompanionHeader = memo(function CompanionHeader(
               >
                 <div className="inline-flex items-center gap-2">
                   {onToggleVoiceMute ? (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      aria-label={voiceToggleLabel}
-                      aria-pressed={!chatAgentVoiceMuted}
-                      title={voiceToggleLabel}
-                      className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt pointer-events-auto text-sm leading-none"
+                    <CompanionHeaderIconButton
+                      agentId="action-toggle-voice"
+                      label={voiceToggleLabel}
+                      ariaPressed={!chatAgentVoiceMuted}
                       onClick={onToggleVoiceMute}
-                      onPointerDown={(event: React.PointerEvent) =>
-                        event.stopPropagation()
-                      }
-                      style={{
-                        clipPath: "none",
-                        WebkitClipPath: "none",
-                        touchAction: "manipulation",
-                      }}
-                      data-testid="companion-voice-toggle"
-                      data-no-camera-drag="true"
+                      testId="companion-voice-toggle"
                     >
                       {chatAgentVoiceMuted ? (
                         <VolumeX className="pointer-events-none h-4 w-4 shrink-0" />
                       ) : (
                         <Volume2 className="pointer-events-none h-4 w-4 shrink-0" />
                       )}
-                    </Button>
+                    </CompanionHeaderIconButton>
                   ) : null}
                   {onToggleEmotePicker ? (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      aria-label="Open emotes"
-                      title="Open emotes"
-                      className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt pointer-events-auto text-sm leading-none"
+                    <CompanionHeaderIconButton
+                      agentId="action-toggle-emotes"
+                      label="Open emotes"
                       onClick={onToggleEmotePicker}
-                      onPointerDown={(event: React.PointerEvent) =>
-                        event.stopPropagation()
-                      }
-                      style={{
-                        clipPath: "none",
-                        WebkitClipPath: "none",
-                        touchAction: "manipulation",
-                      }}
-                      data-testid="companion-emote-toggle"
-                      data-no-camera-drag="true"
+                      testId="companion-emote-toggle"
                     >
                       <Sparkles className="pointer-events-none h-4 w-4 shrink-0" />
-                    </Button>
+                    </CompanionHeaderIconButton>
                   ) : null}
                   {onNewChat ? (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      aria-label={t("companion.newChat")}
-                      title={t("companion.newChat")}
-                      className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt pointer-events-auto text-sm leading-none"
+                    <CompanionHeaderIconButton
+                      agentId="action-new-chat"
+                      label={t("companion.newChat")}
                       onClick={onNewChat}
-                      onPointerDown={(event: React.PointerEvent) =>
-                        event.stopPropagation()
-                      }
-                      style={{
-                        clipPath: "none",
-                        WebkitClipPath: "none",
-                        touchAction: "manipulation",
-                      }}
-                      data-testid="companion-new-chat"
-                      data-no-camera-drag="true"
+                      testId="companion-new-chat"
                     >
                       <MessageCirclePlus className="pointer-events-none h-4 w-4 shrink-0" />
-                    </Button>
+                    </CompanionHeaderIconButton>
                   ) : null}
                 </div>
               </div>
@@ -285,3 +234,108 @@ export const CompanionHeader = memo(function CompanionHeader(
     </header>
   );
 });
+
+interface CompanionShellOption {
+  view: "companion" | "character" | "settings" | "desktop";
+  agentId: string;
+  label: string;
+  Icon: (props: { className?: string }) => ReactNode;
+  onClick: () => void;
+}
+
+const CompanionShellToggleButton = memo(function CompanionShellToggleButton({
+  option,
+  selected,
+  edgeClass,
+}: {
+  option: CompanionShellOption;
+  selected: boolean;
+  edgeClass: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: option.agentId,
+    role: "tab",
+    label: option.label,
+    group: "companion-shell-views",
+    status: selected ? "active" : "inactive",
+    description: `Switch the companion overlay to ${option.label}`,
+  });
+  const { Icon } = option;
+  return (
+    <Button
+      ref={ref}
+      size="icon"
+      onClick={option.onClick}
+      onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+      className={`h-11 min-h-touch min-w-touch px-3 transition-all duration-200 ${edgeClass} ${
+        selected
+          ? "border-[color:color-mix(in_srgb,var(--accent)_34%,var(--border))] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_20%,var(--card)),color-mix(in_srgb,var(--accent)_10%,var(--bg)))] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--accent)_22%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_20px_rgba(3,5,10,0.12)]"
+          : "border border-transparent bg-transparent text-muted-strong hover:border-border/60 hover:bg-bg-hover/80 hover:text-txt"
+      }`}
+      style={{
+        clipPath: "none",
+        WebkitClipPath: "none",
+        touchAction: "manipulation",
+      }}
+      aria-label={option.label}
+      aria-pressed={selected}
+      aria-current={selected ? "true" : undefined}
+      title={option.label}
+      data-testid={`companion-shell-toggle-${option.view}`}
+      data-no-camera-drag="true"
+      {...agentProps}
+    >
+      <Icon className="pointer-events-none h-4 w-4" />
+    </Button>
+  );
+});
+
+const COMPANION_HEADER_ICON_BUTTON_CLASS =
+  "inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt pointer-events-auto text-sm leading-none";
+
+function CompanionHeaderIconButton({
+  agentId,
+  label,
+  ariaPressed,
+  onClick,
+  testId,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  ariaPressed?: boolean;
+  onClick: () => void;
+  testId: string;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "companion-header-actions",
+    description: label,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="icon"
+      variant="outline"
+      aria-label={label}
+      aria-pressed={ariaPressed}
+      title={label}
+      className={COMPANION_HEADER_ICON_BUTTON_CLASS}
+      onClick={onClick}
+      onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+      style={{
+        clipPath: "none",
+        WebkitClipPath: "none",
+        touchAction: "manipulation",
+      }}
+      data-testid={testId}
+      data-no-camera-drag="true"
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}

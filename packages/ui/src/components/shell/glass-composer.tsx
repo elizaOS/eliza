@@ -19,7 +19,7 @@ export const GLASS_COMPOSER_CLASS =
 const BTN_RECT =
   "M6 0H30A6 6 0 0 1 36 6V30A6 6 0 0 1 30 36H6A6 6 0 0 1 0 30V6A6 6 0 0 1 6 0Z";
 // Up arrow — shaft + head, pointing up (send).
-const SEND_GLYPH = "M18 8L27 18L21 18L21 28L15 28L15 18L9 18Z";
+const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 // Five-bar waveform — tallest in the center, like OpenAI's voice indicator.
 const MIC_GLYPH =
   "M6 14H9V22H6Z" +

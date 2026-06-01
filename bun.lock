@@ -93,6 +93,8 @@
       },
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.13",
+        "@ai-sdk/google": "^3.0.75",
+        "@ai-sdk/openai": "^3.0.58",
         "@clack/prompts": "^1.0.0",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -2840,6 +2842,7 @@
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -2968,6 +2971,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.16.0",
         "react": "^19.0.0",
       },
