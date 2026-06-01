@@ -54,7 +54,7 @@ export function isApprovalMode(value: string): value is ApprovalMode {
 }
 
 export class ComputerUseApprovalManager {
-  private mode: ApprovalMode = "full_control";
+  private mode: ApprovalMode = "smart_approve";
   private pending = new Map<string, PendingApprovalRecord>();
   private listeners = new Set<ApprovalListener>();
   private readonly configPath = path.join(

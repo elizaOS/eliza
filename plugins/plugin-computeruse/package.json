@@ -74,7 +74,7 @@
         "type": "string",
         "description": "Approval mode for computer-use commands: full_control auto-approves everything, smart_approve auto-approves safe read-only commands, approve_all requires approval for every command, off denies all commands.",
         "required": false,
-        "default": "full_control",
+        "default": "smart_approve",
         "enum": [
           "full_control",
           "smart_approve",
