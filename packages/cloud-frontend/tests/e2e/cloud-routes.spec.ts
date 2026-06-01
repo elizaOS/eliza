@@ -165,6 +165,7 @@ const publicRoutes = [
 const dashboardRoutes = [
   "/dashboard",
   "/dashboard/account",
+  "/dashboard/security",
   "/dashboard/settings",
   "/dashboard/billing",
   "/dashboard/billing/success",
@@ -186,6 +187,7 @@ const dashboardRoutes = [
   "/dashboard/admin",
   "/dashboard/admin/infrastructure",
   "/dashboard/admin/metrics",
+  "/dashboard/admin/rpc-status",
   "/dashboard/admin/redemptions",
 ];
 
@@ -214,10 +216,493 @@ const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [
 
 async function installApiMocks(page: Page) {
   await page.route(
-    (url) => url.pathname.startsWith("/api/"),
+    (url) =>
+      url.pathname.startsWith("/api/") || url.pathname === "/admin/rpc-status",
     async (route) => {
       const url = new URL(route.request().url());
       const path = url.pathname;
+
+      if (path === "/admin/rpc-status") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              evm: [
+                {
+                  network: "ethereum",
+                  chainId: 1,
+                  rpcUrl: "https://rpc.example.test/ethereum",
+                  rpcSource: "test",
+                  reachable: true,
+                  latencyMs: 12,
+                  latestBlock: "123",
+                  hotWalletAddress:
+                    "0x0000000000000000000000000000000000000001",
+                  hotWalletBalance: 100,
+                  error: null,
+                },
+                {
+                  network: "base",
+                  chainId: 8453,
+                  rpcUrl: "https://rpc.example.test/base",
+                  rpcSource: "test",
+                  reachable: true,
+                  latencyMs: 9,
+                  latestBlock: "456",
+                  hotWalletAddress:
+                    "0x0000000000000000000000000000000000000001",
+                  hotWalletBalance: 100,
+                  error: null,
+                },
+                {
+                  network: "bnb",
+                  chainId: 56,
+                  rpcUrl: "https://rpc.example.test/bnb",
+                  rpcSource: "test",
+                  reachable: true,
+                  latencyMs: 10,
+                  latestBlock: "789",
+                  hotWalletAddress:
+                    "0x0000000000000000000000000000000000000001",
+                  hotWalletBalance: 100,
+                  error: null,
+                },
+              ],
+              solana: {
+                rpcUrl: "https://rpc.example.test/solana",
+                configured: true,
+              },
+              allReachable: true,
+              hotWalletAddress: "0x0000000000000000000000000000000000000001",
+              checkedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/api-keys") {
+        return route.fulfill({
+          json: { keys: [] },
+        });
+      }
+
+      if (
+        path === "/api/credits/balance" ||
+        path === "/api/v1/credits/balance"
+      ) {
+        return route.fulfill({
+          json: { balance: 100, currency: "USD" },
+        });
+      }
+
+      if (path === "/api/invoices/list") {
+        return route.fulfill({
+          json: { invoices: [] },
+        });
+      }
+
+      if (path === "/api/v1/billing/settings") {
+        return route.fulfill({
+          json: {
+            settings: {
+              payAsYouGoFromEarnings: false,
+              autoTopUp: {
+                enabled: false,
+                amount: 25,
+                threshold: 5,
+                hasPaymentMethod: false,
+              },
+              limits: {
+                minAmount: 1,
+                maxAmount: 10_000,
+                minThreshold: 1,
+                maxThreshold: 10_000,
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/crypto/status") {
+        return route.fulfill({
+          json: {
+            enabled: true,
+            directWallet: { networks: [] },
+          },
+        });
+      }
+
+      if (path === "/api/v1/user") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "22222222-2222-4222-8222-222222222222",
+              email: "test@example.com",
+              email_verified: true,
+              wallet_address: "0x0000000000000000000000000000000000000001",
+              wallet_chain_type: "evm",
+              wallet_verified: true,
+              name: "Test User",
+              avatar: null,
+              organization_id: "org_1",
+              role: "owner",
+              steward_user_id: "steward_1",
+              telegram_id: null,
+              telegram_username: null,
+              telegram_first_name: null,
+              telegram_photo_url: null,
+              discord_id: null,
+              discord_username: null,
+              discord_global_name: null,
+              discord_avatar_url: null,
+              whatsapp_id: null,
+              whatsapp_name: null,
+              phone_number: null,
+              phone_verified: false,
+              is_anonymous: false,
+              anonymous_session_id: null,
+              expires_at: null,
+              nickname: "Tester",
+              work_function: "engineering",
+              preferences: null,
+              email_notifications: true,
+              response_notifications: true,
+              is_active: true,
+              created_at: now,
+              updated_at: now,
+              organization: {
+                id: "org_1",
+                name: "Eliza QA",
+                slug: "eliza-qa",
+                credit_balance: "100.00",
+                billing_email: "billing@example.com",
+                is_active: true,
+                created_at: now,
+                updated_at: now,
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/my-agents/characters") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              characters: [],
+              pagination: {
+                page: 1,
+                limit: 20,
+                totalPages: 0,
+                totalCount: 0,
+                hasMore: false,
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/my-agents/saved") {
+        return route.fulfill({
+          json: { success: true, data: { agents: [] } },
+        });
+      }
+
+      if (path === "/api/my-agents/claim-affiliate-characters") {
+        return route.fulfill({
+          json: { success: true, claimed: 0 },
+        });
+      }
+
+      if (path === "/api/invoices/inv_1") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            invoice: {
+              id: "inv_1",
+              stripeInvoiceId: "stripe_inv_1",
+              stripeCustomerId: "stripe_customer_1",
+              stripePaymentIntentId: null,
+              amountDue: 1000,
+              amountPaid: 1000,
+              currency: "usd",
+              status: "paid",
+              invoiceType: "credits",
+              invoiceNumber: "INV-1",
+              invoicePdf: null,
+              hostedInvoiceUrl: null,
+              creditsAdded: 10,
+              metadata: {},
+              createdAt: now,
+              updatedAt: now,
+              dueDate: now,
+              paidAt: now,
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/cloud-observability") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              generatedAt: new Date().toISOString(),
+              thresholds: {
+                slowRequestMs: 1000,
+                slowDbMs: 100,
+                dbBurstCount: 10,
+              },
+              requests: [],
+              slowRequests: [],
+              slowDb: [],
+              burstyRequests: [],
+              duplicateReadRequests: [],
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/warm-pool") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              enabled: true,
+              minPoolSize: 1,
+              maxPoolSize: 3,
+              image: "elizaos/agent:test",
+              size: {
+                ready: 1,
+                provisioning: 0,
+                onCurrentImage: 1,
+                stale: 0,
+              },
+              forecast: {
+                bucketsHourly: [0, 1, 0, 2],
+                predictedRate: 0.75,
+                targetPoolSize: 1,
+              },
+              policy: {
+                forecastWindowHours: 4,
+                emaAlpha: 0.5,
+                idleScaleDownMs: 300_000,
+                replenishBurstLimit: 2,
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/docker-nodes") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              nodes: [
+                {
+                  id: "node_1",
+                  nodeId: "node_1",
+                  hostname: "node-1.example.test",
+                  sshPort: 22,
+                  sshUser: "root",
+                  capacity: 4,
+                  allocatedCount: 1,
+                  availableSlots: 3,
+                  enabled: true,
+                  status: "healthy",
+                  lastHealthCheck: now,
+                  metadata: null,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ],
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/infrastructure") {
+        const now = new Date().toISOString();
+        const container = {
+          id: "container_1",
+          sandboxId: "agent_1",
+          agentName: "Test Agent",
+          organizationId: "org_1",
+          userId: "user_1",
+          nodeId: "node_1",
+          containerName: "eliza-agent-1",
+          dbStatus: "running",
+          liveHealth: "healthy",
+          liveHealthSeverity: "info",
+          liveHealthReason: "ok",
+          runtimeState: "running",
+          runtimeStatus: "Up 5 minutes",
+          runtimePresent: true,
+          dockerImage: "elizaos/agent:test",
+          bridgePort: 3000,
+          webUiPort: 3001,
+          headscaleIp: "100.64.0.10",
+          bridgeUrl: "http://100.64.0.10:3000",
+          healthUrl: "http://100.64.0.10:3000/health",
+          lastHeartbeatAt: now,
+          heartbeatAgeMinutes: 1,
+          errorMessage: null,
+          errorCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              refreshedAt: now,
+              summary: {
+                totalNodes: 1,
+                enabledNodes: 1,
+                healthyNodes: 1,
+                degradedNodes: 0,
+                offlineNodes: 0,
+                unknownNodes: 0,
+                totalCapacity: 4,
+                allocatedSlots: 1,
+                availableSlots: 3,
+                utilizationPct: 25,
+                totalContainers: 1,
+                runningContainers: 1,
+                stoppedContainers: 0,
+                errorContainers: 0,
+                healthyContainers: 1,
+                attentionContainers: 0,
+                failedContainers: 0,
+                missingContainers: 0,
+                staleContainers: 0,
+              },
+              incidents: [],
+              nodes: [
+                {
+                  id: "node_1",
+                  nodeId: "node_1",
+                  hostname: "node-1.example.test",
+                  sshPort: 22,
+                  sshUser: "root",
+                  capacity: 4,
+                  allocatedCount: 1,
+                  availableSlots: 3,
+                  enabled: true,
+                  status: "healthy",
+                  lastHealthCheck: now,
+                  utilizationPct: 25,
+                  runtime: {
+                    reachable: true,
+                    checkedAt: now,
+                    sshLatencyMs: 12,
+                    dockerVersion: "25.0.0",
+                    diskUsedPercent: 40,
+                    memoryUsedPercent: 55,
+                    loadAverage: "0.10 0.20 0.30",
+                    actualContainerCount: 1,
+                    runningContainerCount: 1,
+                    containers: [
+                      {
+                        name: "eliza-agent-1",
+                        id: "container_1",
+                        image: "elizaos/agent:test",
+                        state: "running",
+                        status: "Up 5 minutes",
+                        runningFor: "5 minutes",
+                        health: "healthy",
+                      },
+                    ],
+                    error: null,
+                  },
+                  allocationDrift: 0,
+                  alerts: [],
+                  containers: [container],
+                  ghostContainers: [],
+                  metadata: null,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ],
+              containers: [container],
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/headscale") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              serverConfigured: true,
+              user: "eliza",
+              vpnNodes: [],
+              summary: { total: 0, online: 0, offline: 0 },
+              queriedAt: now,
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/admin/metrics") {
+        const today = new Date().toISOString().slice(0, 10);
+        return route.fulfill({
+          json: {
+            dau: 1,
+            wau: 1,
+            mau: 1,
+            newSignupsToday: 1,
+            newSignups7d: 1,
+            avgMessagesPerUser: 1,
+            platformBreakdown: { web: 1 },
+            platformDistribution: [{ key: "web", count: 1, percent: 100 }],
+            oauthRate: {
+              total_users: 1,
+              connected_users: 1,
+              rate: 1,
+              ratePercent: 100,
+              byService: { github: 1 },
+            },
+            dailyTrend: [
+              {
+                date: today,
+                platform: null,
+                dau: 1,
+                new_signups: 1,
+                total_messages: 1,
+                messages_per_user: "1",
+              },
+            ],
+            retentionCohorts: [
+              {
+                cohort_date: today,
+                platform: null,
+                cohort_size: 1,
+                d1_retained: 1,
+                d7_retained: 1,
+                d30_retained: 1,
+              },
+            ],
+            retentionRates: [
+              {
+                cohortDate: today,
+                cohortSize: 1,
+                d1: 100,
+                d7: 100,
+                d30: 100,
+              },
+            ],
+          },
+        });
+      }
 
       if (path.includes("/approval-requests/")) {
         return route.fulfill({
@@ -633,10 +1118,15 @@ test.beforeEach(async ({ page }) => {
 for (const route of publicRoutes) {
   test(`public route renders: ${route}`, async ({ page }) => {
     const captured = attachFailureCollectors(page);
-    // networkidle so lazy route chunks finish loading before we sample the
-    // page title (otherwise sub-pages still on the Suspense fallback show
-    // the global RootLayout <title> and trip the homepage-leak assertion).
-    await page.goto(route, { waitUntil: "networkidle" });
+    const isSandboxProxy = route === "/sandbox-proxy";
+    // networkidle so lazy route chunks finish loading before title checks; the
+    // proxy page has no async route title and can wait for its status text.
+    await page.goto(route, {
+      waitUntil: isSandboxProxy ? "domcontentloaded" : "networkidle",
+    });
+    if (isSandboxProxy) {
+      await expect(page.getByText("Eliza Sandbox Proxy Active")).toBeVisible();
+    }
     await expect(page.locator("body")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /^Page Not Found$/i }),
@@ -672,7 +1162,8 @@ for (const route of dashboardRoutes) {
   test(`dashboard route renders: ${route}`, async ({ page }) => {
     await setTestAuth(page);
     const captured = attachFailureCollectors(page);
-    await page.goto(route);
+    await page.goto(route, { waitUntil: "networkidle" });
+    await page.waitForTimeout(250);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
     await expect(

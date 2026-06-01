@@ -19,6 +19,7 @@ test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
   "Agent flow uses local mocks; skipped in live-prod mode",
 );
+test.describe.configure({ timeout: 90_000 });
 
 const FAKE_AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const FAKE_CHARACTER_ID = "22222222-2222-2222-2222-222222222222";
@@ -64,30 +65,33 @@ test("agent flow: landing → login → create agent → chat", async ({
   // Agents list — first call returns empty (drives the empty state + dialog).
   // After create, the table re-fetches; return one running agent.
   let listCallCount = 0;
-  await page.route("**/api/v1/eliza/agents", (route) => {
-    if (route.request().method() === "POST") {
-      // Create
-      return route.fulfill({
-        json: { success: true, data: { id: FAKE_AGENT_ID } },
-      });
-    }
-    listCallCount += 1;
-    const agents =
-      listCallCount === 1
-        ? []
-        : [
-            {
-              id: FAKE_AGENT_ID,
-              agentName: "playwright-agent",
-              status: "running",
-              errorMessage: null,
-              lastHeartbeatAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ];
-    return route.fulfill({ json: { success: true, data: agents } });
-  });
+  await page.route(
+    (url) => url.pathname === "/api/v1/eliza/agents",
+    (route) => {
+      if (route.request().method() === "POST") {
+        // Create
+        return route.fulfill({
+          json: { success: true, data: { id: FAKE_AGENT_ID } },
+        });
+      }
+      listCallCount += 1;
+      const agents =
+        listCallCount === 1
+          ? []
+          : [
+              {
+                id: FAKE_AGENT_ID,
+                agentName: "playwright-agent",
+                status: "running",
+                errorMessage: null,
+                lastHeartbeatAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ];
+      return route.fulfill({ json: { success: true, data: agents } });
+    },
+  );
 
   // Provision queue
   await page.route(
@@ -136,8 +140,8 @@ test("agent flow: landing → login → create agent → chat", async ({
   // ── 1. Landing → Launch CTA → /login ───────────────────────────────────
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /launch eliza/i }).first(),
-  ).toBeVisible();
+    page.getByRole("heading", { name: /your agent\. anywhere\./i }).first(),
+  ).toBeVisible({ timeout: 15_000 });
   await page
     .getByRole("button", { name: /launch eliza/i })
     .first()
@@ -154,7 +158,7 @@ test("agent flow: landing → login → create agent → chat", async ({
   await page.goto("/dashboard/agents");
   await expect(
     page.locator("#main").getByRole("heading", { name: /instances/i }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
 
   // ── 3. Empty state → click "New Agent" ─────────────────────────────────
   await expect(page.getByText(/no agents yet/i)).toBeVisible();

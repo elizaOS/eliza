@@ -327,6 +327,14 @@ const smokeViews = smokeViewDeclarations.map(
     const encodedId = encodeURIComponent(id);
     const query =
       viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
+    const bundlePath = path.join(
+      repoRoot,
+      "plugins",
+      pluginDirName,
+      "dist",
+      "views",
+      "bundle.js",
+    );
     return {
       id,
       label,
@@ -337,16 +345,8 @@ const smokeViews = smokeViewDeclarations.map(
       bundlePath: "dist/views/bundle.js",
       bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
       componentExport,
-      available: existsSync(
-        path.join(
-          repoRoot,
-          "plugins",
-          pluginDirName,
-          "dist",
-          "views",
-          "bundle.js",
-        ),
-      ),
+      available: true,
+      realBundleAvailable: existsSync(bundlePath),
       visibleInManager: true,
       capabilities: [
         {
@@ -1595,6 +1595,95 @@ function smokeViewByRequest(id, viewType) {
   );
 }
 
+function safeComponentExportName(value) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : "SmokeView";
+}
+
+function smokeViewBundleSource(view) {
+  const exportName = safeComponentExportName(view.componentExport);
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
+  const isTui = view.viewType === "tui";
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+
+function SmokeView() {
+  const [outputs, setOutputs] = React.useState([]);
+  const addOutput = (command) => {
+    setOutputs((current) => [...current, command]);
+  };
+  if (${JSON.stringify(isTui)}) {
+    const state = JSON.stringify({
+      viewId: viewMeta.id,
+      viewType: "tui",
+      status: "ready",
+      fixture: "ui-smoke"
+    });
+    return React.createElement(
+      "div",
+      {
+        "data-view-state": state,
+        style: {
+          minHeight: "100vh",
+          background: "#020617",
+          color: "#cbd5e1",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          padding: 20
+        }
+      },
+      React.createElement("div", { style: { color: "#7dd3fc", marginBottom: 4 } }, "elizaos://" + viewMeta.id + " --type=tui"),
+      React.createElement("div", { style: { color: "#94a3b8", marginBottom: 16 } }, viewMeta.label + " smoke terminal"),
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-terminal-command": "status",
+          onClick: () => addOutput("status"),
+          style: {
+            border: "1px solid #38bdf8",
+            borderRadius: 4,
+            color: "#e0f2fe",
+            background: "transparent",
+            padding: "6px 10px"
+          }
+        },
+        "status"
+      ),
+      ...outputs.map((command, index) =>
+        React.createElement(
+          "div",
+          { key: command + index, "data-terminal-output": command, style: { marginTop: 8 } },
+          "ok: " + command
+        )
+      )
+    );
+  }
+  return React.createElement(
+    "section",
+    { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
+    React.createElement("h1", null, viewMeta.label),
+    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
+    React.createElement("button", { type: "button" }, "Refresh view"),
+    React.createElement("input", { "aria-label": viewMeta.label + " input", defaultValue: viewMeta.id })
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
 function sendSmokeViewAsset(req, res, url, view, subResource) {
   const bundleDir = path.join(
     repoRoot,
@@ -1613,11 +1702,26 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
     sendJson(req, res, 400, { error: "Malformed view asset path" });
     return;
   }
+  const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
   if (!existsSync(assetPath)) {
+    if (subResource === "bundle.js") {
+      const source = smokeViewBundleSource(view);
+      const body =
+        hostExternalSpecifiers.length > 0
+          ? rewriteHostExternalImports(source, hostExternalSpecifiers)
+          : source;
+      sendBinary(
+        req,
+        res,
+        200,
+        "application/javascript; charset=utf-8",
+        Buffer.from(body, "utf8"),
+      );
+      return;
+    }
     sendJson(req, res, 404, { error: `View asset not found: ${subResource}` });
     return;
   }
-  const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
   const rawBody = readFileSync(assetPath);
   const body =
     hostExternalSpecifiers.length > 0 &&

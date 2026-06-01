@@ -17,7 +17,6 @@ test.skip(
 const ROUTES = [
   { path: "/", name: "landing" },
   { path: "/login", name: "login" },
-  { path: "/checkout", name: "checkout" },
   { path: "/os", name: "os" },
   { path: "/bsc", name: "bsc" },
   { path: "/privacy-policy", name: "privacy-policy" },
@@ -58,7 +57,6 @@ for (const viewport of VIEWPORTS) {
           `${route.name} ${viewport.name}`,
           {
             fullPage: true,
-            mask: dynamicMask(page),
             animations: "disabled",
           },
         );

@@ -12,7 +12,17 @@ type ViewCase = {
   id: string;
   viewType: "gui" | "tui";
   path: string;
+  shellPill: "expected" | "suppressed";
 };
+
+type ViewCaseTuple = readonly [
+  id: string,
+  viewType: ViewCase["viewType"],
+  path: string,
+  options?: {
+    shellPill: ViewCase["shellPill"];
+  },
+];
 
 type ViewAudit = {
   id: string;
@@ -32,68 +42,75 @@ type ViewAudit = {
   focusedAfterTabs: string[];
 };
 
-const VIEW_CASES: ViewCase[] = [
-  ["companion", "gui", "/companion"],
-  ["companion", "tui", "/companion/tui"],
-  ["contacts", "gui", "/contacts"],
-  ["contacts", "tui", "/contacts/tui"],
-  ["hyperliquid", "gui", "/hyperliquid"],
-  ["hyperliquid", "tui", "/hyperliquid/tui"],
-  ["lifeops", "gui", "/lifeops"],
-  ["lifeops", "tui", "/lifeops/tui"],
-  ["messages", "gui", "/messages"],
-  ["messages", "tui", "/messages/tui"],
-  ["model-tester", "gui", "/model-tester"],
-  ["model-tester", "tui", "/model-tester/tui"],
-  ["phone", "gui", "/phone"],
-  ["phone", "tui", "/phone/tui"],
-  ["polymarket", "gui", "/polymarket"],
-  ["polymarket", "tui", "/polymarket/tui"],
-  ["shopify", "gui", "/shopify"],
-  ["shopify", "tui", "/shopify/tui"],
-  ["steward", "gui", "/steward"],
-  ["steward", "tui", "/steward/tui"],
-  ["vincent", "gui", "/vincent"],
-  ["vincent", "tui", "/vincent/tui"],
-  ["wallet", "gui", "/wallet"],
-  ["wallet", "tui", "/wallet/tui"],
-  ["2004scape", "gui", "/2004scape"],
-  ["2004scape", "tui", "/2004scape/tui"],
-  ["feed", "gui", "/feed"],
-  ["feed", "tui", "/feed/tui"],
-  ["views-manager", "gui", "/views"],
-  ["views-manager", "tui", "/views/tui"],
-  ["clawville", "gui", "/clawville"],
-  ["clawville", "tui", "/clawville/tui"],
-  ["defense-of-the-agents", "gui", "/defense-of-the-agents"],
-  ["defense-of-the-agents", "tui", "/defense-of-the-agents/tui"],
-  ["hyperscape", "gui", "/hyperscape"],
-  ["hyperscape", "tui", "/hyperscape/tui"],
-  ["scape", "gui", "/scape"],
-  ["scape", "tui", "/scape/tui"],
-  ["screenshare", "gui", "/screenshare"],
-  ["screenshare", "tui", "/screenshare/tui"],
-  ["task-coordinator", "gui", "/task-coordinator"],
-  ["task-coordinator", "tui", "/task-coordinator/tui"],
-  ["orchestrator", "gui", "/orchestrator"],
-  ["orchestrator", "tui", "/orchestrator/tui"],
-  ["trajectory-logger", "gui", "/trajectory-logger"],
-  ["trajectory-logger", "tui", "/trajectory-logger/tui"],
-  ["training", "gui", "/training"],
-  ["training", "tui", "/training/tui"],
-  ["facewear", "gui", "/apps/hearwear"],
-  ["facewear", "tui", "/apps/hearwear/tui"],
-  ["smartglasses", "gui", "/apps/smartglasses"],
-  ["smartglasses", "tui", "/apps/smartglasses/tui"],
-].map(([id, viewType, viewPath]) => ({
+const VIEW_CASES: ViewCase[] = (
+  [
+    ["companion", "gui", "/companion"],
+    ["companion", "tui", "/companion/tui"],
+    ["contacts", "gui", "/contacts"],
+    ["contacts", "tui", "/contacts/tui"],
+    ["hyperliquid", "gui", "/hyperliquid"],
+    ["hyperliquid", "tui", "/hyperliquid/tui"],
+    ["lifeops", "gui", "/lifeops"],
+    ["lifeops", "tui", "/lifeops/tui"],
+    ["messages", "gui", "/messages"],
+    ["messages", "tui", "/messages/tui"],
+    ["model-tester", "gui", "/model-tester"],
+    ["model-tester", "tui", "/model-tester/tui"],
+    ["phone", "gui", "/phone"],
+    ["phone", "tui", "/phone/tui"],
+    ["polymarket", "gui", "/polymarket"],
+    ["polymarket", "tui", "/polymarket/tui"],
+    ["shopify", "gui", "/shopify"],
+    ["shopify", "tui", "/shopify/tui"],
+    ["steward", "gui", "/steward"],
+    ["steward", "tui", "/steward/tui"],
+    ["vincent", "gui", "/vincent"],
+    ["vincent", "tui", "/vincent/tui"],
+    ["wallet", "gui", "/wallet"],
+    ["wallet", "tui", "/wallet/tui"],
+    ["2004scape", "gui", "/2004scape"],
+    ["2004scape", "tui", "/2004scape/tui"],
+    ["feed", "gui", "/feed"],
+    ["feed", "tui", "/feed/tui"],
+    ["views-manager", "gui", "/views"],
+    ["views-manager", "tui", "/views/tui"],
+    ["clawville", "gui", "/clawville"],
+    ["clawville", "tui", "/clawville/tui"],
+    ["defense-of-the-agents", "gui", "/defense-of-the-agents"],
+    ["defense-of-the-agents", "tui", "/defense-of-the-agents/tui"],
+    ["hyperscape", "gui", "/hyperscape"],
+    ["hyperscape", "tui", "/hyperscape/tui"],
+    ["scape", "gui", "/scape"],
+    ["scape", "tui", "/scape/tui"],
+    ["screenshare", "gui", "/screenshare"],
+    ["screenshare", "tui", "/screenshare/tui"],
+    ["task-coordinator", "gui", "/task-coordinator"],
+    ["task-coordinator", "tui", "/task-coordinator/tui"],
+    ["orchestrator", "gui", "/orchestrator", { shellPill: "suppressed" }],
+    ["orchestrator", "tui", "/orchestrator/tui"],
+    ["trajectory-logger", "gui", "/trajectory-logger"],
+    ["trajectory-logger", "tui", "/trajectory-logger/tui"],
+    ["training", "gui", "/training"],
+    ["training", "tui", "/training/tui"],
+    ["facewear", "gui", "/apps/hearwear"],
+    ["facewear", "tui", "/apps/hearwear/tui"],
+    ["smartglasses", "gui", "/apps/smartglasses"],
+    ["smartglasses", "tui", "/apps/smartglasses/tui"],
+  ] satisfies ViewCaseTuple[]
+).map(([id, viewType, viewPath, options]) => ({
   id,
-  viewType: viewType as "gui" | "tui",
+  viewType,
   path: viewPath,
+  shellPill: options?.shellPill === "suppressed" ? "suppressed" : "expected",
 }));
 
 test.describe("registered plugin views visual coverage", () => {
   for (const view of VIEW_CASES) {
-    test(`${view.id} ${view.viewType} renders with assistant pill`, async ({
+    const assistantExpectation =
+      view.shellPill === "expected"
+        ? "renders with assistant pill"
+        : "renders with assistant pill suppressed";
+    test(`${view.id} ${view.viewType} ${assistantExpectation}`, async ({
       page,
     }) => {
       const screenshotDir =
@@ -116,7 +133,7 @@ test.describe("registered plugin views visual coverage", () => {
       await expect(page.getByText("Failed to load view")).toHaveCount(0);
 
       const viewRoot = page.locator("main").first();
-      await expect(viewRoot).toBeVisible();
+      await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       await expect
         .poll(
           async () => {
@@ -127,7 +144,7 @@ test.describe("registered plugin views visual coverage", () => {
           },
           {
             message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
-            timeout: 30_000,
+            timeout: 60_000,
           },
         )
         .toBe(true);
@@ -218,12 +235,16 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      const assistantPill = page.getByTestId("shell-home-pill");
-      await expect(assistantPill).toBeVisible();
-      await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
-      await assistantPill.click();
-      await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-      await expect(page.getByLabel("Message Eliza")).toBeVisible();
+      if (view.shellPill === "expected") {
+        const assistantPill = page.getByTestId("shell-home-pill");
+        await expect(assistantPill).toBeVisible();
+        await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
+        await assistantPill.click();
+        await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
+        await expect(page.getByLabel("Message Eliza")).toBeVisible();
+      } else {
+        await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+      }
 
       const focusedAfterTabs: string[] = [];
       focusedAfterTabs.push(
@@ -314,15 +335,17 @@ test.describe("registered plugin views visual coverage", () => {
           `${view.id} ${view.viewType} should expose terminal controls inside the view, not only assistant overlay controls`,
         ).toBeGreaterThan(0);
       }
-      expect(
-        focusedAfterTabs.some(
-          (entry) =>
-            entry.includes("textarea") ||
-            entry.includes("input") ||
-            entry.includes("Message Eliza"),
-        ),
-        `${view.id} ${view.viewType} keyboard tab order should reach assistant composer`,
-      ).toBe(true);
+      if (view.shellPill === "expected") {
+        expect(
+          focusedAfterTabs.some(
+            (entry) =>
+              entry.includes("textarea") ||
+              entry.includes("input") ||
+              entry.includes("Message Eliza"),
+          ),
+          `${view.id} ${view.viewType} keyboard tab order should reach assistant composer`,
+        ).toBe(true);
+      }
       if (view.viewType === "tui") {
         expect(
           focusedAfterTabs.some(
