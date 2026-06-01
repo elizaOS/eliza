@@ -95,7 +95,7 @@ the Rust `cargo test` target and the Makefile shortcuts (`make format`, `make ch
 - Results write to `HyperliquidBench/runs/<timestamp>/` (gitignored). The Python
   entrypoint also writes an aggregated `hyperliquid_bench-<mode>-<timestamp>.json`
   to `--output` (default: `runs/`).
-- Scored by `_score_from_hyperliquid_bench_json` in `registry/commands.py`.
+- Scored by `_score_from_hyperliquid_bench_json` in `registry/scores.py`.
   Demo-mode results are intentionally rejected by the publishability gate.
 - Rust crates must be built before live runs:
   `cargo build --release -p hl-runner -p hl-evaluator`

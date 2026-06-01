@@ -73,7 +73,7 @@ are absent. Tests requiring live Surfpool or API keys are not in this suite.
 
 - Results write to `solana-gym-env/metrics/eliza_*_metrics.json` and
   `*_trajectory.jsonl` (gitignored via the metrics/ directory not being tracked).
-- Scored by `_score_from_solana_json` in `registry/commands.py`; score =
+- Scored by `_score_from_solana_json` in `registry/scores.py`; score =
   `final_reward / 236.0` (ratio of unique instruction pairs discovered).
 - Deterministic phase (pre-seeded TypeScript templates) needs only Bun.
   LLM exploration phase additionally needs provider API key and Surfpool.

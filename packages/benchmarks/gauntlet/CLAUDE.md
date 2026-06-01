@@ -74,7 +74,7 @@ pytest tests/ -v
 - Results write to `./output/` by default (gitignored). Each run produces
   `{run_id}.json`, `{run_id}_report.md`, `{run_id}_traces.jsonl`, and
   `{run_id}_failures.md`.
-- Scored by `_score_from_gauntlet_json` in `registry/commands.py`.
+- Scored by `_score_from_gauntlet_json` in `registry/scores.py`.
 - Real execution requires [Surfpool](https://github.com/txtx/surfpool) running locally;
   `--clone-mainnet` additionally clones Jupiter program state from mainnet.
 - Level breakdown: L0 (21 foundational PDA/IDL/query), L1 (31 protocol swaps/staking),

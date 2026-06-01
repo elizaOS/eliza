@@ -89,7 +89,7 @@ pytest tests/ -v
   to skip auto-starting it and point at an already-running instance.
 - Results write to `./results/eliza/` by default (gitignored). The orchestrator
   writes to its own `output_dir` and locates `osworld-eliza-results-*.json`.
-- Scored by `_score_from_osworld_json` in `registry/commands.py`.
+- Scored by `_score_from_osworld_json` in `registry/scores.py`.
 - Observation types: `screenshot`, `a11y_tree`, `screenshot_a11y_tree` (default), `som`.
 - Full setup (VM provisioning, GCP auth, proxy): [SETUP_GUIDELINE.md](SETUP_GUIDELINE.md).
 - Upstream paper and data: [README.md](README.md).
