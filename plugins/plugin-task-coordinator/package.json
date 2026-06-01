@@ -23,6 +23,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^1.0.0",
+    "marked": "^18.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -43,7 +44,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
+    "test:e2e:manual": "vitest run --config vitest.e2e.config.ts"
   },
   "files": [
     "dist"

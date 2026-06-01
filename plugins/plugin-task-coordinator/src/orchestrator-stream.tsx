@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { DiffView } from "./orchestrator-diff";
+import { MarkdownText } from "./orchestrator-markdown";
 import { formatClockTime, stripAnsi } from "./view-format";
 
 // The orchestrator room renders a coding-agent session the way Claude Code /
@@ -103,14 +104,14 @@ const NOTICE_META: Record<string, NoticeMeta> = {
   task_registered: { icon: Circle, tone: "text-muted", label: "Task started" },
   task_complete: { icon: CircleCheck, tone: "text-ok", label: "Completed" },
   stopped: { icon: CircleStop, tone: "text-muted", label: "Stopped" },
-  blocked: { icon: OctagonX, tone: "text-warn", label: "Blocked" },
+  blocked: { icon: OctagonX, tone: "text-muted-strong", label: "Blocked" },
   blocked_auto_resolved: {
     icon: Check,
     tone: "text-muted",
     label: "Auto-resolved",
   },
-  escalation: { icon: CircleAlert, tone: "text-warn", label: "Escalation" },
-  error: { icon: CircleX, tone: "text-danger", label: "Error" },
+  escalation: { icon: CircleAlert, tone: "text-muted", label: "Escalation" },
+  error: { icon: CircleX, tone: "text-red-500", label: "Error" },
 };
 
 function noticeMeta(eventType: string): NoticeMeta {
@@ -185,6 +186,54 @@ function normalizeOutput(value: unknown): string | undefined {
   return clean === "" ? undefined : clean;
 }
 
+interface ToolOutput {
+  text?: string;
+  diff?: { path?: string; oldText?: string; newText?: string };
+}
+
+/** ACP tool results arrive as a JSON-encoded array of content blocks, e.g.
+ * `[{type:"content",content:{type:"text",text}}, {type:"diff",path,oldText,newText}]`.
+ * Pull out the human-readable text and any file diff so the card renders real
+ * prose + a diff instead of dumping the raw JSON the agent returned. Plain
+ * (non-block) strings fall back to {@link normalizeOutput}. */
+function parseToolOutput(raw: unknown): ToolOutput {
+  let value = raw;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+      return { text: normalizeOutput(raw) };
+    }
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return { text: normalizeOutput(raw) };
+    }
+  }
+  const blocks = Array.isArray(value) ? value : [value];
+  const texts: string[] = [];
+  let diff: ToolOutput["diff"];
+  for (const block of blocks) {
+    const record = asRecord(block);
+    if (!record) continue;
+    if (record.type === "diff") {
+      diff = {
+        path: pickString(record, "path"),
+        oldText:
+          typeof record.oldText === "string" ? record.oldText : undefined,
+        newText:
+          typeof record.newText === "string" ? record.newText : undefined,
+      };
+      continue;
+    }
+    const inner = asRecord(record.content) ?? record;
+    const text =
+      pickString(inner, "text", "content") ?? pickString(record, "text");
+    if (text) texts.push(text);
+  }
+  const joined = stripAnsi(texts.join("\n")).trim();
+  return { text: joined === "" ? undefined : joined, diff };
+}
+
 /** The raw `data.toolCall` object the ACP service forwards (see its field
  * mapping). Kept as an open record because adapters vary in which fields they
  * populate (`title`/`name`, `rawInput`/`input`, `output`/`rawOutput`, …); every
@@ -207,6 +256,7 @@ function toToolView(
   let status: ToolStatus = "running";
   let rawInput: Record<string, unknown> | undefined;
   let output: string | undefined;
+  let outputDiff: ToolOutput["diff"];
   for (const event of events) {
     const call = rawToolCall(event);
     if (!call) continue;
@@ -216,8 +266,13 @@ function toToolView(
     if (rawStatus) status = TOOL_STATUS_FROM_RAW[rawStatus] ?? status;
     const nextInput = asRecord(call.rawInput) ?? asRecord(call.input);
     if (nextInput) rawInput = { ...rawInput, ...nextInput };
-    const nextOutput = normalizeOutput(call.output ?? call.rawOutput);
-    if (nextOutput) output = nextOutput;
+    const parsed = parseToolOutput(call.output ?? call.rawOutput);
+    if (parsed.text) output = parsed.text;
+    if (
+      parsed.diff?.oldText !== undefined ||
+      parsed.diff?.newText !== undefined
+    )
+      outputDiff = parsed.diff;
   }
   return {
     id,
@@ -226,14 +281,12 @@ function toToolView(
     status,
     filePath: pickString(rawInput, "filePath", "file_path", "path"),
     command: pickString(rawInput, "command", "cmd", "script"),
-    newText: pickString(
-      rawInput,
-      "content",
-      "newString",
-      "new_string",
-      "newText",
-    ),
-    oldText: pickString(rawInput, "oldString", "old_string", "oldText"),
+    newText:
+      pickString(rawInput, "content", "newString", "new_string", "newText") ??
+      outputDiff?.newText,
+    oldText:
+      pickString(rawInput, "oldString", "old_string", "oldText") ??
+      outputDiff?.oldText,
     query: pickString(rawInput, "pattern", "query", "regex", "glob"),
     output,
   };
@@ -261,7 +314,9 @@ type Atom =
 function messageLane(message: CodingAgentTaskMessageRecord): string {
   if (message.senderKind === "user") return "user";
   const stream = message.direction === "stderr" ? "err" : "out";
-  return `${message.senderKind}:${message.sessionId ?? ""}:${stream}`;
+  // Fall back to the message id (not a shared "") when there's no session, so
+  // unrelated session-less outputs never coalesce into one merged turn.
+  return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
 }
 
 /** Turn the polled message + event records into the ordered conversation the
@@ -278,7 +333,14 @@ export function buildConversation(
   let order = 0;
 
   for (const message of messages) {
-    if (message.direction === "stdin" || message.direction === "keys") continue;
+    // Skip raw stdin/keystroke echoes from sub-agents, but ALWAYS render the
+    // user's own typed messages — those are recorded with senderKind "user"
+    // AND direction "stdin", and skipping them hid the user's input entirely.
+    if (
+      message.senderKind !== "user" &&
+      (message.direction === "stdin" || message.direction === "keys")
+    )
+      continue;
     if (stripAnsi(message.content).trim() === "") continue;
     atoms.push({
       at: message.timestamp,
@@ -395,156 +457,6 @@ export function buildConversation(
   return blocks;
 }
 
-// --- Lightweight markdown ---------------------------------------------------
-// The agent writes markdown prose; rendering it (code fences, inline code,
-// bold, lists, headings) is what makes the room read like a chat rather than a
-// log. This is deliberately small — no external markdown engine — matching the
-// in-repo precedent (config-field's preview renderer).
-
-const FENCE = /```([\w-]*)\n?([\s\S]*?)```/g;
-
-function renderInline(text: string, keyBase: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern =
-    /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-  let last = 0;
-  let index = 0;
-  let match = pattern.exec(text);
-  while (match !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    if (match[1] !== undefined) {
-      nodes.push(
-        <strong key={`${keyBase}-b${index}`} className="font-semibold text-txt">
-          {match[1]}
-        </strong>,
-      );
-    } else if (match[2] !== undefined) {
-      nodes.push(
-        <code
-          key={`${keyBase}-c${index}`}
-          className="rounded bg-bg/70 px-1 py-px font-mono text-[0.95em] text-accent"
-        >
-          {match[2]}
-        </code>,
-      );
-    } else if (match[3] !== undefined) {
-      nodes.push(
-        <a
-          key={`${keyBase}-l${index}`}
-          href={match[4]}
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent underline underline-offset-2"
-        >
-          {match[3]}
-        </a>,
-      );
-    }
-    last = match.index + match[0].length;
-    index += 1;
-    match = pattern.exec(text);
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
-function renderProse(text: string, keyBase: string): ReactNode {
-  const lines = text.split("\n");
-  return lines.map((line, lineIndex) => {
-    const key = `${keyBase}-${lineIndex}`;
-    if (line.trim() === "") return <div key={key} className="h-2" />;
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading) {
-      return (
-        <div key={key} className="mt-1 font-semibold text-txt">
-          {renderInline(heading[2], key)}
-        </div>
-      );
-    }
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-    if (bullet) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none text-muted">•</span>
-          <span className="min-w-0 flex-1">{renderInline(bullet[1], key)}</span>
-        </div>
-      );
-    }
-    const numbered = /^\s*(\d+)\.\s+(.*)$/.exec(line);
-    if (numbered) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none tabular-nums text-muted">
-            {numbered[1]}.
-          </span>
-          <span className="min-w-0 flex-1">
-            {renderInline(numbered[2], key)}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <div key={key} className="break-words leading-relaxed">
-        {renderInline(line, key)}
-      </div>
-    );
-  });
-}
-
-export function MarkdownText({ text }: { text: string }): ReactNode {
-  const segments: ReactNode[] = [];
-  let last = 0;
-  let index = 0;
-  FENCE.lastIndex = 0;
-  let match = FENCE.exec(text);
-  while (match !== null) {
-    if (match.index > last) {
-      segments.push(
-        <div key={`p${index}`}>
-          {renderProse(text.slice(last, match.index), `p${index}`)}
-        </div>,
-      );
-    }
-    segments.push(
-      <CodeBlock
-        key={`f${index}`}
-        language={match[1]}
-        code={match[2].replace(/\n$/, "")}
-      />,
-    );
-    last = match.index + match[0].length;
-    index += 1;
-    match = FENCE.exec(text);
-  }
-  if (last < text.length) {
-    segments.push(
-      <div key={`p${index}`}>{renderProse(text.slice(last), `p${index}`)}</div>,
-    );
-  }
-  return <div className="space-y-0.5">{segments}</div>;
-}
-
-function CodeBlock({
-  language,
-  code,
-}: {
-  language?: string;
-  code: string;
-}): ReactNode {
-  return (
-    <div className="my-1 overflow-hidden rounded-md border border-border/50 bg-bg/80">
-      {language ? (
-        <div className="border-b border-border/40 px-2 py-0.5 font-mono text-2xs text-muted">
-          {language}
-        </div>
-      ) : null}
-      <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
-        {code}
-      </pre>
-    </div>
-  );
-}
-
 // --- Conversation block views ----------------------------------------------
 
 const TOOL_ICON_BY_KIND: Record<string, LucideIcon> = {
@@ -595,9 +507,14 @@ const STATUS_BADGE: Record<
   ToolStatus,
   { icon: LucideIcon; tone: string; label: string; spin?: boolean }
 > = {
-  running: { icon: Loader, tone: "text-accent", label: "Running", spin: true },
+  running: {
+    icon: Loader,
+    tone: "text-muted-strong",
+    label: "Running",
+    spin: true,
+  },
   done: { icon: Check, tone: "text-ok", label: "Done" },
-  failed: { icon: CircleX, tone: "text-danger", label: "Failed" },
+  failed: { icon: CircleX, tone: "text-red-500", label: "Failed" },
 };
 
 const MAX_BODY_CHARS = 4000;
@@ -686,7 +603,7 @@ function ToolCallCard({
   );
   return (
     <div
-      className="rounded-md border border-border/50 bg-bg-accent/20"
+      className="rounded-md border border-border/50 bg-card/50"
       data-testid="orchestrator-tool-call"
     >
       <button
@@ -702,11 +619,11 @@ function ToolCallCard({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
-        <span className="shrink-0 font-mono text-xs font-semibold text-txt">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-strong" />
+        <span className="min-w-0 shrink truncate font-mono text-xs font-semibold text-txt">
           {tool.title}
         </span>
-        {target ? (
+        {target && target !== tool.title ? (
           <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted">
             {target}
           </span>
@@ -746,40 +663,47 @@ export function ConversationBlockView({
         data-testid="orchestrator-user-message"
       >
         <div
-          className="rounded-lg bg-accent/20 px-2.5 py-1.5 text-xs text-txt"
-          style={{ maxWidth: "88%" }}
+          className="rounded-lg border border-border/50 bg-surface px-3 py-2 text-xs text-txt"
+          style={{ maxWidth: "80%" }}
         >
-          <div className="mb-0.5 text-2xs tabular-nums text-muted">
+          <div className="whitespace-pre-wrap break-words leading-relaxed">
+            {block.content}
+          </div>
+          <div className="mt-1 text-3xs tabular-nums text-muted/70">
             {formatClockTime(block.at, locale)}
           </div>
-          <div className="whitespace-pre-wrap break-words">{block.content}</div>
         </div>
       </div>
     );
   }
 
   if (block.kind === "agent") {
+    // Codex Desktop renders the assistant turn FLAT (full-width markdown, no
+    // bubble) with a small identity marker — only the user's turn is bubbled.
     return (
       <div
-        className="flex flex-col items-start"
+        className="flex w-full flex-col items-start"
         data-testid="orchestrator-agent-message"
       >
+        <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
+            aria-hidden
+          />
+          <span className="font-semibold tracking-tight text-txt/90">
+            {block.senderName}
+          </span>
+          <span className="tabular-nums">
+            {formatClockTime(block.at, locale)}
+          </span>
+        </div>
         <div
-          className={`rounded-lg px-2.5 py-1.5 text-xs ${
+          className={
             block.tone === "error"
-              ? "bg-danger/10 text-danger"
-              : "bg-bg-hover/60 text-txt"
-          }`}
-          style={{ maxWidth: "92%" }}
+              ? "w-full border-l-2 border-red-500/40 pl-2.5 text-red-500"
+              : "w-full text-txt"
+          }
         >
-          <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-            <span className="font-semibold tracking-tight text-txt/90">
-              {block.senderName}
-            </span>
-            <span className="tabular-nums">
-              {formatClockTime(block.at, locale)}
-            </span>
-          </div>
           <MarkdownText text={block.content} />
         </div>
       </div>

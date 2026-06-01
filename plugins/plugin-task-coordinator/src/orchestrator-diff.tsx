@@ -93,7 +93,7 @@ export function lineDiff(oldText: string, newText: string): DiffRow[] {
 const ROW_TONE: Record<DiffRow["type"], string> = {
   context: "text-txt/80",
   add: "bg-ok/10 text-ok",
-  remove: "bg-danger/10 text-danger",
+  remove: "bg-red-500/10 text-red-500",
 };
 
 const ROW_SIGN: Record<DiffRow["type"], string> = {
