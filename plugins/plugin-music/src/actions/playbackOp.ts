@@ -166,7 +166,7 @@ export async function validatePlaybackControl(
   options?: Record<string, unknown>,
 ): Promise<boolean> {
   const merged = mergedOptions(options);
-  const explicit = normalizeOp(merged.op);
+  const explicit = normalizeOp(merged.op) ?? normalizeOp(merged.subaction);
   const text = message.content.text ?? "";
   const inferredFromText = inferOpFromText(text);
   const inferred = explicit ?? inferredFromText;
@@ -590,7 +590,9 @@ export const playbackOp: Action = {
     if (!callback) return failureResult("Missing callback", "Missing callback");
     const merged = mergedOptions(options);
     const op =
-      normalizeOp(merged.op) ?? inferOpFromText(message.content.text ?? "");
+      normalizeOp(merged.op) ??
+      normalizeOp(merged.subaction) ??
+      inferOpFromText(message.content.text ?? "");
     if (!op) {
       const text =
         "Could not determine playback op. Use op=pause, resume, skip, stop, or queue.";

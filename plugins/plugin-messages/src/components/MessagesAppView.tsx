@@ -96,9 +96,14 @@ function smsRole(status: SystemStatus | null) {
   return status?.roles.find((role) => role.role === "sms") ?? null;
 }
 
+function normalizeMessagesLimit(value: unknown, fallback = 200): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(500, Math.max(1, Math.trunc(value)));
+}
+
 async function loadMessagesState(limit = 200) {
   const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit }),
+    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
     System.getStatus().catch(() => null),
   ]);
   const threads = buildThreads(messageResult.messages);
@@ -960,9 +965,7 @@ export async function interact(
   params?: Record<string, unknown>,
 ): Promise<unknown> {
   if (capability === "terminal-list-threads") {
-    const state = await loadMessagesState(
-      typeof params?.limit === "number" ? params.limit : 200,
-    );
+    const state = await loadMessagesState(normalizeMessagesLimit(params?.limit));
     return {
       viewType: "tui",
       threads: state.threads.map((thread) => ({

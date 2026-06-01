@@ -1,5 +1,16 @@
 import { Badge, Button, client, useApp } from "@elizaos/ui";
-import { Search, ShieldBan, Smartphone } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  ListChecks,
+  Loader2,
+  RefreshCw,
+  Search,
+  ShieldBan,
+  Smartphone,
+  Square,
+  Timer,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppBlockerSettingsCardProps } from "../types";
 
@@ -23,17 +34,19 @@ function translate(
 function statusBadge(
   t: (key: string) => string,
   permission: AppBlockerPermission | null,
-): { variant: "secondary" | "outline"; label: string } {
+): { variant: "secondary" | "outline"; label: string; ready: boolean } {
   if (!permission) {
     return {
       variant: "outline",
       label: translate(t, "permissionssection.badge.unknown", "Unknown"),
+      ready: false,
     };
   }
   if (permission.status === "granted") {
     return {
       variant: "secondary",
       label: translate(t, "permissionssection.badge.ready", "Ready"),
+      ready: true,
     };
   }
   return {
@@ -43,6 +56,7 @@ function statusBadge(
       "permissionssection.badge.needsApproval",
       "Needs Approval",
     ),
+    ready: false,
   };
 }
 
@@ -234,20 +248,25 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
 
   if (mode !== "mobile") {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
+      <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg/40">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
             <Smartphone className="h-5 w-5 text-muted" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
-            <div className="font-bold text-sm text-txt">{title}</div>
-            <p className="text-xs-tight leading-5 text-muted">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="font-bold text-sm text-txt">{title}</div>
+              <Badge variant="outline">
+                {translate(t, "permissionssection.mobileOnly", "Mobile only")}
+              </Badge>
+            </div>
+            <div className="text-xs-tight leading-5 text-muted">
               {translate(
                 t,
                 "permissionssection.appBlocking.mobileOnly",
-                "App blocking is a mobile feature. Open this screen on iPhone or Android to choose apps and start a focus shield.",
+                "Open on iPhone or Android to choose apps and start a focus shield.",
               )}
-            </p>
+            </div>
           </div>
         </div>
       </div>
@@ -255,21 +274,27 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
+    <div className="rounded-xl border border-border/60 bg-card/92 shadow-sm">
       <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg/40">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
             <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-sm text-txt">{title}</div>
-              <Badge variant={badge.variant}>{badge.label}</Badge>
+              <Badge variant={badge.variant}>
+                {badge.ready ? (
+                  <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
+                ) : null}
+                {badge.label}
+              </Badge>
               {status?.platform ? (
                 <Badge variant="outline">{status.platform.toUpperCase()}</Badge>
               ) : null}
               {status?.active ? (
                 <Badge variant="secondary">
+                  <Timer className="mr-1 h-3 w-3" aria-hidden />
                   {translate(
                     t,
                     "permissionssection.appBlocking.active",
@@ -278,33 +303,39 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 </Badge>
               ) : null}
             </div>
-            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-              {status?.platform === "ios"
-                ? translate(
-                    t,
-                    "permissionssection.appBlocking.iosDescription",
-                    "Use Family Controls to shield selected apps on this iPhone. Current iPhone blocks are manual until the timed DeviceActivity extension lands.",
-                  )
-                : translate(
-                    t,
-                    "permissionssection.appBlocking.androidDescription",
-                    "Use Usage Access and a full-screen shield overlay to block selected Android apps during a focus session.",
-                  )}
-            </p>
-            {status?.active ? (
-              <p className="text-xs-tight leading-5 text-muted">
-                {status.platform === "ios"
-                  ? `Currently shielding ${status.blockedCount} app${status.blockedCount === 1 ? "" : "s"}.`
-                  : `Currently blocking ${status.blockedCount} app${status.blockedCount === 1 ? "" : "s"}${
-                      status.endsAt
-                        ? ` until ${formatEndsAt(status.endsAt)}.`
-                        : "."
-                    }`}
-              </p>
-            ) : null}
-            {error ? <p className="text-xs text-danger">{error}</p> : null}
+            <div className="flex flex-wrap gap-2 text-xs-tight text-muted">
+              <span>
+                {status?.platform === "ios"
+                  ? translate(
+                      t,
+                      "permissionssection.appBlocking.iosDescription",
+                      "Family Controls shield for selected iPhone apps.",
+                    )
+                  : translate(
+                      t,
+                      "permissionssection.appBlocking.androidDescription",
+                      "Usage Access shield for selected Android apps.",
+                    )}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-bg/35 px-2 py-1 text-xs text-muted">
+                <ListChecks className="h-3.5 w-3.5" aria-hidden />
+                {status?.active
+                  ? `${status.blockedCount}`
+                  : `${selectedPackageNames.length + selectedIosApps.length}`}{" "}
+                {translate(t, "permissionssection.appBlocking.apps", "apps")}
+              </span>
+              {status?.active && status.endsAt ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-bg/35 px-2 py-1 text-xs text-muted">
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden />
+                  {formatEndsAt(status.endsAt)}
+                </span>
+              ) : null}
+            </div>
+            {error ? <div className="text-xs text-danger">{error}</div> : null}
             {!error && permission?.reason ? (
-              <p className="text-xs text-danger">{permission.reason}</p>
+              <div className="text-xs text-danger">{permission.reason}</div>
             ) : null}
           </div>
         </div>
@@ -316,10 +347,13 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
             className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
             onClick={() => void refreshState()}
             disabled={loading || busy}
+            aria-label={translate(t, "common.refresh", "Refresh")}
           >
-            {loading
-              ? translate(t, "common.loading", "Loading…")
-              : translate(t, "common.refresh", "Refresh")}
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="h-4 w-4" aria-hidden />
+            )}
           </Button>
           {permission?.status !== "granted" ? (
             <Button
@@ -330,6 +364,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               onClick={() => void handleRequestPermissions()}
               disabled={busy}
             >
+              <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden />
               {translate(
                 t,
                 "permissionssection.RequestApproval",
@@ -346,6 +381,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               onClick={() => void handleStopBlock()}
               disabled={busy}
             >
+              <Square className="mr-1.5 h-4 w-4" aria-hidden />
               {translate(
                 t,
                 "permissionssection.appBlocking.stop",
@@ -442,10 +478,10 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                     "Selection",
                   )}
                 </div>
-                <p className="mt-1 text-sm text-txt">
+                <div className="mt-1 text-sm text-txt">
                   {selectedPackageNames.length} app
                   {selectedPackageNames.length === 1 ? "" : "s"} selected
-                </p>
+                </div>
               </div>
               <label className="flex items-center gap-2 text-sm text-txt">
                 <input
@@ -486,6 +522,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedPackageNames.length === 0}
               >
+                <ShieldBan className="mr-1.5 h-4 w-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.start",
@@ -510,7 +547,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   "Selection",
                 )}
               </div>
-              <p className="text-sm text-txt">
+              <div className="text-sm text-txt">
                 {selectedIosApps.length > 0
                   ? `${selectedIosApps.length} app${
                       selectedIosApps.length === 1 ? "" : "s"
@@ -524,7 +561,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                         "permissionssection.appBlocking.noneSelected",
                         "No iPhone apps selected yet.",
                       )}
-              </p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -535,6 +572,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleSelectIosApps()}
                 disabled={busy}
               >
+                <ListChecks className="mr-1.5 h-4 w-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.chooseApps",
@@ -549,6 +587,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedIosApps.length === 0}
               >
+                <ShieldBan className="mr-1.5 h-4 w-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.start",

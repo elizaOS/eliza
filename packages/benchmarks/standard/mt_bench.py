@@ -45,11 +45,13 @@ from ._base import (
     resolve_endpoint,
 )
 from ._cli import RunnerFactory, cli_dispatch
+from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
 log = logging.getLogger("benchmarks.standard.mt_bench")
 
 BENCHMARK_ID = "mt_bench"
 DATASET_VERSION = "lmsys/mt_bench_human_judgments@v1"
+EXPANDED_DATASET_VERSION = "lmsys/mt_bench_human_judgments@v1+edge-v1"
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_JUDGE_MAX_TOKENS = 1024
 
@@ -92,6 +94,11 @@ JUDGE_SYSTEM_PROMPT = (
     "relevance, accuracy, depth, and creativity. Your first line must be the "
     'final rating in the exact form: "Rating: [[<integer>]]" - e.g. '
     '"Rating: [[7]]". After that, add at most two brief explanatory sentences.'
+)
+CANDIDATE_SYSTEM_PROMPT = (
+    "You are answering an MT-Bench conversation. Always provide a non-empty, "
+    "direct answer to the latest user turn. Be concise enough to fit the token "
+    "budget while still satisfying all constraints from the current and prior turns."
 )
 
 _RATING_PATTERNS = (
@@ -220,6 +227,7 @@ class MTBenchRunner:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
         temperature: float = 0.7,
+        include_edge_scenarios: bool = False,
     ) -> None:
         self._judge = judge
         self._judge_model = judge_model
@@ -227,6 +235,21 @@ class MTBenchRunner:
         self._max_tokens = max_tokens
         self._judge_max_tokens = judge_max_tokens
         self._temperature = temperature
+        self._include_edge_scenarios = include_edge_scenarios
+
+    def _selected_questions(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(self._questions if self._questions is not None else _load_dataset_questions(limit))
+        if self._questions is not None and limit is not None:
+            base = base[:limit]
+        questions = expand_mt_bench_questions(base) if self._include_edge_scenarios else list(base)
+        validate_mt_bench_questions(questions)
+        return base, questions
+
+    def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
+        base, questions = self._selected_questions(limit)
+        counts = count_dict_examples(base, questions)
+        counts["edge_multiplier"] = 10
+        return counts
 
     def run(
         self,
@@ -238,11 +261,7 @@ class MTBenchRunner:
         limit: int | None,
     ) -> BenchmarkResult:
         stats = RunStats()
-        questions = (
-            self._questions
-            if self._questions is not None
-            else _load_dataset_questions(limit)
-        )
+        _, questions = self._selected_questions(limit)
         if not questions:
             raise RuntimeError("MT-Bench loaded zero questions")
 
@@ -272,7 +291,10 @@ class MTBenchRunner:
             category = str(item.get("category") or "unknown")
 
             # Turn 1.
-            history = [ChatMessage(role="user", content=turn_1)]
+            history = [
+                ChatMessage(role="system", content=CANDIDATE_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=turn_1),
+            ]
             try:
                 gen_1 = client.generate(history, cand_cfg)
             except Exception as exc:  # noqa: BLE001
@@ -285,6 +307,7 @@ class MTBenchRunner:
 
             # Turn 2 (multi-turn — include candidate's turn-1 answer).
             history_t2 = [
+                ChatMessage(role="system", content=CANDIDATE_SYSTEM_PROMPT),
                 ChatMessage(role="user", content=turn_1),
                 ChatMessage(role="assistant", content=gen_1.text),
                 ChatMessage(role="user", content=turn_2),
@@ -343,7 +366,7 @@ class MTBenchRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(score, 4),
@@ -489,6 +512,7 @@ class _MTBenchFactory(RunnerFactory):
                 max_tokens=args.max_tokens,
                 judge_max_tokens=args.judge_max_tokens,
                 temperature=args.temperature,
+                include_edge_scenarios=args.expand_scenarios,
             )
             return runner, mock_responses
 
@@ -499,8 +523,24 @@ class _MTBenchFactory(RunnerFactory):
             max_tokens=args.max_tokens,
             judge_max_tokens=args.judge_max_tokens,
             temperature=args.temperature,
+            include_edge_scenarios=args.expand_scenarios,
         )
         return runner, None
+
+
+def expand_mt_bench_questions(examples: list[dict[str, object]]) -> list[dict[str, object]]:
+    def mutate(item: dict[str, object], instruction: str) -> None:
+        turns = item.get("turns")
+        if isinstance(turns, tuple):
+            item["turns"] = (f"{instruction}\n\n{turns[0]}", f"{instruction}\n\n{turns[1]}")
+        elif isinstance(turns, list) and len(turns) >= 2:
+            item["turns"] = [f"{instruction}\n\n{turns[0]}", f"{instruction}\n\n{turns[1]}"]
+
+    return expand_dict_examples(examples, id_key="question_id", mutator=mutate)
+
+
+def validate_mt_bench_questions(examples: list[dict[str, object]]) -> None:
+    validate_dict_examples(examples, id_key="question_id", required_keys=("question_id", "category", "turns"))
 
 
 def main() -> int:

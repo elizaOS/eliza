@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -148,6 +149,21 @@ async def main() -> int:
         default="art",
         help="Trajectory export format (art=OpenPipe ART, grpo=GRPO groups)",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected task with 10 additional edge-condition variants",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print task counts for the selected environments and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected base/expanded task definitions and exit",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -173,6 +189,7 @@ async def main() -> int:
         data_mode=AgentBenchDataMode(args.data_mode),
         allow_empty_tasks=args.allow_empty,
         dry_run=args.dry_run,
+        include_edge_scenarios=bool(args.expand_scenarios),
     )
 
     # Map environment names
@@ -213,6 +230,32 @@ async def main() -> int:
         # OS-specific settings
         if env == AgentBenchEnvironment.OS:
             env_config.additional_settings["use_docker"] = False
+
+    if args.count_scenarios or args.validate_scenarios:
+        summary: list[dict[str, int | str]] = []
+        for env in AgentBenchEnvironment:
+            env_config = config.get_env_config(env)
+            if not env_config.enabled:
+                continue
+            counts = upstream_loader.count_tasks(
+                env,
+                split=config.split.value,
+                limit=env_config.max_tasks,
+                data_mode=config.data_mode,
+                include_edge_scenarios=config.include_edge_scenarios,
+            )
+            summary.append(counts)
+            if args.validate_scenarios:
+                tasks = upstream_loader.load_tasks(
+                    env,
+                    split=config.split.value,
+                    limit=env_config.max_tasks,
+                    data_mode=config.data_mode,
+                    include_edge_scenarios=config.include_edge_scenarios,
+                )
+                upstream_loader.validate_tasks(tasks)
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return 0
 
     # Initialize runtime.
     print("\n" + "=" * 60)

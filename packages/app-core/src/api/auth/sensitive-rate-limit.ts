@@ -43,7 +43,7 @@ class SensitiveRateLimiter {
   consume(ip: string | null, now: number = Date.now()): boolean {
     const key = ip ?? "unknown";
     const entry = this.buckets.get(key);
-    if (!entry || now > entry.resetAt) {
+    if (!entry || now >= entry.resetAt) {
       this.buckets.set(key, {
         count: 1,
         resetAt: now + SENSITIVE_RATE_LIMIT_WINDOW_MS,
@@ -61,7 +61,7 @@ class SensitiveRateLimiter {
 
   sweep(now: number = Date.now()): void {
     for (const [key, entry] of this.buckets) {
-      if (now > entry.resetAt) this.buckets.delete(key);
+      if (now >= entry.resetAt) this.buckets.delete(key);
     }
   }
 }
@@ -77,6 +77,9 @@ const limiterRegistry = new Map<string, SensitiveRateLimiter>();
  * `_resetSensitiveLimiters` test helper handle them all.
  */
 export function getSensitiveLimiter(name: string): SensitiveRateLimiter {
+  if (!name.trim()) {
+    throw new Error("Sensitive limiter name is required");
+  }
   let limiter = limiterRegistry.get(name);
   if (!limiter) {
     limiter = new SensitiveRateLimiter();

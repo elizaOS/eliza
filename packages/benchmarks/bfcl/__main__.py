@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -32,6 +33,7 @@ except ImportError:  # pragma: no cover - lean benchmark envs may omit python-do
 load_dotenv()
 
 from benchmarks.bfcl.runner import BFCLRunner  # noqa: E402
+from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
 from benchmarks.bfcl.types import BFCLCategory, BFCLConfig  # noqa: E402
 from benchmarks.bfcl.reporting import print_results  # noqa: E402
 
@@ -189,6 +191,21 @@ Environment Variables:
             "'skipped_no_credentials' bucket and excluded from accuracy."
         ),
     )
+    run_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add ten edge-case variants for every selected base test",
+    )
+    run_parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit",
+    )
+    run_parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected scenarios and exit",
+    )
 
     # Models command
     models_parser = subparsers.add_parser("models", help="List available models")
@@ -236,6 +253,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         generate_report=not args.no_report,
         enable_network=getattr(args, "enable_network", False),
         sample_seed=getattr(args, "seed", 0),
+        include_edge_scenarios=getattr(args, "expand_scenarios", False),
     )
 
     # Set categories if specified
@@ -250,6 +268,35 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     if args.local_data:
         config.use_huggingface = False
         config.data_path = args.local_data
+
+    if args.count_scenarios or args.validate_scenarios:
+        dataset = BFCLDataset(config)
+        await dataset.load()
+        base_cases = (
+            dataset.get_sample(
+                args.sample,
+                config.categories,
+                require_ground_truth=True,
+                seed=config.sample_seed,
+            )
+            if args.sample
+            else list(dataset)
+        )
+        cases = expand_test_cases(base_cases) if config.include_edge_scenarios else base_cases
+        if args.validate_scenarios:
+            validate_test_cases(cases)
+        print(
+            json.dumps(
+                {
+                    "base": len(base_cases),
+                    "edge": len(cases) - len(base_cases),
+                    "total": len(cases),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     # Create runner with model/provider options
     runner = BFCLRunner(

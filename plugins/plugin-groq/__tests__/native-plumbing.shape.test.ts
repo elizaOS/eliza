@@ -88,4 +88,79 @@ describe("Groq native text plumbing", () => {
     const result = await handler(createRuntime(), { prompt: "hi" });
     expect(result).toBe("hello");
   });
+
+  it("builds structured output when caller passes responseSchema", async () => {
+    const generateText = vi.fn(async (_options: Record<string, unknown>) => ({
+      text: '{"answer":"ok"}',
+      toolCalls: [],
+      finishReason: "stop",
+      usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
+    }));
+    vi.doMock("ai", async () => {
+      const actual = await vi.importActual<typeof import("ai")>("ai");
+      return {
+        ...actual,
+        generateText,
+        jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
+        Output: {
+          object: ({
+            schema,
+            name,
+            description,
+          }: {
+            schema: { jsonSchema?: unknown };
+            name?: string;
+            description?: string;
+          }) => ({
+            name: name ?? "object",
+            responseFormat: Promise.resolve({
+              type: "json",
+              schema: schema.jsonSchema,
+              ...(name ? { name } : {}),
+              ...(description ? { description } : {}),
+            }),
+            parseCompleteOutput: async ({ text }: { text: string }) => JSON.parse(text),
+            parsePartialOutput: async () => undefined,
+            createElementStreamTransform: () => undefined,
+          }),
+        },
+      };
+    });
+    vi.doMock("@ai-sdk/groq", () => ({
+      createGroq: () => ({
+        languageModel: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { groqPlugin } = await import("../index");
+    const handler = groqPlugin.models?.TEXT_SMALL as (
+      runtime: IAgentRuntime,
+      params: unknown
+    ) => Promise<unknown>;
+    const schema = {
+      type: "object",
+      properties: { answer: { type: "string" } },
+      required: ["answer"],
+    };
+
+    const result = (await handler(createRuntime(), {
+      prompt: "json",
+      responseSchema: { name: "answer", description: "Answer object", schema },
+    })) as Record<string, unknown>;
+
+    const call = generateText.mock.calls[0]?.[0] as Record<string, unknown>;
+    await expect(
+      (call.output as { responseFormat: Promise<unknown> }).responseFormat
+    ).resolves.toEqual({
+      type: "json",
+      name: "answer",
+      description: "Answer object",
+      schema,
+    });
+    expect(result).toMatchObject({
+      text: '{"answer":"ok"}',
+      finishReason: "stop",
+      usage: { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
+    });
+  });
 });

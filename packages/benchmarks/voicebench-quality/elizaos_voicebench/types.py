@@ -121,3 +121,4 @@ class VoiceBenchResult:
     judge_model: str = ""
     stt_provider: str = ""
     mock: bool = False
+    include_edge_scenarios: bool = False

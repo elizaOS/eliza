@@ -30,6 +30,7 @@ import argparse
 import asyncio
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -37,8 +38,11 @@ EXTERNAL_SRC = ROOT / "external" / "compactbench-suites" / "src"
 if EXTERNAL_SRC.exists():
     sys.path.insert(0, str(EXTERNAL_SRC))
 
-from eliza_compactbench.cerebras_provider import register_cerebras_provider
-from eliza_compactbench.safe_generators import install_safe_action_phrase_generator
+from eliza_compactbench.scenarios import (
+    build_expanded_suite,
+    count_scenarios,
+    validate_suite,
+)
 
 
 def main() -> int:
@@ -57,6 +61,21 @@ def main() -> int:
     parser.add_argument("--difficulty", default="medium")
     parser.add_argument("--seed-group", default="default")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add ten edge template variants per selected CompactBench template.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total generated case counts and exit before model calls.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected CompactBench YAML templates before running.",
+    )
     parser.add_argument(
         "--score",
         action="store_true",
@@ -78,9 +97,31 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.count_scenarios or args.validate_scenarios:
+        try:
+            if args.validate_scenarios:
+                validate_suite(args.benchmarks_dir, args.suite)
+                print("Scenario validation: ok")
+            if args.count_scenarios:
+                print(
+                    count_scenarios(
+                        benchmarks_dir=args.benchmarks_dir,
+                        suite=args.suite,
+                        case_count=args.case_count,
+                        include_edge_scenarios=args.expand_scenarios,
+                    )
+                )
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     if not os.environ.get("CEREBRAS_API_KEY"):
         print("error: CEREBRAS_API_KEY is required", file=sys.stderr)
         return 2
+
+    from eliza_compactbench.cerebras_provider import register_cerebras_provider
+    from eliza_compactbench.safe_generators import install_safe_action_phrase_generator
 
     if not register_cerebras_provider():
         print("error: failed to register cerebras provider", file=sys.stderr)
@@ -115,34 +156,43 @@ def main() -> int:
         )
         return 2
 
-    run_args = RunArgs(
-        method_spec=args.method,
-        suite_key=args.suite,
-        provider_key="cerebras",
-        model=args.model,
-        difficulty=difficulty,
-        drift_cycles=args.drift_cycles,
-        case_count_per_template=args.case_count,
-        seed_group=args.seed_group,
-        benchmarks_dir=args.benchmarks_dir,
-        output_path=args.output,
-        resume=args.resume,
-    )
-    try:
-        asyncio.run(run_experiment(run_args))
-    except RunnerError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    except KeyboardInterrupt:
-        # asyncio.run cancels the task and propagates KeyboardInterrupt
-        # after the runner's `finally` has flushed and closed the writer.
-        # Tell the user the file is recoverable via --resume.
-        print(
-            f"\ninterrupted; partial results written to {args.output}. "
-            "Re-run with --resume to continue.",
-            file=sys.stderr,
+    with tempfile.TemporaryDirectory(prefix="compactbench-expanded-") as tmp:
+        benchmarks_dir = args.benchmarks_dir
+        suite_key = args.suite
+        if args.expand_scenarios:
+            benchmarks_dir = build_expanded_suite(
+                benchmarks_dir=args.benchmarks_dir,
+                suite=args.suite,
+                output_root=Path(tmp),
+            )
+        run_args = RunArgs(
+            method_spec=args.method,
+            suite_key=suite_key,
+            provider_key="cerebras",
+            model=args.model,
+            difficulty=difficulty,
+            drift_cycles=args.drift_cycles,
+            case_count_per_template=args.case_count,
+            seed_group=args.seed_group,
+            benchmarks_dir=benchmarks_dir,
+            output_path=args.output,
+            resume=args.resume,
         )
-        return 130
+        try:
+            asyncio.run(run_experiment(run_args))
+        except RunnerError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        except KeyboardInterrupt:
+            # asyncio.run cancels the task and propagates KeyboardInterrupt
+            # after the runner's `finally` has flushed and closed the writer.
+            # Tell the user the file is recoverable via --resume.
+            print(
+                f"\ninterrupted; partial results written to {args.output}. "
+                "Re-run with --resume to continue.",
+                file=sys.stderr,
+            )
+            return 130
 
     print(f"wrote {args.output}")
 

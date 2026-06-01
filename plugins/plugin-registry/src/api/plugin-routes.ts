@@ -515,8 +515,7 @@ export async function handlePluginRoutes(
             name === suffix ||
             name === packageName ||
             (npmPkgName != null && name === npmPkgName) ||
-            name.endsWith(`/${suffix}`) ||
-            name.includes(plugin.id)
+            name.endsWith(`/${suffix}`)
           );
         });
       plugin.isActive = isLoaded;
@@ -817,21 +816,49 @@ export async function handlePluginRoutes(
       }
 
       const allowedParamKeys = new Set(plugin.parameters.map((p) => p.key));
+      const allowedParamsByKey = new Map(
+        plugin.parameters.map((p) => [p.key, p]),
+      );
 
       // Persist config values to state.config.env so they survive restarts
       if (!state.config.env) {
         state.config.env = {};
       }
+      if (!state.config.plugins) {
+        state.config.plugins = {};
+      }
+      if (!state.config.plugins.entries) {
+        (state.config.plugins as Record<string, unknown>).entries = {};
+      }
+      const entries = (state.config.plugins as Record<string, unknown>)
+        .entries as Record<string, Record<string, unknown>>;
+      const pluginEntry = entries[pluginId] ?? {};
+      const nextPluginConfig = asRecord(pluginEntry.config)
+        ? { ...(pluginEntry.config as Record<string, unknown>) }
+        : {};
+      let touchedPluginConfig = false;
+
       for (const [key, value] of Object.entries(body.config)) {
         if (
           allowedParamKeys.has(key) &&
           !BLOCKED_ENV_KEYS.has(key.toUpperCase()) &&
-          typeof value === "string" &&
-          value.trim()
+          typeof value === "string"
         ) {
-          process.env[key] = value;
-          (state.config.env as Record<string, unknown>)[key] = value;
+          touchedPluginConfig = true;
+          if (value.trim()) {
+            process.env[key] = value;
+            (state.config.env as Record<string, unknown>)[key] = value;
+            nextPluginConfig[key] = value;
+          } else if (!allowedParamsByKey.get(key)?.required) {
+            delete process.env[key];
+            delete (state.config.env as Record<string, unknown>)[key];
+            delete nextPluginConfig[key];
+          }
         }
+      }
+      if (touchedPluginConfig) {
+        pluginEntry.config = nextPluginConfig;
+        entries[pluginId] = pluginEntry;
       }
       plugin.configured = true;
 
@@ -999,8 +1026,7 @@ export async function handlePluginRoutes(
             name === plugin.id ||
             name === suffix ||
             name === packageName ||
-            name.endsWith(`/${suffix}`) ||
-            name.includes(plugin.id),
+            name.endsWith(`/${suffix}`),
         );
       }
     }

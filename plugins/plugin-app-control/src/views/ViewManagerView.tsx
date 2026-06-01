@@ -10,7 +10,14 @@
  */
 
 import { useAgentElement } from "@elizaos/ui";
-import { LayoutGrid, PackageOpen, RefreshCw } from "lucide-react";
+import {
+	CheckCircle2,
+	ExternalLink,
+	LayoutGrid,
+	PackageOpen,
+	RefreshCw,
+	XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -18,7 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 interface ViewEntry {
 	id: string;
 	label: string;
-	viewType?: "gui" | "tui";
+	viewType?: "gui" | "tui" | "xr";
 	description?: string;
 	icon?: string;
 	path?: string;
@@ -29,8 +36,31 @@ interface ViewEntry {
 	pluginName: string;
 }
 
+const viewManagerTheme = {
+	page: "var(--background, var(--bg, Canvas))",
+	panel: "var(--card, color-mix(in srgb, Canvas 94%, CanvasText 6%))",
+	panelMuted:
+		"var(--muted, color-mix(in srgb, Canvas 90%, CanvasText 10%))",
+	text: "var(--foreground, var(--txt, CanvasText))",
+	muted:
+		"var(--muted-foreground, color-mix(in srgb, CanvasText 58%, transparent))",
+	subtle:
+		"var(--muted-foreground, color-mix(in srgb, CanvasText 38%, transparent))",
+	border: "var(--border, color-mix(in srgb, CanvasText 14%, transparent))",
+	borderStrong:
+		"var(--border, color-mix(in srgb, CanvasText 24%, transparent))",
+	accent: "var(--accent, Highlight)",
+	accentSoft: "color-mix(in srgb, var(--accent, Highlight) 16%, transparent)",
+	accentBorder:
+		"color-mix(in srgb, var(--accent, Highlight) 38%, transparent)",
+	success: "var(--ok, var(--success, #16a34a))",
+	danger: "var(--danger, var(--destructive, #dc2626))",
+	dangerSoft:
+		"color-mix(in srgb, var(--danger, var(--destructive, #dc2626)) 14%, transparent)",
+};
+
 async function fetchViewEntries(
-	viewType?: "gui" | "tui",
+	viewType?: "gui" | "tui" | "xr",
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
 	const res = await fetch(`/api/views${qs}`);
@@ -56,17 +86,33 @@ async function requestViewNavigation(
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function ViewCard({ view }: { view: ViewEntry }) {
+function ViewCard({
+	view,
+	onOpen,
+}: {
+	view: ViewEntry;
+	onOpen: (view: ViewEntry) => void;
+}) {
 	const heroSrc =
 		view.heroImageUrl ?? `/api/views/${encodeURIComponent(view.id)}/hero`;
+	const typeLabel = (view.viewType ?? "gui").toUpperCase();
+	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+		id: `launch-view-${view.viewType ?? "gui"}-${view.id}`,
+		role: "button",
+		label: `Open ${view.label}`,
+		group: "view-manager-cards",
+		status: view.available ? "active" : "inactive",
+		description: `Navigate to the ${view.label} ${typeLabel} view`,
+	});
 
 	return (
 		<div
+			title={view.description ?? view.pluginName}
 			style={{
-				border: "1px solid rgba(255,255,255,0.08)",
-				borderRadius: 12,
+				border: `1px solid ${viewManagerTheme.border}`,
+				borderRadius: 8,
 				overflow: "hidden",
-				background: "rgba(255,255,255,0.03)",
+				background: viewManagerTheme.panel,
 				display: "flex",
 				flexDirection: "column",
 				transition: "border-color 0.15s",
@@ -80,7 +126,7 @@ function ViewCard({ view }: { view: ViewEntry }) {
 					aspectRatio: "4/3",
 					objectFit: "cover",
 					display: "block",
-					background: "#1a1a2e",
+					background: viewManagerTheme.panelMuted,
 				}}
 				onError={(e) => {
 					// Hide broken image — the placeholder SVG served by the agent
@@ -93,34 +139,88 @@ function ViewCard({ view }: { view: ViewEntry }) {
 					style={{
 						fontWeight: 600,
 						fontSize: 14,
-						color: "#e0e0e0",
+						color: viewManagerTheme.text,
 						marginBottom: 4,
 					}}
 				>
 					{view.label}
 				</div>
-				{view.description && (
-					<div
-						style={{
-							fontSize: 12,
-							color: "rgba(255,255,255,0.45)",
-							lineHeight: 1.4,
-							marginBottom: 8,
-						}}
-					>
-						{view.description}
-					</div>
-				)}
 				<div
 					style={{
-						fontSize: 11,
-						color: view.available
-							? "rgba(110,231,183,0.8)"
-							: "rgba(255,255,255,0.25)",
+						display: "flex",
+						flexWrap: "wrap",
+						gap: 6,
+						marginBottom: 8,
 					}}
 				>
-					{view.available ? "Bundle ready" : "Not built"}
+					<span
+						style={{
+							fontSize: 12,
+							color: viewManagerTheme.muted,
+							border: `1px solid ${viewManagerTheme.border}`,
+							borderRadius: 999,
+							padding: "3px 8px",
+						}}
+					>
+						{typeLabel}
+					</span>
+					<span
+						style={{
+							fontSize: 12,
+							color: viewManagerTheme.subtle,
+							border: `1px solid ${viewManagerTheme.border}`,
+							borderRadius: 999,
+							padding: "3px 8px",
+							maxWidth: "100%",
+							overflow: "hidden",
+							textOverflow: "ellipsis",
+							whiteSpace: "nowrap",
+						}}
+					>
+						{view.pluginName.replace(/^@elizaos\//, "")}
+					</span>
 				</div>
+				<span
+					style={{
+						display: "inline-flex",
+						alignItems: "center",
+						gap: 6,
+						fontSize: 11,
+						color: view.available
+							? viewManagerTheme.success
+							: viewManagerTheme.subtle,
+					}}
+				>
+					{view.available ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+					{view.available ? "Ready" : "Missing"}
+				</span>
+				<button
+					ref={ref}
+					type="button"
+					onClick={() => onOpen(view)}
+					disabled={!view.available}
+					aria-label={`Open ${view.label}`}
+					title={`Open ${view.label}`}
+					{...agentProps}
+					style={{
+						float: "right",
+						display: "inline-grid",
+						placeItems: "center",
+						width: 30,
+						height: 30,
+						border: `1px solid ${viewManagerTheme.accentBorder}`,
+						borderRadius: 6,
+						background: view.available
+							? viewManagerTheme.accentSoft
+							: viewManagerTheme.panelMuted,
+						color: view.available
+							? viewManagerTheme.accent
+							: viewManagerTheme.subtle,
+						cursor: view.available ? "pointer" : "not-allowed",
+					}}
+				>
+					<ExternalLink size={14} aria-hidden="true" />
+				</button>
 			</div>
 		</div>
 	);
@@ -136,16 +236,13 @@ function EmptyState() {
 				justifyContent: "center",
 				gap: 12,
 				padding: "64px 24px",
-				color: "rgba(255,255,255,0.35)",
+				color: viewManagerTheme.subtle,
 				textAlign: "center",
 			}}
 		>
 			<PackageOpen size={48} strokeWidth={1.2} />
 			<div style={{ fontSize: 15, fontWeight: 500 }}>No views registered</div>
-			<div style={{ fontSize: 13, maxWidth: 320 }}>
-				Views are UI bundles contributed by plugins. Install a plugin that
-				declares views to see them here.
-			</div>
+			<div style={{ fontSize: 13 }}>Install a view plugin</div>
 		</div>
 	);
 }
@@ -175,9 +272,9 @@ function RefreshButton({
 			{...agentProps}
 			style={{
 				background: "transparent",
-				border: "1px solid rgba(255,255,255,0.12)",
+				border: `1px solid ${viewManagerTheme.borderStrong}`,
 				borderRadius: 8,
-				color: "rgba(255,255,255,0.6)",
+				color: viewManagerTheme.muted,
 				cursor: loading ? "not-allowed" : "pointer",
 				display: "flex",
 				alignItems: "center",
@@ -220,19 +317,23 @@ export function ViewManagerView() {
 		void fetchViews();
 	}, [fetchViews]);
 
+	const openView = useCallback((view: ViewEntry) => {
+		void requestViewNavigation(view);
+	}, []);
+
 	return (
 		<div
 			style={{
 				minHeight: "100vh",
-				background: "#0f0f1a",
-				color: "#e0e0e0",
+				background: viewManagerTheme.page,
+				color: viewManagerTheme.text,
 				fontFamily: "system-ui, -apple-system, sans-serif",
 			}}
 		>
 			{/* Header */}
 			<div
 				style={{
-					borderBottom: "1px solid rgba(255,255,255,0.06)",
+					borderBottom: `1px solid ${viewManagerTheme.border}`,
 					padding: "20px 24px",
 					display: "flex",
 					alignItems: "center",
@@ -240,13 +341,13 @@ export function ViewManagerView() {
 				}}
 			>
 				<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-					<LayoutGrid size={20} style={{ color: "#6c63ff" }} />
+					<LayoutGrid size={20} style={{ color: viewManagerTheme.accent }} />
 					<span style={{ fontWeight: 600, fontSize: 16 }}>View Manager</span>
 					{!loading && (
 						<span
 							style={{
 								fontSize: 12,
-								color: "rgba(255,255,255,0.35)",
+								color: viewManagerTheme.subtle,
 								marginLeft: 4,
 							}}
 						>
@@ -264,7 +365,7 @@ export function ViewManagerView() {
 						style={{
 							textAlign: "center",
 							padding: "48px 0",
-							color: "rgba(255,255,255,0.35)",
+							color: viewManagerTheme.subtle,
 							fontSize: 14,
 						}}
 					>
@@ -277,7 +378,7 @@ export function ViewManagerView() {
 						style={{
 							textAlign: "center",
 							padding: "48px 0",
-							color: "rgba(239,68,68,0.8)",
+							color: viewManagerTheme.danger,
 							fontSize: 14,
 						}}
 					>
@@ -296,7 +397,7 @@ export function ViewManagerView() {
 						}}
 					>
 						{views.map((view) => (
-							<ViewCard key={view.id} view={view} />
+							<ViewCard key={view.id} view={view} onOpen={openView} />
 						))}
 					</div>
 				)}
@@ -313,13 +414,20 @@ export default ViewManagerView;
 function TuiStatusBadge({ view }: { view: ViewEntry }) {
 	return (
 		<span
+			title={view.available ? "Ready" : "Missing"}
 			style={{
 				color: view.available ? "#7dd3fc" : "#fca5a5",
-				minWidth: 10,
-				display: "inline-block",
+				minWidth: 18,
+				display: "inline-flex",
+				alignItems: "center",
+				justifyContent: "center",
 			}}
 		>
-			{view.available ? "ready" : "missing"}
+			{view.available ? (
+				<CheckCircle2 size={14} aria-hidden="true" />
+			) : (
+				<XCircle size={14} aria-hidden="true" />
+			)}
 		</span>
 	);
 }
@@ -357,7 +465,11 @@ function TuiRefreshButton({
 				fontFamily: "inherit",
 			}}
 		>
-			refresh
+			<RefreshCw
+				size={14}
+				aria-hidden="true"
+				style={{ animation: loading ? "spin 1s linear infinite" : "none" }}
+			/>
 		</button>
 	);
 }
@@ -404,8 +516,18 @@ function TuiViewRow({
 				{view.id}
 			</span>
 			<TuiStatusBadge view={view} />
-			<div style={{ gridColumn: "2 / 5", color: "#94a3b8", fontSize: 12 }}>
-				{view.description ?? view.pluginName}
+			<div
+				title={view.description ?? view.pluginName}
+				style={{
+					gridColumn: "2 / 5",
+					display: "flex",
+					gap: 8,
+					color: "#94a3b8",
+					fontSize: 12,
+				}}
+			>
+				<span>{view.pluginName.replace(/^@elizaos\//, "")}</span>
+				<span style={{ color: "#475569" }}>{view.path ?? "/"}</span>
 			</div>
 			<button
 				ref={ref}
@@ -425,7 +547,7 @@ function TuiViewRow({
 					fontFamily: "inherit",
 				}}
 			>
-				open
+				<ExternalLink size={14} aria-hidden="true" />
 			</button>
 		</div>
 	);

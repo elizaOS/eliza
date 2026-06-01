@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
+import { _resetSensitiveLimiters } from "./auth/sensitive-rate-limit";
 import { SESSION_COOKIE_NAME } from "./auth/sessions";
 import { _resetAuthRateLimiter } from "./auth.ts";
 import {
@@ -192,6 +193,7 @@ describe("P1 session routes (real pglite)", () => {
     harness = await open();
     _resetAuthRateLimiter();
     _resetAuthSessionRoutesLimiter();
+    _resetSensitiveLimiters();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
@@ -200,6 +202,7 @@ describe("P1 session routes (real pglite)", () => {
 
   afterEach(async () => {
     await harness.cleanup();
+    _resetSensitiveLimiters();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
@@ -469,6 +472,50 @@ describe("P1 session routes (real pglite)", () => {
       harness.state,
     );
     expect(newLogin.status()).toBe(200);
+  });
+
+  it("uses the stricter sensitive bucket for repeated password changes", async () => {
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/setup",
+        body: {
+          password: "initial secure password 1!",
+          displayName: "alice",
+        },
+      }),
+      fakeRes().res,
+      harness.state,
+    );
+
+    for (let i = 0; i < 5; i += 1) {
+      const change = fakeRes();
+      await handleAuthSessionRoutes(
+        fakeReq({
+          method: "POST",
+          pathname: "/api/auth/password/change",
+          body: { newPassword: `new secure password ${i} abc!` },
+          headers: { host: "localhost:31337" },
+        }),
+        change.res,
+        harness.state,
+      );
+      expect(change.status()).toBe(200);
+    }
+
+    const blocked = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/password/change",
+        body: { newPassword: "new secure password blocked abc!" },
+        headers: { host: "localhost:31337" },
+      }),
+      blocked.res,
+      harness.state,
+    );
+
+    expect(blocked.status()).toBe(429);
   });
 
   it("route auth trusts localhost only, not remote or cloud loopback", async () => {

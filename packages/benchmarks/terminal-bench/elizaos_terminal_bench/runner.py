@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from elizaos_terminal_bench.dataset import TerminalBenchDataset
+from elizaos_terminal_bench.dataset import TerminalBenchDataset, expand_tasks
 from elizaos_terminal_bench.environment import (
     LocalTerminalEnvironment,
     TerminalEnvironment,
@@ -191,6 +191,8 @@ class TerminalBenchRunner:
             tasks = [t for t in tasks if t.task_id in id_set]
         if max_tasks:
             tasks = tasks[:max_tasks]
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
 
         if not tasks:
             logger.warning("No tasks to evaluate after filtering")
@@ -242,6 +244,7 @@ class TerminalBenchRunner:
                 "max_iterations": self.config.max_iterations,
                 "timestamp": datetime.now().isoformat(),
                 "sample_tasks": self._use_sample_tasks,
+                "include_edge_scenarios": self.config.include_edge_scenarios,
             },
             # Leaderboard numbers are only meaningful on the official dataset,
             # not on built-in sample tasks.

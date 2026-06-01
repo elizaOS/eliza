@@ -59,6 +59,15 @@ const HELLO_WORLD_TERMS = [
   "xin chào",
 ];
 
+function includesGreetingTerm(text: string, term: string): boolean {
+  const normalizedTerm = term.toLowerCase();
+  if (/^[a-z0-9\s]+$/.test(normalizedTerm)) {
+    const escaped = normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(text);
+  }
+  return text.includes(normalizedTerm);
+}
+
 function helloWorldValidationText(message: Memory, state?: State): string {
   const values = state?.values ?? {};
   return [
@@ -98,7 +107,7 @@ const helloWorldAction: Action = {
     state: State | undefined,
   ): Promise<boolean> => {
     const text = helloWorldValidationText(message, state);
-    return HELLO_WORLD_TERMS.some((term) => text.includes(term.toLowerCase()));
+    return HELLO_WORLD_TERMS.some((term) => includesGreetingTerm(text, term));
   },
 
   handler: async (

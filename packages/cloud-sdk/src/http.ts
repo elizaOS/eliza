@@ -93,11 +93,12 @@ function normalizeErrorBody(
 ): CloudApiErrorBody {
   if (isRecord(body)) {
     const rawError = body.error;
+    const errorObject = isRecord(rawError) ? rawError : null;
     const error =
       typeof rawError === "string"
         ? rawError
-        : isRecord(rawError) && typeof rawError.message === "string"
-          ? rawError.message
+        : errorObject && typeof errorObject.message === "string"
+          ? errorObject.message
           : typeof body.message === "string"
             ? body.message
             : `HTTP ${status}: ${statusText}`;
@@ -105,6 +106,18 @@ function normalizeErrorBody(
     return {
       success: false,
       error,
+      code:
+        typeof body.code === "string"
+          ? body.code
+          : errorObject && typeof errorObject.code === "string"
+            ? errorObject.code
+            : undefined,
+      type:
+        typeof body.type === "string"
+          ? body.type
+          : errorObject && typeof errorObject.type === "string"
+            ? errorObject.type
+            : undefined,
       details: isRecord(body.details) ? body.details : undefined,
       requiredCredits:
         typeof body.requiredCredits === "number"
@@ -227,6 +240,9 @@ export class ElizaCloudHttpClient {
       if (this.apiKey) {
         headers.set("X-API-Key", this.apiKey);
       }
+    } else {
+      headers.delete("Authorization");
+      headers.delete("X-API-Key");
     }
 
     const init: RequestInit = {

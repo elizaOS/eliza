@@ -1,3 +1,4 @@
+import { CheckCircle2, Puzzle, XCircle } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { Button } from "../ui/button";
@@ -50,7 +51,7 @@ function ResolvedPluginIcon({
   imageStyle?: CSSProperties;
 }) {
   const icon = resolveIcon(plugin);
-  if (!icon) return "🧩";
+  if (!icon) return <Puzzle className={iconClassName} />;
   if (typeof icon === "string") {
     const imageSrc = iconImageSource(icon);
     return imageSrc ? (
@@ -61,7 +62,7 @@ function ResolvedPluginIcon({
         style={imageStyle}
       />
     ) : (
-      <span className={emojiClassName}>{icon}</span>
+      <Puzzle className={iconClassName ?? emojiClassName} />
     );
   }
   const IconComponent = icon;
@@ -146,8 +147,16 @@ export function PluginGameModal({
                       className={`plugins-game-badge ${
                         plugin.enabled ? "is-on" : "is-off"
                       }`}
+                      title={plugin.enabled ? t("common.on") : t("common.off")}
                     >
-                      {plugin.enabled ? t("common.on") : t("common.off")}
+                      {plugin.enabled ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <XCircle className="h-3 w-3" />
+                      )}
+                      <span className="sr-only">
+                        {plugin.enabled ? t("common.on") : t("common.off")}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -214,9 +223,14 @@ export function PluginGameModal({
                 </Button>
               </div>
             </div>
-            <div className="plugins-game-detail-description">
-              {selectedPlugin.description}
-            </div>
+            {selectedPlugin.description && (
+              <div
+                className="plugins-game-detail-description line-clamp-2"
+                title={selectedPlugin.description}
+              >
+                {selectedPlugin.description}
+              </div>
+            )}
             {(selectedPlugin.tags?.length ?? 0) > 0 && (
               <div className="flex flex-wrap gap-1.5 px-3 pb-3">
                 {selectedPlugin.tags?.map((tag) => (
@@ -310,7 +324,9 @@ export function PluginGameModal({
           </>
         ) : (
           <div className="plugins-game-detail-empty">
-            <span className="plugins-game-detail-empty-icon">🧩</span>
+            <span className="plugins-game-detail-empty-icon">
+              <Puzzle className="h-5 w-5" />
+            </span>
             <span className="plugins-game-detail-empty-text">
               {t("pluginsview.SelectA")}{" "}
               {isConnectorLikeMode ? "connector" : "plugin"}{" "}

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  authenticateBrowserBridgeCompanionCredential,
   BROWSER_BRIDGE_KINDS,
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionConfig,
@@ -24,7 +25,6 @@ import type {
   LifeOpsScreenTimeSession,
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../contracts/index.js";
-import { authenticateBrowserBridgeCompanionCredential } from "./browser-bridge-companion-auth.js";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   browserPageContextIdentityKey,

@@ -3,9 +3,11 @@ import unittest
 from elizaos_voice_emotion.runner import (
     BenchOutput,
     BenchUnavailable,
+    count_fixture_rows,
     run_fidelity,
     run_intrinsic,
     run_text_intrinsic,
+    validate_fixture_rows,
 )
 
 
@@ -27,6 +29,20 @@ class RunnerSmokeTests(unittest.TestCase):
     def test_text_intrinsic_fixture_smoke(self) -> None:
         out = run_text_intrinsic(suite="fixture", model="stage1-lm")
         self.assertEqual(out.suite, "fixture")
+        self.assertEqual(out.macro_f1, 1.0)
+
+    def test_fixture_edge_expansion_adds_ten_per_base_row(self) -> None:
+        self.assertEqual(
+            count_fixture_rows(include_edge_scenarios=True),
+            {"base": 14, "edge": 140, "edge_multiplier": 10, "total": 154},
+        )
+        validate_fixture_rows(include_edge_scenarios=True)
+        out = run_intrinsic(
+            suite="fixture",
+            model="wav2small-msp-dim-int8",
+            include_edge_scenarios=True,
+        )
+        self.assertEqual(out.n, 154)
         self.assertEqual(out.macro_f1, 1.0)
 
     def test_real_suites_raise_bench_unavailable(self) -> None:

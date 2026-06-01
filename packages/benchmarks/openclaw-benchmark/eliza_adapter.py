@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Try to import the new execution-based runner
 try:
     from openclaw.runner import BenchmarkRunner
+    from openclaw.scenarios import count_scenarios, load_scenarios, validate_scenarios
     from openclaw.scoring import format_score_summary
     EXECUTION_MODE_AVAILABLE = True
 except ImportError:
@@ -457,6 +458,10 @@ Scoring modes:
                         help="Run all tasks")
     parser.add_argument("--list", "-l", action="store_true",
                         help="List available tasks")
+    parser.add_argument("--count-scenarios", action="store_true",
+                        help="Print authored, added, and total scenario counts")
+    parser.add_argument("--validate-scenarios", action="store_true",
+                        help="Validate expanded scenario corpus and exit")
     parser.add_argument("--mode", "-m", type=str, default="execution",
                         choices=["execution", "conceptual"],
                         help="Scoring mode: execution (real) or conceptual (legacy)")
@@ -476,15 +481,29 @@ Scoring modes:
 
     args = parser.parse_args()
 
+    if args.count_scenarios:
+        if not EXECUTION_MODE_AVAILABLE:
+            print("Error: Execution mode not available. Install openclaw module or use --mode conceptual")
+            sys.exit(1)
+        print(json.dumps(count_scenarios(), indent=2))
+        return
+
+    if args.validate_scenarios:
+        if not EXECUTION_MODE_AVAILABLE:
+            print("Error: Execution mode not available. Install openclaw module or use --mode conceptual")
+            sys.exit(1)
+        validate_scenarios()
+        print("OpenClaw scenarios valid")
+        return
+
     # List tasks
     if args.list:
         print("Available OpenClaw benchmark tasks:")
         print()
         if args.mode == "execution" and EXECUTION_MODE_AVAILABLE:
             print("Mode: EXECUTION (validates actual code)")
-            scenarios_dir = BENCHMARK_DIR / "openclaw" / "scenarios"
-            for f in sorted(scenarios_dir.glob("*.yaml")):
-                print(f"  {f.stem}")
+            for scenario in sorted(load_scenarios()):
+                print(f"  {scenario}")
         else:
             print("Mode: CONCEPTUAL (keyword matching only)")
             print("WARNING: Conceptual mode scores are not meaningful!")

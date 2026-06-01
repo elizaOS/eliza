@@ -16,12 +16,12 @@ import {
   type ViewsRouteContext,
 } from "../api/views-routes.js";
 
-type RoutedViewType = "gui" | "tui";
+type RoutedViewType = "gui" | "tui" | "xr";
 
 function _isRoutedViewType(
   viewType: ViewDeclaration["viewType"],
 ): viewType is RoutedViewType {
-  return viewType === "gui" || viewType === "tui";
+  return viewType === "gui" || viewType === "tui" || viewType === "xr";
 }
 
 const repoRoot = resolve(
@@ -221,6 +221,16 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-training-stage-eliza1-bundle",
     "terminal-training-run-action-benchmark",
   ],
+  "plugins/plugin-facewear/src/ui/FacewearView.tsx": [
+    "connect-device",
+    "manage-views",
+    "device-diagnostics",
+    "emulator",
+    "connect-headset",
+    "run-hardware-check",
+    "guided-side-tap-audio-validation",
+    "configure-wifi",
+  ],
 };
 
 function readManifest(path: string): string {
@@ -278,9 +288,20 @@ function coveredViewType(
   viewType: ViewDeclaration["viewType"],
 ): RoutedViewType | undefined {
   const normalizedViewType = viewType ?? "gui";
-  return normalizedViewType === "gui" || normalizedViewType === "tui"
+  return normalizedViewType === "gui" ||
+    normalizedViewType === "tui" ||
+    normalizedViewType === "xr"
     ? normalizedViewType
     : undefined;
+}
+
+function capabilitiesForDeclaration(
+  declaration: ViewDeclaration,
+): readonly string[] {
+  const owner = Object.entries(TUI_PARITY_CAPABILITIES).find(([sourcePath]) =>
+    readManifest(sourcePath).includes(declaration.componentExport),
+  );
+  return owner?.[1] ?? [];
 }
 
 function viewDeclarations(manifestPath: string): ViewDeclaration[] {
@@ -341,6 +362,32 @@ function makeCtx(
 }
 
 describe("plugin TUI view coverage", () => {
+  it("requires a terminal parity capability entry for every declared TUI component", () => {
+    const paritySources = Object.keys(TUI_PARITY_CAPABILITIES).map(
+      (sourcePath) => ({
+        sourcePath,
+        source: readManifest(sourcePath),
+      }),
+    );
+    const missing: string[] = [];
+
+    for (const manifestPath of VIEW_MANIFESTS) {
+      for (const declaration of viewDeclarations(manifestPath)) {
+        if (declaration.viewType !== "tui") continue;
+        const owner = paritySources.find(({ source }) =>
+          source.includes(declaration.componentExport),
+        );
+        if (!owner || TUI_PARITY_CAPABILITIES[owner.sourcePath].length === 0) {
+          missing.push(
+            `${manifestPath}:${declaration.id}:${declaration.componentExport}`,
+          );
+        }
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
   it("keeps a terminal parity capability surface for every bundled TUI", () => {
     const failures: string[] = [];
 
@@ -383,7 +430,7 @@ describe("plugin TUI view coverage", () => {
     expect(missing).toEqual([]);
   });
 
-  it("can route-switch every bundled plugin view in gui and tui mode", async () => {
+  it("can route-switch every bundled plugin view in gui, tui, and xr mode", async () => {
     const pluginNames: string[] = [];
     const views: Array<{
       manifestPath: string;
@@ -453,7 +500,7 @@ describe("plugin TUI view coverage", () => {
     }
   });
 
-  it("can dispatch standard interactions for every bundled plugin view in gui and tui mode", async () => {
+  it("can dispatch standard interactions for every bundled plugin view in gui, tui, and xr mode", async () => {
     const pluginNames: string[] = [];
     const views: Array<{
       manifestPath: string;
@@ -555,6 +602,124 @@ describe("plugin TUI view coverage", () => {
         }
       }
 
+      expect(failures).toEqual([]);
+    } finally {
+      for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
+      clearCurrentViewState();
+    }
+  });
+
+  it("can dispatch every bundled TUI capability through the view interaction route", async () => {
+    const pluginNames: string[] = [];
+    const capabilities: Array<{
+      manifestPath: string;
+      viewId: string;
+      capability: string;
+    }> = [];
+
+    try {
+      for (const manifestPath of VIEW_MANIFESTS) {
+        const declarations = viewDeclarations(manifestPath);
+        const pluginName = `test:${manifestPath}`;
+        pluginNames.push(pluginName);
+        await registerPluginViews(
+          {
+            name: pluginName,
+            description: `Test view manifest ${manifestPath}`,
+            actions: [],
+            views: declarations,
+          } satisfies Plugin,
+          undefined,
+        );
+        for (const declaration of declarations) {
+          if (declaration.viewType !== "tui") continue;
+          for (const capability of capabilitiesForDeclaration(declaration)) {
+            capabilities.push({
+              manifestPath,
+              viewId: declaration.id,
+              capability,
+            });
+          }
+        }
+      }
+
+      const failures: string[] = [];
+      for (const target of capabilities) {
+        const broadcasts: object[] = [];
+        let resultBody: unknown = null;
+        let errorBody: { message: string; status?: number } | null = null;
+
+        await handleViewsRoutes(
+          makeCtx(
+            "POST",
+            `/api/views/${encodeURIComponent(target.viewId)}/interact?viewType=tui`,
+            (payload) => {
+              broadcasts.push(payload);
+              const event = payload as {
+                type?: string;
+                requestId?: string;
+                capability?: string;
+                viewId?: string;
+                viewType?: string;
+              };
+              if (
+                event.type === "view:interact" &&
+                typeof event.requestId === "string"
+              ) {
+                resolveViewInteractResult({
+                  requestId: event.requestId,
+                  success: true,
+                  result: {
+                    capability: event.capability,
+                    viewId: event.viewId,
+                    viewType: event.viewType,
+                  },
+                });
+              }
+            },
+            { capability: target.capability, timeoutMs: 1_000 },
+            (_res, body) => {
+              resultBody = body;
+            },
+            (_res, message, status) => {
+              errorBody = { message, status };
+            },
+          ),
+        );
+
+        const event = broadcasts[0] as
+          | {
+              type?: string;
+              capability?: string;
+              viewId?: string;
+              viewType?: string;
+            }
+          | undefined;
+        const result = resultBody as {
+          success?: boolean;
+          result?: {
+            capability?: string;
+            viewId?: string;
+            viewType?: string;
+          };
+        } | null;
+
+        if (
+          errorBody ||
+          event?.type !== "view:interact" ||
+          event.viewId !== target.viewId ||
+          event.viewType !== "tui" ||
+          event.capability !== target.capability ||
+          result?.success !== true ||
+          result.result?.capability !== target.capability
+        ) {
+          failures.push(
+            `${target.manifestPath}:tui:${target.viewId}:${target.capability}`,
+          );
+        }
+      }
+
+      expect(capabilities.length).toBeGreaterThan(0);
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);

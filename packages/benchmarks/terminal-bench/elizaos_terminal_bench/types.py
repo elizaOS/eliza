@@ -229,6 +229,7 @@ class TerminalBenchConfig:
     difficulties: Optional[list[TaskDifficulty]] = None
     task_ids: Optional[list[str]] = None
     max_tasks: Optional[int] = None
+    include_edge_scenarios: bool = False
     
     # Execution settings
     max_iterations: int = 20

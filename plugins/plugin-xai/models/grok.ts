@@ -27,9 +27,21 @@ interface GrokConfig {
   embeddingModel: string;
 }
 
+function getSettingString(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
 function getConfig(runtime: IAgentRuntime): GrokConfig {
-  const apiKey = runtime.getSetting("XAI_API_KEY");
-  if (!apiKey || typeof apiKey !== "string") {
+  const apiKey =
+    getSettingString(runtime, "XAI_API_KEY") ??
+    getSettingString(runtime, "GROK_API_KEY");
+  if (!apiKey) {
     throw new Error("XAI_API_KEY is required");
   }
 
@@ -51,6 +63,13 @@ function getConfig(runtime: IAgentRuntime): GrokConfig {
         ? embeddingModel
         : DEFAULT_MODELS.embedding,
   };
+}
+
+function getFetch(runtime: IAgentRuntime): typeof fetch {
+  const runtimeFetch = (runtime as { fetch?: typeof fetch }).fetch;
+  return typeof runtimeFetch === "function"
+    ? runtimeFetch.bind(runtime)
+    : fetch;
 }
 
 function getAuthHeader(config: GrokConfig): Record<string, string> {
@@ -389,79 +408,26 @@ async function generateText(
   }
 
   if (params.stream && params.onStreamChunk) {
-    body.stream = true;
-    const onStreamChunk = params.onStreamChunk;
-
-    return recordLlmCall(
+    return createStreamTextResult(
       runtime,
-      {
-        model,
-        systemPrompt: "",
-        userPrompt: promptText,
-        temperature: params.temperature ?? 0,
-        maxTokens: params.maxTokens ?? 0,
-        purpose: "external_llm",
-        actionType: "xai.chat.completions.stream",
-      },
-      async () => {
-        const response = await fetch(`${config.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: getAuthHeader(config),
-          body: JSON.stringify(body),
-        });
+      config,
+      modelType,
+      model,
+      params,
+      body,
+      promptText,
+    );
+  }
 
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Grok API error (${response.status}): ${error}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("No response body");
-        }
-
-        const decoder = new TextDecoder();
-        let fullText = "";
-        let usage: NormalizedUsage | null = null;
-        let responseModel = model;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            const parsed = JSON.parse(data) as StreamCompletionChunk;
-            const chunkUsage = normalizeTokenUsage(parsed.usage);
-            if (chunkUsage) {
-              usage = chunkUsage;
-            }
-            if (typeof parsed.model === "string" && parsed.model.length > 0) {
-              responseModel = parsed.model;
-            }
-
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullText += content;
-              onStreamChunk(content);
-            }
-          }
-        }
-
-        emitModelUsed(
-          runtime,
-          modelType,
-          responseModel,
-          usage ?? estimateUsage(promptText, fullText),
-        );
-        return fullText;
-      },
+  if (params.stream) {
+    return createStreamTextResult(
+      runtime,
+      config,
+      modelType,
+      model,
+      params,
+      body,
+      promptText,
     );
   }
 
@@ -477,11 +443,14 @@ async function generateText(
       actionType: "xai.chat.completions.create",
     },
     async () => {
-      const response = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: getAuthHeader(config),
-        body: JSON.stringify(body),
-      });
+      const response = await getFetch(runtime)(
+        `${config.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: getAuthHeader(config),
+          body: JSON.stringify(body),
+        },
+      );
 
       if (!response.ok) {
         const error = await response.text();
@@ -534,6 +503,124 @@ async function generateText(
   );
 }
 
+function createStreamTextResult(
+  runtime: IAgentRuntime,
+  config: GrokConfig,
+  modelType: ModelTypeName,
+  model: string,
+  params: GenerateTextParams,
+  body: Record<string, unknown>,
+  promptText: string,
+): TextStreamResult {
+  body.stream = true;
+  const onStreamChunk = params.onStreamChunk;
+  const fetchImpl = getFetch(runtime);
+  const state = recordLlmCall(
+    runtime,
+    {
+      model,
+      systemPrompt: "",
+      userPrompt: promptText,
+      temperature: params.temperature ?? 0,
+      maxTokens: params.maxTokens ?? 0,
+      purpose: "external_llm",
+      actionType: "xai.chat.completions.stream",
+    },
+    async () => {
+      const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: getAuthHeader(config),
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok API error (${response.status}): ${error}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      let buffered = "";
+      let usage: NormalizedUsage | null = null;
+      let responseModel = model;
+      let finishReason: string | undefined;
+
+      const readLine = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        const data = line.slice(6).trim();
+        if (!data || data === "[DONE]") return;
+
+        const parsed = JSON.parse(data) as StreamCompletionChunk & {
+          choices?: Array<{
+            finish_reason?: string;
+            delta?: { content?: string };
+          }>;
+        };
+        const chunkUsage = normalizeTokenUsage(parsed.usage);
+        if (chunkUsage) {
+          usage = chunkUsage;
+        }
+        if (typeof parsed.model === "string" && parsed.model.length > 0) {
+          responseModel = parsed.model;
+        }
+
+        const choice = parsed.choices?.[0];
+        if (typeof choice?.finish_reason === "string") {
+          finishReason = choice.finish_reason;
+        }
+        const content = choice?.delta?.content;
+        if (content) {
+          chunks.push(content);
+          onStreamChunk?.(content);
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split(/\r?\n/);
+        buffered = lines.pop() ?? "";
+        for (const line of lines) {
+          readLine(line);
+        }
+      }
+
+      buffered += decoder.decode();
+      for (const line of buffered.split(/\r?\n/)) {
+        readLine(line);
+      }
+
+      const fullText = chunks.join("");
+      const finalUsage = usage ?? estimateUsage(promptText, fullText);
+      emitModelUsed(runtime, modelType, responseModel, finalUsage);
+
+      return {
+        fullText,
+        chunks,
+        usage: finalUsage,
+        finishReason,
+      };
+    },
+  );
+
+  return {
+    textStream: (async function* () {
+      const result = await state;
+      yield* result.chunks;
+    })(),
+    text: state.then((result) => result.fullText),
+    usage: state.then((result) => result.usage),
+    finishReason: state.then((result) => result.finishReason),
+  };
+}
+
 function parseJsonOrRaw(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -548,7 +635,7 @@ async function createEmbedding(
   config: GrokConfig,
   text: string,
 ): Promise<number[]> {
-  const response = await fetch(`${config.baseUrl}/embeddings`, {
+  const response = await getFetch(runtime)(`${config.baseUrl}/embeddings`, {
     method: "POST",
     headers: getAuthHeader(config),
     body: JSON.stringify({
@@ -622,7 +709,7 @@ export async function handleTextEmbedding(
   const config = getConfig(runtime);
   const text =
     typeof params === "string" ? params : (params as TextEmbeddingParams).text;
-  if (!text) {
+  if (!text || text.trim().length === 0) {
     throw new Error("Empty text provided for embedding");
   }
   logger.debug(
@@ -650,5 +737,8 @@ export async function listModels(
 }
 
 export function isGrokConfigured(runtime: IAgentRuntime): boolean {
-  return !!runtime.getSetting("XAI_API_KEY");
+  return !!(
+    getSettingString(runtime, "XAI_API_KEY") ??
+    getSettingString(runtime, "GROK_API_KEY")
+  );
 }

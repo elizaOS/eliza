@@ -9,16 +9,16 @@ import {
   type Memory,
 } from "@elizaos/core";
 import {
-  type CalendlyAvailability,
+  type CalendlyAvailabilityNormalized as CalendlyAvailability,
   CalendlyError,
-  type CalendlyEventType,
-  type CalendlyScheduledEvent,
+  type CalendlyEventTypeNormalized as CalendlyEventType,
+  type CalendlyScheduledEventNormalized as CalendlyScheduledEvent,
   createCalendlySingleUseLink,
   getCalendlyAvailability,
   listCalendlyEventTypes,
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
-} from "../../lifeops/calendly-client.js";
+} from "@elizaos/plugin-calendly";
 import {
   createCalendlySingleUseLinkWithRuntimeService,
   getCalendlyAvailabilityWithRuntimeService,

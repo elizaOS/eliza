@@ -513,6 +513,31 @@ function createTextToSpeechHandler() {
 			extractSpeechText(params),
 		);
 		const signal = extractSpeechSignal(params);
+		const arbiter = _tryGetTtsArbiter(service);
+		if (arbiter) {
+			const request = { text, ...(signal ? { signal } : {}) };
+			const requestSpeech = arbiter.requestTextToSpeech ?? arbiter.requestSpeak;
+			if (!requestSpeech) {
+				throw unavailable(
+					ModelType.TEXT_TO_SPEECH,
+					"capability_unavailable",
+					"[local-inference] Active local arbiter does not implement TEXT_TO_SPEECH",
+				);
+			}
+			const modelKeyCandidate =
+				typeof params === "object"
+					? (params as unknown as { modelKey?: unknown }).modelKey
+					: undefined;
+			const modelKey =
+				typeof modelKeyCandidate === "string" && modelKeyCandidate
+					? modelKeyCandidate
+					: "eliza-1-voice";
+			const result = await requestSpeech<typeof request, Uint8Array>({
+				modelKey,
+				payload: request,
+			});
+			return normalizeAudioBytes(result);
+		}
 		if (typeof service.synthesizeSpeech === "function") {
 			return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
 		}
@@ -537,6 +562,25 @@ function createTranscriptionHandler() {
 		const service = requireService(runtime, ModelType.TRANSCRIPTION);
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
+		const arbiter = _tryGetTranscribeArbiter(service);
+		if (arbiter?.requestTranscribe) {
+			const modelKeyCandidate =
+				typeof params === "object" && params !== null
+					? (params as { modelKey?: unknown }).modelKey
+					: undefined;
+			const modelKey =
+				typeof modelKeyCandidate === "string" && modelKeyCandidate
+					? modelKeyCandidate
+					: "eliza-1-transcribe";
+			const transcript = normalizeTranscript(
+				await arbiter.requestTranscribe<
+					TranscriptionParams | Buffer | string | unknown,
+					string | { text?: string }
+				>({ modelKey, payload: params }),
+			);
+			throwIfAborted(signal);
+			return transcript;
+		}
 		if (typeof service.transcribe === "function") {
 			const transcript = normalizeTranscript(await service.transcribe(params));
 			throwIfAborted(signal);

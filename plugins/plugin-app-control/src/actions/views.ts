@@ -114,9 +114,33 @@ function readViewTypeOption(
 	const normalized = explicit?.trim().toLowerCase();
 	if (normalized === "gui" || normalized === "graphical") return "gui";
 	if (normalized === "tui" || normalized === "terminal") return "tui";
+	if (
+		normalized === "xr" ||
+		normalized === "spatial" ||
+		normalized === "immersive"
+	)
+		return "xr";
 
 	if (/\b(tui|terminal)\b/i.test(text)) return "tui";
+	if (/\b(xr|spatial|immersive)\b/i.test(text)) return "xr";
 	if (/\b(gui|graphical)\b/i.test(text)) return "gui";
+	return undefined;
+}
+
+function readExplicitViewTypeOption(
+	options?: Record<string, unknown>,
+): ViewType | undefined {
+	const normalized = readStringOption(options, "viewType")
+		?.trim()
+		.toLowerCase();
+	if (normalized === "gui" || normalized === "graphical") return "gui";
+	if (normalized === "tui" || normalized === "terminal") return "tui";
+	if (
+		normalized === "xr" ||
+		normalized === "spatial" ||
+		normalized === "immersive"
+	)
+		return "xr";
 	return undefined;
 }
 
@@ -129,6 +153,16 @@ function readBooleanOption(
 	if (typeof value === "boolean") return value;
 	if (typeof value !== "string") return false;
 	return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
+async function resolveViewTypeForId(
+	client: ViewsClient,
+	viewId: string,
+	explicitViewType?: ViewType,
+): Promise<ViewType | undefined> {
+	if (explicitViewType) return explicitViewType;
+	const views = await client.listViews();
+	return views.find((view) => view.id === viewId)?.viewType;
 }
 
 type OwnerAccessFn = (
@@ -294,9 +328,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "viewType",
 				description:
-					'Presentation type to use for view discovery and switching. Defaults to "gui"; use "tui" for terminal views.',
+					'Presentation type to use for view discovery and switching. Defaults to "gui"; use "tui" for terminal views and "xr" for spatial views.',
 				required: false,
-				schema: { type: "string", enum: ["gui", "tui"] },
+				schema: { type: "string", enum: ["gui", "tui", "xr"] },
 			},
 			{
 				name: "search",
@@ -649,7 +683,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
-					const pinResultText = await pinViewAsTab(pinViewId, viewType);
+					const resolvedViewType = await resolveViewTypeForId(
+						client,
+						pinViewId,
+						readExplicitViewTypeOption(options) ?? viewType,
+					);
+					const pinResultText = await pinViewAsTab(
+						pinViewId,
+						resolvedViewType === "gui" ? undefined : resolvedViewType,
+					);
 					await callback?.({ text: pinResultText });
 					return {
 						success: true,
@@ -657,9 +699,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						values: {
 							mode: "pin",
 							viewId: pinViewId,
-							viewType: viewType ?? "gui",
+							viewType: resolvedViewType ?? "gui",
 						},
-						data: { viewId: pinViewId, viewType: viewType ?? "gui" },
+						data: { viewId: pinViewId, viewType: resolvedViewType ?? "gui" },
 					};
 				}
 
@@ -675,9 +717,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
+					const resolvedViewType = await resolveViewTypeForId(
+						client,
+						windowViewId,
+						readExplicitViewTypeOption(options) ?? viewType,
+					);
 					const windowResultText = await openViewInWindow(
 						windowViewId,
-						viewType,
+						resolvedViewType === "gui" ? undefined : resolvedViewType,
 						alwaysOnTop,
 					);
 					await callback?.({ text: windowResultText });
@@ -687,12 +734,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						values: {
 							mode: "window",
 							viewId: windowViewId,
-							viewType: viewType ?? "gui",
+							viewType: resolvedViewType ?? "gui",
 							alwaysOnTop,
 						},
 						data: {
 							viewId: windowViewId,
-							viewType: viewType ?? "gui",
+							viewType: resolvedViewType ?? "gui",
 							alwaysOnTop,
 						},
 					};

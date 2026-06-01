@@ -1,4 +1,5 @@
 import { logger } from "@elizaos/core";
+import { assertValidVisionImageBuffer } from "./image-input";
 import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
 import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
@@ -201,6 +202,7 @@ export class OCRService {
   }
 
   async extractText(imageBuffer: Buffer): Promise<OCRResult> {
+    await assertValidVisionImageBuffer(imageBuffer);
     if (!this.initialized) await this.initialize();
     if (!this.chosen) throw new Error("OCR not initialized");
 

@@ -3,13 +3,13 @@
  *
  * Calendly is a scheduling-link provider — there is no outbound `send`. The
  * `read` verb lists scheduled events. The full Calendly API client is owned
- * by `@elizaos/plugin-calendly` and re-exported through `../calendly-client.ts`.
+ * by `@elizaos/plugin-calendly`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
-} from "../calendly-client.js";
+} from "@elizaos/plugin-calendly";
 import type {
   ConnectorContribution,
   ConnectorStatus,

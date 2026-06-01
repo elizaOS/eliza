@@ -114,6 +114,20 @@ class TestDispatcher:
         assert len(tasks) == 1
         assert tasks[0].metadata["source"] == "agentbench-fixture"
 
+    def test_fixture_mode_edge_expansion_adds_ten_per_base_task(self) -> None:
+        tasks = L.load_tasks(
+            E.DATABASE,
+            split="dev",
+            limit=1,
+            data_mode="fixture",
+            include_edge_scenarios=True,
+        )
+        _assert_valid_tasks(tasks, E.DATABASE, expected_min=11)
+        L.validate_tasks(tasks)
+        assert len(tasks) == 11
+        assert len([t for t in tasks if t.metadata.get("edge_scenario") is True]) == 10
+        assert tasks[1].id == f"{tasks[0].id}--edge-01"
+
     def test_full_mode_requires_upstream_data_when_missing(self, monkeypatch) -> None:
         monkeypatch.setattr(L, "UPSTREAM_DATA", L.UPSTREAM_ROOT / "definitely-missing-data")
         with pytest.raises(L.UpstreamDataMissingError):

@@ -30,12 +30,16 @@ export class FeishuWorkflowCredentialProvider extends Service {
 		credType: string,
 	): Promise<CredentialProviderResult> {
 		if (credType !== "httpHeaderAuth") return null;
-		const appId = this.runtime.getSetting("FEISHU_APP_ID") as
-			| string
-			| undefined;
-		const appSecret = this.runtime.getSetting("FEISHU_APP_SECRET") as
-			| string
-			| undefined;
+		let appId: string | undefined;
+		let appSecret: string | undefined;
+		try {
+			appId = this.runtime.getSetting("FEISHU_APP_ID") as string | undefined;
+			appSecret = this.runtime.getSetting("FEISHU_APP_SECRET") as
+				| string
+				| undefined;
+		} catch {
+			return null;
+		}
 		if (!appId?.trim() || !appSecret?.trim()) return null;
 		// Surface app credentials; workflows call the Feishu auth API to get a tenant_access_token.
 		return {

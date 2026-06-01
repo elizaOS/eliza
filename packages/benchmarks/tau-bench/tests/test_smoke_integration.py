@@ -133,6 +133,26 @@ def test_mock_smoke_retail_and_airline(tmp_path):
         assert r.num_tool_calls >= 1, f"{r.domain}#{r.task_id} ran 0 tools"
 
 
+def test_mock_expanded_smoke_counts_edge_scenarios(tmp_path):
+    cfg = TauBenchConfig(
+        domains=["retail"],
+        use_sample_tasks=True,
+        use_mock=True,
+        num_trials=1,
+        pass_k_values=[1],
+        use_llm_judge=False,
+        include_edge_scenarios=True,
+        max_tasks_per_domain=1,
+        output_dir=str(tmp_path / "out"),
+    )
+    report = TauBenchRunner(cfg).run()
+
+    assert report.num_tasks == 11
+    assert report.avg_reward == 1.0
+    assert report.pass_k[1].num_tasks == 11
+    assert {r.scenario_id for r in report.results if r.scenario_id != "base"}
+
+
 def test_grounded_sample_user_does_not_hallucinate_email():
     user = GroundedUserSimulationEnv()
     user.reset(

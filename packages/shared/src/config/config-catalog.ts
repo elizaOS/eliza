@@ -61,6 +61,13 @@ export interface JsonSchemaObject extends JsonSchemaProperty {
 
 // ── Dynamic value resolution (≈ json-render DynamicValue + getByPath) ───
 
+function parsePathSegments(path: string): string[] {
+  if (!path || path === "/") return [];
+  return (path.startsWith("/") ? path.slice(1) : path)
+    .split("/")
+    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+}
+
 /**
  * Get a value from a nested object by slash-delimited path (JSON Pointer).
  *
@@ -70,12 +77,13 @@ export interface JsonSchemaObject extends JsonSchemaProperty {
  */
 export function getByPath(obj: unknown, path: string): unknown {
   if (!path || path === "/") return obj;
-  const segments = (path.startsWith("/") ? path.slice(1) : path).split("/");
+  const segments = parsePathSegments(path);
   let current: unknown = obj;
   for (const seg of segments) {
     if (current == null) return undefined;
     if (Array.isArray(current)) {
-      current = current[parseInt(seg, 10)];
+      if (!/^\d+$/.test(seg)) return undefined;
+      current = current[Number(seg)];
     } else if (typeof current === "object") {
       current = (current as Record<string, unknown>)[seg];
     } else {
@@ -93,7 +101,7 @@ export function setByPath(
   path: string,
   value: unknown,
 ): void {
-  const segments = (path.startsWith("/") ? path.slice(1) : path).split("/");
+  const segments = parsePathSegments(path);
   if (segments.length === 0) return;
   const isUnsafeKey = (k: string): boolean =>
     k === "__proto__" || k === "constructor" || k === "prototype";

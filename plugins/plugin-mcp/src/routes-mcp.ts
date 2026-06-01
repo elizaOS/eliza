@@ -66,8 +66,12 @@ function parseClampedInteger(
   const raw = value == null ? "" : value.trim();
   if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) {
+  if (!/^[+-]?\d+$/.test(raw)) {
+    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) {
     return Number.isFinite(options.fallback) ? options.fallback : undefined;
   }
 
@@ -246,6 +250,16 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) {
         error(res, "servers must be a JSON object", 400);
         return true;
+      }
+      for (const serverName of Object.keys(body.servers)) {
+        if (ctx.isBlockedObjectKey(serverName)) {
+          error(
+            res,
+            'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
+            400
+          );
+          return true;
+        }
       }
       const mcpRejection = await ctx.resolveMcpServersRejection(
         body.servers as Record<string, unknown>

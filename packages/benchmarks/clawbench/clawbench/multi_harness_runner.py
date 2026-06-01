@@ -34,7 +34,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 # Ensure the local clawbench package is importable when the script is run
 # directly (``python multi_harness_runner.py``) without an editable install.
@@ -45,10 +44,15 @@ if str(_REPO_PKG_ROOT) not in sys.path:
     # ``eliza_adapter`` package used by the multi-harness path.
     sys.path.append(str(_REPO_PKG_ROOT))
 
+from clawbench.scenarios import (  # noqa: E402
+    base_scenario_name,
+    count_scenarios,
+    load_scenario,
+    validate_scenarios,
+)
 from clawbench.scoring import format_score_summary, score_episode  # noqa: E402
 
 CLAWBENCH_DIR = Path(__file__).resolve().parent.parent
-SCENARIOS_DIR = CLAWBENCH_DIR / "scenarios"
 FIXTURES_DIR = CLAWBENCH_DIR / "fixtures"
 
 
@@ -56,33 +60,9 @@ FIXTURES_DIR = CLAWBENCH_DIR / "fixtures"
 # Scenario + fixture loading
 # ---------------------------------------------------------------------------
 
-def load_scenario(name_or_path: str) -> dict[str, Any]:
-    """Load a scenario YAML by name or filesystem path."""
-    path = Path(name_or_path)
-    if not path.exists():
-        candidate = SCENARIOS_DIR / f"{name_or_path}.yaml"
-        if candidate.exists():
-            path = candidate
-        else:
-            candidate = SCENARIOS_DIR / f"{name_or_path}.yml"
-            if candidate.exists():
-                path = candidate
-    if not path.exists():
-        available = sorted(p.stem for p in SCENARIOS_DIR.glob("*.y*ml"))
-        raise FileNotFoundError(
-            f"Scenario '{name_or_path}' not found. "
-            f"Available: {available}"
-        )
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    if not isinstance(data, dict):
-        raise ValueError(f"Scenario YAML at {path} did not parse to a dict")
-    return data
-
-
 def load_fixtures(scenario_name: str) -> dict[str, Any]:
     """Load the fixture bundle for a scenario from ``fixtures/{scenario}/``."""
-    fixtures_dir = FIXTURES_DIR / scenario_name
+    fixtures_dir = FIXTURES_DIR / base_scenario_name(scenario_name)
     if not fixtures_dir.exists():
         return {}
     out: dict[str, Any] = {}
@@ -379,12 +359,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--harness",
         choices=sorted(_HARNESS_BUILDERS),
-        required=True,
+        required=False,
         help="Which harness to drive",
     )
     parser.add_argument(
         "--scenario",
-        required=True,
+        required=False,
         help="Scenario name (e.g. 'inbox_triage') or path to a YAML file",
     )
     parser.add_argument(
@@ -402,7 +382,27 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print full result JSON to stdout instead of the summary",
     )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print scenario expansion counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate expanded scenario structure and exit",
+    )
     args = parser.parse_args(argv)
+
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(), indent=2))
+        return 0
+    if args.validate_scenarios:
+        validation = validate_scenarios()
+        print(json.dumps(validation, indent=2))
+        return 0 if validation["valid"] else 1
+    if not args.harness or not args.scenario:
+        parser.error("--harness and --scenario are required unless using count/validate flags")
 
     try:
         scenario = load_scenario(args.scenario)
@@ -410,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    fixtures = load_fixtures(scenario.get("name") or args.scenario)
+    fixtures = load_fixtures(scenario.get("_base_name") or scenario.get("name") or args.scenario)
 
     try:
         result = asyncio.run(

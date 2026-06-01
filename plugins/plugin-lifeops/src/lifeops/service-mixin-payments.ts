@@ -1,6 +1,21 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
+import { loadElizaConfig, resolveOAuthDir } from "@elizaos/agent";
+import {
+  type ElizaCloudManagedClientConfig,
+  normalizeCloudSiteUrl,
+  normalizeElizaCloudApiKey,
+  PaypalManagedClient,
+  PaypalManagedClientError,
+  type PaypalCallbackResponse,
+  type PaypalTransactionDto,
+  PlaidManagedClient,
+  PlaidManagedClientError,
+  type PlaidExchangeResponse,
+  type PlaidSyncResponse,
+  type PlaidTransactionDto,
+  resolveCloudApiBaseUrl,
+} from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
 import {
   type ParsedCsvTransaction,
   parseTransactionsCsv,
@@ -24,19 +39,6 @@ import type {
   ListTransactionsRequest,
   SpendingSummaryRequest,
 } from "./payment-types.js";
-import {
-  type PaypalCallbackResponse,
-  PaypalManagedClient,
-  PaypalManagedClientError,
-  type PaypalTransactionDto,
-} from "./paypal-managed-client.js";
-import {
-  type PlaidExchangeResponse,
-  PlaidManagedClient,
-  PlaidManagedClientError,
-  type PlaidSyncResponse,
-  type PlaidTransactionDto,
-} from "./plaid-managed-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   fail,
@@ -64,6 +66,37 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
 
 const EMAIL_SOURCE_LABEL = "Email bills";
 const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
+
+function resolveLifeOpsCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
+  let configKey: string | null = null;
+  let configBase: string | null = null;
+  try {
+    const config = loadElizaConfig();
+    const cloud =
+      config.cloud && typeof config.cloud === "object"
+        ? (config.cloud as Record<string, unknown>)
+        : null;
+    if (cloud) {
+      if (typeof cloud.apiKey === "string") {
+        configKey = normalizeElizaCloudApiKey(cloud.apiKey);
+      }
+      if (typeof cloud.baseUrl === "string" && cloud.baseUrl.trim().length) {
+        configBase = cloud.baseUrl.trim();
+      }
+    }
+  } catch {
+    // Fall through to env.
+  }
+  const apiKey =
+    configKey ?? normalizeElizaCloudApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
+  const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? undefined;
+  return {
+    configured: Boolean(apiKey),
+    apiKey,
+    apiBaseUrl: resolveCloudApiBaseUrl(baseUrl),
+    siteUrl: normalizeCloudSiteUrl(baseUrl),
+  };
+}
 
 type PlaidPaymentMetadata = Record<string, unknown> & {
   accessToken?: unknown;
@@ -843,7 +876,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     // is re-exported through the composed LifeOpsService.
     getPlaidManagedClient(): PlaidManagedClient {
       if (!this.plaidManagedClientCache) {
-        this.plaidManagedClientCache = new PlaidManagedClient();
+        this.plaidManagedClientCache = new PlaidManagedClient(
+          resolveLifeOpsCloudManagedClientConfig,
+        );
       }
       return this.plaidManagedClientCache;
     }
@@ -1033,7 +1068,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     // is re-exported through the composed LifeOpsService.
     getPaypalManagedClient(): PaypalManagedClient {
       if (!this.paypalManagedClientCache) {
-        this.paypalManagedClientCache = new PaypalManagedClient();
+        this.paypalManagedClientCache = new PaypalManagedClient(
+          resolveLifeOpsCloudManagedClientConfig,
+        );
       }
       return this.paypalManagedClientCache;
     }

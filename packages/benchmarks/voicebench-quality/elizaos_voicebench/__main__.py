@@ -20,6 +20,7 @@ from pathlib import Path
 
 from .adapters import build_adapter
 from .clients.judge import build_judge
+from .dataset import count_samples, load_samples, validate_samples
 from .runner import resolve_suites, run
 from .types import SUITES
 
@@ -105,11 +106,43 @@ def _build_parser() -> argparse.ArgumentParser:
         default="INFO",
         help="Logging level (DEBUG, INFO, WARNING, ERROR).",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected sample plus ten realistic voice edge variants.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total sample counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate sample ids and expanded scenario metadata before running.",
+    )
     return parser
 
 
 async def _run_async(args: argparse.Namespace) -> int:
     suites = resolve_suites(args.suite)
+    if args.count_scenarios or args.validate_scenarios:
+        aggregate = {"base": 0, "edge": 0, "edge_multiplier": 10, "total": 0}
+        for suite in suites:
+            samples = load_samples(
+                suite,
+                limit=args.limit,
+                mock=args.mock or args.fixtures,
+                include_edge_scenarios=False,
+            )
+            if args.validate_scenarios:
+                validate_samples(samples, include_edge_scenarios=args.expand_scenarios)
+            counts = count_samples(samples, args.expand_scenarios)
+            aggregate["base"] += counts["base"]
+            aggregate["edge"] += counts["edge"]
+            aggregate["total"] += counts["total"]
+        print(json.dumps(aggregate))
+
     adapter = build_adapter(
         agent=args.agent,
         stt_provider=args.stt_provider,
@@ -127,6 +160,7 @@ async def _run_async(args: argparse.Namespace) -> int:
         agent_name=args.agent,
         stt_provider=args.stt_provider,
         mock=args.mock or args.fixtures,
+        include_edge_scenarios=args.expand_scenarios,
     )
     summary = {
         "score": result.score,

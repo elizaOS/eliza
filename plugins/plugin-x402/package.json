@@ -51,6 +51,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "clean": "rm -rf dist",
+    "test": "vitest run",
     "typecheck": "tsgo --noEmit",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint"
@@ -63,7 +64,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

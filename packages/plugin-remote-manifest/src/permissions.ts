@@ -97,6 +97,10 @@ export function mergeRemotePluginPermissions(
 ): RemotePluginPermissionGrant {
   const base = normalizeRemotePluginPermissions(defaults);
   const extra = normalizeRemotePluginPermissions(overrides);
+  const overrideIsolation =
+    !Array.isArray(overrides) && overrides?.isolation
+      ? overrides.isolation
+      : undefined;
   return {
     host: {
       ...base.host,
@@ -106,7 +110,7 @@ export function mergeRemotePluginPermissions(
       ...base.bun,
       ...extra.bun,
     },
-    isolation: extra.isolation ?? base.isolation ?? "shared-worker",
+    isolation: overrideIsolation ?? base.isolation ?? "shared-worker",
   };
 }
 

@@ -117,6 +117,49 @@ function clampLimit(value: number | undefined, defaultValue: number, max: number
   return Math.min(Math.max(1, Math.floor(value as number)), max);
 }
 
+function isSafeRelayUrl(relay: string): boolean {
+  try {
+    const parsed = new URL(relay);
+    return (
+      (parsed.protocol === "wss:" || parsed.protocol === "ws:") &&
+      !parsed.username &&
+      !parsed.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isEventShape(value: unknown): value is Event {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<Event>;
+  return (
+    typeof event.id === "string" &&
+    typeof event.pubkey === "string" &&
+    typeof event.content === "string" &&
+    typeof event.kind === "number" &&
+    Number.isFinite(event.kind) &&
+    typeof event.created_at === "number" &&
+    Number.isFinite(event.created_at) &&
+    Array.isArray(event.tags) &&
+    typeof event.sig === "string"
+  );
+}
+
+function normalizeEventTags(tags: unknown): string[][] {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .filter(Array.isArray)
+    .map((tag) => tag.filter((value): value is string => typeof value === "string"))
+    .filter((tag) => tag.length > 0);
+}
+
+function createdAtMs(event: Event): number {
+  return Number.isFinite(event.created_at) && event.created_at > 0
+    ? event.created_at * 1000
+    : Date.now();
+}
+
 export class NostrService extends Service implements INostrService {
   static serviceType = NOSTR_SERVICE_NAME;
   capabilityDescription = "Provides Nostr protocol integration for encrypted direct messages";
@@ -389,7 +432,7 @@ export class NostrService extends Service implements INostrService {
 
     // Validate relay URLs
     for (const relay of settings.relays) {
-      if (!relay.startsWith("wss://") && !relay.startsWith("ws://")) {
+      if (!isSafeRelayUrl(relay)) {
         throw new NostrConfigurationError(`Invalid relay URL: ${relay}`, "NOSTR_RELAYS");
       }
     }
@@ -428,6 +471,10 @@ export class NostrService extends Service implements INostrService {
    * Handle an incoming event.
    */
   private async handleEvent(event: Event): Promise<void> {
+    if (!isEventShape(event)) {
+      logger.warn("Ignoring malformed Nostr event payload");
+      return;
+    }
     const settings = this.settings;
     const privateKey = this.privateKey;
 
@@ -829,7 +876,7 @@ export class NostrService extends Service implements INostrService {
   }
 
   private nostrEventToPostMemory(runtime: IAgentRuntime, event: Event): Memory {
-    const createdAt = event.created_at ? event.created_at * 1000 : Date.now();
+    const createdAt = createdAtMs(event);
     const entityId =
       event.pubkey === runtime.agentId
         ? runtime.agentId
@@ -867,7 +914,7 @@ export class NostrService extends Service implements INostrService {
           pubkey: event.pubkey,
           npub: pubkeyToNpub(event.pubkey),
           kind: event.kind,
-          tags: event.tags,
+          tags: normalizeEventTags(event.tags),
         },
       } satisfies Memory["metadata"],
     };
@@ -879,7 +926,7 @@ export class NostrService extends Service implements INostrService {
     plaintext: string,
     peerPubkey: string
   ): Memory {
-    const createdAt = event.created_at ? event.created_at * 1000 : Date.now();
+    const createdAt = createdAtMs(event);
     const senderId = event.pubkey;
     const entityId =
       senderId === runtime.agentId
@@ -919,7 +966,7 @@ export class NostrService extends Service implements INostrService {
           peerPubkey,
           peerNpub: pubkeyToNpub(peerPubkey),
           kind: event.kind,
-          tags: event.tags,
+          tags: normalizeEventTags(event.tags),
         },
       } satisfies Memory["metadata"],
     };
@@ -966,6 +1013,14 @@ export class NostrService extends Service implements INostrService {
       };
     }
 
+    const text = typeof options.text === "string" ? options.text.trim() : "";
+    if (!text) {
+      return {
+        success: false,
+        error: "DM content cannot be empty",
+      };
+    }
+
     // Normalize the target pubkey
     let toPubkey: string;
     try {
@@ -984,7 +1039,7 @@ export class NostrService extends Service implements INostrService {
         { src: "plugin:nostr", op: "nip04:encrypt", to: toPubkey },
         "Encrypting Nostr DM"
       );
-      ciphertext = encrypt(privateKey, toPubkey, options.text);
+      ciphertext = encrypt(privateKey, toPubkey, text);
     } catch (err) {
       return {
         success: false,
@@ -1164,7 +1219,7 @@ export class NostrService extends Service implements INostrService {
       {
         kind: 1,
         content: trimmed,
-        tags,
+        tags: normalizeEventTags(tags),
         created_at: Math.floor(Date.now() / 1000),
       },
       privateKey

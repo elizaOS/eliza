@@ -10,6 +10,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { gradeScenario } from "./judge/index.ts";
 import type {
   BatchReport,
@@ -27,6 +28,74 @@ const BUCKETS: Bucket[] = [
   "escalation",
   "scope_global_vs_user",
 ];
+const EXPANSION_MULTIPLIER = 10;
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CALIBRATION_DIR = path.join(HERE, "..", "tests", "calibration");
+
+type CalibrationVariant = {
+  id: string;
+  description: string;
+  rewrite: (content: string) => string;
+};
+
+const CALIBRATION_EDGE_VARIANTS: CalibrationVariant[] = [
+  {
+    id: "polite",
+    description: "Adds polite framing to user turns.",
+    rewrite: (content) => `please note: ${content}`,
+  },
+  {
+    id: "urgent",
+    description: "Adds urgency to user turns.",
+    rewrite: (content) => `urgent context: ${content}`,
+  },
+  {
+    id: "mobile",
+    description: "Adds mobile-message context to user turns.",
+    rewrite: (content) => `from mobile, quick note: ${content}`,
+  },
+  {
+    id: "followup",
+    description: "Presents user turns as follow-ups.",
+    rewrite: (content) => `following up: ${content}`,
+  },
+  {
+    id: "quoted",
+    description: "Quotes user turns as forwarded requests.",
+    rewrite: (content) => `forwarded request:\n> ${content}`,
+  },
+  {
+    id: "context",
+    description: "Adds session context before user turns.",
+    rewrite: (content) => `session context applies:\n${content}`,
+  },
+  {
+    id: "brief",
+    description: "Adds a brevity preference to user turns.",
+    rewrite: (content) => `keep this brief if you reply: ${content}`,
+  },
+  {
+    id: "noisy",
+    description: "Adds natural chat filler to user turns.",
+    rewrite: (content) => `hey, sorry for the messy phrasing, ${content}`,
+  },
+  {
+    id: "boundary",
+    description: "Marks explicit user-intent boundaries.",
+    rewrite: (content) => `user intent starts here:\n${content}`,
+  },
+  {
+    id: "handoff",
+    description: "Frames user turns as delegated by another person.",
+    rewrite: (content) => `my teammate asked me to say this: ${content}`,
+  },
+];
+
+if (CALIBRATION_EDGE_VARIANTS.length !== EXPANSION_MULTIPLIER) {
+  throw new Error(
+    `Personality calibration expansion requires exactly ${EXPANSION_MULTIPLIER} variants, found ${CALIBRATION_EDGE_VARIANTS.length}`,
+  );
+}
 
 interface CliArgs {
   runDir: string;
@@ -37,13 +106,13 @@ interface CliArgs {
   calibrationDir: string;
 }
 
-function parseArgs(argv: string[]): CliArgs {
+function parseArgs(argv: string[], allowNoRunDir = false): CliArgs {
   let runDir = "";
   let outputMd = "report.md";
   let outputJson = "report.json";
   let agent: string | null = null;
   let calibration = false;
-  let calibrationDir = path.join("tests", "calibration");
+  let calibrationDir = DEFAULT_CALIBRATION_DIR;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--run-dir") runDir = argv[++i] ?? "";
@@ -54,7 +123,7 @@ function parseArgs(argv: string[]): CliArgs {
     else if (arg === "--calibration-dir")
       calibrationDir = argv[++i] ?? calibrationDir;
   }
-  if (!runDir && !calibration) {
+  if (!runDir && !calibration && !allowNoRunDir) {
     console.error("error: --run-dir is required");
     process.exit(1);
   }
@@ -117,7 +186,7 @@ async function loadJsonl<T>(filePath: string): Promise<T[]> {
     .map((line) => JSON.parse(line) as T);
 }
 
-async function loadCalibrationCases(
+export async function loadBaseCalibrationCases(
   calibrationDir: string,
 ): Promise<CalibrationCase[]> {
   const root = path.resolve(calibrationDir);
@@ -127,6 +196,108 @@ async function loadCalibrationCases(
     cases.push(...(await loadJsonl<CalibrationCase>(filePath)));
   }
   return cases;
+}
+
+function expandCalibrationCase(
+  calibrationCase: CalibrationCase,
+  variant: CalibrationVariant,
+): CalibrationCase {
+  return {
+    ...calibrationCase,
+    scenario_id: `${calibrationCase.scenario_id}--edge-${variant.id}`,
+    reason: `${calibrationCase.reason} Edge variant: ${variant.description}`,
+    trajectory: calibrationCase.trajectory.map((turn) =>
+      turn.role === "user"
+        ? { ...turn, content: variant.rewrite(turn.content) }
+        : { ...turn },
+    ),
+  };
+}
+
+export function expandCalibrationCases(
+  baseCases: readonly CalibrationCase[],
+): CalibrationCase[] {
+  const expanded = baseCases.flatMap((calibrationCase) =>
+    CALIBRATION_EDGE_VARIANTS.map((variant) =>
+      expandCalibrationCase(calibrationCase, variant),
+    ),
+  );
+  if (expanded.length !== baseCases.length * EXPANSION_MULTIPLIER) {
+    throw new Error(
+      `Personality calibration expansion mismatch: expected ${baseCases.length * EXPANSION_MULTIPLIER}, found ${expanded.length}`,
+    );
+  }
+  return expanded;
+}
+
+async function loadCalibrationCases(
+  calibrationDir: string,
+): Promise<CalibrationCase[]> {
+  const baseCases = await loadBaseCalibrationCases(calibrationDir);
+  return [...baseCases, ...expandCalibrationCases(baseCases)];
+}
+
+export async function countPersonalityCalibrationScenarios(
+  calibrationDir: string,
+): Promise<{
+  suite: "personality-bench-calibration";
+  existing: number;
+  added: number;
+  total: number;
+  multiplierAdded: number;
+}> {
+  const baseCases = await loadBaseCalibrationCases(calibrationDir);
+  const expanded = expandCalibrationCases(baseCases);
+  return {
+    suite: "personality-bench-calibration",
+    existing: baseCases.length,
+    added: expanded.length,
+    total: baseCases.length + expanded.length,
+    multiplierAdded: expanded.length / baseCases.length,
+  };
+}
+
+export async function validatePersonalityCalibrationScenarios(
+  calibrationDir: string,
+): Promise<{
+  valid: boolean;
+  total: number;
+  uniqueIds: number;
+  duplicateIds: string[];
+  emptyTrajectories: string[];
+  expansionMatches: boolean;
+}> {
+  const baseCases = await loadBaseCalibrationCases(calibrationDir);
+  const expanded = expandCalibrationCases(baseCases);
+  const all = [...baseCases, ...expanded];
+  const ids = new Set<string>();
+  const duplicateIds = new Set<string>();
+  const emptyTrajectories: string[] = [];
+
+  for (const calibrationCase of all) {
+    if (ids.has(calibrationCase.scenario_id)) {
+      duplicateIds.add(calibrationCase.scenario_id);
+    }
+    ids.add(calibrationCase.scenario_id);
+    if (calibrationCase.trajectory.length === 0) {
+      emptyTrajectories.push(calibrationCase.scenario_id);
+    }
+  }
+
+  const expansionMatches =
+    expanded.length === baseCases.length * EXPANSION_MULTIPLIER;
+
+  return {
+    valid:
+      duplicateIds.size === 0 &&
+      emptyTrajectories.length === 0 &&
+      expansionMatches,
+    total: all.length,
+    uniqueIds: ids.size,
+    duplicateIds: [...duplicateIds],
+    emptyTrajectories,
+    expansionMatches,
+  };
 }
 
 function calibrationToScenario(
@@ -289,7 +460,34 @@ function scoreCalibration(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const countScenarios = argv.includes("--count-scenarios");
+  const validateScenarios = argv.includes("--validate-scenarios");
+  const args = parseArgs(
+    argv.filter(
+      (arg) => arg !== "--count-scenarios" && arg !== "--validate-scenarios",
+    ),
+    countScenarios || validateScenarios,
+  );
+  if (countScenarios) {
+    console.log(
+      JSON.stringify(
+        await countPersonalityCalibrationScenarios(args.calibrationDir),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  if (validateScenarios) {
+    const validation = await validatePersonalityCalibrationScenarios(
+      args.calibrationDir,
+    );
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+
   const calibrationCases = args.calibration
     ? await loadCalibrationCases(args.calibrationDir)
     : [];

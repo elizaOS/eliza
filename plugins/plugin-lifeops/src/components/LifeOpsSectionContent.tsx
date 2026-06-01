@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import { LifeOpsAssistantSection } from "./LifeOpsAssistantSection.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
 import { LifeOpsDocumentsSection } from "./LifeOpsDocumentsSection.js";
 import {
@@ -10,8 +11,6 @@ import {
 import { LifeOpsMoneySection } from "./LifeOpsMoneySection.js";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
-import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 
 interface LifeOpsSectionContentProps {
   section: LifeOpsSection;
@@ -25,12 +24,13 @@ export function LifeOpsSectionContent({
   setupContent,
 }: LifeOpsSectionContentProps): ReactNode {
   switch (section) {
+    case "assistant":
+      return <LifeOpsAssistantSection />;
     case "overview":
       return <LifeOpsOverviewSection onNavigate={navigate} />;
     case "sleep":
-      return <LifeOpsSleepSection />;
     case "screen-time":
-      return <LifeOpsScreenTimeSection onNavigate={navigate} />;
+      return <LifeOpsAssistantSection />;
     case "calendar":
       return <LifeOpsCalendarSection />;
     case "messages":

@@ -41,6 +41,22 @@ def test_oracle_run_writes_artifacts(tmp_path: Path) -> None:
     assert any(trace_dir.iterdir())
 
 
+def test_oracle_expanded_run_counts_edge_variants(tmp_path: Path) -> None:
+    config = MMAUConfig(
+        output_dir=str(tmp_path),
+        agent="mock",
+        use_fixture=True,
+        use_huggingface=False,
+        max_samples=1,
+        include_edge_scenarios=True,
+        save_traces=False,
+    )
+    report = asyncio.run(MMAURunner(config).run())
+    assert report.total_samples == 11
+    assert report.overall_accuracy == 1.0
+    assert report.summary["include_edge_scenarios"] is True
+
+
 def test_oracle_full_fixture_run(tmp_path: Path) -> None:
     config = MMAUConfig(
         output_dir=str(tmp_path),
@@ -83,6 +99,24 @@ def test_cli_json_mode(tmp_path: Path, capsys) -> None:
     payload = json.loads(captured.out)
     assert payload["total_samples"] == 2
     assert payload["overall_accuracy"] == 1.0
+
+
+def test_cli_expanded_count_and_validate(capsys) -> None:
+    code = cli_main(
+        [
+            "--mock",
+            "--limit",
+            "1",
+            "--expand-scenarios",
+            "--count-scenarios",
+            "--validate-scenarios",
+        ]
+    )
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Scenario validation: ok" in captured.out
+    assert '"base": 1' in captured.out
+    assert '"edge": 10' in captured.out
 
 
 def test_cascaded_agent_uses_stt_and_parses_letter() -> None:

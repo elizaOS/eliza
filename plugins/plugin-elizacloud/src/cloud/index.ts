@@ -13,6 +13,7 @@ export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "./base-url.js";
+export * from "./duffel-client.js";
 export {
   type BackupInfo,
   type CloudAgent,
@@ -26,6 +27,8 @@ export {
   type CloudManagerCallbacks,
 } from "./cloud-manager.js";
 export { CloudRuntimeProxy } from "./cloud-proxy.js";
+export * from "./managed-payment-clients.js";
+export * from "./x402-payment-handler.js";
 export {
   ConnectionMonitor,
   type ConnectionMonitorCallbacks,

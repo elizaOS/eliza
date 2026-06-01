@@ -61,7 +61,7 @@ describe("useAvailableViews", () => {
     });
   }
 
-  it("fetches GUI and TUI views with the platform header and merges by view type/id", async () => {
+  it("fetches GUI, TUI, and XR views with the platform header and merges by view type/id", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(
         response(200, {
@@ -78,6 +78,11 @@ describe("useAvailableViews", () => {
             view("not-tui", { viewType: "gui", label: "Filtered GUI" }),
           ],
         }),
+      )
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [view("spatial-room", { viewType: "xr", label: "Spatial" })],
+        }),
       );
 
     const { result } = renderHook(() => useAvailableViews());
@@ -90,7 +95,7 @@ describe("useAvailableViews", () => {
       result.current.views.map(
         (item) => `${item.viewType ?? "gui"}:${item.id}`,
       ),
-    ).toEqual(["gui:wallet", "gui:shared", "tui:wallet"]);
+    ).toEqual(["gui:wallet", "gui:shared", "tui:wallet", "xr:spatial-room"]);
     expect(fetchWithCsrf).toHaveBeenNthCalledWith(1, "/api/views", {
       headers: { "X-Eliza-Platform": "desktop" },
     });
@@ -101,6 +106,31 @@ describe("useAvailableViews", () => {
         headers: { "X-Eliza-Platform": "desktop" },
       },
     );
+    expect(fetchWithCsrf).toHaveBeenNthCalledWith(3, "/api/views?viewType=xr", {
+      headers: { "X-Eliza-Platform": "desktop" },
+    });
+  });
+
+  it("keeps XR views returned by the explicit XR registry endpoint", async () => {
+    fetchWithCsrf
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [view("spatial-room", { viewType: "xr", label: "Spatial" })],
+        }),
+      );
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views).toEqual([
+      expect.objectContaining({
+        id: "spatial-room",
+        viewType: "xr",
+        label: "Spatial",
+      }),
+    ]);
   });
 
   it("dedupes repeated GUI entries and lets the later entry win", async () => {
@@ -113,6 +143,7 @@ describe("useAvailableViews", () => {
           ],
         }),
       )
+      .mockResolvedValueOnce(response(200, { views: [] }))
       .mockResolvedValueOnce(response(200, { views: [] }));
 
     const { result } = renderHook(() => useAvailableViews());
@@ -126,7 +157,8 @@ describe("useAvailableViews", () => {
   it("treats malformed payloads as empty lists", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(response(200, { ok: true }))
-      .mockResolvedValueOnce(response(200, { views: "not-an-array" }));
+      .mockResolvedValueOnce(response(200, { views: "not-an-array" }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
 
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -158,7 +190,8 @@ describe("useAvailableViews", () => {
   it("keeps successful GUI views when the TUI endpoint fails", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(response(200, { views: [view("wallet")] }))
-      .mockResolvedValueOnce(response(500, { error: "tui down" }));
+      .mockResolvedValueOnce(response(500, { error: "tui down" }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
 
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -176,7 +209,8 @@ describe("useAvailableViews", () => {
         response(200, {
           views: [view("terminal", { viewType: "tui" })],
         }),
-      );
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }));
 
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -190,24 +224,30 @@ describe("useAvailableViews", () => {
   it("keeps the latest refresh result when an older request resolves last", async () => {
     const staleGui = deferredResponse();
     const staleTui = deferredResponse();
+    const staleXr = deferredResponse();
     const freshGui = deferredResponse();
     const freshTui = deferredResponse();
+    const freshXr = deferredResponse();
     fetchWithCsrf
       .mockReturnValueOnce(staleGui.promise)
       .mockReturnValueOnce(staleTui.promise)
+      .mockReturnValueOnce(staleXr.promise)
       .mockReturnValueOnce(freshGui.promise)
-      .mockReturnValueOnce(freshTui.promise);
+      .mockReturnValueOnce(freshTui.promise)
+      .mockReturnValueOnce(freshXr.promise);
 
     const { result } = renderHook(() => useAvailableViews());
 
     act(() => result.current.refresh());
     freshGui.resolve(response(200, { views: [view("fresh")] }));
     freshTui.resolve(response(200, { views: [] }));
+    freshXr.resolve(response(200, { views: [] }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.views[0]?.id).toBe("fresh");
 
     staleGui.resolve(response(200, { views: [view("stale")] }));
     staleTui.resolve(response(200, { views: [] }));
+    staleXr.resolve(response(200, { views: [] }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -221,9 +261,12 @@ describe("useAvailableViews", () => {
     fetchWithCsrf
       .mockResolvedValueOnce(response(200, { views: [view("first")] }))
       .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }))
       .mockResolvedValueOnce(response(200, { views: [view("second")] }))
       .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }))
       .mockResolvedValueOnce(response(200, { views: [view("third")] }))
+      .mockResolvedValueOnce(response(200, { views: [] }))
       .mockResolvedValueOnce(response(200, { views: [] }));
 
     const { result, unmount } = renderHook(() => useAvailableViews());
@@ -239,12 +282,12 @@ describe("useAvailableViews", () => {
     });
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("third");
-    expect(fetchWithCsrf).toHaveBeenCalledTimes(6);
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
 
     unmount();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(fetchWithCsrf).toHaveBeenCalledTimes(6);
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
   });
 });

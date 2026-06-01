@@ -76,8 +76,8 @@ src/lifeops/
   i18n/                  MultilingualPromptRegistry.
   graph-migration/       Migration into the entity/relationship graph.
   seed-routine-migration/  Migration off legacy seed routines.
-  ...other domain helpers (calendar, email, messaging, payments,
-                          subscriptions, sleep, screen-time, etc.)
+  ...other LifeOps-owned helpers (calendar, email, messaging, payments,
+                                  subscriptions, assistant workflows, etc.)
 ```
 
 ## Default packs
@@ -91,6 +91,8 @@ escalation ladders, autofill whitelists). LifeOps-owned packs live in
 - `morning-brief` — fired on `wake.confirmed`.
 - `quiet-user-watcher` — daily watcher.
 - `habit-starters` — eight habits, **offered** (not auto-seeded).
+- `executive-assistant` — sixteen personal/executive assistant scenarios,
+  **offered** (not auto-seeded).
 - `inbox-triage-starter` — opt-in, gated on Gmail.
 - `followup-starter` — watcher firing per overdue relationship.
 - `autofill-whitelist-pack`, `consolidation-policies`, `escalation-ladders`
@@ -151,11 +153,15 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
 
 ## Plugin dependencies
 
-LifeOps consumes `@elizaos/plugin-health` for sleep/circadian/health metrics
-and screen-time. The plugin contributes through the registries listed above
-(`AnchorRegistry`, `ConnectorRegistry`, `FamilyRegistry`, default packs).
-LifeOps does not import directly into the health internals; it consumes the
-plugin's public exports only. See `plugins/plugin-health/README.md`.
+LifeOps consumes `@elizaos/plugin-health` for sleep/circadian/health metrics,
+screen-time action planning, health action planning, health-context formatting,
+and health connector contributions.
+The plugin contributes through the registries listed above (`AnchorRegistry`,
+`ConnectorRegistry`, `FamilyRegistry`, default packs) and public factories such
+as `createHealthActionRunner`, `createScreenTimeActionRunner`, and
+`createHealthProvider`. LifeOps does not import directly into the health
+internals; it consumes the plugin's public exports only. See
+`plugins/plugin-health/README.md`.
 
 ## Cross-agent invariants
 

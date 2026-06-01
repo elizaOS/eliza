@@ -73,6 +73,7 @@
     "@capacitor/preferences": "8.0.1",
     "@capacitor/push-notifications": "8.0.3",
     "@capacitor/status-bar": "8.0.2",
+    "@elizaos/app-model-tester": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",

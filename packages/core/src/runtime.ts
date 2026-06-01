@@ -2989,6 +2989,10 @@ export class AgentRuntime implements IAgentRuntime {
 		const worldId = message.worldId ?? roomId;
 
 		const runOne = async (action: Action) => {
+			const actionCallback: HandlerCallback | undefined = options?.callback
+				? (response, actionName) =>
+						options.callback!(response, actionName ?? action.name)
+				: undefined;
 			await this.emitEvent(EventType.ACTION_STARTED, {
 				runtime: this,
 				messageId,
@@ -3013,7 +3017,7 @@ export class AgentRuntime implements IAgentRuntime {
 							message,
 							composedState,
 							{ mode },
-							options?.callback,
+							actionCallback,
 							options?.responses,
 						),
 				);

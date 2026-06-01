@@ -253,8 +253,18 @@ function normalizeSpokenRemoteTarget(value: string): string {
 }
 
 function looksLikeRemoteTarget(value: string): boolean {
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+      return (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        parsed.hostname.trim().length > 0
+      );
+    } catch {
+      return false;
+    }
+  }
   return (
-    /^https?:\/\//i.test(value) ||
     /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\/.*)?$/i.test(
       value,
     )
@@ -330,15 +340,22 @@ export function applyFirstRunVoiceTranscript(args: {
 export function validateFirstRunSubmitDraft(
   draft: FirstRunProfileDraft,
 ): FirstRunSubmitValidation {
-  if (
-    draft.runtime === "remote" &&
-    !normalizeSpokenRemoteTarget(draft.remoteApiBase)
-  ) {
-    return {
-      valid: false,
-      step: "remote",
-      message: "Enter the remote agent URL first.",
-    };
+  if (draft.runtime === "remote") {
+    const remoteTarget = normalizeSpokenRemoteTarget(draft.remoteApiBase);
+    if (!remoteTarget) {
+      return {
+        valid: false,
+        step: "remote",
+        message: "Enter the remote agent URL first.",
+      };
+    }
+    if (!looksLikeRemoteTarget(remoteTarget)) {
+      return {
+        valid: false,
+        step: "remote",
+        message: "Enter a valid remote agent URL.",
+      };
+    }
   }
   return { valid: true, step: "runtime", message: null };
 }

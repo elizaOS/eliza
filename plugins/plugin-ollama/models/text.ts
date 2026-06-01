@@ -421,6 +421,11 @@ function buildOllamaStreamWithToolsResult(args: {
         const first = mapped[0];
         if (first) {
           yield stringifyPlannerToolArgs(first.arguments);
+        } else {
+          const fallbackText = await sdkTextPromise;
+          if (fallbackText) {
+            yield fallbackText;
+          }
         }
       } else {
         for await (const chunk of streamResult.textStream) {

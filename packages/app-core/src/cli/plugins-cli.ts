@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import nodePath from "node:path";
 import {
@@ -10,20 +11,61 @@ import { formatError, parseClampedInteger } from "@elizaos/shared";
 import chalk from "chalk";
 import type { Command } from "commander";
 
+const PLUGIN_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i;
+const PLUGIN_VERSION_RE = /^[A-Za-z0-9._+~:-]+$/;
+
 /** Validate that a resolved plugin path is within allowed boundaries. */
 export function validatePluginPath(resolved: string): void {
-  const home = os.homedir();
-  const cwd = process.cwd();
-  if (
-    !nodePath.isAbsolute(resolved) ||
-    (!resolved.startsWith(home + nodePath.sep) &&
-      resolved !== home &&
-      !resolved.startsWith(cwd + nodePath.sep) &&
-      resolved !== cwd)
-  ) {
+  if (!nodePath.isAbsolute(resolved)) {
+    throw new Error(
+      `Plugin path ${resolved} is outside allowed boundaries (must be under ${os.homedir()} or ${process.cwd()})`,
+    );
+  }
+  const home = realpathForBoundary(os.homedir());
+  const cwd = realpathForBoundary(process.cwd());
+  const target = realpathForBoundary(resolved);
+  if (!isWithinBoundary(target, home) && !isWithinBoundary(target, cwd)) {
     throw new Error(
       `Plugin path ${resolved} is outside allowed boundaries (must be under ${home} or ${cwd})`,
     );
+  }
+}
+
+function realpathForBoundary(inputPath: string): string {
+  const absolute = nodePath.resolve(inputPath);
+  try {
+    return fs.realpathSync.native(absolute);
+  } catch {
+    const parent = nodePath.dirname(absolute);
+    if (parent === absolute) return absolute;
+    return nodePath.join(
+      realpathForBoundary(parent),
+      nodePath.basename(absolute),
+    );
+  }
+}
+
+function isWithinBoundary(target: string, boundary: string): boolean {
+  const relative = nodePath.relative(boundary, target);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !nodePath.isAbsolute(relative))
+  );
+}
+
+function validatePluginPackageName(name: string): void {
+  if (
+    !PLUGIN_NAME_RE.test(name) ||
+    name.includes("..") ||
+    name.includes("\\")
+  ) {
+    throw new Error(`Invalid plugin name: ${name}`);
+  }
+}
+
+function validatePluginVersion(version: string): void {
+  if (!PLUGIN_VERSION_RE.test(version)) {
+    throw new Error(`Invalid plugin version: ${version}`);
   }
 }
 
@@ -32,12 +74,17 @@ export function validatePluginPath(resolved: string): void {
  * Accepts `@scope/plugin-x`, `plugin-x`, or shorthand `x` (→ `@elizaos/plugin-x`).
  */
 export function normalizePluginName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Plugin name is required");
+  }
+  validatePluginPackageName(trimmed);
   // Already fully qualified (starts with @) or plugin- prefix
-  if (name.startsWith("@") || name.startsWith("plugin-")) {
-    return name;
+  if (trimmed.startsWith("@") || trimmed.startsWith("plugin-")) {
+    return trimmed;
   }
   // Shorthand: add @elizaos/plugin- prefix
-  return `@elizaos/plugin-${name}`;
+  return `@elizaos/plugin-${trimmed}`;
 }
 
 /**
@@ -52,6 +99,9 @@ export function parsePluginSpec(input: string): {
   version?: string;
 } {
   const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Plugin name is required");
+  }
   let namePart = trimmed;
   let versionPart: string | undefined;
 
@@ -69,7 +119,11 @@ export function parsePluginSpec(input: string): {
     }
   }
 
+  if (versionPart !== undefined && !versionPart.trim()) {
+    throw new Error("Plugin version cannot be empty");
+  }
   const version = versionPart?.trim() || undefined;
+  if (version) validatePluginVersion(version);
   return { name: normalizePluginName(namePart), version };
 }
 

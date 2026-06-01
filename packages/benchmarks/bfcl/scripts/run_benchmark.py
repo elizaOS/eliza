@@ -14,6 +14,7 @@ Options:
 """
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -32,9 +33,16 @@ async def main():
     parser.add_argument("--output", default="./benchmark_results/bfcl",
                         help="Output directory")
     parser.add_argument("--categories", help="Comma-separated categories")
+    parser.add_argument("--expand-scenarios", action="store_true",
+                        help="Run each selected BFCL case with 10 edge variants")
+    parser.add_argument("--count-scenarios", action="store_true",
+                        help="Print base/edge/total scenario counts and exit")
+    parser.add_argument("--validate-scenarios", action="store_true",
+                        help="Validate selected base/expanded BFCL cases and exit")
     args = parser.parse_args()
 
     from benchmarks.bfcl import BFCLRunner, BFCLConfig, BFCLCategory
+    from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases
     from benchmarks.bfcl.reporting import print_results
 
     # Configure benchmark
@@ -42,6 +50,7 @@ async def main():
         output_dir=args.output,
         generate_report=True,
         compare_baselines=True,
+        include_edge_scenarios=bool(args.expand_scenarios),
     )
 
     if args.categories:
@@ -49,6 +58,22 @@ async def main():
             BFCLCategory(c.strip())
             for c in args.categories.split(",")
         ]
+
+    if args.count_scenarios or args.validate_scenarios:
+        dataset = BFCLDataset(config)
+        await dataset.load()
+        base_cases = list(dataset)
+        if args.sample:
+            base_cases = base_cases[: args.sample]
+        cases = expand_test_cases(base_cases) if config.include_edge_scenarios else base_cases
+        if args.validate_scenarios:
+            validate_test_cases(cases)
+        print(json.dumps({
+            "base": len(base_cases),
+            "edge": len(cases) - len(base_cases),
+            "total": len(cases),
+        }, sort_keys=True))
+        return 0
 
     # Create runner
     runner = BFCLRunner(config, use_mock_agent=args.mock)

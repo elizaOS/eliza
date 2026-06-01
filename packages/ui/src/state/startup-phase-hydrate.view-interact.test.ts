@@ -95,6 +95,31 @@ describe("bindReadyPhase view interaction bridge", () => {
     expect(clientMock.disconnectWs).toHaveBeenCalled();
   }, 60_000);
 
+  it("routes XR view:interact websocket events through the view dispatcher", async () => {
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("view:interact")?.({
+      requestId: "req-xr-1",
+      viewId: "spatial-room",
+      viewType: "xr",
+      capability: "get-state",
+    });
+
+    await vi.waitFor(
+      () =>
+        expect(viewInteractMock.dispatchViewInteract).toHaveBeenCalledWith(
+          "spatial-room",
+          "xr",
+          "get-state",
+          undefined,
+          "req-xr-1",
+        ),
+      { timeout: 10_000 },
+    );
+
+    cleanup();
+  }, 60_000);
+
   it("ignores malformed view:interact websocket events before dispatch", async () => {
     const cleanup = bindReadyPhase({ current: makeDeps() });
 
@@ -149,6 +174,33 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewType: "gui",
       action: "pin-tab",
       alwaysOnTop: true,
+    });
+
+    cleanup();
+    window.removeEventListener("eliza:navigate:view", navHandler);
+  });
+
+  it("dispatches valid XR shell:navigate:view events to the browser shell", () => {
+    const navHandler = vi.fn();
+    window.addEventListener("eliza:navigate:view", navHandler);
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:navigate:view")?.({
+      viewId: "spatial-room",
+      viewPath: "/apps/spatial-room",
+      viewLabel: "Spatial Room",
+      viewType: "xr",
+    });
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const event = navHandler.mock.calls[0][0] as CustomEvent;
+    expect(event.detail).toEqual({
+      viewId: "spatial-room",
+      viewPath: "/apps/spatial-room",
+      viewLabel: "Spatial Room",
+      viewType: "xr",
+      action: undefined,
+      alwaysOnTop: false,
     });
 
     cleanup();

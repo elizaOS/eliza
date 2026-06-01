@@ -145,12 +145,20 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
 });
 
 describe("ElizaCloudClient.getContainerLogs", () => {
-  it("returns the raw log body on a 2xx response", async () => {
-    const fetchImpl = (async (_input) =>
-      new Response("line1\nline2\n", {
+  it("requests text logs with tail and returns the raw body on a 2xx response", async () => {
+    const requests: RecordedRequest[] = [];
+    const fetchImpl = (async (input, init = {}) => {
+      const headers = new Headers(init.headers);
+      requests.push({
+        url: String(input),
+        method: init.method ?? "GET",
+        headers: Object.fromEntries(headers.entries()),
+      });
+      return new Response("line1\nline2\n", {
         status: 200,
         headers: { "Content-Type": "text/plain" },
-      })) as typeof fetch;
+      });
+    }) as typeof fetch;
 
     const client = new ElizaCloudClient({
       baseUrl: "https://cloud.test",
@@ -158,7 +166,13 @@ describe("ElizaCloudClient.getContainerLogs", () => {
       fetchImpl,
     });
 
-    expect(await client.getContainerLogs("c_1")).toBe("line1\nline2\n");
+    expect(await client.getContainerLogs("c_1", 50)).toBe("line1\nline2\n");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/containers/c_1/logs?tail=50",
+      method: "GET",
+    });
+    expect(requests[0]?.headers.accept).toBe("text/plain");
+    expect(requests[0]?.headers.authorization).toBe("Bearer eliza_test_key");
   });
 
   it("throws CloudApiError carrying status and body on a non-ok response", async () => {
@@ -175,16 +189,44 @@ describe("ElizaCloudClient.getContainerLogs", () => {
       fetchImpl,
     });
 
-    await expect(client.getContainerLogs("c_missing")).rejects.toMatchObject({
+    let thrown: unknown;
+    try {
+      await client.getContainerLogs("c_missing");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(CloudApiError);
+    expect(thrown).toMatchObject({
       name: "CloudApiError",
       statusCode: 404,
     });
-    await expect(client.getContainerLogs("c_missing")).rejects.toBeInstanceOf(
-      CloudApiError,
-    );
-    await expect(client.getContainerLogs("c_missing")).rejects.toThrow(
-      /container not found/,
-    );
+    expect(String((thrown as Error).message)).toMatch(/container not found/);
+  });
+});
+
+describe("ElizaCloudClient path parameter encoding", () => {
+  it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
+    const { client, requests } = createClientRecorder();
+
+    await client.getX402PaymentRequest("pay/../evil?x=1#frag");
+    await client.getAppCharge("app/id?admin=true", "charge#frag/settle");
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/v1/x402/requests/pay%2F..%2Fevil%3Fx%3D1%23frag",
+      "/api/v1/apps/app%2Fid%3Fadmin%3Dtrue/charges/charge%23frag%2Fsettle",
+    ]);
+  });
+
+  it("fails fast when templated endpoint calls omit a required path parameter", async () => {
+    const { client } = createClientRecorder();
+
+    expect(() =>
+      client.callEndpoint("GET", "/api/auth/cli-session/{sessionId}", {
+        pathParams: {},
+        skipAuth: true,
+      }),
+    ).toThrow("Missing path parameter: sessionId");
   });
 });
 

@@ -13,6 +13,7 @@ from typing import Any
 
 
 DATASET_VERSION = "agentbench-five-env-fixture-v1"
+EXPANDED_DATASET_VERSION = "agentbench-five-env-fixture-edge-v1"
 DEFAULT_ENVS = ("os", "webshop", "web_browsing", "database", "knowledge_graph")
 
 
@@ -122,6 +123,7 @@ async def _run_agentbench(
     max_tasks: int | None,
     timeout_seconds: int,
     mock: bool,
+    include_edge_scenarios: bool,
 ) -> dict[str, Any]:
     _add_paths()
     from eliza_adapter import ElizaServerManager
@@ -154,6 +156,7 @@ async def _run_agentbench(
         data_mode=AgentBenchDataMode.FIXTURE,
         allow_empty_tasks=False,
         dry_run=False,
+        include_edge_scenarios=include_edge_scenarios,
     )
     for env in AgentBenchEnvironment:
         env_config = config.get_env_config(env)
@@ -189,6 +192,7 @@ def _normalize_result(
     model_provider: str,
     model: str,
     mode: str,
+    include_edge_scenarios: bool,
 ) -> dict[str, Any]:
     total = int(raw.get("total_tasks") or 0)
     passed = float(raw.get("passed_tasks") or 0)
@@ -199,7 +203,7 @@ def _normalize_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
-        "dataset_version": DATASET_VERSION,
+        "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
         "summary": {
             "total_instances": total,
             "resolved": passed,
@@ -224,6 +228,7 @@ def run_agentbench_matrix(
     max_tasks: int | None,
     timeout_seconds: int,
     mock: bool,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     raw = asyncio.run(
         _run_agentbench(
@@ -236,6 +241,7 @@ def run_agentbench_matrix(
             max_tasks=max_tasks,
             timeout_seconds=timeout_seconds,
             mock=mock,
+            include_edge_scenarios=include_edge_scenarios,
         )
     )
     return _normalize_result(
@@ -244,6 +250,7 @@ def run_agentbench_matrix(
         model_provider=model_provider,
         model=model,
         mode="mock" if mock else "live",
+        include_edge_scenarios=include_edge_scenarios,
     )
 
 
@@ -258,6 +265,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-tasks", type=int)
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
     parser.add_argument("--no-docker", action="store_true", help="Accepted for matrix CLI parity.")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
@@ -275,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         max_tasks=args.max_tasks,
         timeout_seconds=args.timeout_seconds,
         mock=bool(args.mock),
+        include_edge_scenarios=bool(args.expand_scenarios),
     )
     result_path = Path(args.output) / "agentbench-matrix-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

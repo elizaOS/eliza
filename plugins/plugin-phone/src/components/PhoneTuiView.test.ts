@@ -22,7 +22,7 @@ vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
 
-import { interact, PhoneTuiView } from "./PhoneAppView";
+import { interact, PhoneAppView, PhoneTuiView } from "./PhoneAppView";
 
 const sampleStatus = {
   hasTelecom: true,
@@ -179,5 +179,76 @@ describe("PhoneTuiView", () => {
       transcript: "Call transcript",
       summary: "Short summary",
     });
+  });
+
+  it("sanitizes hostile terminal state params before calling the native bridge", async () => {
+    mockBridge();
+
+    await expect(
+      interact("terminal-phone-state", {
+        limit: Number.POSITIVE_INFINITY,
+        number: "../../etc/passwd",
+      }),
+    ).resolves.toMatchObject({ viewType: "tui" });
+    expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
+      limit: 50,
+    });
+
+    await interact("terminal-phone-state", {
+      limit: -10,
+      number: "+1 (555) 123-4567?x=<script>",
+    });
+    expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
+      limit: 1,
+      number: "+15551234567",
+    });
+
+    await interact("terminal-phone-state", { limit: 10_000 });
+    expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
+      limit: 200,
+    });
+  });
+
+  it("surfaces native bridge failures in TUI state without throwing during render", async () => {
+    phoneBridge.getStatus.mockRejectedValue(new Error("status unavailable"));
+    phoneBridge.listRecentCalls.mockRejectedValue(
+      new Error("READ_CALL_LOG denied"),
+    );
+
+    const { container } = render(React.createElement(PhoneTuiView));
+
+    await screen.findByText("READ_CALL_LOG denied");
+    const stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({
+      canPlaceCalls: false,
+      isDefaultDialer: false,
+      defaultDialerPackage: null,
+      callCount: 0,
+      loading: false,
+      error: "READ_CALL_LOG denied",
+    });
+  });
+
+  it("keeps PhoneAppView dialer state usable after a native place-call failure", async () => {
+    phoneBridge.placeCall.mockRejectedValue(new Error("CALL_PHONE denied"));
+
+    render(
+      React.createElement(PhoneAppView, {
+        exitToApps: vi.fn(),
+        t: (_key: string, opts?: { defaultValue?: string }) =>
+          opts?.defaultValue ?? _key,
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("phone-dial-key-5"));
+    fireEvent.click(screen.getByTestId("phone-dial-call"));
+
+    await screen.findByText("CALL_PHONE denied");
+    expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "5" });
+
+    fireEvent.click(screen.getByTestId("phone-dial-backspace"));
+    expect(screen.getByText("Enter a number")).toBeTruthy();
   });
 });

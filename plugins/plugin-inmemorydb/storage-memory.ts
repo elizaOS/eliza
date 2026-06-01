@@ -18,12 +18,19 @@ export class MemoryStorage implements IStorage {
   }
 
   private getCollection(collection: string): Map<string, unknown> {
+    this.assertReady();
     let col = this.collections.get(collection);
     if (!col) {
       col = new Map();
       this.collections.set(collection, col);
     }
     return col;
+  }
+
+  private assertReady(): void {
+    if (!this.ready) {
+      throw new Error("MemoryStorage is not initialized");
+    }
   }
 
   async get<T>(collection: string, id: string): Promise<T | null> {
@@ -97,6 +104,7 @@ export class MemoryStorage implements IStorage {
   }
 
   async clear(): Promise<void> {
+    this.assertReady();
     this.collections.clear();
   }
 }

@@ -73,7 +73,7 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "VIEWS"],
+  "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
@@ -154,7 +154,7 @@ function stableCoreActions(): string[] {
  * This baseline may only shrink: cover one and delete it here; add a new
  * stable-core action and either cover it or add it here.
  */
-const KNOWN_UNCOVERED: readonly string[] = [];
+const KNOWN_UNCOVERED: readonly string[] = ["HOMESCREEN"];
 
 /**
  * Actions with deterministic keyless scenario coverage today. This is the

@@ -1,0 +1,63 @@
+# Plugin View Visual Review Baseline
+
+Status: in progress. This tracked baseline complements the generated Playwright artifacts from `packages/app/test/ui-smoke/plugin-views-visual.spec.ts` (`review.md`, `review.json`, screenshots, and audit JSON under `test-results/plugin-views`). Each row below must stay aligned with the visual matrix so every registered GUI/TUI view has a durable review note before deeper manual screenshot review.
+
+Review rubric:
+- Likes: what is already working visually or structurally.
+- Concerns: what still needs human screenshot review, reduction, or interaction proof.
+- Next proof: the next evidence needed for the view to move toward the full objective.
+
+| View | Type | Path | Likes | Concerns | Next proof |
+| --- | --- | --- | --- | --- | --- |
+| `companion` | `gui` | `/companion` | Avatar-first surface with dedicated emote controls and visual scene affordances. | Needs screenshot pass for avatar framing, emote overlay polish, and non-text control density. | Verify avatar asset loads, emote controls render as icons, and scene is nonblank in visual smoke artifacts. |
+| `companion` | `tui` | `/companion/tui` | Terminal contract exposes companion state and emote commands. | Needs command-output review for terse, scan-friendly status. | Confirm every terminal command returns command-specific output and no pending states. |
+| `contacts` | `gui` | `/contacts` | Familiar contact-list workflow and clear account/contact actions. | Needs visual pass for list density and empty/error states. | Verify create/import/search controls, contact rows, and avatar/initial indicators. |
+| `contacts` | `tui` | `/contacts/tui` | Terminal view has list/create/import command surface. | Needs proof that command output remains compact and structured. | Click every terminal command and verify semantic output. |
+| `hyperliquid` | `gui` | `/hyperliquid` | Market/trading domain has strong metric-card potential. | Needs screenshot review for chart/table density and risk/status indicators. | Verify market, execution, and account panels render without broken assets. |
+| `hyperliquid` | `tui` | `/hyperliquid/tui` | TUI exposes state, market, and execution-check commands. | Needs contract proof for trading safety output and error states. | Verify each command settles with `[ok]` or `[error]` and useful data. |
+| `lifeops` | `gui` | `/lifeops` | Rich operational workspace with calendar, messages, money, and settings sections. | Still has dense copy pockets; needs full screenshot review after recent blocker-card cleanup. | Verify section navigation, permission cards, connector cards, and icon/status density. |
+| `lifeops` | `tui` | `/lifeops/tui` | Terminal view exposes enable/complete/skip/snooze control path. | Needs compactness review for repeated prose and run summaries. | Verify each terminal command maps to LifeOps state or action output. |
+| `messages` | `gui` | `/messages` | Conversation/thread workflow is direct and recognizable. | Needs avatar/thread/media empty-state review. | Verify threads, compose, send-role gating, and account badges. |
+| `messages` | `tui` | `/messages/tui` | TUI covers list/send/request-role actions. | Needs send-flow mock output and permission-state proof. | Verify list and send commands render semantic output. |
+| `model-tester` | `gui` | `/model-tester` | Probe dashboard has clear test categories. | Needs icon/graph emphasis over explanatory text. | Verify text/audio/vision/VAD controls and result states. |
+| `model-tester` | `tui` | `/model-tester/tui` | TUI exposes status and probe commands. | Needs proof that failures remain visible but compact. | Run all probe commands in visual smoke and inspect outputs. |
+| `phone` | `gui` | `/phone` | Dialer/recents/contact pattern is understandable. | Needs phone-specific icon affordance review and call-status states. | Verify dialer, recents, contacts, transcript save, and permission gates. |
+| `phone` | `tui` | `/phone/tui` | TUI covers state/place-call/open-dialer/save-transcript. | Needs command mock coverage for call lifecycle edge cases. | Verify each phone command emits structured output. |
+| `polymarket` | `gui` | `/polymarket` | Market cards and orderbook concepts support strong visual scanning. | Needs risk/trading-readiness indicators reviewed for clarity. | Verify markets, orderbook, positions, and trading check states. |
+| `polymarket` | `tui` | `/polymarket/tui` | TUI covers state/market/orderbook/positions/trading-check. | Needs proof that trading caveats are concise. | Verify all terminal commands and semantic output snippets. |
+| `shopify` | `gui` | `/shopify` | Commerce dashboard maps well to products/orders/inventory cards. | Needs visual density and store-status review. | Verify products, orders, inventory, customers, create/adjust controls. |
+| `shopify` | `tui` | `/shopify/tui` | TUI covers products/orders/inventory/customers/actions. | Needs command-result coverage for create/update flows. | Verify create-product and adjust-inventory command output. |
+| `steward` | `gui` | `/steward` | Approval queue/history model is clear for wallet safety. | Needs transaction severity/status visual review and prose reduction. | Verify pending/history tabs, risk badges, approve/deny controls. |
+| `steward` | `tui` | `/steward/tui` | TUI covers state/pending/history/approve/deny. | Needs approval/deny mock output contracts. | Verify every command settles and encodes safety result. |
+| `vincent` | `gui` | `/vincent` | Strategy/auth flow is scoped and status-driven. | Needs login/disconnect/strategy affordance review. | Verify auth badges, strategy controls, and disabled states. |
+| `vincent` | `tui` | `/vincent/tui` | TUI covers state/login/disconnect/update-strategy. | Needs compact command-output proof. | Verify login and strategy commands render useful output. |
+| `wallet` | `gui` | `/wallet` | Inventory/market/trading profile can be highly visual. | Needs asset/token imagery and balance/table review. | Verify balances, market overview, token rows, and trading profile indicators. |
+| `wallet` | `tui` | `/wallet/tui` | TUI exposes wallet state, market, and profile commands. | Needs output review for asset names and warnings. | Verify all wallet commands emit structured state. |
+| `2004scape` | `gui` | `/2004scape` | Game operator surface supports visual session/run state. | Needs canvas/game-state screenshot proof. | Verify primary game surface is nonblank and controls are reachable. |
+| `2004scape` | `tui` | `/2004scape/tui` | TUI exposes state/command/pause/resume. | Needs command output and suggested prompt proof. | Verify command buttons and output contracts. |
+| `feed` | `gui` | `/feed` | Feed/operator layout gives live status and communication affordances. | Needs visual hierarchy review for dashboard/message areas. | Verify refresh, live dashboard, and team-message controls. |
+| `feed` | `tui` | `/feed/tui` | TUI covers get-state, refresh, dashboard, and message commands. | Needs concise message-send output proof. | Verify every command produces command-specific output. |
+| `views-manager` | `gui` | `/views` | Central view catalog now uses icons and compact launch controls. | Needs screenshot pass for GUI/TUI/XR grouping and no prose sprawl. | Verify registered view tiles, launch controls, and empty states. |
+| `views-manager` | `tui` | `/views/tui` | TUI can list/open registered terminal views. | Needs route contract proof after XR additions. | Verify list and open commands against real registered views. |
+| `clawville` | `gui` | `/clawville` | Game/operator surface supports status-rich presentation. | Needs scene/canvas and control density review. | Verify nonblank visual surface and command controls. |
+| `clawville` | `tui` | `/clawville/tui` | TUI covers state and command. | Needs output contract for active run/session states. | Verify command output and no pending states. |
+| `defense-of-the-agents` | `gui` | `/defense-of-the-agents` | Game view has strong map/strategy visual potential. | Needs gameplay/canvas screenshot proof and text reduction review. | Verify game surface, strategy controls, and telemetry indicators. |
+| `defense-of-the-agents` | `tui` | `/defense-of-the-agents/tui` | TUI covers defense state and command. | Needs semantic command-output proof. | Verify defense command controls and result text. |
+| `hyperscape` | `gui` | `/hyperscape` | World/operator view can prioritize live session visuals. | Needs scene rendering and follow/session state review. | Verify primary visual surface, command controls, and status chips. |
+| `hyperscape` | `tui` | `/hyperscape/tui` | TUI covers state/command/control. | Needs follow/session output proof. | Verify all commands and route-specific visible text. |
+| `scape` | `gui` | `/scape` | Operator view can show autonomous game state and journal. | Needs visual review for canvas/game status. | Verify nonblank surface and compact control panel. |
+| `scape` | `tui` | `/scape/tui` | TUI covers state/command/control. | Needs command-output proof for autonomous state. | Verify all terminal commands settle. |
+| `screenshare` | `gui` | `/screenshare` | Remote session/viewer workflow has clear visual affordances. | Needs viewer URL/session/start/stop review. | Verify session status, viewer controls, input controls, and permission states. |
+| `screenshare` | `tui` | `/screenshare/tui` | TUI covers state/start/session/stop/input/viewer-url. | Needs command coverage across session lifecycle. | Verify every command produces command-specific output. |
+| `task-coordinator` | `gui` | `/task-coordinator` | Task/session panels are operationally useful. | Needs dense dashboard review and flow coverage for task actions. | Verify session list, thread list, create/update/fork/agent controls. |
+| `task-coordinator` | `tui` | `/task-coordinator/tui` | TUI exposes broad task/session command set. | Needs command output review for all orchestrator operations. | Verify all terminal command buttons settle with semantic output. |
+| `orchestrator` | `gui` | `/orchestrator` | Orchestration view mirrors task state and agent controls. | Needs visual distinction from task-coordinator and flow proof. | Verify task list, agent controls, and action states. |
+| `orchestrator` | `tui` | `/orchestrator/tui` | TUI covers orchestrator task and agent commands. | Needs broad command-output proof. | Verify all commands return structured results. |
+| `trajectory-logger` | `gui` | `/trajectory-logger` | Timeline/log view supports evidence-rich inspection. | Needs typography/density review for event rows and filters. | Verify trajectory list, filters, latest-open, and empty states. |
+| `trajectory-logger` | `tui` | `/trajectory-logger/tui` | TUI covers list/open/filter/refresh. | Needs output proof for filter changes. | Verify commands update or report trajectory state. |
+| `training` | `gui` | `/training` | Fine-tuning workflow has rich pipeline/status opportunities. | Needs dense multi-section review and prose pruning. | Verify dataset, job, benchmark, eval, model activation, and readiness states. |
+| `training` | `tui` | `/training/tui` | TUI exposes extensive training/eval/benchmark commands. | Needs broad command-output proof and timeout review. | Verify all terminal commands settle with clear result categories. |
+| `facewear` | `gui` | `/apps/hearwear` | Device management uses platform/status concepts well. | Needs native bridge/device asset and permission-state review. | Verify connect, diagnostics, emulator, headset, and hardware-check controls. |
+| `facewear` | `tui` | `/apps/hearwear/tui` | TUI covers device connect, diagnostics, emulator, and setup commands. | Needs command-output proof across device unavailable states. | Verify every command returns meaningful mocked status. |
+| `smartglasses` | `gui` | `/apps/smartglasses` | Smartglasses setup has device-specific status and event affordances. | Needs prose reduction and event-log visual review. | Verify setup, Wi-Fi, diagnostics, events, and bridge-only states. |
+| `smartglasses` | `tui` | `/apps/smartglasses/tui` | TUI covers smartglasses setup/status/diagnostics. | Needs command-output proof for native bridge unavailable states. | Verify all commands settle and expose device state. |

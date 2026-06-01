@@ -26,6 +26,7 @@ describe(".chainsaw.yaml (cluster integration test runner)", () => {
     metadata: { name: string };
     spec: {
       timeouts: Record<string, string>;
+      cleanup: { skipDelete: boolean };
       execution: { parallel: number; failFast: boolean };
     };
   };
@@ -47,5 +48,10 @@ describe(".chainsaw.yaml (cluster integration test runner)", () => {
   test("uses bounded parallelism so kind clusters do not get overwhelmed", () => {
     expect(doc.spec.execution.parallel).toBeGreaterThan(0);
     expect(doc.spec.execution.parallel).toBeLessThanOrEqual(10);
+  });
+
+  test("does not stop early or skip cleanup", () => {
+    expect(doc.spec.execution.failFast).toBe(false);
+    expect(doc.spec.cleanup.skipDelete).toBe(false);
   });
 });

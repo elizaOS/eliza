@@ -68,6 +68,53 @@ describe("OpenRouter native text plumbing", () => {
     });
   });
 
+  it("preserves attachments when native messages are supplied", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "legacy prompt should not be duplicated into messages",
+      messages: [{ role: "user", content: "inspect this file" }],
+      attachments: [
+        {
+          data: "data:image/png;base64,abc123",
+          mediaType: "image/png",
+          filename: "screen.png",
+        },
+      ],
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "inspect this file" },
+          {
+            type: "file",
+            data: "data:image/png;base64,abc123",
+            mediaType: "image/png",
+            filename: "screen.png",
+          },
+        ],
+      },
+    ]);
+    expect(call).not.toHaveProperty("prompt");
+  });
+
   it("passes system separately and strips the duplicate leading system message", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

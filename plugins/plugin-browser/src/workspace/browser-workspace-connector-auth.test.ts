@@ -87,7 +87,7 @@ describe("browser workspace connector auth sessions", () => {
     expect(second.authState).toBe("ready");
   });
 
-  it("does not expose raw cookies or storage from connector partitions", async () => {
+  it("does not expose or mutate raw secrets from connector partitions", async () => {
     const session = await acquireBrowserWorkspaceConnectorSession(
       {
         provider: "x",
@@ -97,24 +97,27 @@ describe("browser workspace connector auth sessions", () => {
       webEnv,
     );
 
-    await expect(
-      executeBrowserWorkspaceCommand(
-        {
-          id: session.tabId ?? undefined,
-          subaction: "cookies",
-        },
-        webEnv,
-      ),
-    ).rejects.toThrow(/raw cookie, token, storage, or state export/);
-
-    await expect(
-      executeBrowserWorkspaceCommand(
-        {
-          id: session.tabId ?? undefined,
-          subaction: "state",
-        },
-        webEnv,
-      ),
-    ).rejects.toThrow(/raw cookie, token, storage, or state export/);
+    for (const command of [
+      { id: session.tabId ?? undefined, subaction: "cookies" },
+      { id: session.tabId ?? undefined, subaction: "storage" },
+      { id: session.tabId ?? undefined, subaction: "state" },
+      {
+        headers: { Authorization: "Bearer token" },
+        id: session.tabId ?? undefined,
+        setAction: "headers",
+        subaction: "set",
+      },
+      {
+        id: session.tabId ?? undefined,
+        password: "secret",
+        setAction: "credentials",
+        subaction: "set",
+        username: "owner",
+      },
+    ]) {
+      await expect(
+        executeBrowserWorkspaceCommand(command, webEnv),
+      ).rejects.toThrow(/raw cookie, token, storage, or state export/);
+    }
   });
 });

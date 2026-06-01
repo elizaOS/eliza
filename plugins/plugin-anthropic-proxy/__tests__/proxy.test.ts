@@ -9,6 +9,7 @@ import {
 } from "../src/proxy/constants.js";
 import { reverseMap } from "../src/proxy/reverse-map.js";
 import { applyReplacements } from "../src/proxy/sanitize.js";
+import { ProxyServer } from "../src/proxy/server.js";
 import { applyQuotedRenames } from "../src/proxy/tool-rename.js";
 import {
   AnthropicProxyService,
@@ -207,6 +208,19 @@ describe("AnthropicProxyService modes", () => {
     expect(service.getStartError()).toMatch(/https/);
   });
 
+  it("treats invalid proxy mode as off instead of silently starting inline", async () => {
+    const service = await withEnv(
+      {
+        CLAUDE_MAX_PROXY_MODE: "sharedd",
+        CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
+      },
+      () => AnthropicProxyService.start({} as unknown as never),
+    );
+    cleanup.push(() => service.stop());
+    expect(service.getEffectiveMode()).toBe("off");
+    expect(service.getStartError()).toMatch(/Invalid CLAUDE_MAX_PROXY_MODE/);
+  });
+
   it("does not poison ANTHROPIC_BASE_URL when inline startup falls back to off", async () => {
     const previous = process.env.ANTHROPIC_BASE_URL;
     process.env.ANTHROPIC_BASE_URL = "auto";
@@ -238,6 +252,48 @@ describe("AnthropicProxyService modes", () => {
       if (previous === undefined) delete process.env.ANTHROPIC_BASE_URL;
       else process.env.ANTHROPIC_BASE_URL = previous;
     }
+  });
+});
+
+describe("ProxyServer auth and URL contracts", () => {
+  it("publishes the assigned port when configured with port 0", async () => {
+    const server = new ProxyServer({
+      port: 0,
+      bindHost: "127.0.0.1",
+      envToken: "test-oauth-token-not-real",
+    });
+    await server.start();
+    cleanup.push(() => server.stop());
+
+    const url = server.getUrl();
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(url).not.toBe("http://127.0.0.1:0");
+
+    const response = await fetch(`${url}/health`);
+    expect(response.status).toBe(200);
+  });
+
+  it("requires proxy auth for /health when auth token is configured", async () => {
+    const server = new ProxyServer({
+      port: 0,
+      bindHost: "127.0.0.1",
+      envToken: "test-oauth-token-not-real",
+      proxyAuthToken: "proxy-token",
+    });
+    await server.start();
+    cleanup.push(() => server.stop());
+    const url = server.getUrl();
+
+    await expect(fetch(`${url}/health`)).resolves.toMatchObject({
+      status: 401,
+    });
+    await expect(
+      fetch(`${url}/health`, {
+        headers: { Authorization: "Bearer proxy-token" },
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+    });
   });
 });
 

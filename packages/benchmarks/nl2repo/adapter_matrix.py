@@ -28,9 +28,25 @@ class NL2RepoTask:
     strip_paths: list[str]
     test_case_count: int
     eval_image: str
+    source_name: str = ""
+    edge_condition: str = ""
 
 
 PostProcessFn = Callable[[str, str, Any, Any], dict[str, Any]]
+
+
+EDGE_VARIANTS: tuple[str, ...] = (
+    "preserve public API names while adding complete implementations",
+    "handle empty, missing, and malformed input files gracefully",
+    "support unicode text, path separators, and whitespace-heavy inputs",
+    "avoid network access and keep all behavior deterministic offline",
+    "maintain compatibility with the package's documented CLI entrypoints",
+    "cover nested package imports and relative import behavior",
+    "keep generated tests and benchmark test files separate from source",
+    "handle large collections without quadratic slowdowns",
+    "provide clear exceptions without swallowing assertion failures",
+    "maintain packaging metadata for editable installation",
+)
 
 
 def nl2repo_root() -> Path:
@@ -48,6 +64,49 @@ def canonical_task_names(root: Path | None = None) -> list[str]:
     if not isinstance(names, list):
         raise ValueError("NL2Repo config.json is missing startPro[0].proNameList")
     return [str(name) for name in names]
+
+
+def expand_tasks(tasks: list[NL2RepoTask], *, expand_scenarios: bool = False) -> list[NL2RepoTask]:
+    if not expand_scenarios:
+        return list(tasks)
+    expanded = list(tasks)
+    for task in tasks:
+        source_name = task.source_name or task.name
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            expanded.append(
+                NL2RepoTask(
+                    name=f"{source_name}__edge_{index:02d}",
+                    prompt_md_path=task.prompt_md_path,
+                    test_commands=list(task.test_commands),
+                    strip_paths=list(task.strip_paths),
+                    test_case_count=task.test_case_count,
+                    eval_image=task.eval_image,
+                    source_name=source_name,
+                    edge_condition=edge_condition,
+                )
+            )
+    return expanded
+
+
+def count_tasks(tasks: list[NL2RepoTask], *, expand_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_tasks(tasks: list[NL2RepoTask], *, expand_scenarios: bool = False) -> dict[str, Any]:
+    expanded = expand_tasks(tasks, expand_scenarios=expand_scenarios)
+    names = [task.name for task in expanded]
+    duplicate_count = len(names) - len(set(names))
+    missing_prompts = [
+        task.name for task in expanded if not Path(task.prompt_md_path).exists()
+    ]
+    return {
+        "valid": duplicate_count == 0 and not missing_prompts,
+        "duplicate_count": duplicate_count,
+        "missing_prompts": missing_prompts,
+        "total": len(expanded),
+    }
 
 
 def load_tasks(root: Path | None = None, *, max_tasks: int | None = None) -> list[NL2RepoTask]:
@@ -312,13 +371,18 @@ def _write_agent_trajectory(
 
 
 def build_agent_instruction(task: NL2RepoTask, workspace: Path) -> str:
-    return "\n".join(
+    lines = [
+        "You are running NL2Repo-Bench.",
+        "",
+        f"Task: {task.name}",
+        f"Source task: {task.source_name or task.name}",
+        f"Workspace: {workspace}",
+        f"Requirements document: {workspace / 'start.md'}",
+    ]
+    if task.edge_condition:
+        lines.extend(["", f"Edge condition: {task.edge_condition}."])
+    lines.extend(
         [
-            "You are running NL2Repo-Bench.",
-            "",
-            f"Task: {task.name}",
-            f"Workspace: {workspace}",
-            f"Requirements document: {workspace / 'start.md'}",
             "",
             "Implement the complete Python project described in start.md inside this workspace.",
             "Create or edit files only under the workspace unless your agent runtime needs temporary files.",
@@ -327,12 +391,21 @@ def build_agent_instruction(task: NL2RepoTask, workspace: Path) -> str:
             "When finished, leave the generated repository contents in the workspace and exit successfully.",
         ]
     )
+    return "\n".join(lines)
 
 
 def _prepare_workspace(output_dir: Path, task: NL2RepoTask) -> Path:
     workspace = output_dir / "workspaces" / task.name / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     shutil.copy2(task.prompt_md_path, workspace / "start.md")
+    if task.edge_condition:
+        start_path = workspace / "start.md"
+        start_path.write_text(
+            start_path.read_text(encoding="utf-8")
+            + "\n\n"
+            + f"Additional benchmark edge condition: {task.edge_condition}.\n",
+            encoding="utf-8",
+        )
     (workspace / "NL2REPO_TASK.md").write_text(
         build_agent_instruction(task, workspace),
         encoding="utf-8",
@@ -463,7 +536,7 @@ def _make_test_data(task: NL2RepoTask) -> Any:
     from test_data_service import TestData  # type: ignore
 
     return TestData(
-        pro_name=task.name,
+        pro_name=task.source_name or task.name,
         test_case_count=task.test_case_count,
         test_shell=task.test_commands,
         py_test_file_list=task.strip_paths,
@@ -582,8 +655,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=3600)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _with_scenario_metadata(
+    result: dict[str, Any],
+    *,
+    counts: dict[str, int],
+    expand_scenarios: bool,
+) -> dict[str, Any]:
+    result["include_edge_scenarios"] = expand_scenarios
+    result["scenario_counts"] = counts
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -591,13 +682,34 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(max_tasks=args.max_tasks)
+    base_tasks = load_tasks(max_tasks=args.max_tasks)
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    counts = count_tasks(base_tasks, expand_scenarios=expand_scenarios)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "NL2Repo scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_tasks(base_tasks, expand_scenarios=expand_scenarios)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid NL2Repo task expansion: {validation}")
+        print(f"NL2Repo scenario validation passed: {counts['total']} task(s)")
+    tasks = expand_tasks(base_tasks, expand_scenarios=expand_scenarios)
     if args.mock:
-        result = build_mock_result(
-            tasks=tasks,
-            task_agent=args.task_agent,
-            model_provider=args.model_provider,
-            model=args.model,
+        result = _with_scenario_metadata(
+            build_mock_result(
+                tasks=tasks,
+                task_agent=args.task_agent,
+                model_provider=args.model_provider,
+                model=args.model,
+            ),
+            counts=counts,
+            expand_scenarios=expand_scenarios,
         )
         result_path = output_dir / "result.json"
         result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
@@ -607,7 +719,7 @@ def main(argv: list[str] | None = None) -> int:
 
     command_template = agent_command_template(args.task_agent, args.agent_command_template)
     if not command_template:
-        result = {
+        result = _with_scenario_metadata({
             "benchmark": "nl2repo",
             "adapter": args.task_agent,
             "model_provider": args.model_provider,
@@ -625,7 +737,7 @@ def main(argv: list[str] | None = None) -> int:
                 "set NL2REPO_AGENT_COMMAND_TEMPLATE or "
                 f"{_adapter_command_env_name(args.task_agent)}"
             ),
-        }
+        }, counts=counts, expand_scenarios=expand_scenarios)
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True), file=sys.stderr)
@@ -642,12 +754,16 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds=args.timeout_seconds,
     )
     if args.no_docker:
-        result = build_generation_only_result(
-            tasks=tasks,
-            task_agent=args.task_agent,
-            model_provider=args.model_provider,
-            model=args.model,
-            results=generated_results,
+        result = _with_scenario_metadata(
+            build_generation_only_result(
+                tasks=tasks,
+                task_agent=args.task_agent,
+                model_provider=args.model_provider,
+                model=args.model,
+                results=generated_results,
+            ),
+            counts=counts,
+            expand_scenarios=expand_scenarios,
         )
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         if args.json:
@@ -660,20 +776,28 @@ def main(argv: list[str] | None = None) -> int:
             task_agent=args.task_agent,
             generation_results=generated_results,
         )
-        result = build_scored_result(
-            tasks=tasks,
-            task_agent=args.task_agent,
-            model_provider=args.model_provider,
-            model=args.model,
-            results=scored_results,
+        result = _with_scenario_metadata(
+            build_scored_result(
+                tasks=tasks,
+                task_agent=args.task_agent,
+                model_provider=args.model_provider,
+                model=args.model,
+                results=scored_results,
+            ),
+            counts=counts,
+            expand_scenarios=expand_scenarios,
         )
     except Exception as exc:
-        result = build_generation_only_result(
-            tasks=tasks,
-            task_agent=args.task_agent,
-            model_provider=args.model_provider,
-            model=args.model,
-            results=generated_results,
+        result = _with_scenario_metadata(
+            build_generation_only_result(
+                tasks=tasks,
+                task_agent=args.task_agent,
+                model_provider=args.model_provider,
+                model=args.model,
+                results=generated_results,
+            ),
+            counts=counts,
+            expand_scenarios=expand_scenarios,
         )
         result["mode"] = "postprocess_failed"
         result["error"] = f"NL2Repo Docker post-processing failed: {exc}"

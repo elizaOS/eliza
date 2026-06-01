@@ -12,6 +12,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from benchmarks.realm.dataset import REALMDataset
 from benchmarks.realm.runner import REALMRunner
 from benchmarks.realm.types import (
     LEADERBOARD_NOTE,
@@ -166,6 +167,21 @@ def parse_args() -> argparse.Namespace:
         help="Use the tiny built-in P1 + P11 smoke instances",
     )
     parser.add_argument("--leaderboard", action="store_true")
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for every loaded REALM scenario.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print loaded REALM scenario counts and exit.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate loaded REALM scenarios and exit.",
+    )
     parser.add_argument("--no-save", action="store_true")
     parser.add_argument("--check-env", action="store_true")
     parser.add_argument("--export-trajectories", action="store_true")
@@ -259,7 +275,25 @@ def create_config(args: argparse.Namespace) -> REALMConfig:
         use_sample_tasks=args.use_sample_tasks,
         solver_timeout_s=args.solver_timeout,
         auto_install_ortools=args.auto_install_ortools,
+        include_edge_scenarios=args.expand_scenarios,
     )
+
+
+async def load_selected_dataset(config: REALMConfig) -> REALMDataset:
+    dataset = REALMDataset(
+        config.data_path,
+        max_instances_per_problem=config.max_instances_per_problem,
+        use_sample_tasks=config.use_sample_tasks,
+        include_edge_scenarios=config.include_edge_scenarios,
+    )
+    await dataset.load()
+    if config.problems is not None:
+        dataset.test_cases = dataset.get_test_cases(problems=config.problems)
+        dataset.tasks = [tc.task for tc in dataset.test_cases]
+    if config.max_tasks_per_problem is not None:
+        dataset.test_cases = dataset.get_test_cases(limit=config.max_tasks_per_problem)
+        dataset.tasks = [tc.task for tc in dataset.test_cases]
+    return dataset
 
 
 def print_results_summary(report: REALMReport) -> None:
@@ -361,6 +395,19 @@ def main() -> int:
         return 0
 
     config = create_config(args)
+    if args.count_scenarios or args.validate_scenarios:
+        dataset = asyncio.run(load_selected_dataset(config))
+        counts = dataset.count_scenarios()
+        if args.validate_scenarios:
+            errors = dataset.validate_scenarios()
+            payload = {"ok": not errors, **counts}
+            if errors:
+                payload["errors"] = errors[:50]
+                payload["error_count"] = len(errors)
+            print(json.dumps(payload, indent=2))
+            return 0 if not errors else 1
+        print(json.dumps(counts, indent=2))
+        return 0
     if not args.json:
         print("Configuration:")
         print(f"  Data path: {config.data_path}")

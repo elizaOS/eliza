@@ -113,16 +113,13 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
 
       const prompt = "Hello, how are you today?";
 
-      if (openrouterPlugin.models?.TEXT_SMALL) {
-        const textHandler = openrouterPlugin.models.TEXT_SMALL;
-        const response = await textHandler(runtime, { prompt });
+      const textHandler = openrouterPlugin.models?.TEXT_SMALL;
+      if (!textHandler) throw new Error("TEXT_SMALL model handler is not registered");
+      const response = await textHandler(runtime, { prompt });
 
-        expect(response).toBeDefined();
-        expect(typeof response).toBe("string");
-        expect(response.length).toBeGreaterThan(0);
-      } else {
-        console.warn("TEXT_SMALL model not available");
-      }
+      expect(response).toBeDefined();
+      expect(typeof response).toBe("string");
+      expect(response.length).toBeGreaterThan(0);
     }, 30000);
   });
 
@@ -135,16 +132,13 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
 
       const prompt = "Explain quantum computing in simple terms.";
 
-      if (openrouterPlugin.models?.TEXT_LARGE) {
-        const textHandler = openrouterPlugin.models.TEXT_LARGE;
-        const response = await textHandler(runtime, { prompt });
+      const textHandler = openrouterPlugin.models?.TEXT_LARGE;
+      if (!textHandler) throw new Error("TEXT_LARGE model handler is not registered");
+      const response = await textHandler(runtime, { prompt });
 
-        expect(response).toBeDefined();
-        expect(typeof response).toBe("string");
-        expect(response.length).toBeGreaterThan(0);
-      } else {
-        console.warn("TEXT_LARGE model not available");
-      }
+      expect(response).toBeDefined();
+      expect(typeof response).toBe("string");
+      expect(response.length).toBeGreaterThan(0);
     }, 30000);
   });
 
@@ -156,10 +150,7 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
       }
 
       const handler = openrouterPlugin.models?.TEXT_SMALL;
-      if (!handler) {
-        console.warn("TEXT_SMALL model not available");
-        return;
-      }
+      if (!handler) throw new Error("TEXT_SMALL model handler is not registered");
 
       const response = await handler(runtime, {
         prompt: "Create a JSON object representing a person with name, age, and hobbies.",
@@ -174,7 +165,11 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
         },
       } as Parameters<typeof handler>[1]);
 
-      expect(response).toBeDefined();
+      expect(response).toEqual(
+        expect.objectContaining({
+          text: expect.any(String),
+        })
+      );
     }, 30000);
 
     test("should generate JSON via TEXT_LARGE with responseSchema", async () => {
@@ -184,17 +179,18 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
       }
 
       const handler = openrouterPlugin.models?.TEXT_LARGE;
-      if (!handler) {
-        console.warn("TEXT_LARGE model not available");
-        return;
-      }
+      if (!handler) throw new Error("TEXT_LARGE model handler is not registered");
 
       const response = await handler(runtime, {
         prompt: "Create a detailed JSON object representing a complex product catalog.",
         responseSchema: { type: "object" },
       } as Parameters<typeof handler>[1]);
 
-      expect(response).toBeDefined();
+      expect(response).toEqual(
+        expect.objectContaining({
+          text: expect.any(String),
+        })
+      );
     }, 500000);
   });
 
@@ -209,20 +205,17 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
       const imageUrl =
         "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Gull_portrait_ca_usa.jpg/1280px-Gull_portrait_ca_usa.jpg";
 
-      if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
-        const imageDescHandler = openrouterPlugin.models.IMAGE_DESCRIPTION;
-        const response = await imageDescHandler(runtime, imageUrl);
+      const imageDescHandler = openrouterPlugin.models?.IMAGE_DESCRIPTION;
+      if (!imageDescHandler) throw new Error("IMAGE_DESCRIPTION model handler is not registered");
+      const response = await imageDescHandler(runtime, imageUrl);
 
-        expect(response).toBeDefined();
-        expect(response).toHaveProperty("title");
-        expect(response).toHaveProperty("description");
-        expect(typeof response.title).toBe("string");
-        expect(typeof response.description).toBe("string");
-        expect(response.title.length).toBeGreaterThan(0);
-        expect(response.description.length).toBeGreaterThan(0);
-      } else {
-        console.warn("IMAGE_DESCRIPTION model not available");
-      }
+      expect(response).toBeDefined();
+      expect(response).toHaveProperty("title");
+      expect(response).toHaveProperty("description");
+      expect(typeof response.title).toBe("string");
+      expect(typeof response.description).toBe("string");
+      expect(response.title.length).toBeGreaterThan(0);
+      expect(response.description.length).toBeGreaterThan(0);
     }, 500000);
 
     test("should describe an image with custom prompt", async () => {
@@ -236,23 +229,20 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
       const customPrompt =
         "Identify the species of bird in this image and provide detailed characteristics.";
 
-      if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
-        const imageDescHandler = openrouterPlugin.models.IMAGE_DESCRIPTION;
-        const response = await imageDescHandler(runtime, {
-          imageUrl,
-          prompt: customPrompt,
-        });
+      const imageDescHandler = openrouterPlugin.models?.IMAGE_DESCRIPTION;
+      if (!imageDescHandler) throw new Error("IMAGE_DESCRIPTION model handler is not registered");
+      const response = await imageDescHandler(runtime, {
+        imageUrl,
+        prompt: customPrompt,
+      });
 
-        expect(response).toBeDefined();
-        expect(response).toHaveProperty("title");
-        expect(response).toHaveProperty("description");
-        expect(typeof response.title).toBe("string");
-        expect(typeof response.description).toBe("string");
-        expect(response.title.length).toBeGreaterThan(0);
-        expect(response.description.length).toBeGreaterThan(0);
-      } else {
-        console.warn("IMAGE_DESCRIPTION model not available");
-      }
+      expect(response).toBeDefined();
+      expect(response).toHaveProperty("title");
+      expect(response).toHaveProperty("description");
+      expect(typeof response.title).toBe("string");
+      expect(typeof response.description).toBe("string");
+      expect(response.title.length).toBeGreaterThan(0);
+      expect(response.description.length).toBeGreaterThan(0);
     }, 500000);
   });
 
@@ -265,17 +255,14 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
 
       const text = "Hello, this is a test for embeddings.";
 
-      if (openrouterPlugin.models?.TEXT_EMBEDDING) {
-        const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;
-        const embedding = await embeddingHandler(runtime, { text });
+      const embeddingHandler = openrouterPlugin.models?.TEXT_EMBEDDING;
+      if (!embeddingHandler) throw new Error("TEXT_EMBEDDING model handler is not registered");
+      const embedding = await embeddingHandler(runtime, { text });
 
-        expect(embedding).toBeDefined();
-        expect(Array.isArray(embedding)).toBe(true);
-        expect(embedding.length).toBeGreaterThan(0);
-        expect(typeof embedding[0]).toBe("number");
-      } else {
-        console.warn("TEXT_EMBEDDING model not available");
-      }
+      expect(embedding).toBeDefined();
+      expect(Array.isArray(embedding)).toBe(true);
+      expect(embedding.length).toBeGreaterThan(0);
+      expect(typeof embedding[0]).toBe("number");
     }, 30000);
 
     test("should handle string input for embeddings", async () => {
@@ -286,17 +273,14 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
 
       const text = "Testing string input for embeddings.";
 
-      if (openrouterPlugin.models?.TEXT_EMBEDDING) {
-        const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;
-        const embedding = await embeddingHandler(runtime, text);
+      const embeddingHandler = openrouterPlugin.models?.TEXT_EMBEDDING;
+      if (!embeddingHandler) throw new Error("TEXT_EMBEDDING model handler is not registered");
+      const embedding = await embeddingHandler(runtime, text);
 
-        expect(embedding).toBeDefined();
-        expect(Array.isArray(embedding)).toBe(true);
-        expect(embedding.length).toBeGreaterThan(0);
-        expect(typeof embedding[0]).toBe("number");
-      } else {
-        console.warn("TEXT_EMBEDDING model not available");
-      }
+      expect(embedding).toBeDefined();
+      expect(Array.isArray(embedding)).toBe(true);
+      expect(embedding.length).toBeGreaterThan(0);
+      expect(typeof embedding[0]).toBe("number");
     }, 30000);
   });
 });

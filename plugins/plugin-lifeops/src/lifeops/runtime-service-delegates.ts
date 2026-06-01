@@ -1,10 +1,10 @@
 import type { Content, IAgentRuntime, Memory, TargetInfo } from "@elizaos/core";
 import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import type {
-  CalendlyAvailability,
-  CalendlyScheduledEvent,
+  CalendlyAvailabilityNormalized as CalendlyAvailability,
+  CalendlyScheduledEventNormalized as CalendlyScheduledEvent,
   CalendlySingleUseLink,
-} from "./calendly-client.js";
+} from "@elizaos/plugin-calendly";
 
 type WhatsAppSendRequest = {
   to: string;

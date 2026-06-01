@@ -33,6 +33,23 @@ const KEYLESS_WORKFLOW = path.join(
   REPO_ROOT,
   ".github/workflows/scenario-pr.yml",
 );
+const PR_WORKFLOWS = [
+  ".github/workflows/scenario-pr.yml",
+  ".github/workflows/ci.yaml",
+  ".github/workflows/test.yml",
+] as const;
+const REQUIRED_VIEW_GATE_SPECS = [
+  "test/route-coverage.test.ts",
+  "test/ui-smoke-coverage.test.ts",
+  "test/view-interaction-coverage.test.ts",
+  "test/ui-smoke/plugin-views-visual.spec.ts",
+  "test/ui-smoke/orchestrator-gui-workbench.spec.ts",
+  "test/ui-smoke/screenshare-gui-interactions.spec.ts",
+  "test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
+  "test/ui-smoke/game-operator-gui-interactions.spec.ts",
+  "test/ui-smoke/terminal-plugin-view-command-contract.spec.ts",
+  "packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts",
+] as const;
 
 /**
  * Specs that legitimately cannot run in keyless CI. Each entry names the hard
@@ -40,7 +57,12 @@ const KEYLESS_WORKFLOW = path.join(
  * an entry here must guard itself behind that dependency (env flag, baseURL,
  * cloud sandbox, or running endpoint), not merely be unwired.
  */
-const LIVE_ONLY: Readonly<Record<string, string>> = {};
+const LIVE_ONLY: Readonly<Record<string, string>> = {
+  "multi-client-desync.spec.ts":
+    "Requires a shared live messaging backend or shared route-layer message store; current keyless mocks are per-context fixtures.",
+  "multi-window-sync.spec.ts":
+    "Requires the planned cross-window BroadcastChannel/useTabSync implementation; the app has no same-origin sync layer yet.",
+};
 
 /**
  * Stub-capable specs that SHOULD run in keyless CI but are not yet wired into
@@ -159,6 +181,24 @@ describe("ui-smoke spec coverage gate", () => {
       missing,
       `scenario-pr.yml references ui-smoke specs that do not exist ` +
         `(rename/typo?): ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps plugin-view gates wired in every PR workflow", () => {
+    const missing: string[] = [];
+
+    for (const workflowPath of PR_WORKFLOWS) {
+      const workflow = readFileSync(path.join(REPO_ROOT, workflowPath), "utf8");
+      for (const spec of REQUIRED_VIEW_GATE_SPECS) {
+        if (!workflow.includes(spec)) {
+          missing.push(`${workflowPath}:${spec}`);
+        }
+      }
+    }
+
+    expect(
+      missing,
+      `Every PR workflow must keep app route/spec and plugin-view browser gates wired: ${missing.join(", ")}`,
     ).toEqual([]);
   });
 });

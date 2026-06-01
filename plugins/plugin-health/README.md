@@ -61,10 +61,15 @@ pairs.
 
 ### Domain logic
 
+- `src/actions/` — health and screen-time action runner factories. Host apps
+  inject owner-access, service, recent-conversation, local activity/browser,
+  and rendering adapters; domain planning and metric formatting stay here.
 - `src/sleep/` — sleep / circadian / regularity engines.
 - `src/screen-time/` — screen-time aggregation.
 - `src/health-bridge/` — proxied surfaces consumed by LifeOps
   (`/api/lifeops/health/summary`, `/api/lifeops/health/sync`).
+- `src/providers/` — compact health-context provider factory. Host apps inject
+  access checks and summary loaders; health-specific formatting stays here.
 
 ## How LifeOps consumes plugin-health
 
@@ -78,8 +83,10 @@ LifeOps does not import internal modules. Consumption goes through:
    into `FamilyRegistry`.
 4. **Default packs** — registered via `registerHealthDefaultPacks(runtime)`.
 5. **Public exports** — `detectHealthBackend`, sleep utilities, screen-time
-   helpers exported from `@elizaos/plugin-health` and re-exported by
-   `app-lifeops` only where the surface is part of the LifeOps public API.
+   helpers, `createHealthActionRunner`, `createScreenTimeActionRunner`, and
+   `createHealthProvider` exported from `@elizaos/plugin-health` and
+   re-exported by `app-lifeops` only where the surface is part of the LifeOps
+   public API.
 
 If the LifeOps runtime registries are not available at boot, the plugin
 logs a single skip line and contributes nothing. This is the soft-dependency

@@ -12,6 +12,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { VisionService } from "./service";
+import { assertValidVisionImageBuffer } from "./image-input";
 import { VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
@@ -654,6 +655,7 @@ async function runCapture(
       };
     }
 
+    const imageInfo = await assertValidVisionImageBuffer(imageBuffer);
     const attachmentId = createUniqueUuid(runtime, `capture-${Date.now()}`);
     const timestamp = new Date().toISOString();
 
@@ -662,7 +664,7 @@ async function runCapture(
       title: `Camera Capture - ${timestamp}`,
       contentType: ContentType.IMAGE,
       source: `camera:${cameraInfo?.name || "unknown"}`,
-      url: `data:image/jpeg;base64,${imageBuffer.toString("base64")}`,
+      url: `data:${imageInfo.contentType};base64,${imageBuffer.toString("base64")}`,
     };
 
     const thought = `Captured an image from camera "${cameraInfo?.name}".`;

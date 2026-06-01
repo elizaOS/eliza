@@ -93,6 +93,19 @@ describe("calculateCreditMarkup", () => {
     ).toThrow(RangeError);
   });
 
+  test("rejects values above documented markup and platform fee bounds", () => {
+    expect(() => calculateCreditMarkup({ baseCredits: 1, markupPercent: 100.0001 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      calculateCreditMarkup({
+        baseCredits: 1,
+        markupPercent: 10,
+        platformFeeRate: 1.0001,
+      }),
+    ).toThrow(RangeError);
+  });
+
   test("exposes the canonical platform fee rate", () => {
     expect(DEFAULT_PLATFORM_FEE_RATE).toBe(0.2);
   });

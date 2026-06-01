@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.build.json",
+    "test": "vitest run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -34,7 +35,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.1.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=24.0.0"

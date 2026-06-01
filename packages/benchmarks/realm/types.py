@@ -386,6 +386,7 @@ class REALMConfig:
     # Dataset loader budget. ``None`` means load every vendored instance;
     # otherwise the loader caps each problem before selection.
     max_instances_per_problem: Optional[int] = 5
+    include_edge_scenarios: bool = False
 
     # Back-compat aliases
     @property

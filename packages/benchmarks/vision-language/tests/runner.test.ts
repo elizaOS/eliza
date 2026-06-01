@@ -2,7 +2,13 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { lookupBaseline, runOneBenchmark } from "../src/runner.ts";
+import {
+  expandSamples,
+  lookupBaseline,
+  runOneBenchmark,
+  scenarioCounts,
+  validateSamples,
+} from "../src/runner.ts";
 import { createStubRuntime, resolveRuntime } from "../src/runtime-resolver.ts";
 
 describe("runOneBenchmark", () => {
@@ -24,6 +30,46 @@ describe("runOneBenchmark", () => {
     expect(report.score).toBeGreaterThanOrEqual(0);
     expect(report.score).toBeLessThanOrEqual(1);
     expect(report.error_count).toBe(0);
+  });
+
+  it("expands selected samples into ten edge variants each", async () => {
+    const runtime = createStubRuntime("test");
+    const report = await runOneBenchmark({
+      tier: "stub",
+      benchmark: "textvqa",
+      samples: 1,
+      smoke: true,
+      runtime,
+      expandScenarios: true,
+      validateScenarios: true,
+    });
+
+    expect(report.include_edge_scenarios).toBe(true);
+    expect(report.scenario_counts).toEqual({ base: 1, edge: 10, total: 11 });
+    expect(report.sample_count).toBe(11);
+    expect(report.samples[1].sampleId).toMatch(/__edge_01$/);
+  });
+
+  it("counts and validates expanded sample ids", () => {
+    const samples = [
+      {
+        id: "sample-a",
+        imagePath: "samples/_placeholder.png",
+        question: "What text is visible?",
+        payload: { answers: ["ok"] },
+      },
+    ];
+
+    const expanded = expandSamples(samples, true);
+
+    expect(scenarioCounts(samples.length, true)).toEqual({
+      base: 1,
+      edge: 10,
+      total: 11,
+    });
+    expect(expanded).toHaveLength(11);
+    expect(expanded[1].id).toBe("sample-a__edge_01");
+    expect(validateSamples(samples, true).valid).toBe(true);
   });
 
   it("aggregates runtime token telemetry into the report", async () => {

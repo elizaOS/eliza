@@ -13,7 +13,12 @@ import {
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
 } from "./chainConfig.ts";
-import { isBscChainName, type NftItem, type TokenRow } from "./constants.ts";
+import {
+  isBscChainName,
+  parseFiniteAmount,
+  type NftItem,
+  type TokenRow,
+} from "./constants.ts";
 import {
   computeSingleChainFocus,
   matchesInventoryChainFilter,
@@ -88,8 +93,8 @@ function buildTokenRowsAllChains({
         contractAddress: null,
         logoUrl: null,
         balance: chain.nativeBalance,
-        valueUsd: Number.parseFloat(chain.nativeValueUsd) || 0,
-        balanceRaw: Number.parseFloat(chain.nativeBalance) || 0,
+        valueUsd: parseFiniteAmount(chain.nativeValueUsd),
+        balanceRaw: parseFiniteAmount(chain.nativeBalance),
         isNative: true,
       });
       if (chain.error) continue;
@@ -101,8 +106,8 @@ function buildTokenRowsAllChains({
           contractAddress: tk.contractAddress ?? null,
           logoUrl: tk.logoUrl ?? null,
           balance: tk.balance,
-          valueUsd: Number.parseFloat(tk.valueUsd) || 0,
-          balanceRaw: Number.parseFloat(tk.balance) || 0,
+          valueUsd: parseFiniteAmount(tk.valueUsd),
+          balanceRaw: parseFiniteAmount(tk.balance),
           isNative: false,
         });
       }
@@ -151,8 +156,8 @@ function buildTokenRowsAllChains({
       contractAddress: null,
       logoUrl: null,
       balance: walletBalances.solana.solBalance,
-      valueUsd: Number.parseFloat(walletBalances.solana.solValueUsd) || 0,
-      balanceRaw: Number.parseFloat(walletBalances.solana.solBalance) || 0,
+      valueUsd: parseFiniteAmount(walletBalances.solana.solValueUsd),
+      balanceRaw: parseFiniteAmount(walletBalances.solana.solBalance),
       isNative: true,
     });
     for (const tk of walletBalances.solana.tokens) {
@@ -163,8 +168,8 @@ function buildTokenRowsAllChains({
         contractAddress: tk.mint ?? null,
         logoUrl: tk.logoUrl ?? null,
         balance: tk.balance,
-        valueUsd: Number.parseFloat(tk.valueUsd) || 0,
-        balanceRaw: Number.parseFloat(tk.balance) || 0,
+        valueUsd: parseFiniteAmount(tk.valueUsd),
+        balanceRaw: parseFiniteAmount(tk.balance),
         isNative: false,
       });
     }
@@ -200,7 +205,7 @@ export function useInventoryData({
 
   const primaryNativeBalanceNum = useMemo(() => {
     if (!primaryChain) return 0;
-    return Number.parseFloat(primaryChain.nativeBalance) || 0;
+    return parseFiniteAmount(primaryChain.nativeBalance);
   }, [primaryChain]);
 
   const tokenRowsAllChains = useMemo(

@@ -8,11 +8,13 @@ trajectory collection.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+from typing import Any
 
 from eliza_loca.trajectory_audit import audit_output_dir
 
@@ -20,17 +22,32 @@ from eliza_loca.trajectory_audit import audit_output_dir
 LOCA_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_MODEL = "gpt-oss-120b"
+EDGE_VARIANT_COUNT = 10
+EDGE_SEED_STRIDE = 10_000
 
 
 def main() -> int:
     args = parse_args()
     output_dir = Path(args.output_dir).resolve()
+    scenario_counts = count_config_scenarios(resolve_path(args.config), args.expand_scenarios)
+    if args.validate_scenarios:
+        validate_config_scenarios(resolve_path(args.config), args.expand_scenarios)
+    if args.count_scenarios:
+        print(json.dumps(scenario_counts, sort_keys=True))
+    if args.expand_scenarios:
+        args.config = str(
+            write_expanded_config(
+                resolve_path(args.config),
+                output_dir / "config_expanded_scenarios.json",
+            )
+        )
 
     if args.dry_run:
         command = build_command(args)
         dry_run_payload = write_dry_run_outputs(
             output_dir,
             command=command,
+            scenario_counts=scenario_counts,
             include_previews=args.include_previews,
         )
         print(
@@ -105,6 +122,7 @@ def write_dry_run_outputs(
     output_dir: Path,
     *,
     command: list[str],
+    scenario_counts: dict[str, int] | None = None,
     include_previews: bool = False,
 ) -> dict[str, object]:
     """Write a scoreable LOCA smoke artifact without invoking the vendored CLI."""
@@ -117,6 +135,7 @@ def write_dry_run_outputs(
                     "total_tasks": 0,
                     "mode": "dry_run",
                     "command": command,
+                    "scenario_counts": scenario_counts or {},
                 },
                 "summary": {
                     "avg_accuracy": 0.0,
@@ -184,6 +203,21 @@ def parse_args() -> argparse.Namespace:
         help="Cerebras-supported GPT-OSS reasoning effort.",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Materialize ten deterministic config variants per base LOCA task.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts for the selected config.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected config expansion before running.",
+    )
     parser.add_argument("--include-previews", action="store_true")
     parser.add_argument(
         "--allow-empty",
@@ -196,6 +230,99 @@ def parse_args() -> argparse.Namespace:
     except ValueError as exc:
         parser.error(str(exc))
     return args
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("LOCA config root must be an object")
+    configurations = data.get("configurations")
+    if not isinstance(configurations, list):
+        raise ValueError("LOCA config must contain a configurations list")
+    return data
+
+
+def expand_config(config: dict[str, Any]) -> dict[str, Any]:
+    expanded = copy.deepcopy(config)
+    base_configurations = expanded.get("configurations")
+    if not isinstance(base_configurations, list):
+        raise ValueError("LOCA config must contain a configurations list")
+    edge_configurations: list[dict[str, Any]] = []
+    for base_index, configuration in enumerate(base_configurations):
+        if not isinstance(configuration, dict):
+            raise ValueError(f"configuration {base_index} must be an object")
+        for variant_index in range(EDGE_VARIANT_COUNT):
+            edge = copy.deepcopy(configuration)
+            base_name = str(edge.get("name") or edge.get("env_class") or "LOCAConfig")
+            edge["name"] = f"{base_name}__base_{base_index:04d}__edge_{variant_index + 1:02d}"
+            env_params = edge.get("env_params")
+            if isinstance(env_params, dict):
+                base_seed = env_params.get("seed")
+                if isinstance(base_seed, int):
+                    env_params["seed"] = (
+                        base_seed
+                        + EDGE_SEED_STRIDE
+                        + (base_index * EDGE_VARIANT_COUNT)
+                        + variant_index
+                    )
+            edge_configurations.append(edge)
+    expanded["configurations"] = [*base_configurations, *edge_configurations]
+    expanded.setdefault("metadata", {})
+    if isinstance(expanded["metadata"], dict):
+        expanded["metadata"]["edge_scenarios"] = {
+            "base": len(base_configurations),
+            "edge": len(edge_configurations),
+            "edge_multiplier": EDGE_VARIANT_COUNT,
+            "total": len(base_configurations) + len(edge_configurations),
+        }
+    return expanded
+
+
+def write_expanded_config(input_path: Path, output_path: Path) -> Path:
+    expanded = expand_config(load_config(input_path))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(expanded, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def count_config_scenarios(path: Path, include_edge_scenarios: bool = False) -> dict[str, int]:
+    config = load_config(path)
+    base = len(config["configurations"])
+    edge = base * EDGE_VARIANT_COUNT if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": EDGE_VARIANT_COUNT if include_edge_scenarios else 0,
+        "total": base + edge,
+    }
+
+
+def validate_config_scenarios(path: Path, include_edge_scenarios: bool = False) -> None:
+    config = load_config(path)
+    configurations = config["configurations"]
+    if not configurations:
+        raise ValueError("LOCA config contains no configurations")
+    for index, configuration in enumerate(configurations):
+        if not isinstance(configuration, dict):
+            raise ValueError(f"configuration {index} must be an object")
+        if not configuration.get("env_class"):
+            raise ValueError(f"configuration {index} missing env_class")
+    if include_edge_scenarios:
+        expanded = expand_config(config)
+        expected = len(configurations) * (EDGE_VARIANT_COUNT + 1)
+        actual = len(expanded["configurations"])
+        if actual != expected:
+            raise ValueError(f"expanded LOCA config has {actual} tasks, expected {expected}")
+        names = [
+            row.get("name")
+            for row in expanded["configurations"][len(configurations) :]
+            if isinstance(row, dict) and row.get("name")
+        ]
+        if len(names) != len(set(names)):
+            raise ValueError("expanded LOCA config has duplicate edge names")
 
 
 def selected_harness() -> str:

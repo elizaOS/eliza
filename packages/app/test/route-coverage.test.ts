@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
 import {
   DIRECT_ROUTE_CASES,
-  SAFE_VIEW_TILE_CASES,
+  MANAGER_VISIBLE_VIEW_TILE_CASES,
 } from "./ui-smoke/apps-session-route-cases";
 
 /**
@@ -36,6 +36,11 @@ const PLUGIN_VIEWS_SPEC = path.join(
   HERE,
   "ui-smoke",
   "plugin-views-visual.spec.ts",
+);
+const PLUGIN_VIEW_VISUAL_REVIEW_REPORT = path.resolve(
+  HERE,
+  "fixtures",
+  "plugin-view-visual-review.md",
 );
 const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   HERE,
@@ -84,8 +89,16 @@ const PLUGIN_VIEW_MANIFESTS = [
 const APP_SHELL_REGISTRATION_SOURCES = [
   "plugins/plugin-facewear/src/register.ts",
   "plugins/plugin-phone/src/register-companion-page.ts",
+  "plugins/plugin-task-coordinator/src/register.ts",
   "plugins/plugin-wallet-ui/src/register-routes.ts",
 ] as const;
+
+const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
+  "plugins/plugin-app-control/src/index.ts":
+    "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
+  "plugins/plugin-screenshare/src/index.ts":
+    "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
+};
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
@@ -357,6 +370,47 @@ function pluginViewCasesFromManifest(manifestPath: string): PluginViewCase[] {
   });
 }
 
+function discoverPluginViewManifestPaths(): string[] {
+  const pluginRoot = path.resolve(REPO_ROOT, "plugins");
+  const discovered: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      const relativePath = path.relative(REPO_ROOT, fullPath);
+      if (entry.isDirectory()) {
+        if (
+          ["dist", "node_modules", "coverage"].includes(entry.name) ||
+          relativePath.includes(`${path.sep}test${path.sep}`) ||
+          relativePath.includes(`${path.sep}__tests__${path.sep}`)
+        ) {
+          continue;
+        }
+        visit(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+      if (
+        entry.name.endsWith(".d.ts") ||
+        entry.name.includes(".test.") ||
+        entry.name.includes(".spec.") ||
+        entry.name === "vite.config.views.ts"
+      ) {
+        continue;
+      }
+
+      const source = readFileSync(fullPath, "utf8");
+      if (!source.includes("views:") || !source.includes("componentExport:")) {
+        continue;
+      }
+      if (viewObjects(source).length === 0) continue;
+      discovered.push(relativePath.split(path.sep).join("/"));
+    }
+  };
+  visit(pluginRoot);
+  return sorted(discovered);
+}
+
 function appNavTabPathsFromManifest(manifestPath: string): string[] {
   const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
   return arrayObjectChunks(source, "navTabs").flatMap((object) => {
@@ -415,6 +469,17 @@ function sideEffectPluginIds(): string[] {
   return sorted(
     [...source.matchAll(/key:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
   );
+}
+
+function appPackageDependencies(): Record<string, string> {
+  const packageJson = JSON.parse(
+    readFileSync(path.resolve(REPO_ROOT, "packages/app/package.json"), "utf8"),
+  ) as { dependencies?: Record<string, string> };
+  return packageJson.dependencies ?? {};
+}
+
+function packageNameForBootModule(moduleId: string): string {
+  return moduleId.replace(/\/register$/, "");
 }
 
 function internalToolWindowPaths(): string[] {
@@ -490,15 +555,25 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("safe view tile smoke matrix targets manager-visible gui views", () => {
+  it("manager-visible view tile matrix tracks every manager-visible gui view", () => {
     const managerViews = managerVisibleGuiViewPaths();
+    const safeTileIds = new Set(
+      MANAGER_VISIBLE_VIEW_TILE_CASES.map((tile) => tile.viewId),
+    );
+    const missingTiles = [...managerViews.keys()].filter(
+      (viewId) => !safeTileIds.has(viewId),
+    );
 
     expect(
-      SAFE_VIEW_TILE_CASES.length,
-      "SAFE_VIEW_TILE_CASES must not be empty",
+      MANAGER_VISIBLE_VIEW_TILE_CASES.length,
+      "MANAGER_VISIBLE_VIEW_TILE_CASES must not be empty",
     ).toBeGreaterThan(0);
+    expect(
+      missingTiles,
+      "Every manager-visible gui view must have a View Manager tile case.",
+    ).toEqual([]);
 
-    for (const tile of SAFE_VIEW_TILE_CASES) {
+    for (const tile of MANAGER_VISIBLE_VIEW_TILE_CASES) {
       const viewPath = managerViews.get(tile.viewId);
       expect(
         viewPath,
@@ -509,6 +584,27 @@ describe("app route coverage gate", () => {
         `Safe view tile "${tile.viewId}" expectedPath must match its manifest view path`,
       ).toBe(viewPath);
     }
+  });
+
+  it("discovers every production plugin view manifest in the manifest ratchet", () => {
+    const discovered = discoverPluginViewManifestPaths();
+
+    const missing = discovered.filter(
+      (manifest) =>
+        !(PLUGIN_VIEW_MANIFESTS as readonly string[]).includes(manifest),
+    );
+    const stale = PLUGIN_VIEW_MANIFESTS.filter(
+      (manifest) => !discovered.includes(manifest),
+    );
+
+    expect(
+      missing,
+      `PLUGIN_VIEW_MANIFESTS is missing production plugin view manifests: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `PLUGIN_VIEW_MANIFESTS references files that no longer declare production plugin views: ${stale.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("plugin views visual matrix covers every bundled gui/tui view", () => {
@@ -555,6 +651,60 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Plugin-views visual paths drifted from manifests: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("tracked plugin view visual review report covers every visual matrix case", () => {
+    const visualCases = pluginViewCasesFromVisualSpec();
+    const report = readFileSync(PLUGIN_VIEW_VISUAL_REVIEW_REPORT, "utf8");
+    const reportRows = [
+      ...report.matchAll(
+        /^\| `([^`]+)` \| `(gui|tui)` \| `([^`]+)` \| .+ \| .+ \| .+ \|$/gm,
+      ),
+    ].map((match) => ({
+      id: match[1] ?? "",
+      viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
+      path: match[3] ?? "",
+      manifestPath: PLUGIN_VIEW_VISUAL_REVIEW_REPORT,
+    }));
+    const visualByKey = new Map(
+      visualCases.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
+    );
+    const reportByKey = new Map(
+      reportRows.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
+    );
+
+    const missing = visualCases
+      .filter((viewCase) => !reportByKey.has(pluginViewCaseKey(viewCase)))
+      .map(
+        (viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`,
+      );
+    const stale = reportRows
+      .filter((viewCase) => !visualByKey.has(pluginViewCaseKey(viewCase)))
+      .map(
+        (viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`,
+      );
+    const pathMismatches = visualCases
+      .filter((viewCase) => {
+        const reportCase = reportByKey.get(pluginViewCaseKey(viewCase));
+        return reportCase && reportCase.path !== viewCase.path;
+      })
+      .map((viewCase) => {
+        const reportCase = reportByKey.get(pluginViewCaseKey(viewCase));
+        return `${viewCase.id}:${viewCase.viewType} expected ${viewCase.path} got ${reportCase?.path}`;
+      });
+
+    expect(
+      missing,
+      `Missing tracked visual-review rows for: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `Tracked visual-review report has stale rows: ${stale.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      pathMismatches,
+      `Tracked visual-review report paths drifted: ${pathMismatches.join(", ")}`,
     ).toEqual([]);
   });
 
@@ -620,6 +770,67 @@ describe("app route coverage gate", () => {
     expect(
       missingManifestCoverage,
       `Boot plugin view manifests missing from PLUGIN_VIEW_MANIFESTS: ${missingManifestCoverage.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("compiled app plugin loaders have packaged workspace dependencies", () => {
+    const dependencies = appPackageDependencies();
+    const bootPluginIds = unique([
+      ...appMainPluginIds(),
+      ...sideEffectPluginIds(),
+    ]);
+    const missingDependencies = bootPluginIds
+      .map(packageNameForBootModule)
+      .filter((packageName) => packageName.startsWith("@elizaos/"))
+      .filter((packageName) => dependencies[packageName] !== "workspace:*");
+
+    expect(
+      missingDependencies,
+      `Boot-loaded app plugin modules must be declared in packages/app/package.json dependencies: ${missingDependencies.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("every plugin view manifest is app-boot mapped or explicitly classified", () => {
+    const bootMappedManifests = new Set(
+      Object.values(BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE).filter(
+        (manifest): manifest is (typeof PLUGIN_VIEW_MANIFESTS)[number] =>
+          typeof manifest === "string",
+      ),
+    );
+    const allowlisted = new Set(
+      Object.keys(NOT_APP_BOOT_LOADED_VIEW_MANIFESTS),
+    );
+
+    const unclassified = PLUGIN_VIEW_MANIFESTS.filter(
+      (manifest) =>
+        !bootMappedManifests.has(manifest) && !allowlisted.has(manifest),
+    );
+    const staleAllowlist = [...allowlisted].filter(
+      (manifest) =>
+        !(PLUGIN_VIEW_MANIFESTS as readonly string[]).includes(manifest),
+    );
+    const mappedAllowlist = [...allowlisted].filter((manifest) =>
+      bootMappedManifests.has(manifest),
+    );
+    const missingReasons = [...allowlisted].filter(
+      (manifest) => !NOT_APP_BOOT_LOADED_VIEW_MANIFESTS[manifest]?.trim(),
+    );
+
+    expect(
+      unclassified,
+      `Plugin view manifests must be app-boot mapped or explicitly classified: ${unclassified.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      staleAllowlist,
+      `NOT_APP_BOOT_LOADED_VIEW_MANIFESTS references removed manifests: ${staleAllowlist.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      mappedAllowlist,
+      `Remove app-boot mapped manifests from NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: ${mappedAllowlist.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      missingReasons,
+      `Every non-app-boot-loaded manifest classification needs a reason: ${missingReasons.join(", ")}`,
     ).toEqual([]);
   });
 });

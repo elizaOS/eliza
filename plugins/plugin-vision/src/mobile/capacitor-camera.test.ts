@@ -31,6 +31,36 @@ describe("MobileCameraSource registry", () => {
     clearMobileCameraSource();
   });
 
+  it("rejects malformed native bridge registrations", () => {
+    clearMobileCameraSource();
+    expect(() =>
+      registerMobileCameraSource({
+        listCameras: async () => [],
+        open: async () => {},
+        close: async () => {},
+      } as unknown as MobileCameraSource),
+    ).toThrow(/captureJpeg/);
+    expect(getMobileCameraSource()).toBeNull();
+  });
+
+  it("rejects invalid capability declarations from native bridges", () => {
+    clearMobileCameraSource();
+    expect(() =>
+      registerMobileCameraSource({
+        listCameras: async () => [],
+        open: async () => {},
+        captureJpeg: async () => Buffer.alloc(1),
+        close: async () => {},
+        capabilities: {
+          supportsContinuousFrames: true,
+          supportsExposureLock: false,
+          supportsTorch: false,
+        },
+      } as unknown as MobileCameraSource),
+    ).toThrow(/capabilities/);
+    expect(getMobileCameraSource()).toBeNull();
+  });
+
   it("stub refuses captures cleanly", async () => {
     const stub = new CapacitorCameraStub();
     await expect(stub.listCameras()).resolves.toEqual([]);

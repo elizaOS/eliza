@@ -893,13 +893,13 @@ function AddAlarmForm({ saving, onSave, onCancel }: AddAlarmFormProps) {
             );
           })}
         </div>
-        <p className="pt-0.5 text-[10px] text-muted/70">
+        <div className="pt-0.5 text-[10px] text-muted/70">
           {weekdays.size === 0
             ? "Single fire (next occurrence)."
             : weekdays.size === 7
               ? "Repeats every day."
               : `Repeats on ${weekdays.size} day${weekdays.size === 1 ? "" : "s"}.`}
-        </p>
+        </div>
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
@@ -988,7 +988,7 @@ function AlarmRow({
           ) : null}
         </div>
         <div className="text-[11px] text-muted">
-          {day ? `${day} · ` : ""}
+          {day ? `${day} / ` : ""}
           {entry.nextFireIso
             ? formatRelative(entry.nextFireIso)
             : "No upcoming fire"}
@@ -1581,10 +1581,10 @@ function AlarmsTabBody({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-muted">
+        <div className="text-[11px] text-muted">
           Clock-time LifeOps alerts. One-time alarms sync to Reminders.app on
           macOS after native sync succeeds.
-        </p>
+        </div>
         <button
           type="button"
           onClick={onToggleAdd}

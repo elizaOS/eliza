@@ -8,6 +8,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encrypt, generateMasterKey } from "../src/crypto.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
@@ -159,6 +160,46 @@ describe("PgliteVaultImpl", () => {
     });
     await expect(v2.get("k")).rejects.toThrow(/decryption failed/);
     await v2.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("rejects corrupt persisted rows instead of returning null-ish values", async () => {
+    const masterKey = generateMasterKey();
+    const dir = await mkdtemp(join(tmpdir(), "vault-pglite-corrupt-"));
+    const dataDir = join(dir, ".vault-pglite");
+    const auditPath = join(dir, "audit", "vault.jsonl");
+
+    const writer = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath,
+    });
+    await writer.set("plain", "value");
+    await writer.set("secret", "value", { sensitive: true });
+    await writer.close();
+
+    const db = await PGlite.create(dataDir);
+    await db.query(`UPDATE vault_entries SET value = NULL WHERE key = $1`, [
+      "plain",
+    ]);
+    await db.query(
+      `UPDATE vault_entries SET ciphertext = NULL WHERE key = $1`,
+      ["secret"],
+    );
+    await db.close();
+
+    const reader = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath,
+    });
+    await expect(reader.get("plain")).rejects.toThrow(
+      /kind=value but value=null/,
+    );
+    await expect(reader.get("secret")).rejects.toThrow(
+      /kind=secret but ciphertext=null/,
+    );
+    await reader.close();
     await rm(dir, { recursive: true, force: true });
   });
 

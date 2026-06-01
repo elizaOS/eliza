@@ -1508,7 +1508,7 @@ function WalletRailRpcButton({
       type="button"
       className="inline-flex h-8 items-center gap-2 rounded-full border border-border/35 bg-bg/35 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/55"
       onClick={onOpenSettings}
-      title={`EVM: ${evmProvider} • Solana: ${solanaProvider}`}
+      title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
     >
       <span className={cn("h-2 w-2 rounded-full", toneClass)} />
@@ -2610,12 +2610,14 @@ export function InventoryTuiView() {
         chain: collection.chain,
         name: nft.name,
         collectionName: nft.collectionName,
+        identity: `${collection.chain}:${nft.collectionName}:${nft.name}`,
       })),
     ),
     ...(walletState?.walletNfts?.solana?.nfts ?? []).map((nft) => ({
       chain: "Solana",
       name: nft.name,
       collectionName: nft.collectionName,
+      identity: `Solana:${nft.collectionName}:${nft.name}`,
     })),
   ];
   const state = {
@@ -2708,7 +2710,7 @@ export function InventoryTuiView() {
           </div>
           {tokens.slice(0, 16).map((token, index) => (
             <div
-              key={`${token.chain}:${token.symbol}:${index}`}
+              key={`${token.chain}:${token.contractAddress ?? token.symbol}:${token.isNative ? "native" : "token"}`}
               style={{
                 display: "grid",
                 gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
@@ -2761,11 +2763,8 @@ export function InventoryTuiView() {
             ))}
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
-          {nfts.slice(0, 10).map((nft, index) => (
-            <div
-              key={`${nft.chain}:${nft.name}:${index}`}
-              style={{ padding: "4px 0" }}
-            >
+          {nfts.slice(0, 10).map((nft) => (
+            <div key={nft.identity} style={{ padding: "4px 0" }}>
               <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}
               {nft.collectionName ? (
                 <span style={{ color: "#94a3b8" }}>

@@ -14,7 +14,6 @@ export {
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
 export * from "./bulk-review.js";
-export * from "./calendly-client.js";
 export * from "./context-graph.js";
 export * from "./defaults.js";
 export * from "./document-review.js";
@@ -36,5 +35,4 @@ export * from "./screen-context.js";
 export * from "./service.js";
 export * from "./sql.js";
 export * from "./time.js";
-export * from "./twilio.js";
 export * from "./voice-affect.js";

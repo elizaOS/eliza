@@ -39,6 +39,28 @@ interface SpotifyAudioFeatures {
   time_signature: number;
 }
 
+function appendSeedParams(
+  params: URLSearchParams,
+  request: RecommendationRequest,
+): void {
+  let remaining = 5;
+  const append = (name: string, values: string[] | undefined) => {
+    if (!values || values.length === 0 || remaining <= 0) return;
+    const selected = values.slice(0, remaining);
+    if (selected.length === 0) return;
+    params.append(name, selected.join(","));
+    remaining -= selected.length;
+  };
+
+  append("seed_artists", request.seedArtists);
+  append("seed_tracks", request.seedTracks);
+  append("seed_genres", request.seedGenres);
+}
+
+export const testExports = {
+  appendSeedParams,
+};
+
 /**
  * Client for Spotify Web API
  * Provides access to audio features and track recommendations
@@ -268,16 +290,8 @@ export class SpotifyClient {
     // Build query parameters
     const params = new URLSearchParams();
 
-    // Seeds (combined must be <= 5)
-    if (request.seedArtists && request.seedArtists.length > 0) {
-      params.append("seed_artists", request.seedArtists.slice(0, 5).join(","));
-    }
-    if (request.seedTracks && request.seedTracks.length > 0) {
-      params.append("seed_tracks", request.seedTracks.slice(0, 5).join(","));
-    }
-    if (request.seedGenres && request.seedGenres.length > 0) {
-      params.append("seed_genres", request.seedGenres.slice(0, 5).join(","));
-    }
+    // Spotify allows at most five combined seeds across artists/tracks/genres.
+    appendSeedParams(params, request);
 
     // Audio feature targets
     if (request.audioFeatures) {

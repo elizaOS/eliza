@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import datetime
 import json
 import logging
@@ -67,6 +68,18 @@ from lib_results_logger import log_task_error
 logger = logging.getLogger("osworld.eliza.runner")
 
 _DELEGATE_HARNESSES = {"hermes", "openclaw", "smithers"}
+EDGE_VARIANTS = (
+    "Before acting, verify the visible target state once and avoid changing unrelated settings.",
+    "If several windows are open, identify the correct application first before completing the task.",
+    "Preserve existing user files and preferences except for the exact change requested.",
+    "Use the most direct GUI route available and stop immediately once the requested state is reached.",
+    "Check for modal dialogs, popups, or permission prompts before assuming the task is blocked.",
+    "Prefer stable menu labels and visible controls over keyboard shortcuts when both are available.",
+    "After completing the action, inspect the relevant screen area to confirm the final state.",
+    "If a required file or page is already open, continue from that state instead of reopening it.",
+    "Handle slow UI updates by waiting for the visible result before issuing the next action.",
+    "Do not perform cleanup, browsing, or formatting beyond what the instruction explicitly requires.",
+)
 
 
 def _selected_delegate_harness() -> str:
@@ -175,6 +188,12 @@ def parse_args() -> argparse.Namespace:
                         help="Sleep after each action execution")
     parser.add_argument("--dry_run", action="store_true",
                         help="Run one cheap in-process smoke task without starting VMs or the Eliza server")
+    parser.add_argument("--expand-scenarios", action="store_true",
+                        help="Run ten deterministic instruction-pressure variants per selected task")
+    parser.add_argument("--count-scenarios", action="store_true",
+                        help="Print base/edge/total task counts for the selected task set")
+    parser.add_argument("--validate-scenarios", action="store_true",
+                        help="Validate selected task set and optional expansion before running")
 
     return parser.parse_args()
 
@@ -242,6 +261,53 @@ def load_tasks_for_run(args: argparse.Namespace) -> list[dict[str, object]]:
             for index in range(total)
         ]
     return load_tasks(args)
+
+
+def expand_tasks(tasks: list[dict[str, object]]) -> list[dict[str, object]]:
+    expanded: list[dict[str, object]] = list(tasks)
+    for task_index, task in enumerate(tasks):
+        for variant_index, variant in enumerate(EDGE_VARIANTS):
+            edge = copy.deepcopy(task)
+            base_id = str(edge.get("id") or f"osworld_task_{task_index + 1}")
+            edge["id"] = f"{base_id}__edge_{variant_index + 1:02d}"
+            instruction = str(edge.get("instruction") or "")
+            edge["instruction"] = f"{instruction}\n\nEdge condition: {variant}"
+            edge["edge_variant"] = {
+                "base_task_id": base_id,
+                "variant_index": variant_index + 1,
+                "description": variant,
+            }
+            expanded.append(edge)
+    return expanded
+
+
+def count_tasks(tasks: list[dict[str, object]], include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS) if include_edge_scenarios else 0,
+        "total": base + edge,
+    }
+
+
+def validate_tasks(tasks: list[dict[str, object]], include_edge_scenarios: bool = False) -> None:
+    if not tasks:
+        raise ValueError("OSWorld selected task set is empty")
+    for index, task in enumerate(tasks):
+        if not isinstance(task.get("id"), str) or not str(task.get("id")).strip():
+            raise ValueError(f"OSWorld task {index} missing id")
+        if not isinstance(task.get("instruction"), str) or not str(task.get("instruction")).strip():
+            raise ValueError(f"OSWorld task {index} missing instruction")
+    if include_edge_scenarios:
+        expanded = expand_tasks(tasks)
+        expected = len(tasks) * (len(EDGE_VARIANTS) + 1)
+        if len(expanded) != expected:
+            raise ValueError(f"expanded OSWorld tasks has {len(expanded)} tasks, expected {expected}")
+        ids = [str(task.get("id")) for task in expanded]
+        if len(ids) != len(set(ids)):
+            raise ValueError("expanded OSWorld tasks has duplicate ids")
 
 
 def create_eliza_agent(args: argparse.Namespace) -> object:
@@ -345,7 +411,13 @@ class _DryRunAgent:
 
 def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     """Run the OSWorld benchmark with the Eliza agent."""
-    tasks = load_tasks_for_run(args)
+    base_tasks = load_tasks_for_run(args)
+    if getattr(args, "validate_scenarios", False):
+        validate_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
+    scenario_counts = count_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
+    if getattr(args, "count_scenarios", False):
+        print(json.dumps(scenario_counts, sort_keys=True))
+    tasks = expand_tasks(base_tasks) if args.expand_scenarios else base_tasks
     logger.info("Loaded %d tasks", len(tasks))
 
     # Create agent
@@ -462,6 +534,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
             "observation_type": args.observation_type,
             "action_space": args.action_space,
             "total_tasks": total,
+            "scenario_counts": scenario_counts,
+            "include_edge_scenarios": bool(args.expand_scenarios),
             "passed_tasks": passed,
             "overall_success_rate": avg_score,
             "timestamp": timestamp,

@@ -53,7 +53,12 @@ export function verifyPlaywrightTestSessionToken(
     return null;
   }
 
-  const [payload, signature] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [payload, signature] = parts;
   if (!payload || !signature) {
     return null;
   }
@@ -73,7 +78,13 @@ export function verifyPlaywrightTestSessionToken(
       | PlaywrightTestSessionClaims
       | undefined;
 
-    if (!claims?.userId || !claims.organizationId || !claims.exp) {
+    if (
+      typeof claims?.userId !== "string" ||
+      !claims.userId ||
+      typeof claims.organizationId !== "string" ||
+      !claims.organizationId ||
+      typeof claims.exp !== "number"
+    ) {
       return null;
     }
 

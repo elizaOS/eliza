@@ -30,7 +30,133 @@ export interface ViewJourneyScenario {
   tags: string[];
 }
 
-export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
+export interface PluginViewMockCase {
+  id: string;
+  viewType: "gui" | "tui" | "xr";
+  path: string;
+}
+
+export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
+  { id: "companion", viewType: "gui", path: "/companion" },
+  { id: "companion", viewType: "tui", path: "/companion/tui" },
+  { id: "contacts", viewType: "gui", path: "/contacts" },
+  { id: "contacts", viewType: "tui", path: "/contacts/tui" },
+  { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
+  { id: "hyperliquid", viewType: "tui", path: "/hyperliquid/tui" },
+  { id: "lifeops", viewType: "gui", path: "/lifeops" },
+  { id: "lifeops", viewType: "tui", path: "/lifeops/tui" },
+  { id: "messages", viewType: "gui", path: "/messages" },
+  { id: "messages", viewType: "tui", path: "/messages/tui" },
+  { id: "model-tester", viewType: "gui", path: "/model-tester" },
+  { id: "model-tester", viewType: "tui", path: "/model-tester/tui" },
+  { id: "phone", viewType: "gui", path: "/phone" },
+  { id: "phone", viewType: "tui", path: "/phone/tui" },
+  { id: "polymarket", viewType: "gui", path: "/polymarket" },
+  { id: "polymarket", viewType: "tui", path: "/polymarket/tui" },
+  { id: "shopify", viewType: "gui", path: "/shopify" },
+  { id: "shopify", viewType: "tui", path: "/shopify/tui" },
+  { id: "steward", viewType: "gui", path: "/steward" },
+  { id: "steward", viewType: "tui", path: "/steward/tui" },
+  { id: "vincent", viewType: "gui", path: "/vincent" },
+  { id: "vincent", viewType: "tui", path: "/vincent/tui" },
+  { id: "wallet", viewType: "gui", path: "/wallet" },
+  { id: "wallet", viewType: "tui", path: "/wallet/tui" },
+  { id: "2004scape", viewType: "gui", path: "/2004scape" },
+  { id: "2004scape", viewType: "tui", path: "/2004scape/tui" },
+  { id: "feed", viewType: "gui", path: "/feed" },
+  { id: "feed", viewType: "tui", path: "/feed/tui" },
+  { id: "views-manager", viewType: "gui", path: "/views" },
+  { id: "views-manager", viewType: "tui", path: "/views/tui" },
+  { id: "clawville", viewType: "gui", path: "/clawville" },
+  { id: "clawville", viewType: "tui", path: "/clawville/tui" },
+  {
+    id: "defense-of-the-agents",
+    viewType: "gui",
+    path: "/defense-of-the-agents",
+  },
+  {
+    id: "defense-of-the-agents",
+    viewType: "tui",
+    path: "/defense-of-the-agents/tui",
+  },
+  { id: "hyperscape", viewType: "gui", path: "/hyperscape" },
+  { id: "hyperscape", viewType: "tui", path: "/hyperscape/tui" },
+  { id: "scape", viewType: "gui", path: "/scape" },
+  { id: "scape", viewType: "tui", path: "/scape/tui" },
+  { id: "screenshare", viewType: "gui", path: "/screenshare" },
+  { id: "screenshare", viewType: "tui", path: "/screenshare/tui" },
+  { id: "task-coordinator", viewType: "gui", path: "/task-coordinator" },
+  { id: "task-coordinator", viewType: "tui", path: "/task-coordinator/tui" },
+  { id: "orchestrator", viewType: "gui", path: "/orchestrator" },
+  { id: "orchestrator", viewType: "tui", path: "/orchestrator/tui" },
+  { id: "trajectory-logger", viewType: "gui", path: "/trajectory-logger" },
+  { id: "trajectory-logger", viewType: "tui", path: "/trajectory-logger/tui" },
+  { id: "training", viewType: "gui", path: "/training" },
+  { id: "training", viewType: "tui", path: "/training/tui" },
+  { id: "facewear", viewType: "gui", path: "/apps/hearwear" },
+  { id: "facewear", viewType: "tui", path: "/apps/hearwear/tui" },
+  { id: "smartglasses", viewType: "gui", path: "/apps/smartglasses" },
+  { id: "smartglasses", viewType: "tui", path: "/apps/smartglasses/tui" },
+  { id: "companion", viewType: "xr", path: "/companion" },
+  { id: "contacts", viewType: "xr", path: "/contacts" },
+  { id: "hyperliquid", viewType: "xr", path: "/hyperliquid" },
+  { id: "lifeops", viewType: "xr", path: "/lifeops" },
+  { id: "messages", viewType: "xr", path: "/messages" },
+  { id: "model-tester", viewType: "xr", path: "/model-tester" },
+  { id: "phone", viewType: "xr", path: "/phone" },
+  { id: "polymarket", viewType: "xr", path: "/polymarket" },
+  { id: "shopify", viewType: "xr", path: "/shopify" },
+  { id: "steward", viewType: "xr", path: "/steward" },
+  { id: "vincent", viewType: "xr", path: "/vincent" },
+  { id: "wallet", viewType: "xr", path: "/wallet" },
+  { id: "2004scape", viewType: "xr", path: "/2004scape" },
+  { id: "feed", viewType: "xr", path: "/feed" },
+  { id: "views-manager", viewType: "xr", path: "/views" },
+  { id: "clawville", viewType: "xr", path: "/clawville" },
+  {
+    id: "defense-of-the-agents",
+    viewType: "xr",
+    path: "/defense-of-the-agents",
+  },
+  { id: "hyperscape", viewType: "xr", path: "/hyperscape" },
+  { id: "scape", viewType: "xr", path: "/scape" },
+  { id: "screenshare", viewType: "xr", path: "/screenshare" },
+  { id: "task-coordinator", viewType: "xr", path: "/task-coordinator" },
+  { id: "orchestrator", viewType: "xr", path: "/orchestrator" },
+  { id: "trajectory-logger", viewType: "xr", path: "/trajectory-logger" },
+  { id: "training", viewType: "xr", path: "/training" },
+  { id: "facewear", viewType: "xr", path: "/apps/hearwear/xr" },
+  { id: "smartglasses", viewType: "xr", path: "/apps/smartglasses/xr" },
+];
+
+const formatPluginViewLabel = (id: string) =>
+  id.replaceAll("-", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+
+export const PLUGIN_VIEW_LLM_MOCK_JOURNEYS: ViewJourneyScenario[] =
+  PLUGIN_VIEW_LLM_MOCK_CASES.map((view) => {
+    const label = formatPluginViewLabel(view.id);
+    const surface =
+      view.viewType === "tui"
+        ? "terminal TUI"
+        : view.viewType === "xr"
+          ? "spatial XR"
+          : "visual GUI";
+    return {
+      id: `plugin-view-${view.id}-${view.viewType}`,
+      description: `Mock LLM route coverage for the ${label} ${surface}`,
+      userMessage: `Open the ${surface} for ${label} at ${view.path}`,
+      expectedBehavior: `Agent routes to view id "${view.id}" with viewType "${view.viewType}" and path "${view.path}".`,
+      verificationCriteria: [
+        `response or tool call selects view id "${view.id}"`,
+        `response or tool call selects viewType "${view.viewType}"`,
+        `response or tool call resolves path "${view.path}"`,
+        "response confirms the navigation without exposing bundle internals",
+      ],
+      tags: ["mock-eval", "navigation", "plugin-view", view.viewType],
+    };
+  });
+
+export const BASE_VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
   // ── Discovery ────────────────────────────────────────────────────────────
 
   {
@@ -534,6 +660,183 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     tags: ["e2e", "discovery", "view-manager"],
   },
 ];
+
+const VIEW_JOURNEY_EDGE_VARIANTS: Array<{
+  suffix: string;
+  description: string;
+  mutateMessage: (message: string) => string;
+  criteria: string[];
+  tags: string[];
+}> = [
+  {
+    suffix: "voice-terse",
+    description: "terse voice-command phrasing",
+    mutateMessage: (message) =>
+      message
+        .replace(/^show me /i, "show ")
+        .replace(/^what views are available\??$/i, "views?")
+        .replace(/^open the /i, "open ")
+        .replace(/^go to /i, "")
+        .replace(/[?.!]$/g, ""),
+    criteria: [
+      "response handles terse or voice-like phrasing without asking for a full sentence",
+      "response preserves the original intent",
+    ],
+    tags: ["voice"],
+  },
+  {
+    suffix: "polite",
+    description: "polite natural-language request",
+    mutateMessage: (message) =>
+      `could you please ${message.replace(/[?.!]$/g, "")}?`,
+    criteria: [
+      "response does not mistake politeness for uncertainty",
+      "response acts on the embedded request",
+    ],
+    tags: [],
+  },
+  {
+    suffix: "urgent",
+    description: "urgent user request",
+    mutateMessage: (message) => `quick, ${message.replace(/[?.!]$/g, "")}`,
+    criteria: [
+      "response remains concise under urgency",
+      "response does not skip required confirmation or safety handling",
+    ],
+    tags: [],
+  },
+  {
+    suffix: "followup",
+    description: "follow-up after prior context",
+    mutateMessage: (message) =>
+      `following up from the last thing we were doing, ${message.replace(/[?.!]$/g, "")}`,
+    criteria: [
+      "response uses the latest request rather than stale prior context",
+      "response remains coherent as a follow-up",
+    ],
+    tags: ["multi-turn"],
+  },
+  {
+    suffix: "mobile-typo",
+    description: "mobile-style casual punctuation",
+    mutateMessage: (message) =>
+      `${message.toLowerCase().replace(/[?.!]$/g, "")} pls`,
+    criteria: [
+      "response tolerates casual mobile phrasing",
+      "response does not require the user to retype the request",
+    ],
+    tags: [],
+  },
+  {
+    suffix: "quoted",
+    description: "request embedded in quoted text",
+    mutateMessage: (message) => `do this exact request: "${message}"`,
+    criteria: [
+      "response follows the quoted request",
+      "response does not include quotation-wrapper implementation details",
+    ],
+    tags: [],
+  },
+  {
+    suffix: "negative-space",
+    description: "request with explicit non-goal",
+    mutateMessage: (message) =>
+      `${message.replace(/[?.!]$/g, "")}; don't show me raw debug info`,
+    criteria: [
+      "response does not expose raw debug info",
+      "response still fulfills the main view request",
+    ],
+    tags: [],
+  },
+  {
+    suffix: "legacy-app-wording",
+    description: "legacy apps/panels wording",
+    mutateMessage: (message) =>
+      message
+        .replace(/\bviews\b/gi, "apps")
+        .replace(/\bview\b/gi, "app")
+        .replace(/\bpanels\b/gi, "apps")
+        .replace(/\bpanel\b/gi, "app"),
+    criteria: [
+      "response maps legacy app/panel wording onto the view system",
+      "response does not reject the request as using the wrong term",
+    ],
+    tags: ["view-manager"],
+  },
+  {
+    suffix: "accessibility",
+    description: "accessibility-oriented phrasing",
+    mutateMessage: (message) =>
+      `I'm using voice control, ${message.replace(/[?.!]$/g, "")}`,
+    criteria: [
+      "response accommodates voice-control context",
+      "response avoids instructions that require manual navigation when action is possible",
+    ],
+    tags: ["voice"],
+  },
+  {
+    suffix: "compound-context",
+    description: "compound sentence with extra context",
+    mutateMessage: (message) =>
+      `I'm in the middle of something and need the UI to keep up: ${message}`,
+    criteria: [
+      "response extracts the actionable view intent from surrounding context",
+      "response does not over-focus on the filler context",
+    ],
+    tags: ["e2e"],
+  },
+];
+
+function expandViewJourneyScenarios(
+  base: readonly ViewJourneyScenario[],
+): ViewJourneyScenario[] {
+  return base.flatMap((scenario) =>
+    VIEW_JOURNEY_EDGE_VARIANTS.map((variant) => ({
+      ...scenario,
+      id: `${scenario.id}--${variant.suffix}`,
+      description: `${scenario.description} (${variant.description})`,
+      userMessage: variant.mutateMessage(scenario.userMessage),
+      expectedBehavior: scenario.expectedBehavior,
+      verificationCriteria: [
+        ...scenario.verificationCriteria,
+        ...variant.criteria,
+      ],
+      tags: Array.from(new Set([...scenario.tags, ...variant.tags])),
+    })),
+  );
+}
+
+export const EXPANDED_VIEW_USER_JOURNEYS: ViewJourneyScenario[] =
+  expandViewJourneyScenarios(BASE_VIEW_USER_JOURNEYS);
+
+if (
+  EXPANDED_VIEW_USER_JOURNEYS.length !==
+  BASE_VIEW_USER_JOURNEYS.length * 10
+) {
+  throw new Error(
+    `view journey expansion must add exactly 10x (${BASE_VIEW_USER_JOURNEYS.length * 10}); got ${EXPANDED_VIEW_USER_JOURNEYS.length}`,
+  );
+}
+
+export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
+  ...BASE_VIEW_USER_JOURNEYS,
+  ...EXPANDED_VIEW_USER_JOURNEYS,
+];
+
+export function countViewJourneyScenarios(): {
+  existing: number;
+  added: number;
+  total: number;
+  multiplierAdded: number;
+} {
+  return {
+    existing: BASE_VIEW_USER_JOURNEYS.length,
+    added: EXPANDED_VIEW_USER_JOURNEYS.length,
+    total: VIEW_USER_JOURNEYS.length,
+    multiplierAdded:
+      EXPANDED_VIEW_USER_JOURNEYS.length / BASE_VIEW_USER_JOURNEYS.length,
+  };
+}
 
 /**
  * Returns all scenarios matching any of the given tags.

@@ -47,7 +47,7 @@ const SKIP_DIR_NAMES = new Set([
  * @param {(absPath: string, relPath: string) => boolean} predicate
  * @returns {Promise<string[]>}
  */
-async function walkFiles(root, predicate) {
+export async function walkFiles(root, predicate) {
   /** @type {string[]} */
   const out = [];
 
@@ -80,7 +80,7 @@ async function walkFiles(root, predicate) {
 /**
  * @returns {Promise<string[]>}
  */
-async function listPromptTsFiles() {
+export async function listPromptTsFiles() {
   /** @type {Set<string>} */
   const set = new Set();
   for (const file of PROMPT_SCAN_FILES) {
@@ -104,7 +104,7 @@ async function listPromptTsFiles() {
  * @param {string} content
  * @returns {{errors: string[], warnings: string[]}}
  */
-function scanContent(filePath, content) {
+export function scanContent(filePath, content) {
   /** @type {string[]} */
   const errors = [];
   /** @type {string[]} */
@@ -207,7 +207,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(2);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(2);
+  });
+}

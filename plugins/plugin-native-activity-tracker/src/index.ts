@@ -92,7 +92,7 @@ function parseCollectorLine(line: string): ParsedCollectorLine {
       typeof p.idleSeconds === "number" && Number.isFinite(p.idleSeconds)
         ? p.idleSeconds
         : null;
-    if (idleSeconds === null) return { kind: "ignored" };
+    if (idleSeconds === null || idleSeconds < 0) return { kind: "ignored" };
     return {
       kind: "idle",
       value: { ts, event: "hid_idle", idleSeconds },
@@ -101,8 +101,14 @@ function parseCollectorLine(line: string): ParsedCollectorLine {
   if (p.event !== "activate" && p.event !== "deactivate") {
     return { kind: "ignored" };
   }
-  const bundleId = typeof p.bundleId === "string" ? p.bundleId : null;
-  const appName = typeof p.appName === "string" ? p.appName : null;
+  const bundleId =
+    typeof p.bundleId === "string" && p.bundleId.trim().length > 0
+      ? p.bundleId.trim()
+      : null;
+  const appName =
+    typeof p.appName === "string" && p.appName.trim().length > 0
+      ? p.appName.trim()
+      : null;
   const windowTitle =
     typeof p.windowTitle === "string" ? p.windowTitle : undefined;
   if (bundleId === null || appName === null) {

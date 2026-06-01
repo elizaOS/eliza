@@ -117,6 +117,7 @@ class MMAUConfig:
     split: MMAUSplit = MMAUSplit.TEST_MINI
     categories: tuple[MMAUCategory, ...] = MMAU_CATEGORIES
     max_samples: int | None = None
+    include_edge_scenarios: bool = False
     use_huggingface: bool = False
     use_fixture: bool = True
     agent: str = "mock"

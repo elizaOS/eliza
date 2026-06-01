@@ -52,6 +52,7 @@
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "build:docs": "bun run clean && bun run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build"
   },
@@ -61,7 +62,8 @@
     "@capacitor/docgen": "^0.3.0",
     "rollup": "^4.60.2",
     "swiftlint": "^2.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

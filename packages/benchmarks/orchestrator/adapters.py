@@ -918,6 +918,10 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
         args.extend(["--max-steps", str(int(ctx.request.extra_config["max_steps"]))])
     if "max_iterations" in ctx.request.extra_config:
         args.extend(["--max-iterations", str(int(ctx.request.extra_config["max_iterations"]))])
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        args.append("--expand-scenarios")
     return args
 
 
@@ -1490,6 +1494,10 @@ def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]
         env["USE_EXTERNAL_NODE"] = (
             "true" if bool(ctx.request.extra_config["use_external_node"]) else "false"
         )
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        env["EXPAND_SCENARIOS"] = "true"
 
     return env
 
@@ -1580,6 +1588,10 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
         env["ENVIRONMENT_CONFIG"] = environment_config.strip()
     else:
         env["ENVIRONMENT_CONFIG"] = "voyager/environments/basic_env.json"
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        env["EXPAND_SCENARIOS"] = "true"
     code_file = ctx.request.extra_config.get("code_file")
     if isinstance(code_file, str) and code_file.strip():
         env["CODE_FILE"] = code_file.strip()
@@ -1633,6 +1645,11 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     domain = ctx.request.extra_config.get("domain")
     if isinstance(domain, str) and domain.strip():
         args.extend(["--domain", domain.strip()])
+
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        args.append("--expand-scenarios")
 
     path_to_vm = ctx.request.extra_config.get("path_to_vm")
     if isinstance(path_to_vm, str) and path_to_vm.strip():
@@ -2392,6 +2409,10 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
     if ctx.request.extra_config.get("dry_run") is True:
         args.append("--dry-run")
         args.append("--allow-empty")
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        args.append("--expand-scenarios")
     return args
 
 

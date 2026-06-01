@@ -125,6 +125,52 @@ describe("AgentRuntime structured streaming", () => {
 		expect(streamed.join("")).toBe("auth-ok");
 	});
 
+	it("preserves streamed provider tool calls, finish reason, and usage", async () => {
+		const runtime = makeRuntime();
+		const toolCalls = [
+			{
+				id: "call-1",
+				type: "function",
+				function: {
+					name: "CREATE_TASK",
+					arguments: '{"title":"Ship it"}',
+				},
+			},
+		];
+		const usage = { promptTokens: 11, completionTokens: 7, totalTokens: 18 };
+		const handler = vi.fn(async () => ({
+			textStream: (async function* () {
+				yield "Planning ";
+				yield "done.";
+			})(),
+			text: Promise.resolve("Planning done."),
+			toolCalls: Promise.resolve(toolCalls),
+			finishReason: Promise.resolve("tool-calls"),
+			usage: Promise.resolve(usage),
+			providerMetadata: { provider: "test" },
+		}));
+		runtime.registerModel(ModelType.ACTION_PLANNER, handler, "openai");
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: vi.fn(),
+			},
+			() =>
+				runtime.useModel(ModelType.ACTION_PLANNER, {
+					messages: [],
+				}),
+		);
+
+		expect(result).toEqual({
+			text: "Planning done.",
+			toolCalls,
+			finishReason: "tool-calls",
+			usage,
+			providerMetadata: { provider: "test" },
+		});
+	});
+
 	it("passes streaming-context callbacks to local handlers for plain text streams", async () => {
 		const runtime = makeRuntime();
 		const streamed: string[] = [];

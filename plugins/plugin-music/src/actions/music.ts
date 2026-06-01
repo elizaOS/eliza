@@ -630,6 +630,13 @@ export const musicAction: Action = {
     }
 
     const dispatch = dispatchKindFor(subaction, merged);
+    const callbackFor = (
+      actionName: string,
+    ): HandlerCallback | undefined =>
+      callback
+        ? (response, routedActionName) =>
+            callback(response, routedActionName ?? actionName)
+        : undefined;
 
     switch (dispatch.kind) {
       case "playback": {
@@ -643,7 +650,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(dispatchMerged),
-          callback,
+          callbackFor(playbackOp.name),
         );
       }
       case "queue_add": {
@@ -653,7 +660,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(dispatchMerged),
-          callback,
+          callbackFor(playbackOp.name),
         );
       }
       case "queue_view": {
@@ -676,7 +683,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(dispatchMerged),
-          callback,
+          callbackFor(playbackOp.name),
         );
       }
       case "play_audio": {
@@ -688,7 +695,7 @@ export const musicAction: Action = {
           message,
           state as State,
           jsonHandlerOptions(merged),
-          callback,
+          callbackFor(playAudio.name),
         );
       }
       case "library": {
@@ -704,7 +711,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(dispatchMerged),
-          callback,
+          callbackFor(musicLibraryAction.name),
         );
       }
       case "routing":
@@ -713,7 +720,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(merged),
-          callback,
+          callbackFor(manageRouting.name),
         );
       case "zones":
         return manageZones.handler(
@@ -721,7 +728,7 @@ export const musicAction: Action = {
           message,
           state,
           jsonHandlerOptions(merged),
-          callback,
+          callbackFor(manageZones.name),
         );
       case "generation": {
         const dispatchMerged = { ...merged, action: dispatch.generationOp };
@@ -730,7 +737,7 @@ export const musicAction: Action = {
           message,
           state ?? ({} as State),
           jsonHandlerOptions(dispatchMerged),
-          callback,
+          callbackFor("GENERATE_MUSIC"),
         );
       }
       default:

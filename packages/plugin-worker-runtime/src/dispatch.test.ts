@@ -13,6 +13,7 @@ import {
   MemoryKmsAdapter,
   systemKey,
 } from "@elizaos/security";
+import fc from "fast-check";
 import type { HandlerEntry, HandlerRegistry } from "./descriptor.js";
 import { createWorkerRpcDispatcher } from "./dispatch.js";
 
@@ -106,6 +107,51 @@ describe("dispatcher HMAC enforcement", () => {
     expect(channel.outbox).toHaveLength(1);
     expect(channel.outbox[0]?.ok).toBe(true);
   });
+
+  it("rejects hostile MAC strings without invoking handlers", async () => {
+    const kms = new MemoryKmsAdapter();
+    const keyId = systemKey("plugin-rpc-test");
+    await kms.getOrCreateKey(keyId);
+
+    await fc.assert(
+      fc.asyncProperty(fc.string({ maxLength: 128 }), async (mac) => {
+        fc.pre(mac.length === 0 || !/^[a-fA-F0-9]{64}$/.test(mac));
+        let invoked = false;
+        const channel = mockChannel();
+        const registry = makeRegistry({
+          id: "a",
+          surface: "provider",
+          target: "p",
+          handler: async () => {
+            invoked = true;
+            return { ok: true };
+          },
+        } as HandlerEntry);
+        const dispatch = createWorkerRpcDispatcher(registry, {
+          runtime: {} as never,
+          channel: { send: channel.send } as never,
+          rpcAuth: { kms, keyId },
+        });
+
+        await dispatch({
+          type: "worker-rpc",
+          requestId: 2,
+          surface: "provider",
+          target: "a",
+          args: { message: null, state: null },
+          mac,
+        } as WorkerRpcMessage);
+
+        expect(invoked).toBe(false);
+        expect(channel.outbox[0]).toMatchObject({
+          requestId: 2,
+          ok: false,
+          error: { code: "RPC_AUTH_FAILED" },
+        });
+      }),
+      { numRuns: 100 },
+    );
+  });
 });
 
 describe("dispatcher permission gating", () => {
@@ -168,5 +214,200 @@ describe("dispatcher permission gating", () => {
       args: { message: null, state: null, options: null, responses: null },
     } as WorkerRpcMessage);
     expect(channel.outbox[0]?.ok).toBe(true);
+  });
+
+  it("allows provider surface with bun:read and passes runtime/message/state to the handler", async () => {
+    const channel = mockChannel();
+    const runtime = { marker: "runtime-proxy" };
+    const calls: unknown[][] = [];
+    const registry = makeRegistry({
+      id: "provider-1",
+      surface: "provider",
+      target: "contextProvider",
+      handler: async (...args: unknown[]) => {
+        calls.push(args);
+        return { text: "provided context" };
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: runtime as never,
+      channel: { send: channel.send } as never,
+      permissions: {
+        pluginId: "test-plugin",
+        granted: { bun: { read: true } },
+      },
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 3,
+      surface: "provider",
+      target: "provider-1",
+      args: {
+        message: { id: "message-1", text: "hello" },
+        state: { roomId: "room-1" },
+      },
+    } as WorkerRpcMessage);
+
+    expect(calls).toEqual([
+      [
+        runtime,
+        { id: "message-1", text: "hello" },
+        { roomId: "room-1" },
+      ],
+    ]);
+    expect(channel.outbox[0]).toMatchObject({
+      type: "worker-rpc-result",
+      requestId: 3,
+      ok: true,
+      payload: { text: "provided context" },
+    });
+  });
+
+  it("denies provider surface when grants exist but no read/run/host grant is present", async () => {
+    const sink = new InMemorySink();
+    const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
+    const channel = mockChannel();
+    const registry = makeRegistry({
+      id: "provider-1",
+      surface: "provider",
+      target: "contextProvider",
+      handler: async () => ({ text: "should not run" }),
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+      permissions: {
+        pluginId: "test-plugin",
+        granted: { bun: { env: true }, host: {} },
+        auditDispatcher,
+      },
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 4,
+      surface: "provider",
+      target: "provider-1",
+      args: { message: null, state: null },
+    } as WorkerRpcMessage);
+
+    expect(channel.outbox[0]).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(sink.snapshot()[0]?.metadata).toMatchObject({
+      plugin_id: "test-plugin",
+      surface: "provider",
+      target: "provider-1",
+      permission: "bun:read | host:*",
+      reason: "permission_not_granted",
+    });
+  });
+
+  it("rejects a message whose declared surface does not match the registered target", async () => {
+    let invoked = false;
+    const channel = mockChannel();
+    const registry = makeRegistry({
+      id: "action-1",
+      surface: "action",
+      target: "doStuff",
+      handler: async () => {
+        invoked = true;
+        return { ok: true };
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+      permissions: {
+        pluginId: "test-plugin",
+        granted: { bun: { read: true } },
+      },
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 5,
+      surface: "provider",
+      target: "action-1",
+      args: { message: null, state: null },
+    } as WorkerRpcMessage);
+
+    expect(invoked).toBe(false);
+    expect(channel.outbox[0]).toMatchObject({
+      type: "worker-rpc-result",
+      requestId: 5,
+      ok: false,
+      error: {
+        name: "SurfaceMismatchError",
+        code: "SURFACE_MISMATCH",
+      },
+    });
+  });
+});
+
+describe("dispatcher target and handler errors", () => {
+  it("returns UNKNOWN_TARGET when no handler is registered for the rpc target", async () => {
+    const channel = mockChannel();
+    const dispatch = createWorkerRpcDispatcher(makeRegistry(), {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 10,
+      surface: "provider",
+      target: "missing-provider",
+      args: { message: null, state: null },
+    } as WorkerRpcMessage);
+
+    expect(channel.outbox[0]).toMatchObject({
+      type: "worker-rpc-result",
+      requestId: 10,
+      ok: false,
+      error: {
+        name: "UnknownTargetError",
+        code: "UNKNOWN_TARGET",
+      },
+    });
+  });
+
+  it("serializes handler exceptions into failed worker-rpc results", async () => {
+    const channel = mockChannel();
+    const registry = makeRegistry({
+      id: "route-1",
+      surface: "route",
+      target: "/boom",
+      handler: async () => {
+        const err = new Error("route exploded");
+        (err as { code?: string }).code = "ROUTE_FAILED";
+        throw err;
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 11,
+      surface: "route",
+      target: "route-1",
+      args: { ctx: { path: "/boom" } },
+    } as WorkerRpcMessage);
+
+    expect(channel.outbox[0]).toMatchObject({
+      type: "worker-rpc-result",
+      requestId: 11,
+      ok: false,
+      error: {
+        name: "Error",
+        message: "route exploded",
+        code: "ROUTE_FAILED",
+      },
+    });
   });
 });

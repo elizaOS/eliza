@@ -50,6 +50,17 @@ interface YtDlpFormatRow {
   tbr?: number;
 }
 
+function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const [, year, month, day] = compact;
+    return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export class VideoService extends IVideoService {
   public readonly capabilityDescription =
     "Video download, processing, and conversion capabilities";
@@ -124,9 +135,7 @@ export class VideoService extends IVideoService {
       description: videoInfo.description,
       uploader: videoInfo.channel,
       viewCount: videoInfo.view_count,
-      uploadDate: videoInfo.upload_date
-        ? new Date(videoInfo.upload_date)
-        : undefined,
+      uploadDate: parseYtDlpUploadDate(videoInfo.upload_date),
       formats,
     };
   }
@@ -392,11 +401,11 @@ export class VideoService extends IVideoService {
     url: string,
     runtime: IAgentRuntime,
   ): Promise<Media> {
-    const videoId =
+    const extractedVideoId =
       url.match(
         /(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^/&?]+)/, // eslint-disable-line
-      )?.[1] || "";
-    const videoUuid = this.getVideoId(videoId);
+      )?.[1] || url;
+    const videoUuid = this.getVideoId(extractedVideoId);
     const cacheKey = `${this.cacheKey}/${videoUuid}`;
 
     const cached = await runtime.getCache<Media>(cacheKey);
@@ -622,7 +631,6 @@ export class VideoService extends IVideoService {
     outputFile: string,
   ): Promise<string> {
     elizaLogger.log("Downloading audio");
-    outputFile = outputFile;
 
     try {
       if (url.endsWith(".mp4") || url.includes(".mp4?")) {
@@ -631,6 +639,11 @@ export class VideoService extends IVideoService {
         );
         const tempMp4File = path.join(tmpdir(), `${this.getVideoId(url)}.mp4`);
         const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to download MP4: ${response.status} ${response.statusText}`,
+          );
+        }
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         fs.writeFileSync(tempMp4File, buffer);

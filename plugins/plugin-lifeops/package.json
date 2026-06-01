@@ -77,6 +77,8 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
+    "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-x": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

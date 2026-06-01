@@ -20,6 +20,7 @@
  */
 
 export type LifeOpsRouteSection =
+  | "assistant"
   | "overview"
   | "sleep"
   | "screen-time"
@@ -32,6 +33,7 @@ export type LifeOpsRouteSection =
   | "documents";
 
 export const LIFEOPS_ROUTE_SECTIONS: readonly LifeOpsRouteSection[] = [
+  "assistant",
   "overview",
   "sleep",
   "screen-time",

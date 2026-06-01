@@ -330,6 +330,19 @@ function routeJsonError(
   );
 }
 
+function isBrowserBridgeRouteBodyObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function rejectMalformedBrowserBridgePayload(
+  ctx: BrowserBridgeRouteContext,
+): true {
+  ctx.error(ctx.res, "request body must be a JSON object", 400);
+  return true;
+}
+
 function isStatusError(
   error: unknown,
 ): error is Error & { readonly status: number } {
@@ -513,6 +526,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(res, {
         settings: await service.updateBrowserSettings(
@@ -529,6 +545,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(
         res,
@@ -559,6 +578,9 @@ export async function handleBrowserBridgeRoutes(
     const body =
       await readJsonBody<CreateBrowserBridgeCompanionAutoPairRequest>(req, res);
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(
         res,
@@ -651,6 +673,9 @@ export async function handleBrowserBridgeRoutes(
       revealOnly?: boolean;
     }>(req, res);
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     if (
       typeof body.target !== "string" ||
       !BROWSER_BRIDGE_PACKAGE_PATH_TARGETS.includes(
@@ -680,11 +705,15 @@ export async function handleBrowserBridgeRoutes(
     if (rateLimitRequest(ctx, "companions:sync")) {
       return true;
     }
-    const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
-    if (!body) return true;
     return runRoute(ctx, async (service) => {
       const auth = getBrowserCompanionAuth(ctx);
       if (!auth) {
+        return;
+      }
+      const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
         return;
       }
       json(
@@ -804,6 +833,9 @@ export async function handleBrowserBridgeRoutes(
   if (method === "POST" && pathname === "/api/browser-bridge/sync") {
     const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(res, await service.syncBrowserState(body, ctx.state.adminEntityId));
     });
@@ -815,6 +847,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(
         res,
@@ -870,6 +905,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(res, {
         session: await service.confirmBrowserSession(
@@ -898,6 +936,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(res, {
         session: await service.updateBrowserSessionProgress(
@@ -926,6 +967,9 @@ export async function handleBrowserBridgeRoutes(
       res,
     );
     if (!body) return true;
+    if (!isBrowserBridgeRouteBodyObject(body)) {
+      return rejectMalformedBrowserBridgePayload(ctx);
+    }
     return runRoute(ctx, async (service) => {
       json(res, {
         session: await service.completeBrowserSession(
@@ -952,14 +996,18 @@ export async function handleBrowserBridgeRoutes(
       "browser session id",
     );
     if (!sessionId) return true;
-    const body = await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
     return runRoute(ctx, async (service) => {
       const auth = getBrowserCompanionAuth(ctx);
       if (!auth) {
+        return;
+      }
+      const body = await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(
+        req,
+        res,
+      );
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
         return;
       }
       json(res, {
@@ -989,14 +1037,18 @@ export async function handleBrowserBridgeRoutes(
       "browser session id",
     );
     if (!sessionId) return true;
-    const body = await readJsonBody<CompleteLifeOpsBrowserSessionRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
     return runRoute(ctx, async (service) => {
       const auth = getBrowserCompanionAuth(ctx);
       if (!auth) {
+        return;
+      }
+      const body = await readJsonBody<CompleteLifeOpsBrowserSessionRequest>(
+        req,
+        res,
+      );
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
         return;
       }
       json(res, {

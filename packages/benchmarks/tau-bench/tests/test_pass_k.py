@@ -47,3 +47,16 @@ def test_pass_hat_k_averages_across_tasks():
     # task 0: C(2,2)/C(2,2) = 1.0
     # task 1: C(1,2)/C(2,2) = 0/1 = 0
     assert pk == 0.5
+
+
+def test_pass_hat_k_groups_edge_scenarios_separately():
+    results = [
+        _make("retail", 0, 0, True),
+        _make("retail", 0, 0, False),
+    ]
+    results[1].scenario_id = "impatient_user"
+
+    pk, n = calculate_pass_hat_k(results, k=1)
+
+    assert n == 2
+    assert pk == 0.5

@@ -164,6 +164,22 @@ def _mint_subtasks_from_extra(extra: Mapping[str, JSONValue]) -> list[str]:
     return deduped
 
 
+def _expand_scenarios_requested(extra: Mapping[str, JSONValue]) -> bool:
+    if extra.get("expand_scenarios") is True or extra.get("include_edge_scenarios") is True:
+        return True
+    return os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -265,6 +281,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "vllm",
         }:
             args.extend(["--provider", "eliza"])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _realm_result(output_dir: Path) -> Path:
@@ -369,6 +387,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--runtime", "bridge"])
         else:
             args.extend(["--runtime", "mock"])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         _ = model
         return args
 
@@ -485,6 +505,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         if extra.get("dry_run") is True:
             args.append("--dry-run")
         elif extra.get("no_docker") is True:
@@ -527,6 +549,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 args.extend(["--agent-model", model.model])
         if model.temperature is not None:
             args.extend(["--agent-temperature", str(model.temperature)])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         agent_max_turns = extra.get("agent_max_turns")
         if isinstance(agent_max_turns, int) and agent_max_turns > 0:
             args.extend(["--agent-max-turns", str(agent_max_turns)])
@@ -613,6 +637,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--days", "3"])
         args.append("--starter-inventory")
         args.extend(["--max-actions-per-day", "6"])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -639,6 +665,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _swe_orchestrated_cmd(
@@ -673,6 +701,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
 
         execution_mode = extra.get("execution_mode")
         if isinstance(execution_mode, str) and execution_mode in {
@@ -810,6 +840,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         if mock is True or provider_name == "mock":
             args.append("--mock")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _mind2web_result(output_dir: Path) -> Path:
@@ -877,6 +909,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--split", split.strip()])
         if extra.get("no_traces") is True:
             args.append("--no-traces")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _visualwebbench_result(output_dir: Path) -> Path:
@@ -915,6 +949,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--smoke")
         if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
             args.append("--stub")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _vision_language_result(output_dir: Path) -> Path:
@@ -965,6 +1001,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--no-oolong")
         if model.model:
             args.extend(["--root-model", model.model, "--subcall-model", model.model])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _rlm_bench_result(output_dir: Path) -> Path:
@@ -983,6 +1021,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         harness = extra.get("agent") or extra.get("harness")
         if isinstance(harness, str) and harness.strip():
             args.extend(["--harness", harness.strip().lower()])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         # All knobs flow through env vars read by ``eliza_explorer.main``.
         _ = model
         return args
@@ -1091,6 +1131,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_iterations = extra.get("max_iterations")
         if isinstance(max_iterations, int) and max_iterations > 0:
             args.extend(["--max-iterations", str(max_iterations)])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
 
         builder_code = extra.get("builder_code")
         if isinstance(builder_code, str) and builder_code.strip():
@@ -1379,6 +1421,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--model", model.model])
         if model.provider:
             args.extend(["--provider", model.provider])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _mmau_result(output_dir: Path) -> Path:
@@ -1437,6 +1481,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--fixtures")
         if mock_flag:
             args.append("--mock")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _voicebench_quality_result(output_dir: Path) -> Path:
@@ -1494,6 +1540,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--suite", suites.strip()])
         if extra.get("generate_gt") is True:
             args.append("--generate-gt")
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _social_alpha_result(output_dir: Path) -> Path:
@@ -1599,6 +1647,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--no-trajectories")
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _webshop_result(output_dir: Path) -> Path:
@@ -1651,6 +1701,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         payment_mock_url = extra.get("payment_mock_url")
         if isinstance(payment_mock_url, str) and payment_mock_url.strip():
             args.extend(["--payment-mock-url", payment_mock_url.strip()])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _woobench_result(output_dir: Path) -> Path:
@@ -2091,6 +2143,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             env_stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip()
             if env_stt_provider:
                 args.extend(["--stt-provider", env_stt_provider])
+        if _expand_scenarios_requested(extra):
+            args.append("--expand-scenarios")
         return args
 
     def _voiceagentbench_result(output_dir: Path) -> Path:

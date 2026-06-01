@@ -392,7 +392,9 @@ export function bindReadyPhase(
       const viewLabel =
         typeof data.viewLabel === "string" ? data.viewLabel : undefined;
       const viewType =
-        data.viewType === "gui" || data.viewType === "tui"
+        data.viewType === "gui" ||
+        data.viewType === "tui" ||
+        data.viewType === "xr"
           ? data.viewType
           : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
@@ -435,7 +437,9 @@ export function bindReadyPhase(
       const capability =
         typeof data.capability === "string" ? data.capability : null;
       const viewType =
-        data.viewType === "gui" || data.viewType === "tui"
+        data.viewType === "gui" ||
+        data.viewType === "tui" ||
+        data.viewType === "xr"
           ? data.viewType
           : undefined;
       const requestId =

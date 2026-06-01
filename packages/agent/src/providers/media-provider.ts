@@ -583,11 +583,15 @@ export class FalVideoProvider implements VideoGenerationProvider {
         thumbnail?: { url: string };
         duration?: number;
       };
+      const videoUrl = data.video?.url;
+      if (!videoUrl) {
+        return { success: false, error: "No video returned from FAL" };
+      }
 
       return {
         success: true,
         data: {
-          videoUrl: data.video?.url,
+          videoUrl,
           thumbnailUrl: data.thumbnail?.url,
           duration: data.duration,
         },

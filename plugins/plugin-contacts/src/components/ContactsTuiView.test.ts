@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import fc from "fast-check";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -163,5 +164,59 @@ describe("ContactsTuiView", () => {
         },
       ],
     });
+  });
+
+  it("clamps hostile terminal-list-contacts limits before hitting the native bridge", async () => {
+    mockBridge();
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.oneof(
+          fc.double({ noNaN: true }),
+          fc.constant(Number.POSITIVE_INFINITY),
+          fc.constant(Number.NEGATIVE_INFINITY),
+          fc.constant(Number.NaN),
+        ),
+        async (limit) => {
+          contactsBridge.listContacts.mockClear();
+          await interact("terminal-list-contacts", { limit });
+
+          const requested = contactsBridge.listContacts.mock.calls[0]?.[0] as
+            | { limit?: number }
+            | undefined;
+          expect(Number.isInteger(requested?.limit)).toBe(true);
+          expect(requested?.limit).toBeGreaterThanOrEqual(1);
+          expect(requested?.limit).toBeLessThanOrEqual(500);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it("rejects malformed terminal create/import payloads without native writes", async () => {
+    mockBridge();
+
+    await expect(
+      interact("terminal-create-contact", {
+        displayName: " \t\n ",
+        phoneNumber: "+15550400",
+      }),
+    ).rejects.toThrow("displayName is required");
+    await expect(
+      interact("terminal-create-contact", {
+        displayName: ["Ada Lovelace"] as unknown as string,
+      }),
+    ).rejects.toThrow("displayName is required");
+    await expect(
+      interact("terminal-import-vcard", { vcardText: "" }),
+    ).rejects.toThrow("vcardText is required");
+    await expect(
+      interact("terminal-import-vcard", {
+        vcardText: { text: "BEGIN:VCARD" } as unknown as string,
+      }),
+    ).rejects.toThrow("vcardText is required");
+
+    expect(contactsBridge.createContact).not.toHaveBeenCalled();
+    expect(contactsBridge.importVCard).not.toHaveBeenCalled();
   });
 });

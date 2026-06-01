@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { saveAccount } from "./account-storage";
+import { listAccounts, loadAccount, saveAccount } from "./account-storage";
 import {
   applySubscriptionCredentials,
   deleteProviderCredentials,
@@ -11,6 +11,11 @@ import {
   listProviderAccounts,
   saveCredentials,
 } from "./credentials";
+import { refreshCodexToken } from "./openai-codex";
+
+vi.mock("./openai-codex.ts", () => ({
+  refreshCodexToken: vi.fn(),
+}));
 
 const tempHomes: string[] = [];
 
@@ -25,6 +30,7 @@ function useTempElizaHome(): string {
 
 describe("applySubscriptionCredentials", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.unstubAllEnvs();
     for (const dir of tempHomes.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -167,5 +173,122 @@ describe("applySubscriptionCredentials", () => {
     expect(process.env.ZAI_API_KEY).toBe("");
     expect(process.env.Z_AI_API_KEY).toBe("");
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
+  });
+
+  it("stores account credentials with secret-grade filesystem permissions", () => {
+    const home = useTempElizaHome();
+    const now = Date.now();
+
+    saveAccount({
+      id: "personal",
+      providerId: "openai-codex",
+      label: "Personal",
+      source: "oauth",
+      credentials: {
+        access: "access",
+        refresh: "refresh",
+        expires: now + 60_000,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const providerDir = path.join(home, "auth", "openai-codex");
+    const accountFile = path.join(providerDir, "personal.json");
+    expect(fs.statSync(providerDir).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(accountFile).mode & 0o777).toBe(0o600);
+  });
+
+  it("skips malformed and provider-mismatched credential files", () => {
+    const home = useTempElizaHome();
+    const providerDir = path.join(home, "auth", "openai-codex");
+    fs.mkdirSync(providerDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(providerDir, "bad-json.json"), "{", {
+      mode: 0o600,
+    });
+    fs.writeFileSync(
+      path.join(providerDir, "wrong-provider.json"),
+      JSON.stringify({
+        id: "wrong-provider",
+        providerId: "zai-coding",
+        label: "Wrong",
+        source: "oauth",
+        credentials: {
+          access: "access",
+          refresh: "refresh",
+          expires: Date.now() + 60_000,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+      { mode: 0o600 },
+    );
+
+    expect(listAccounts("openai-codex")).toEqual([]);
+    expect(loadAccount("openai-codex", "wrong-provider")).toBeNull();
+  });
+
+  it("serializes concurrent token refreshes for the same account", async () => {
+    useTempElizaHome();
+    const refreshMock = vi.mocked(refreshCodexToken);
+    refreshMock.mockResolvedValue({
+      access: "fresh-access",
+      refresh: "fresh-refresh",
+      expires: Date.now() + 60 * 60_000,
+    });
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "expired-access",
+        refresh: "old-refresh",
+        expires: Date.now() - 1_000,
+      },
+      "personal",
+    );
+
+    const tokens = await Promise.all([
+      getAccessToken("openai-codex", "personal"),
+      getAccessToken("openai-codex", "personal"),
+      getAccessToken("openai-codex", "personal"),
+    ]);
+
+    expect(tokens).toEqual(["fresh-access", "fresh-access", "fresh-access"]);
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(refreshMock).toHaveBeenCalledWith("old-refresh");
+    expect(loadAccount("openai-codex", "personal")?.credentials).toMatchObject({
+      access: "fresh-access",
+      refresh: "fresh-refresh",
+    });
+  });
+
+  it("does not share refresh mutexes across different accounts", async () => {
+    useTempElizaHome();
+    const refreshMock = vi.mocked(refreshCodexToken);
+    refreshMock.mockImplementation(async (refreshToken) => ({
+      access: `fresh-${refreshToken}`,
+      refresh: `next-${refreshToken}`,
+      expires: Date.now() + 60 * 60_000,
+    }));
+    for (const accountId of ["personal", "work"]) {
+      saveCredentials(
+        "openai-codex",
+        {
+          access: `expired-${accountId}`,
+          refresh: accountId,
+          expires: Date.now() - 1_000,
+        },
+        accountId,
+      );
+    }
+
+    const tokens = await Promise.all([
+      getAccessToken("openai-codex", "personal"),
+      getAccessToken("openai-codex", "work"),
+    ]);
+
+    expect(tokens.sort()).toEqual(["fresh-personal", "fresh-work"]);
+    expect(refreshMock).toHaveBeenCalledTimes(2);
+    expect(refreshMock).toHaveBeenCalledWith("personal");
+    expect(refreshMock).toHaveBeenCalledWith("work");
   });
 });

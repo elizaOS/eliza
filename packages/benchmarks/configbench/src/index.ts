@@ -24,11 +24,26 @@ import {
   Y,
 } from "./reporting/reporter.js";
 import { runBenchmark } from "./runner.js";
-import { ALL_SCENARIOS } from "./scenarios/index.js";
+import {
+  ALL_SCENARIOS,
+  countConfigBenchScenarios,
+  validateConfigBenchScenarios,
+} from "./scenarios/index.js";
 import type { Handler } from "./types.js";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  if (args.includes("--count-scenarios")) {
+    console.log(JSON.stringify(countConfigBenchScenarios(), null, 2));
+    return;
+  }
+  if (args.includes("--validate-scenarios")) {
+    const validation = validateConfigBenchScenarios();
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+
   const useEliza = args.includes("--eliza") || args.includes("--all");
   const verbose = args.includes("--verbose") || args.includes("-v");
   const harnessIndex = args.indexOf("--harness");

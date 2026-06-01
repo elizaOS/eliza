@@ -17,6 +17,7 @@ Modes:
 
 import argparse
 import asyncio
+import json
 import os
 import re
 import sys
@@ -29,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from elizaos_experience_bench.runner import ExperienceBenchmarkRunner
 from elizaos_experience_bench.types import BenchmarkConfig, BenchmarkResult
+from elizaos_experience_bench.edge_cases import expand_learning_scenarios
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -76,6 +78,7 @@ def run_direct(args: argparse.Namespace) -> None:
         num_retrieval_queries=args.queries,
         num_learning_cycles=args.learning_cycles,
         seed=args.seed,
+        include_edge_scenarios=args.expand_scenarios,
     )
 
     runner = ExperienceBenchmarkRunner(config)
@@ -178,6 +181,8 @@ async def _run_local_agent_fallback(
         )
 
     scenarios = generator.generate_learning_scenarios(config.num_learning_cycles)
+    if config.include_edge_scenarios:
+        scenarios = expand_learning_scenarios(scenarios)
     learning_successes = 0
 
     for i, scenario in enumerate(scenarios):
@@ -466,6 +471,21 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default=None, help="Output JSON path")
     parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for every configured direct-mode scenario.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print configured direct-mode scenario counts and exit.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate configured direct-mode scenarios and exit.",
+    )
+    parser.add_argument(
         "--provider",
         type=str,
         choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "cerebras"],
@@ -479,6 +499,27 @@ def main() -> None:
         help="Model name for eliza-agent mode (e.g. qwen3-32b)",
     )
     args = parser.parse_args()
+
+    if args.count_scenarios or args.validate_scenarios:
+        config = BenchmarkConfig(
+            num_experiences=args.experiences,
+            num_retrieval_queries=args.queries,
+            num_learning_cycles=args.learning_cycles,
+            seed=args.seed,
+            include_edge_scenarios=args.expand_scenarios,
+        )
+        runner = ExperienceBenchmarkRunner(config)
+        counts = runner.count_scenarios()
+        if args.validate_scenarios:
+            errors = runner.validate_scenarios()
+            payload = {"ok": not errors, **counts}
+            if errors:
+                payload["errors"] = errors[:50]
+                payload["error_count"] = len(errors)
+            print(json.dumps(payload, indent=2))
+            sys.exit(0 if not errors else 1)
+        print(json.dumps(counts, indent=2))
+        sys.exit(0)
 
     if args.mode == "direct":
         run_direct(args)

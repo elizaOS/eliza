@@ -31,6 +31,19 @@ const VIDEO_MIME_TYPES = [
 const getSupportedMimeType = (): string | null =>
   VIDEO_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m)) ?? null;
 
+const getMediaDevices = (): MediaDevices => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Camera media devices API is not available");
+  }
+  return navigator.mediaDevices;
+};
+
+const assertPositiveFinite = (value: number, name: string): void => {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive finite number`);
+  }
+};
+
 export class CameraWeb extends WebPlugin {
   private mediaStream: MediaStream | null = null;
   private videoElement: HTMLVideoElement | null = null;
@@ -59,26 +72,28 @@ export class CameraWeb extends WebPlugin {
     // has already granted camera permission via a prior getUserMedia() call.
     // We intentionally do NOT call getUserMedia() here because it requires a
     // user gesture and would throw NotAllowedError if called programmatically.
-    const allDevices = await navigator.mediaDevices.enumerateDevices();
+    const mediaDevices = getMediaDevices();
+    if (!mediaDevices.enumerateDevices) {
+      throw new Error("Camera device enumeration is not available");
+    }
+
+    const allDevices = await mediaDevices.enumerateDevices();
     const videoDevices = allDevices.filter((d) => d.kind === "videoinput");
 
     const devices: CameraDevice[] = await Promise.all(
-      videoDevices.map(async (device, index) => {
-        const capabilities = await this.getDeviceCapabilities(device.deviceId);
-
-        return {
-          deviceId: device.deviceId,
-          label: device.label || `Camera ${index + 1}`,
-          direction: this.inferDirection(device.label),
-          // Flash detection not available via MediaDevices API on web
-          hasFlash: capabilities?.hasFlash ?? false,
-          hasZoom: !!capabilities?.zoom,
-          maxZoom: capabilities?.zoom?.max ?? 1,
-          // Return actual capabilities or empty array to indicate unknown
-          supportedResolutions: capabilities?.resolutions ?? [],
-          supportedFrameRates: capabilities?.frameRates ?? [],
-        };
-      }),
+      videoDevices.map(async (device, index) => ({
+        deviceId: device.deviceId,
+        label: device.label || `Camera ${index + 1}`,
+        direction: this.inferDirection(device.label),
+        // Capability probing requires getUserMedia(), which can prompt for
+        // camera permission. Enumeration stays prompt-free and reports
+        // unknown capabilities until preview/capture has explicit access.
+        hasFlash: false,
+        hasZoom: false,
+        maxZoom: 1,
+        supportedResolutions: [],
+        supportedFrameRates: [],
+      })),
     );
 
     return { devices };
@@ -111,7 +126,7 @@ export class CameraWeb extends WebPlugin {
   } | null> {
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      stream = await getMediaDevices().getUserMedia({
         video: { deviceId: { exact: deviceId } },
       });
     } catch {
@@ -173,6 +188,17 @@ export class CameraWeb extends WebPlugin {
   async startPreview(
     options: CameraPreviewOptions,
   ): Promise<CameraPreviewResult> {
+    if (!options?.element?.appendChild) {
+      throw new Error("Preview element is required");
+    }
+    if (options.resolution) {
+      assertPositiveFinite(options.resolution.width, "resolution.width");
+      assertPositiveFinite(options.resolution.height, "resolution.height");
+    }
+    if (options.frameRate !== undefined) {
+      assertPositiveFinite(options.frameRate, "frameRate");
+    }
+
     await this.stopPreview();
 
     const constraints: MediaStreamConstraints = {
@@ -203,7 +229,7 @@ export class CameraWeb extends WebPlugin {
     // `packages/agent/src/services/permissions/probers/camera.ts` first,
     // then asks the user, only then opens the stream. Will be retired by
     // the chat-surface migration agent.
-    this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    this.mediaStream = await getMediaDevices().getUserMedia(constraints);
     this.previewElement = options.element;
 
     this.videoElement = document.createElement("video");
@@ -245,8 +271,10 @@ export class CameraWeb extends WebPlugin {
       this.mediaStream = null;
     }
 
-    if (this.videoElement && this.previewElement) {
-      this.previewElement.removeChild(this.videoElement);
+    if (this.videoElement) {
+      if (this.previewElement?.contains(this.videoElement)) {
+        this.previewElement.removeChild(this.videoElement);
+      }
       this.videoElement = null;
     }
 
@@ -282,8 +310,22 @@ export class CameraWeb extends WebPlugin {
     const videoWidth = settings.width || this.videoElement.videoWidth;
     const videoHeight = settings.height || this.videoElement.videoHeight;
 
+    assertPositiveFinite(videoWidth, "videoWidth");
+    assertPositiveFinite(videoHeight, "videoHeight");
+
     const targetWidth = options?.width || videoWidth;
     const targetHeight = options?.height || videoHeight;
+    assertPositiveFinite(targetWidth, "width");
+    assertPositiveFinite(targetHeight, "height");
+
+    if (
+      options?.quality !== undefined &&
+      (!Number.isFinite(options.quality) ||
+        options.quality < 0 ||
+        options.quality > 100)
+    ) {
+      throw new Error("quality must be a finite number between 0 and 100");
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = targetWidth;
@@ -314,7 +356,11 @@ export class CameraWeb extends WebPlugin {
           ? "image/webp"
           : "image/jpeg";
 
-    const base64 = canvas.toDataURL(mimeType, quality).split(",")[1];
+    const dataUrl = canvas.toDataURL(mimeType, quality);
+    const base64 = dataUrl.split(",")[1];
+    if (!base64) {
+      throw new Error("Failed to encode captured photo");
+    }
 
     return {
       base64,
@@ -336,7 +382,7 @@ export class CameraWeb extends WebPlugin {
     let streamToRecord = this.mediaStream;
 
     if (options?.audio !== false) {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
+      const audioStream = await getMediaDevices().getUserMedia({
         audio: true,
       });
       streamToRecord = new MediaStream([
@@ -491,6 +537,14 @@ export class CameraWeb extends WebPlugin {
   async setSettings(options: {
     settings: Partial<CameraSettings>;
   }): Promise<void> {
+    if (!options?.settings || typeof options.settings !== "object") {
+      throw new Error("settings object is required");
+    }
+    if (options.settings.zoom !== undefined) {
+      const zoom = options.settings.zoom;
+      this.assertValidZoom(zoom);
+    }
+
     this.currentSettings = { ...this.currentSettings, ...options.settings };
 
     if (this.mediaStream && options.settings.zoom !== undefined) {
@@ -499,13 +553,18 @@ export class CameraWeb extends WebPlugin {
   }
 
   async setZoom(options: { zoom: number }): Promise<void> {
-    if (!Number.isFinite(options.zoom) || options.zoom < 0) {
+    const zoom = options?.zoom;
+    this.assertValidZoom(zoom);
+    await this.applyZoom(zoom);
+    this.currentSettings.zoom = zoom;
+  }
+
+  private assertValidZoom(zoom: unknown): asserts zoom is number {
+    if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom < 0) {
       throw new Error(
-        `Invalid zoom value: ${options.zoom}. Must be a non-negative finite number.`,
+        `Invalid zoom value: ${zoom}. Must be a non-negative finite number.`,
       );
     }
-    await this.applyZoom(options.zoom);
-    this.currentSettings.zoom = options.zoom;
   }
 
   private async applyZoom(zoom: number): Promise<void> {
@@ -534,6 +593,7 @@ export class CameraWeb extends WebPlugin {
 
   async setFocusPoint(options: { x: number; y: number }): Promise<void> {
     if (!this.mediaStream) throw new Error("Preview not started");
+    this.assertNormalizedPoint(options, "focus point");
 
     const track = this.mediaStream.getVideoTracks()[0];
     if (!track) throw new Error("No video track available");
@@ -563,6 +623,7 @@ export class CameraWeb extends WebPlugin {
 
   async setExposurePoint(options: { x: number; y: number }): Promise<void> {
     if (!this.mediaStream) throw new Error("Preview not started");
+    this.assertNormalizedPoint(options, "exposure point");
 
     const track = this.mediaStream.getVideoTracks()[0];
     if (!track) throw new Error("No video track available");
@@ -587,6 +648,22 @@ export class CameraWeb extends WebPlugin {
       throw new Error(
         `Failed to set exposure point: ${e instanceof Error ? e.message : "unknown error"}`,
       );
+    }
+  }
+
+  private assertNormalizedPoint(
+    options: { x: number; y: number },
+    name: string,
+  ): void {
+    if (
+      !Number.isFinite(options?.x) ||
+      !Number.isFinite(options?.y) ||
+      options.x < 0 ||
+      options.x > 1 ||
+      options.y < 0 ||
+      options.y > 1
+    ) {
+      throw new Error(`${name} must use finite x/y values between 0 and 1`);
     }
   }
 
@@ -629,7 +706,7 @@ export class CameraWeb extends WebPlugin {
     let microphoneStatus: "granted" | "denied" | "prompt" = "denied";
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await getMediaDevices().getUserMedia({
         video: true,
         audio: true,
       });
@@ -640,7 +717,7 @@ export class CameraWeb extends WebPlugin {
       microphoneStatus = "granted";
     } catch {
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({
+        const videoStream = await getMediaDevices().getUserMedia({
           video: true,
         });
         videoStream.getTracks().forEach((track) => {
@@ -652,7 +729,7 @@ export class CameraWeb extends WebPlugin {
       }
 
       try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
+        const audioStream = await getMediaDevices().getUserMedia({
           audio: true,
         });
         audioStream.getTracks().forEach((track) => {

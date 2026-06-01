@@ -98,7 +98,11 @@ class SmartMockRuntime:
         return "answer[unknown]"
 
     def _handle_lateral(self, pl: str) -> str:
-        if "asks for a glass of water" in pl and "bartender" in pl and "gun" in pl:
+        if (
+            ("asks for a glass of water" in pl or "asks a bartender for water" in pl)
+            and "bartender" in pl
+            and "gun" in pl
+        ):
             return "guess[hiccups]"
         if "unopened package" in pl and "field" in pl and "dead" in pl:
             return "guess[parachute]"

@@ -1085,17 +1085,19 @@ def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
     vending_command = registry["vending_bench"].build_command(
         tmp_path / "vending",
         mock_model,
-        {"mock": True, "max_tasks": 1},
+        {"mock": True, "max_tasks": 1, "expand_scenarios": True},
     )
     assert vending_command[vending_command.index("--provider") + 1] == "heuristic"
     assert vending_command[vending_command.index("--runs") + 1] == "1"
+    assert "--expand-scenarios" in vending_command
 
     hyperliquid_command = registry["hyperliquid_bench"].build_command(
         tmp_path / "hyperliquid",
         mock_model,
-        {"max_steps": 1},
+        {"max_steps": 1, "expand_scenarios": True},
     )
     assert hyperliquid_command[hyperliquid_command.index("--mode") + 1] == "deterministic"
+    assert "--expand-scenarios" in hyperliquid_command
 
     lifecycle_command = registry["orchestrator_lifecycle"].build_command(
         tmp_path / "lifecycle",
@@ -1260,10 +1262,32 @@ def test_osworld_requires_reachable_docker_backend(
         lambda: True,
     )
     adapter = discover_adapters(_workspace_root()).adapters["osworld"]
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
+
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("osworld",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"expand_scenarios": True},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=Path("/tmp/osworld-out"),
+        run_root=Path("/tmp"),
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+    assert "--expand-scenarios" in adapter.command_builder(ctx, adapter)
 
 
 def test_hermes_native_env_matrix_reports_sandbox_unavailable(
@@ -1802,7 +1826,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
             agent="eliza",
             provider="cerebras",
             model="gpt-oss-120b",
-            extra_config={},
+            extra_config={"expand_scenarios": True},
         ),
     )
     ctx = ExecutionContext(
@@ -1830,7 +1854,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
             agent="openclaw",
             provider="cerebras",
             model="gpt-oss-120b",
-            extra_config={},
+            extra_config={"expand_scenarios": True},
         ),
     )
     woo_ctx = ExecutionContext(
@@ -1875,6 +1899,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
     assert "--no-demo" in command
+    assert "--expand-scenarios" in command
     assert command[command.index("--max-steps") + 1] == "1"
     assert command[command.index("--max-iterations") + 1] == "2"
     assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"
@@ -1911,6 +1936,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
     assert env["MODEL_NAME"] == "cerebras/gpt-oss-120b"
     assert env["MAX_MESSAGES"] == "2"
+    assert env["EXPAND_SCENARIOS"] == "true"
 
     solana = adapters["solana"]
     effective_solana = _effective_request(
@@ -1920,7 +1946,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
             agent="eliza",
             provider="cerebras",
             model="gpt-oss-120b",
-            extra_config={"max_tasks": 0},
+            extra_config={"max_tasks": 0, "expand_scenarios": True},
         ),
     )
     ctx = ExecutionContext(
@@ -1935,6 +1961,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     )
     env = solana.env_builder(ctx, solana) if solana.env_builder else {}
     assert env["MAX_MESSAGES"] == "2"
+    assert env["EXPAND_SCENARIOS"] == "true"
 
 
 def test_bfcl_registry_always_writes_scoreable_json(tmp_path: Path) -> None:
@@ -2696,6 +2723,7 @@ def test_loca_adapter_enables_openclaw_direct_openai_tool_path(tmp_path: Path) -
                 "reasoning_effort": "low",
                 "timeout": 120,
                 "allow_empty": True,
+                "expand_scenarios": True,
             },
         ),
         run_group_id="test",
@@ -2706,11 +2734,12 @@ def test_loca_adapter_enables_openclaw_direct_openai_tool_path(tmp_path: Path) -
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
     assert "--allow-empty" not in command
+    assert "--expand-scenarios" in command
     assert command[command.index("--max-context-size") + 1] == "1000000"
     assert command[command.index("--reset-size") + 1] == "500000"
     assert command[command.index("--reasoning-effort") + 1] == "low"
@@ -3003,6 +3032,28 @@ def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path
     assert command[command.index("--days") + 1] == "3"
     assert "--starter-inventory" in command
     assert command[command.index("--max-actions-per-day") + 1] == "6"
+
+
+def test_registry_forwards_edge_expansion_to_scenario_benchmarks(tmp_path: Path) -> None:
+    registry = {item.id: item for item in get_benchmark_registry(_workspace_root())}
+    model = ModelSpec(provider="mock", model="gpt-oss-120b")
+    cases = {
+        "realm": {"mock": True, "max_tasks": 1},
+        "agentbench": {"mock": True, "max_tasks": 1},
+        "mind2web": {"mock": True, "max_tasks": 1},
+        "mmau": {"mock": True, "limit": 1},
+        "visualwebbench": {"mock": True, "max_tasks": 1},
+        "webshop": {"mock": True, "max_tasks": 1},
+        "woobench": {"mock": True, "scenario": "skeptic_tarot_01"},
+    }
+
+    for benchmark_id, extra in cases.items():
+        command = registry[benchmark_id].build_command(
+            tmp_path / benchmark_id,
+            model,
+            {**extra, "expand_scenarios": True},
+        )
+        assert "--expand-scenarios" in command
 
 
 def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) -> None:

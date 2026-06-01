@@ -72,10 +72,10 @@ import {
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
-import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
+import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
-import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
+import { XDmAdapter } from "@elizaos/plugin-x";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import {
   createOwnerFactStore,

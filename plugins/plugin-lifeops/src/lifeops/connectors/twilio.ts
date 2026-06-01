@@ -1,8 +1,8 @@
 /**
  * Twilio connector contribution.
  *
- * Twilio doesn't have a `service-mixin-twilio.ts`; the transport functions
- * live in `../twilio.ts`. Credentials are read from `process.env` per the
+ * Twilio doesn't have a `service-mixin-twilio.ts`; transport is owned by
+ * `@elizaos/plugin-phone`. Credentials are read from `process.env` per the
  * legacy `readTwilioCredentialsFromEnv()` shape.
  *
  * Send target syntax:
@@ -16,7 +16,7 @@ import {
   sendTwilioVoiceCall,
   type TwilioCredentials,
   type TwilioDeliveryResult,
-} from "../twilio.js";
+} from "@elizaos/plugin-phone";
 import {
   errorToDispatchResult,
   isConnectorSendPayload,
@@ -125,6 +125,14 @@ export function createTwilioConnectorContribution(
       }
       try {
         const { channel, to } = parseTarget(payload.target);
+        if (!to) {
+          return {
+            ok: false,
+            reason: "unknown_recipient",
+            userActionable: true,
+            message: "Twilio target is empty.",
+          };
+        }
         if (channel === "voice") {
           const result = await sendTwilioVoiceCall({
             credentials,

@@ -178,6 +178,157 @@ describe("generateChatResponse usage reporting", () => {
     });
     expect(result.actionCallbackHistory).toBeUndefined();
   });
+
+  it("fails closed when a model returns an unexecuted action payload", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: "Done, I sent the funds.",
+            actions: ["SENSITIVE_ACTION"],
+          },
+          responseMessages: [],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send funds"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("actions that were not executed");
+    expect(result.text).toContain("SENSITIVE_ACTION");
+    expect(result.text).not.toContain("sent the funds");
+    expect(runtime.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        src: "eliza-api",
+        parsedActions: ["SENSITIVE_ACTION"],
+      }),
+      "[eliza-api] Unexecuted action payload detected; failing closed",
+    );
+  });
+
+  it("fails closed when only unrelated action callbacks fired", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ actions: ["SEARCHING"] });
+          return {
+            didRespond: true,
+            responseContent: {
+              text: "Done, I sent the funds.",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send funds"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("actions that were not executed");
+    expect(result.text).toContain("SENSITIVE_ACTION");
+    expect(result.text).not.toContain("sent the funds");
+  });
+
+  it("does not fail closed when core reports actions mode", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "Action completed by core.",
+            actions: ["SENSITIVE_ACTION"],
+          },
+          responseMessages: [],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send funds"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("Action completed by core.");
+    expect(runtime.logger.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "[eliza-api] Unexecuted action payload detected; failing closed",
+    );
+  });
+
+  it("does not fail closed when action result records an alias for the runtime action", async () => {
+    const message = createChatMessage("send funds");
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION", similes: ["TRANSFER_FUNDS"] }],
+      getActionResults: vi.fn(() => [{ actionName: "TRANSFER_FUNDS" }]),
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: "Action completed from recorded alias.",
+            actions: ["SENSITIVE_ACTION"],
+          },
+          responseMessages: [],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(runtime, message, "Chat Agent", {
+      timeoutDuration: 5_000,
+    });
+
+    expect(result.text).toBe("Action completed from recorded alias.");
+    expect(runtime.logger.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "[eliza-api] Unexecuted action payload detected; failing closed",
+    );
+  });
+
+  it("does not fail closed when runtime action results show execution", async () => {
+    const message = createChatMessage("send funds");
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      getActionResults: vi.fn(() => [{ actionName: "SENSITIVE_ACTION" }]),
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: "Action completed from recorded result.",
+            actions: ["SENSITIVE_ACTION"],
+          },
+          responseMessages: [],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(runtime, message, "Chat Agent", {
+      timeoutDuration: 5_000,
+    });
+
+    expect(result.text).toBe("Action completed from recorded result.");
+    expect(runtime.getActionResults).toHaveBeenCalledWith(message.id);
+    expect(runtime.logger.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "[eliza-api] Unexecuted action payload detected; failing closed",
+    );
+  });
 });
 
 describe("local inference chat command intent detection", () => {

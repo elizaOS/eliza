@@ -5,11 +5,13 @@
   "type": "module",
   "description": "Cloudflare Worker that 301-redirects docs.elizacloud.ai/* to docs.elizaos.ai/cloud/*",
   "scripts": {
+    "test": "vitest run",
     "deploy": "wrangler deploy --env production",
     "dev": "wrangler dev"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",
+    "vitest": "^4.0.18",
     "wrangler": "^3.78.0"
   }
 }

@@ -9,18 +9,122 @@ const repoRoot = path.resolve(
   "../../../..",
 );
 
-// One representative, always-in-the-module-graph source file per dependency
-// depth. The point of the suite is to prove an edit made at each depth — the
-// app itself, a directly-imported workspace UI package, and a transitively
-// depended-on shared package — actually propagates to the running dev client
-// over Vite's HMR channel. That exercises the dev architecture's reliance on
-// `src/` (not `dist/`) resolution plus workspace-source watching.
+// Always-in-the-module-graph source files by dependency depth. The point of the
+// suite is to prove an edit made at each depth — the app itself, workspace UI,
+// shared code, and every visual-matrix plugin GUI view package — propagates to
+// the running dev client over Vite's HMR channel. That exercises the dev
+// architecture's reliance on `src/` (not `dist/`) resolution plus
+// workspace-source watching.
 const LEVELS = [
   { name: "app (packages/app)", file: "packages/app/src/main.tsx" },
   // The app imports @elizaos/ui via subpaths (not the root barrel), so target
   // the root App component that main.tsx renders — guaranteed in the live graph.
   { name: "@elizaos/ui", file: "packages/ui/src/App.tsx" },
   { name: "@elizaos/shared", file: "packages/shared/src/brand/index.ts" },
+  {
+    name: "plugin view companion",
+    file: "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
+  },
+  {
+    name: "plugin view contacts",
+    file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+  },
+  {
+    name: "plugin view hyperliquid",
+    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+  },
+  {
+    name: "plugin view lifeops",
+    file: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view messages",
+    file: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+  },
+  {
+    name: "plugin view model tester",
+    file: "plugins/app-model-tester/src/ModelTesterAppView.tsx",
+  },
+  {
+    name: "plugin view phone",
+    file: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+  },
+  {
+    name: "plugin view polymarket",
+    file: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
+  },
+  {
+    name: "plugin view shopify",
+    file: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
+  },
+  {
+    name: "plugin view steward",
+    file: "plugins/plugin-steward-app/src/StewardView.tsx",
+  },
+  {
+    name: "plugin view vincent",
+    file: "plugins/plugin-vincent/src/VincentAppView.tsx",
+  },
+  {
+    name: "plugin view wallet",
+    file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+  },
+  {
+    name: "plugin view 2004scape",
+    file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view feed",
+    file: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view manager",
+    file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
+  },
+  {
+    name: "plugin view clawville",
+    file: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view defense",
+    file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view hyperscape",
+    file: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view scape",
+    file: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view screenshare",
+    file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view task coordinator",
+    file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+  },
+  {
+    name: "plugin view orchestrator",
+    file: "plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+  },
+  {
+    name: "plugin view trajectory logger",
+    file: "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
+  },
+  {
+    name: "plugin view training",
+    file: "plugins/plugin-training/src/ui/FineTuningView.tsx",
+  },
+  {
+    name: "plugin view facewear",
+    file: "plugins/plugin-facewear/src/ui/FacewearView.tsx",
+  },
+  {
+    name: "plugin view smartglasses",
+    file: "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
+  },
 ] as const;
 
 // Vite's client logs these to the page console when it processes a change.
@@ -43,6 +147,8 @@ async function waitForViteClient(page: Page): Promise<void> {
 }
 
 test.describe("HMR propagation across package dependency levels", () => {
+  test.describe.configure({ mode: "serial" });
+
   for (const level of LEVELS) {
     test(`edit at ${level.name} reaches the running dev client`, async ({
       page,

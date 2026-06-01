@@ -370,6 +370,68 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
   ).trim();
 }
 
+async function rewriteDirectActionCallbackText(args: {
+  runtime: AgentRuntime;
+  actionName: string;
+  text: string;
+  content?: Content;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () => {
+    const error =
+      typeof args.content?.error === "string" && args.content.error.trim()
+        ? ` It reported: ${args.content.error.trim()}`
+        : "";
+    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
+  };
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this direct action callback in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve status, IDs, names, URLs, counts, errors, and next steps.",
+        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+        `Metadata: ${JSON.stringify({
+          source: args.content?.source,
+          actions: args.content?.actions,
+          actionStatus: args.content?.actionStatus,
+          error: args.content?.error,
+        })}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch (err) {
+    args.runtime.logger.debug(
+      {
+        src: "eliza-api",
+        action: args.actionName,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[eliza-api] Direct action callback voice rewrite failed",
+    );
+    return fallback();
+  }
+}
+
 async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   runtime: AgentRuntime;
   message: ReturnType<typeof createMessageMemory>;
@@ -1288,8 +1350,13 @@ export function writeSseData(
   event?: string,
 ): void {
   if (res.writableEnded || res.destroyed) return;
-  if (event) res.write(`event: ${event}\n`);
-  res.write(`data: ${data}\n\n`);
+  const safeEvent =
+    typeof event === "string" && /^[A-Za-z0-9_.-]+$/.test(event) ? event : null;
+  if (safeEvent) res.write(`event: ${safeEvent}\n`);
+  for (const line of data.split(/\r\n|\r|\n/)) {
+    res.write(`data: ${line}\n`);
+  }
+  res.write("\n");
 }
 
 export function writeSseJson(
@@ -1691,6 +1758,7 @@ export async function generateChatResponse(
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     let forcedWalletExecutionText = false;
+    let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
     const actionCallbackHistory: string[] = [];
     // Snapshot of `responseText` at the moment the first action callback runs.
@@ -1963,7 +2031,14 @@ export async function generateChatResponse(
 
                       const chunk = extractCompatTextContent(content);
                       if (chunk) {
-                        applyCallbackTextUpdate(content, chunk);
+                        const voicedChunk =
+                          await rewriteDirectActionCallbackText({
+                            runtime,
+                            actionName: createTaskAction.name,
+                            text: chunk,
+                            content,
+                          });
+                        applyCallbackTextUpdate(content, voicedChunk);
                         actionResponseText = responseText;
                       }
                       return [];
@@ -2161,6 +2236,11 @@ export async function generateChatResponse(
                 runtime,
                 typeof message.id === "string" ? message.id : undefined,
               );
+              const executedActionNames = new Set(
+                [...executedRuntimeActions, ...seenActionTags]
+                  .map((name) => actionNameLookup.get(name) ?? name)
+                  .filter((name) => name.length > 0),
+              );
 
               // Only run fallback execution when the core did NOT dispatch actions itself.
               const coreHandledActions = resultRecord?.mode === "actions";
@@ -2172,14 +2252,10 @@ export async function generateChatResponse(
                   const canonicalName =
                     actionNameLookup.get(normalizeActionName(action.name)) ??
                     normalizeActionName(action.name);
-                  return !executedRuntimeActions.has(canonicalName);
+                  return !executedActionNames.has(canonicalName);
                 },
               );
-              if (
-                actionCallbacksSeen === 0 &&
-                !coreHandledActions &&
-                executableFallbackActions.length > 0
-              ) {
+              if (!coreHandledActions && executableFallbackActions.length > 0) {
                 const selfControlFallbackActions =
                   executableFallbackActions.filter((action) => {
                     const canonicalName =
@@ -2235,6 +2311,7 @@ export async function generateChatResponse(
                   } else {
                     responseText = failureText;
                   }
+                  blockedUnexecutedActionPayload = true;
                 }
                 if (
                   remainingExecutableFallbackActions.some(
@@ -2286,7 +2363,8 @@ export async function generateChatResponse(
       actionCallbacksSeen === 0 &&
       resultText &&
       resultText !== responseText &&
-      !forcedWalletExecutionText
+      !forcedWalletExecutionText &&
+      !blockedUnexecutedActionPayload
     ) {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);

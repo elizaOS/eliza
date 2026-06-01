@@ -162,6 +162,18 @@ describe("resolveSkillMetadata", () => {
     assert.deepStrictEqual(metadata.requiredBins, ["git", "node"]);
   });
 
+  it("omits requirement arrays when every value is invalid or blank", () => {
+    const metadata = resolveSkillMetadata({
+      "required-os": [42, " "],
+      "required-bins": [false, ""],
+      "required-env": [null, "\t"],
+    } as Record<string, unknown>);
+
+    assert.strictEqual(metadata.requiredOs, undefined);
+    assert.strictEqual(metadata.requiredBins, undefined);
+    assert.strictEqual(metadata.requiredEnv, undefined);
+  });
+
   it("trims whitespace from string values", () => {
     const metadata = resolveSkillMetadata({ "primary-env": "  node  " });
     assert.strictEqual(metadata.primaryEnv, "node");

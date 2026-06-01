@@ -38,6 +38,38 @@ export {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./features/documents/index";
+export type {
+	DraftRecord,
+	DraftRequest,
+	ListOptions,
+	ManageOperation,
+	ManageResult,
+	MessageAdapter,
+	MessageAdapterCapabilities,
+	MessageRef,
+	MessageSource,
+	ScoreContext,
+	SearchMessagesFilters,
+	SendPolicy,
+	SuggestedAction,
+	TriageOptions,
+	TriagePriority,
+	TriageScore,
+} from "./features/messaging/triage";
+export {
+	BaseMessageAdapter,
+	filterInMemory,
+	getDefaultMessageRefStore,
+	getSendPolicy,
+	MessageRefStore,
+	NotYetImplementedError,
+	rankScored,
+	registerSendPolicy,
+	resetMissingServiceWarning,
+	resolveContactWeight,
+	scoreMessage,
+	scoreMessages,
+} from "./features/messaging/triage";
 export { paymentsPlugin } from "./features/payments/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";

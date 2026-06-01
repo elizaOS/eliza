@@ -14,7 +14,12 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { logger } from "@elizaos/core";
-import { listScenarioMetadata, loadAllScenarios } from "./loader.ts";
+import {
+  countScenarioCorpus,
+  listScenarioMetadata,
+  loadAllScenarios,
+  validateScenarioCorpus,
+} from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
 
 type ExecutorModule = typeof import("./executor.ts");
@@ -38,6 +43,9 @@ interface ParsedArgs {
   runId?: string;
   filter?: Set<string>;
   fileGlobs?: string[];
+  expandScenarios?: boolean;
+  countScenarios?: boolean;
+  validateScenarios?: boolean;
 }
 
 function scenarioNativeManifestPath(
@@ -52,7 +60,7 @@ function scenarioNativeManifestPath(
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -75,6 +83,9 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   let exportNativePath: string | undefined;
   let runId: string | undefined;
   let filter: Set<string> | undefined;
+  let expandScenarios = false;
+  let countScenarios = false;
+  let validateScenarios = false;
   const fileGlobs: string[] = [];
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -115,6 +126,12 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         .filter(Boolean);
       filter = new Set(ids);
       i += 1;
+    } else if (arg === "--expand-scenarios") {
+      expandScenarios = true;
+    } else if (arg === "--count-scenarios") {
+      countScenarios = true;
+    } else if (arg === "--validate-scenarios") {
+      validateScenarios = true;
     } else if (arg.startsWith("--")) {
       usageAndExit(`unknown flag '${arg}'`, 2);
     } else {
@@ -133,6 +150,9 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     runId,
     filter,
     fileGlobs,
+    expandScenarios,
+    countScenarios,
+    validateScenarios,
   };
 }
 
@@ -140,11 +160,32 @@ async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const parsed = parseArgs(argv);
 
+  if (parsed.countScenarios) {
+    const counts = await countScenarioCorpus(
+      parsed.dir,
+      parsed.filter,
+      parsed.fileGlobs,
+    );
+    process.stdout.write(`${JSON.stringify(counts, null, 2)}\n`);
+    return 0;
+  }
+
+  if (parsed.validateScenarios) {
+    const validation = await validateScenarioCorpus(
+      parsed.dir,
+      parsed.filter,
+      parsed.fileGlobs,
+    );
+    process.stdout.write(`${JSON.stringify(validation, null, 2)}\n`);
+    return 0;
+  }
+
   if (parsed.command === "list") {
     const loaded = await listScenarioMetadata(
       parsed.dir,
       parsed.filter,
       parsed.fileGlobs,
+      parsed.expandScenarios,
     );
     for (const scenario of loaded) {
       process.stdout.write(`${scenario.id}\n`);
@@ -205,6 +246,7 @@ async function main(): Promise<number> {
     parsed.dir,
     parsed.filter,
     parsed.fileGlobs,
+    parsed.expandScenarios,
   );
   if (loaded.length === 0) {
     process.stderr.write(

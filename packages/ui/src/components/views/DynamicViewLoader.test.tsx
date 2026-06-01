@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DynamicViewLoader } from "./DynamicViewLoader";
 
@@ -34,6 +34,9 @@ describe("DynamicViewLoader", () => {
     sendWsMessage.mockClear();
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it("imports absolute remote bundleUrl directly", async () => {
@@ -445,6 +448,182 @@ describe("DynamicViewLoader", () => {
     });
   });
 
+  it("polls bundle HEAD in dev mode and reloads when the ETag changes", async () => {
+    vi.useFakeTimers();
+    async function flushViewLoader() {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+
+    const bundleUrl = "https://capability.example.test/assets/hmr.js";
+    const cleanupVersion1 = vi.fn();
+    const interactVersion1 = vi.fn(async () => ({ version: 1 }));
+    const interactVersion2 = vi.fn(async () => ({ version: 2 }));
+    let importCount = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      importCount += 1;
+      const version = importCount;
+      return {
+        default: function HmrPanel() {
+          return <div>HMR version {version}</div>;
+        },
+        interact: version === 1 ? interactVersion1 : interactVersion2,
+        cleanup: version === 1 ? cleanupVersion1 : undefined,
+      };
+    });
+    const fetchHead = vi
+      .fn()
+      .mockResolvedValueOnce({
+        headers: { get: (name: string) => (name === "etag" ? "v1" : null) },
+      })
+      .mockResolvedValueOnce({
+        headers: { get: (name: string) => (name === "etag" ? "v2" : null) },
+      });
+    vi.stubGlobal("fetch", fetchHead);
+
+    const rendered = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="hmr.view" />,
+    );
+    await flushViewLoader();
+    expect(screen.getByText("HMR version 1")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchHead).toHaveBeenCalledWith(bundleUrl, { method: "HEAD" });
+    expect(screen.getByText("HMR version 1")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flushViewLoader();
+
+    expect(screen.getByText("HMR version 2")).toBeTruthy();
+    expect(cleanupVersion1).toHaveBeenCalledTimes(1);
+    expect(window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__).toHaveBeenCalledTimes(
+      2,
+    );
+
+    sendWsMessage.mockClear();
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "hmr.view",
+      "gui",
+      "custom-capability",
+      undefined,
+      "req-hmr-interact",
+    );
+    expect(interactVersion2).toHaveBeenCalledWith(
+      "custom-capability",
+      undefined,
+    );
+    expect(interactVersion1).not.toHaveBeenCalled();
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-hmr-interact",
+      success: true,
+      result: { version: 2 },
+    });
+
+    fetchHead.mockClear();
+    rendered.unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(6000);
+      await Promise.resolve();
+    });
+    expect(fetchHead).not.toHaveBeenCalled();
+  });
+
+  it("unregisters the previous interact handler and cleans up when the loaded view is replaced", async () => {
+    const cleanupFirst = vi.fn();
+    const firstInteract = vi.fn(async () => ({ version: "first" }));
+    const secondInteract = vi.fn(async () => ({ version: "second" }));
+    const firstUrl = "https://capability.example.test/assets/first.js";
+    const secondUrl = "https://capability.example.test/assets/second.js";
+
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async (url) => {
+      if (url === firstUrl) {
+        return {
+          default: function FirstPanel() {
+            return <div>First dynamic panel</div>;
+          },
+          interact: firstInteract,
+          cleanup: cleanupFirst,
+        };
+      }
+      return {
+        default: function SecondPanel() {
+          return <div>Second dynamic panel</div>;
+        },
+        interact: secondInteract,
+      };
+    });
+
+    const rendered = render(
+      <DynamicViewLoader
+        bundleUrl={firstUrl}
+        viewId="replace.first"
+        viewType="gui"
+      />,
+    );
+    await screen.findByText("First dynamic panel");
+
+    rendered.rerender(
+      <DynamicViewLoader
+        bundleUrl={secondUrl}
+        viewId="replace.second"
+        viewType="gui"
+      />,
+    );
+    await screen.findByText("Second dynamic panel");
+    await waitFor(() => expect(cleanupFirst).toHaveBeenCalledTimes(1));
+
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "replace.first",
+      "gui",
+      "custom-capability",
+      undefined,
+      "req-old-view",
+    );
+    await dispatchViewInteract(
+      "replace.second",
+      "gui",
+      "custom-capability",
+      undefined,
+      "req-new-view",
+    );
+
+    expect(firstInteract).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(secondInteract).toHaveBeenCalledWith(
+        "custom-capability",
+        undefined,
+      );
+    });
+    expect(sendWsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-old-view",
+        success: false,
+        error:
+          'No interact handler registered for gui view "replace.first" - view may not be mounted',
+      }),
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-new-view",
+      success: true,
+      result: { version: "second" },
+    });
+  });
+
   it("renders the error state when a bundle does not export a component", async () => {
     const bundleUrl = "https://capability.example.test/assets/no-component.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -476,5 +655,38 @@ describe("DynamicViewLoader", () => {
 
     expect(() => rendered.unmount()).not.toThrow();
     await waitFor(() => expect(cleanupBundle).toHaveBeenCalledTimes(1));
+  });
+
+  it("cleans up a bundle that resolves after the loader has unmounted", async () => {
+    const bundleUrl = "https://capability.example.test/assets/late.js";
+    const cleanupLateBundle = vi.fn();
+    let resolveImport:
+      | ((module: { default: () => ReactElement; cleanup: () => void }) => void)
+      | null = null;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(
+      () =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolveImport = resolve;
+        }),
+    );
+
+    const rendered = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
+    );
+    expect(screen.getByText("Loading view…")).toBeTruthy();
+
+    rendered.unmount();
+    expect(resolveImport).toBeTruthy();
+    act(() => {
+      resolveImport?.({
+        default: function LatePanel() {
+          return <div>Late panel</div>;
+        },
+        cleanup: cleanupLateBundle,
+      });
+    });
+
+    await waitFor(() => expect(cleanupLateBundle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Late panel")).toBeNull();
   });
 });

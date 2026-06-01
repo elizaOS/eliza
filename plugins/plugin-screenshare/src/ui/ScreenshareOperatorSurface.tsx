@@ -1,6 +1,6 @@
 import {
-  type AppOperatorSurfaceProps,
   type AgentElementRole,
+  type AppOperatorSurfaceProps,
   Button,
   type ButtonProps,
   client,
@@ -14,12 +14,20 @@ import {
   useApp,
 } from "@elizaos/ui";
 import {
+  Activity,
+  CheckCircle2,
   Copy,
   ExternalLink,
+  EyeOff,
+  Fingerprint,
+  Keyboard,
   MonitorUp,
+  MousePointer2,
   PlugZap,
   Power,
   RefreshCw,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -129,6 +137,38 @@ function formatTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleTimeString();
 }
 
+function maskSecret(value: string): string {
+  if (!value) return "";
+  const suffix = value.slice(-4);
+  return `•••• ${suffix}`;
+}
+
+function shortId(value: string): string {
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function capabilityLabel(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function CapabilityIcon({ name }: { name: string }) {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("keyboard") || normalized.includes("input")) {
+    return <Keyboard className="h-3.5 w-3.5" />;
+  }
+  if (normalized.includes("mouse") || normalized.includes("computer")) {
+    return <MousePointer2 className="h-3.5 w-3.5" />;
+  }
+  if (normalized.includes("gui") || normalized.includes("screenshot")) {
+    return <MonitorUp className="h-3.5 w-3.5" />;
+  }
+  return <ShieldCheck className="h-3.5 w-3.5" />;
+}
+
 function ScreenshareActionButton({
   agentId,
   label,
@@ -178,9 +218,7 @@ function ScreenshareField({
     description,
     fillable: !inputProps.readOnly,
   });
-  return (
-    <Input ref={ref} aria-label={label} {...agentProps} {...inputProps} />
-  );
+  return <Input ref={ref} aria-label={label} {...agentProps} {...inputProps} />;
 }
 
 export function ScreenshareOperatorSurface({
@@ -390,7 +428,7 @@ export function ScreenshareOperatorSurface({
             label="Host session id"
             group="host"
             description="Active host screen share session id"
-            value={hostSession?.id ?? ""}
+            value={hostSession ? shortId(hostSession.id) : ""}
             readOnly
             placeholder="Session"
             className="h-9 bg-bg text-xs"
@@ -400,7 +438,7 @@ export function ScreenshareOperatorSurface({
             label="Host session token"
             group="host"
             description="Token for the active host screen share session"
-            value={hostToken}
+            value={maskSecret(hostToken)}
             readOnly
             placeholder="Token"
             className="h-9 bg-bg text-xs"
@@ -476,10 +514,28 @@ export function ScreenshareOperatorSurface({
 
         {hostSession ? (
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs-tight text-muted-strong">
-            <span>Frames: {hostSession.frameCount}</span>
-            <span>Inputs: {hostSession.inputCount}</span>
-            <span>Frame: {formatTime(hostSession.lastFrameAt)}</span>
-            <span>Input: {formatTime(hostSession.lastInputAt)}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/65 px-2.5 py-1">
+              <MonitorUp className="h-3.5 w-3.5 text-accent" />
+              {hostSession.frameCount}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/65 px-2.5 py-1">
+              <Activity className="h-3.5 w-3.5 text-accent" />
+              {hostSession.inputCount}
+            </span>
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/65 px-2.5 py-1"
+              title={`Last frame: ${formatTime(hostSession.lastFrameAt)}`}
+            >
+              <Fingerprint className="h-3.5 w-3.5 text-muted" />
+              {formatTime(hostSession.lastFrameAt)}
+            </span>
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/65 px-2.5 py-1"
+              title={`Last input: ${formatTime(hostSession.lastInputAt)}`}
+            >
+              <EyeOff className="h-3.5 w-3.5 text-muted" />
+              {formatTime(hostSession.lastInputAt)}
+            </span>
           </div>
         ) : null}
       </SurfaceSection>
@@ -514,6 +570,7 @@ export function ScreenshareOperatorSurface({
             value={remoteToken}
             onChange={(event) => setRemoteToken(event.target.value)}
             placeholder="Token"
+            type="password"
             className="h-9 bg-bg text-xs"
           />
         </div>
@@ -552,21 +609,30 @@ export function ScreenshareOperatorSurface({
 
       {capabilities ? (
         <SurfaceSection title="Capabilities">
-          <div className="grid gap-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {Object.entries(capabilities.capabilities).map(
               ([name, capability]) => (
                 <div
                   key={name}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border/35 bg-bg/65 px-3 py-2 text-xs"
+                  className="flex items-center justify-between gap-3 rounded-sm border border-border/35 bg-bg/65 px-3 py-2 text-xs"
+                  title={capability.tool}
                 >
-                  <span className="font-medium text-txt">{name}</span>
-                  <span
-                    className={
-                      capability.available ? "text-ok" : "text-muted-strong"
-                    }
-                  >
-                    {capability.tool}
+                  <span className="inline-flex items-center gap-2 font-medium text-txt">
+                    <CapabilityIcon name={name} />
+                    {capabilityLabel(name)}
                   </span>
+                  <SurfaceBadge
+                    tone={capability.available ? "success" : "neutral"}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {capability.available ? (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5" />
+                      )}
+                      {capability.available ? "Ready" : "Off"}
+                    </span>
+                  </SurfaceBadge>
                 </div>
               ),
             )}

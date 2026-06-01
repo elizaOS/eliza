@@ -15,16 +15,35 @@ import type {
 export class LocationWeb extends WebPlugin {
   private watches = new Map<string, number>();
 
-  async getCurrentPosition(options?: LocationOptions): Promise<LocationResult> {
-    return new Promise((resolve, reject) => {
-      const geoOptions: PositionOptions = {
-        enableHighAccuracy:
-          options?.accuracy === "best" || options?.accuracy === "high",
-        maximumAge: options?.maxAge ?? 0,
-        timeout: options?.timeout ?? 10000,
-      };
+  private getGeolocation(): Geolocation {
+    if (!navigator.geolocation) {
+      throw new Error("Geolocation API is not available");
+    }
+    return navigator.geolocation;
+  }
 
-      navigator.geolocation.getCurrentPosition(
+  private normalizePositionOptions(options?: LocationOptions): PositionOptions {
+    const maxAge = options?.maxAge ?? 0;
+    const timeout = options?.timeout ?? 10000;
+    if (!Number.isFinite(maxAge) || maxAge < 0) {
+      throw new Error("maxAge must be a non-negative finite number");
+    }
+    if (!Number.isFinite(timeout) || timeout <= 0) {
+      throw new Error("timeout must be a positive finite number");
+    }
+    return {
+      enableHighAccuracy:
+        options?.accuracy === "best" || options?.accuracy === "high",
+      maximumAge: Math.trunc(maxAge),
+      timeout: Math.trunc(timeout),
+    };
+  }
+
+  async getCurrentPosition(options?: LocationOptions): Promise<LocationResult> {
+    const geolocation = this.getGeolocation();
+    const geoOptions = this.normalizePositionOptions(options);
+    return new Promise((resolve, reject) => {
+      geolocation.getCurrentPosition(
         (position) => {
           resolve({
             coords: {
@@ -70,15 +89,10 @@ export class LocationWeb extends WebPlugin {
     options?: WatchLocationOptions,
   ): Promise<{ watchId: string }> {
     const watchId = `watch-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const geolocation = this.getGeolocation();
+    const geoOptions = this.normalizePositionOptions(options);
 
-    const geoOptions: PositionOptions = {
-      enableHighAccuracy:
-        options?.accuracy === "best" || options?.accuracy === "high",
-      maximumAge: options?.maxAge ?? 0,
-      timeout: options?.timeout ?? 10000,
-    };
-
-    const nativeWatchId = navigator.geolocation.watchPosition(
+    const nativeWatchId = geolocation.watchPosition(
       (position) => {
         this.notifyListeners("locationChange", {
           coords: {
@@ -123,10 +137,11 @@ export class LocationWeb extends WebPlugin {
   }
 
   async clearWatch(options: { watchId: string }): Promise<void> {
-    const nativeWatchId = this.watches.get(options.watchId);
+    const watchId = typeof options?.watchId === "string" ? options.watchId : "";
+    const nativeWatchId = this.watches.get(watchId);
     if (nativeWatchId !== undefined) {
-      navigator.geolocation.clearWatch(nativeWatchId);
-      this.watches.delete(options.watchId);
+      this.getGeolocation().clearWatch(nativeWatchId);
+      this.watches.delete(watchId);
     }
   }
 

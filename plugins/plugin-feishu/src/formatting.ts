@@ -179,6 +179,24 @@ function parseMarkdownToIR(markdown: string): MarkdownIR {
 	return { text, styles, links };
 }
 
+function sanitizeFeishuHref(href: string): string | undefined {
+	const trimmed = href.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+
+	try {
+		const parsed = new URL(trimmed);
+		if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+			return parsed.toString();
+		}
+	} catch {
+		return undefined;
+	}
+
+	return undefined;
+}
+
 /**
  * Process a style pattern and update the text and styles
  */
@@ -264,8 +282,12 @@ function buildStyleRanges(
 function buildLinkMap(links: LinkSpan[]): Map<number, string> {
 	const map = new Map<number, string>();
 	for (const link of links) {
+		const href = sanitizeFeishuHref(link.href);
+		if (!href) {
+			continue;
+		}
 		for (let i = link.start; i < link.end; i++) {
-			map.set(i, link.href);
+			map.set(i, href);
 		}
 	}
 	return map;

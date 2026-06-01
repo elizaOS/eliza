@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -80,3 +82,34 @@ def test_run_agent_humaneval_scores_completion_and_writes_trajectory(tmp_path: P
     )
     assert outcome["right"] == 1
     assert outcome["wrong"] == 0
+
+
+def test_code_agent_humaneval_expanded_mock_count(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "packages"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.standard.code_agent_humaneval",
+            "--output",
+            str(tmp_path / "out"),
+            "--max-tasks",
+            "1",
+            "--mock",
+            "--expand-scenarios",
+            "--json",
+        ],
+        cwd=Path(__file__).resolve().parents[3],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["dataset_version"].endswith("+edge-v1")
+    assert payload["summary"]["total_instances"] == 11
+    assert payload["summary"]["resolved"] == 11

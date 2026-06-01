@@ -143,7 +143,7 @@ function buildConnectPayload(
   };
 
   if (options.endpointUrl) {
-    if (options.cloudApiBase || options.cloudAuthToken) {
+    if (hasCloudProvisioningOptions(options)) {
       return new Error(
         "Use either --endpoint-url or --cloud-api-base, not both.",
       );
@@ -162,11 +162,7 @@ function buildConnectPayload(
     };
   }
 
-  if (
-    options.cloudApiBase ||
-    options.cloudAuthToken ||
-    options.cloudAgentName
-  ) {
+  if (hasCloudProvisioningOptions(options)) {
     const cloudApiBase = normalizeBaseUrl(
       options.cloudApiBase,
       "cloud API base",
@@ -215,6 +211,20 @@ function buildConnectPayload(
   return new Error("Provide --endpoint-url or Cloud provisioning options.");
 }
 
+function hasCloudProvisioningOptions(
+  options: CapabilityRouterConnectOptions,
+): boolean {
+  return Boolean(
+    options.cloudApiBase ||
+      options.cloudAuthToken ||
+      options.cloudAgentName ||
+      options.cloudBio?.length ||
+      options.cloudEndpointToken ||
+      options.provisionTimeoutMs ||
+      options.pollIntervalMs,
+  );
+}
+
 function normalizeBaseUrl(
   value: string | undefined,
   label: string,
@@ -238,11 +248,11 @@ function parsePositiveInteger(
   label: string,
 ): number | undefined | Error {
   if (!nonEmpty(value)) return undefined;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  const normalized = value.trim();
+  if (!/^[1-9]\d*$/.test(normalized)) {
     return new Error(`${label} must be a positive integer.`);
   }
-  return parsed;
+  return Number(normalized);
 }
 
 function normalizeStringList(values: string[] | undefined): string[] {

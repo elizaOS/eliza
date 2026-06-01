@@ -45,6 +45,17 @@ function percent(value: number): number {
   return Math.round(value * 100);
 }
 
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+function clampVolumeValue(value: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const upper = Number.isFinite(max) && max > 0 ? Math.trunc(max) : 0;
+  return Math.min(upper, Math.max(0, Math.trunc(value)));
+}
+
 function streamPercent(volume: SystemVolumeStatus): number {
   if (volume.max <= 0) return 0;
   return Math.round((volume.current / volume.max) * 100);
@@ -86,7 +97,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       ]);
       setDeviceSettings(settingsResult);
       setSystemStatus(statusResult);
-      setBrightness(settingsResult.brightness);
+      setBrightness(clampUnit(settingsResult.brightness));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -102,7 +113,10 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
     if (!deviceSettings) return;
     setVolumes(
       Object.fromEntries(
-        deviceSettings.volumes.map((volume) => [volume.stream, volume.current]),
+        deviceSettings.volumes.map((volume) => [
+          volume.stream,
+          clampVolumeValue(volume.current, volume.max),
+        ]),
       ),
     );
   }, [deviceSettings]);
@@ -119,12 +133,16 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
   );
 
   const applyBrightness = useCallback(async () => {
+    const nextBrightness = clampUnit(brightness);
     setSaving("brightness");
     setError(null);
     setNotice(null);
     try {
-      const next = await System.setScreenBrightness({ brightness });
+      const next = await System.setScreenBrightness({
+        brightness: nextBrightness,
+      });
       setDeviceSettings(next);
+      setBrightness(clampUnit(next.brightness));
       setNotice("Brightness updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -135,7 +153,10 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
   const applyVolume = useCallback(
     async (volume: SystemVolumeStatus) => {
-      const nextValue = volumes[volume.stream] ?? volume.current;
+      const nextValue = clampVolumeValue(
+        volumes[volume.stream] ?? volume.current,
+        volume.max,
+      );
       setSaving(`volume:${volume.stream}`);
       setError(null);
       setNotice(null);
@@ -149,7 +170,12 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           return {
             ...current,
             volumes: current.volumes.map((entry) =>
-              entry.stream === next.stream ? next : entry,
+              entry.stream === next.stream
+                ? {
+                    ...next,
+                    current: clampVolumeValue(next.current, next.max),
+                  }
+                : entry,
             ),
           };
         });
@@ -289,7 +315,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 max={100}
                 value={percent(brightness)}
                 onChange={(event) =>
-                  setBrightness(Number(event.target.value) / 100)
+                  setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
                 className="w-full accent-info"
                 aria-label="Brightness"
@@ -426,7 +452,10 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         onChange={(event) =>
                           setVolumes((current) => ({
                             ...current,
-                            [volume.stream]: Number(event.target.value),
+                            [volume.stream]: clampVolumeValue(
+                              Number(event.target.value),
+                              volume.max,
+                            ),
                           }))
                         }
                         className="min-w-0 flex-1 accent-info"

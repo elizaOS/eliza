@@ -213,7 +213,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
   sendTwilioVoiceCall,
-} from "./twilio.js";
+} from "@elizaos/plugin-phone";
 
 const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 

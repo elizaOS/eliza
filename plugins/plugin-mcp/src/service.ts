@@ -312,9 +312,19 @@ export class McpService extends Service {
   async deleteConnection(name: string): Promise<void> {
     const connection = this.connections.get(name);
     if (connection) {
-      await connection.transport.close();
-      await connection.client.close();
+      const closeResults = await Promise.allSettled([
+        connection.transport.close(),
+        connection.client.close(),
+      ]);
       this.connections.delete(name);
+      for (const result of closeResults) {
+        if (result.status === "rejected") {
+          logger.warn(
+            { error: result.reason, serverName: name },
+            `Failed to close MCP connection resource for "${name}"`
+          );
+        }
+      }
     }
     const state = this.connectionStates.get(name);
     if (state) {

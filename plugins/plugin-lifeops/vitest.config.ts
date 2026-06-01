@@ -249,6 +249,17 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/plugin-elizacloud\/cloud\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-elizacloud",
+          "src",
+          "cloud",
+          "$1.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-google$/,
         replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
       },

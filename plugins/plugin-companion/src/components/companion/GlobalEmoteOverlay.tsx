@@ -3,48 +3,80 @@ import {
   type AppEmoteEventDetail,
   Z_GLOBAL_EMOTE,
 } from "@elizaos/ui";
+import {
+  Accessibility,
+  Activity,
+  ArrowUp,
+  Axe,
+  Bird,
+  Bone,
+  ChevronsUp,
+  Cloud,
+  Dumbbell,
+  Eye,
+  Fish,
+  Footprints,
+  Frown,
+  Hand,
+  Heart,
+  Leaf,
+  type LucideIcon,
+  MessageCircle,
+  Music2,
+  Rabbit,
+  Shield,
+  Skull,
+  Sparkles,
+  Swords,
+  Target,
+  WandSparkles,
+  Waves,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const OVERLAY_LIFETIME_MS = 2400;
 
-const EMOTE_EMOJIS: Record<string, string> = {
-  wave: "\u{1F44B}",
-  kiss: "\u{1F48B}",
-  crying: "\u{1F62D}",
-  sorrow: "\u{1F614}",
-  "rude-gesture": "\u{1F595}",
-  "looking-around": "\u{1F440}",
-  "dance-happy": "\u{1F483}",
-  "dance-breaking": "\u{1F938}",
-  "dance-hiphop": "\u{1F57A}",
-  "dance-popping": "\u{1FAA9}",
-  "hook-punch": "\u{1F44A}",
-  punching: "\u{1F94A}",
-  "firing-gun": "\u{1F52B}",
-  "sword-swing": "\u{2694}",
-  chopping: "\u{1FA93}",
-  "spell-cast": "\u{1FA84}",
-  range: "\u{1F3F9}",
-  death: "\u{1F480}",
-  talk: "\u{1F5E3}",
-  squat: "\u{1F9CE}",
-  fishing: "\u{1F3A3}",
-  float: "\u{2728}",
-  jump: "\u{1F4A8}",
-  flip: "\u{1F938}",
-  crawling: "\u{1F43E}",
-  fall: "\u{1F4A5}",
+const EMOTE_ICONS: Record<string, LucideIcon> = {
+  wave: Hand,
+  kiss: Heart,
+  crying: Waves,
+  sorrow: Frown,
+  "rude-gesture": Hand,
+  "looking-around": Eye,
+  "dance-happy": Music2,
+  "dance-breaking": Accessibility,
+  "dance-hiphop": Activity,
+  "dance-popping": Sparkles,
+  "hook-punch": Dumbbell,
+  punching: Shield,
+  "firing-gun": Target,
+  "sword-swing": Swords,
+  chopping: Axe,
+  "spell-cast": WandSparkles,
+  range: Target,
+  death: Skull,
+  talk: MessageCircle,
+  squat: Accessibility,
+  fishing: Fish,
+  float: Bird,
+  jump: ArrowUp,
+  flip: ChevronsUp,
+  crawling: Bone,
+  fall: Cloud,
+  run: Rabbit,
+  walk: Footprints,
+  idle: Leaf,
 };
 
-function getOverlayEmoji(emoteId: string): string {
-  return EMOTE_EMOJIS[emoteId] ?? "\u2728";
+function getOverlayIcon(emoteId: string): LucideIcon {
+  return EMOTE_ICONS[emoteId] ?? Sparkles;
 }
 
 export function GlobalEmoteOverlay() {
   const [activeEmote, setActiveEmote] = useState<{
     key: number;
     emoteId: string;
-    emoji: string;
+    Icon: LucideIcon;
   } | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const nextKeyRef = useRef(1);
@@ -60,7 +92,7 @@ export function GlobalEmoteOverlay() {
       const nextOverlay = {
         key: nextKeyRef.current,
         emoteId: detail.emoteId,
-        emoji: getOverlayEmoji(detail.emoteId),
+        Icon: getOverlayIcon(detail.emoteId),
       };
       nextKeyRef.current += 1;
       setActiveEmote(nextOverlay);
@@ -138,15 +170,17 @@ export function GlobalEmoteOverlay() {
             />
             <div
               key={activeEmote.key}
-              className="relative flex h-32 w-32 items-center justify-center rounded-full border border-white/18 bg-black/18 text-[88px] shadow-[0_20px_54px_rgba(0,0,0,0.24)] backdrop-blur-md"
+              className="relative flex h-32 w-32 items-center justify-center rounded-full border border-white/18 bg-black/18 shadow-[0_20px_54px_rgba(0,0,0,0.24)] backdrop-blur-md"
               style={{
                 animation:
                   "eliza-emote-burst 2400ms cubic-bezier(.2,.8,.2,1) forwards",
               }}
             >
-              <span className="select-none leading-none">
-                {activeEmote.emoji}
-              </span>
+              <activeEmote.Icon
+                className="h-20 w-20 text-white drop-shadow-[0_10px_28px_rgba(0,0,0,0.35)]"
+                aria-hidden
+                strokeWidth={1.6}
+              />
             </div>
           </div>
         </div>

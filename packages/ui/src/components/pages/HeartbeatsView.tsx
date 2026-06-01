@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { CheckCircle2, Plus, X, XCircle } from "lucide-react";
 import {
   createContext,
   type ReactNode,
@@ -26,11 +26,11 @@ import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { NewActionButton } from "../ui/new-action-button";
 import { StatusBadge } from "../ui/status-badge";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   BUILT_IN_TEMPLATES,
@@ -783,12 +783,15 @@ function HeartbeatsLayout() {
                   </SidebarContent.Item>
                   {isUserTemplate && (
                     <SidebarContent.ItemAction
+                      aria-label={t("heartbeatsview.DeleteTemplate", {
+                        defaultValue: "Delete template",
+                      })}
                       onClick={(event) => {
                         event.stopPropagation();
                         deleteUserTemplate(template.id);
                       }}
                     >
-                      ×
+                      <X className="h-3.5 w-3.5" aria-hidden />
                     </SidebarContent.ItemAction>
                   )}
                 </div>
@@ -982,10 +985,16 @@ function HeartbeatsLayout() {
                         })}
                       </span>
                       {successCount > 0 ? (
-                        <span className="text-ok">{successCount} ✓</span>
+                        <span className="inline-flex items-center gap-1 text-ok">
+                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                          {successCount}
+                        </span>
                       ) : null}
                       {failureCount > 0 ? (
-                        <span className="text-danger">{failureCount} ✗</span>
+                        <span className="inline-flex items-center gap-1 text-danger">
+                          <XCircle className="h-3.5 w-3.5" aria-hidden />
+                          {failureCount}
+                        </span>
                       ) : null}
                     </dd>
                   </PagePanel.SummaryCard>

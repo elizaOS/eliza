@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -122,6 +122,36 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 			await expect(
 				bridge.read(path.relative(tempRoot, path.join(outside, "secret.txt"))),
 			).rejects.toThrow();
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects reads through symlinks that resolve outside the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			await writeFile(path.join(outside, "secret.txt"), "nope");
+			symlinkSync(outside, path.join(tempRoot, "linked-outside"), "dir");
+
+			await expect(bridge.read("linked-outside/secret.txt")).rejects.toThrow(
+				/escapes workspace root/,
+			);
+			await expect(bridge.list("linked-outside")).rejects.toThrow(
+				/escapes workspace root/,
+			);
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects writes through symlinked parent directories outside the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			symlinkSync(outside, path.join(tempRoot, "linked-outside"), "dir");
+
+			await expect(
+				bridge.write("linked-outside/new.txt", "nope"),
+			).rejects.toThrow(/escapes workspace root/);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}

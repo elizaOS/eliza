@@ -1,24 +1,25 @@
 import {
   createHmac,
   generateKeyPairSync,
-  randomBytes,
-  sign as nodeSign,
-  timingSafeEqual,
-  verify as nodeVerify,
   type KeyObject,
+  sign as nodeSign,
+  verify as nodeVerify,
+  randomBytes,
+  timingSafeEqual,
 } from "node:crypto";
 import { aeadDecrypt, aeadEncrypt } from "../crypto/aead.js";
+import { parseKeyId } from "./key-namespace.js";
 import {
-  KeyNotFoundError,
-  KmsError,
   type EncryptResult,
   type GetOrCreateKeyOptions,
   type KeyHandle,
   type KeyId,
+  KeyNotFoundError,
   type KeyVersion,
   type KmsClient,
-  type SignResult,
+  KmsError,
   type SignatureAlgorithm,
+  type SignResult,
 } from "./types.js";
 
 interface SymVersion {
@@ -87,6 +88,7 @@ export class MemoryKmsAdapter implements KmsClient {
   }
 
   private ensureEntry(keyId: KeyId): KeyEntry {
+    parseKeyId(keyId);
     let entry = this.keys.get(keyId);
     if (!entry) {
       entry = {
@@ -107,6 +109,7 @@ export class MemoryKmsAdapter implements KmsClient {
   }
 
   private requireEntry(keyId: KeyId): KeyEntry {
+    parseKeyId(keyId);
     const e = this.keys.get(keyId);
     if (!e) throw new KeyNotFoundError(keyId);
     return e;

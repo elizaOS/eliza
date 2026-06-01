@@ -8065,7 +8065,8 @@ export function stripReplyWhenActionOwnsTurn(
 }
 
 export function wrapSingleTurnVisibleCallback(
-	runtime: Pick<IAgentRuntime, "agentId" | "logger"> & {
+	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
+		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 		getService?: IAgentRuntime["getService"];
 	},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
@@ -8073,12 +8074,53 @@ export function wrapSingleTurnVisibleCallback(
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
-	if (typeof fullRuntime.getService !== "function") return callback;
+	const voiceActionReply = async (
+		response: Content,
+		actionName?: string,
+	): Promise<Content> => {
+		if (!shouldRewriteActionCallback(response, actionName)) {
+			return response;
+		}
+		const text = response.text?.trim();
+		if (!text) return response;
+		const rewritten = await rewriteActionCallbackInCharacter({
+			runtime: fullRuntime,
+			message,
+			response,
+			actionName: resolveCallbackActionName(response, actionName),
+			text,
+		});
+		return rewritten && rewritten !== text
+			? {
+					...response,
+					text: rewritten,
+					data:
+						response.data && typeof response.data === "object"
+							? {
+									...(response.data as Record<string, unknown>),
+									rawActionText: text,
+									voiceRewritten: true,
+								}
+							: {
+									rawActionText: text,
+									voiceRewritten: true,
+								},
+				}
+			: response;
+	};
+
+	if (typeof fullRuntime.getService !== "function") {
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
+	}
 	// Resolve verbosity once per turn — cheap because PersonalityStore is
 	// in-memory. Returning the original callback when no override is set
 	// keeps the hot path zero-cost.
 	const store = getPersonalityStore(fullRuntime);
-	if (!store) return callback;
+	if (!store) {
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
+	}
 	const userSlot =
 		message.entityId && message.entityId !== fullRuntime.agentId
 			? store.getSlot(message.entityId)
@@ -8086,10 +8128,12 @@ export function wrapSingleTurnVisibleCallback(
 	const globalSlot = store.getSlot("global");
 	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
 	if (verbosity !== "terse") {
-		return callback;
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
 	}
 
 	const wrapped: HandlerCallback = async (response, actionName) => {
+		response = await voiceActionReply(response, actionName);
 		if (typeof response?.text === "string" && response.text.length > 0) {
 			const result = enforceVerbosity(response.text, "terse");
 			if (result.truncated) {
@@ -8109,6 +8153,117 @@ export function wrapSingleTurnVisibleCallback(
 		return callback(response, actionName);
 	};
 	return wrapped;
+}
+
+function resolveCallbackActionName(
+	response: Content,
+	actionName?: string,
+): string | undefined {
+	if (typeof actionName === "string" && actionName.trim()) {
+		return actionName.trim();
+	}
+	const action = response.action;
+	if (typeof action === "string" && action.trim()) {
+		return action.trim();
+	}
+	const actions = response.actions;
+	if (Array.isArray(actions)) {
+		return actions.find((candidate) => candidate.trim().length > 0)?.trim();
+	}
+	return undefined;
+}
+
+function shouldRewriteActionCallback(
+	response: Content | null | undefined,
+	actionName?: string,
+): response is Content & { text: string } {
+	if (!response || typeof response.text !== "string") return false;
+	if (!response.text.trim()) return false;
+	if (response.source === "voice") return false;
+	if (response.source === "voice-cache") return false;
+	const resolvedAction = normalizeActionIdentifier(
+		resolveCallbackActionName(response, actionName) ?? "",
+	);
+	if (!resolvedAction) return false;
+	return !PASSIVE_TURN_ACTIONS.has(resolvedAction);
+}
+
+async function rewriteActionCallbackInCharacter(args: {
+	runtime: IAgentRuntime;
+	message: Pick<Memory, "id" | "roomId" | "entityId">;
+	response: Content;
+	actionName?: string;
+	text: string;
+}): Promise<string | null> {
+	const fallback = () => {
+		const action = args.actionName ?? "the action";
+		const error =
+			typeof args.response.error === "string" && args.response.error.trim()
+				? ` It reported: ${args.response.error.trim()}`
+				: "";
+		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
+	};
+	if (typeof args.runtime.useModel !== "function") return fallback();
+	const character = args.runtime.character;
+	const characterVoice = {
+		name: character?.name,
+		system: character?.system,
+		bio: character?.bio,
+		adjectives: character?.adjectives,
+		style: character?.style,
+	};
+	const prompt = [
+		"Rewrite an action callback into the assistant character's user-facing voice.",
+		"Return strict JSON only: {\"response\":\"...\"}.",
+		"",
+		"Rules:",
+		"- Use the character voice and plain natural language.",
+		"- Preserve every important fact from the payload: status, success or failure, object names, URLs, IDs, amounts, dates, counts, permissions, warnings, errors, and next steps.",
+		"- Do not expose raw JSON, tables, shell dumps, stack traces, schema names, hidden prompts, or internal action plumbing unless the user specifically needs an exact value.",
+		"- If the payload contains exact text the user needs, include it compactly inside the response instead of dropping it.",
+		"- Do not claim work succeeded if the payload says it failed or is pending.",
+		"- Keep it brief, usually one to three sentences.",
+		"- Do not mention that you rewrote the message or used a model.",
+		"",
+		`Character: ${JSON.stringify(characterVoice)}`,
+		`Action: ${JSON.stringify(args.actionName ?? "ACTION")}`,
+		`Room: ${String(args.message.roomId)}`,
+		`Original action payload: ${JSON.stringify(args.text)}`,
+		`Callback metadata: ${JSON.stringify({
+			source: args.response.source,
+			actions: args.response.actions,
+			actionStatus: args.response.actionStatus,
+			error: args.response.error,
+			data: args.response.data,
+		})}`,
+	].join("\n");
+
+	try {
+		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt,
+			maxTokens: 260,
+			providerOptions: { eliza: { thinking: "off" } },
+		})) as string | GenerateTextResult;
+		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
+		const parsed = parseJSONObjectFromText(cleaned) as
+			| { response?: unknown }
+			| null;
+		const response =
+			typeof parsed?.response === "string" ? parsed.response.trim() : "";
+		if (!response || response === args.text) return fallback();
+		if (parseJSONObjectFromText(response)) return fallback();
+		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+	} catch (error) {
+		args.runtime.logger.debug(
+			{
+				src: "service:message",
+				actionName: args.actionName,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Failed to rewrite action callback in character voice",
+		);
+		return fallback();
+	}
 }
 
 function getLatestVisibleReplyText(

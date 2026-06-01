@@ -43,6 +43,31 @@ function joinKey(...segments: Array<string | undefined>): string {
   return joined.replace(/\/+/g, "/").replace(/^\/+/, "");
 }
 
+function normalizeStorageKey(...segments: Array<string | undefined>): string {
+  for (const segment of segments) {
+    if (
+      typeof segment === "string" &&
+      (path.isAbsolute(segment) || /^[A-Za-z]:/.test(segment))
+    ) {
+      throw new Error(`Invalid local storage key: ${segment}`);
+    }
+  }
+  const raw = joinKey(...segments).replace(/\\/g, "/");
+  const rawParts = raw.split("/").filter((part) => part.length > 0);
+  const normalized = path.posix.normalize(raw);
+  if (
+    !raw ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    rawParts.some((part) => part === "." || part === "..") ||
+    /^[A-Za-z]:/.test(raw)
+  ) {
+    throw new Error(`Invalid local storage key: ${raw || "<empty>"}`);
+  }
+  return normalized;
+}
+
 /**
  * Local filesystem implementation of `ServiceType.REMOTE_FILES`. Backed by
  * `@brighter/storage-adapter-local`. Method names mirror the surface that
@@ -111,7 +136,7 @@ export class LocalFileStorageService extends Service {
   async uploadFile(filePath: string, subDirectory?: string): Promise<UploadResult> {
     const storage = this.getStorage();
     const baseFileName = `${Date.now()}-${path.basename(filePath)}`;
-    const key = joinKey(subDirectory, baseFileName);
+    const key = normalizeStorageKey(subDirectory, baseFileName);
     const buffer = await fsp.readFile(filePath);
     await storage.write(key, buffer, { encoding: "binary" });
     return { success: true, url: this.fileUrl(key) };
@@ -136,7 +161,7 @@ export class LocalFileStorageService extends Service {
   ): Promise<UploadResult> {
     const storage = this.getStorage();
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-    const key = joinKey(subDirectory, fileName);
+    const key = normalizeStorageKey(subDirectory, fileName);
     await storage.write(key, buffer, { encoding: "binary" });
     void contentType;
     return { success: true, url: this.fileUrl(key) };
@@ -159,7 +184,7 @@ export class LocalFileStorageService extends Service {
     }
     const storage = this.getStorage();
     const actualFileName = fileName ?? `${Date.now()}.json`;
-    const key = joinKey(subDirectory, actualFileName);
+    const key = normalizeStorageKey(subDirectory, actualFileName);
     const body = JSON.stringify(jsonData, null, 2);
     await storage.write(key, body, { encoding: "utf8" });
     return { success: true, key, url: this.fileUrl(key) };
@@ -176,9 +201,10 @@ export class LocalFileStorageService extends Service {
    */
   async downloadBytes(_unusedBucket: string, key: string): Promise<Buffer> {
     const storage = this.getStorage();
-    const result = await storage.read(key, { encoding: "binary" });
+    const safeKey = normalizeStorageKey(key);
+    const result = await storage.read(safeKey, { encoding: "binary" });
     if (result === undefined) {
-      throw new Error(`Object not found: ${key}`);
+      throw new Error(`Object not found: ${safeKey}`);
     }
     if (typeof result === "string") {
       // Defensive: brighter local always returns Buffer when encoding is
@@ -202,7 +228,7 @@ export class LocalFileStorageService extends Service {
    */
   async delete(_unusedBucket: string, key: string): Promise<void> {
     const storage = this.getStorage();
-    await storage.remove(key);
+    await storage.remove(normalizeStorageKey(key));
   }
 
   /**
@@ -210,7 +236,7 @@ export class LocalFileStorageService extends Service {
    */
   async exists(_unusedBucket: string, key: string): Promise<boolean> {
     const storage = this.getStorage();
-    return storage.exists(key);
+    return storage.exists(normalizeStorageKey(key));
   }
 
   /**
@@ -225,7 +251,7 @@ export class LocalFileStorageService extends Service {
    * @param _expiresIn  Reserved for API parity with the previous S3 service.
    */
   async generateSignedUrl(fileName: string, _expiresIn?: number): Promise<string> {
-    return this.fileUrl(fileName);
+    return this.fileUrl(normalizeStorageKey(fileName));
   }
 }
 

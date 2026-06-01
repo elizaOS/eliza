@@ -18,6 +18,18 @@ from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 DATASET_VERSION = "qwenclawbench-v1.1-100-supported-slice-v2"
 DEFAULT_DATASET = "qwenclawbench-v1.1-100"
 SUPPORTED_GRADING_SCOPES = {"automated", "hybrid", "supported"}
+EDGE_VARIANTS: tuple[str, ...] = (
+    "cold-start workspace",
+    "partial previous attempt",
+    "ambiguous artifact naming",
+    "missing optional asset",
+    "large output handling",
+    "retry after command failure",
+    "strict no-network execution",
+    "unicode content or path",
+    "minimal-change requirement",
+    "explicit validation required",
+)
 
 
 def _repo_root() -> Path:
@@ -142,6 +154,44 @@ def available_task_count(
     grading_scope: str = "supported",
 ) -> int:
     return len(load_tasks(dataset=dataset, max_tasks=None, grading_scope=grading_scope))
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def expanded_task_ids(tasks: list[Any], *, expand: bool = False) -> list[dict[str, str]]:
+    base = [
+        {"task_id": str(task.task_id), "source_task_id": str(task.task_id), "edge_condition": ""}
+        for task in tasks
+    ]
+    if not expand:
+        return base
+    expanded = list(base)
+    for task in tasks:
+        source = str(task.task_id)
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            expanded.append(
+                {
+                    "task_id": f"{source}__edge_{index:02d}",
+                    "source_task_id": source,
+                    "edge_condition": edge_condition,
+                }
+            )
+    return expanded
+
+
+def count_tasks(tasks: list[Any], *, expand: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if expand else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_tasks(tasks: list[Any], *, expand: bool = False) -> dict[str, Any]:
+    expanded = expanded_task_ids(tasks, expand=expand)
+    ids = [item["task_id"] for item in expanded]
+    duplicate_count = len(ids) - len(set(ids))
+    return {"valid": duplicate_count == 0, "duplicate_count": duplicate_count, "total": len(ids)}
 
 
 def _copy_workspace_files(task: Any, *, dataset: str, workspace: Path) -> None:
@@ -304,14 +354,17 @@ def _mock_results(
     max_tasks: int | None,
     trajectory_dir: Path | None,
     grading_scope: str,
+    expand: bool = False,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not tasks:
         return rows
-    total = max_tasks if max_tasks is not None else len(tasks)
-    for index in range(total):
-        task = tasks[index % len(tasks)]
-        task_id = task.task_id if index < len(tasks) else f"{task.task_id}__mock_{index + 1}"
+    selected = tasks[:max_tasks] if max_tasks is not None else tasks
+    id_rows = expanded_task_ids(selected, expand=expand)
+    task_by_id = {str(task.task_id): task for task in selected}
+    for item in id_rows:
+        task = task_by_id[item["source_task_id"]]
+        task_id = item["task_id"]
         transcript = [
             {
                 "type": "message",
@@ -337,6 +390,8 @@ def _mock_results(
         rows.append(
             {
                 "task": task_id,
+                "source_task_id": item["source_task_id"],
+                "edge_condition": item["edge_condition"],
                 "status": "completed",
                 "success": True,
                 "score": 1.0,
@@ -382,19 +437,18 @@ def run_qwen_claw_bench_matrix(
     grading_scope: str,
     judge_model: str,
     judge_timeout_seconds: int,
+    expand_scenarios: bool = False,
+    scenario_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(
-        dataset=dataset,
-        max_tasks=None if mock else max_tasks,
-        grading_scope=grading_scope,
-    )
+    tasks = load_tasks(dataset=dataset, max_tasks=max_tasks, grading_scope=grading_scope)
     if mock:
         results = _mock_results(
             tasks,
             max_tasks=max_tasks,
             trajectory_dir=trajectory_dir,
             grading_scope=grading_scope,
+            expand=expand_scenarios,
         )
         return build_result(
             results=results,
@@ -404,7 +458,11 @@ def run_qwen_claw_bench_matrix(
             mode="mock",
             dataset=dataset,
             grading_scope=grading_scope,
+            scenario_counts=scenario_counts,
+            include_edge_scenarios=expand_scenarios,
         )
+    if expand_scenarios:
+        raise ValueError("QwenClawBench expanded scenarios currently require --mock")
     if not command_template:
         raise ValueError("QwenClawBench live mode requires an agent command template")
 
@@ -494,6 +552,8 @@ def run_qwen_claw_bench_matrix(
         mode="live",
         dataset=dataset,
         grading_scope=grading_scope,
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=expand_scenarios,
     )
 
 
@@ -506,6 +566,8 @@ def build_result(
     mode: str,
     dataset: str,
     grading_scope: str,
+    scenario_counts: dict[str, int] | None = None,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(float(item.get("score") or 0.0) for item in results)
@@ -519,6 +581,9 @@ def build_result(
         "dataset_version": DATASET_VERSION,
         "dataset": dataset,
         "grading_scope": grading_scope,
+        "include_edge_scenarios": include_edge_scenarios,
+        "scenario_counts": scenario_counts
+        or {"base": total, "edge": 0, "total": total},
         "available_task_count": available,
         "coverage_note": (
             f"local QwenClawBench {grading_scope} slice exposes {available} tasks"
@@ -550,12 +615,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--judge-timeout-seconds", type=int, default=1800)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true", help="Accepted for matrix CLI parity.")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    expand = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    base_tasks = load_tasks(
+        dataset=args.dataset,
+        max_tasks=args.max_tasks,
+        grading_scope=args.grading_scope,
+    )
+    counts = count_tasks(base_tasks, expand=expand)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "QwenClawBench scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_tasks(base_tasks, expand=expand)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid QwenClawBench scenario expansion: {validation}")
+        print(f"QwenClawBench scenario validation passed: {counts['total']} task(s)")
     template = agent_command_template(
         args.task_agent,
         explicit=args.agent_command_template,
@@ -577,6 +666,8 @@ def main(argv: list[str] | None = None) -> int:
         grading_scope=args.grading_scope,
         judge_model=args.judge_model or args.model,
         judge_timeout_seconds=args.judge_timeout_seconds,
+        expand_scenarios=expand,
+        scenario_counts=counts,
     )
     result_path = Path(args.output) / "qwen-claw-bench-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

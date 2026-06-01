@@ -18,6 +18,16 @@ export function isElizaOS(): boolean {
   return false;
 }
 
+export function useAgentElement<T extends HTMLElement>(): {
+  ref: React.RefObject<T | null>;
+  agentProps: Record<string, never>;
+} {
+  return {
+    ref: React.createRef<T>(),
+    agentProps: {},
+  };
+}
+
 export function registerOverlayApp(): void {}
 
 export function registerAppShellPage(): void {}

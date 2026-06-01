@@ -15,9 +15,11 @@ import time
 
 from elizaos_voice_emotion.runner import (
     BenchOutput,
+    count_fixture_rows,
     run_fidelity,
     run_intrinsic,
     run_text_intrinsic,
+    validate_fixture_rows,
 )
 from elizaos_voice_emotion.roundtrip import run_roundtrip
 
@@ -36,6 +38,9 @@ def _build_parser() -> argparse.ArgumentParser:
     intrinsic.add_argument("--onnx", type=pathlib.Path, required=False)
     intrinsic.add_argument("--corpus-manifest", type=pathlib.Path, required=False)
     intrinsic.add_argument("--out", type=pathlib.Path, default=pathlib.Path("bench-out.json"))
+    intrinsic.add_argument("--expand-scenarios", action="store_true")
+    intrinsic.add_argument("--count-scenarios", action="store_true")
+    intrinsic.add_argument("--validate-scenarios", action="store_true")
 
     fidelity = sub.add_parser("fidelity", help="Closed-loop emotion fidelity.")
     fidelity.add_argument("--duet-host", required=True)
@@ -63,6 +68,9 @@ def _build_parser() -> argparse.ArgumentParser:
     text_intrinsic.add_argument("--corpus-manifest", type=pathlib.Path, required=False)
     text_intrinsic.add_argument("--api-base", default=None)
     text_intrinsic.add_argument("--out", type=pathlib.Path, default=pathlib.Path("bench-text.json"))
+    text_intrinsic.add_argument("--expand-scenarios", action="store_true")
+    text_intrinsic.add_argument("--count-scenarios", action="store_true")
+    text_intrinsic.add_argument("--validate-scenarios", action="store_true")
 
     roundtrip = sub.add_parser(
         "roundtrip",
@@ -110,11 +118,16 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     started = time.time()
     if args.command == "intrinsic":
+        if args.validate_scenarios:
+            validate_fixture_rows(include_edge_scenarios=args.expand_scenarios)
+        if args.count_scenarios:
+            print(json.dumps(count_fixture_rows(args.expand_scenarios)))
         out = run_intrinsic(
             suite=args.suite,
             model=args.model,
             onnx_path=args.onnx,
             corpus_manifest=args.corpus_manifest,
+            include_edge_scenarios=args.expand_scenarios,
         )
     elif args.command == "fidelity":
         emotions = tuple(e.strip() for e in args.emotions.split(",") if e.strip())
@@ -124,11 +137,16 @@ def main(argv: list[str] | None = None) -> int:
             rounds=args.rounds,
         )
     elif args.command == "text-intrinsic":
+        if args.validate_scenarios:
+            validate_fixture_rows(include_edge_scenarios=args.expand_scenarios)
+        if args.count_scenarios:
+            print(json.dumps(count_fixture_rows(args.expand_scenarios)))
         out = run_text_intrinsic(
             suite=args.suite,
             model=args.model,
             corpus_manifest=args.corpus_manifest,
             api_base=args.api_base,
+            include_edge_scenarios=args.expand_scenarios,
         )
     elif args.command == "roundtrip":
         import json as _json

@@ -23,6 +23,7 @@ import textwrap
 import time
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -79,6 +80,18 @@ _CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_AP
 _CODEX_AGENT_KEY_ENVS = ("OPENAI_API_KEY", "CODEX_API_KEY")
 _SUBTASK_PROVIDERS = {"opencode", "codex", "claude-code"}
 _ELIZA_WORKTREE_PROVIDERS = {"elizaos", "eliza"}
+_EDGE_VARIANTS = (
+    "preserve backwards-compatible public APIs while fixing the reported bug",
+    "handle empty inputs and missing optional dependencies gracefully",
+    "avoid broad rewrites unrelated to the failing tests",
+    "maintain compatibility with existing tests outside fail-to-pass",
+    "handle unicode paths, names, or string values when relevant",
+    "keep performance acceptable for large inputs",
+    "avoid network access and nondeterministic behavior in tests",
+    "preserve documented error messages and exception types",
+    "handle nested or composed objects related to the issue",
+    "keep packaging, imports, and module initialization stable",
+)
 
 
 def _parse_required_capabilities(raw: str | None) -> list[str]:
@@ -1541,6 +1554,63 @@ def _mock_instance() -> SWEBenchInstance:
     )
 
 
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _expand_instances(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> list[SWEBenchInstance]:
+    if not expand_scenarios:
+        return list(instances)
+    expanded = list(instances)
+    for instance in instances:
+        for index, edge_condition in enumerate(_EDGE_VARIANTS, start=1):
+            expanded.append(
+                replace(
+                    instance,
+                    problem_statement=(
+                        instance.problem_statement
+                        + "\n\n"
+                        + f"Additional benchmark edge condition {index:02d}: "
+                        + f"{edge_condition}."
+                    ),
+                    hints_text=(
+                        instance.hints_text
+                        + ("\n" if instance.hints_text else "")
+                        + f"Edge condition: {edge_condition}."
+                    ),
+                )
+            )
+    return expanded
+
+
+def _scenario_counts(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> dict[str, int]:
+    base = len(instances)
+    edge = base * len(_EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def _validate_instances(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> dict[str, object]:
+    expanded = _expand_instances(instances, expand_scenarios=expand_scenarios)
+    missing_ids = [instance.instance_id for instance in expanded if not instance.instance_id]
+    return {
+        "valid": not missing_ids,
+        "missing_ids": missing_ids,
+        "total": len(expanded),
+    }
+
+
 class _MockClient:
     def reset(self, *, task_id: str, benchmark: str) -> None:
         return None
@@ -1825,6 +1895,11 @@ def _harness_turn_cost_usd(model: str | None, usage: object) -> float | None:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
     config = SWEBenchConfig(
         variant=SWEBenchVariant(args.variant),
         workspace_dir=args.workspace,
@@ -1846,7 +1921,25 @@ async def _run(args: argparse.Namespace) -> int:
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
     if args.mock:
-        instances = [_mock_instance()]
+        base_instances = [_mock_instance()]
+        counts = _scenario_counts(base_instances, expand_scenarios=expand_scenarios)
+        if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+            print(
+                "SWE-bench scenario counts: "
+                f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+            )
+        if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+            validation = _validate_instances(
+                base_instances,
+                expand_scenarios=expand_scenarios,
+            )
+            if not validation["valid"]:
+                raise ValueError(f"Invalid SWE-bench scenario expansion: {validation}")
+            print(f"SWE-bench scenario validation passed: {counts['total']} instance(s)")
+        instances = _expand_instances(
+            base_instances,
+            expand_scenarios=expand_scenarios,
+        )
         if config.baseline is not None:
             client = _BaselineClient(
                 instances,
@@ -1857,10 +1950,28 @@ async def _run(args: argparse.Namespace) -> int:
             client = _MockClient()
         eliza_server = None
     else:
-        instances = await _load_instances_or_fallback(config)
-        if not instances:
+        base_instances = await _load_instances_or_fallback(config)
+        if not base_instances:
             print("No instances matched filters; aborting.", file=sys.stderr)
             return 2
+        counts = _scenario_counts(base_instances, expand_scenarios=expand_scenarios)
+        if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+            print(
+                "SWE-bench scenario counts: "
+                f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+            )
+        if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+            validation = _validate_instances(
+                base_instances,
+                expand_scenarios=expand_scenarios,
+            )
+            if not validation["valid"]:
+                raise ValueError(f"Invalid SWE-bench scenario expansion: {validation}")
+            print(f"SWE-bench scenario validation passed: {counts['total']} instance(s)")
+        instances = _expand_instances(
+            base_instances,
+            expand_scenarios=expand_scenarios,
+        )
 
         if config.baseline is not None:
             client = _BaselineClient(
@@ -1936,6 +2047,8 @@ async def _run(args: argparse.Namespace) -> int:
                             "strict_capabilities": True,
                             "capabilities": capability_reports,
                         },
+                        "include_edge_scenarios": expand_scenarios,
+                        "scenario_counts": counts,
                         "orchestrated": {},
                         "error": f"Missing required capabilities: {missing}",
                     }
@@ -2007,6 +2120,8 @@ async def _run(args: argparse.Namespace) -> int:
             )
             payload = {
                 "summary": summary_payload["summary"],
+                "include_edge_scenarios": expand_scenarios,
+                "scenario_counts": counts,
                 "metrics": {
                     "overall_score": overall_score,
                     "provider_scores": provider_scores,
@@ -2030,6 +2145,8 @@ async def _run(args: argparse.Namespace) -> int:
             )
             report = _build_report(config, results, instances_by_id)
             payload = _report_to_dict(report)
+            payload["include_edge_scenarios"] = expand_scenarios
+            payload["scenario_counts"] = counts
             if config.baseline is not None:
                 payload["baseline"] = {
                     "name": config.baseline,
@@ -2121,6 +2238,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--trace-dir", default=None)
     p.add_argument("--required-capabilities", default=None)
     p.add_argument("--strict-capabilities", action="store_true")
+    p.add_argument("--expand-scenarios", action="store_true")
+    p.add_argument("--count-scenarios", action="store_true")
+    p.add_argument("--validate-scenarios", action="store_true")
     return p.parse_args(argv)
 
 

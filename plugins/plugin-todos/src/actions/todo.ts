@@ -106,6 +106,10 @@ function readAction(value: unknown): TodoActionName | undefined {
   return undefined;
 }
 
+function isOwnedByScope(todo: Todo, scope: ScopeContext): boolean {
+  return todo.entityId === scope.entityId && todo.agentId === scope.agentId;
+}
+
 interface ParsedListItem {
   id?: string;
   content: string;
@@ -295,7 +299,7 @@ async function actionUpdate({
     return failure("missing_param", "id is required for action=update");
   }
   const existing = await service.get(id);
-  if (!existing || existing.entityId !== scope.entityId) {
+  if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
   const patch: UpdateTodoInput = {};
@@ -342,7 +346,7 @@ async function actionSetStatus(
     return failure("missing_param", `id is required for action=${verb}`);
   }
   const existing = await service.get(id);
-  if (!existing || existing.entityId !== scope.entityId) {
+  if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
   const todo = await service.update(id, { status });
@@ -369,7 +373,7 @@ async function actionDelete({
     return failure("missing_param", "id is required for action=delete");
   }
   const existing = await service.get(id);
-  if (!existing || existing.entityId !== scope.entityId) {
+  if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
   const ok = await service.delete(id);
@@ -581,25 +585,31 @@ export const todoAction: Action = {
     if ("error" in scope) {
       return failure("missing_param", scope.error);
     }
-    const service = getTodosService(runtime);
-    const args: ActionHandlerArgs = { service, scope, params, callback };
-    switch (action) {
-      case "write":
-        return actionWrite(args);
-      case "create":
-        return actionCreate(args);
-      case "update":
-        return actionUpdate(args);
-      case "complete":
-        return actionSetStatus(args, "completed", "complete");
-      case "cancel":
-        return actionSetStatus(args, "cancelled", "cancel");
-      case "delete":
-        return actionDelete(args);
-      case "list":
-        return actionList(args);
-      case "clear":
-        return actionClear(args);
+    try {
+      const service = getTodosService(runtime);
+      const args: ActionHandlerArgs = { service, scope, params, callback };
+      switch (action) {
+        case "write":
+          return await actionWrite(args);
+        case "create":
+          return await actionCreate(args);
+        case "update":
+          return await actionUpdate(args);
+        case "complete":
+          return await actionSetStatus(args, "completed", "complete");
+        case "cancel":
+          return await actionSetStatus(args, "cancelled", "cancel");
+        case "delete":
+          return await actionDelete(args);
+        case "list":
+          return await actionList(args);
+        case "clear":
+          return await actionClear(args);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "todo persistence failed";
+      return failure("persistence_error", message);
     }
   },
   examples: [

@@ -44,6 +44,49 @@ logger = logging.getLogger(__name__)
 BENCH_DIR = Path(__file__).parent
 SKILL_RUNNER_DIR = BENCH_DIR / "skill_runner"
 DEFAULT_CODE_FILE = str(SKILL_RUNNER_DIR / "evm_skill.ts")
+EDGE_VARIANTS = (
+    "general-selector-sweep",
+    "precompile-probing",
+    "erc20-surface",
+    "nft-surface",
+    "erc1155-surface",
+    "weth-surface",
+    "multicall-surface",
+    "proxy-patterns",
+    "create2-patterns",
+    "low-level-calls",
+)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def count_scenarios(include_edge_scenarios: bool = False) -> dict[str, int]:
+    edge = len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": 1,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS) if include_edge_scenarios else 0,
+        "total": 1 + edge,
+    }
+
+
+def validate_scenarios(max_messages: int, include_edge_scenarios: bool = False) -> None:
+    if max_messages <= 0:
+        raise ValueError("MAX_MESSAGES must be positive")
+    if include_edge_scenarios and len(set(EDGE_VARIANTS)) != len(EDGE_VARIANTS):
+        raise ValueError("EVM edge scenario labels must be unique")
+
+
+def _write_enriched_metrics(metrics: dict[str, object]) -> None:
+    run_id = str(metrics.get("run_id") or "")
+    if not run_id:
+        return
+    metrics_dir = Path(os.getenv("METRICS_DIR", str(BENCH_DIR / "metrics")))
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    with open(metrics_dir / f"{run_id}_metrics.json", "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2, default=str)
 
 
 def _last_json_object(output: str) -> dict[str, object] | None:
@@ -524,6 +567,12 @@ async def main() -> None:
     chain_id = int(os.getenv("CHAIN_ID", "31337"))
     fork_url = os.getenv("FORK_URL", "")
     private_key = os.getenv("AGENT_PRIVATE_KEY", "")
+    expand_scenarios = _truthy_env("EXPAND_SCENARIOS") or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    scenario_counts = count_scenarios(expand_scenarios)
+    if _truthy_env("VALIDATE_SCENARIOS"):
+        validate_scenarios(max_messages, expand_scenarios)
+    if _truthy_env("COUNT_SCENARIOS"):
+        print(json.dumps(scenario_counts, sort_keys=True))
 
     logger.info(
         "Model: %s  Messages: %d  Chain: %s  External: %s",
@@ -549,19 +598,27 @@ async def main() -> None:
         os.environ["ELIZA_BENCH_TOKEN"] = bench_server.token
         os.environ.setdefault("ELIZA_BENCH_URL", f"http://localhost:{bench_server.port}")
 
-    explorer = ElizaBridgeEVMExplorer(
-        model_name=model_name,
-        max_messages=max_messages,
-        run_index=run_index,
-        chain=chain,
-        environment_config=environment_config,
-        code_file=os.getenv("CODE_FILE"),
-    )
+    scenario_labels = ["base"]
+    if expand_scenarios:
+        scenario_labels.extend(f"edge_{index + 1:02d}_{label}" for index, label in enumerate(EDGE_VARIANTS))
 
-    async def go(env: AnvilEnv) -> None:
+    async def go(env: AnvilEnv, scenario_index: int, scenario_label: str) -> None:
+        explorer = ElizaBridgeEVMExplorer(
+            model_name=model_name,
+            max_messages=max_messages,
+            run_index=run_index + scenario_index,
+            chain=chain,
+            environment_config=environment_config,
+            code_file=os.getenv("CODE_FILE"),
+        )
         await env.reset()
         logger.info("Agent: %s", env.agent_address)
         m = await explorer.run(env)
+        m["include_edge_scenarios"] = expand_scenarios
+        m["scenario_counts"] = scenario_counts
+        m["scenario_label"] = scenario_label
+        m["scenario_index"] = scenario_index
+        _write_enriched_metrics(m)
         logger.info("=== FINAL ===  reward=%d  contracts=%d", m.get("final_reward", 0), m.get("final_contracts", 0))
         await env.close()
 
@@ -574,24 +631,26 @@ async def main() -> None:
                 actual_address = Account.from_key(actual_key).address
             else:
                 actual_address = ANVIL_DEFAULT_ADDRESS
-            env = AnvilEnv(
-                rpc_url=rpc_url,
-                chain_id=chain_id,
-                chain=chain,
-                use_external_node=True,
-                agent_private_key=actual_key,
-                agent_address=actual_address,
-            )
-            await go(env)
-        else:
-            async with anvil_node(fork_url=fork_url, chain_id=chain_id):
+            for scenario_index, scenario_label in enumerate(scenario_labels):
                 env = AnvilEnv(
                     rpc_url=rpc_url,
                     chain_id=chain_id,
                     chain=chain,
-                    use_external_node=False,
+                    use_external_node=True,
+                    agent_private_key=actual_key,
+                    agent_address=actual_address,
                 )
-                await go(env)
+                await go(env, scenario_index, scenario_label)
+        else:
+            async with anvil_node(fork_url=fork_url, chain_id=chain_id):
+                for scenario_index, scenario_label in enumerate(scenario_labels):
+                    env = AnvilEnv(
+                        rpc_url=rpc_url,
+                        chain_id=chain_id,
+                        chain=chain,
+                        use_external_node=False,
+                    )
+                    await go(env, scenario_index, scenario_label)
     finally:
         if bench_server is not None:
             try:

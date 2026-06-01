@@ -391,6 +391,7 @@ class AgentBenchConfig:
     # explicit escape hatches for discovery or adapter dry-runs.
     allow_empty_tasks: bool = False
     dry_run: bool = False
+    include_edge_scenarios: bool = False
 
     # Dataset paths (legacy field, no longer used for task loading;
     # kept for back-compat with config files in the wild).

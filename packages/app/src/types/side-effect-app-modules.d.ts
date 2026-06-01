@@ -13,5 +13,6 @@ declare module "@elizaos/plugin-contacts/register";
 declare module "@elizaos/plugin-device-settings/register";
 declare module "@elizaos/plugin-messages/register";
 declare module "@elizaos/plugin-phone/register";
+declare module "@elizaos/plugin-task-coordinator/register";
 declare module "@elizaos/plugin-wifi/register";
 declare module "@elizaos/plugin-facewear/register";

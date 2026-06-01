@@ -50,6 +50,46 @@ HARNESS_PATHS: dict[str, HarnessPath] = {
 }
 
 
+EDGE_VARIANTS: tuple[str, ...] = (
+    "system-transfer-and-create-account",
+    "memo-unicode-and-large-payloads",
+    "compute-budget-priority-fees",
+    "token-account-initialization",
+    "associated-token-account-discovery",
+    "address-lookup-table-coverage",
+    "program-derived-address-seeds",
+    "versioned-transaction-routing",
+    "multi-instruction-batching",
+    "error-recovery-and-retry-paths",
+)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def scenario_labels(expand_scenarios: bool = False) -> list[str]:
+    labels = ["base"]
+    if expand_scenarios:
+        labels.extend(f"edge_{index:02d}_{label}" for index, label in enumerate(EDGE_VARIANTS, start=1))
+    return labels
+
+
+def count_scenarios(expand_scenarios: bool = False) -> dict[str, int]:
+    edge = len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": 1, "edge": edge, "total": 1 + edge}
+
+
+def validate_scenarios(expand_scenarios: bool = False) -> dict[str, Any]:
+    labels = scenario_labels(expand_scenarios)
+    duplicate_count = len(labels) - len(set(labels))
+    return {
+        "valid": duplicate_count == 0 and labels[0] == "base",
+        "duplicate_count": duplicate_count,
+        "labels": labels,
+    }
+
+
 def normalize_harness(value: str | None = None) -> str:
     raw = (
         value
@@ -407,6 +447,21 @@ class ElizaExplorer:
             os.chdir(old_cwd)
 
 
+def _annotate_metrics(
+    metrics_path: Path,
+    *,
+    scenario_label: str,
+    scenario_index: int,
+    expand_scenarios: bool,
+) -> None:
+    data = json.loads(metrics_path.read_text(encoding="utf-8"))
+    data["scenario_label"] = scenario_label
+    data["scenario_index"] = scenario_index
+    data["include_edge_scenarios"] = expand_scenarios
+    data["scenario_counts"] = count_scenarios(expand_scenarios)
+    metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
 async def async_main() -> None:
     parser = argparse.ArgumentParser(description="Run the Solana instruction discovery benchmark")
     parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR"), help="Directory for metrics JSON")
@@ -416,7 +471,42 @@ async def async_main() -> None:
         choices=sorted(HARNESS_PATHS),
         help="Agent harness path: eliza, hermes, or openclaw",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run the base Solana scenario plus ten deterministic edge variants.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print the selected Solana scenario counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate generated Solana scenario labels before running.",
+    )
     args = parser.parse_args()
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    counts = count_scenarios(expand_scenarios)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "Solana scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_scenarios(expand_scenarios)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid Solana scenario expansion: {validation}")
+        print(
+            "Solana scenario validation passed: "
+            f"{counts['total']} scenario(s)"
+        )
+
     max_messages = int(os.getenv("MAX_MESSAGES", "50"))
     if max_messages <= 0:
         raise ValueError(
@@ -424,16 +514,24 @@ async def async_main() -> None:
             "zero-message Solana runs produce a vacuous 0.0 score."
         )
 
-    explorer = ElizaExplorer(
-        model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
-        max_messages=max_messages,
-        run_index=int(os.getenv("RUN_INDEX", "0")),
-        code_file=os.getenv("CODE_FILE"),
-        environment_config=os.getenv("ENVIRONMENT_CONFIG"),
-        output_dir=args.output_dir,
-        harness=args.harness,
-    )
-    await explorer.run()
+    base_run_index = int(os.getenv("RUN_INDEX", "0"))
+    for scenario_index, scenario_label in enumerate(scenario_labels(expand_scenarios)):
+        explorer = ElizaExplorer(
+            model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
+            max_messages=max_messages,
+            run_index=base_run_index + scenario_index,
+            code_file=os.getenv("CODE_FILE"),
+            environment_config=os.getenv("ENVIRONMENT_CONFIG"),
+            output_dir=args.output_dir,
+            harness=args.harness,
+        )
+        metrics_path = await explorer.run()
+        _annotate_metrics(
+            metrics_path,
+            scenario_label=scenario_label,
+            scenario_index=scenario_index,
+            expand_scenarios=expand_scenarios,
+        )
 
 
 def main() -> None:

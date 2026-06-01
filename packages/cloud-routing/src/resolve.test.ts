@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FEATURE_POLICY,
@@ -36,6 +37,11 @@ const spec: RouteSpec = {
   localKeyAuth: { kind: "header", headerName: "x-api-key" },
 };
 
+const bearerSpec: RouteSpec = {
+  ...spec,
+  localKeyAuth: { kind: "bearer" },
+};
+
 describe("resolveCloudRoute", () => {
   it("prefers local keys over cloud routing", () => {
     expect(
@@ -71,9 +77,25 @@ describe("resolveCloudRoute", () => {
     });
   });
 
+  it("uses Authorization bearer headers for local-key bearer auth routes", () => {
+    expect(
+      resolveCloudRoute(
+        runtime({
+          QUOTES_API_KEY: "local-secret",
+        }),
+        bearerSpec,
+      ),
+    ).toMatchObject({
+      source: "local-key",
+      baseUrl: "https://quotes.example.com",
+      headers: { Authorization: "Bearer local-secret" },
+    });
+  });
+
   it("reports disabled when neither route is available", () => {
-    expect(resolveCloudRoute(runtime({}), spec)).toMatchObject({
+    expect(resolveCloudRoute(runtime({}), spec)).toEqual({
       source: "disabled",
+      reason: "no local QUOTES_API_KEY and cloud not connected",
     });
   });
 });
@@ -93,6 +115,98 @@ describe("cloud routing helpers", () => {
     });
   });
 
+  it.each([
+    "../admin",
+    "media/../../billing",
+    "https://evil.test/x",
+    "?redirect=https://evil.test",
+    "#fragment",
+    "%2e%2e",
+    "",
+    "   ",
+  ])("rejects unsafe cloud service names: %s", (service) => {
+    const settings = runtime({
+      ELIZAOS_CLOUD_API_KEY: "cloud-secret",
+      ELIZAOS_CLOUD_ENABLED: true,
+      ELIZAOS_CLOUD_BASE_URL: "https://cloud.example.com/api/v1/",
+    });
+
+    expect(cloudServiceApisBaseUrl(settings, service)).toBeNull();
+    expect(
+      resolveFeatureCloudRoute(settings, "llm", { ...spec, service }, "cloud"),
+    ).toEqual({
+      source: "disabled",
+      reason: 'feature "llm" pinned to cloud but cloud is not connected',
+      feature: "llm",
+      policy: "cloud",
+    });
+  });
+
+  it("fuzzes cloud service names without escaping the cloud APIs prefix", () => {
+    const settings = runtime({
+      ELIZAOS_CLOUD_API_KEY: "cloud-secret",
+      ELIZAOS_CLOUD_ENABLED: true,
+      ELIZAOS_CLOUD_BASE_URL: "https://cloud.example.com/api/v1/",
+    });
+
+    fc.assert(
+      fc.property(fc.string({ maxLength: 128 }), (service) => {
+        const route = cloudServiceApisBaseUrl(settings, service);
+        const trimmed = service.trim().replace(/^\/+|\/+$/g, "");
+        const isSafeService = /^[a-zA-Z0-9_-]+$/.test(trimmed);
+
+        if (!isSafeService) {
+          expect(route).toBeNull();
+          return;
+        }
+
+        expect(route).not.toBeNull();
+        expect(route?.baseUrl).toBe(
+          `https://cloud.example.com/api/v1/apis/${trimmed}`,
+        );
+        expect(new URL(route?.baseUrl ?? "").origin).toBe(
+          "https://cloud.example.com",
+        );
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "file:///tmp/x",
+    "https://user:pass@cloud.example.com/api/v1",
+    "//evil.test/api/v1",
+    "https://cloud.example.com/api/v1?x=1",
+    "https://cloud.example.com/api/v1#frag",
+  ])("rejects unsafe cloud base URLs: %s", (baseUrl) => {
+    expect(
+      cloudServiceApisBaseUrl(
+        runtime({
+          ELIZAOS_CLOUD_API_KEY: "cloud-secret",
+          ELIZAOS_CLOUD_ENABLED: true,
+          ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        }),
+        "media",
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    [{ ELIZAOS_CLOUD_API_KEY: "cloud-secret", ELIZAOS_CLOUD_ENABLED: "false" }],
+    [{ ELIZAOS_CLOUD_API_KEY: "cloud-secret", ELIZAOS_CLOUD_ENABLED: "0" }],
+    [{ ELIZAOS_CLOUD_API_KEY: "cloud-secret", ELIZAOS_CLOUD_ENABLED: false }],
+    [{ ELIZAOS_CLOUD_API_KEY: "cloud-secret", ELIZAOS_CLOUD_ENABLED: 1 }],
+    [{ ELIZAOS_CLOUD_API_KEY: "  ", ELIZAOS_CLOUD_ENABLED: true }],
+    [{ ELIZAOS_CLOUD_API_KEY: "cloud-secret", ELIZAOS_CLOUD_ENABLED: "  " }],
+  ])("does not treat malformed cloud settings as connected", (settings) => {
+    expect(isCloudConnected(runtime(settings))).toBe(false);
+    expect(resolveCloudRoute(runtime(settings), spec)).toEqual({
+      source: "disabled",
+      reason: "no local QUOTES_API_KEY and cloud not connected",
+    });
+  });
+
   it("narrows bigint runtime settings without depending on core types", () => {
     const settings = toRuntimeSettings({
       getSetting(key) {
@@ -101,6 +215,21 @@ describe("cloud routing helpers", () => {
     });
 
     expect(settings.getSetting("COUNT")).toBe("10");
+  });
+
+  it("ignores non-scalar runtime settings instead of stringifying them into secrets", () => {
+    const settings = toRuntimeSettings({
+      getSetting(key) {
+        if (key === "OBJECT") return { secret: "value" };
+        if (key === "SYMBOL") return Symbol("secret");
+        if (key === "FUNCTION") return () => "secret";
+        return undefined;
+      },
+    });
+
+    expect(settings.getSetting("OBJECT")).toBeUndefined();
+    expect(settings.getSetting("SYMBOL")).toBeUndefined();
+    expect(settings.getSetting("FUNCTION")).toBeUndefined();
   });
 });
 
@@ -387,6 +516,25 @@ describe("resolveFeatureCloudRoute", () => {
     const route = resolveFeatureCloudRoute(settings, "llm", spec, "local");
     expect(route.source).toBe("local-key");
     expect(route.policy).toBe("local");
+  });
+
+  it("uses Authorization bearer headers for feature-routed local keys", () => {
+    const route = resolveFeatureCloudRoute(
+      runtime({
+        [bearerSpec.localKeySetting]: "local-secret",
+        ELIZAOS_CLOUD_ROUTING_LLM: "local",
+      }),
+      "llm",
+      bearerSpec,
+    );
+
+    expect(route).toMatchObject({
+      source: "local-key",
+      feature: "llm",
+      policy: "local",
+      baseUrl: "https://quotes.example.com",
+      headers: { Authorization: "Bearer local-secret" },
+    });
   });
 
   it("unknown feature ids fall back to auto without throwing", () => {

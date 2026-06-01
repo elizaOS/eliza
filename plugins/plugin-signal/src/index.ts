@@ -209,3 +209,8 @@ export {
   SignalPluginError,
   SignalServiceNotInitializedError,
 } from "./types";
+export {
+  readSignalInboundMessages,
+  readSignalLocalClientConfigFromEnv,
+  type SignalLocalClientConfig,
+} from "./local-client";

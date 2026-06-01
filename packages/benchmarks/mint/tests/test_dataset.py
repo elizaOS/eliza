@@ -5,7 +5,7 @@ Tests for MINT dataset loader.
 import pytest
 
 from benchmarks.mint.types import MINTSubtask
-from benchmarks.mint.dataset import MINTDataset
+from benchmarks.mint.dataset import MINTDataset, count_tasks, expand_tasks, validate_tasks
 
 
 class TestUpstreamMINTDataset:
@@ -139,3 +139,16 @@ class TestSampleSmokeTasks:
         task = dataset.get_task_by_id("gsm8k-smoke-0")
         assert task is not None
         assert task.subtask is MINTSubtask.GSM8K
+
+    @pytest.mark.asyncio
+    async def test_expand_tasks_adds_ten_edge_variants_per_task(self, dataset: MINTDataset) -> None:
+        await dataset.load()
+        base_tasks = dataset.get_tasks()
+        expanded = expand_tasks(base_tasks)
+
+        validate_tasks(expanded)
+        counts = count_tasks(base_tasks, expanded)
+        assert counts == {"base": 3, "edge": 30, "total": 33}
+        assert expanded[3].id == f"{base_tasks[0].id}--edge-01"
+        assert expanded[3].metadata["base_task_id"] == base_tasks[0].id
+        assert expanded[3].ground_truth == base_tasks[0].ground_truth

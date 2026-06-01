@@ -24,6 +24,7 @@ export {
   BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
 } from "./components/BrowserBridgeSetupPanel.js";
 export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.js";
+export * from "./components/LifeOpsAssistantSection.js";
 export * from "./components/LifeOpsPageSections.js";
 export * from "./components/LifeOpsPageView.js";
 export * from "./components/LifeOpsSettingsSection.js";

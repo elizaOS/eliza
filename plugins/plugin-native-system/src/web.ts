@@ -10,6 +10,41 @@ import type {
   SystemVolumeStream,
 } from "./definitions";
 
+const ANDROID_ROLES = new Set<AndroidRoleName>([
+  "home",
+  "dialer",
+  "sms",
+  "assistant",
+]);
+
+const VOLUME_STREAMS = new Set<SystemVolumeStream>([
+  "music",
+  "ring",
+  "alarm",
+  "notification",
+  "system",
+  "voiceCall",
+]);
+
+function validateRole(role: unknown): AndroidRoleName {
+  if (typeof role !== "string" || !ANDROID_ROLES.has(role as AndroidRoleName)) {
+    throw new Error("role must be one of home, dialer, sms, assistant");
+  }
+  return role as AndroidRoleName;
+}
+
+function validateVolumeStream(stream: unknown): SystemVolumeStream {
+  if (
+    typeof stream !== "string" ||
+    !VOLUME_STREAMS.has(stream as SystemVolumeStream)
+  ) {
+    throw new Error(
+      "stream must be one of music, ring, alarm, notification, system, voiceCall",
+    );
+  }
+  return stream as SystemVolumeStream;
+}
+
 export class SystemWeb extends WebPlugin implements SystemPlugin {
   async getStatus(): Promise<SystemStatus> {
     return {
@@ -41,9 +76,8 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   async requestRole(options: {
     role: AndroidRoleName;
   }): Promise<AndroidRoleRequestResult> {
-    throw new Error(
-      `Android role ${options.role} is only available on Android.`,
-    );
+    const role = validateRole(options?.role);
+    throw new Error(`Android role ${role} is only available on Android.`);
   }
 
   async getDeviceSettings(): Promise<DeviceSettingsStatus> {
@@ -63,6 +97,12 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   async setScreenBrightness(_options: {
     brightness: number;
   }): Promise<DeviceSettingsStatus> {
+    if (
+      typeof _options?.brightness !== "number" ||
+      !Number.isFinite(_options.brightness)
+    ) {
+      throw new Error("brightness must be a number between 0 and 1");
+    }
     throw new Error("Brightness control is only available on Android.");
   }
 
@@ -71,8 +111,13 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
     volume: number;
     showUi?: boolean;
   }): Promise<SystemVolumeStatus> {
-    throw new Error(
-      `${options.stream} volume control is only available on Android.`,
-    );
+    const stream = validateVolumeStream(options?.stream);
+    if (
+      typeof options?.volume !== "number" ||
+      !Number.isFinite(options.volume)
+    ) {
+      throw new Error("volume is required");
+    }
+    throw new Error(`${stream} volume control is only available on Android.`);
   }
 }

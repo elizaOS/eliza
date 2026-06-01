@@ -27,7 +27,7 @@ from .adapters import (
     build_hermes_agent,
     build_openclaw_agent,
 )
-from .dataset import filter_suites, load_tasks
+from .dataset import count_tasks, filter_suites, load_tasks, validate_tasks
 from .evaluator import CoherenceJudge
 from .runner import run_tasks
 from .scorer import compile_report
@@ -160,6 +160,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verbose", "-v", action="count", default=0
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected task plus ten realistic voice edge variants.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate task ids and expanded edge scenario metadata before running.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -177,9 +192,24 @@ def main(argv: list[str] | None = None) -> int:
         data_path=data_path,
         suite_filter=suite_filter,
         limit=args.limit if args.limit > 0 else None,
+        include_edge_scenarios=False,
     )
     if suites is not None:
         tasks = filter_suites(tasks, suites)
+
+    if args.validate_scenarios:
+        validate_tasks(tasks, include_edge_scenarios=args.expand_scenarios)
+    if args.count_scenarios:
+        print(json.dumps(count_tasks(tasks, args.expand_scenarios)))
+    if args.expand_scenarios:
+        tasks = load_tasks(
+            data_path=data_path,
+            suite_filter=suite_filter,
+            limit=args.limit if args.limit > 0 else None,
+            include_edge_scenarios=True,
+        )
+        if suites is not None:
+            tasks = filter_suites(tasks, suites)
 
     if not tasks:
         logger.error("no tasks matched the requested filter")

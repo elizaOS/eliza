@@ -286,17 +286,21 @@ export function decodePairingPayload(raw: string): PairingPayload {
     throw new Error("PairingPayload decode: not an object");
   }
   const { agentId, pairingCode, ingressUrl, sessionToken } = parsed;
-  if (
-    typeof agentId !== "string" ||
-    typeof pairingCode !== "string" ||
-    typeof ingressUrl !== "string" ||
-    typeof sessionToken !== "string"
-  ) {
+  return {
+    agentId: requireNonEmptyPairingString(agentId, "agentId"),
+    pairingCode: requireNonEmptyPairingString(pairingCode, "pairingCode"),
+    ingressUrl: requireNonEmptyPairingString(ingressUrl, "ingressUrl"),
+    sessionToken: requireNonEmptyPairingString(sessionToken, "sessionToken"),
+  };
+}
+
+function requireNonEmptyPairingString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(
-      "PairingPayload decode: missing or non-string required field",
+      `PairingPayload decode: ${field} must be a non-empty string`,
     );
   }
-  return { agentId, pairingCode, ingressUrl, sessionToken };
+  return value.trim();
 }
 
 function decodeBase64(input: string): string {

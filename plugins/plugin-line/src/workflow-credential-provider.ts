@@ -23,7 +23,12 @@ export class LineWorkflowCredentialProvider extends Service {
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== "httpHeaderAuth") return null;
-    const accessToken = this.runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN") as string | undefined;
+    let accessToken: string | undefined;
+    try {
+      accessToken = this.runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN") as string | undefined;
+    } catch {
+      return null;
+    }
     if (!accessToken?.trim()) return null;
     return {
       status: "credential_data",

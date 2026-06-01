@@ -38,7 +38,14 @@ declare global {
   }
 }
 
-export function installIosShim(): PluginHostShim {
+export function installIosShim(
+  options: {
+    /** Milliseconds before a bridge request is rejected. Default 30s. */
+    requestTimeoutMs?: number;
+  } = {},
+): PluginHostShim {
+  if (installedIosShim) return installedIosShim;
+
   const handler = window.webkit?.messageHandlers?.elizaosBridge;
   if (!handler) {
     throw new Error(
@@ -48,9 +55,14 @@ export function installIosShim(): PluginHostShim {
   }
 
   const subscribers = new Map<string, Set<(data: JsonValue) => void>>();
+  const requestTimeoutMs = Math.max(0, options.requestTimeoutMs ?? 30_000);
   const pending = new Map<
     number,
-    { resolve: (v: JsonValue) => void; reject: (e: Error) => void }
+    {
+      reject: (e: Error) => void;
+      resolve: (v: JsonValue) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
   >();
   let nextId = 0;
 
@@ -61,6 +73,7 @@ export function installIosShim(): PluginHostShim {
       const slot = pending.get(data.id);
       if (!slot) return;
       pending.delete(data.id);
+      clearTimeout(slot.timeout);
       if (data.ok) {
         slot.resolve((data.payload ?? null) as JsonValue);
       } else {
@@ -79,18 +92,30 @@ export function installIosShim(): PluginHostShim {
     resolveViewUrl(pluginName, relativePath) {
       // iOS host serves plugin assets via a custom URL scheme rooted
       // at the app sandbox: app-resource://plugin/<name>/<path>.
+      const safeRelativePath = normalizeRelativePath(relativePath);
       return new URL(
-        `app-resource://plugin/${encodeURIComponent(pluginName)}/${relativePath}`,
+        `app-resource://plugin/${encodeURIComponent(pluginName)}/${safeRelativePath}`,
       );
     },
     request(method, params) {
       const id = ++nextId;
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`iOS bridge request timed out: ${method}`));
+        }, requestTimeoutMs);
         pending.set(id, {
-          resolve: (v) => resolve(v as never),
           reject,
+          resolve: (v) => resolve(v as never),
+          timeout,
         });
-        handler.postMessage({ kind: "request", id, method, params });
+        try {
+          handler.postMessage({ kind: "request", id, method, params });
+        } catch (cause) {
+          pending.delete(id);
+          clearTimeout(timeout);
+          reject(cause instanceof Error ? cause : new Error(String(cause)));
+        }
       });
     },
     on(event, handler) {
@@ -105,7 +130,47 @@ export function installIosShim(): PluginHostShim {
   };
 
   installHostShim(shim);
+  installedIosShim = shim;
+  installedIosShimCleanup = () => {
+    for (const slot of pending.values()) {
+      clearTimeout(slot.timeout);
+    }
+    pending.clear();
+  };
   return shim;
+}
+
+let installedIosShim: PluginHostShim | null = null;
+let installedIosShimCleanup: (() => void) | null = null;
+
+export function resetIosShimForTests(): void {
+  installedIosShimCleanup?.();
+  installedIosShimCleanup = null;
+  installedIosShim = null;
+  if (typeof window !== "undefined") {
+    delete window.__elizaosIosDeliver;
+  }
+}
+
+function normalizeRelativePath(relativePath: string): string {
+  const raw = relativePath.replace(/\\/g, "/");
+  if (!raw || raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) {
+    throw new Error(`Invalid view asset path: ${relativePath || "<empty>"}`);
+  }
+  const normalized = raw
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => {
+      if (segment === "." || segment === "..") {
+        throw new Error(`Invalid view asset path: ${relativePath}`);
+      }
+      return encodeURIComponent(segment);
+    })
+    .join("/");
+  if (!normalized) {
+    throw new Error(`Invalid view asset path: ${relativePath || "<empty>"}`);
+  }
+  return normalized;
 }
 
 function isResponse(
@@ -115,14 +180,20 @@ function isResponse(
     typeof data === "object" &&
     data !== null &&
     (data as { kind?: unknown }).kind === "response" &&
-    typeof (data as { id?: unknown }).id === "number"
+    typeof (data as { id?: unknown }).id === "number" &&
+    Number.isFinite((data as { id?: unknown }).id) &&
+    typeof (data as { ok?: unknown }).ok === "boolean" &&
+    ((data as { error?: unknown }).error === undefined ||
+      typeof (data as { error?: unknown }).error === "string")
   );
 }
+
 function isEvent(data: unknown): data is { event: string; data: JsonValue } {
   return (
     typeof data === "object" &&
     data !== null &&
     (data as { kind?: unknown }).kind === "event" &&
-    typeof (data as { event?: unknown }).event === "string"
+    typeof (data as { event?: unknown }).event === "string" &&
+    Object.hasOwn(data, "data")
   );
 }

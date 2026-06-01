@@ -7,6 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "test": "vitest run src",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "biome check src"
   },
@@ -14,6 +15,8 @@
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.0",
     "bun-types": "^1.3.12",
+    "fast-check": "^3.23.2",
+    "vitest": "^4.1.7",
     "typescript": "^6.0.3"
   },
   "exports": {

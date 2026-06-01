@@ -7,10 +7,10 @@ import type {
 } from "@elizaos/core";
 import { BaseMessageAdapter } from "@elizaos/core";
 import {
-  type CalendlyScheduledEvent,
+  type CalendlyScheduledEventNormalized as CalendlyScheduledEvent,
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
-} from "../../calendly-client.js";
+} from "@elizaos/plugin-calendly";
 import { listCalendlyScheduledEventsWithRuntimeService } from "../../runtime-service-delegates.js";
 
 function eventToMessageRef(event: CalendlyScheduledEvent): MessageRef {

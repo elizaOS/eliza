@@ -21,6 +21,7 @@ import {
   RemotePluginStoreError,
   readRemotePluginRegistry,
   resolveRemotePluginPathInside,
+  toRemotePluginViewUrl,
   uninstallInstalledRemotePlugin,
 } from "./store.js";
 import type { RemotePluginManifest } from "./types.js";
@@ -81,6 +82,12 @@ function writePayload(
   writeFileSync(
     join(payloadDir, "views", "index.html"),
     "<main>Search</main>\n",
+    "utf8",
+  );
+  mkdirSync(join(payloadDir, "remote-ui", "dash"), { recursive: true });
+  writeFileSync(
+    join(payloadDir, "remote-ui", "dash", "index.html"),
+    "<main>Dashboard</main>\n",
     "utf8",
   );
   return payloadDir;
@@ -264,6 +271,72 @@ describe("remote plugin store", () => {
       expect(() =>
         resolveRemotePluginPathInside(payloadDir, "../worker.js"),
       ).toThrow(RemotePluginStoreError);
+      expect(() =>
+        resolveRemotePluginPathInside(payloadDir, "/worker.js"),
+      ).toThrow(RemotePluginStoreError);
+      expect(() =>
+        resolveRemotePluginPathInside(payloadDir, "views//index.html"),
+      ).toThrow(RemotePluginStoreError);
+    }));
+
+  it("builds view URLs only from safe relative paths", () => {
+    expect(toRemotePluginViewUrl("views/index.html")).toBe(
+      "views://views/index.html",
+    );
+
+    for (const unsafePath of [
+      "",
+      ".",
+      "..",
+      "../view.html",
+      "/view.html",
+      "views//index.html",
+      "C:\\view.html",
+    ]) {
+      expect(() => toRemotePluginViewUrl(unsafePath)).toThrow(
+        RemotePluginStoreError,
+      );
+    }
+  });
+
+  it("rejects payloads with missing worker or view files", () =>
+    withTempDir((dir) => {
+      const missingWorkerPayload = writePayload(dir);
+      rmSync(join(missingWorkerPayload, "worker.js"));
+      expect(() => assertRemotePluginPayload(missingWorkerPayload)).toThrow(
+        /Missing worker for bunny\.search/,
+      );
+
+      const missingViewPayload = writePayload(join(dir, "second"));
+      rmSync(join(missingViewPayload, "views", "index.html"));
+      expect(() => assertRemotePluginPayload(missingViewPayload)).toThrow(
+        /Missing view entry for bunny\.search/,
+      );
+    }));
+
+  it("rejects remote UI paths that escape or point at missing files", () =>
+    withTempDir((dir) => {
+      const escapedManifest: RemotePluginManifest = {
+        ...manifest,
+        remoteUIs: {
+          dash: { name: "Dashboard", path: "../dash.html" },
+        },
+      };
+      const escapedPayload = writePayload(dir, escapedManifest);
+      expect(() => assertRemotePluginPayload(escapedPayload)).toThrow(
+        RemotePluginStoreError,
+      );
+
+      const missingManifest: RemotePluginManifest = {
+        ...manifest,
+        remoteUIs: {
+          missing: { name: "Missing", path: "remote-ui/missing/index.html" },
+        },
+      };
+      const missingPayload = writePayload(join(dir, "second"), missingManifest);
+      expect(() => assertRemotePluginPayload(missingPayload)).toThrow(
+        /Missing remote UI missing for bunny\.search/,
+      );
     }));
 
   it("rejects remote plugin ids before deriving store paths", () =>

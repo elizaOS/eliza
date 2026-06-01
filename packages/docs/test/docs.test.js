@@ -12,6 +12,27 @@ function readDocsConfig() {
   return JSON.parse(readFileSync(DOCS_JSON_PATH, "utf-8"));
 }
 
+function normalizeRoute(route) {
+  const cleanRoute = route
+    .split("#")[0]
+    .split("?")[0]
+    .replace(/^\/+/, "")
+    .replace(/\/$/, "")
+    .replace(/\.mdx?$/, "");
+
+  return cleanRoute;
+}
+
+function collectRedirects(config = readDocsConfig()) {
+  const redirects = new Map();
+
+  for (const redirect of config.redirects ?? []) {
+    redirects.set(normalizeRoute(redirect.source), redirect.destination);
+  }
+
+  return redirects;
+}
+
 function collectPages(obj) {
   if (Array.isArray(obj)) {
     return obj.flatMap((item) =>
@@ -66,11 +87,7 @@ function collectMarkdownFiles(dir = DOCS_DIR) {
 }
 
 function internalTargetExists(target) {
-  const cleanTarget = target
-    .split("#")[0]
-    .split("?")[0]
-    .replace(/^\/+/, "")
-    .replace(/\/$/, "");
+  const cleanTarget = normalizeRoute(target);
 
   if (!cleanTarget) return true;
 
@@ -83,6 +100,29 @@ function internalTargetExists(target) {
   ];
 
   return candidates.some(existsSync);
+}
+
+function localAssetExists(target) {
+  const cleanTarget = normalizeRoute(target);
+
+  if (!cleanTarget) return true;
+
+  return [
+    join(DOCS_DIR, cleanTarget),
+    join(DOCS_DIR, "public", cleanTarget),
+  ].some(existsSync);
+}
+
+function internalTargetOrRedirectExists(
+  target,
+  redirects = collectRedirects(),
+) {
+  if (internalTargetExists(target)) {
+    return true;
+  }
+
+  const destination = redirects.get(normalizeRoute(target));
+  return destination ? internalTargetExists(destination) : false;
 }
 
 function resolveInternalTarget(sourceFile, href) {
@@ -101,6 +141,19 @@ function resolveInternalTarget(sourceFile, href) {
 
   const target = relative(DOCS_DIR, resolve(dirname(sourceFile), href));
   return target.startsWith("..") ? null : target;
+}
+
+function extractMarkdownFrontmatter(content) {
+  if (!content.startsWith("---\n")) {
+    return null;
+  }
+
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) {
+    return { closed: false, body: content.slice(4) };
+  }
+
+  return { closed: true, body: content.slice(4, end) };
 }
 
 describe("docs.json configuration", () => {
@@ -186,23 +239,54 @@ describe("docs.json configuration", () => {
       }
     }
   });
+
+  it("redirects resolve to real pages without loops or fragments", () => {
+    const config = readDocsConfig();
+    const redirects = config.redirects ?? [];
+
+    for (const redirect of redirects) {
+      assert.ok(redirect.source, "redirect should include a source");
+      assert.ok(redirect.destination, "redirect should include a destination");
+      assert.ok(
+        !/[?#]/.test(redirect.source),
+        `redirect source cannot include query or hash: ${redirect.source}`,
+      );
+      assert.ok(
+        !/[?#]/.test(redirect.destination),
+        `redirect destination cannot include query or hash: ${redirect.destination}`,
+      );
+      assert.notStrictEqual(
+        normalizeRoute(redirect.source),
+        normalizeRoute(redirect.destination),
+        `redirect loops to itself: ${redirect.source}`,
+      );
+      assert.ok(
+        internalTargetExists(redirect.destination),
+        `redirect destination should exist: ${redirect.source} -> ${redirect.destination}`,
+      );
+    }
+  });
+
+  it("configured local assets exist", () => {
+    const config = readDocsConfig();
+    const assetPaths = [
+      config.favicon,
+      config.logo?.light,
+      config.logo?.dark,
+      config.seo?.metadata?.["og:image"],
+      config.seo?.metadata?.["x:image"],
+    ].filter(Boolean);
+
+    for (const assetPath of assetPaths) {
+      assert.ok(
+        localAssetExists(assetPath),
+        `Missing configured asset: ${assetPath}`,
+      );
+    }
+  });
 });
 
 describe("documentation files", () => {
-  it("index.mdx exists", () => {
-    assert.ok(
-      existsSync(join(DOCS_DIR, "index.mdx")),
-      "index.mdx should exist",
-    );
-  });
-
-  it("quickstart.mdx exists", () => {
-    assert.ok(
-      existsSync(join(DOCS_DIR, "quickstart.mdx")),
-      "quickstart.mdx should exist",
-    );
-  });
-
   it("core documentation pages referenced in navigation exist", () => {
     const config = readDocsConfig();
     const pages = collectPages(config.navigation);
@@ -224,7 +308,7 @@ describe("documentation files", () => {
   });
 
   it("documentation directories exist", () => {
-    const expectedDirs = ["guides", "tracks", "runtime", "plugins", "cli", "connectors"];
+    const expectedDirs = ["tracks", "runtime", "plugins", "cli", "connectors"];
     for (const dir of expectedDirs) {
       assert.ok(
         existsSync(join(DOCS_DIR, dir)),
@@ -243,26 +327,82 @@ describe("documentation files", () => {
     }
   });
 
+  it("frontmatter blocks are closed and do not duplicate keys", () => {
+    const markdownFiles = collectMarkdownFiles();
+
+    for (const file of markdownFiles) {
+      const content = readFileSync(file, "utf-8");
+      const frontmatter = extractMarkdownFrontmatter(content);
+      const label = relative(DOCS_DIR, file);
+
+      if (!frontmatter) {
+        continue;
+      }
+
+      assert.ok(frontmatter.closed, `${label} frontmatter should be closed`);
+
+      const keys = [];
+      for (const line of frontmatter.body.split("\n")) {
+        const match = /^([A-Za-z0-9_-]+):/.exec(line);
+        if (match) {
+          keys.push(match[1]);
+        }
+      }
+
+      assert.deepStrictEqual(
+        findDuplicates(keys),
+        [],
+        `${label} frontmatter should not duplicate keys`,
+      );
+    }
+  });
+
   it("internal documentation links resolve", () => {
     const markdownFiles = collectMarkdownFiles();
+    const redirects = collectRedirects();
     const missingLinks = [];
     const linkPattern =
       /\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)|href=["']([^"']+)["']/g;
 
     for (const file of markdownFiles) {
       const content = readFileSync(file, "utf-8");
-      let match;
+      let match = linkPattern.exec(content);
 
-      while ((match = linkPattern.exec(content)) !== null) {
+      while (match !== null) {
         const href = match[1] || match[2];
         const target = resolveInternalTarget(file, href);
 
-        if (target && !internalTargetExists(target)) {
+        if (target && !internalTargetOrRedirectExists(target, redirects)) {
           missingLinks.push(`${relative(DOCS_DIR, file)} -> ${href}`);
         }
+        match = linkPattern.exec(content);
       }
     }
 
     assert.deepStrictEqual(missingLinks, []);
+  });
+
+  it("local image and source assets referenced from markdown exist", () => {
+    const markdownFiles = collectMarkdownFiles();
+    const missingAssets = [];
+    const assetPattern =
+      /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(?:src|poster)=["']([^"']+)["']/g;
+
+    for (const file of markdownFiles) {
+      const content = readFileSync(file, "utf-8");
+      let match = assetPattern.exec(content);
+
+      while (match !== null) {
+        const href = match[1] || match[2];
+        const target = resolveInternalTarget(file, href);
+
+        if (target && !localAssetExists(target)) {
+          missingAssets.push(`${relative(DOCS_DIR, file)} -> ${href}`);
+        }
+        match = assetPattern.exec(content);
+      }
+    }
+
+    assert.deepStrictEqual(missingAssets, []);
   });
 });
