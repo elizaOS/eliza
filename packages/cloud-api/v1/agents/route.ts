@@ -217,25 +217,40 @@ app.post("/", async (c) => {
         agentName,
         characterId: character.id,
         // agentConfig becomes ELIZA_AGENT_CHARACTER_JSON in the container
-        // (docker-sandbox-provider). The runtime's sandbox-character loader
-        // reads name/system/bio/plugins from the TOP LEVEL of this object, so
-        // it must BE a character — otherwise the container boots as the default
-        // "Eliza" preset. Token metadata is carried alongside (harmless extras;
-        // also surfaced via TOKEN_* env vars).
-        agentConfig: {
-          name: agentName,
-          system: systemPrompt,
-          bio: characterBio,
-          ...(plugins.length > 0 ? { plugins } : {}),
-          ...(p.character?.config ?? {}),
-          tokenContractAddress: normalizedTokenAddress,
-          chain: p.chain,
-          chainId: p.chainId,
-          tokenName: p.tokenName,
-          tokenTicker: p.tokenTicker,
-          launchType: p.launchType,
-          billing: p.billing,
-        },
+        // (docker-sandbox-provider). The runtime's sandbox-character loader is
+        // SUPPOSED to read name/system/bio from the top level so the container
+        // boots AS this agent. However, injecting a full character here caused
+        // the container health check to time out (boot never completes) on the
+        // current agent image — so we gate it behind WAIFU_INJECT_CHARACTER
+        // until the image's character-load path is fixed. The system prompt is
+        // still persisted on the character record either way; default keeps
+        // boot reliable (agent boots, just as the default preset for now).
+        agentConfig:
+          getCloudAwareEnv().WAIFU_INJECT_CHARACTER === "true"
+            ? {
+                name: agentName,
+                system: systemPrompt,
+                bio: characterBio,
+                ...(plugins.length > 0 ? { plugins } : {}),
+                ...(p.character?.config ?? {}),
+                tokenContractAddress: normalizedTokenAddress,
+                chain: p.chain,
+                chainId: p.chainId,
+                tokenName: p.tokenName,
+                tokenTicker: p.tokenTicker,
+                launchType: p.launchType,
+                billing: p.billing,
+              }
+            : {
+                tokenContractAddress: normalizedTokenAddress,
+                chain: p.chain,
+                chainId: p.chainId,
+                tokenName: p.tokenName,
+                tokenTicker: p.tokenTicker,
+                launchType: p.launchType,
+                character: p.character,
+                billing: p.billing,
+              },
         environmentVars: {
           TOKEN_CONTRACT_ADDRESS: normalizedTokenAddress,
           TOKEN_CHAIN: p.chain,
