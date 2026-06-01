@@ -2098,6 +2098,7 @@ type V5PlannerActionSurfaceSummary = {
 	candidateActions: string[];
 	parentActionHints: string[];
 	fallback?: string;
+	webLookupBackstop?: string;
 };
 
 type V5PlannerActionSurface = {
@@ -2405,6 +2406,30 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Live-info structural backstop: the BM25/keyword retrieval tier ranks a
+	// small slice of parent actions and can drop a keyless web-lookup action
+	// (e.g. WEB_FETCH) for live-info phrasings that don't lexically overlap its
+	// catalog entry. When the message reads as a web-lookup request and an
+	// allowed web-lookup action already survived the planner execution gates in
+	// `params.actions`, expose it so the planner can answer inline instead of
+	// force-delegating to a coding agent. This only un-filters an
+	// already-gated action — it never bypasses `appendIfAllowed`.
+	let webLookupBackstop: string | undefined;
+	const webLookupMessageText = getUserMessageText(params.message) ?? "";
+	if (looksLikeWebSearchRequest(webLookupMessageText)) {
+		const lookupActionName = findWebLookupActionName(params.actions);
+		if (lookupActionName) {
+			const normalizedLookupName = normalizeActionIdentifier(lookupActionName);
+			if (
+				normalizedLookupName &&
+				!exposedActionNames.has(normalizedLookupName)
+			) {
+				exposedActionNames.add(normalizedLookupName);
+				webLookupBackstop = lookupActionName;
+			}
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -2476,6 +2501,7 @@ function buildV5PlannerActionSurface(params: {
 			candidateActions,
 			parentActionHints,
 			...(fallback ? { fallback } : {}),
+			...(webLookupBackstop ? { webLookupBackstop } : {}),
 		},
 	};
 }
@@ -3691,25 +3717,72 @@ const SHELL_DIRECT_ACTIONS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
-function shouldPreferDirectCurrentCandidateActions(args: {
+// Canonical names of actions that satisfy a live-info / web lookup inline.
+// Kept in sync with `findWebLookupActionName`'s lookup list so the direct
+// web-lookup preference recognizes the same actions the resolver returns.
+const WEB_LOOKUP_DIRECT_ACTIONS = new Set(
+	[
+		"SEARCH",
+		"WEB_SEARCH",
+		"SEARCH_WEB",
+		"BRAVE_SEARCH",
+		"INTERNET_SEARCH",
+		"SEARCH_INTERNET",
+		"LOOKUP_WEB",
+		"WEB_FETCH",
+		"GOOGLE",
+	].map(normalizeActionIdentifier),
+);
+
+// Prefer the action the CURRENT message structurally implies over whatever
+// weak candidate set the planner surfaced — but only when the planner's own
+// candidates are all weak/injectable (the shapes the Stage-1 backstop force-
+// injects) or control names, so a strong legit candidate is never dropped.
+//
+// Two symmetric live-action seams trigger this:
+//   - a local-shell ask resolves the direct candidates to a SHELL action, and
+//   - a live-info / web-lookup ask resolves them to a web-lookup action
+//     (SEARCH / WEB_FETCH / …, see `findWebLookupActionName`).
+//
+// Both gate on `!looksLikeCodingWorkRequest`, so a "spawn a coding sub-agent"
+// or "build an app" turn — which `looksLikeWebSearchRequest` / the shell
+// detector return false for, and `looksLikeCodingWorkRequest` returns true for
+// — is untouched and still routes to TASKS. This is the structural fix for a
+// live-info lookup (e.g. "what's the current BTC price") losing candidate
+// selection to TASKS_SPAWN_AGENT even after WEB_FETCH was surfaced: preferring
+// the direct web-lookup candidate drops the spawn action from the turn.
+export function shouldPreferDirectCurrentCandidateActions(args: {
 	candidateActions: readonly string[];
 	currentMessageText: string;
 	directCandidateActions: readonly string[];
 }): boolean {
 	if (args.candidateActions.length === 0) return false;
-	if (!looksLikeLocalShellRequest(args.currentMessageText)) return false;
 	if (looksLikeCodingWorkRequest(args.currentMessageText)) return false;
+
+	const directKind: "shell" | "web" | null = looksLikeLocalShellRequest(
+		args.currentMessageText,
+	)
+		? "shell"
+		: looksLikeWebSearchRequest(args.currentMessageText)
+			? "web"
+			: null;
+	if (directKind === null) return false;
+
+	const directActionSet =
+		directKind === "shell" ? SHELL_DIRECT_ACTIONS : WEB_LOOKUP_DIRECT_ACTIONS;
 	if (
 		!args.directCandidateActions.some((name) =>
-			SHELL_DIRECT_ACTIONS.has(normalizeActionIdentifier(name)),
+			directActionSet.has(normalizeActionIdentifier(name)),
 		)
 	) {
 		return false;
 	}
+
 	return args.candidateActions.every((name) => {
 		const normalized = normalizeActionIdentifier(name);
 		return (
 			WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS.has(normalized) ||
+			directActionSet.has(normalized) ||
 			canonicalPlannerControlActionName(normalized) !== null
 		);
 	});
@@ -3880,6 +3953,7 @@ export function findWebLookupActionName(
 		"INTERNET_SEARCH",
 		"SEARCH_INTERNET",
 		"LOOKUP_WEB",
+		"WEB_FETCH",
 		"GOOGLE",
 	]);
 }
