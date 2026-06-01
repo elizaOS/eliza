@@ -1666,7 +1666,7 @@ async function _startAgent(): Promise<void> {
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
-      // windows — Stage 2 headless boot), then push to every open window.
+      // windows), then push to every open window.
       publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
