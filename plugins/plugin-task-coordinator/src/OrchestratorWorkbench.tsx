@@ -2584,6 +2584,23 @@ export function OrchestratorWorkbench() {
                     <Send className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+                <div className="mt-1.5 flex justify-end text-3xs text-muted/70">
+                  <span className="flex items-center gap-1">
+                    <kbd className="rounded bg-bg-hover/60 px-1 text-[0.9em]">
+                      ↵
+                    </kbd>
+                    {t("orchestrator.composerHintSend", {
+                      defaultValue: "send",
+                    })}
+                    <span aria-hidden>·</span>
+                    <kbd className="rounded bg-bg-hover/60 px-1 text-[0.9em]">
+                      ⇧↵
+                    </kbd>
+                    {t("orchestrator.composerHintNewline", {
+                      defaultValue: "newline",
+                    })}
+                  </span>
+                </div>
               </div>
             </>
           ) : selectedId ? (
