@@ -52,11 +52,9 @@ packages:
   - postgresql-client
   - rsync
   - unzip
-  # Node 24 for the daemon (systemd unit calls `tsx` which is a Node process).
-  # The NodeSource setup script below pins to Node 24 and refreshes the apt
-  # source list; the actual `nodejs` package is then pulled by `package_upgrade`
-  # / the apt run that follows runcmd. Listed here for the audit trail; the
-  # version is enforced via the NodeSource setup script (see runcmd).
+  # nodejs is installed from the NodeSource apt repo in runcmd below, not from
+  # this package list — we need Node 24, and Ubuntu 24.04's default nodejs is
+  # older. See the NodeSource setup_24.x call in runcmd.
 
 write_files:
   - path: /etc/profile.d/eliza-paths.sh
