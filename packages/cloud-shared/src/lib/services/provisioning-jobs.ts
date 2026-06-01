@@ -1671,7 +1671,10 @@ export class ProvisioningJobService {
         // HMAC-SHA256 over `${timestamp}.${rawBody}` and requires a stable
         // idempotencyKey. Without this the provision-complete callback was
         // silently 401'd by waifu.
-        const agentId = typeof result.cloudAgentId === "string" ? result.cloudAgentId : null;
+        const agentId =
+          "cloudAgentId" in result && typeof result.cloudAgentId === "string"
+            ? result.cloudAgentId
+            : null;
         rawBody = JSON.stringify({
           event: "job.completed",
           timestamp: completedAt,
