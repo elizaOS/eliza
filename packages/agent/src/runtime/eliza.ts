@@ -4489,6 +4489,89 @@ export async function startEliza(
     });
   };
 
+  // Prefetch the local TEXT_EMBEDDING GGUF in the background so the first
+  // chat/memory request doesn't stall on a multi-second model download. The
+  // chat/inference provider is separate from embeddings (vector memory / RAG):
+  // API-based model plugins do not implement TEXT_EMBEDDING, so the local model
+  // is the default embedding backend unless Eliza Cloud embeddings are active.
+  // This only ensures the file is present on disk — the GGUF is loaded into
+  // memory lazily on first use — and runs entirely after the readiness gate so
+  // it can never block or crash boot.
+  const warmEmbeddingModel = async (): Promise<void> => {
+    if (process.env.NODE_ENV === "test") return;
+    // Mobile bundles do not ship node-llama-cpp and must not pull a multi-GB
+    // GGUF over a data plan; they embed via cloud/device-bridge instead.
+    if (isMobilePlatform() || isBundledMobileRuntime()) return;
+
+    const li = await getPluginLocalEmbedding();
+    if (!li) return;
+
+    const {
+      shouldWarmupLocalEmbeddingModel,
+      detectEmbeddingPreset,
+      embeddingGgufFilePresent,
+      findExistingEmbeddingModelForWarmupReuse,
+      isEmbeddingWarmupReuseDisabled,
+      ensureModel,
+      DEFAULT_MODELS_DIR,
+    } = await import("@elizaos/plugin-local-inference/runtime");
+
+    if (!shouldWarmupLocalEmbeddingModel()) {
+      logger.info(
+        "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (Eliza Cloud embeddings or local embeddings disabled).",
+      );
+      return;
+    }
+
+    // Populate the LOCAL_EMBEDDING_* env from config + hardware preset so the
+    // warmup and the lazy first-use load resolve the same model.
+    await configureLocalEmbeddingPlugin({} as Plugin, config);
+
+    const preset = detectEmbeddingPreset();
+    const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
+    let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
+    let modelRepo =
+      process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
+
+    if (
+      !isEmbeddingWarmupReuseDisabled() &&
+      !embeddingGgufFilePresent(modelsDir, model)
+    ) {
+      const reuse = findExistingEmbeddingModelForWarmupReuse(modelsDir);
+      if (reuse) {
+        logger.info(
+          `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download.`,
+        );
+        process.env.LOCAL_EMBEDDING_MODEL = reuse.model;
+        process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
+        process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
+        process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
+        process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
+        model = reuse.model;
+        modelRepo = reuse.modelRepo;
+      }
+    }
+
+    if (embeddingGgufFilePresent(modelsDir, model)) {
+      return;
+    }
+
+    logger.info(
+      `[eliza] Local embedding warmup: prefetching ${model} (preset: ${preset.label}). ` +
+        "This GGUF serves TEXT_EMBEDDING / memory only — not your conversation model.",
+    );
+    await ensureModel(modelsDir, modelRepo, model, false);
+  };
+
+  const startEmbeddingWarmup = (): void => {
+    void warmEmbeddingModel().catch((err) => {
+      // Non-fatal: the embedding plugin downloads on first use if this fails.
+      logger.warn(
+        `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
+      );
+    });
+  };
+
   // Essential boot: only what the runtime needs to become reachable (sql +
   // local-inference are already registered above; deferred provider/connector
   // plugins continue after the ready gate unless legacy blocking mode is
@@ -4666,6 +4749,7 @@ export async function startEliza(
     await startAutonomyServiceIfEnabled(true);
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
+    startEmbeddingWarmup();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered
