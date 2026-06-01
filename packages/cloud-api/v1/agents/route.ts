@@ -154,30 +154,32 @@ app.post("/", async (c) => {
       );
     }
 
+    // Build the agent's identity ONCE so it is shared by both the persisted
+    // character record AND the agentConfig injected into the container as
+    // ELIZA_AGENT_CHARACTER_JSON. Hoisted to function scope so the createAgent
+    // call below (separate try block) can reuse it.
+    const systemPrompt =
+      p.character?.system?.trim() ||
+      buildDefaultSystemPrompt({
+        tokenName: p.tokenName,
+        tokenTicker: p.tokenTicker,
+        tokenContractAddress: normalizedTokenAddress,
+        chain: p.chain,
+        characterName: agentName,
+        bio: p.character?.bio,
+      });
+    const plugins = Array.from(
+      new Set([...(p.character?.plugins ?? []), ...getDefaultAgentPlugins()]),
+    );
+    const characterBio = p.character?.bio
+      ? [p.character.bio]
+      : [`Agent for ${p.tokenName}`];
+
     let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
-      // Always give the agent a real system prompt + the wallet plugin. Use
-      // the caller's values when provided, otherwise synthesize from token
-      // context so the agent is never a blank, contextless Eliza.
-      const systemPrompt =
-        p.character?.system?.trim() ||
-        buildDefaultSystemPrompt({
-          tokenName: p.tokenName,
-          tokenTicker: p.tokenTicker,
-          tokenContractAddress: normalizedTokenAddress,
-          chain: p.chain,
-          characterName: agentName,
-          bio: p.character?.bio,
-        });
-      const plugins = Array.from(
-        new Set([...(p.character?.plugins ?? []), ...getDefaultAgentPlugins()]),
-      );
-
       character = await charactersService.create({
         name: agentName,
-        bio: p.character?.bio
-          ? [p.character.bio]
-          : [`Agent for ${p.tokenName}`],
+        bio: characterBio,
         system: systemPrompt,
         plugins,
         user_id: identity.userId,
@@ -214,14 +216,24 @@ app.post("/", async (c) => {
         userId: identity.userId,
         agentName,
         characterId: character.id,
+        // agentConfig becomes ELIZA_AGENT_CHARACTER_JSON in the container
+        // (docker-sandbox-provider). The runtime's sandbox-character loader
+        // reads name/system/bio/plugins from the TOP LEVEL of this object, so
+        // it must BE a character — otherwise the container boots as the default
+        // "Eliza" preset. Token metadata is carried alongside (harmless extras;
+        // also surfaced via TOKEN_* env vars).
         agentConfig: {
+          name: agentName,
+          system: systemPrompt,
+          bio: characterBio,
+          ...(plugins.length > 0 ? { plugins } : {}),
+          ...(p.character?.config ?? {}),
           tokenContractAddress: normalizedTokenAddress,
           chain: p.chain,
           chainId: p.chainId,
           tokenName: p.tokenName,
           tokenTicker: p.tokenTicker,
           launchType: p.launchType,
-          character: p.character,
           billing: p.billing,
         },
         environmentVars: {
