@@ -273,6 +273,19 @@ async function expectStartupSettled(page: Page): Promise<void> {
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
 }
 
+async function replayNavigationAfterStartup(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const isAppWindowRoute = new URLSearchParams(window.location.search).get(
+      "appWindow",
+    );
+    if (window.location.protocol === "file:" || isAppWindowRoute === "1") {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      return;
+    }
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+}
+
 export async function openAppPath(
   page: Page,
   targetPath: string,
@@ -282,6 +295,7 @@ export async function openAppPath(
   await expectRootReady(page);
   await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
+  await replayNavigationAfterStartup(page);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
