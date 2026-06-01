@@ -9,7 +9,7 @@ name: Deploy Eliza Provisioning Worker
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
@@ -24,9 +24,20 @@ on:
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (host + secrets resolved from this)'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 
+# Per-env concurrency: a develop push (staging) and a main push (production)
+# can deploy in parallel without one cancelling the other.
 concurrency:
-  group: deploy-eliza-provisioning-worker
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -34,16 +45,38 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy worker to Hetzner host
+  determine-env:
+    name: Determine environment
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      branch: ${{ steps.env.outputs.branch }}
+    steps:
+      - id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            env="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            env="production"
+          else
+            env="staging"
+          fi
+          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch"   >> "$GITHUB_OUTPUT"
+          echo "Resolved: environment=$env branch=$branch"
+
+  deploy:
+    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: determine-env
+    environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 15
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-      DEPLOY_BRANCH: develop
+      DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
