@@ -513,12 +513,6 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       load: () => getOptionalPlugin("@elizaos/plugin-openai"),
     },
     {
-      packageName: "@elizaos/plugin-google",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-google"),
-    },
-    {
       packageName: "@elizaos/plugin-gitpathologist",
       phase: "deferred",
       required: false,
