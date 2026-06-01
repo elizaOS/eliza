@@ -24,6 +24,7 @@ import {
 import { type ReactNode, useMemo, useState } from "react";
 import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
 import { MarkdownText } from "./orchestrator-markdown";
+import { ReasoningCell } from "./orchestrator-reasoning";
 import { formatClockTime, formatDuration, stripAnsi } from "./view-format";
 
 // The orchestrator room renders a coding-agent session the way Claude Code /
@@ -80,6 +81,7 @@ export type ConversationBlock =
       tone: "normal" | "error";
     }
   | { kind: "tool"; key: string; at: number; tool: ToolView }
+  | { kind: "reasoning"; key: string; at: number; text: string }
   | {
       kind: "notice";
       key: string;
@@ -334,6 +336,7 @@ type Atom =
       message: CodingAgentTaskMessageRecord;
     }
   | { at: number; order: number; type: "tool"; tool: ToolView }
+  | { at: number; order: number; type: "reasoning"; text: string }
   | {
       at: number;
       order: number;
@@ -397,6 +400,21 @@ export function buildConversation(
       }
       continue;
     }
+    // Reasoning streams as many small `agent_thought_chunk` deltas; capture the
+    // full text from event.data (not the 160-char summary) and let the block
+    // pass coalesce consecutive deltas into one collapsible cell — rendering
+    // each delta as its own notice would flood the room.
+    if (event.eventType === "reasoning") {
+      const text = typeof event.data?.text === "string" ? event.data.text : "";
+      if (text)
+        atoms.push({
+          at: event.timestamp,
+          order: order++,
+          type: "reasoning",
+          text,
+        });
+      continue;
+    }
     if (NOISE_EVENT_TYPES.has(event.eventType)) continue;
     atoms.push({
       at: event.timestamp,
@@ -435,9 +453,14 @@ export function buildConversation(
     lane: string;
     block: Extract<ConversationBlock, { kind: "user" | "agent" }>;
   } | null = null;
+  // Consecutive reasoning deltas coalesce into one collapsible cell, the way a
+  // message lane coalesces; any non-reasoning atom closes the burst.
+  let openReasoning: Extract<ConversationBlock, { kind: "reasoning" }> | null =
+    null;
 
   for (const atom of atoms) {
     if (atom.type === "message") {
+      openReasoning = null;
       const lane = messageLane(atom.message);
       const text = stripAnsi(atom.message.content);
       if (openLane && openLane.lane === lane) {
@@ -468,6 +491,22 @@ export function buildConversation(
       continue;
     }
     openLane = null;
+    if (atom.type === "reasoning") {
+      if (openReasoning) {
+        openReasoning.text += atom.text;
+      } else {
+        const block = {
+          kind: "reasoning" as const,
+          key: `reason-${atom.order}`,
+          at: atom.at,
+          text: atom.text,
+        };
+        blocks.push(block);
+        openReasoning = block;
+      }
+      continue;
+    }
+    openReasoning = null;
     if (atom.type === "tool") {
       blocks.push({
         kind: "tool",
@@ -806,6 +845,10 @@ export function ConversationBlockView({
 
   if (block.kind === "tool") {
     return <ToolCallCard tool={block.tool} />;
+  }
+
+  if (block.kind === "reasoning") {
+    return <ReasoningCell text={block.text} />;
   }
 
   const Icon = block.icon;
