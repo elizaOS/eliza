@@ -466,13 +466,7 @@ function ContactList({
   );
 }
 
-function ImportVCardButton({
-  onImport,
-  t,
-}: {
-  onImport: () => void;
-  t: TFn;
-}) {
+function ImportVCardButton({ onImport, t }: { onImport: () => void; t: TFn }) {
   const label = t("contacts.import", { defaultValue: "Import vCard" });
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "action-import",
