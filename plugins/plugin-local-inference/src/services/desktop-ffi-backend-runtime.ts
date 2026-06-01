@@ -144,8 +144,14 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 
 	async release(): Promise<void> {
 		if (!this.active) return;
-		this.active.adapter.close();
-		this.active = null;
+		// Clear `active` in a finally so a throwing native free (adapter.close()
+		// makes raw bun:ffi calls that can throw) can't leave the runtime with a
+		// stale live session that permanently blocks acquire()'s live-session guard.
+		try {
+			this.active.adapter.close();
+		} finally {
+			this.active = null;
+		}
 	}
 }
 

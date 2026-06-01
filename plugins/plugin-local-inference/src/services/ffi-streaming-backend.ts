@@ -131,9 +131,19 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	}
 
 	async unload(): Promise<void> {
-		this.session = null;
-		this.loadedPath = null;
-		await this.runtime.release();
+		// Await the native release BEFORE nulling our refs. If we null first and
+		// release() throws (a raw bun:ffi free can reject), this.session would be
+		// null while the runtime still holds a live session — the next load()
+		// would skip unload() and call acquire(), which throws on its live-session
+		// guard, wedging the backend until process restart. The finally guarantees
+		// our refs are cleared regardless so a failed release can't leave a stale
+		// "loaded" view either.
+		try {
+			await this.runtime.release();
+		} finally {
+			this.session = null;
+			this.loadedPath = null;
+		}
 	}
 
 	async generate(args: GenerateArgs): Promise<GenerateResult> {

@@ -368,9 +368,14 @@ export function resolveDesktopBinDir(
 	if (arch === null) {
 		throw new Error(`[desktop-llama] unsupported process.arch=${process.arch}`);
 	}
+	// Default backend MUST match what the build script stages on disk
+	// (packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs): darwin→metal,
+	// linux→vulkan, windows→vulkan. The build's outDir is `${platform}-${arch}-${t.backend}`
+	// and Windows hardcodes `backend: "vulkan"`, so probing `windows-x86_64-cpu` here
+	// never finds the staged dylibs and the in-process FFI path is silently skipped.
 	const backend =
 		env.ELIZA_DESKTOP_BACKEND?.trim() ||
-		(platform === "darwin" ? "metal" : platform === "linux" ? "vulkan" : "cpu");
+		(platform === "darwin" ? "metal" : "vulkan");
 	return path.join(
 		stateDir,
 		"local-inference",
@@ -652,11 +657,6 @@ function encodeCString(text: string): Uint8Array {
 	return out;
 }
 
-function decodeCStringBytes(buf: Uint8Array): string {
-	const end = buf.indexOf(0);
-	return new TextDecoder("utf-8").decode(end < 0 ? buf : buf.subarray(0, end));
-}
-
 /** Default thread count: half the logical cores (a sensible P-core proxy on Apple Silicon). */
 function defaultThreads(env: NodeJS.ProcessEnv = process.env): number {
 	const explicit = Number.parseInt(env.ELIZA_LLAMA_THREADS ?? "", 10);
@@ -738,6 +738,14 @@ interface DesktopSession {
 	// Reusable single-token buffer for stepwise decode.
 	tokenBuf: Int32Array;
 	pieceBuf: Uint8Array;
+	/**
+	 * Persistent streaming UTF-8 decoder for this session. BPE routinely splits
+	 * a multi-byte codepoint (CJK / emoji / accented Latin) across two token
+	 * pieces; decoding each piece in isolation would turn each half into U+FFFD.
+	 * Reusing one decoder with `decode(bytes, { stream: true })` carries the
+	 * trailing bytes of a split codepoint into the next piece so it reassembles.
+	 */
+	pieceDecoder: TextDecoder;
 	emittedFirstToken: boolean;
 	/** Snapshotted at openSession; nextStep never re-reads has_drafter. */
 	usingDrafter: boolean;
@@ -1595,6 +1603,7 @@ export class DesktopLlamaAdapter {
 			finished: false,
 			tokenBuf: new Int32Array(1),
 			pieceBuf: new Uint8Array(256),
+			pieceDecoder: new TextDecoder("utf-8"),
 			emittedFirstToken: false,
 			usingDrafter,
 			mtpEngine,
@@ -1763,6 +1772,51 @@ export class DesktopLlamaAdapter {
 		}
 	}
 
+	/**
+	 * Convert one sampled token id into its text piece for `sess`.
+	 *
+	 * Handles two failure modes the naive `wrote > 0` guard dropped:
+	 *   1. Negative return: llama_token_to_piece returns `-n` (the negated byte
+	 *      count it needs) when `pieceBuf` is too small. We grow `pieceBuf` to
+	 *      that size and retry once instead of silently dropping the token text.
+	 *   2. UTF-8 codepoints split across token boundaries: we feed the raw piece
+	 *      bytes through the session's persistent streaming decoder so a half
+	 *      codepoint carries into the next piece rather than decoding to U+FFFD.
+	 */
+	private tokenToText(sess: DesktopSession, token: number): string {
+		if (!this.vocabPtr)
+			throw new Error("[desktop-llama] token decode before load");
+		let wrote = this.llama.llama_token_to_piece(
+			this.vocabPtr,
+			token,
+			this.ffi.ptr(sess.pieceBuf),
+			sess.pieceBuf.length,
+			0,
+			false,
+		);
+		if (wrote < 0) {
+			// Buffer too small: -wrote is the required byte count. Grow and retry.
+			sess.pieceBuf = new Uint8Array(-wrote);
+			wrote = this.llama.llama_token_to_piece(
+				this.vocabPtr,
+				token,
+				this.ffi.ptr(sess.pieceBuf),
+				sess.pieceBuf.length,
+				0,
+				false,
+			);
+			if (wrote < 0) {
+				throw new Error(
+					`[desktop-llama] llama_token_to_piece failed after resize (rc=${wrote}) for token ${token}`,
+				);
+			}
+		}
+		if (wrote === 0) return "";
+		return sess.pieceDecoder.decode(sess.pieceBuf.subarray(0, wrote), {
+			stream: true,
+		});
+	}
+
 	private nextStep(
 		stream: LlmStreamHandle,
 		maxTokensPerStep = 32,
@@ -1798,17 +1852,7 @@ export class DesktopLlamaAdapter {
 				break;
 			}
 			this.llama.llama_sampler_accept(sess.sampler, next);
-			const wrote = this.llama.llama_token_to_piece(
-				this.vocabPtr,
-				next,
-				this.ffi.ptr(sess.pieceBuf),
-				sess.pieceBuf.length,
-				0,
-				false,
-			);
-			if (wrote > 0) {
-				text += decodeCStringBytes(sess.pieceBuf.subarray(0, wrote));
-			}
+			text += this.tokenToText(sess, next);
 			out.push(next);
 
 			// Decode the just-sampled token to advance the KV cache.
@@ -1873,17 +1917,7 @@ export class DesktopLlamaAdapter {
 			if (this.llama.llama_vocab_is_eog(this.vocabPtr as Pointer, token)) {
 				return true;
 			}
-			const wrote = this.llama.llama_token_to_piece(
-				this.vocabPtr as Pointer,
-				token,
-				this.ffi.ptr(sess.pieceBuf),
-				sess.pieceBuf.length,
-				0,
-				false,
-			);
-			if (wrote > 0) {
-				text += decodeCStringBytes(sess.pieceBuf.subarray(0, wrote));
-			}
+			text += this.tokenToText(sess, token);
 			out.push(token);
 			return false;
 		};
