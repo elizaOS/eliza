@@ -66,6 +66,12 @@ const LINKED_WORKSPACE_PACKAGES = [
   "packages/shared",
   "packages/skills",
   "packages/vault",
+  // Imported by packages/agent/src/services/remote-plugin-bridge.ts
+  // ("@elizaos/plugin-worker-runtime/error"). The custom-character boot path
+  // goes through remote-plugin-bridge, so without this the container crashes
+  // with ERR_MODULE_NOT_FOUND on plugin-worker-runtime/dist/index.js whenever
+  // an injected character (ELIZA_AGENT_CHARACTER_JSON) is loaded.
+  "packages/plugin-worker-runtime",
   "plugins/plugin-companion",
   "plugins/plugin-elizamaker",
   "plugins/plugin-documents",
