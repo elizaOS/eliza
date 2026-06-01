@@ -103,7 +103,7 @@ describe("pipeline end-to-end on toy repo", () => {
     cache.write(report);
     const back = cache.read(report.cacheKey);
     expect(back).toEqual(report);
-    const cachePath = path.join(toy.repoRoot, ".milady", "gitpathology", `${report.cacheKey}.json`);
+    const cachePath = path.join(defaultCacheDir(toy.repoRoot), `${report.cacheKey}.json`);
     expect(existsSync(cachePath)).toBe(true);
   });
 

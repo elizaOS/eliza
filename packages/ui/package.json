@@ -65,6 +65,11 @@
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
     },
+    "./agent-surface": {
+      "types": "./dist/agent-surface/index.d.ts",
+      "import": "./dist/agent-surface/index.js",
+      "default": "./dist/agent-surface/index.js"
+    },
     "./app-shell-registry": {
       "types": "./dist/app-shell-registry.d.ts",
       "import": "./dist/app-shell-registry.js",
