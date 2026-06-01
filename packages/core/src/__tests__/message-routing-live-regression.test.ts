@@ -4,6 +4,7 @@ import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
+	findCanonicalWebLookupActionName,
 	findWebLookupActionName,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
@@ -176,6 +177,41 @@ describe("live routing regressions", () => {
 			similes: ["LOOKUP_WEB"],
 		};
 		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
+	});
+
+	it("resolves the keyless web-lookup action by canonical name, not a SEARCH simile collision", () => {
+		// Live regression: the v5 planner action-surface backstop used
+		// `findWebLookupActionName`, which returns the first action whose name OR
+		// simile matches any lookup name. An unrelated action that merely carries a
+		// "SEARCH" simile (CONTACT_SEARCH) sorted ahead of WEB_FETCH and won,
+		// force-exposing the wrong action and never exposing WEB_FETCH — so
+		// live-info still spawned a coding agent. `findCanonicalWebLookupActionName`
+		// matches by canonical NAME only and prefers WEB_FETCH.
+		const actions: Array<Pick<Action, "name" | "similes">> = [
+			{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
+			{ name: "TASKS", similes: [] },
+			{ name: "WEB_FETCH", similes: ["LOOKUP_WEB"] },
+		];
+		expect(findCanonicalWebLookupActionName(actions)).toBe("WEB_FETCH");
+		// The simile-based resolver mis-resolves the same set to CONTACT_SEARCH,
+		// which is exactly the bug the canonical resolver guards against.
+		expect(findWebLookupActionName(actions)).toBe("CONTACT_SEARCH");
+		// When a real web-search action exists but no WEB_FETCH, the canonical
+		// resolver still returns it (never the SEARCH-simile collision).
+		expect(
+			findCanonicalWebLookupActionName([
+				{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
+				{ name: "WEB_SEARCH", similes: [] },
+			]),
+		).toBe("WEB_SEARCH");
+		// And when nothing canonical is present, it declines (no false positive on
+		// a bare SEARCH-simile action), letting callers fall back deliberately.
+		expect(
+			findCanonicalWebLookupActionName([
+				{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
+				{ name: "TASKS", similes: [] },
+			]),
+		).toBeUndefined();
 	});
 
 	it("prefers an inline web-lookup over spawning a sub-agent for live-info", () => {

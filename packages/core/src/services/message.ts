@@ -2228,6 +2228,45 @@ async function collectV5PlannerCandidateActions(args: {
 		}
 	}
 
+	// Live-info force-include: the keyless web-lookup action (WEB_FETCH) is
+	// registered without declared contexts, so `applyEffectiveActionAccess`
+	// stamps it with the default `["general"]` context at registration time.
+	// When the current turn routes to a non-general context, the context gate in
+	// `appendIfAllowed` drops WEB_FETCH from the candidate set entirely — so it
+	// never reaches the action catalog, never gets ranked, and the planner is
+	// left with only TASKS, force-spawning a coding agent for what is an inline
+	// lookup ("what's the current BTC price"). When the message reads as a
+	// web-lookup request, pull the canonical web-lookup action straight from the
+	// runtime and append it with its own contexts as the active set, bypassing
+	// only the turn's context mismatch (role + connector + validate gates still
+	// apply via `appendIfAllowed`). `looksLikeWebSearchRequest` is false for
+	// spawn/build turns, so coding delegation is untouched.
+	if (looksLikeWebSearchRequest(getUserMessageText(args.message) ?? "")) {
+		const webLookupName = findCanonicalWebLookupActionName(allRuntimeActions);
+		if (webLookupName) {
+			const normalized = normalizeActionIdentifier(webLookupName);
+			if (normalized && !seen.has(normalized)) {
+				const webLookupAction =
+					actionsByName.get(webLookupName) ??
+					actionsByNormalizedName.get(normalized);
+				if (webLookupAction) {
+					// Use the action's own contexts as the active set so the context
+					// gate is self-satisfied (the goal is to bypass the *turn* context
+					// mismatch, not the action's own gate). Role / connector / validate
+					// gates still run inside `appendIfAllowed`.
+					await appendIfAllowed(
+						webLookupAction,
+						undefined,
+						mergeAgentContexts(
+							args.selectedContexts,
+							webLookupAction.contexts,
+						),
+					);
+				}
+			}
+		}
+	}
+
 	return selectedActions;
 }
 
@@ -2407,17 +2446,28 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	// Live-info structural backstop: the BM25/keyword retrieval tier ranks a
-	// small slice of parent actions and can drop a keyless web-lookup action
-	// (e.g. WEB_FETCH) for live-info phrasings that don't lexically overlap its
-	// catalog entry. When the message reads as a web-lookup request and an
-	// allowed web-lookup action already survived the planner execution gates in
-	// `params.actions`, expose it so the planner can answer inline instead of
-	// force-delegating to a coding agent. This only un-filters an
-	// already-gated action — it never bypasses `appendIfAllowed`.
+	// small slice of parent catalog actions and never exposes a keyless
+	// web-lookup action (e.g. WEB_FETCH) for live-info phrasings that don't
+	// lexically overlap its catalog entry — a "current BTC price" query scores 0
+	// on WEB_FETCH, so the tiering omits it and the planner is left with only
+	// TASKS, forcing a coding-agent spawn for what is an inline lookup.
+	//
+	// When the message reads as a web-lookup request and an allowed web-lookup
+	// action already survived the planner execution gates in `params.actions`,
+	// expose it so the planner can answer inline. We resolve the action by its
+	// canonical NAME (WEB_LOOKUP_DIRECT_ACTIONS) first and only fall back to the
+	// simile-based resolver — `findWebLookupActionName` returns the first action
+	// whose name OR simile matches, which lets an unrelated action that merely
+	// carries a "SEARCH" simile (e.g. CONTACT_SEARCH) win over WEB_FETCH by array
+	// order. This only un-filters an already-gated action — it never bypasses
+	// `appendIfAllowed`. `looksLikeWebSearchRequest` is false for spawn/build
+	// turns, so coding delegation is untouched.
 	let webLookupBackstop: string | undefined;
 	const webLookupMessageText = getUserMessageText(params.message) ?? "";
 	if (looksLikeWebSearchRequest(webLookupMessageText)) {
-		const lookupActionName = findWebLookupActionName(params.actions);
+		const lookupActionName =
+			findCanonicalWebLookupActionName(params.actions) ??
+			findWebLookupActionName(params.actions);
 		if (lookupActionName) {
 			const normalizedLookupName = normalizeActionIdentifier(lookupActionName);
 			if (
@@ -3733,6 +3783,45 @@ const WEB_LOOKUP_DIRECT_ACTIONS = new Set(
 		"GOOGLE",
 	].map(normalizeActionIdentifier),
 );
+
+// Resolve a web-lookup action by its canonical NAME only (no simile matching),
+// scanning WEB_LOOKUP_DIRECT_ACTIONS in priority order. Unlike
+// `findWebLookupActionName` — which returns the first action whose name OR
+// simile matches and can therefore mis-resolve to an unrelated action that
+// merely carries a "SEARCH" simile (e.g. CONTACT_SEARCH) — this only returns an
+// action whose own normalized name is a real web-lookup action. Returns
+// undefined when no such action survived the planner gates, so callers fall
+// back to the simile-based resolver.
+const WEB_LOOKUP_DIRECT_ACTION_PRIORITY = [
+	"WEB_FETCH",
+	"SEARCH",
+	"WEB_SEARCH",
+	"SEARCH_WEB",
+	"BRAVE_SEARCH",
+	"INTERNET_SEARCH",
+	"SEARCH_INTERNET",
+	"LOOKUP_WEB",
+	"GOOGLE",
+].map(normalizeActionIdentifier);
+
+export function findCanonicalWebLookupActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+): string | undefined {
+	const byNormalizedName = new Map<string, string>();
+	for (const action of actions) {
+		const normalized = normalizeActionIdentifier(action.name);
+		if (normalized && !byNormalizedName.has(normalized)) {
+			byNormalizedName.set(normalized, action.name);
+		}
+	}
+	for (const wanted of WEB_LOOKUP_DIRECT_ACTION_PRIORITY) {
+		const match = byNormalizedName.get(wanted);
+		if (match) {
+			return match;
+		}
+	}
+	return undefined;
+}
 
 // Prefer the action the CURRENT message structurally implies over whatever
 // weak candidate set the planner surfaced — but only when the planner's own
