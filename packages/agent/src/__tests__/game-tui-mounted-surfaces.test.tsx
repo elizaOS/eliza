@@ -103,6 +103,7 @@ const uiMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => uiMock);
+vi.mock("@elizaos/ui/agent-surface", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
