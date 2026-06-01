@@ -214,6 +214,32 @@ describe("live routing regressions", () => {
 		).toBeUndefined();
 	});
 
+	it("prefers WEB_FETCH over SEARCH-simile collisions for direct live-info ownership", () => {
+		const runtime = {
+			actions: [
+				{
+					name: "CONTACT_SEARCH",
+					similes: ["SEARCH"],
+					description: "Search local contacts",
+				},
+				{
+					name: "WEB_FETCH",
+					similes: ["LOOKUP_WEB"],
+					description: "Fetch public URLs",
+				},
+			],
+		} as Pick<IAgentRuntime, "actions">;
+
+		expect(
+			suggestOwnedActionFromMetadata(runtime, {
+				content: { text: "what is the current BTC price in USD?" },
+			}),
+		).toMatchObject({
+			actionName: "WEB_FETCH",
+			reasons: ["direct:web-search"],
+		});
+	});
+
 	it("prefers an inline web-lookup over spawning a sub-agent for live-info", () => {
 		// Live regression: the planner surfaced WEB_FETCH into candidates but
 		// still selected TASKS_SPAWN_AGENT for "what's the current BTC price",
@@ -262,7 +288,7 @@ describe("live routing regressions", () => {
 		expect(
 			shouldPreferDirectCurrentCandidateActions({
 				candidateActions: ["WEB_FETCH", "TASKS_SPAWN_AGENT"],
-				currentMessageText: "build a tiny static app called color-pop",
+				currentMessageText: "build a weather app that shows today's forecast",
 				directCandidateActions: ["WEB_FETCH"],
 			}),
 		).toBe(false);
