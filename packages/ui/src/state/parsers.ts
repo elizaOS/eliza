@@ -369,10 +369,18 @@ export function getLifeOpsGoalCommandStyleLabel(
 
 export function buildLifeOpsGoalCommandMetadata(
   goalStyle: LifeOpsGoalCommandStyle,
+  options: { roomId?: string | null } = {},
 ): Record<string, unknown> {
   return {
     source: "chat_command",
     command: "/goal",
+    lifeopsGoalWorkstream: {
+      enabled: true,
+      autoSpawnAgent: true,
+      framework: "codex",
+      label: "GoalScout",
+      ...(options.roomId ? { roomId: options.roomId } : {}),
+    },
     lifeopsGoalStyle: {
       kind: goalStyle,
       label: getLifeOpsGoalCommandStyleLabel(goalStyle),

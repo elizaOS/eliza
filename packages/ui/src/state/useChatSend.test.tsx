@@ -237,7 +237,10 @@ describe("useChatSend LifeOps commands", () => {
   });
 
   it("creates a LifeOps goal through the real client path", async () => {
-    const deps = makeDeps();
+    const deps = makeDeps({
+      activeConversationId: "conv-lifeops",
+      conversations: [conversation("conv-lifeops", "room-lifeops")],
+    });
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -256,6 +259,13 @@ describe("useChatSend LifeOps commands", () => {
           kind: "sprint",
           label: "Sprint",
         }),
+        lifeopsGoalWorkstream: expect.objectContaining({
+          enabled: true,
+          autoSpawnAgent: true,
+          framework: "codex",
+          label: "GoalScout",
+          roomId: "room-lifeops",
+        }),
       }),
     });
     expect(mocks.client.createConversation).not.toHaveBeenCalled();
@@ -263,7 +273,7 @@ describe("useChatSend LifeOps commands", () => {
     expect(
       deps.conversationMessagesRef.current.map((message) => message.text),
     ).toContain(
-      "Created LifeOps goal: ship the upstream patches\nStyle: Sprint",
+      "Created LifeOps goal: ship the upstream patches\nStyle: Sprint\nWorkstream: queued with Codex subagent",
     );
   });
 

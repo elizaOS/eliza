@@ -46,9 +46,18 @@ describe("parseLifeOpsGoalCommandArgs", () => {
 describe("buildLifeOpsGoalCommandMetadata", () => {
   it("stores command provenance and style hints as metadata", () => {
     expect(getLifeOpsGoalCommandStyleLabel("maintenance")).toBe("Maintenance");
-    expect(buildLifeOpsGoalCommandMetadata("maintenance")).toMatchObject({
+    expect(
+      buildLifeOpsGoalCommandMetadata("maintenance", { roomId: "room-1" }),
+    ).toMatchObject({
       source: "chat_command",
       command: "/goal",
+      lifeopsGoalWorkstream: {
+        enabled: true,
+        autoSpawnAgent: true,
+        framework: "codex",
+        label: "GoalScout",
+        roomId: "room-1",
+      },
       lifeopsGoalStyle: {
         kind: "maintenance",
         label: "Maintenance",

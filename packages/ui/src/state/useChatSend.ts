@@ -406,15 +406,22 @@ export function useChatSend(deps: UseChatSendDeps) {
             return { handled: true };
           }
 
+          const activeGoalConversationId = activeConversationId;
+          const roomId = activeGoalConversationId
+            ? await resolveConversationRoomId(activeGoalConversationId, null)
+            : null;
           const record = await client.createLifeOpsGoal({
             title: parsedGoal.title,
-            metadata: buildLifeOpsGoalCommandMetadata(parsedGoal.goalStyle),
+            metadata: buildLifeOpsGoalCommandMetadata(parsedGoal.goalStyle, {
+              roomId,
+            }),
           });
           appendLocalCommandTurn(
             rawText,
             [
               `Created LifeOps goal: ${record.goal.title}`,
               `Style: ${getLifeOpsGoalCommandStyleLabel(parsedGoal.goalStyle)}`,
+              "Workstream: queued with Codex subagent",
             ].join("\n"),
           );
           return { handled: true };
@@ -631,7 +638,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       return { handled: false };
     },
-    [appendLocalCommandTurn],
+    [activeConversationId, appendLocalCommandTurn, resolveConversationRoomId],
   );
 
   const runQueuedChatSend = useCallback(

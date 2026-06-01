@@ -36,6 +36,17 @@ import {
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import {
+  buildLifeOpsGoalInitialAgentTask,
+  buildLifeOpsGoalWorkstreamTaskInput,
+  type GoalWorkstreamStatus,
+  getLatestSession,
+  metadataRecord,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  type OrchestratorTaskServiceLike,
+  readGoalWorkstreamConfig,
+  stringValue,
+} from "./goal-workstream.js";
+import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,
   type LifeOpsScheduleMergedStateRecord,
@@ -266,14 +277,18 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       })();
 
       if (dedupCandidate !== null) {
+        const goal = await this.ensureGoalWorkstream(
+          dedupCandidate.record,
+          normalizeOptionalRecord(request.metadata, "metadata") ?? {},
+        );
         const links = await this.repository.listGoalLinksForGoal(
           this.agentId(),
-          dedupCandidate.record.id,
+          goal.id,
         );
         await this.recordAudit(
           "goal_created",
           "goal",
-          dedupCandidate.record.id,
+          goal.id,
           "goal create short-circuited by dedup",
           {
             request,
@@ -282,12 +297,12 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
             dedup: true,
             similarityScore: Number(dedupCandidate.score.toFixed(3)),
             existingGoalId: dedupCandidate.record.id,
-            status: dedupCandidate.record.status,
-            reviewState: dedupCandidate.record.reviewState,
+            status: goal.status,
+            reviewState: goal.reviewState,
           },
         );
         return {
-          goal: dedupCandidate.record,
+          goal,
           links,
         };
       }
@@ -338,23 +353,102 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         ),
       });
       await this.repository.createGoal(goal);
+      const goalWithWorkstream = await this.ensureGoalWorkstream(
+        goal,
+        goal.metadata,
+      );
       await this.recordAudit(
         "goal_created",
         "goal",
-        goal.id,
+        goalWithWorkstream.id,
         "goal created",
         {
           request,
         },
         {
-          status: goal.status,
-          reviewState: goal.reviewState,
+          status: goalWithWorkstream.status,
+          reviewState: goalWithWorkstream.reviewState,
+          lifeopsGoalWorkstream:
+            goalWithWorkstream.metadata.lifeopsGoalWorkstream,
         },
       );
       return {
-        goal,
+        goal: goalWithWorkstream,
         links: [],
       };
+    }
+
+    private async ensureGoalWorkstream(
+      goal: LifeOpsGoalDefinition,
+      requestMetadata: Record<string, unknown>,
+    ): Promise<LifeOpsGoalDefinition> {
+      const config = readGoalWorkstreamConfig(requestMetadata);
+      if (!config) return goal;
+
+      const currentState = metadataRecord(goal.metadata.lifeopsGoalWorkstream);
+      const existingTaskId = stringValue(currentState?.orchestratorTaskId);
+      if (existingTaskId) return goal;
+
+      const updateWorkstream = async (
+        status: GoalWorkstreamStatus,
+        details: Record<string, unknown> = {},
+      ): Promise<LifeOpsGoalDefinition> => {
+        const next: LifeOpsGoalDefinition = {
+          ...goal,
+          metadata: mergeMetadata(goal.metadata, {
+            lifeopsGoalWorkstream: {
+              ...currentState,
+              enabled: true,
+              autoSpawnAgent: config.autoSpawnAgent,
+              framework: config.framework,
+              label: config.label,
+              status,
+              updatedAt: new Date().toISOString(),
+              ...details,
+            },
+          }),
+          updatedAt: new Date().toISOString(),
+        };
+        await this.repository.updateGoal(next);
+        return next;
+      };
+
+      const orchestrator = this.runtime.getService<OrchestratorTaskServiceLike>(
+        ORCHESTRATOR_TASK_SERVICE_TYPE,
+      );
+      if (!orchestrator) {
+        return updateWorkstream("unavailable", {
+          lastError: "Orchestrator task service not available",
+        });
+      }
+
+      try {
+        const taskInput = buildLifeOpsGoalWorkstreamTaskInput(goal);
+        const task = await orchestrator.createTask(taskInput);
+        let nextGoal = await updateWorkstream("task_created", {
+          orchestratorTaskId: task.id,
+        });
+        if (!config.autoSpawnAgent) return nextGoal;
+
+        const spawned = await orchestrator.spawnAgentForTask(task.id, {
+          framework: config.framework,
+          label: config.label,
+          task: buildLifeOpsGoalInitialAgentTask(nextGoal),
+          ...(config.workdir ? { workdir: config.workdir } : {}),
+        });
+        const session = getLatestSession(spawned);
+        nextGoal = await updateWorkstream("active", {
+          orchestratorTaskId: task.id,
+          agentFramework: config.framework,
+          agentSessionId: session.sessionId,
+          agentLabel: session.label ?? config.label,
+        });
+        return nextGoal;
+      } catch (error) {
+        return updateWorkstream("failed", {
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     async updateGoal(
