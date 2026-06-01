@@ -1343,7 +1343,9 @@ function computeVerdictFingerprint(
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `${k}=${v ?? ""}`)
     .join(" ");
-  return `${isNativePlatform ? "1" : "0"}${env}${JSON.stringify(config)}`;
+  return `${isNativePlatform ? "1" : "0"}${env}${JSON.stringify(
+    config,
+  )}`;
 }
 
 /**
