@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/plugin-monad",
+  "version": "1.0.0",
+  "description": "ElizaOS plugin for Monad blockchain integration - query balances, transactions, blocks, and gas prices",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "monad",
+    "blockchain",
+    "evm",
+    "web3"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "^2.0.0-alpha.77",
+    "ethers": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^2.0.0-alpha.77"
+  }
+}
