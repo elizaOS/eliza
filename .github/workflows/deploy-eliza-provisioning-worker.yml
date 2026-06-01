@@ -21,6 +21,7 @@ on:
       - 'packages/cloud-shared/src/lib/services/eliza-sandbox.ts'
       - 'packages/cloud-shared/src/db/repositories/agent-sandboxes.ts'
       - 'packages/cloud-shared/**'
+      - 'packages/cloud-sdk/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
