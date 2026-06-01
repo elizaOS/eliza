@@ -92,8 +92,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
-  "@elizaos/plugin-google", // Google Workspace connector service required by LifeOps
-  "@elizaos/plugin-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
@@ -131,6 +129,8 @@ export const DEFERRED_CORE_PLUGINS: readonly string[] = CORE_PLUGINS.filter(
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
+  "@elizaos/plugin-google", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
+  "@elizaos/plugin-lifeops", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
