@@ -2459,7 +2459,7 @@ export function OrchestratorWorkbench() {
               <div
                 ref={listRef}
                 onScroll={handleListScroll}
-                className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
+                className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
                 data-testid="orchestrator-message-list"
               >
                 {messageCursor ? (
@@ -2484,13 +2484,29 @@ export function OrchestratorWorkbench() {
                     })}
                   </p>
                 ) : (
-                  conversation.map((block) => (
-                    <ConversationBlockView
-                      key={block.key}
-                      block={block}
-                      locale={locale}
-                    />
-                  ))
+                  conversation.map((block, index) => {
+                    // Two-tier rhythm: a tool/notice clings to the agent turn
+                    // it belongs to (tight), while a real turn boundary (a new
+                    // user/agent turn, or the agent's first action after the
+                    // user) gets a wide gap. One flat space-y read as a stack
+                    // of disconnected boxes.
+                    const prevKind = conversation[index - 1]?.kind;
+                    const withinTurn =
+                      (block.kind === "tool" || block.kind === "notice") &&
+                      (prevKind === "agent" ||
+                        prevKind === "tool" ||
+                        prevKind === "notice");
+                    return (
+                      <div
+                        key={block.key}
+                        className={
+                          !prevKind ? "" : withinTurn ? "mt-1.5" : "mt-5"
+                        }
+                      >
+                        <ConversationBlockView block={block} locale={locale} />
+                      </div>
+                    );
+                  })
                 )}
               </div>
               {detail.activeSessionCount > 0 ? (

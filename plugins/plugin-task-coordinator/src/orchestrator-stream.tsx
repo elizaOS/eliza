@@ -604,15 +604,7 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   return <div className="mt-1.5 space-y-1.5">{blocks}</div>;
 }
 
-function ToolCallCard({
-  tool,
-  at,
-  locale,
-}: {
-  tool: ToolView;
-  at: number;
-  locale?: string;
-}): ReactNode {
+function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
   const Icon = toolIcon(tool);
   const badge = STATUS_BADGE[tool.status];
   const BadgeIcon = badge.icon;
@@ -694,9 +686,6 @@ function ToolCallCard({
             {meta.join(" · ")}
           </span>
         ) : null}
-        <span className="shrink-0 tabular-nums text-2xs text-muted/70">
-          {formatClockTime(at, locale)}
-        </span>
       </button>
       {open ? (
         <div className="px-2.5 pb-2">{<ToolBody tool={tool} />}</div>
@@ -767,7 +756,7 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "tool") {
-    return <ToolCallCard tool={block.tool} at={block.at} locale={locale} />;
+    return <ToolCallCard tool={block.tool} />;
   }
 
   const Icon = block.icon;
@@ -780,9 +769,6 @@ export function ConversationBlockView({
       <Icon className={`h-3 w-3 shrink-0 ${block.tone}`} />
       <span className={`min-w-0 shrink truncate font-medium ${block.tone}`}>
         {block.text}
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {formatClockTime(block.at, locale)}
       </span>
       <span className="h-px flex-1 bg-border/40" />
     </div>
