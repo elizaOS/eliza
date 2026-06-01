@@ -26,6 +26,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { DetailSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type RuntimeSectionKey =
   | "summary"
@@ -649,162 +650,164 @@ export function RuntimeView({
   );
 
   return (
-    <PageLayout
-      sidebar={runtimeSidebar}
-      contentHeader={contentHeader}
-      data-testid="runtime-view"
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        {error ? (
-          <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
-        ) : null}
+    <ShellViewAgentSurface viewId="runtime">
+      <PageLayout
+        sidebar={runtimeSidebar}
+        contentHeader={contentHeader}
+        data-testid="runtime-view"
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          {error ? (
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : null}
 
-        {loading && !snapshot ? (
-          <DetailSkeleton className="min-h-[24rem]" />
-        ) : !snapshot ? (
-          <PagePanel.Empty
-            variant="panel"
-            className="min-h-[24rem]"
-            description={t("runtimeview.loadingDescription")}
-            title={t("runtimeview.noSnapshotAvailable")}
-          />
-        ) : !snapshot.runtimeAvailable ? (
-          <PagePanel.Empty
-            variant="panel"
-            className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
-            description={t("runtimeview.runtimePendingDescription")}
-            title={t("runtimeview.AgentRuntimeIsNot")}
-          />
-        ) : activeSection === "summary" ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <OrderCard
-              title={t("common.plugins")}
-              entries={snapshot.order.plugins}
+          {loading && !snapshot ? (
+            <DetailSkeleton className="min-h-[24rem]" />
+          ) : !snapshot ? (
+            <PagePanel.Empty
+              variant="panel"
+              className="min-h-[24rem]"
+              description={t("runtimeview.loadingDescription")}
+              title={t("runtimeview.noSnapshotAvailable")}
             />
-            <OrderCard
-              title={t("common.actions")}
-              entries={snapshot.order.actions}
+          ) : !snapshot.runtimeAvailable ? (
+            <PagePanel.Empty
+              variant="panel"
+              className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
+              description={t("runtimeview.runtimePendingDescription")}
+              title={t("runtimeview.AgentRuntimeIsNot")}
             />
-            <OrderCard
-              title={t("common.providers")}
-              entries={snapshot.order.providers}
-            />
-            <OrderCard
-              title={t("common.evaluators")}
-              entries={snapshot.order.evaluators}
-            />
-            <ServicesOrderCard entries={snapshot.order.services} />
-            <RuntimeSummaryCard snapshot={snapshot} t={t} />
-          </div>
-        ) : (
-          <>
-            <PagePanel variant="padded">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                    {t("runtimeview.sectionLabel")}
+          ) : activeSection === "summary" ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <OrderCard
+                title={t("common.plugins")}
+                entries={snapshot.order.plugins}
+              />
+              <OrderCard
+                title={t("common.actions")}
+                entries={snapshot.order.actions}
+              />
+              <OrderCard
+                title={t("common.providers")}
+                entries={snapshot.order.providers}
+              />
+              <OrderCard
+                title={t("common.evaluators")}
+                entries={snapshot.order.evaluators}
+              />
+              <ServicesOrderCard entries={snapshot.order.services} />
+              <RuntimeSummaryCard snapshot={snapshot} t={t} />
+            </div>
+          ) : (
+            <>
+              <PagePanel variant="padded">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+                      {t("runtimeview.sectionLabel")}
+                    </div>
+                    <div className="mt-2 text-[2rem] font-semibold leading-tight text-txt">
+                      {t(
+                        SECTION_TAB_KEYS.find(
+                          (section) => section.key === activeSection,
+                        )?.i18nKey ?? "runtimeview.runtime",
+                      )}
+                    </div>
+                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+                      {t(SECTION_DESCRIPTION_KEYS[activeSection])}
+                    </p>
                   </div>
-                  <div className="mt-2 text-[2rem] font-semibold leading-tight text-txt">
-                    {t(
-                      SECTION_TAB_KEYS.find(
-                        (section) => section.key === activeSection,
-                      )?.i18nKey ?? "runtimeview.runtime",
-                    )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => setExpandedPaths(new Set([rootPath]))}
+                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                    >
+                      {t("common.collapse")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() =>
+                        setExpandedPaths(
+                          buildInitialExpanded(rootPath, sectionData),
+                        )
+                      }
+                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                    >
+                      {t("runtimeview.ExpandTop")}
+                    </Button>
                   </div>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-                    {t(SECTION_DESCRIPTION_KEYS[activeSection])}
-                  </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => setExpandedPaths(new Set([rootPath]))}
-                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-                  >
-                    {t("common.collapse")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() =>
-                      setExpandedPaths(
-                        buildInitialExpanded(rootPath, sectionData),
-                      )
-                    }
-                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-                  >
-                    {t("runtimeview.ExpandTop")}
-                  </Button>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.path")}
+                    </div>
+                    <div className="mt-2 font-mono text-sm text-txt">
+                      {rootPath}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.lastUpdated")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {formatDateTime(snapshot.generatedAt, {
+                        fallback: "n/a",
+                      })}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.depth")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {depth}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.objectCap")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {maxObjectEntries}
+                    </div>
+                  </PagePanel>
                 </div>
-              </div>
+              </PagePanel>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.path")}
-                  </div>
-                  <div className="mt-2 font-mono text-sm text-txt">
-                    {rootPath}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.lastUpdated")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {formatDateTime(snapshot.generatedAt, {
-                      fallback: "n/a",
-                    })}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.depth")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {depth}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.objectCap")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {maxObjectEntries}
-                  </div>
-                </PagePanel>
-              </div>
-            </PagePanel>
-
-            <PagePanel
-              variant="surface"
-              className="min-h-[24rem] flex-1 overflow-auto p-4"
-            >
-              {sectionData == null ? (
-                <PagePanel.Empty
-                  variant="inset"
-                  description={t("runtimeview.noSectionData")}
-                  title={t("runtimeview.sectionUnavailable")}
-                />
-              ) : (
-                <TreeNode
-                  label={activeSection}
-                  value={sectionData}
-                  path={rootPath}
-                  depth={0}
-                  expanded={expandedPaths}
-                  onToggle={handleTogglePath}
-                />
-              )}
-            </PagePanel>
-          </>
-        )}
-      </div>
-    </PageLayout>
+              <PagePanel
+                variant="surface"
+                className="min-h-[24rem] flex-1 overflow-auto p-4"
+              >
+                {sectionData == null ? (
+                  <PagePanel.Empty
+                    variant="inset"
+                    description={t("runtimeview.noSectionData")}
+                    title={t("runtimeview.sectionUnavailable")}
+                  />
+                ) : (
+                  <TreeNode
+                    label={activeSection}
+                    value={sectionData}
+                    path={rootPath}
+                    depth={0}
+                    expanded={expandedPaths}
+                    onToggle={handleTogglePath}
+                  />
+                )}
+              </PagePanel>
+            </>
+          )}
+        </div>
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }

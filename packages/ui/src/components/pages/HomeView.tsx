@@ -19,6 +19,7 @@ import { usePullGesture } from "../shell/use-pull-gesture";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import type {
   FrequencyAnalyser,
   VoiceWaveformMode,
@@ -54,15 +55,17 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   editRequestNonce: number;
 }): React.JSX.Element {
   return (
-    <Homescreen
-      analyser={analyser}
-      phase={phaseForMode(mode)}
-      userText={userText}
-      assistantText={assistantText}
-      onOrbAnchor={onOrbAnchor}
-      onEditModeChange={onEditModeChange}
-      editRequestNonce={editRequestNonce}
-    />
+    <ShellViewAgentSurface viewId="home">
+      <Homescreen
+        analyser={analyser}
+        phase={phaseForMode(mode)}
+        userText={userText}
+        assistantText={assistantText}
+        onOrbAnchor={onOrbAnchor}
+        onEditModeChange={onEditModeChange}
+        editRequestNonce={editRequestNonce}
+      />
+    </ShellViewAgentSurface>
   );
 });
 

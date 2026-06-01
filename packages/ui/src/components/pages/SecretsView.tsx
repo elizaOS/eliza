@@ -16,6 +16,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
@@ -231,139 +232,147 @@ export function SecretsView({
 
   if (loading && allSecrets.length === 0) {
     return (
-      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <ListSkeleton rows={6} />
-      </ContentLayout>
+      <ShellViewAgentSurface viewId="secrets">
+        <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+          <ListSkeleton rows={6} />
+        </ContentLayout>
+      </ShellViewAgentSurface>
     );
   }
 
   if (error) {
     return (
-      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className="rounded-sm border border-border/50 bg-card/92 px-4 py-8 text-center">
-          <div className="mb-2 text-sm text-danger">{error}</div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-3 text-sm"
-            onClick={() => void load()}
-          >
-            {t("common.retry")}
-          </Button>
-        </div>
-      </ContentLayout>
+      <ShellViewAgentSurface viewId="secrets">
+        <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+          <div className="rounded-sm border border-border/50 bg-card/92 px-4 py-8 text-center">
+            <div className="mb-2 text-sm text-danger">{error}</div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-sm"
+              onClick={() => void load()}
+            >
+              {t("common.retry")}
+            </Button>
+          </div>
+        </ContentLayout>
+      </ShellViewAgentSurface>
     );
   }
 
   return (
-    <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-      <div className="space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="m-0 max-w-2xl text-sm leading-6 text-muted" />
-          <Button
-            variant="default"
-            size="sm"
-            className="h-9 flex-shrink-0 px-3 text-sm "
-            onClick={() => {
-              setPickerOpen(true);
-              setPickerSearch("");
-            }}
-          >
-            {t("secretsview.AddSecret")}
-          </Button>
-        </div>
-
-        {/* Picker modal */}
-        {pickerOpen && (
-          <SecretPicker
-            available={availableSecrets}
-            search={pickerSearch}
-            onSearchChange={setPickerSearch}
-            onAdd={(key) => {
-              pinKey(key);
-            }}
-            onClose={() => setPickerOpen(false)}
-          />
-        )}
-
-        {/* Empty state */}
-        {vaultSecrets.length === 0 && (
-          <div className="rounded-sm border border-border/50 bg-card/92 border-dashed px-4 py-8 text-center text-sm italic text-muted">
-            {t("secretsview.YourVaultIsEmpty")}
-          </div>
-        )}
-
-        {/* Vault secrets grouped by category */}
-        {grouped.map(({ category, label, secrets: catSecrets }) => (
-          <section key={category} className="space-y-3">
-            <Button
-              variant="ghost"
-              className="mb-3 h-auto w-full items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
-              onClick={() => toggleCollapse(category)}
-              aria-expanded={!collapsed.has(category)}
-            >
-              <ChevronDown
-                className="h-3 w-3 select-none text-muted transition-transform"
-                style={{
-                  transform: collapsed.has(category)
-                    ? "rotate(-90deg)"
-                    : "rotate(0deg)",
-                }}
-              />
-              <span className="text-sm font-semibold text-txt">{label}</span>
-              <span className="text-xs text-muted">({catSecrets.length})</span>
-            </Button>
-
-            {!collapsed.has(category) && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {catSecrets.map((secret) => (
-                  <SecretCard
-                    key={secret.key}
-                    secret={secret}
-                    draftValue={draft[secret.key] ?? ""}
-                    isVisible={visible.has(secret.key)}
-                    isPinned={pinnedKeys.has(secret.key)}
-                    onToggleVisible={() => toggleVisible(secret.key)}
-                    onDraftChange={(val) =>
-                      setDraft((prev) => ({ ...prev, [secret.key]: val }))
-                    }
-                    onRemove={() => unpinKey(secret.key)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        ))}
-
-        {/* Save bar */}
-        {vaultSecrets.length > 0 && (
-          <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center">
+    <ShellViewAgentSurface viewId="secrets">
+      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+        <div className="space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="m-0 max-w-2xl text-sm leading-6 text-muted" />
             <Button
               variant="default"
               size="sm"
-              className="h-9 px-4 text-sm font-medium transition-colors"
-              disabled={dirtyKeys.length === 0 || saving}
-              onClick={handleSave}
+              className="h-9 flex-shrink-0 px-3 text-sm "
+              onClick={() => {
+                setPickerOpen(true);
+                setPickerSearch("");
+              }}
             >
-              {saving
-                ? t("common.saving", {
-                    defaultValue: "Saving...",
-                  })
-                : dirtyKeys.length > 0
-                  ? `${t("common.save")} (${dirtyKeys.length})`
-                  : t("common.save")}
+              {t("secretsview.AddSecret")}
             </Button>
-            {saveResult && (
-              <span
-                className={`text-sm ${saveResult.ok ? "text-ok" : "text-danger"}`}
-              >
-                {saveResult.message}
-              </span>
-            )}
           </div>
-        )}
-      </div>
-    </ContentLayout>
+
+          {/* Picker modal */}
+          {pickerOpen && (
+            <SecretPicker
+              available={availableSecrets}
+              search={pickerSearch}
+              onSearchChange={setPickerSearch}
+              onAdd={(key) => {
+                pinKey(key);
+              }}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+
+          {/* Empty state */}
+          {vaultSecrets.length === 0 && (
+            <div className="rounded-sm border border-border/50 bg-card/92 border-dashed px-4 py-8 text-center text-sm italic text-muted">
+              {t("secretsview.YourVaultIsEmpty")}
+            </div>
+          )}
+
+          {/* Vault secrets grouped by category */}
+          {grouped.map(({ category, label, secrets: catSecrets }) => (
+            <section key={category} className="space-y-3">
+              <Button
+                variant="ghost"
+                className="mb-3 h-auto w-full items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
+                onClick={() => toggleCollapse(category)}
+                aria-expanded={!collapsed.has(category)}
+              >
+                <ChevronDown
+                  className="h-3 w-3 select-none text-muted transition-transform"
+                  style={{
+                    transform: collapsed.has(category)
+                      ? "rotate(-90deg)"
+                      : "rotate(0deg)",
+                  }}
+                />
+                <span className="text-sm font-semibold text-txt">{label}</span>
+                <span className="text-xs text-muted">
+                  ({catSecrets.length})
+                </span>
+              </Button>
+
+              {!collapsed.has(category) && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {catSecrets.map((secret) => (
+                    <SecretCard
+                      key={secret.key}
+                      secret={secret}
+                      draftValue={draft[secret.key] ?? ""}
+                      isVisible={visible.has(secret.key)}
+                      isPinned={pinnedKeys.has(secret.key)}
+                      onToggleVisible={() => toggleVisible(secret.key)}
+                      onDraftChange={(val) =>
+                        setDraft((prev) => ({ ...prev, [secret.key]: val }))
+                      }
+                      onRemove={() => unpinKey(secret.key)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+
+          {/* Save bar */}
+          {vaultSecrets.length > 0 && (
+            <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center">
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 px-4 text-sm font-medium transition-colors"
+                disabled={dirtyKeys.length === 0 || saving}
+                onClick={handleSave}
+              >
+                {saving
+                  ? t("common.saving", {
+                      defaultValue: "Saving...",
+                    })
+                  : dirtyKeys.length > 0
+                    ? `${t("common.save")} (${dirtyKeys.length})`
+                    : t("common.save")}
+              </Button>
+              {saveResult && (
+                <span
+                  className={`text-sm ${saveResult.ok ? "text-ok" : "text-danger"}`}
+                >
+                  {saveResult.message}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </ContentLayout>
+    </ShellViewAgentSurface>
   );
 }
 

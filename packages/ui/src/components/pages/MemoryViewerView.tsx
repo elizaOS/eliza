@@ -40,6 +40,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -800,48 +801,50 @@ export function MemoryViewerView({
   );
 
   return (
-    <PageLayout
-      sidebar={sidebar}
-      contentHeader={contentHeader}
-      data-testid="memory-viewer-view"
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        {/* View mode toggle + person context */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SegmentedControl
-            value={viewMode}
-            onValueChange={(v) => setViewMode(v as ViewMode)}
-            items={viewModeItems}
-            buttonClassName="min-h-8 px-4 py-2"
-          />
-          {selectedPerson ? (
-            <div className="flex items-center gap-2 text-sm text-muted">
-              {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}
-              <MetaPill compact>{selectedPerson.displayName}</MetaPill>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 text-xs-tight"
-                onClick={handleClearPerson}
-              >
-                {t("memoryviewer.clear", { defaultValue: "Clear" })}
-              </Button>
-            </div>
-          ) : null}
-        </div>
+    <ShellViewAgentSurface viewId="memories">
+      <PageLayout
+        sidebar={sidebar}
+        contentHeader={contentHeader}
+        data-testid="memory-viewer-view"
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          {/* View mode toggle + person context */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SegmentedControl
+              value={viewMode}
+              onValueChange={(v) => setViewMode(v as ViewMode)}
+              items={viewModeItems}
+              buttonClassName="min-h-8 px-4 py-2"
+            />
+            {selectedPerson ? (
+              <div className="flex items-center gap-2 text-sm text-muted">
+                {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}
+                <MetaPill compact>{selectedPerson.displayName}</MetaPill>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs-tight"
+                  onClick={handleClearPerson}
+                >
+                  {t("memoryviewer.clear", { defaultValue: "Clear" })}
+                </Button>
+              </div>
+            ) : null}
+          </div>
 
-        {/* Content */}
-        {viewMode === "feed" ? (
-          <MemoryFeedPanel typeFilter={typeFilter} />
-        ) : (
-          <MemoryBrowserPanel
-            typeFilter={typeFilter}
-            entityId={selectedPersonId}
-            entityIds={selectedEntityIds}
-          />
-        )}
-      </div>
-    </PageLayout>
+          {/* Content */}
+          {viewMode === "feed" ? (
+            <MemoryFeedPanel typeFilter={typeFilter} />
+          ) : (
+            <MemoryBrowserPanel
+              typeFilter={typeFilter}
+              entityId={selectedPersonId}
+              entityIds={selectedEntityIds}
+            />
+          )}
+        </div>
+      </PageLayout>
+    </ShellViewAgentSurface>
   );
 }
