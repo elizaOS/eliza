@@ -2098,6 +2098,7 @@ type V5PlannerActionSurfaceSummary = {
 	candidateActions: string[];
 	parentActionHints: string[];
 	fallback?: string;
+	webLookupBackstop?: string;
 };
 
 type V5PlannerActionSurface = {
@@ -2405,6 +2406,30 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Live-info structural backstop: the BM25/keyword retrieval tier ranks a
+	// small slice of parent actions and can drop a keyless web-lookup action
+	// (e.g. WEB_FETCH) for live-info phrasings that don't lexically overlap its
+	// catalog entry. When the message reads as a web-lookup request and an
+	// allowed web-lookup action already survived the planner execution gates in
+	// `params.actions`, expose it so the planner can answer inline instead of
+	// force-delegating to a coding agent. This only un-filters an
+	// already-gated action — it never bypasses `appendIfAllowed`.
+	let webLookupBackstop: string | undefined;
+	const webLookupMessageText = getUserMessageText(params.message) ?? "";
+	if (looksLikeWebSearchRequest(webLookupMessageText)) {
+		const lookupActionName = findWebLookupActionName(params.actions);
+		if (lookupActionName) {
+			const normalizedLookupName = normalizeActionIdentifier(lookupActionName);
+			if (
+				normalizedLookupName &&
+				!exposedActionNames.has(normalizedLookupName)
+			) {
+				exposedActionNames.add(normalizedLookupName);
+				webLookupBackstop = lookupActionName;
+			}
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -2476,6 +2501,7 @@ function buildV5PlannerActionSurface(params: {
 			candidateActions,
 			parentActionHints,
 			...(fallback ? { fallback } : {}),
+			...(webLookupBackstop ? { webLookupBackstop } : {}),
 		},
 	};
 }
