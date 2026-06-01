@@ -45,6 +45,7 @@ import {
 } from "./components/shell/ShellControllerContext";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
+import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
@@ -59,7 +60,7 @@ import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_OVERLAY } from "./lib/floating-layers";
+import { Z_OVERLAY, Z_SHELL_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -1042,6 +1043,10 @@ function GlobalChatOverlay(): ReactNode {
   );
 }
 
+function shouldSuppressShellPill(tab: string): boolean {
+  return tab === "onboarding" || tab === "chat" || tab === "orchestrator";
+}
+
 export function App() {
   const {
     startupError,
@@ -1436,6 +1441,15 @@ export function App() {
     );
   }
 
+  if (!isCoordinatorReady) {
+    return (
+      <BugReportProvider value={bugReport}>
+        <StartupScreen />
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
   // Auth gate — when the coordinator is ready, check /api/auth/me.
   // "loading" phase: wait (fall through to the coordinator's own "ready" render).
   // "unauthenticated": render LoginView.
@@ -1522,8 +1536,16 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        <GlobalChatOverlay />
+        {isChat ? <GlobalChatOverlay /> : null}
         <ShellOverlays actionNotice={actionNotice} />
+        {!shouldSuppressShellPill(tab) ? (
+          <div
+            className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center"
+            style={{ zIndex: Z_SHELL_OVERLAY }}
+          >
+            <ShellFoundationMount />
+          </div>
+        ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
           text={contextMenu.saveCommandText}

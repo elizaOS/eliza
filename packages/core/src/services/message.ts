@@ -51,7 +51,6 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
-import { looksLikeTrainingCutoffLeak } from "../runtime/cutoff-leak-detector";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -62,7 +61,6 @@ import {
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
-import { looksLikeFabricatedModeration } from "../runtime/fabricated-moderation-detector";
 import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
@@ -90,7 +88,10 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { looksLikeRefusal } from "../runtime/refusal-detector";
+import {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "../runtime/stage1-honesty-detector";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -3430,9 +3431,15 @@ export function messageHandlerFromFieldResult(
 	);
 	const requestedPlanning =
 		initialPlanningContexts.length > 0 || validCandidateCount > 0;
+	const stage1HonestyViolation = looksLikeStage1HonestyViolation(replyTextRaw);
+	const forceHonestyPlanning =
+		processMessage === "RESPOND" &&
+		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
+	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
+		!stage1HonestyViolation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: effectiveCandidateActions,
@@ -3448,7 +3455,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const shouldPlan =
 		!preemptDirect &&
-		requestedPlanning &&
+		requestedPlanningForRouting &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
@@ -3471,12 +3478,7 @@ export function messageHandlerFromFieldResult(
 	// leak, or a fabricated-moderation claim — is dropped so the planner's own
 	// message reaches the user instead.
 	const replyText =
-		shouldPlan &&
-		(looksLikeRefusal(replyTextRaw) ||
-			looksLikeTrainingCutoffLeak(replyTextRaw) ||
-			looksLikeFabricatedModeration(replyTextRaw))
-			? ""
-			: replyTextRaw;
+		shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -3610,7 +3612,7 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	const normalized = replyText.trim();
 	if (normalized.length < 24) return false;
 	if (looksLikeProgressOnlyReply(normalized)) return false;
-	if (looksLikeRefusal(normalized)) return false;
+	if (looksLikeStage1HonestyViolation(normalized)) return false;
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);

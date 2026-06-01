@@ -43,8 +43,9 @@
 const CUTOFF_LEAK_PATTERNS: readonly RegExp[] = [
 	// "as of my last/latest update | training | knowledge | last training | most recent update/training"
 	/\bas of my (?:last update|latest update|training|knowledge|last training|most recent (?:update|training))\b/i,
-	// "knowledge / training cutoff" (and "cut-off" / "cut off") — references the model's own horizon
-	/\b(?:knowledge|training)\s*cut[\s-]?off\b/i,
+	// "my knowledge / training cutoff" (and "cut-off" / "cut off") — references the model's own horizon
+	/\b(?:my|this model['’]?s|the model['’]?s|the assistant['’]?s)\s+(?:knowledge|training)\s*cut[\s-]?off\b/i,
+	/\bpredates\s+my\s+(?:knowledge|training)\s*cut[\s-]?off\b/i,
 	// "I was trained on | up to | until | through ...", "I was last updated | last trained"
 	/\bi\s+was\s+(?:trained\s+(?:on|up\s+to|until|through)|last\s+(?:updated|trained))\b/i,
 	// "the latest information / data / knowledge I have is/dates/goes from | to | up to | back to <date>"
