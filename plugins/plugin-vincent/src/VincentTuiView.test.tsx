@@ -16,6 +16,7 @@ const vincentClientMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
     children,
     ...props

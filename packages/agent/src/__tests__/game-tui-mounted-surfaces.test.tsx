@@ -82,6 +82,7 @@ function stubComponent(name: string) {
 }
 
 const uiMock = vi.hoisted(() => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: (props: ReactTypes.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }, props.children),
   Input: (props: ReactTypes.InputHTMLAttributes<HTMLInputElement>) =>
