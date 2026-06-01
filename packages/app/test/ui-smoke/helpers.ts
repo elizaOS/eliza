@@ -273,6 +273,28 @@ async function expectStartupSettled(page: Page): Promise<void> {
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
 }
 
+function isRootTargetPath(targetPath: string): boolean {
+  try {
+    const url = new URL(targetPath, "http://ui-smoke.local");
+    return url.pathname === "/";
+  } catch {
+    return targetPath === "/" || targetPath.startsWith("/?");
+  }
+}
+
+async function expectMainShellReadyForRoute(
+  page: Page,
+  targetPath: string,
+): Promise<void> {
+  if (isRootTargetPath(targetPath)) return;
+  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
+}
+
 async function replayNavigationAfterStartup(page: Page): Promise<void> {
   await page.evaluate(() => {
     const isAppWindowRoute = new URLSearchParams(window.location.search).get(
@@ -295,6 +317,7 @@ export async function openAppPath(
   await expectRootReady(page);
   await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
+  await expectMainShellReadyForRoute(page, targetPath);
   await replayNavigationAfterStartup(page);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
