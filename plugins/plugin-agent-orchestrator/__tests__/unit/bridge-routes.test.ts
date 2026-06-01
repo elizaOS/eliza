@@ -81,13 +81,23 @@ function makeAdapter(
   };
 }
 
-function makeCtx(adapter: BridgeCredentialAdapter | null): RouteContext {
+function makeCtx(
+  adapter: BridgeCredentialAdapter | null,
+  // The POST ownership gate resolves the session via acpService.getSession.
+  // Default to an active session so the existing happy-path tests pass; pass
+  // `null`/a terminal status to exercise the rejection paths.
+  sessionStatus: string | null = "running",
+): RouteContext {
+  const acpService =
+    sessionStatus === null
+      ? { getSession: () => null }
+      : { getSession: (id: string) => ({ id, status: sessionStatus }) };
   return {
     runtime: {
       getService: (name: string) =>
         name === "SubAgentCredentialBridgeAdapter" ? adapter : null,
     } as unknown as RouteContext["runtime"],
-    acpService: null,
+    acpService: acpService as unknown as RouteContext["acpService"],
     workspaceService: null,
   };
 }
@@ -159,6 +169,45 @@ describe("bridge-routes — credential bridge", () => {
     );
     expect(status()).toBe(400);
     expect((body() as { code: string }).code).toBe("invalid_credential_keys");
+  });
+
+  it("POST rejects an unknown sessionId before issuing a request", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/not-a-real-session/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/not-a-real-session/credentials/request",
+      makeCtx(adapter, null),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    // The owner-facing approval flow must NOT be triggered for an unowned id.
+    expect(adapter.requestCredentials).not.toHaveBeenCalled();
+  });
+
+  it("POST rejects a terminal (stopped) session", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      makeCtx(adapter, "stopped"),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    expect(adapter.requestCredentials).not.toHaveBeenCalled();
   });
 
   it("GET /credentials/:key returns the value when adapter resolves ready", async () => {
