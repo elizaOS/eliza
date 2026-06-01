@@ -17,7 +17,7 @@ This plugin is only functional on Android. The overlay app is registered in the 
 
 | Surface | Name | Description |
 |---------|------|-------------|
-| Provider | `wifiNetworks` | Injects up to 25 nearby Wi-Fi networks into agent context on every `system`-context turn. Fields per network: `ssid`, `bssid`, `rssi` (dBm), `frequency` (MHz), `secured` (boolean). |
+| Provider | `wifiNetworks` | Dynamic provider gated to the `system` context (`contextGate: { anyOf: ["system"] }`); injects up to 25 nearby Wi-Fi networks when that context is selected for a turn. Fields per network: `ssid`, `bssid`, `rssi` (dBm), `frequency` (MHz), `secured` (boolean). |
 | Overlay UI | WiFi | Full-screen app accessible from the elizaOS app catalog. Scan, view connected network, connect/disconnect. |
 
 ## Required permissions

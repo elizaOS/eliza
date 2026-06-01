@@ -4,7 +4,7 @@ Trusted Execution Environment (TEE) integration plugin for elizaOS — provides 
 
 ## Purpose / role
 
-Adds TEE-backed cryptographic primitives to any Eliza agent: deterministic Solana (Ed25519) and EVM (ECDSA) keypair derivation and TDX remote attestation via Phala Network's dstack SDK. Loaded as `teePlugin` (the default export). Opt-in — add it to the `plugins` array in the agent character config. `TEE_MODE` is required; the plugin throws on init if it is missing or invalid.
+Adds TEE-backed cryptographic primitives to any Eliza agent: deterministic Solana (Ed25519) and EVM (ECDSA) keypair derivation and TDX remote attestation via Phala Network's dstack SDK. Loaded as `teePlugin` (the default export). Opt-in — add it to the `plugins` array in the agent character config. `init` defaults `TEE_MODE` to `LOCAL` when unset and throws only when the supplied value is not one of `LOCAL` / `DOCKER` / `PRODUCTION`.
 
 ## Plugin surface
 
@@ -55,14 +55,14 @@ bun run --cwd plugins/plugin-tee test            # vitest run src/__tests__/
 bun run --cwd plugins/plugin-tee test:watch      # vitest watch
 bun run --cwd plugins/plugin-tee format          # biome format --write
 bun run --cwd plugins/plugin-tee format:check    # biome format (check only)
-bun run --cwd plugins/plugin-tee clean           # rm dist .turbo tsconfig.tsbuildinfo
+bun run --cwd plugins/plugin-tee clean           # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 ```
 
 ## Config / env vars
 
 | Var | Required | Default | Notes |
 |-----|----------|---------|-------|
-| `TEE_MODE` | yes | — | `LOCAL` · `DOCKER` · `PRODUCTION`. Init throws on invalid value. |
+| `TEE_MODE` | no (defaults `LOCAL`) | `LOCAL` | `LOCAL` · `DOCKER` · `PRODUCTION`. `init` throws only on a present-but-invalid value. |
 | `WALLET_SECRET_SALT` | yes (for key derivation) | — | Secret salt for deterministic keypair derivation. Sensitive. |
 | `TEE_VENDOR` | no | `PHALA` | Only `PHALA` is implemented. |
 
@@ -94,6 +94,6 @@ bun run --cwd plugins/plugin-tee clean           # rm dist .turbo tsconfig.tsbui
 - `TEEService` uses `PhalaDeriveKeyProvider` unconditionally regardless of `TEE_VENDOR`; vendor selection in `teePlugin.init` only affects which vendor's providers/actions are registered.
 - `WALLET_SECRET_SALT` doubles as the derivation `path` argument inside `phalaDeriveKeyProvider`; it is passed directly to `TappdClient.deriveKey(secretSalt, "solana"|"evm")`.
 - `uploadAttestationQuote` POSTs to `https://proof.t16z.com/api/upload` — requires network access in production.
-- Node-only: `"eliza": { "platforms": ["node"] }`. No browser entrypoint.
+- Node-only: `"eliza": { "platforms": ["node"] }`, and `build.ts` bundles `src/index.ts` with `target: "node"`. `index.browser.ts` is a stub `teePlugin` that only warns "use a server proxy"; it is not wired into package `exports`.
 - External deps: `@phala/dstack-sdk` (TappdClient, TDX quotes), `@solana/web3.js` (Keypair), `viem` (keccak256, privateKeyToAccount).
 - For architecture rules, logger conventions, and git workflow see the root `AGENTS.md`.

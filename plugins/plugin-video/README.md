@@ -14,7 +14,7 @@ This plugin adds a `VideoService` to any Eliza agent's service registry. Once lo
 - **Process a video URL end-to-end** into a `Media` object with title, description, source, and a full transcript. Transcription priority:
   1. Manual subtitles (SRT), if available.
   2. Automatic captions, if available.
-  3. Audio transcription via `ServiceType.TRANSCRIPTION` (requires a transcription plugin such as `@elizaos/plugin-node`).
+  3. Audio transcription via `ServiceType.TRANSCRIPTION` (requires a loaded plugin that registers an `ITranscriptionService`).
 
 Results are cached under `./content_cache/` by content hash. yt-dlp is automatically kept up to date: on known extractor failures the plugin re-downloads the latest yt-dlp release from GitHub and retries.
 
@@ -65,4 +65,4 @@ None are required. The plugin resolves binaries automatically.
 
 - **ffmpeg** — required for audio extraction, thumbnail generation, and video conversion. Resolved from `ELIZA_FFMPEG_PATH`, then system PATH, then the bundled `ffmpeg-static` npm package.
 - **yt-dlp** — required for YouTube/Vimeo downloads and subtitle extraction. Resolved from `ELIZA_YT_DLP_PATH`, system PATH, or automatically downloaded and cached from GitHub releases.
-- **Transcription service** — needed only for the audio-transcription fallback path. Any plugin that registers `ServiceType.TRANSCRIPTION` (e.g. `@elizaos/plugin-node`) will work.
+- **Transcription service** — needed only for the audio-transcription fallback path. Any plugin that registers an `ITranscriptionService` under `ServiceType.TRANSCRIPTION` will work.

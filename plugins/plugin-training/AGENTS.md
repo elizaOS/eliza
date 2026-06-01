@@ -96,7 +96,7 @@ src/
     experience-routes.ts        Experience service routes
   services/
     training-service.ts         TrainingService class
-    training-trigger.ts         TrainingTriggerService + bootstrapOptimization
+    training-trigger.ts         TrainingTriggerService + bootstrapOptimizationFromAccumulatedTrajectories
     training-vast-service.ts    VastTrainingService
     training-service-registry.ts  getActiveTrainingService / setActiveTrainingService
     training-backend-check.ts   detectAvailableBackends

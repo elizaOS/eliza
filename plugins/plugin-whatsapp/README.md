@@ -54,9 +54,9 @@ The plugin also auto-enables when a `connectors.whatsapp` block is present in ag
 |----------|----------|-------------|
 | `WHATSAPP_AUTH_DIR` | Yes (Baileys) | Directory to persist multi-file Baileys auth state |
 | `WHATSAPP_SESSION_PATH` | No | Alternative name for `WHATSAPP_AUTH_DIR` |
-| `WHATSAPP_PRINT_QR` | No | Print QR code in terminal during initial pairing |
+| `WHATSAPP_AUTH_METHOD` | No | Force transport: `cloudapi` or `baileys` (overrides auto-detection) |
 
-**Transport detection:** `WHATSAPP_AUTH_DIR` present → Baileys. `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set.
+**Transport detection:** `WHATSAPP_AUTH_METHOD` wins when set. Otherwise: `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set.
 
 ### Access Control
 
@@ -169,15 +169,7 @@ Use `source: "whatsapp"` when targeting WhatsApp from an orchestrator or workflo
 
 **Webhook POST rejected (401):** Set `WHATSAPP_APP_SECRET` to the App Secret shown in your Meta App dashboard.
 
-**Baileys QR not appearing:** Set `WHATSAPP_PRINT_QR=true` or use the `/api/whatsapp/pair` endpoint and read the `qr` field from the WebSocket event stream.
-
-**Common Cloud API error codes:**
-| Code | Meaning |
-|------|---------|
-| 130429 | Rate limit reached |
-| 131000 | Generic API error |
-| 131030 | Invalid recipient |
-| 131051 | Unsupported message type |
+**Baileys QR not appearing:** Start a session with `POST /api/whatsapp/pair`, then poll `GET /api/whatsapp/status` (the status advances to `waiting_for_qr`). The QR itself is delivered as a `whatsapp-qr` event with a `qrDataUrl` field broadcast over the agent's WebSocket — render that data URL.
 
 ## License
 

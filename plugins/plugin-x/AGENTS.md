@@ -48,10 +48,10 @@ plugins/plugin-x/
       client.ts                    Low-level twitter-api-v2 wrapper (Client class)
       tweets.ts                    Tweet/Mention types; tweet fetch helpers
       accounts.ts                  resolveTwitterAccountConfig, resolveDefaultXAccountId, resolveRequestedXAccountId
-      auth.ts                      Auth provider selection
-      profile.ts                   fetchProfile, profile caching
-      search.ts                    fetchSearchTweets wrapper
-      relationships.ts             Follow/unfollow helpers
+      auth.ts                      TwitterAuth — authenticated twitter-api-v2 client wrapper
+      profile.ts                   getProfile, parseProfile, profile caching
+      search.ts                    searchTweets / searchProfiles / searchQuotedTweets generators
+      relationships.ts             followUser, getFollowing, getFollowers helpers
       errors.ts                    Typed error classes
       api-types.ts                 Raw API response type shapes
       auth-providers/
@@ -113,7 +113,6 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_ENABLE_DISCOVERY` | No | `false` | Enable discovery loop (follows + engagement) |
 | `TWITTER_TARGET_USERS` | No | `""` | Comma-separated usernames to target; empty = all; `*` = all |
 | `TWITTER_RETRY_LIMIT` | No | `5` | Max retries on failed operations |
-| `TWITTER_POLL_INTERVAL` | No | `120` | Timeline polling interval in seconds |
 | `TWITTER_POST_INTERVAL` | No | `120` | Fixed minutes between posts when MIN/MAX not set |
 | `TWITTER_POST_INTERVAL_MIN` | No | `90` | Minimum minutes between posts |
 | `TWITTER_POST_INTERVAL_MAX` | No | `180` | Maximum minutes between posts |
@@ -127,12 +126,6 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_MAX_TWEET_LENGTH` | No | `280` | Max tweet length |
 | `TWITTER_MIN_FOLLOWER_COUNT` | No | `100` | Min follower count for discovery follows |
 | `TWITTER_MAX_FOLLOWS_PER_CYCLE` | No | `5` | Max follows per discovery cycle |
-| `TWITTER_TIMELINE_ALGORITHM` | No | `weighted` | `weighted` or `latest` |
-| `TWITTER_TIMELINE_USER_BASED_WEIGHT` | No | `3` | User-based scoring weight |
-| `TWITTER_TIMELINE_TIME_BASED_WEIGHT` | No | `2` | Time-based scoring weight |
-| `TWITTER_TIMELINE_RELEVANCE_WEIGHT` | No | `5` | Relevance scoring weight |
-| `TWITTER_DM_ONLY` | No | `false` | Only process DMs, skip public interactions |
-| `TWITTER_ACTION_INTERVAL` | No | `240` | Minutes between timeline action cycles |
 | `TWITTER_AUTO_RESPOND_MENTIONS` | No | `true` | Auto-respond to mentions |
 | `TWITTER_AUTO_RESPOND_REPLIES` | No | `true` | Auto-respond to replies |
 | `TWITTER_TIMELINE_MODE` | No | `home` | Timeline mode |
@@ -160,7 +153,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 ## Conventions / gotchas
 
 - **OAuth 1.0a (`env` mode)** is the default. It requires all four vars: `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`. The app must have "Read and write" permissions in the Twitter Developer Portal. After changing permissions, regenerate access tokens.
-- **OAuth 2.0 PKCE (`oauth` mode)** requires `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI`. No client secret is stored. Tokens persist per `accountId` under `~/.eliza/twitter/accounts/<accountId>/oauth2.tokens.json`.
+- **OAuth 2.0 PKCE (`oauth` mode)** requires `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI`. No client secret is stored. Tokens persist per `accountId` via the runtime cache (key `twitter/oauth2/tokens/<agentId>/<accountId>`) and the connector credential store — see `client/auth-providers/token-store.ts`. There is no local-file fallback; token persistence requires runtime cache APIs.
 - **`TWITTER_ENABLE_POST=false` by default.** Posting is opt-in to prevent accidental bots.
 - **`TWITTER_ENABLE_ACTIONS=false` by default.** Timeline actions (likes, retweets) are also opt-in.
 - **Discovery auto-enables with actions.** `TWITTER_ENABLE_DISCOVERY` defaults to `true` when `TWITTER_ENABLE_ACTIONS=true`, unless explicitly set to `false`.

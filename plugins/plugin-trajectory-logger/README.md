@@ -53,15 +53,16 @@ No environment variables or settings are required. The plugin reads data from th
 
 ## Exported API
 
-The package also exports utilities useful for building custom trajectory views:
+The package entry (`@elizaos/plugin-trajectory-logger`) re-exports, in addition to the default plugin:
 
 - `summarizePhases(detail, options)` — maps a `TrajectoryDetail` into `PhaseSummary[]` with status and summary text per phase.
-- `PHASES` — readonly tuple `["HANDLE", "PLAN", "ACTION", "EVALUATE"]`.
-- `fetchTrajectoryList(options)` — typed fetch for `GET /api/trajectories`.
-- `fetchTrajectoryDetail(id, options)` — typed fetch for `GET /api/trajectories/:id`.
-- `purgeTrajectory(id)` — `DELETE /api/trajectories/:id`.
-- `fetchTrajectoryExport(id)` — downloads a signed zip of a trajectory.
-- `registerTrajectoryLoggerApp()` — registers the overlay app in the elizaOS UI registry (called automatically on plugin load).
+- `PHASES` — readonly array `["HANDLE", "PLAN", "ACTION", "EVALUATE"]` (typed `readonly PhaseName[]`).
+- `TrajectoryLoggerView` — the React overlay component.
+- `registerTrajectoryLoggerApp()` — registers the overlay app in the `@elizaos/ui` overlay registry (called automatically on plugin load via `register.ts`).
+- `trajectoryLoggerApp` / `TRAJECTORY_LOGGER_APP_NAME` — the `OverlayApp` definition and its name.
+- Types: `TrajectoryDetail`, `TrajectoryListItem`, `PhaseName`, `PhaseStatus`, `PhaseSummary`.
+
+The typed fetch helpers (`fetchTrajectoryList`, `fetchTrajectoryDetail`, `purgeTrajectory`, `fetchTrajectoryExport`) live in `src/api-client.ts` and are reachable via the `@elizaos/plugin-trajectory-logger/api-client` subpath, not the main entry. `fetchTrajectoryExport` returns the `/export` archive as a `Blob`.
 
 ## Privacy
 

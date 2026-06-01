@@ -57,7 +57,7 @@ bun run --cwd plugins/plugin-zai lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-zai lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-zai format         # biome format --write
 bun run --cwd plugins/plugin-zai format:check   # biome format (read-only)
-bun run --cwd plugins/plugin-zai clean          # rm dist/ .turbo/
+bun run --cwd plugins/plugin-zai clean          # rm -rf dist .turbo + tsbuildinfo
 ```
 
 ## Config / env vars

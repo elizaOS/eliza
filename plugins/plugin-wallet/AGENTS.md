@@ -21,7 +21,7 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 
 Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
 
-All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing; `mode=execute` or a confirmed follow-up submits. `dryRun=true` returns metadata without signing.
+All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing. Setting `mode=execute` does **not** bypass the gate — submission only happens after a confirmed reply turn. `dryRun=true` returns metadata without signing.
 
 **Providers:**
 
@@ -177,7 +177,7 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 
 ## Conventions / gotchas
 
-- **Financial confirmation gate.** All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) go through `requireConfirmation` in `src/security/wallet-financial-confirmation.ts`. The LLM cannot bypass this by passing `mode=execute` or `confirmed=true` alone — a confirmed reply turn is always required. Do not remove or short-circuit this gate.
+- **Financial confirmation gate.** All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) go through `gateWalletFinancialExecution` in `src/security/wallet-financial-confirmation.ts`, which calls `requireConfirmation` from `@elizaos/core`. The LLM cannot bypass this by passing `mode=execute` alone — a confirmed reply turn is always required. Do not remove or short-circuit this gate.
 - **`WalletBackend` is the only signing path.** Providers and actions must never read raw private key env vars directly. Go through `WalletBackendService.getWalletBackend()` → `WalletBackend`.
 - **`handleWalletRoutes` is dependency-injected.** It imports nothing from `@elizaos/agent` to avoid a cycle. All agent-internal helpers (runtime lookup, auth, route helpers) are passed via `WalletRouteContext.deps` by `@elizaos/agent`'s server wiring.
 - **Sub-plugins.** `evmPlugin` and `solanaPlugin` are composed into `walletPlugin` in `plugin.ts`. They are not intended to be loaded directly; always depend on `@elizaos/plugin-wallet`.

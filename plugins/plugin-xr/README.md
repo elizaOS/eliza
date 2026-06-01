@@ -98,6 +98,9 @@ The plugin uses a custom binary framing on top of WebSocket:
 - **Binary frames** — 4-byte big-endian header length, UTF-8 JSON header
   (`XRAudioHeader` or `XRFrameHeader`), then raw payload (audio or JPEG/WebP).
 
-All types are exported from the package root (`XRClientControl`,
-`XRServerControl`, `XRBinaryHeader`, `XRTTSAudioHeader`, `XRPanelConfig`,
-`encodeBinaryFrame`, `decodeBinaryFrame`) for use by headset client code.
+The wire types (`XRClientControl`, `XRServerControl`, `XRBinaryHeader`,
+`XRTTSAudioHeader`, `XRPanelConfig`, and the rest of `protocol.ts`) are
+re-exported as types from the package root via `export type *`. The framing
+helpers `encodeBinaryFrame` / `decodeBinaryFrame` are runtime functions that
+live in `src/protocol.ts` and are used internally by the WebSocket server;
+they are not part of the package's public runtime exports.

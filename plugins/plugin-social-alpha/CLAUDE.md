@@ -13,7 +13,7 @@ Loaded as `socialAlphaPlugin` (default export). Add it to an agent's `plugins` a
 | Kind | Name | What it does |
 |------|------|--------------|
 | Service | `CommunityInvestorService` | Core engine: token data fetching, trust score calculation, position/recommendation storage, leaderboard assembly |
-| Provider | `socialAlpha` | Injects sender's trust profile + leaderboard summary into agent context on every turn (dynamic, crypto/finance context-gated) |
+| Provider | `socialAlpha` | Injects sender's trust profile + leaderboard summary into agent context (dynamic; gated to `finance` / `crypto` / `social_posting` contexts via `contextGate`) |
 | Event handler | `MESSAGE_RECEIVED` | Extracts buy/sell signals from incoming messages via a single combined LLM call; writes recommendations to the sender's component; enqueues `PROCESS_TRADE_DECISION` tasks |
 | Routes | `GET /leaderboard` | Returns `LeaderboardEntry[]` as JSON via `CommunityInvestorService.getLeaderboardData` |
 | Routes | `GET /display` | Serves the built React leaderboard SPA (public) |
@@ -35,7 +35,7 @@ src/
   types.ts                    All shared types: UUID, Recommendation, UserTrustProfile,
                               LeaderboardEntry, TokenPerformance, Position, Transaction, …
   clients.ts                  BirdeyeClient, DexscreenerClient, HeliusClient wrappers
-  schemas.ts                  Zod schemas (route validation)
+  schemas.ts                  Zod schemas + DB-to-domain transforms for token/recommendation models
   reports.ts                  formatFullReport — human-readable trust report generator
   utils.ts                    Misc utilities
   mockPriceService.ts         Mock price service for testing
@@ -103,7 +103,7 @@ Plugin-level config keys (set in agent character or environment):
 
 **Add a new event handler:** add an entry to the `events` object in `src/events.ts` (keyed by elizaOS event name).
 
-**Extend trust scoring:** the scoring algorithm lives in `src/services/balancedTrustScoreCalculator.ts`. Weights and components are isolated there; `CommunityInvestorService.calculateTrustScore` calls the calculator. Do not add business logic to the provider or routes.
+**Extend trust scoring:** the balanced scoring algorithm lives in `src/services/balancedTrustScoreCalculator.ts` (`calculateBalancedTrustScore`). Weights and components are isolated there; `CommunityInvestorService` instantiates it as `this.balancedTrustCalculator` and invokes `calculateBalancedTrustScore`. (The simpler private `CommunityInvestorService.calculateTrustScore` uses its own inline history/performance weights and does not call the balanced calculator.) Do not add business logic to the provider or routes.
 
 ## Conventions / gotchas
 

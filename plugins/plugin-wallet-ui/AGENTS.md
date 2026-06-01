@@ -26,14 +26,16 @@ The plugin descriptor object is `walletAppPlugin` (`src/plugin.ts`).
 
 ```
 src/
-  index.ts                 Re-exports for direct host imports (no side-effects)
-  ui.ts                    Same re-exports + triggers register-routes.ts side-effect
+  index.ts                 Full re-export barrel; re-exports register.ts + ui.ts,
+                           so importing it also triggers register-routes.ts
+  ui.ts                    Re-exports + triggers register-routes.ts side-effect
   register.ts              Side-effect entry: imports register-routes.ts
   register-routes.ts       Calls registerAppRoutePluginLoader, registerAppShellPage,
                            registerBuiltinWidgets — must run once at boot
   plugin.ts                walletAppPlugin Plugin descriptor (views, widgets, navTabs)
   InventoryView.tsx         Main full-page wallet view: balances, NFTs, trading profile,
-                           market overview, timeline. ~2800 lines, no sub-files.
+                           market overview, timeline. ~2800 lines; also exports
+                           InventoryTuiView (TUI surface) and interact (TUI input handler).
   wallet-rpc.ts            Re-exports buildWalletRpcUpdateRequest /
                            resolveInitialWalletRpcSelections from @elizaos/shared
   inventory/
@@ -100,7 +102,7 @@ Two localStorage keys are used for user preferences (no config required):
 
 ## Conventions / gotchas
 
-- `src/index.ts` is the no-side-effect re-export barrel. `src/ui.ts` is the same but triggers `register-routes.ts`. Hosts that auto-import side-effect modules should use `ui.ts`; direct component consumers can use `index.ts`.
+- `src/index.ts` and `src/ui.ts` both run the `register-routes.ts` side-effect at import time (`index.ts` re-exports `register.ts` + `ui.ts`). Importing either registers the shell page and widget. For component-only consumption without registration, import the specific component module directly (e.g. `./InventoryView.tsx`).
 - `register-routes.ts` must execute exactly once. Duplicate registrations cause duplicate shell pages.
 - The views bundle (`dist/views/bundle.js`) is built separately by `build:views` using Vite, not tsup. The tsup build only handles the plugin entry; both steps must run for a complete dist.
 - `InventoryView.tsx` is a single large file (~2800 lines). All wallet-page local types, formatters, and sub-components live there — do not split without verifying the Vite views bundle still resolves exports correctly.

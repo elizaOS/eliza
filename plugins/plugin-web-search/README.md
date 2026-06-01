@@ -65,8 +65,8 @@ const result = await svc.search("latest developments in open-source LLMs", {
 // News search
 const news = await svc.searchNews("AI regulation", { freshness: "week" });
 
-// Image search
-const images = await svc.searchImages("northern lights", { limit: 10, includeImages: true });
+// Image search (always returns image results; no flag needed)
+const images = await svc.searchImages("northern lights", { limit: 10 });
 ```
 
 `SearchResponse` shape:

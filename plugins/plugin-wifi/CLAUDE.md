@@ -70,5 +70,5 @@ No env vars or settings keys. The plugin reads no process environment at runtime
 - **Scan limit.** `wifiNetworksProvider` caps at 25 networks; `WifiAppView` caps its own scan at 50. Keep these consistent if raising the limit.
 - **Location permission.** Android requires `ACCESS_FINE_LOCATION` for `WifiManager.startScan`. If the permission is denied, scans succeed silently with an empty list or throw; the provider maps errors to `wifiNetworksError` in `values`.
 - **Provider context gate.** `wifiNetworksProvider` uses `contextGate: { anyOf: ["system"] }` — it only fires in system-context conversations, not every agent turn.
-- **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.
+- **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`displayName: "WiFi"`, `category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.
 - **Root AGENTS.md.** Repo-wide architecture rules, logger conventions, ESM requirements, and naming rules live in the root `AGENTS.md`. This file covers only plugin-wifi specifics.

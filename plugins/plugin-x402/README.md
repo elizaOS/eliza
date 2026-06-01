@@ -28,7 +28,7 @@ This package lets Eliza agent plugins gate their HTTP routes behind the [x402 pr
 
 ## Enabling in a plugin
 
-Install (it is a peer dependency of `@elizaos/core` in this monorepo):
+Install (it declares `@elizaos/core` as a peer dependency; in this monorepo that resolves via `workspace:*`):
 
 ```bash
 bun add @elizaos/plugin-x402

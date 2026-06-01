@@ -7,7 +7,7 @@ Visual perception plugin for elizaOS — gives Eliza agents real-time awareness 
 - Captures frames from a connected camera (macOS/Linux/Windows) or the host screen.
 - Describes scenes by routing images through `runtime.useModel(IMAGE_DESCRIPTION)` — compatible with any registered VLM (local or cloud).
 - Detects and tracks people, objects, and faces across frames with persistent entity IDs.
-- Reads text on screen via RapidOCR/PP-OCRv5 (ONNX) with Apple Vision and Tesseract.js as fallbacks.
+- Reads text on screen via Apple Vision (darwin, when a provider is registered) falling through to a doCTR ggml backend (`native/doctr.cpp`) — no ONNX or Tesseract path.
 - Exposes all capabilities through a single `VISION` action and a `VISION_PERCEPTION` context provider.
 
 ## Installation
@@ -92,17 +92,16 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 | Capability | Default backend | Optional / alternative |
 |-----------|-----------------|----------------------|
 | Scene description | VLM via `runtime.useModel(IMAGE_DESCRIPTION)` | Any registered IMAGE_DESCRIPTION provider |
-| Object detection | COCO-SSD via `@tensorflow/tfjs-node` (optional dep) | YOLOv8n ggml (native/yolo.cpp — migration target) |
-| Pose detection | MoveNet via `@tensorflow-models/pose-detection` (optional dep) | ggml port (in progress) |
-| OCR | Apple Vision (darwin, when registered) → DocTR ggml (native/doctr.cpp) | No onnxruntime or Tesseract path |
-| Face recognition | face-api.js | GGML backend, MediaPipe BlazeFace (experimental) |
+| Object detection | YOLOv8n ggml via `native/yolo.cpp` (`src/yolo-detector.ts`, no fallback — init throws if native lib/GGUF missing) | Legacy COCO-SSD via `@tensorflow/tfjs-node` (optional dep, `src/vision-models.ts`) |
+| Pose detection | MoveNet via `@tensorflow-models/pose-detection` (optional dep) | ggml port (not built yet) |
+| OCR | Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`) | No ONNX or Tesseract path |
+| Face recognition | face-api.js (`src/face-recognition.ts`) | Experimental ggml backends (`face-detector-ggml.ts`, `face-recognition-ggml.ts`; not wired). MediaPipe BlazeFace stub is deprecated. |
 
 ## Platform notes
 
-- **Node.js only.** Mobile (iOS, Android) uses `MobileCameraSource` bridged by plugin-ios / plugin-aosp.
-- **macOS arm64**: CoreML execution provider available for ONNX models.
-- **Windows x64**: DirectML execution provider available.
-- **iOS / Android**: Bridges to CoreML / Apple Vision (iOS) and NNAPI / ML Kit (Android) via companion plugins.
+- **Node.js only.** Mobile (iOS, Android) registers a `MobileCameraSource` (`src/mobile/capacitor-camera.ts`) bridged by plugin-ios / plugin-aosp.
+- **Camera tools** (`imagesnap` / `fswebcam` / `ffmpeg`) are required for camera mode; screen capture and OCR work without them.
+- **Native detectors** (`native/yolo.cpp`, `native/doctr.cpp`) run via `bun:ffi`; they require their compiled libraries and GGUF artifacts to be present, and throw clearly when missing rather than silently falling back.
 
 ## Privacy
 

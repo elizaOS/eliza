@@ -92,7 +92,7 @@ Config is read from `runtime.getSetting(key)` first, then `process.env[key]`. Al
 |---------|----------|-------------|
 | `WHATSAPP_AUTH_DIR` | Yes (Baileys) | Directory for multi-file Baileys auth state |
 | `WHATSAPP_SESSION_PATH` | No | Alternative name for `WHATSAPP_AUTH_DIR` |
-| `WHATSAPP_PRINT_QR` | No | Print QR in terminal during pairing |
+| `WHATSAPP_AUTH_METHOD` | No | Force transport (`cloudapi` / `baileys`); overrides auto-detection |
 
 ### Access control (both transports)
 | Env var | Default | Description |
@@ -128,7 +128,7 @@ Configure multiple accounts under `character.settings.whatsapp.accounts.<id>` us
 
 ## Conventions / Gotchas
 
-- **Transport detection:** `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set (see `resolveRuntimeConfig` in `runtime-service.ts`).
+- **Transport detection:** `WHATSAPP_AUTH_METHOD` (`cloudapi` / `baileys`) wins when set. Otherwise `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set (see `resolveRuntimeConfig` in `runtime-service.ts`, transport resolution in `accounts.ts`).
 - **Auto-reply is off by default.** Inbound messages are stored in memory. The agent only replies when `WHATSAPP_AUTO_REPLY=true` or when the connector is triggered through the message connector protocol (e.g., a workflow or orchestrator sends on `source: "whatsapp"`).
 - **Webhook security:** Cloud API webhook POSTs are rejected without a valid `X-Hub-Signature-256` (uses `WHATSAPP_APP_SECRET`). The GET verification route is public by design (Meta requires it).
 - **Bundle safety:** `src/index.ts` contains a large `__bundle_safety_*` array that force-binds re-exported names into the module init. Do not remove it — Bun's tree-shaker collapses re-exports into empty inits on mobile without it.

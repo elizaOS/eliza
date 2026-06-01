@@ -28,14 +28,14 @@ Adds workflow automation capabilities to an Eliza agent. Given a natural-languag
 |---|---|---|
 | `workflow` | `WorkflowService` | Orchestrates the RAG generation pipeline and CRUD. Public surface used by the `WORKFLOW` action. |
 | `embedded_workflow_service` | `EmbeddedWorkflowService` | In-process execution engine: runs node graphs, manages scheduler, handles webhooks, persists to Postgres. |
-| `WORKFLOW_CREDENTIAL_STORE` | `WorkflowCredentialStore` | DB-backed `(userId, credType) → credential ID` mapping; purges on `connector_disconnected` event. |
+| `workflow_credential_store` | `WorkflowCredentialStore` | DB-backed `(userId, credType) → credential ID` mapping; purges on `connector_disconnected` event. |
 | `WORKFLOW_DISPATCH` | (registered in `init`) | Thin dispatch service. Trigger tasks with `kind: "workflow"` call `runtime.getService("WORKFLOW_DISPATCH").execute(workflowId)` to fire a workflow without going through the agent action layer. |
 
 ### Routes
 
-Mounted at `/api/workflow/*` via the elizaOS app-route-plugin-registry (`@elizaos/plugin-workflow:routes`). The side-effect import of `./register-routes` in `src/index.ts` fires this registration.
+Two registration paths, two URL shapes:
 
-Key route groups:
+**`rawPath` routes** (`src/plugin-routes.ts`, `workflowRoutePlugin`) — registered with the app-route-plugin-registry (`@elizaos/plugin-workflow:routes`) via the side-effect import of `./register-routes` in `src/index.ts`. These mount verbatim at `/api/workflow/*` (and `/api/automations`):
 
 - `GET/POST /api/workflow/workflows` — list / create
 - `POST /api/workflow/workflows/generate` — generate a draft from a prompt
@@ -44,8 +44,15 @@ Key route groups:
 - `POST /api/workflow/workflows/:id/activate|deactivate`
 - `GET /api/workflow/workflows/:id/executions`
 - `GET /api/workflow/status` — engine + plugin status
-- `GET /api/automations` — cross-cutting view (workflows + triggers + tasks)
-- Embedded webhook endpoints (dynamic per workflow)
+- `POST /api/workflow/runtime/start` — lifecycle compat
+- `GET /api/automations` — cross-cutting view (workflows + triggers + tasks + draft conversations)
+
+**Standard plugin routes** (`src/routes/index.ts`, on the plugin's `routes` field). The runtime prefixes non-`rawPath` paths with the plugin name (`workflow`), so these mount at `/workflow/*`:
+
+- `GET /workflow/executions` · `/workflow/executions/:id`
+- `GET /workflow/nodes` · `/workflow/nodes/available` · `/workflow/nodes/:type`
+- `POST /workflow/workflows/validate`
+- `GET/POST/PUT/PATCH/DELETE /workflow/webhooks/:path` — trigger-node webhooks
 
 ### DB schema
 
@@ -85,15 +92,15 @@ plugins/plugin-workflow/
     db/
       schema.ts               Drizzle schema (5 tables)
     types/
-      index.ts                All shared types, error classes, service-type constants
-      workflow-contracts.ts   WorkflowDefinition, Node, Execution, Credential types
+      index.ts                WorkflowDefinition, WorkflowExecution, error classes, service-type constants
+      workflow-contracts.ts   n8n-style node contract types (INode, INodeProperties, INodeTypeDescription, INodeCredentials, IWorkflowSettings)
     data/
       defaultNodes.json       Bundled node catalog (node type definitions)
       schemaIndex.json        Node parameter schemas
       triggerSchemaIndex.json Trigger node schemas
-    utils/                    generation, validation, credentialResolver, catalog, etc.
-    lib/                      automations-builder, automations-types
-    schemas/                  Route-layer input schemas
+    utils/                    generation, validateAndRepair, credentialResolver, catalog, etc.
+    lib/                      automations-builder, automations-types, workflow-clarification
+    schemas/                  LLM structured-output schemas (keywordExtraction, feasibility, draftIntent, workflowMatching)
 ```
 
 ## Commands

@@ -10,13 +10,13 @@ Registers `serviceType = "tunnel"` and exposes:
 
 ## Coexistence
 
-`plugin-tunnel`, [`@elizaos/plugin-elizacloud`](../plugin-elizacloud) (hosted headscale + reverse proxy), and [`@elizaos/plugin-ngrok`](https://github.com/elizaos-plugins/plugin-ngrok) all register under `serviceType="tunnel"`. **First active wins** — each plugin's `init` only registers if its credentials are present *and* the slot is free.
+`plugin-tunnel`, [`@elizaos/plugin-elizacloud`](../plugin-elizacloud) (hosted headscale + reverse proxy), and [`@elizaos/plugin-ngrok`](../plugin-ngrok) all register under `serviceType="tunnel"`. **First active wins** — each plugin's `init` calls `tunnelSlotIsFree(runtime)` and only registers its service if the slot is still free (plus any backend-specific check: `plugin-tunnel` also requires the `tailscale` binary on PATH).
 
 ```
 character.plugins = [
-  '@elizaos/plugin-elizacloud',  // wins if ELIZAOS_CLOUD_API_KEY set
-  '@elizaos/plugin-tunnel',      // falls back to local tailscale CLI
-  '@elizaos/plugin-ngrok',       // last-resort, if NGROK_AUTHTOKEN set
+  '@elizaos/plugin-elizacloud',  // hosted headscale backend (ELIZAOS_CLOUD_API_KEY)
+  '@elizaos/plugin-tunnel',      // local tailscale CLI (requires tailscale on PATH)
+  '@elizaos/plugin-ngrok',       // ngrok backend (NGROK_AUTH_TOKEN)
 ];
 ```
 

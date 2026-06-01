@@ -82,7 +82,7 @@ The plugin auto-enables when any signing path is present (EVM or Solana private 
 
 All on-chain writes (`transfer`, `swap`, `bridge`, `gov`) require an explicit user confirmation before execution. The LLM cannot authorize a transaction by itself — a confirmed human reply turn is always required. EVM recipient addresses on transfers are additionally validated via `assertEvmTransferRecipientAuthorized`.
 
-An append-only hash-chained audit log records all action validate/handler lifecycle events and signing requests.
+`src/audit/audit-log.ts` defines the `AuditLogRow` schema for an append-only, hash-chained audit trail of action validate/handler lifecycle events and signing requests (runtime persistence is not yet wired up).
 
 ## SDK
 

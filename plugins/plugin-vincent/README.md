@@ -1,6 +1,6 @@
 # @elizaos/plugin-vincent
 
-Adds Vincent trading integration to an [elizaOS](https://github.com/elizaOS/eliza) agent. Vincent ([heyvincent.ai](https://heyvincent.ai)) provides self-custodial trading access on Hyperliquid and Polymarket.
+Adds Vincent trading integration to an [elizaOS](https://github.com/elizaOS/eliza) agent. Vincent ([heyvincent.ai](https://heyvincent.ai)) provides OAuth-gated trading access on Hyperliquid and Polymarket.
 
 ## What this plugin provides
 

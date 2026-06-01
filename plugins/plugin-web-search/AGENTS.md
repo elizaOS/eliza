@@ -44,7 +44,7 @@ bun run --cwd plugins/plugin-web-search format:fix  # biome format --write src/
 bun run --cwd plugins/plugin-web-search typecheck   # tsgo --noEmit
 ```
 
-No `test` script exists in this package; tests live upstream in the agent package.
+No `test` script is defined in `package.json`; this package ships no tests.
 
 ## Config / env vars
 

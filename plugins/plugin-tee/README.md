@@ -15,7 +15,7 @@ import { teePlugin, TEEService } from "@elizaos/plugin-tee";
 
 const runtime = new AgentRuntime({
   plugins: [teePlugin],
-  // env vars TEE_MODE and WALLET_SECRET_SALT must be set
+  // TEE_MODE defaults to LOCAL; set WALLET_SECRET_SALT for key derivation
 });
 
 // Access via service
@@ -28,7 +28,7 @@ const { keypair: evmKeypair } = await svc.deriveEcdsaKeypair("salt", "evm", agen
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TEE_MODE` | **yes** | — | Operation mode: `LOCAL`, `DOCKER`, or `PRODUCTION`. Plugin throws on init if missing or invalid. |
+| `TEE_MODE` | no | `LOCAL` | Operation mode: `LOCAL`, `DOCKER`, or `PRODUCTION`. `init` defaults to `LOCAL` when unset and throws only on a present-but-invalid value. |
 | `WALLET_SECRET_SALT` | **yes** | — | Secret salt used as the derivation path for all keypairs. Sensitive — treat as a private key. |
 | `TEE_VENDOR` | no | `PHALA` | TEE vendor. Only `PHALA` is supported. |
 

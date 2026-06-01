@@ -51,7 +51,8 @@ plugins/plugin-streaming/
                               writeOverlayLayout, seedOverlayDefaults, validateStreamSettings,
                               getHeadlessCaptureConfig, parseDestinationQuery, safeDestId
       stream-route-state.ts  StreamRouteState interface (destinations map, streamManager ref, etc.)
-      streaming-types.ts     Canonical StreamingDestination + OverlayLayoutData interfaces
+      streaming-types.ts     Re-exports StreamingDestination, OverlayLayoutData,
+                              OverlayWidgetInstance from core.ts (single nominal type)
       streaming-text.ts      mergeStreamingText(), resolveStreamingUpdate() — token-stream merge
       tts-routes.ts          handleTtsRoutes(); local inference + ElevenLabs + config route
     services/

@@ -84,7 +84,7 @@ Settings are resolved in priority order: per-account object in `TWITCH_ACCOUNTS`
 
 **Add a provider:** same pattern — implement `Provider`, add to `providers` array in `src/index.ts`.
 
-**Add an event handler:** listen for `TwitchEventTypes.MESSAGE_RECEIVED` via `runtime.on(...)` in any action, service, or plugin init — the payload is `{ runtime, accountId, message: TwitchMessage }`.
+**Add an event handler:** subscribe to `TwitchEventTypes.MESSAGE_RECEIVED` via `runtime.registerEvent(...)` (or a plugin `events` map) in any action, service, or plugin init — the payload emitted by `TwitchService` is `{ runtime, accountId, message: TwitchMessage }`.
 
 **Add a new channel at runtime:** call `twitchService.joinChannel(channelName)` directly after obtaining the service via `runtime.getService<TwitchService>(TWITCH_SERVICE_NAME)`.
 
