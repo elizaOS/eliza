@@ -1,169 +1,214 @@
-# OpenAI Plugin
+# @elizaos/plugin-openai
 
-This plugin provides integration with OpenAI's models through the elizaOS platform.
+OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Adds text generation, embeddings, image generation, image description, audio transcription, text-to-speech, and deep research to any Eliza agent by registering handlers for the standard `ModelType.*` slots on the `AgentRuntime`.
 
-## Usage
+## What this plugin does
 
-Add the plugin to your character configuration:
+- **Text generation** — multiple tiers (nano, small, medium, large, mega), plus dedicated response-handler and action-planner slots. Supports streaming and structured JSON output.
+- **Text embeddings** — `text-embedding-3-small` by default; dimension configurable.
+- **Image generation** — DALL-E 3 by default (`dall-e-3`).
+- **Image description** — vision model analyzes an image URL and returns `{ title, description }`.
+- **Audio transcription** — Whisper-based transcription; accepts `Buffer`, `Blob`, `File`, or a URL.
+- **Text-to-speech** — returns an `ArrayBuffer` of audio. Six voices; mp3/wav/flac/opus/aac/pcm output.
+- **Deep research** — `ModelType.RESEARCH` via the OpenAI Responses API (`o3-deep-research` by default); returns annotated, multi-source research reports.
+- **Tokenizer** — encode/decode using js-tiktoken (browser-safe, no network calls).
+
+Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, OpenRouter, local servers, etc.
+
+## Enabling the plugin
+
+Add `@elizaos/plugin-openai` to your character's plugin list:
 
 ```json
-"plugins": ["@elizaos/plugin-openai"]
-```
-
-## Configuration
-
-The plugin requires these environment variables (can be set in .env file or character settings):
-
-```json
-"settings": {
-  "OPENAI_API_KEY": "your_openai_api_key",
-  "OPENAI_BASE_URL": "optional_custom_endpoint",
-  "OPENAI_SMALL_MODEL": "gpt-5-mini",
-  "OPENAI_LARGE_MODEL": "gpt-5",
-  "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
-  "OPENAI_EMBEDDING_API_KEY": "your_openai_api_key_for_embedding",
-  "OPENAI_EMBEDDING_URL": "optional_custom_endpoint",
-  "OPENAI_EMBEDDING_DIMENSIONS": "1536",
-  "OPENAI_IMAGE_DESCRIPTION_API_KEY": "your_openai_api_key_for_vision",
-  "OPENAI_IMAGE_DESCRIPTION_BASE_URL": "https://api.openai.com/v1",
-  "OPENAI_IMAGE_DESCRIPTION_MODEL": "gpt-5-mini",
-  "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": "8192",
-  "OPENAI_EXPERIMENTAL_TELEMETRY": "false",
-  "OPENAI_BROWSER_BASE_URL": "https://your-proxy.example.com/openai",
-  "OPENAI_BROWSER_EMBEDDING_URL": "https://your-proxy.example.com/openai"
+{
+  "plugins": ["@elizaos/plugin-openai"]
 }
 ```
 
-Or in `.env` file:
+The plugin auto-enables when `OPENAI_API_KEY` or `CEREBRAS_API_KEY` is present in the environment.
+
+## Required configuration
 
 ```
-OPENAI_API_KEY=your_openai_api_key
-# Optional overrides:
-OPENAI_BASE_URL=optional_custom_endpoint
-OPENAI_SMALL_MODEL=gpt-5-mini
-OPENAI_LARGE_MODEL=gpt-5
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_EMBEDDING_API_KEY=your_openai_api_key_for_embedding
-OPENAI_EMBEDDING_URL=optional_custom_endpoint
-OPENAI_EMBEDDING_DIMENSIONS=1536
-OPENAI_IMAGE_DESCRIPTION_API_KEY=your_openai_api_key_for_vision
-OPENAI_IMAGE_DESCRIPTION_BASE_URL=https://api.openai.com/v1
-OPENAI_IMAGE_DESCRIPTION_MODEL=gpt-5-mini
-OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS=8192
-OPENAI_EXPERIMENTAL_TELEMETRY=false
-# Browser proxy (frontend builds only)
-OPENAI_BROWSER_BASE_URL=https://your-proxy.example.com/openai
-OPENAI_BROWSER_EMBEDDING_URL=https://your-proxy.example.com/openai
+OPENAI_API_KEY=sk-...
 ```
 
-### Configuration Options
+That is the only required setting. All other settings are optional overrides.
 
-- `OPENAI_API_KEY` (required): Your OpenAI API credentials
-- `OPENAI_BASE_URL`: Custom API endpoint (default: https://api.openai.com/v1)
-- `OPENAI_SMALL_MODEL`: Defaults to GPT-4o Mini ("gpt-5-mini")
-- `OPENAI_LARGE_MODEL`: Defaults to GPT-4o ("gpt-5")
-- `OPENAI_EMBEDDING_MODEL`: Defaults to text-embedding-3-small ("text-embedding-3-small")
-- `OPENAI_EMBEDDING_API_KEY`: Custom embedding api key (defaults to `OPENAI_API_KEY`)
-- `OPENAI_EMBEDDING_URL`: Custom embedding endpoint (defaults to `OPENAI_BASE_URL`)
-- `OPENAI_EMBEDDING_DIMENSIONS`: Defaults to 1536 (1536)
-- `OPENAI_IMAGE_DESCRIPTION_API_KEY`: Custom image-description API key (defaults to the general OpenAI API key)
-- `OPENAI_IMAGE_DESCRIPTION_BASE_URL`: Custom image-description endpoint (defaults to `OPENAI_BASE_URL`)
-- `OPENAI_IMAGE_DESCRIPTION_MODEL`: Model used for image description (default: "gpt-5-mini")
-- `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS`: Maximum tokens for image descriptions (default: 8192)
-- `OPENAI_EXPERIMENTAL_TELEMETRY`: Enable experimental telemetry features for enhanced debugging and usage analytics (default: false)
-- `OPENAI_BROWSER_BASE_URL`: Browser-only base URL to a proxy endpoint that forwards requests to OpenAI without exposing keys
-- `OPENAI_BROWSER_EMBEDDING_URL`: Browser-only embeddings endpoint base URL
+## Full configuration reference
 
-### Browser mode and proxying
+Set these as environment variables or in your character's `settings` object.
 
-When bundled for the browser, this plugin avoids sending Authorization headers. Set `OPENAI_BROWSER_BASE_URL` (and optionally `OPENAI_BROWSER_EMBEDDING_URL`) to a server-side proxy you control that injects the OpenAI API key. This prevents exposing secrets in frontend builds.
+### API endpoint
 
-Example minimal proxy (Express):
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for compatible endpoints |
+| `ELIZA_PROVIDER` | — | Set to `cerebras` to force Cerebras mode |
+
+### Text generation models
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | `gpt-5.4-mini` | Fast, cost-effective responses |
+| `OPENAI_NANO_MODEL` / `NANO_MODEL` | falls back to small | Fastest tier |
+| `OPENAI_MEDIUM_MODEL` / `MEDIUM_MODEL` | falls back to small | Mid-tier |
+| `OPENAI_LARGE_MODEL` / `LARGE_MODEL` | `gpt-5` | Complex reasoning |
+| `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | falls back to large | Highest tier |
+| `OPENAI_RESPONSE_HANDLER_MODEL` | falls back to small | Response-handler slot |
+| `OPENAI_ACTION_PLANNER_MODEL` | falls back to medium | Action-planner slot |
+| `OPENAI_REASONING_EFFORT` | — | `minimal`/`low`/`medium`/`high` for o-series models |
+
+### Embeddings
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `OPENAI_EMBEDDING_URL` | `OPENAI_BASE_URL` | Separate endpoint for embeddings |
+| `OPENAI_EMBEDDING_API_KEY` | `OPENAI_API_KEY` | Separate key for embeddings |
+| `OPENAI_EMBEDDING_DIMENSIONS` | `1536` | Vector dimensions (must match model) |
+
+### Image generation and description
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_IMAGE_MODEL` | `dall-e-3` | Image generation model |
+| `OPENAI_IMAGE_DESCRIPTION_MODEL` | `gpt-5-mini` | Vision/description model |
+| `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | `OPENAI_BASE_URL` | Separate endpoint for vision |
+| `OPENAI_IMAGE_DESCRIPTION_API_KEY` | `OPENAI_API_KEY` | Separate key for vision |
+| `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` | Max tokens in description response |
+
+### Audio
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-5-mini-transcribe` | Speech-to-text model |
+| `OPENAI_TTS_MODEL` | `tts-1` | Text-to-speech model |
+| `OPENAI_TTS_VOICE` | `nova` | Voice: alloy, echo, fable, onyx, nova, shimmer |
+| `OPENAI_TTS_INSTRUCTIONS` | — | Style instructions for TTS |
+
+### Deep research
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_RESEARCH_MODEL` | `o3-deep-research` | Research model (o3 or o4-mini variants) |
+| `OPENAI_RESEARCH_TIMEOUT` | `3600000` (1 hr) | Request timeout in milliseconds |
+
+### Browser and proxy
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_BROWSER_BASE_URL` | — | Proxy URL for browser builds (keeps key server-side) |
+| `OPENAI_BROWSER_EMBEDDING_URL` | — | Proxy URL for browser embedding requests |
+| `OPENAI_ALLOW_BROWSER_API_KEY` | `false` | Send auth header in browser builds (opt-in) |
+
+### Other
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_EXPERIMENTAL_TELEMETRY` | `false` | Enable AI SDK experimental telemetry |
+
+## Usage examples
 
 ```ts
-import express from "express";
-import fetch from "node-fetch";
+import { ModelType } from "@elizaos/core";
 
+// Text generation
+const reply = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "Explain quantum entanglement in plain English.",
+});
+
+// Streaming text
+const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "Count from 1 to 10.",
+  stream: true,
+  onStreamChunk: (chunk) => process.stdout.write(chunk),
+});
+
+// Structured JSON output
+const data = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "Return a JSON object with name and age fields.",
+  responseSchema: {
+    type: "object",
+    properties: { name: { type: "string" }, age: { type: "number" } },
+    required: ["name", "age"],
+  },
+});
+
+// Embedding
+const vector = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  text: "text to embed",
+});
+
+// Image generation
+const images = await runtime.useModel(ModelType.IMAGE, {
+  prompt: "A sunset over mountains",
+  count: 1,
+  size: "1024x1024",
+});
+
+// Image description
+const { title, description } = await runtime.useModel(
+  ModelType.IMAGE_DESCRIPTION,
+  "https://example.com/photo.jpg"
+);
+
+// Audio transcription (Buffer, Blob, File, or URL string all accepted)
+const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
+
+// Text-to-speech
+const audio = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
+  text: "Hello, world.",
+  voice: "nova",
+  format: "mp3",
+});
+
+// Deep research (may take minutes)
+const report = await runtime.useModel(ModelType.RESEARCH, {
+  input: "What are the latest advances in fusion energy?",
+  tools: [{ type: "web_search_preview" }],
+});
+console.log(report.text, report.annotations);
+```
+
+## Browser proxy setup
+
+In browser builds this plugin does not send `Authorization` headers by default, to avoid exposing API keys in frontend bundles. Point `OPENAI_BROWSER_BASE_URL` at a server-side proxy that injects the key:
+
+```ts
+// Minimal Express proxy
+import express from "express";
 const app = express();
 app.use(express.json());
 
-app.post("/openai/*", async (req, res) => {
+app.all("/openai/*", async (req, res) => {
   const url = `https://api.openai.com/v1/${req.params[0]}`;
   const r = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(req.body),
+    method: req.method,
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: req.method !== "GET" ? JSON.stringify(req.body) : undefined,
   });
-  res
-    .status(r.status)
-    .set(Object.fromEntries(r.headers))
-    .send(await r.text());
+  res.status(r.status).send(await r.text());
 });
 
 app.listen(3000);
 ```
 
-### Experimental Telemetry
+Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
-When `OPENAI_EXPERIMENTAL_TELEMETRY` is set to `true`, the plugin enables advanced telemetry features that provide:
+## Cerebras compatibility
 
-- Enhanced debugging capabilities for model performance issues
-- Detailed usage analytics for optimization
-- Better observability into OpenAI API interactions
-- Foundation for future monitoring and analytics features through Sentry or other frameworks
+Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
 
-**Note**: This feature is opt-in due to privacy considerations, as telemetry data may contain information about model usage patterns. Enable only when you need enhanced debugging or analytics capabilities.
+## Prompt caching
 
-The plugin provides these model classes:
+Pass `providerOptions.openai.promptCacheKey` and `promptCacheRetention` on any `GenerateTextParams` call to enable OpenAI prompt caching:
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective responses
-- `TEXT_LARGE`: For complex tasks requiring deeper reasoning
-- `TEXT_EMBEDDING`: Text embedding model (text-embedding-3-small by default)
-- `IMAGE`: DALL-E image generation
-- `IMAGE_DESCRIPTION`: GPT-4o image analysis
-- `TRANSCRIPTION`: Whisper audio transcription
-- `TEXT_TOKENIZER_ENCODE`: Text tokenization
-- `TEXT_TOKENIZER_DECODE`: Token decoding
-
-## Additional Features
-
-### Image Generation
-
-```js
-await runtime.useModel(ModelType.IMAGE, {
-  prompt: "A sunset over mountains",
-  n: 1, // number of images
-  size: "1024x1024", // image resolution
+```ts
+await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "...",
+  providerOptions: {
+    openai: { promptCacheKey: "my-key", promptCacheRetention: "24h" },
+  },
 });
 ```
-
-### Audio Transcription
-
-```js
-const transcription = await runtime.useModel(
-  ModelType.TRANSCRIPTION,
-  audioBuffer,
-);
-```
-
-### Image Analysis
-
-```js
-const { title, description } = await runtime.useModel(
-  ModelType.IMAGE_DESCRIPTION,
-  "https://example.com/image.jpg",
-);
-```
-
-### Text Embeddings
-
-```js
-await runtime.useModel(ModelType.TEXT_EMBEDDING, "text to embed");
-```
-
-### Tokenizer in browser
-
-js-tiktoken is WASM and browser-safe; this plugin uses `encodingForModel` directly in both Node and browser builds.

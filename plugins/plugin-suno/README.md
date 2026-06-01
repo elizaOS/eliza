@@ -1,207 +1,85 @@
-@elizaos/plugin-suno
+# @elizaos/plugin-suno
 
-A Suno AI music generation plugin for ElizaOS that enables AI-powered music creation and audio manipulation.
+Suno AI music generation plugin for elizaOS. Enables Eliza agents to generate, custom-generate, and extend audio tracks via the Suno API.
 
-OVERVIEW
+## What it does
 
-The Suno plugin integrates Suno AI's powerful music generation capabilities into ElizaOS, providing a seamless way to:
-- Generate music from text prompts with fine-tuned parameters
-- Create custom music with advanced control over style, tempo, and key
-- Extend existing audio tracks
+This plugin contributes a Suno HTTP client and a status provider (`SUNO_STATUS`) to the elizaOS agent runtime. Music generation is dispatched through the `MUSIC` umbrella action (provided by `@elizaos/plugin-music`); this plugin supplies the Suno-specific handler (`sunoGenerateMusicHandler`) that `plugin-music` mounts.
 
-Original Plugin: https://github.com/gcui-art/suno-api?tab=readme-ov-file
+Three subactions are supported:
 
-INSTALLATION
+| Subaction | Endpoint | Required params |
+|---|---|---|
+| `generate` | `POST /generate` | `prompt` |
+| `custom_generate` | `POST /custom-generate` | `prompt`; optional: `style`, `bpm`, `key`, `mode`, `reference_audio` |
+| `extend` | `POST /extend` | `audio_id`, `duration` |
 
-    npm install @elizaos/plugin-suno
+The subaction is inferred from message text and params when not specified explicitly.
 
-QUICK START
+## Requirements
 
-1. Register the plugin with ElizaOS:
+- A Suno API key (obtain at [suno.ai](https://suno.ai)).
+- `@elizaos/plugin-music` loaded alongside this plugin to expose the `MUSIC` action to agents.
 
-    import { sunoPlugin } from '@elizaos/plugin-suno';
-    import { Eliza } from '@elizaos/core';
+## Configuration
 
-    const eliza = new Eliza();
-    eliza.registerPlugin(sunoPlugin);
+Set the API key as an environment variable or in the agent character config:
 
-2. Configure the Suno provider with your API credentials:
+```
+SUNO_API_KEY=your-suno-api-key
+```
 
-    import { sunoProvider } from '@elizaos/plugin-suno';
+The plugin auto-enables when `SUNO_API_KEY` is present, or when agent config sets:
 
-    sunoProvider.configure({
-      apiKey: 'your-suno-api-key'
-    });
-
-FEATURES
-
-1. Generate Music (suno.generate-music)
-   Generate music using a text prompt with basic control parameters. This is ideal for quick music generation when you need less fine-grained control:
-
-   - Simple text-to-music generation
-   - Consistent output quality with default parameters
-   - Suitable for most common use cases
-
-    await eliza.execute('suno.generate-music', {
-      prompt: "An upbeat electronic dance track with energetic beats",
-      duration: 30,
-      temperature: 1.0,
-      topK: 250,
-      topP: 0.95,
-      classifier_free_guidance: 3.0
-    });
-
-2. Custom Music Generation (suno.custom-generate-music)
-   Create music with detailed control over generation parameters. Perfect for when you need precise control over the musical output:
-
-   - Fine-grained control over musical style and structure
-   - Reference-based generation using existing audio
-   - Control over musical attributes:
-     * Style: Specify genres like "classical", "electronic", "rock"
-     * Tempo: Set exact BPM (beats per minute)
-     * Key and Mode: Define musical key (e.g., "C") and mode ("major"/"minor")
-   - Advanced parameter tuning for generation quality
-
-    await eliza.execute('suno.custom-generate-music', {
-      prompt: "A melodic piano piece with soft strings",
-      duration: 30,
-      temperature: 0.8,
-      topK: 250,
-      topP: 0.95,
-      classifier_free_guidance: 3.0,
-      reference_audio: "path/to/reference.mp3",
-      style: "classical",
-      bpm: 120,
-      key: "C",
-      mode: "major"
-    });
-
-3. Extend Audio (suno.extend-audio)
-   Extend existing audio tracks to create longer compositions. Useful for:
-
-   - Lengthening existing music pieces
-   - Creating seamless loops
-   - Generating variations of existing tracks
-
-    await eliza.execute('suno.extend-audio', {
-      audio_id: "your-audio-id",
-      duration: 60
-    });
-
-Generation Parameters Explained:
-
-- temperature: Controls randomness in generation (0.0-1.0+)
-  * Lower values (0.1-0.5): More conservative, consistent output
-  * Higher values (1.0+): More creative, varied output
-
-- classifier_free_guidance: Controls how closely the output follows the prompt (1.0-20.0)
-  * Lower values: More creative interpretation
-  * Higher values: Stricter adherence to prompt
-
-- topK/topP: Control the diversity of the generation
-  * topK: Limits the number of tokens considered
-  * topP: Controls the cumulative probability threshold
-
-API REFERENCE
-
-SunoProvider Configuration
-The Suno provider accepts the following configuration options:
-
-    interface SunoConfig {
-      apiKey: string;
+```json
+{
+  "media": {
+    "audio": {
+      "provider": "suno",
+      "mode": "own-key"
     }
+  }
+}
+```
 
-Action Parameters:
+## Generation parameters
 
-1. Generate Music (suno.generate-music)
-    interface GenerateParams {
-      prompt: string;
-      duration?: number;        // Duration in seconds
-      temperature?: number;     // Controls randomness
-      topK?: number;           // Top K sampling
-      topP?: number;           // Top P sampling
-      classifier_free_guidance?: number; // Guidance scale
-    }
+### `generate` and `custom_generate`
 
-2. Custom Generate Music (suno.custom-generate-music)
-    interface CustomGenerateParams {
-      prompt: string;
-      duration?: number;
-      temperature?: number;
-      topK?: number;
-      topP?: number;
-      classifier_free_guidance?: number;
-      reference_audio?: string; // Path to reference audio file
-      style?: string;          // Musical style
-      bpm?: number;            // Beats per minute
-      key?: string;            // Musical key
-      mode?: string;           // Musical mode (e.g., "major", "minor")
-    }
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `prompt` | string | (required) | Text description of the music to generate |
+| `duration` | number | 30 | Duration in seconds |
+| `temperature` | number | 1.0 | Randomness (higher = more creative) |
+| `topK` | number | 250 | Top-K sampling |
+| `topP` | number | 0.95 | Top-P sampling |
+| `classifier_free_guidance` | number | 3.0 | Prompt adherence strength |
+| `style` | string | — | Musical style (custom_generate only) |
+| `bpm` | number | — | Beats per minute (custom_generate only) |
+| `key` | string | — | Musical key, e.g. `"C"` (custom_generate only) |
+| `mode` | string | — | `"major"` or `"minor"` (custom_generate only) |
+| `reference_audio` | string | — | Reference audio path (custom_generate only) |
 
-3. Extend Audio (suno.extend-audio)
-    interface ExtendParams {
-      audio_id: string;        // ID of the audio to extend
-      duration: number;        // Additional duration in seconds
-    }
+### `extend`
 
-Response Type:
-    interface GenerationResponse {
-      id: string;             // Generated audio ID
-      status: string;         // Status of the generation
-      url?: string;          // URL to download the generated audio
-      error?: string;        // Error message if generation failed
-    }
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `audio_id` | string | Yes | ID of the existing track to extend |
+| `duration` | number | Yes | Additional seconds to add |
 
-ERROR HANDLING
+## Response shape
 
-The plugin includes built-in error handling for common scenarios:
+```ts
+interface GenerationResponse {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  audio_url?: string;
+  error?: string;
+}
+```
 
-    try {
-      await eliza.execute('suno.generate', params);
-    } catch (error) {
-      if (error.code === 'SUNO_API_ERROR') {
-        // Handle API-specific errors
-      }
-      // Handle other errors
-    }
+Responses larger than 4000 bytes are truncated before being returned to the agent context.
 
-EXAMPLES
+## Source reference
 
-Creating a Pop Song:
-
-    const result = await eliza.execute('suno.generate-music', {
-      prompt: "Create a pop song with vocals, drums, and guitar",
-      duration: 180,
-      temperature: 1.0,
-      classifier_free_guidance: 3.5
-    });
-
-Creating a Custom Classical Piece:
-
-    const result = await eliza.execute('suno.custom-generate-music', {
-      prompt: "A classical piano sonata in the style of Mozart",
-      duration: 120,
-      temperature: 0.8,
-      style: "classical",
-      bpm: 120,
-      key: "C",
-      mode: "major"
-    });
-
-Extending an Existing Track:
-
-    const extended = await eliza.execute('suno.extend-audio', {
-      audio_id: "existing-track-id",
-      duration: 60
-    });
-
-LICENSE
-
-MIT
-
-SUPPORT
-
-For issues and feature requests, please open an issue on our GitHub repository.
-
----
-Built with ❤️ for ElizaOS
+[github.com/gcui-art/suno-api](https://github.com/gcui-art/suno-api)

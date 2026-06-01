@@ -1,6 +1,6 @@
-# Eliza Twitter/X Client
+# @elizaos/plugin-x
 
-This package provides Twitter/X integration for the Eliza AI agent using the official Twitter API v2.
+X (formerly Twitter) connector for Eliza agents via the official Twitter API v2.
 
 ## 🚨 TL;DR - Quick Setup
 
@@ -36,7 +36,7 @@ This package provides Twitter/X integration for the Eliza AI agent using the off
    TWITTER_POST_IMMEDIATELY=true
    ```
 
-5. **Run:** `bun start`
+5. **Run:** `bun run start`
 
 Tip: if you use **OAuth 2.0 PKCE**, the plugin will print an authorization URL on first run and store tokens for you (no manual token pasting).
 
@@ -87,7 +87,7 @@ Tip: if you use **OAuth 2.0 PKCE**, the plugin will print an authorization URL o
    **Optional fields**:
 
    ```
-   Organization name: ElizaOS
+   Organization name: elizaOS
    Organization URL: https://github.com/elizaos/eliza
    ```
 
@@ -193,7 +193,7 @@ const character = {
 };
 ```
 
-Then start your bot:
+Then start your agent:
 
 ```bash
 bun run start
@@ -478,13 +478,13 @@ The plugin includes sophisticated rate limiting:
 
 ```bash
 # Run tests
-bun test
+bun run --cwd plugins/plugin-x test
 
 # Run with debug logging
-DEBUG=eliza:* bun start
+DEBUG=eliza:* bun run start
 
 # Test without posting
-TWITTER_DRY_RUN=true bun start
+TWITTER_DRY_RUN=true bun run start
 ```
 
 ### Testing Checklist
@@ -520,17 +520,8 @@ Monitor your usage at: https://developer.twitter.com/en/portal/dashboard
 - [Twitter OAuth 1.0a Guide](https://developer.twitter.com/en/docs/authentication/oauth-1-0a)
 - [Twitter OAuth 2.0 (Authorization Code with PKCE)](https://developer.twitter.com/en/docs/authentication/oauth-2-0/authorization-code)
 - [Rate Limits Reference](https://developer.twitter.com/en/docs/twitter-api/rate-limits)
-- [ElizaOS Documentation](https://github.com/elizaos/eliza)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Check existing issues first
-2. Follow the code style
-3. Add tests for new features
-4. Update documentation
+- [elizaOS Documentation](https://github.com/elizaos/eliza)
 
 ## 📝 License
 
-This plugin is part of the ElizaOS project. See the main repository for license information.
+This plugin is part of elizaOS. See the repository root for license information.

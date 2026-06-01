@@ -1,143 +1,124 @@
-# Telegram Client Plugin for ElizaOS
+# @elizaos/plugin-telegram
 
-This plugin integrates a Telegram client with ElizaOS, allowing characters in ElizaOS to interact via Telegram. It provides an easy setup for starting the Telegram client using the provided bot token and includes basic lifecycle management.
+Telegram connector for elizaOS. Gives an Eliza agent the ability to send and receive messages across Telegram private chats, groups, supergroups, channels, and forum topics.
 
-## Features
+## What it does
 
-- **Seamless Telegram Integration**: Connects ElizaOS characters to Telegram through the bot API.
-- **Configuration Validation**: Ensures required settings are properly configured before starting.
-- **Startup Logging**: Logs successful initialization of the Telegram client for better debugging.
-- **Future-proof Design**: Provides a basic structure for stopping the client (currently unsupported).
+- Runs a Telegraf long-poll bot connected to the Telegram Bot API.
+- Routes incoming messages and reactions through the elizaOS runtime so configured actions, providers, and evaluators can respond.
+- Syncs Telegram chats, users, and group membership into the runtime as Worlds, Rooms, and Entities.
+- Handles forum topics as separate Rooms (channelId format: `<chatId>-<threadId>`).
+- Supports outgoing buttons (`login` and `url` kinds) via the `TelegramContent.buttons` field.
+- Provides HTTP setup routes for bot-token configuration and GramJS user-account login.
+- Supports multiple bot accounts per agent via `character.settings.telegram.accounts`.
 
-## Configuration Options
+## Prerequisites
 
-Here are the available configuration options for the `character.json` file:
+Create a bot via [@BotFather](https://t.me/BotFather) and copy the token it provides.
 
-| Key                             | Type    | Default  | Description                                                                                         |
-| ------------------------------- | ------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `clients`                       | Array   | Required | Specifies the client type (e.g., `["telegram"]`).                                                   |
-| `allowDirectMessages`           | Boolean | `false`  | Determines whether the bot should respond to direct messages (DMs).                                 |
-| `shouldOnlyJoinInAllowedGroups` | Boolean | `false`  | Ensures the bot only joins and responds in specified groups.                                        |
-| `allowedGroupIds`               | Array   | `[]`     | Lists the group IDs the bot is allowed to interact with (requires `shouldOnlyJoinInAllowedGroups`). |
-| `messageTrackingLimit`          | Integer | `100`    | Sets the maximum number of messages to track in memory for each chat.                               |
-| `templates`                     | Object  | `{}`     | Allows customization of response templates for different message scenarios.                         |
+## Configuration
 
-## Error 409: Conflict in Multiple Agents Environment
-
-When you encounter this error in your logs:
-
-```
-error: 409: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
-```
-
-This indicates a fundamental architectural limitation with the Telegram Bot API. The Telegram API strictly enforces that only one active connection can exist per bot token at any given time. This is by design to ensure reliable message delivery and prevent message duplication or loss.
-
-In ElizaOS multi-agent environments, this error commonly occurs when:
-
-1. **Multiple Agents Using Same Token**: Two or more agents (such as "Eliza" and another character) each have the `@elizaos/plugin-telegram` plugin enabled in their configuration
-2. **Simultaneous Initialization**: Each agent independently attempts to initialize its own Telegram service during startup
-3. **Token Collision**: All agents use the same `TELEGRAM_BOT_TOKEN` from your environment configuration
-4. **Connection Rejection**: When a second agent tries to establish a connection while another is already active, Telegram rejects it with a 409 error
-
-This is not a bug in ElizaOS or the Telegram plugin, but rather a result of using a shared resource (the bot token) that can only accept one connection at a time.
-
-## Example `<charactername>.character.json`
-
-Below is an example configuration file with all options:
-
-```json
-{
-  "clients": ["telegram"],
-  "allowDirectMessages": true,
-  "shouldOnlyJoinInAllowedGroups": true,
-  "allowedGroupIds": ["-123456789", "-987654321"],
-  "messageTrackingLimit": 100,
-  "templates": {
-    "telegramMessageHandlerTemplate": "Your custom template here"
-  },
-  "secrets": {
-    "key": "<your-bot-token>"
-  }
-}
-```
-
-## How to Modify Settings
-
-1. Locate the `character.json` file in your project directory.
-2. Update the file with the desired configuration options as shown in the example above.
-3. Save the file and restart the bot for the changes to take effect.
-
-## Best Practices
-
-- **Production**: Restrict bot access with `shouldOnlyJoinInAllowedGroups: true` and specify `allowedGroupIds` to ensure security.
-- **Token Management**: Always keep your bot token and backend tokens secure and never expose them in public repositories.
-
-## Pre-Requisites
-
-1. Add the bot token to the `.env` file in the project root:
+### Minimal (single bot, environment variable)
 
 ```env
-TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
 ```
 
-2. Add the same token to your character configuration file:
+The plugin reads the token from the runtime setting `TELEGRAM_BOT_TOKEN` or `process.env.TELEGRAM_BOT_TOKEN`.
 
-Create or modify `characters/your-character.json`:
+### Via character settings
 
 ```json
 {
-  "clients": ["telegram"],
-  "secrets": {
-    "key": "<your-bot-token>"
+  "name": "MyAgent",
+  "settings": {
+    "telegram": {
+      "botToken": "123456:ABC-DEF...",
+      "apiRoot": "https://api.telegram.org"
+    }
   }
 }
 ```
 
-## From the project root:
+### Multi-account
 
-```bash
-bun run dev
+```json
+{
+  "settings": {
+    "telegram": {
+      "accounts": {
+        "supportBot": { "botToken": "111:aaa", "allowedChats": ["-100123456"] },
+        "announcementsBot": { "botToken": "222:bbb" }
+      }
+    }
+  }
+}
 ```
 
-## Or using bun:
+## Environment variables
 
-```bash
-bun start --character="characters/your-character.json"
+| Variable | Required | Description |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | Yes (default account) | Bot token from @BotFather |
+| `TELEGRAM_API_ROOT` | No | Override Bot API base URL (e.g. local Bot API server). Default: `https://api.telegram.org` |
+| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings the bot will respond to. If absent, all chats are allowed. Example: `["-100123456789"]` |
+| `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by the live smoke-test suite |
+
+## Enabling the plugin
+
+The plugin auto-enables when the `telegram` connector key is present in the agent connector config. To load it explicitly, add it to the agent's plugin list:
+
+```json
+{
+  "plugins": ["@elizaos/plugin-telegram"]
+}
 ```
 
-## Utilizing Telegram Buttons
+## Setup UI routes
 
-To send a message with native Telegram buttons, include an array of buttons in the message content. The following action demonstrates how to initiate a login flow using a Telegram button.
+The plugin mounts these HTTP routes (no plugin-name prefix) for the dashboard setup wizard:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/setup/telegram/status` | Current pairing state |
+| POST | `/api/setup/telegram/start` | Validate + save bot token |
+| POST | `/api/setup/telegram/cancel` | Remove saved token |
+| GET | `/api/setup/telegram-account/status` | GramJS user-account auth state |
+| POST | `/api/setup/telegram-account/start` | Begin GramJS login |
+| POST | `/api/setup/telegram-account/submit-code` | Submit OTP or 2FA password |
+| POST | `/api/setup/telegram-account/cancel` | Tear down GramJS session |
+
+## Sending buttons
+
+Include a `buttons` array in any `Content` object returned to Telegram:
 
 ```typescript
-export const initAuthHandshakeAction: Action = {
-  name: 'INIT_AUTH_HANDSHAKE',
-  description: 'Initiates the identity linking and authentication flow for new users.',
-  validate: async (_runtime, _message, _state) => {
-    return _message.content.source === 'telegram';
-  },
-  handler: async (runtime, message, _state, _options, callback): Promise<boolean> => {
-    try {
-      const user = await getUser(message.userId);
-      if (user) return false;
+callback({
+  text: "Welcome! Click below to authenticate.",
+  buttons: [
+    {
+      kind: "login",
+      text: "Authenticate",
+      url: "https://your-app.example.com/auth",
+    },
+  ],
+});
+```
 
-      callback({
-        text: "Let's get you set up with a new account",
-        buttons: [
-          {
-            text: '🔑 Authenticate with Telegram',
-            url: `${FRONTEND_URL}/integrations/telegram`,
-            kind: 'login',
-          },
-        ],
-      }).catch((error) => {
-        console.error('Error sending callback:', error);
-      });
+Supported `kind` values: `"login"` (Telegram login widget), `"url"` (plain URL button).
 
-      return true;
-    } catch (error) {
-      ...
-    }
-  },
-};
+## Owner pairing
+
+The plugin registers a `/eliza_pair <code>` bot command that lets the Telegram user matching a 6-digit code shown in the agent dashboard bind their Telegram identity to the owner account. Rate-limited to 5 attempts per minute per user.
+
+## 409 Conflict errors
+
+The Telegram Bot API permits only one active long-poll connection per token. If two agent processes share the same token simultaneously, Telegram rejects the second with a 409 error. The plugin stops the previous poller before launching a new one within the same process, but across separate processes you must ensure only one uses a given token at a time.
+
+## Development
+
+```bash
+bun run --cwd plugins/plugin-telegram build
+bun run --cwd plugins/plugin-telegram test
+bun run --cwd plugins/plugin-telegram lint
 ```

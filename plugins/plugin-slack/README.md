@@ -1,6 +1,6 @@
 # @elizaos/plugin-slack
 
-Slack integration plugin for ElizaOS agents with Socket Mode support.
+Slack integration plugin for elizaOS agents with Socket Mode support.
 
 ## Features
 
@@ -136,14 +136,6 @@ Slack messaging is exposed through the canonical message connector actions. Use
 | `MESSAGE` | `delete` | Delete a message |
 | `MESSAGE` | `pin` | Pin or unpin a message |
 | `MESSAGE` | `get_user` | Get information about a user |
-
-## Providers
-
-| Provider | Description |
-|----------|-------------|
-| `slackChannelState` | Current channel context and metadata |
-| `slackWorkspaceInfo` | Workspace-level information |
-| `slackMemberList` | Members in the current channel |
 
 ## Events
 

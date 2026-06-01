@@ -1,64 +1,93 @@
 # @elizaos/plugin-wallet
 
-Non-custodial wallet for elizaOS agents. Replaces the legacy fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, `plugin-clanker`, and the former `elizaos-plugin-agentwallet` stub with one canonical action+provider surface governed by [`docs/architecture/wallet-and-trading.md`](../../../docs/architecture/wallet-and-trading.md).
+Non-custodial wallet plugin for elizaOS agents. Provides EVM and Solana signing, token transfers, swaps, cross-chain bridging, on-chain governance, LP management, and market analytics behind a single unified action+provider surface.
 
-## Surface
+Replaces the former fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, and `plugin-clanker`.
 
-The plugin exposes **10 canonical planner-visible actions**:
+## Capabilities
 
-| Action | Purpose |
-|--------|---------|
-| `TRADE` | Open positions, swap, bridge. Discriminated by `kind`: `perp` (Hyperliquid), `prediction` (Polymarket), `spot` / `swap` (Li.Fi on EVM, Jupiter on Solana), `bridge` (Li.Fi / CCTP). |
-| `MANAGE_POSITION` | Close, modify, cancel orders. |
-| `QUERY_MARKET` | Read-only price / depth / funding / chart / news / sentiment. No wallet required. |
-| `QUERY_PORTFOLIO` | Balances, positions, P&L, history. |
-| `LEND` | Supply / borrow / repay / withdraw on Aave or Morpho. |
-| `MANAGE_LP` | Open / close / collect / rebalance LP positions. EVM (Uniswap V3, Aerodrome) + Solana (Raydium, Orca Whirlpools, Meteora DLMM) behind one surface. |
-| `TRANSFER` | Move value to an arbitrary external address. EVM + Solana. Always policy-checked. |
-| `SET_AUTOMATION` | DCA, threshold triggers, P&L exits. |
-| `MANAGE_AUTOMATION` | List / pause / resume / delete automations. |
-| `MINT` | Token launches via Clanker on Base. |
+### On-chain actions (via the `WALLET` action)
 
-These dispatch into **typed providers** (one per venue / data source). Adding a new venue means adding a provider, **not** a new planner verb.
+| Subaction | What it does |
+|-----------|-------------|
+| `transfer` | Send tokens to an external address. EVM or Solana. Always requires user confirmation. |
+| `swap` | Token swap via Li.Fi (EVM) or Jupiter (Solana). |
+| `bridge` | Cross-chain transfer via Li.Fi route finding or CCTP (Circle's native USDC bridge). |
+| `gov` | On-chain governance: propose, vote, queue, execute via OpenZeppelin Governor. |
 
-## Wallet abstraction
+All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing.
 
-Two backends behind `WalletBackend`:
+### Analytics subactions (no wallet required)
 
-- **`LocalEoaBackend`** — desktop default. EOA private keys hydrated from the OS keychain. Optional ERC-6551 token-bound account mode (via the bundled SDK at `./sdk`) for on-chain spend policy enforcement.
-- **`StewardBackend`** — cloud + mobile default. Multi-tenant Steward service is the only custody primitive in cloud. No fallback to local.
+| Subaction | What it does |
+|-----------|-------------|
+| `token_info` | Token and market data from DexScreener, Birdeye, or CoinGecko. |
+| `search_address` | Birdeye wallet portfolio lookup by address. |
 
-See `src/wallet/` for interface and impls. `ELIZA_WALLET_BACKEND=local|steward|auto` selects at runtime.
+### LP management
 
-## Layout
+Multi-DEX LP management for both EVM and Solana chains:
 
-```
-src/
-  index.ts                  # Plugin export
-  plugin.ts                 # Plugin object: actions + providers + services
-  sdk/                      # Lifted from agent-wallet-sdk (ERC-6551, x402, CCTP, swap, escrow, identity, multi-token, payment router)
-  wallet/                   # WalletBackend interface + LocalEoa + Steward
-  policy/                   # PolicyModule (local + steward bridge)
-  providers/                # Canonical providers (one per venue / data source)
-  actions/                  # Canonical actions (TRADE, MANAGE_POSITION, ...)
-  audit/                    # Append-only hash-chained audit log
-```
+- **EVM:** Uniswap V3, Aerodrome, PancakeSwap V3
+- **Solana:** Raydium CLMM, Orca Whirlpools, Meteora DLMM
 
-The `sdk/` subtree carries forward primitives from [agent-wallet-sdk](https://github.com/up2itnow0822/agent-wallet-sdk) (MIT). See `SDK-LICENSE`. The wallet/policy/providers/actions/audit subtrees implement the canonical architecture in the spec.
+Access via the `lpManagerPlugin` export or the `liquidityAction` subaction.
 
-## Migration status
+### Market analytics
 
-This plugin is being built incrementally. Tracked phases:
+- **Birdeye:** real-time prices, trending tokens, portfolio valuation.
+- **DexScreener:** pair search, token lookups.
+- **Token info:** multi-provider dispatcher (DexScreener, Birdeye, CoinGecko).
+- **DeFi news:** via `defiNewsPlugin`.
 
-- **Phase 0** — interfaces (`WalletBackend`, `CanonicalProvider`, `CanonicalAction`, `PolicyModule`, audit log schema, failure-code unions).
-- **Phase 1** — backend impls + `@elizaos/plugin-wallet` composes legacy `plugin-evm` + `plugin-solana`; migrate call sites to consume `WalletBackend` only.
-- **Phase 2** — provider lifts (13+ providers).
-- **Phase 3** — canonical action implementations.
-- **Phase 4** — approval-queue surface (SSE + decision endpoint + tray + Capacitor bridge).
-- **Phase 5** — EVM + Solana chain implementations live under `src/chains/`; migrate remaining callsites to `WalletBackend` only; expand test coverage.
+## Wallet backends
 
-See `docs/architecture/wallet-and-trading.md` §I for the dependency graph.
+The plugin supports two signing backends, selected by `ELIZA_WALLET_BACKEND`:
+
+- **`local`** — raw EOA private keys from environment variables or the OS keychain. Default for desktop.
+- **`steward`** — multi-tenant Steward signing service. Required for cloud and mobile deployments.
+- **`auto`** (default) — uses Steward when `ELIZA_CLOUD_PROVISIONED=1` or `ELIZA_WALLET_STEWARD_AUTO=1`, otherwise local.
+
+## Required configuration
+
+None of the variables below are strictly required at load time; the plugin degrades gracefully. To get signing:
+
+| Variable | When needed |
+|----------|-------------|
+| `EVM_PRIVATE_KEY` | EVM operations with local backend |
+| `SOLANA_PRIVATE_KEY` | Solana operations with local backend |
+| `STEWARD_API_URL` + `STEWARD_AGENT_TOKEN` | Steward backend or cloud deployments |
+| `SOLANA_RPC_URL` | Any Solana operation |
+
+Additional optional variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `ELIZA_WALLET_BACKEND` | `local` \| `steward` \| `auto` |
+| `BIRDEYE_API_KEY` | Direct Birdeye access (falls back to Eliza Cloud route) |
+| `BIRDEYE_WALLET_ADDR` | Enables portfolio provider for a specific address |
+| `BIRDEYE_NO_TRENDING` | Disable trending provider |
+| `ELIZA_AGENT_WALLET_AUTO_ENABLE` | Set to `0` to disable auto-enable |
+| `X402_SUPPORTED_NETWORKS` | Comma-separated networks for x402 micropayments |
+| `X402_GLOBAL_DAILY_LIMIT` | Daily USDC spending cap for x402 |
+| `X402_PER_REQUEST_MAX` | Per-request USDC cap for x402 |
+
+EVM RPC per chain: `ETHEREUM_RPC_URL` / `EVM_PROVIDER_MAINNET`, `BASE_RPC_URL` / `EVM_PROVIDER_BASE`, `BSC_RPC_URL` / `EVM_PROVIDER_BSC`, `ARBITRUM_RPC_URL` / `EVM_PROVIDER_ARBITRUM`.
+
+## Enabling the plugin
+
+The plugin auto-enables when any signing path is present (EVM or Solana private key, or Steward credentials). To opt out of auto-enable, set `ELIZA_AGENT_WALLET_AUTO_ENABLE=0`. To explicitly disable, set `enabled: false` for plugin id `wallet` in the agent config.
+
+## Security model
+
+All on-chain writes (`transfer`, `swap`, `bridge`, `gov`) require an explicit user confirmation before execution. The LLM cannot authorize a transaction by itself — a confirmed human reply turn is always required. EVM recipient addresses on transfers are additionally validated via `assertEvmTransferRecipientAuthorized`.
+
+An append-only hash-chained audit log records all action validate/handler lifecycle events and signing requests.
+
+## SDK
+
+`src/sdk/` provides lower-level ERC-6551 token-bound account primitives, x402 micropayment protocol types, CCTP bridge helpers, and spend-policy tooling. These are primarily for plugin internals but are re-exported from the package barrel for external use. SDK source is MIT-licensed (attribution: agent-wallet-sdk); see `SDK-LICENSE`.
 
 ## License
 
-MIT. Source code under `src/sdk/` originates from [agent-wallet-sdk](https://github.com/up2itnow0822/agent-wallet-sdk) (MIT, attribution preserved in `SDK-LICENSE`).
+MIT

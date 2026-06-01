@@ -153,34 +153,21 @@ Open Cloud does not provide a direct “agent voice” channel.
 
 ```
 plugin-roblox/
-├── typescript/          # TypeScript implementation
-│   ├── actions/         # ROBLOX_ACTION router
-│   ├── services/        # RobloxService
-│   ├── providers/       # Context providers
-│   ├── client/          # API client
-│   ├── types/           # Type definitions
-│   └── index.ts         # Plugin entry point
-├── rust/                # Rust implementation
-│   └── src/
-│       ├── client.rs    # API client
-│       ├── service.rs   # Service implementation
-│       └── lib.rs       # Crate entry point
-├── python/              # Python implementation
-│   └── elizaos_plugin_roblox/
-│       ├── client.py    # API client
-│       ├── service.py   # Service implementation
-│       └── __init__.py  # Package entry point
-└── package.json         # npm package configuration
+├── actions/             # ROBLOX action router
+├── services/            # RobloxService
+├── providers/           # roblox-game-state provider
+├── client/              # RobloxClient (Open Cloud HTTP wrapper)
+├── types/               # Type definitions
+├── utils/               # Config validation helpers
+├── prompts/             # Prompt fragments (evaluators, providers)
+├── __tests__/           # Vitest test suite
+└── index.ts             # Plugin entry point
 ```
 
 ## Development
 
-### Building
-
 ```bash
-# TypeScript
-bun run build
-# TypeScript
-bun run test
-# TypeScript
-bun run lint
+bun run build          # compile
+bun run test           # run unit tests
+bun run typecheck      # type-check without emitting
+bun run lint           # biome check + fix

@@ -143,7 +143,7 @@ above is only useful for fast iteration on the wrapper itself.
 
 ```
 cp src/native/build/libNativeWrapper.so \
-   /home/shaw/milady/eliza/packages/os/linux/elizaos/artifacts/amd64/elizaos-app/bin/libNativeWrapper.so
+   <repo-root>/packages/os/linux/elizaos/artifacts/amd64/elizaos-app/bin/libNativeWrapper.so
 ```
 
 Then rebuild the ISO via `packages/os/linux/elizaos/`'s normal pipeline

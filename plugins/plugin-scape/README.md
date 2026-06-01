@@ -1,85 +1,76 @@
 # @elizaos/plugin-scape
 
-First-class agent integration for **xRSPS** — the TypeScript OSRS private
-server at [xrsps-typescript](https://github.com/xrsps/xrsps-typescript).
+First-class Eliza agent integration for **xRSPS** — a TypeScript OSRS private server.
 
 ## What this plugin does
 
-`'scape` turns a running xRSPS instance into an autonomous-agent playground
-for the eliza runtime. When you click **'scape** in the apps launcher:
+`'scape` turns a running xRSPS instance into an autonomous-agent playground within the elizaOS runtime. When the `'scape` app is launched:
 
-1. The viewer iframe loads the xRSPS React client — by default the
-   production 'scape deployment at
-   [`https://scape-client-2sqyc.kinsta.page`](https://scape-client-2sqyc.kinsta.page),
-   a React/WebGL build hosted as a Sevalla static site. It's wired at
-   build time to a live game server at `wss://scape-96cxt.sevalla.app`
-   and an OSRS cache + map-tile bucket at
-   `https://scape-cache-skrm0.sevalla.storage`. Override
-   `SCAPE_CLIENT_URL` to point at a local `http://localhost:3000` dev
-   server or your own fork's deployment.
-2. The plugin's `ScapeGameService` connects to xRSPS's **bot-SDK**
-   endpoint — a JSON-encoded WebSocket at
-   `wss://scape-96cxt.sevalla.app/botsdk` by default. That's the
-   production deployment: the bot-SDK shares the main game server's
-   HTTP port (8080) and is routed by URL path, so TLS is terminated by
-   Sevalla's ingress and everything flows over a single public
-   WebSocket endpoint. Spawning creates a first-class agent-player
-   account using the same scrypt auth + Postgres-backed persistence
-   human logins use. Override `SCAPE_BOT_SDK_URL` to
-   `ws://127.0.0.1:8080/botsdk` for a local dev stack.
-3. The eliza LLM runtime drives the agent via the action list (walk,
-   fight, chat, skill, bank, ...) every N seconds, with optional
-   directed prompts from the operator UI.
+1. The viewer iframe loads the xRSPS React client. The default points at the live production deployment at [`https://scape-client-2sqyc.kinsta.page`](https://scape-client-2sqyc.kinsta.page). Override `SCAPE_CLIENT_URL` to point at a local dev server (`http://localhost:3000`) or your own fork's deployment.
 
-## Why "first-class citizen"?
+2. The plugin's `ScapeGameService` connects to xRSPS's **bot-SDK** endpoint — a JSON-encoded WebSocket at `wss://scape-96cxt.sevalla.app/botsdk` by default (production deployment, shared HTTP server, path-routed, TLS terminated by Sevalla's ingress). Override `SCAPE_BOT_SDK_URL` to `ws://127.0.0.1:8080/botsdk` for a local dev stack.
 
-The agent isn't a scripted bot glued on top of the client protocol. It's
-a `PlayerState` in the xRSPS world with an optional `AgentComponent`
-attached — same tick loop, same combat rules, same autosave, same
-visibility to human players. Human and agent logins share the *exact*
-same account store, save file, and code path. The only differences are:
+3. The elizaOS LLM runtime drives the agent via the action list (`walk_to`, `attack`, `chat_public`, `eat`, `drop`, `set_goal`, `complete_goal`, `remember`) every N seconds, with optional directed prompts from the operator UI.
 
-- Agents talk over JSON frames at path `/botsdk` on the shared HTTP
-  server (default port 8080) instead of the binary game protocol
-  on `/`. Both endpoints share a single port so TLS is terminated
-  once at the ingress.
-- Agents carry an `AgentComponent` on their `PlayerState` that holds
-  perception snapshots, action queues, journal refs, and goals.
+## Capabilities
 
-This is the first step toward turning xRSPS into an ECS-for-agents.
+- **Autonomous loop** — the agent picks actions via LLM inference on every tick. Configurable interval and model tier.
+- **Perception providers** — bot vitals, inventory, nearby NPCs/players/items, and the Scape Journal are injected into each LLM prompt.
+- **Scape Journal** — persistent cross-session memory. Memories, goals, and progress snapshots are written to `~/.eliza/scape-journals/<agentId>.json`.
+- **Operator steering** — send a directive via the Apps UI or `POST /api/apps/scape/prompt` to override the agent's current goal. Supports `pause` / `resume` to halt and restart the autonomous loop.
+- **In-game steering** — a human player can type `::steer <text>` in public game chat to set the agent's goal.
+- **First-class account** — the agent logs in as a real xRSPS player account using the same scrypt auth and Postgres-backed persistence human players use. Skills, inventory, position, and journal accumulate across sessions.
+
+## Actions
+
+| Action | Operations |
+|--------|-----------|
+| `SCAPE` | `walk_to (x, z, run?)`, `attack (npcId)`, `chat_public (message)`, `eat (item?)`, `drop (item)`, `set_goal (title, notes?)`, `complete_goal (status?, goalId?, notes?)`, `remember (notes, kind?, weight?)` |
+
+Requires `minRole: ADMIN`.
+
+## Env vars / config
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SCAPE_BOT_SDK_TOKEN` | *(required)* | Shared secret matching xRSPS `BOT_SDK_TOKEN`. Without this the plugin will not connect. |
+| `SCAPE_BOT_SDK_URL` | `wss://scape-96cxt.sevalla.app/botsdk` | bot-SDK WebSocket endpoint. Override to `ws://127.0.0.1:8080/botsdk` for local dev. |
+| `SCAPE_CLIENT_URL` | `https://scape-client-2sqyc.kinsta.page` | xRSPS client URL the viewer iframe loads. Override to `http://localhost:3000` for local dev. |
+| `SCAPE_AGENT_NAME` | `scape-agent` | In-game display name (max 12 chars). |
+| `SCAPE_AGENT_PASSWORD` | *(auto-generated)* | Plaintext password for the agent's account. Leave unset to auto-generate and persist to `~/.eliza/scape-agent-identity.json`. |
+| `SCAPE_AGENT_ID` | `scape-{SCAPE_AGENT_NAME}` | Stable ID across reconnects. Used as the journal filename. |
+| `SCAPE_AGENT_PERSONA` | *(none)* | Persona string injected into the system prompt. |
+| `SCAPE_LOOP_INTERVAL_MS` | `15000` | Autonomous LLM step interval in ms (minimum 1000). |
+| `SCAPE_MODEL_SIZE` | `TEXT_SMALL` | Model tier: `TEXT_NANO`, `TEXT_SMALL`, `TEXT_MEDIUM`, `TEXT_LARGE`. |
+
+Settings are resolved in priority order: elizaOS runtime settings (character secrets) → `process.env`.
+
+## How to enable
+
+Add `@elizaos/plugin-scape` to your character's plugin list and set `SCAPE_BOT_SDK_TOKEN`:
+
+```json
+{
+  "plugins": ["@elizaos/plugin-scape"],
+  "settings": {
+    "secrets": {
+      "SCAPE_BOT_SDK_TOKEN": "your-server-token"
+    }
+  }
+}
+```
+
+The plugin auto-generates and persists an agent identity on first launch. No additional config is required for the default production xRSPS deployment.
 
 ## Protocol
 
-Agents speak JSON — the same structured format used by the native tool-calling
-runtime and trajectory viewer,
-typically 40–60% cheaper than JSON for the kinds of state snapshots an
-agent loop emits every few seconds. The full frame reference lives in
-the xRSPS server at
-[`server/src/network/botsdk/BotSdkProtocol.ts`](https://github.com/xrsps/xrsps-typescript/blob/main/server/src/network/botsdk/BotSdkProtocol.ts).
+Agents communicate with xRSPS over JSON frames at the `/botsdk` WebSocket path. The frame shapes in `src/sdk/types.ts` must stay compatible with xRSPS's `server/src/network/botsdk/BotSdkProtocol.ts` — the codec does structural matching, so renaming a field on either side silently breaks the wire format.
 
-## Env vars
+## Development
 
-| Variable              | Default                                         | Purpose                                          |
-|-----------------------|-------------------------------------------------|--------------------------------------------------|
-| `SCAPE_CLIENT_URL`    | `https://scape-client-2sqyc.kinsta.page`        | xRSPS client URL the viewer iframe points at. Set to `http://localhost:3000` for local dev. |
-| `SCAPE_BOT_SDK_URL`   | `wss://scape-96cxt.sevalla.app/botsdk`          | bot-SDK WebSocket endpoint on the xRSPS server. Defaults to the live Sevalla deployment (shared HTTP server, path-routed, TLS by ingress). Override to `ws://127.0.0.1:8080/botsdk` for local dev. |
-| `SCAPE_BOT_SDK_TOKEN` | *(unset → autonomous loop disabled)*            | Shared secret matching xRSPS `BOT_SDK_TOKEN`.   |
-| `SCAPE_AGENT_NAME`    | `scape-agent`                                   | In-game display name for the agent.              |
-| `SCAPE_AGENT_PASSWORD`| *(unset → auto-generated + persisted to disk)*  | Plaintext password for the agent's account.    |
-| `SCAPE_LOOP_INTERVAL_MS` | `15000`                                      | Autonomous LLM step interval.                    |
-| `SCAPE_MODEL_SIZE`    | `TEXT_SMALL`                                    | eliza model tier for the loop.                  |
+```bash
+bun run --cwd plugins/plugin-scape build    # full build (JS + views + types)
+bun run --cwd plugins/plugin-scape clean    # remove dist/
+```
 
-## Scope by PR
-
-- **PR 2 (this):** Plugin skeleton, curated-registry entry, viewer route
-  embedding the xRSPS client. No agent loop yet.
-- **PR 3:** Bot-SDK client (`sdk/`) + connection manager + empty game
-  service. Plugin connects to xRSPS and logs `agent spawned`, but
-  doesn't do anything afterward.
-- **PR 4:** First LLM loop + 5 actions + 3 providers. Watch the agent
-  walk itself one tile at a time based on model output.
-- **PR 5:** Full action toolbelt (~25 actions), world-knowledge
-  provider, skill data.
-- **PR 6:** Scape Journal — persistent memory/goals/progress.
-- **PR 7:** Operator-directed prompts via `POST /api/apps/scape/prompt`.
-- **PR 8:** Docs, deployment guide, end-to-end verification.
+Point `SCAPE_BOT_SDK_URL` at a local xRSPS instance (`ws://127.0.0.1:8080/botsdk`) and `SCAPE_CLIENT_URL` at its React client (`http://localhost:3000`) for local development.

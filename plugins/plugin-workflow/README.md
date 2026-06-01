@@ -20,7 +20,7 @@ No workflow-specific env vars are required. The plugin's `EmbeddedWorkflowServic
 | `pendingDraftProvider` | Surfaces an in-progress draft so the agent can clarify before persisting. |
 | Routes | Mounted at `/api/workflow/*` on the agent's HTTP server. |
 
-The `WORKFLOW` umbrella action lives in `@elizaos/agent` and dispatches op-based commands (`create`, `update`, `activate`, `run`, `delete`, …) to this plugin's services.
+The `WORKFLOW` umbrella action is defined in this plugin (`src/actions/workflow.ts`) and dispatches op-based commands (`create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions`) to this plugin's services.
 
 ## RAG Pipeline (workflow generation from natural language)
 
