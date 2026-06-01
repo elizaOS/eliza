@@ -18,6 +18,7 @@ import {
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
