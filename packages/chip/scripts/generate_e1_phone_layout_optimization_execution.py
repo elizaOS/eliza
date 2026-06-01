@@ -223,9 +223,9 @@ def main() -> int:
                 "pd_controller": usb_sidekey_selection["selected_hardware_stack"][
                     "usb_pd_controller"
                 ]["part"],
-                "charger": usb_sidekey_selection["selected_hardware_stack"][
-                    "charger_power_path"
-                ]["part"],
+                "charger": usb_sidekey_selection["selected_hardware_stack"]["charger_power_path"][
+                    "part"
+                ],
                 "status": usb_sidekey_selection["status"],
                 "layout_dependency": True,
             },

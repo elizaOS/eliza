@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import re
 import sys
-from datetime import UTC, datetime
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -475,9 +475,10 @@ def build_report(errors: list[str], inventory: list[str]) -> dict[str, object]:
     return {
         "schema": "eliza.stub_audit.v1",
         "status": "pass" if not errors else "fail",
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "claim_boundary": "stub_inventory_only_not_rtl_completion_or_os_boot_evidence",
         "summary": {
             "errors": len(errors),

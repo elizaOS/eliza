@@ -1493,7 +1493,9 @@ def android_archive_source_next_step(source_inventory: dict[str, Any]) -> str:
         artifact_id = str(record.get("artifactId") or "<unknown>")
         source_dir = str(record.get("sourceDirectory") or "<unknown>")
         missing = record.get("missingMembers")
-        missing_members = ", ".join(str(member) for member in missing) if isinstance(missing, list) else ""
+        missing_members = (
+            ", ".join(str(member) for member in missing) if isinstance(missing, list) else ""
+        )
         incomplete.append(f"{artifact_id} from {source_dir} missing [{missing_members}]")
     if incomplete:
         return (

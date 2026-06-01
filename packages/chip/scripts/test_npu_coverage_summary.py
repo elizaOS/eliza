@@ -56,15 +56,11 @@ class NpuCoverageSummaryTests(unittest.TestCase):
             "build/reports/npu_cocotb_coverage.json",
         )
         self.assertTrue(summary["artifacts"]["cocotb_results"]["exists"])
-        self.assertTrue(
-            all(result["all_passed"] for result in summary["directed_tests"].values())
-        )
+        self.assertTrue(all(result["all_passed"] for result in summary["directed_tests"].values()))
         self.assertTrue(summary["saturation_cases"]["relu4_negative_lanes_zeroed"])
         self.assertTrue(summary["invalid_programming_cases"]["descriptor_timeout"])
         self.assertTrue(summary["irq_paths"]["error_irq_clear_deasserts"])
-        self.assertTrue(
-            all(summary["software_fallback_cases"]["source_tests"].values())
-        )
+        self.assertTrue(all(summary["software_fallback_cases"]["source_tests"].values()))
 
     def test_invalid_coverage_records_fail_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

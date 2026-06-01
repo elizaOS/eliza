@@ -234,9 +234,7 @@ def validate_formal_manifest(root: Path, strict: bool) -> list[str]:
         errors.append("formal manifest must state deep_top_required_for_release=true")
     expected_strict_claim = data.get("mode") == "sby-deep-top"
     if data.get("strict_release_claim_allowed") is not expected_strict_claim:
-        errors.append(
-            "formal manifest strict_release_claim_allowed must match mode=sby-deep-top"
-        )
+        errors.append("formal manifest strict_release_claim_allowed must match mode=sby-deep-top")
     entries = data.get("entries")
     if not isinstance(entries, dict):
         return errors + ["formal manifest missing entries"]
@@ -269,9 +267,7 @@ def validate_formal_manifest(root: Path, strict: bool) -> list[str]:
                 else:
                     for task_name, task in tasks.items():
                         if not isinstance(task, dict) or "mode" not in task or "depth" not in task:
-                            errors.append(
-                                f"formal {name}: SBY task {task_name} missing mode/depth"
-                            )
+                            errors.append(f"formal {name}: SBY task {task_name} missing mode/depth")
                 if not isinstance(covered_files, list) or not covered_files:
                     errors.append(f"formal {name}: missing covered file metadata")
         for key in ("status", "log"):

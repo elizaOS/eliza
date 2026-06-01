@@ -60,9 +60,7 @@ CPU_AP_CAPTURE_COMMAND_DERIVER = (
 )
 CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
 AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
-RECHECK_COMMAND = (
-    "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
-)
+RECHECK_COMMAND = "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
 
 CHIP_BOOT_EVIDENCE_IDS = {
     "generated-eliza-ap-boot",
@@ -176,7 +174,8 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
     plan: list[dict[str, object]] = []
     if any(
         code.startswith("chip_target_boot")
-        or code in {
+        or code
+        in {
             "missing_chip_target_boot_evidence_row",
             "missing_agent_liveness_marker",
             "missing_tui_liveness_marker",
@@ -907,9 +906,10 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
-        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": dt.datetime.now(dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "claim_boundary": CLAIM_BOUNDARY,
         **FALSE_CLAIM_FLAGS,
         "summary": {

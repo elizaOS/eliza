@@ -228,9 +228,7 @@ def parse_manifest(data: dict[str, object]) -> ModelManifest:
             raise ManifestError(f"{where}: 'weight_bits' must be a positive integer")
         layers.append(LayerSpec(layer_name, kind, rows, cols, layer_bits))
 
-    decoder_blocks = sum(
-        1 for layer in layers if layer.kind in {"attn_qkv_proj", "attn_out_proj"}
-    )
+    decoder_blocks = sum(1 for layer in layers if layer.kind in {"attn_qkv_proj", "attn_out_proj"})
     # Each decoder block contributes exactly one qkv and one out projection.
     if decoder_blocks != 2 * n_layers:
         raise ManifestError(
@@ -257,9 +255,7 @@ def usable_bytes_per_core(config: E1XConfig) -> int:
     return max(0, (config.local_sram_kib_per_core - RESERVED_RUNTIME_KIB_PER_CORE) * 1024)
 
 
-def _shard_layer(
-    layer: LayerSpec, usable_bytes: int
-) -> tuple[int, int, int]:
+def _shard_layer(layer: LayerSpec, usable_bytes: int) -> tuple[int, int, int]:
     """Return (cores_for_layer, rows_per_core, max_shard_bytes) for a layer.
 
     Matmul sharding: a ``rows x cols`` weight matrix is tiled by output rows
@@ -290,7 +286,9 @@ def _shard_layer(
     return cores, rows_per_core, max_shard_bytes
 
 
-def _coords_for_span(start_index: int, count: int, cols: int) -> tuple[dict[str, int], dict[str, int]]:
+def _coords_for_span(
+    start_index: int, count: int, cols: int
+) -> tuple[dict[str, int], dict[str, int]]:
     """Row-major start/end logical coordinate for a contiguous core span."""
     end_index = start_index + count - 1
     start = {"row": start_index // cols, "col": start_index % cols}

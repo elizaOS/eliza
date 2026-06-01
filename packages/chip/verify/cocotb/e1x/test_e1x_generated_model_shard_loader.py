@@ -64,9 +64,7 @@ async def generated_high_failure_model_shard_loads_into_rtl_local_sram(dut):
     shard = json.loads(shard_path.read_text(encoding="utf-8"))
     assert shard["schema"] == "eliza.e1x.quantized_model_shard_sample.v1"
     assert int(shard["capacity_bytes"]) == int(dut.capacity_bytes.value)
-    assert int(shard["weight_shard_bytes_per_core"]) <= int(
-        shard["per_core_model_capacity_bytes"]
-    )
+    assert int(shard["weight_shard_bytes_per_core"]) <= int(shard["per_core_model_capacity_bytes"])
     assert shard["placement_successful"] is True
 
     for entry in shard["words"]:

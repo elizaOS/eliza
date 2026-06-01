@@ -95,8 +95,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
                 assert nested_summaries
                 assert all(isinstance(summary, dict) for summary in nested_summaries)
                 assert all(
-                    isinstance(summary.get("report_path"), str)
-                    for summary in nested_summaries
+                    isinstance(summary.get("report_path"), str) for summary in nested_summaries
                 )
     assert "python3_scripts_product_check_py_release" not in group_map
     assert "python3_scripts_check_package_cross_probe_py_release" not in group_map
@@ -209,9 +208,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     }
     assert "build/reports/pd_signoff.json" in chip_nested
     assert "build/reports/pd_signoff_status.json" not in chip_nested
-    openlane_release_summary = chip_nested.get(
-        "build/reports/openlane_run_release_preflight.json"
-    )
+    openlane_release_summary = chip_nested.get("build/reports/openlane_run_release_preflight.json")
     assert isinstance(openlane_release_summary, dict)
     summary_fields = openlane_release_summary.get("summary_generation_fields")
     assert isinstance(summary_fields, dict)
@@ -230,9 +227,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
                 "live_device_validation",
                 "actionable_external_dependency",
             }
-            assert finding.get("blocker_dependency") == finding.get(
-                "effective_blocker_dependency"
-            )
+            assert finding.get("blocker_dependency") == finding.get("effective_blocker_dependency")
             assert finding.get("original_blocker_dependency") in {
                 "repo_artifact_generation",
                 "live_device_validation",

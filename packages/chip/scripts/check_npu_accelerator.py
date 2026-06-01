@@ -231,9 +231,10 @@ def build_report(checks: list[dict]) -> dict:
         "blocker_reason": blocker_reason,
         "evidence_paths": EVIDENCE_PATHS,
         "as_of": _now(),
-        "generated_utc": _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": _dt.datetime.now(_dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "subsystem": "npu",
         "phone_claim_allowed": False,
         "release_claim_allowed": False,

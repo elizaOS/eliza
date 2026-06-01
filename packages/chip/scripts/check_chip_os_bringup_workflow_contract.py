@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import argparse
 import ast
-from datetime import UTC, datetime
 import json
 import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 

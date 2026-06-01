@@ -280,6 +280,12 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # The scenario CLI imports @elizaos/core from source, which imports the
+      # gitignored ./generated/validation-keyword-data.ts. --ignore-scripts skips
+      # postinstall, so generate it explicitly before any step resolves core.
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       - name: Scenario runner unit coverage
         run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
 

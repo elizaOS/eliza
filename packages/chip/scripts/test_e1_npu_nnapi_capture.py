@@ -21,7 +21,7 @@ def write_fake_adb(path: Path, include_accelerator: bool = True) -> None:
     path.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "case \"${1:-}\" in\n"
+        'case "${1:-}" in\n'
         "  devices)\n"
         "    printf 'List of devices attached\\nabc123\\tdevice\\n'\n"
         "    ;;\n"
@@ -30,12 +30,12 @@ def write_fake_adb(path: Path, include_accelerator: bool = True) -> None:
         "    ;;\n"
         "  shell)\n"
         "    shift\n"
-        "    if [ \"${1:-}\" = cmd ] && [ \"${2:-}\" = neuralnetworks ]; then\n"
+        '    if [ "${1:-}" = cmd ] && [ "${2:-}" = neuralnetworks ]; then\n'
         f"      printf 'NNAPI accelerator: {accelerator}\\n'\n"
-        "    elif [ \"${1:-}\" = benchmark_model ]; then\n"
+        '    elif [ "${1:-}" = benchmark_model ]; then\n'
         "      printf '%s\\n' \"$*\"\n"
         f"      printf 'NNAPI delegated accelerator {accelerator}\\n'\n"
-        "    elif [ \"${1:-}\" = cat ]; then\n"
+        '    elif [ "${1:-}" = cat ]; then\n'
         f"      printf '{accelerator} DMA bytes_read=1024 bytes_written=2048\\n'\n"
         "    else\n"
         "      printf 'unknown adb shell command: %s\\n' \"$*\" >&2\n"
@@ -52,7 +52,9 @@ def write_fake_adb(path: Path, include_accelerator: bool = True) -> None:
     path.chmod(0o755)
 
 
-def run_capture(temp_root: Path, include_accelerator: bool = True) -> subprocess.CompletedProcess[str]:
+def run_capture(
+    temp_root: Path, include_accelerator: bool = True
+) -> subprocess.CompletedProcess[str]:
     bin_dir = temp_root / "bin"
     bin_dir.mkdir()
     write_fake_adb(bin_dir / "adb", include_accelerator=include_accelerator)

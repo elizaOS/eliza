@@ -510,7 +510,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors,
     )
     if data.get("status") == "pass":
-        require(summary.get("completion_claimed") is True, "completion_claimed must be true", errors)
+        require(
+            summary.get("completion_claimed") is True, "completion_claimed must be true", errors
+        )
         require(
             summary.get("generated_ap_scope_claim_allowed") is True,
             "generated_ap_scope_claim_allowed must be true",
@@ -604,9 +606,7 @@ def main() -> int:
             print(f"FAIL: {error}", file=sys.stderr)
         return 1
     if report["status"] == "pass":
-        print(
-            f"CPU/AP scope check passed: {rel(OUT)} allows generated AP bring-up scope only."
-        )
+        print(f"CPU/AP scope check passed: {rel(OUT)} allows generated AP bring-up scope only.")
     else:
         print(f"CPU/AP scope check passed: {rel(OUT)} remains release-blocked.")
     return 0

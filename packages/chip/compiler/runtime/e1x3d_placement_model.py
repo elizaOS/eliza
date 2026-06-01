@@ -111,9 +111,7 @@ def _feasible_bondings(required_density: float) -> list[dict[str, float | str]]:
     return feasible
 
 
-def evaluate_split(
-    config: E1X3DConfig, floorplan: PEFloorplan, split: str
-) -> dict[str, object]:
+def evaluate_split(config: E1X3DConfig, floorplan: PEFloorplan, split: str) -> dict[str, object]:
     memory_tiers = max(1, config.memory_tiers_per_core)
     footprint_2d = floorplan.logic_area_mm2 + floorplan.sram_area_mm2
     if split == "block_sram_on_logic":
@@ -140,9 +138,7 @@ def evaluate_split(
         ),
         (1.0e6, 14_000.0),
     )
-    configured_geometric = via_capacity_per_mm2(
-        config.inter_tier_via_pitch_um, configured_entry[0]
-    )
+    configured_geometric = via_capacity_per_mm2(config.inter_tier_via_pitch_um, configured_entry[0])
     configured_realizable = realizable_signal_density_per_mm2(
         configured_geometric, configured_entry[1]
     )
@@ -230,9 +226,7 @@ def build_placement_report(
                 b["bonding"].startswith("hybrid_bond") for b in block["feasible_bondings"]
             ),
             "fine_fold_requires_miv": fine_feasible
-            and all(
-                b["bonding"] == "monolithic_miv" for b in fine["feasible_bondings"]
-            ),
+            and all(b["bonding"] == "monolithic_miv" for b in fine["feasible_bondings"]),
             "recommended_bonding_block": block["recommended_bonding"],
             "recommended_bonding_fine": fine["recommended_bonding"],
         },

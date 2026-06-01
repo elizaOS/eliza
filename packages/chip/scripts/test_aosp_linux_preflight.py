@@ -65,9 +65,7 @@ class AospLinuxPreflightTests(unittest.TestCase):
                 mock.patch.object(Path, "exists", fake_exists),
                 mock.patch.object(gate.os, "access", fake_access),
             ):
-                rc, report = gate.build_report(
-                    Namespace(aosp_dir=str(aosp), require_qemu=False)
-                )
+                rc, report = gate.build_report(Namespace(aosp_dir=str(aosp), require_qemu=False))
 
         self.assertEqual(rc, 0)
         self.assertEqual(report["status"], "pass")

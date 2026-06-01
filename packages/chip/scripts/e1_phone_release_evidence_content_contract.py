@@ -134,7 +134,7 @@ def approval_roles_for_category(category: str) -> tuple[str, str]:
 
 
 def traceability_id_for_row(category: str, evidence_id: str, path: str | None) -> str:
-    digest = hashlib.sha256(f"{category}|{evidence_id}|{path or ''}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{category}|{evidence_id}|{path or ''}".encode()).hexdigest()
     return f"traceability_{digest[:16]}"
 
 
@@ -224,12 +224,8 @@ def public_sourcing_summary(
         "public_cad_source_release_credit_record_count": int(
             public_cad_summary.get("release_credit_record_count") or 0
         ),
-        "public_market_bom_cost_category_count": int(
-            public_bom_summary.get("category_count") or 0
-        ),
-        "public_market_bom_cost_volume_count": int(
-            public_bom_summary.get("volume_count") or 0
-        ),
+        "public_market_bom_cost_category_count": int(public_bom_summary.get("category_count") or 0),
+        "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
         "public_market_bom_cost_avl_quote_count": int(
             public_bom_summary.get("avl_quote_count") or 0
         ),
@@ -991,9 +987,7 @@ def build_report(
                 kicad_cad_traceability["summary"].get("release_credit")
             ),
             "public_sourcing_intake_ready": True,
-            "public_cad_source_record_count": public_sourcing[
-                "public_cad_source_record_count"
-            ],
+            "public_cad_source_record_count": public_sourcing["public_cad_source_record_count"],
             "public_cad_source_step_or_3d_observed_count": public_sourcing[
                 "public_cad_source_step_or_3d_observed_count"
             ],
@@ -1018,12 +1012,8 @@ def build_report(
             "public_market_bom_cost_signed_supplier_quote_count": public_sourcing[
                 "public_market_bom_cost_signed_supplier_quote_count"
             ],
-            "public_sourcing_release_credit": public_sourcing[
-                "public_sourcing_release_credit"
-            ],
-            "public_sourcing_release_allowed": public_sourcing[
-                "public_sourcing_release_allowed"
-            ],
+            "public_sourcing_release_credit": public_sourcing["public_sourcing_release_credit"],
+            "public_sourcing_release_allowed": public_sourcing["public_sourcing_release_allowed"],
             "artifact_content_requirement_count": len(artifact_rows),
             "local_candidate_content_requirement_count": len(candidate_rows),
             "local_candidate_manifest_artifact_path_count": len(candidate_manifest_paths),

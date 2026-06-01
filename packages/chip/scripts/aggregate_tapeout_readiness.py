@@ -68,9 +68,7 @@ E1_PHONE_SUPPLIER_RETURN_REPORT_PATH = ROOT / "build/reports/e1_phone_supplier_r
 E1_PHONE_RELEASE_APPROVAL_REPORT_PATH = (
     ROOT / "build/reports/e1_phone_release_approval_signatures.json"
 )
-E1_PHONE_ASSEMBLY_VERIFICATION_PATH = (
-    ROOT / "mechanical/e1-phone/review/assembly-verification.json"
-)
+E1_PHONE_ASSEMBLY_VERIFICATION_PATH = ROOT / "mechanical/e1-phone/review/assembly-verification.json"
 E1_PHONE_BOOLEAN_INTERFERENCE_PATH = (
     ROOT / "mechanical/e1-phone/review/full-cad-boolean-interference.json"
 )
@@ -1094,9 +1092,7 @@ def chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
 
 
 def fixed_chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
-    if gate_name in (
-        "boot-security-chain-contract-check",
-    ):
+    if gate_name in ("boot-security-chain-contract-check",):
         return "actionable_external_dependency"
     if gate_name in ("antenna-metadata-check", "antenna-metadata-release-check"):
         return "actionable_external_dependency"
@@ -1253,9 +1249,9 @@ def product_release_status_dependency() -> BlockerDependency | None:
                 all_groups_categorized = False
                 continue
             try:
-                has_repo_generatable_now = has_repo_generatable_now or int(
-                    counts.get("repo_generatable_now") or 0
-                ) > 0
+                has_repo_generatable_now = (
+                    has_repo_generatable_now or int(counts.get("repo_generatable_now") or 0) > 0
+                )
             except (TypeError, ValueError):
                 all_groups_categorized = False
         if has_repo_generatable_now:
@@ -1371,29 +1367,30 @@ def pd_signoff_action() -> str:
     missing = count_value(summary, "closest_run_missing_artifact_count")
     gates = count_value(summary, "blocked_release_gate_count")
     first_steps = [
-        str(row.get("message"))
-        for row in findings[:3]
-        if isinstance(row.get("message"), str)
+        str(row.get("message")) for row in findings[:3] if isinstance(row.get("message"), str)
     ]
-    detail = f" Closest run: {closest_run}; missing artifact classes: {missing}." if closest_run else ""
+    detail = (
+        f" Closest run: {closest_run}; missing artifact classes: {missing}." if closest_run else ""
+    )
     samples = f" Current blockers: {'; '.join(first_steps)}." if first_steps else ""
     return (
         "Archive a complete release-clean PD signoff run with run manifest, DRC, LVS, "
         "antenna, STA, IR/EM, density, SI/PI/current-budget, padframe/package, and "
         "tool-version evidence; rerun python3 scripts/check_pd_signoff.py. "
-        f"Blocked release gates: {gates}."
-        + detail
-        + samples
+        f"Blocked release gates: {gates}." + detail + samples
     )
 
 
 def pd_release_evidence_action() -> str:
     summary = report_summary(PD_RELEASE_EVIDENCE_REPORT_PATH)
     bucket_actions = summary.get("bucket_next_actions")
-    rows = [row for row in bucket_actions if isinstance(row, dict)] if isinstance(bucket_actions, list) else []
+    rows = (
+        [row for row in bucket_actions if isinstance(row, dict)]
+        if isinstance(bucket_actions, list)
+        else []
+    )
     top = [
-        f"{row.get('bucket')}={row.get('count')} via {row.get('next_command')}"
-        for row in rows[:5]
+        f"{row.get('bucket')}={row.get('count')} via {row.get('next_command')}" for row in rows[:5]
     ]
     bucket_text = f" Top blocker buckets: {'; '.join(top)}." if top else ""
     return (
@@ -1431,8 +1428,7 @@ def io_cell_contract_action() -> str:
         "and corner-coverage deliverables for each blocked pad class, then rerun "
         "python3 scripts/check_io_cell_contract.py. "
         f"Classes blocked: {count_value(summary, 'classes_blocked')}/"
-        f"{count_value(summary, 'classes_total')}."
-        + class_text
+        f"{count_value(summary, 'classes_total')}." + class_text
     )
 
 
@@ -1450,16 +1446,13 @@ def antenna_metadata_action() -> str:
 def boot_security_chain_action() -> str:
     findings = chip_report_findings(BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH)
     next_steps = [
-        str(row.get("next_step"))
-        for row in findings
-        if isinstance(row.get("next_step"), str)
+        str(row.get("next_step")) for row in findings if isinstance(row.get("next_step"), str)
     ]
     suffix = f" Required promotion step: {next_steps[0]}" if next_steps else ""
     return (
         "Promote the boot security chain only after secure boot, AVB/rollback, key ceremony, "
         "negative tests, provisioning records, and boot transcripts are implemented and archived; "
-        "rerun python3 scripts/check_boot_security_chain_contract.py."
-        + suffix
+        "rerun python3 scripts/check_boot_security_chain_contract.py." + suffix
     )
 
 
@@ -1467,16 +1460,13 @@ def openlane_release_preflight_action() -> str:
     summary = report_summary(OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH)
     findings = chip_report_findings(OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH)
     messages = [
-        str(row.get("message"))
-        for row in findings[:3]
-        if isinstance(row.get("message"), str)
+        str(row.get("message")) for row in findings[:3] if isinstance(row.get("message"), str)
     ]
     sample = f" Current gates: {'; '.join(messages)}." if messages else ""
     return (
         "Run a complete pinned OpenLane release flow and archive release-clean PD, tapeout, "
         "and board-fabrication gate evidence; rerun python3 scripts/check_openlane_run_preflight.py --release. "
-        f"Blocked release gates: {count_value(summary, 'blocked_release_gate_count')}."
-        + sample
+        f"Blocked release gates: {count_value(summary, 'blocked_release_gate_count')}." + sample
     )
 
 
@@ -1500,9 +1490,7 @@ def openlane_preflight_action() -> str:
     return (
         "Let the active pinned OpenLane run finish, then rerun "
         "python3 scripts/check_openlane_run_preflight.py; if the lock persists after the run exits, "
-        "inspect the lock before starting another flow."
-        + current
-        + steps
+        "inspect the lock before starting another flow." + current + steps
     )
 
 
@@ -1557,7 +1545,9 @@ def linux_firmware_boot_chain_action() -> str:
 def android_release_readiness_action() -> str:
     report = read_report(ANDROID_RELEASE_READINESS_REPORT_PATH)
     evidence = report.get("evidence")
-    inventory = evidence.get("android_release_artifact_inventory") if isinstance(evidence, dict) else None
+    inventory = (
+        evidence.get("android_release_artifact_inventory") if isinstance(evidence, dict) else None
+    )
     missing_archives: list[str] = []
     command_keys: list[str] = []
     if isinstance(inventory, dict):
@@ -1569,7 +1559,9 @@ def android_release_readiness_action() -> str:
         commands = inventory.get("commands")
         if isinstance(commands, dict):
             command_keys = [str(key) for key in commands.keys()][:6]
-    missing_text = f" Missing staged archives: {', '.join(missing_archives)}." if missing_archives else ""
+    missing_text = (
+        f" Missing staged archives: {', '.join(missing_archives)}." if missing_archives else ""
+    )
     command_text = (
         f" Use evidence.android_release_artifact_inventory.commands groups: {', '.join(command_keys)}."
         if command_keys
@@ -1641,20 +1633,23 @@ def phone_assemblability_action() -> str:
     if trapped_count:
         details.append(f"{trapped_count} trapped part(s): {', '.join(map(str, trapped[:4]))}")
     if pinched_routes:
-        details.append(f"{len(pinched_routes)} pinched FPC route(s): {', '.join(pinched_routes[:4])}")
+        details.append(
+            f"{len(pinched_routes)} pinched FPC route(s): {', '.join(pinched_routes[:4])}"
+        )
     suffix = f" Current blockers: {'; '.join(details)}." if details else ""
     return (
         "Revise the mechanical stack/assembly sequence or enclosure/frame geometry until "
         "the swept insertion check reports no trapped parts and all FPC bend keepouts are "
-        "unpinched; rerun python3 scripts/check_e1_phone_assemblability.py."
-        + suffix
+        "unpinched; rerun python3 scripts/check_e1_phone_assemblability.py." + suffix
     )
 
 
 def phone_boolean_interference_action() -> str:
     report = read_report(E1_PHONE_BOOLEAN_INTERFERENCE_PATH)
     clashes = report.get("unintentional_clashes")
-    clash_count = len(clashes) if isinstance(clashes, list) else count_value(report, "release_blocker_count")
+    clash_count = (
+        len(clashes) if isinstance(clashes, list) else count_value(report, "release_blocker_count")
+    )
     samples: list[str] = []
     if isinstance(clashes, list):
         for row in clashes[:4]:
@@ -1664,8 +1659,7 @@ def phone_boolean_interference_action() -> str:
     return (
         "Close the full-CAD boolean validation by eliminating unintentional clashes in the "
         "concept/routed/supplier geometry, then rerun python3 scripts/check_e1_phone_boolean_interference.py. "
-        f"Current unintentional clash count: {clash_count}."
-        + sample_text
+        f"Current unintentional clash count: {clash_count}." + sample_text
     )
 
 
@@ -1684,8 +1678,7 @@ def cpu_ap_completion_action() -> str:
     return (
         "Collect generated Eliza Rocket/RV64GC CPU/AP transcripts from the current "
         "Chipyard/AP run and rerun python3 scripts/check_cpu_ap_completion_gate.py; "
-        "qemu-virt Linux boot evidence is reference-only and does not close this AP claim."
-        + detail
+        "qemu-virt Linux boot evidence is reference-only and does not close this AP claim." + detail
     )
 
 
@@ -2052,9 +2045,7 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
                     if result.blocker_dependency == "repo_artifact_generation"
                 ),
                 "live_device_validation": sum(
-                    1
-                    for result in matched
-                    if result.blocker_dependency == "live_device_validation"
+                    1 for result in matched if result.blocker_dependency == "live_device_validation"
                 ),
                 "actionable_external_dependency": sum(
                     1
@@ -2079,9 +2070,7 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
             },
             "blocked_gates": [result.name for result in matched],
             "blocked_gate_details": [],
-            "validation_commands": [
-                str(action["validation_command"]) for action in next_actions
-            ],
+            "validation_commands": [str(action["validation_command"]) for action in next_actions],
             "acceptance_commands": phase["acceptance_commands"],
             "sample_evidence": [result.evidence for result in matched[:5]],
         }
@@ -2302,9 +2291,7 @@ def write_report(report: dict[str, object], report_path: Path | None = None) -> 
     if report_path is None:
         report_path = REPORT_PATH
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(provenance_safe(report), indent=2, sort_keys=True) + "\n"
-    )
+    report_path.write_text(json.dumps(provenance_safe(report), indent=2, sort_keys=True) + "\n")
 
 
 def print_summary(report: dict[str, object], strict: bool, report_path: Path | None = None) -> None:

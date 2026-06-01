@@ -289,6 +289,60 @@ describe("scenario executor action turns", () => {
     });
   });
 
+  it("does not satisfy selectedActionArguments with a synthesized REPLY", async () => {
+    const runtime = {
+      ...createRuntime([]),
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback({
+            text: "I can talk about remote-ledger, but I did not select REPLY.",
+          });
+          return {};
+        }),
+      },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "selected-action-arguments-synthesized-reply",
+        title: "Selected action arguments synthesized reply",
+        domain: "executor",
+        rooms: [{ id: "main", source: "telegram", title: "Action User" }],
+        turns: [
+          {
+            kind: "message",
+            name: "free text only",
+            text: "open remote ledger",
+          },
+        ],
+        finalChecks: [
+          {
+            type: "selectedActionArguments",
+            actionName: "REPLY",
+            includesAll: [/remote-ledger/],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.actionsCalled[0]).toMatchObject({
+      actionName: "REPLY",
+      result: { data: { source: "synthesized-reply" } },
+    });
+    expect(report.failedAssertions).toContainEqual({
+      label: "selectedActionArguments",
+      detail:
+        "selectedActionArguments: expected action in [REPLY], saw actions [REPLY]",
+    });
+  });
+
   it("reports expected and actual action results for actionCalled success failures", async () => {
     const runtime = createRuntime([
       {

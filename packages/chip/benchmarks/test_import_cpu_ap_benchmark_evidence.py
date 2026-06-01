@@ -47,7 +47,9 @@ class ImportCpuApBenchmarkEvidenceTests(unittest.TestCase):
         report = self.importer.build_report(self.importer.DEFAULT_EVIDENCE)
         metadata = report["source_transcript_metadata"]
 
-        self.assertEqual(metadata["source_transcript"], "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log")
+        self.assertEqual(
+            metadata["source_transcript"], "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
+        )
         self.assertTrue(metadata["source_transcript_sha256"])
         self.assertNotIn("/home/", metadata["source_command"])
         self.assertEqual(

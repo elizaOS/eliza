@@ -446,8 +446,8 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
     includesAll?: Array<string | RegExp>;
   };
   const accepted = toArray(actionName);
-  const matched = ctx.actionsCalled.filter((a) =>
-    accepted.includes(a.actionName),
+  const matched = ctx.actionsCalled.filter(
+    (a) => accepted.includes(a.actionName) && !isSynthesizedReply(a),
   );
   const actualCalls =
     ctx.actionsCalled.map((a) => a.actionName).join(",") || "(none)";

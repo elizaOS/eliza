@@ -10,8 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACEABILITY_FLOW = (
-    "board/kicad/e1-phone/production/test/fixture-quote/"
-    "traceability-and-programming-flow.pdf"
+    "board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf"
 )
 
 

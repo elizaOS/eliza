@@ -27,9 +27,7 @@ BOOTROM_CHECKER = ROOT / "fw/boot-rom/check_boot_rom.py"
 BOOTROM_RELEASE_EVIDENCE = ROOT / "docs/boot-rom/release-evidence.md"
 BOOTROM_SIM_REPORT = ROOT / "build/reports/gate-bootrom-sim-transcript-check.json"
 BOOTROM_SIM_TRANSCRIPT = ROOT / "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt"
-BOOTROM_POSITIVE_HANDOFF_REPORT = (
-    ROOT / "build/reports/gate-bootrom-positive-handoff-check.json"
-)
+BOOTROM_POSITIVE_HANDOFF_REPORT = ROOT / "build/reports/gate-bootrom-positive-handoff-check.json"
 BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT = (
     ROOT / "docs/boot-rom/transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt"
 )
@@ -431,7 +429,9 @@ def check_bootrom_workflow(findings: list[Finding]) -> None:
         "Regenerate the transcript and preserve reset-vector, mtvec, verifier-call, verifier-entrypoint, and fail-closed trap checks.",
     )
 
-    leaking_flags = [flag for flag in BOOTROM_SIM_FALSE_CLAIM_FLAGS if report.get(flag) is not False]
+    leaking_flags = [
+        flag for flag in BOOTROM_SIM_FALSE_CLAIM_FLAGS if report.get(flag) is not False
+    ]
     add_if(
         findings,
         bool(leaking_flags),

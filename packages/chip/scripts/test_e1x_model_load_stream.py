@@ -28,12 +28,14 @@ def test_e1x_model_load_stream_gate_passes() -> None:
     assert report["summary"]["max_shard_bytes"] == 43520
     assert report["summary"]["placement_usable_bytes_per_core"] == 45056
     assert report["summary"]["reserve_policy_mismatch_bytes"] == 0
-    assert report["summary"]["stream_loader_word_transactions"] >= report["summary"]["fabric_load_wavelets"]
-    assert report["summary"]["stream_padding_bytes"] < report["summary"]["total_weight_bytes"] * 0.001
+    assert (
+        report["summary"]["stream_loader_word_transactions"]
+        >= report["summary"]["fabric_load_wavelets"]
+    )
+    assert (
+        report["summary"]["stream_padding_bytes"] < report["summary"]["total_weight_bytes"] * 0.001
+    )
     assert report["summary"]["generated_shard_sample_words"] == 9_282
     assert report["summary"]["core_cocotb_testcases"] >= 22
-    assert (
-        report["summary"]["residual_blocker"]
-        == "cycle_accurate_full_tensor_executor_missing"
-    )
+    assert report["summary"]["residual_blocker"] == "cycle_accurate_full_tensor_executor_missing"
     assert "not a cycle-accurate full tensor executor" in report["claim_boundary"]

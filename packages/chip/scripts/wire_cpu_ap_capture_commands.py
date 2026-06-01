@@ -61,8 +61,7 @@ AP_BENCHMARK_FRESHNESS_MANIFEST = Path(
     "eliza-e1-ap-benchmarks/payload_freshness_manifest.json"
 )
 AP_BENCHMARK_LINUX_CONFIG = Path(
-    "external/chipyard/software/firemarshal/images/firechip/"
-    "eliza-e1-ap-benchmarks/linux_config"
+    "external/chipyard/software/firemarshal/images/firechip/eliza-e1-ap-benchmarks/linux_config"
 )
 AP_BENCHMARK_DISK_PAYLOAD = Path(
     "external/chipyard/software/firemarshal/images/firechip/"
@@ -463,8 +462,7 @@ def ap_payload_freshness_status(
         )
     if stale_inputs:
         problems.append(
-            "generated-AP benchmark payload is older than source inputs: "
-            + ", ".join(stale_inputs)
+            "generated-AP benchmark payload is older than source inputs: " + ", ".join(stale_inputs)
         )
     if payload.is_file():
         problems.extend(
@@ -621,10 +619,7 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         and not missing_tools
         and marker_status["status"] == "ready"
     )
-    command_derivable = (
-        runner_command_derivable
-        and bool(linux_transcript_status["accepted"])
-    )
+    command_derivable = runner_command_derivable and bool(linux_transcript_status["accepted"])
 
     blockers: list[str] = []
     if os.environ.get(MODE_ENV["ap-benchmarks"], ""):
@@ -916,9 +911,7 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
             entry["source"] = "generated_ap_isa_cache_mmu_probe"
             entry["command"] = existing or isa_cache_mmu_command()
             entry["blocked_report"] = rel(ISA_CACHE_MMU_REPORT)
-            entry["required_linux_userspace_hwprobe_marker"] = (
-                ISA_CACHE_MMU_HWPROBE_SUCCESS_MARKER
-            )
+            entry["required_linux_userspace_hwprobe_marker"] = ISA_CACHE_MMU_HWPROBE_SUCCESS_MARKER
             entry["required_linux_config_mmu_marker"] = ISA_CACHE_MMU_CONFIG_MMU_MARKER
             entry["required_linux_userspace_hwprobe_key_markers"] = list(
                 ISA_CACHE_MMU_HWPROBE_KEY_MARKERS
@@ -963,10 +956,7 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                         and current_linux_ready
                         and hwprobe_success
                     )
-                    if (
-                        baremetal_ready
-                        and not hwprobe_ready
-                    ):
+                    if baremetal_ready and not hwprobe_ready:
                         problems.append(
                             "generated-AP bare-metal diagnostic passed ISA/cache/MMU markers"
                         )
@@ -1078,9 +1068,9 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                 if not linux_boot_accepted:
                     linux_boot_problems = cast(
                         list[str],
-                        cast(dict[str, object], ap_report.get("candidate_generated_ap_inputs", {})).get(
-                            "linux_boot_evidence_problems", []
-                        ),
+                        cast(
+                            dict[str, object], ap_report.get("candidate_generated_ap_inputs", {})
+                        ).get("linux_boot_evidence_problems", []),
                     )
                     problems.append(
                         "generated-AP Linux/userland boot transcript is not accepted; "

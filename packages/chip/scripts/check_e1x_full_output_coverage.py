@@ -36,7 +36,9 @@ def main() -> int:
         "full-output coverage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_output_coverage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_coverage_inputs_present", "status": status, "detail": detail}
+    )
 
     schedule = load_json(SCHEDULE) if SCHEDULE.is_file() else {}
     proof = load_json(PROOF) if PROOF.is_file() else {}
@@ -56,7 +58,9 @@ def main() -> int:
         "schedule, proof, and placement artifacts are schema-valid and placement-linked",
         "schedule/proof/placement schema or hash linkage mismatch",
     )
-    checks.append({"id": "e1x_full_output_coverage_artifact_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_coverage_artifact_links", "status": status, "detail": detail}
+    )
 
     output_ok = (
         tensor_output.get("status") == "PASS"
@@ -69,7 +73,13 @@ def main() -> int:
         "sampled tensor output and sampled tensor fabric executor reports are PASS",
         "sampled tensor output or fabric executor report missing/failing",
     )
-    checks.append({"id": "e1x_full_output_coverage_sampled_evidence_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_coverage_sampled_evidence_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = schedule.get("layers", [])
     records = proof.get("records", [])
@@ -92,7 +102,8 @@ def main() -> int:
         int(schedule.get("scheduled_layer_count", 0)) >= 283
         and len(records) >= 283
         and full_output_rows == 2_608_640
-        and sampled_output_rows == int(tensor_output.get("summary", {}).get("sampled_output_row_count", -1))
+        and sampled_output_rows
+        == int(tensor_output.get("summary", {}).get("sampled_output_row_count", -1))
         and sampled_macs == int(tensor_fabric.get("summary", {}).get("executed_mac_count", -1))
         and full_macs == 13_015_864_320
         and missing_output_rows == 2_607_508
@@ -105,7 +116,9 @@ def main() -> int:
         ),
         "full-output coverage arithmetic mismatch",
     )
-    checks.append({"id": "e1x_full_output_coverage_quantifies_gap", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_coverage_quantifies_gap", "status": status, "detail": detail}
+    )
 
     gap_boundary_ok = (
         0.0 < output_row_coverage < 0.001
@@ -118,7 +131,9 @@ def main() -> int:
         "coverage gate preserves the full-output blocker instead of overclaiming sampled evidence",
         "coverage ratios do not preserve the full-output blocker",
     )
-    checks.append({"id": "e1x_full_output_coverage_preserves_blocker", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_coverage_preserves_blocker", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

@@ -28,6 +28,15 @@ function matchesPattern(value: string, pattern: Pattern): boolean {
   return pattern.test(value);
 }
 
+function isSynthesizedReply(action: CapturedAction): boolean {
+  const data = action.result?.data;
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    (data as { source?: unknown }).source === "synthesized-reply"
+  );
+}
+
 function validateResult(
   actions: CapturedAction[],
   expectation: ActionResultExpectation,
@@ -35,7 +44,8 @@ function validateResult(
   const actionFilters = toArray(expectation.actionName);
   const matched = actions.filter(
     (action) =>
-      actionFilters.length === 0 || actionFilters.includes(action.actionName),
+      !isSynthesizedReply(action) &&
+      (actionFilters.length === 0 || actionFilters.includes(action.actionName)),
   );
   if (matched.length === 0) {
     return `Expected ${expectation.description}: no matching action result found.`;

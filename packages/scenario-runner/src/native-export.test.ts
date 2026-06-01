@@ -116,7 +116,7 @@ function syntheticTrajectory() {
 }
 
 describe("recordedTrajectoryToNativeRows scenario outcome", () => {
-  it("omits a top-level status when no outcome is supplied", () => {
+  it("omits scenario outcome fields when no outcome is supplied", () => {
     const rows = recordedTrajectoryToNativeRows(syntheticTrajectory() as never);
     expect(rows[0]!.status).toBeUndefined();
     expect(rows[0]!.scenarioStatus).toBeUndefined();
@@ -128,21 +128,22 @@ describe("recordedTrajectoryToNativeRows scenario outcome", () => {
       syntheticTrajectory() as never,
       "passed",
     );
-    expect(rows[0]!.status).toBe("passed");
+    expect(rows[0]!.status).toBeUndefined();
     expect(rows[0]!.scenarioStatus).toBe("passed");
     expect(rows[0]!.metadata.scenario_status).toBe("passed");
   });
 
-  it("stamps status='failed' so a failed scenario row is not scored gold", () => {
+  it("stamps scenarioStatus='failed' so a failed scenario row is not scored gold", () => {
     const rows = recordedTrajectoryToNativeRows(
       syntheticTrajectory() as never,
       "failed",
     );
-    // The downstream scorer (native_success_and_score) treats a top-level
-    // status in {error,timeout,failed,failure} as success=False/score=0 →
-    // rating="repair"/weight=0. trajectory.status (recorder lifecycle) is still
-    // "finished" and must not be confused with the assertion outcome.
-    expect(rows[0]!.status).toBe("failed");
+    // The downstream scorer (native_success_and_score) treats scenarioStatus or
+    // metadata.scenario_status in {failed,skipped} as success=False/score=0 →
+    // rating="repair"/weight=0. Top-level status remains reserved for the
+    // canonical native lifecycle contract.
+    expect(rows[0]!.status).toBeUndefined();
+    expect(rows[0]!.scenarioStatus).toBe("failed");
     expect(rows[0]!.metadata.trajectory_status).toBe("finished");
     expect(rows[0]!.metadata.scenario_status).toBe("failed");
   });
@@ -290,7 +291,7 @@ describe("exportScenarioNativeJsonl", () => {
     }
   });
 
-  it("threads scenario outcomes so failed trajectories carry status='failed'", () => {
+  it("threads scenario outcomes so failed trajectories carry scenarioStatus='failed'", () => {
     const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-outcome-"));
     try {
       const trajDir = path.join(runDir, "trajectories", "agent-test");
@@ -309,7 +310,8 @@ describe("exportScenarioNativeJsonl", () => {
       const count = exportScenarioNativeJsonl(runDir, outPath, outcomes);
       expect(count).toBe(1);
       const parsed = JSON.parse(readFileSync(outPath, "utf-8").trim());
-      expect(parsed.status).toBe("failed");
+      expect(parsed.status).toBeUndefined();
+      expect(parsed.scenarioStatus).toBe("failed");
       expect(parsed.metadata.scenario_status).toBe("failed");
       expect(parsed.metadata.trajectory_status).toBe("finished");
       const manifest = JSON.parse(

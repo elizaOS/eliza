@@ -33,7 +33,14 @@ def r_type(funct7: int, rs2: int, rs1: int, funct3: int, rd: int, opcode: int) -
 
 def s_type(imm: int, rs2: int, rs1: int, funct3: int, opcode: int) -> int:
     imm &= 0xFFF
-    return ((imm >> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | ((imm & 0x1F) << 7) | opcode
+    return (
+        ((imm >> 5) << 25)
+        | (rs2 << 20)
+        | (rs1 << 15)
+        | (funct3 << 12)
+        | ((imm & 0x1F) << 7)
+        | opcode
+    )
 
 
 def addi(rd: int, rs1: int, imm: int) -> int:
@@ -156,10 +163,10 @@ async def pe_tile_boots_and_runs_rv64im_program(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
     prog = [
-        addi(1, 0, -7),     # x1 = -7
-        addi(2, 0, 6),      # x2 = 6
-        mul(3, 1, 2),       # x3 = -42  (M-extension; tiny core has no MUL)
-        add(10, 3, 0),      # x10 = x3
+        addi(1, 0, -7),  # x1 = -7
+        addi(2, 0, 6),  # x2 = 6
+        mul(3, 1, 2),  # x3 = -42  (M-extension; tiny core has no MUL)
+        add(10, 3, 0),  # x10 = x3
         ECALL,
     ]
     await boot(dut, prog, boot_pc=0)
@@ -183,10 +190,10 @@ async def pe_tile_exchanges_fabric_wavelet_through_real_core(dut):
 
     # Program: read RX wavelet, add 1, write to TX wavelet, halt.
     prog = [
-        lui(1, SRAM_BYTES >> 12),   # x1 = MMIO base (48KiB = 0xC000)
-        lw(10, 1, 0x00),            # x10 = WAVELET_RX_DATA
-        addi(11, 10, 1),            # x11 = x10 + 1
-        sw(11, 1, 0x10),            # WAVELET_TX_DATA = x11
+        lui(1, SRAM_BYTES >> 12),  # x1 = MMIO base (48KiB = 0xC000)
+        lw(10, 1, 0x00),  # x10 = WAVELET_RX_DATA
+        addi(11, 10, 1),  # x11 = x10 + 1
+        sw(11, 1, 0x10),  # WAVELET_TX_DATA = x11
         ECALL,
     ]
     assert (SRAM_BYTES & 0xFFF) == 0

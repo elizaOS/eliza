@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from chip_utils import load_json_object, load_yaml_object
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "build/reports/sota_parity_audit.json"
+
 
 def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

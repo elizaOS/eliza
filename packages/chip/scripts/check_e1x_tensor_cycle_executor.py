@@ -82,7 +82,9 @@ def main() -> int:
         "tensor cycle-executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_tensor_cycle_executor_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_cycle_executor_inputs_present", "status": status, "detail": detail}
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     kernel_plan = load_json(KERNEL_PLAN) if KERNEL_PLAN.is_file() else {}
@@ -100,7 +102,13 @@ def main() -> int:
         "microkernel proof links to current kernel dispatch plan",
         "microkernel proof/kernel-plan schema or hash mismatch",
     )
-    checks.append({"id": "e1x_tensor_cycle_executor_proof_links_kernel_plan", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_tensor_cycle_executor_proof_links_kernel_plan",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     pe_status_ok = (
         pe_cocotb.get("status") == "PASS"
@@ -112,7 +120,9 @@ def main() -> int:
         "PE-core cocotb includes generated W4A8 RTL execution sample",
         "PE-core cocotb evidence missing generated W4A8 sample",
     )
-    checks.append({"id": "e1x_tensor_cycle_executor_pe_cocotb_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_cycle_executor_pe_cocotb_present", "status": status, "detail": detail}
+    )
 
     pe_markers = ("mul_op", "OP_OPIMM", "OP_OP", "srai", "mcycle", "minstret")
     missing_pe_markers = [marker for marker in pe_markers if marker not in pe_rtl + pe_cocotb_text]
@@ -121,7 +131,13 @@ def main() -> int:
         "PE RTL/cocotb expose RV64IM scalar MUL/add/shift/cycle-counter execution path",
         "missing PE execution markers: " + ", ".join(missing_pe_markers),
     )
-    checks.append({"id": "e1x_tensor_cycle_executor_pe_scalar_path_markers", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_tensor_cycle_executor_pe_scalar_path_markers",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     records = proof.get("records", [])
     mismatches = []
@@ -154,14 +170,16 @@ def main() -> int:
                 total_cycles += int(result["cycles"])
                 max_row_cycles = max(max_row_cycles, int(result["cycles"]))
                 if len(sampled_rows) < 6:
-                    sampled_rows.append({
-                        "layer_index": int(record.get("layer_index", -1)),
-                        "layer_name": str(record.get("layer_name", "")),
-                        "output_row": int(row.get("output_row", -1)),
-                        "mac_count": int(result["mac_count"]),
-                        "cycles": int(result["cycles"]),
-                        "accumulator": int(result["accumulator"]),
-                    })
+                    sampled_rows.append(
+                        {
+                            "layer_index": int(record.get("layer_index", -1)),
+                            "layer_name": str(record.get("layer_name", "")),
+                            "output_row": int(row.get("output_row", -1)),
+                            "mac_count": int(result["mac_count"]),
+                            "cycles": int(result["cycles"]),
+                            "accumulator": int(result["accumulator"]),
+                        }
+                    )
 
     execution_ok = (
         not mismatches
@@ -175,7 +193,13 @@ def main() -> int:
         f"cycle-level scalar executor replayed {total_rows} sampled rows and {total_macs} MACs",
         "cycle executor mismatches: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_tensor_cycle_executor_replays_all_sampled_rows", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_tensor_cycle_executor_replays_all_sampled_rows",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

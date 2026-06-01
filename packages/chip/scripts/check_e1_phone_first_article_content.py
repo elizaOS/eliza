@@ -19,9 +19,7 @@ MATRIX = (
 )
 REPORT = ROOT / "build/reports/e1_phone_first_article_content.json"
 EXPECTED_SCHEMA = "eliza.e1_phone_first_article_bench_acceptance_matrix.v1"
-CLAIM_BOUNDARY = (
-    "first_article_content_validation_only_not_factory_or_production_release_evidence"
-)
+CLAIM_BOUNDARY = "first_article_content_validation_only_not_factory_or_production_release_evidence"
 FALSE_CLAIM_FLAGS = {
     "release_claim_allowed": False,
     "first_article_release_claim_allowed": False,

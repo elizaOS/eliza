@@ -160,9 +160,7 @@ def missing_metadata(report_path: Path) -> dict[str, list[str]]:
             if isinstance(pins, list):
                 missing[direction].extend(str(pin) for pin in pins)
     if not top_cell_seen:
-        raise MissingTopCellError(
-            "OpenLane antenna report does not include cell=e1_chip_top"
-        )
+        raise MissingTopCellError("OpenLane antenna report does not include cell=e1_chip_top")
     return {direction: sorted(set(pins)) for direction, pins in missing.items() if pins}
 
 

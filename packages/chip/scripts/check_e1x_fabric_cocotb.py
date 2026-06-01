@@ -29,7 +29,8 @@ RUNS = {
     "repair_aware_router": {
         "top": "e1x_repair_aware_router_tb",
         "module": "test_e1x_repair_aware_router",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_aware_router_tb_test_e1x_repair_aware_router.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_aware_router_tb_test_e1x_repair_aware_router.xml",
         "expected": {
             "repair_route_override_steers_around_disabled_default_output",
             "repair_route_override_is_ignored_when_repair_disabled",
@@ -38,7 +39,8 @@ RUNS = {
     "repair_routed_router": {
         "top": "e1x_repair_routed_router_tb",
         "module": "test_e1x_repair_routed_router",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_routed_router_tb_test_e1x_repair_routed_router.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_routed_router_tb_test_e1x_repair_routed_router.xml",
         "expected": {
             "rom_loaded_route_record_overrides_router_next_hop",
             "rom_loaded_route_record_overrides_nonzero_ingress_port",
@@ -58,7 +60,8 @@ RUNS = {
     "repair_routed_mesh_2x2": {
         "top": "e1x_repair_routed_mesh_2x2_tb",
         "module": "test_e1x_repair_routed_mesh_2x2",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_routed_mesh_2x2_tb_test_e1x_repair_routed_mesh_2x2.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_routed_mesh_2x2_tb_test_e1x_repair_routed_mesh_2x2.xml",
         "expected": {
             "rom_loaded_repair_routes_deliver_across_2x2_mesh",
             "missing_second_hop_repair_record_drops_before_destination",
@@ -75,7 +78,9 @@ def run_subgate(script: str, report_path: Path, label: str) -> tuple[bool, str, 
         capture_output=True,
         check=False,
     )
-    detail = (proc.stdout.strip() or proc.stderr.strip() or f"{label} gate produced no output")[-1200:]
+    detail = (proc.stdout.strip() or proc.stderr.strip() or f"{label} gate produced no output")[
+        -1200:
+    ]
     if proc.returncode != 0:
         return False, detail, {}
     if not report_path.is_file():
@@ -104,9 +109,7 @@ def run_credit_router_gate() -> tuple[bool, str, dict[str, int]]:
 
 
 def run_mesh_fabric_gate() -> tuple[bool, str, dict[str, int]]:
-    return run_subgate(
-        "scripts/check_e1x_mesh_fabric_cocotb.py", MESH_FABRIC_REPORT, "mesh-fabric"
-    )
+    return run_subgate("scripts/check_e1x_mesh_fabric_cocotb.py", MESH_FABRIC_REPORT, "mesh-fabric")
 
 
 def run_cocotb(top: str, module: str) -> tuple[bool, str]:

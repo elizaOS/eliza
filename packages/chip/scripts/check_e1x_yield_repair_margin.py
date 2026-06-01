@@ -15,8 +15,10 @@ CASES = {
         "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
     },
     "high_failure": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "defect": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
     },
 }
 
@@ -48,7 +50,9 @@ def pass_fail(condition: bool, detail: str, fail_detail: str | None = None) -> t
     return ("pass", detail) if condition else ("fail", fail_detail or detail)
 
 
-def validate_case(case: str, defect_path: Path, repair_path: Path) -> tuple[list[dict[str, str]], dict]:
+def validate_case(
+    case: str, defect_path: Path, repair_path: Path
+) -> tuple[list[dict[str, str]], dict]:
     checks: list[dict[str, str]] = []
     summary: dict[str, int | float | str | bool] = {"case": case}
     paths_ok = defect_path.is_file() and repair_path.is_file()
@@ -132,7 +136,9 @@ def validate_case(case: str, defect_path: Path, repair_path: Path) -> tuple[list
         if len(path) < 2:
             route_errors.append(f"{index}:short")
             continue
-        if path[0] != coord_key(route["physical_from"]) or path[-1] != coord_key(route["physical_to"]):
+        if path[0] != coord_key(route["physical_from"]) or path[-1] != coord_key(
+            route["physical_to"]
+        ):
             route_errors.append(f"{index}:endpoint")
         for coord in path:
             if coord in blocked_cores:
@@ -204,7 +210,9 @@ def main() -> int:
         stress_ok,
         "high-failure scenario stresses repair more than normal while preserving spare margin",
     )
-    checks.append({"id": "e1x_yield_high_failure_stress_margin", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_yield_high_failure_stress_margin", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     high_spare_util = float(high.get("spare_utilization", 0.0))
@@ -222,7 +230,8 @@ def main() -> int:
         "high_failure_blocked_link_count": int(high.get("blocked_link_count", 0)),
         "high_failure_route_checks": int(high.get("logical_neighbor_paths_checked", 0)),
         "high_vs_normal_remap_ratio": (
-            int(high.get("remapped_core_count", 0)) / max(1, int(normal.get("remapped_core_count", 0)))
+            int(high.get("remapped_core_count", 0))
+            / max(1, int(normal.get("remapped_core_count", 0)))
         ),
         "high_vs_normal_extra_hop_ratio": (
             float(high.get("average_extra_hops_per_neighbor", 0.0))

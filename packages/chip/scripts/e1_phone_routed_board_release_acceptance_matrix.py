@@ -123,9 +123,7 @@ def candidate_end_to_end_context(
                 model.get("support_pattern_has_explicit_provenance") is True
             ),
             "pad_visual_count": int(model.get("pad_visual_count", 0) or 0),
-            "pad_contract_covered_count": int(
-                model.get("pad_contract_covered_count", 0) or 0
-            ),
+            "pad_contract_covered_count": int(model.get("pad_contract_covered_count", 0) or 0),
             "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
             "non_signal_pad_contract_count": len(model.get("non_signal_pad_contract", [])),
             "npth_mechanical_feature_contract_count": len(
@@ -216,9 +214,7 @@ def candidate_end_to_end_context(
             "candidate_footprint_count": int(
                 source_binding.get("candidate_footprint_count", 0) or 0
             ),
-            "candidate_segment_count": int(
-                source_binding.get("candidate_segment_count", 0) or 0
-            ),
+            "candidate_segment_count": int(source_binding.get("candidate_segment_count", 0) or 0),
             "candidate_via_count": int(source_binding.get("candidate_via_count", 0) or 0),
             "candidate_zone_count": int(source_binding.get("candidate_zone_count", 0) or 0),
             "candidate_filled_zone_count": int(
@@ -233,9 +229,7 @@ def candidate_end_to_end_context(
             "footprint_envelope_count": int(visual.get("footprint_envelope_count", 0) or 0),
             "pad_contact_visual_count": int(visual.get("pad_contact_visual_count", 0) or 0),
             "route_segment_visual_count": int(visual.get("route_segment_visual_count", 0) or 0),
-            "route_segment_net_name_count": int(
-                visual.get("route_segment_net_name_count", 0) or 0
-            ),
+            "route_segment_net_name_count": int(visual.get("route_segment_net_name_count", 0) or 0),
             "route_segment_trace_bound_count": int(
                 visual.get("route_segment_trace_bound_count", 0) or 0
             ),
@@ -250,16 +244,10 @@ def candidate_end_to_end_context(
             "via_net_name_count": int(visual.get("via_net_name_count", 0) or 0),
             "development_footprint_refs": int(visual.get("development_footprint_refs", 0) or 0),
             "route_visual_record_count": int(visual.get("route_visual_record_count", 0) or 0),
-            "route_visual_route_id_count": int(
-                visual.get("route_visual_route_id_count", 0) or 0
-            ),
-            "route_visual_net_name_count": int(
-                visual.get("route_visual_net_name_count", 0) or 0
-            ),
+            "route_visual_route_id_count": int(visual.get("route_visual_route_id_count", 0) or 0),
+            "route_visual_net_name_count": int(visual.get("route_visual_net_name_count", 0) or 0),
             "route_visual_layer_counts": visual.get("route_visual_layer_counts", {}),
-            "route_visual_route_class_counts": visual.get(
-                "route_visual_route_class_counts", {}
-            ),
+            "route_visual_route_class_counts": visual.get("route_visual_route_class_counts", {}),
             "route_visual_source_domain_counts": visual.get(
                 "route_visual_source_domain_counts", {}
             ),
@@ -348,8 +336,7 @@ def candidate_end_to_end_context(
                 connection.get("represented_route_records_with_layer_count_total", 0) or 0
             ),
             "represented_route_records_with_source_domain_count_total": int(
-                connection.get("represented_route_records_with_source_domain_count_total", 0)
-                or 0
+                connection.get("represented_route_records_with_source_domain_count_total", 0) or 0
             ),
             "represented_route_records_with_route_class_count_total": int(
                 connection.get("represented_route_records_with_route_class_count_total", 0) or 0
@@ -651,19 +638,13 @@ def candidate_end_to_end_context(
                 component_dir_manifest.get("all_model_records_have_combined_step_locator", False)
             ),
             "all_model_records_have_local_discrete_step_file": bool(
-                component_dir_manifest.get(
-                    "all_model_records_have_local_discrete_step_file", False
-                )
+                component_dir_manifest.get("all_model_records_have_local_discrete_step_file", False)
             ),
             "all_local_discrete_step_files_import_as_solids": bool(
-                component_dir_manifest.get(
-                    "all_local_discrete_step_files_import_as_solids", False
-                )
+                component_dir_manifest.get("all_local_discrete_step_files_import_as_solids", False)
             ),
             "all_local_discrete_step_bboxes_match_envelopes": bool(
-                component_dir_manifest.get(
-                    "all_local_discrete_step_bboxes_match_envelopes", False
-                )
+                component_dir_manifest.get("all_local_discrete_step_bboxes_match_envelopes", False)
             ),
             "all_model_records_have_expected_supplier_step_file": bool(
                 component_dir_manifest.get(
@@ -698,8 +679,7 @@ def candidate_end_to_end_context(
                 component_dir_manifest.get("supplier_step_intake_not_applicable_count", 0) or 0
             ),
             "supplier_step_intake_release_candidate_count": int(
-                component_dir_manifest.get("supplier_step_intake_release_candidate_count", 0)
-                or 0
+                component_dir_manifest.get("supplier_step_intake_release_candidate_count", 0) or 0
             ),
             "supplier_step_intake_lane_counts": component_dir_manifest.get(
                 "supplier_step_intake_lane_counts", {}
@@ -1115,9 +1095,7 @@ def build_report(
     ]
     missing_evidence = [row for row in validation_evidence if not row["present"]]
     validation_source_absent = [
-        row
-        for row in validation_evidence
-        if row.get("release_evidence_declared_present") is False
+        row for row in validation_evidence if row.get("release_evidence_declared_present") is False
     ]
     domains_with_missing_nets = [row for row in domains if row["missing_exact_net_count"]]
     domains_with_missing_outputs = [row for row in domains if row["missing_production_outputs"]]
@@ -1370,8 +1348,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"`{candidate_binding['local_discrete_step_imported_solid_count']}` |",
             "| Component 3D binding supplier intake statuses | "
             f"`{candidate_binding['supplier_step_intake_status_counts']}` |",
-            "| Component 3D binding release credit | "
-            f"`{candidate_binding['release_credit']}` |",
+            f"| Component 3D binding release credit | `{candidate_binding['release_credit']}` |",
             f"| Supplier-approved model rows | `{candidate_models['supplier_approved_model_count']}` |",
             "",
             candidate["reason_not_release"],

@@ -49,14 +49,11 @@ export interface NativeBoundaryRow {
   schemaVersion: typeof NATIVE_SCHEMA_VERSION;
   boundary: typeof GENERATE_TEXT_BOUNDARY;
   /**
-   * Top-level scenario assertion outcome consumed by the training prep scorer
-   * (`native_success_and_score` in prepare_eliza1_trajectory_dataset.py). When a
-   * scenario failed, this is `"failed"`, which routes the row to
-   * rating="repair"/weight=0 instead of gold. Absent when the scenario outcome
-   * is unknown (e.g. a trajectory with no matching report), so behavior is
-   * unchanged for callers that do not pass an outcome map.
+   * Scenario assertion outcome consumed by the training prep scorer
+   * (`native_success_and_score` in prepare_eliza1_trajectory_dataset.py). Kept
+   * separate from top-level `status`, which belongs to the canonical native
+   * trajectory lifecycle contract.
    */
-  status?: ScenarioOutcome;
   scenarioStatus?: ScenarioOutcome;
   request: {
     system?: string;
@@ -266,9 +263,7 @@ export function recordedTrajectoryToNativeRows(
       format: NATIVE_FORMAT,
       schemaVersion: NATIVE_SCHEMA_VERSION,
       boundary: GENERATE_TEXT_BOUNDARY,
-      ...(scenarioOutcome
-        ? { status: scenarioOutcome, scenarioStatus: scenarioOutcome }
-        : {}),
+      ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
       request,
       response,
       trajectoryId: trajectory.trajectoryId,
@@ -377,11 +372,12 @@ function addString(set: Set<string>, value: unknown): void {
  * the run directory should not block the rest of the export.
  *
  * `scenarioOutcomes` maps scenario id → assertion outcome (passed/failed/
- * skipped). Each emitted row carries its scenario's outcome as a top-level
- * `status` so the training prep scorer routes failed trajectories to
- * rating="repair"/weight=0 instead of stamping them gold. Without this map the
- * exporter cannot tell a scenario that mechanically finished but failed its
- * assertions from a genuinely passing one — and would export both as gold.
+ * skipped). Each emitted row carries its scenario outcome as `scenarioStatus`
+ * and `metadata.scenario_status` so the training prep scorer routes failed or
+ * skipped trajectories to rating="repair"/weight=0 instead of stamping them
+ * gold. Without this map the exporter cannot tell a scenario that mechanically
+ * finished but failed its assertions from a genuinely passing one — and would
+ * export both as gold.
  */
 export function exportScenarioNativeJsonl(
   runDir: string,
@@ -444,9 +440,9 @@ export function exportScenarioNativeJsonl(
   let skippedScenarioRows = 0;
   let unknownOutcomeRows = 0;
   for (const row of rows) {
-    if (row.status === "passed") passedRows += 1;
-    else if (row.status === "failed") failedRows += 1;
-    else if (row.status === "skipped") skippedScenarioRows += 1;
+    if (row.scenarioStatus === "passed") passedRows += 1;
+    else if (row.scenarioStatus === "failed") failedRows += 1;
+    else if (row.scenarioStatus === "skipped") skippedScenarioRows += 1;
     else unknownOutcomeRows += 1;
   }
   const manifestPath = defaultScenarioNativeManifestPath(outPath);

@@ -61,5 +61,12 @@ describe("action family matching", () => {
     // A bare action name must not match a specific action via an unbounded
     // suffix/subset.
     expect(actionsAreScenarioEquivalent("EMAIL", "SEND_EMAIL")).toBe(false);
+    expect(actionsAreScenarioEquivalent("SEND_EMAIL", "EMAIL")).toBe(false);
+    expect(
+      actionsAreScenarioEquivalent("MANAGE_LIFEOPS_BROWSER", "BROWSER"),
+    ).toBe(false);
+    expect(
+      actionsAreScenarioEquivalent("GOOGLE_CALENDAR_CREATE_EVENT", "EVENT"),
+    ).toBe(false);
   });
 });

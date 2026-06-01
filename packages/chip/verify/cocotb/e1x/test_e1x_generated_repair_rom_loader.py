@@ -48,7 +48,11 @@ async def generated_high_failure_repair_rom_streams_through_rtl_loader(dut):
     rom_json_path = _required_env_path("E1X_REPAIR_ROM_JSON")
     rom_hex_path = _required_env_path("E1X_REPAIR_ROM_HEX")
     rom = json.loads(rom_json_path.read_text(encoding="utf-8"))
-    words = [int(line.strip(), 16) for line in rom_hex_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    words = [
+        int(line.strip(), 16)
+        for line in rom_hex_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     expected_words = [int(word, 16) for word in rom["words"]]
 
     assert words == expected_words

@@ -43,9 +43,7 @@ MICROKERNEL_PROOF_OUT = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkern
 TENSOR_SCHEDULE_OUT = ROOT / "benchmarks/results/e1x-real-graph-tensor-tile-schedule.json"
 COLOR_PRESSURE_OUT = ROOT / "benchmarks/results/e1x-real-graph-fabric-color-pressure.json"
 COLOR_TIMING_OUT = ROOT / "benchmarks/results/e1x-real-graph-fabric-color-timing.json"
-SCHEDULE_EXECUTION_OUT = (
-    ROOT / "benchmarks/results/e1x-real-graph-schedule-execution-estimate.json"
-)
+SCHEDULE_EXECUTION_OUT = ROOT / "benchmarks/results/e1x-real-graph-schedule-execution-estimate.json"
 
 
 def _now() -> str:
@@ -78,9 +76,7 @@ def _validate_microkernel_proof(proof: dict) -> tuple[bool, str]:
             if not isinstance(words, list):
                 return False, f"missing packed words in {record.get('layer_name')}"
             weights = [
-                weight
-                for word in words
-                for weight in unpack_signed_w4_word(int(str(word), 16))
+                weight for word in words for weight in unpack_signed_w4_word(int(str(word), 16))
             ][: len(activations)]
             if any(not -8 <= weight <= 7 for weight in weights):
                 return False, f"unpacked W4 outside range in {record.get('layer_name')}"
@@ -203,13 +199,9 @@ def _validate_color_timing(
         color_pressure["used_routing_color_count"]
     ):
         return False, "color timing used-color count changed"
-    if int(timing.get("total_fabric_wavelets", 0)) != int(
-        color_pressure["total_fabric_wavelets"]
-    ):
+    if int(timing.get("total_fabric_wavelets", 0)) != int(color_pressure["total_fabric_wavelets"]):
         return False, "color timing fabric-wavelet count changed"
-    if float(timing.get("repair_hop_penalty", -1.0)) != float(
-        execution["repair_hop_penalty"]
-    ):
+    if float(timing.get("repair_hop_penalty", -1.0)) != float(execution["repair_hop_penalty"]):
         return False, "color timing repair-hop penalty does not match execution estimate"
     records = timing.get("color_timings")
     if not isinstance(records, list) or len(records) != int(config.routing_colors):
@@ -257,7 +249,9 @@ def run_checks() -> tuple[list[dict[str, str]], dict[str, int | float | str]]:
     )
 
     PLACEMENT_OUT.parent.mkdir(parents=True, exist_ok=True)
-    PLACEMENT_OUT.write_text(json.dumps(placement, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    PLACEMENT_OUT.write_text(
+        json.dumps(placement, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     KERNEL_PLAN_OUT.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     MICROKERNEL_PROOF_OUT.write_text(
         json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -323,7 +317,10 @@ def run_checks() -> tuple[list[dict[str, str]], dict[str, int | float | str]]:
         if not isinstance(words, list) or len(words) != int(record["instruction_word_count"]):
             bad_words.append(str(record.get("layer_name")))
             continue
-        if any(not isinstance(word, str) or _decode_opcode(word) not in allowed_opcodes for word in words):
+        if any(
+            not isinstance(word, str) or _decode_opcode(word) not in allowed_opcodes
+            for word in words
+        ):
             bad_words.append(str(record.get("layer_name")))
         if words[-1] != "00000073":
             bad_words.append(str(record.get("layer_name")))
@@ -466,25 +463,13 @@ def run_checks() -> tuple[list[dict[str, str]], dict[str, int | float | str]]:
         "microkernel_aggregate_checksum": int(proof["aggregate_checksum"]),
         "tensor_schedule_core_waves": int(schedule["total_core_wave_count"]),
         "tensor_schedule_k_waves": int(schedule["total_k_wave_count"]),
-        "fabric_color_pressure_used_colors": int(
-            color_pressure["used_routing_color_count"]
-        ),
-        "fabric_color_pressure_total_wavelets": int(
-            color_pressure["total_fabric_wavelets"]
-        ),
-        "fabric_color_pressure_peak_fraction": float(
-            color_pressure["peak_color_fraction"]
-        ),
+        "fabric_color_pressure_used_colors": int(color_pressure["used_routing_color_count"]),
+        "fabric_color_pressure_total_wavelets": int(color_pressure["total_fabric_wavelets"]),
+        "fabric_color_pressure_peak_fraction": float(color_pressure["peak_color_fraction"]),
         "fabric_color_timing_peak_color": int(color_timing["peak_routing_color"]),
-        "fabric_color_timing_peak_cycles": int(
-            color_timing["peak_color_fabric_cycles"]
-        ),
-        "fabric_color_timing_total_cycles": int(
-            color_timing["total_color_fabric_cycles"]
-        ),
-        "schedule_execution_repair_hop_penalty": float(
-            execution["repair_hop_penalty"]
-        ),
+        "fabric_color_timing_peak_cycles": int(color_timing["peak_color_fabric_cycles"]),
+        "fabric_color_timing_total_cycles": int(color_timing["total_color_fabric_cycles"]),
+        "schedule_execution_repair_hop_penalty": float(execution["repair_hop_penalty"]),
         "schedule_execution_total_cycles": int(execution["total_schedule_cycles"]),
         "schedule_execution_elapsed_ms": float(execution["estimated_elapsed_ms"]),
         "schedule_execution_effective_tops": float(execution["effective_tops"]),
@@ -535,7 +520,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if status != "PASS":
-        print("BLOCKED: E1X kernel codegen failed: " + ", ".join(c["id"] for c in failures + blocked))
+        print(
+            "BLOCKED: E1X kernel codegen failed: " + ", ".join(c["id"] for c in failures + blocked)
+        )
         return 1
     print(f"PASS: E1X kernel codegen; report {REPORT.relative_to(ROOT)}")
     return 0

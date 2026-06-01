@@ -60,13 +60,15 @@ def execute_vector_row(activations: list[int], packed_words_hex: list[str]) -> d
         vector_ops += 1
         lane_macs += len(products)
         if len(trace_prefix) < 2:
-            trace_prefix.append({
-                "word_index": word_index,
-                "packed_w4_word_hex": str(word_hex),
-                "activation_count": len(activation_chunk),
-                "lane_products": products,
-                "vector_sum": vector_sum,
-            })
+            trace_prefix.append(
+                {
+                    "word_index": word_index,
+                    "packed_w4_word_hex": str(word_hex),
+                    "activation_count": len(activation_chunk),
+                    "lane_products": products,
+                    "vector_sum": vector_sum,
+                }
+            )
     requantized = max(-128, min(127, acc >> 7))
     return {
         "accumulator": acc,
@@ -86,7 +88,13 @@ def main() -> int:
         "sampled vector-kernel executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_sampled_vector_kernel_executor_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_sampled_vector_kernel_executor_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     per_layer_codegen = load_json(PER_LAYER_CODEGEN) if PER_LAYER_CODEGEN.is_file() else {}
@@ -97,14 +105,21 @@ def main() -> int:
         proof.get("schema") == "eliza.e1x.w4a8_microkernel_proof.v1"
         and proof.get("aggregate_checksum") == EXPECTED_PROOF_CHECKSUM
         and per_layer_codegen.get("status") == "PASS"
-        and per_layer_codegen.get("summary", {}).get("per_layer_codegen_sha256") == EXPECTED_CODEGEN_SHA256
+        and per_layer_codegen.get("summary", {}).get("per_layer_codegen_sha256")
+        == EXPECTED_CODEGEN_SHA256
     )
     status, detail = pass_fail(
         schema_ok,
         "microkernel proof links to the current per-layer vector-codegen artifact",
         "proof schema/checksum or per-layer vector-codegen link mismatch",
     )
-    checks.append({"id": "e1x_sampled_vector_kernel_executor_artifact_links", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_sampled_vector_kernel_executor_artifact_links",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     deps_ok = (
         tensor_cycle.get("status") == "PASS"
@@ -117,7 +132,13 @@ def main() -> int:
         "scalar cycle executor and PE-core RTL cocotb reports are PASS",
         "sampled vector-kernel dependencies missing or failing",
     )
-    checks.append({"id": "e1x_sampled_vector_kernel_executor_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_sampled_vector_kernel_executor_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     mismatches: list[str] = []
     executed_rows = 0
@@ -142,23 +163,27 @@ def main() -> int:
             vector_word_ops += int(result["vector_word_ops"])
             lane_macs += int(result["lane_mac_count"])
             if len(layer_rows) < 2:
-                layer_rows.append({
-                    "output_row": output_row,
-                    "accumulator": int(result["accumulator"]),
-                    "requantized_s8": int(result["requantized_s8"]),
-                    "vector_word_ops": int(result["vector_word_ops"]),
-                    "lane_mac_count": int(result["lane_mac_count"]),
-                    "trace_prefix": result["trace_prefix"],
-                })
+                layer_rows.append(
+                    {
+                        "output_row": output_row,
+                        "accumulator": int(result["accumulator"]),
+                        "requantized_s8": int(result["requantized_s8"]),
+                        "vector_word_ops": int(result["vector_word_ops"]),
+                        "lane_mac_count": int(result["lane_mac_count"]),
+                        "trace_prefix": result["trace_prefix"],
+                    }
+                )
         if len(vector_records) < 8:
-            vector_records.append({
-                "layer_index": layer_index,
-                "layer_name": str(record.get("layer_name", "")),
-                "kind": str(record.get("kind", "")),
-                "sample_k": int(record.get("sample_k", 0)),
-                "sampled_rows": len(record.get("row_results", [])),
-                "sampled_vector_rows": layer_rows,
-            })
+            vector_records.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(record.get("layer_name", "")),
+                    "kind": str(record.get("kind", "")),
+                    "sample_k": int(record.get("sample_k", 0)),
+                    "sampled_rows": len(record.get("row_results", [])),
+                    "sampled_vector_rows": layer_rows,
+                }
+            )
 
     sampled_vector_sha256 = canonical_sha256(vector_records)
     execution_ok = (
@@ -173,13 +198,21 @@ def main() -> int:
         f"sampled vector-kernel executor ran {vector_word_ops} packed vector-word ops across {executed_rows} rows",
         "sampled vector-kernel execution mismatch: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_sampled_vector_kernel_executor_replays_sampled_rows", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_sampled_vector_kernel_executor_replays_sampled_rows",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
-        "proof_layer_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
+        "proof_layer_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
         "executed_row_count": executed_rows,
         "executed_vector_word_op_count": vector_word_ops,
         "executed_lane_mac_count": lane_macs,
@@ -219,7 +252,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X sampled vector-kernel executor failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X sampled vector-kernel executor failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X sampled vector-kernel executor; report {REPORT.relative_to(ROOT)}")
     return 0

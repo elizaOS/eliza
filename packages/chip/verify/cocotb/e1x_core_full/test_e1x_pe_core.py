@@ -37,14 +37,7 @@ def unpack_signed_w4_word(word: int) -> list[int]:
 
 # ---- RV64 instruction encoders ----
 def r_type(funct7: int, rs2: int, rs1: int, funct3: int, rd: int, opcode: int) -> int:
-    return (
-        (funct7 << 25)
-        | (rs2 << 20)
-        | (rs1 << 15)
-        | (funct3 << 12)
-        | (rd << 7)
-        | opcode
-    )
+    return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
 
 
 def i_type(imm: int, rs1: int, funct3: int, rd: int, opcode: int) -> int:
@@ -91,14 +84,7 @@ def j_type(imm: int, rd: int, opcode: int) -> int:
     bits10_1 = (imm >> 1) & 0x3FF
     bit11 = (imm >> 11) & 1
     bits19_12 = (imm >> 12) & 0xFF
-    return (
-        (bit20 << 31)
-        | (bits10_1 << 21)
-        | (bit11 << 20)
-        | (bits19_12 << 12)
-        | (rd << 7)
-        | opcode
-    )
+    return (bit20 << 31) | (bits10_1 << 21) | (bit11 << 20) | (bits19_12 << 12) | (rd << 7) | opcode
 
 
 # opcodes
@@ -469,10 +455,10 @@ async def integer_arithmetic_and_immediates(dut):
     prog = [
         addi(1, 0, 5),
         addi(2, 0, 7),
-        add(3, 1, 2),       # 12
-        sub(5, 2, 1),       # 2
-        addi(6, 0, -1),     # -1 sign extended
-        xori(7, 1, 0x0F),   # 5 ^ 15 = 10
+        add(3, 1, 2),  # 12
+        sub(5, 2, 1),  # 2
+        addi(6, 0, -1),  # -1 sign extended
+        xori(7, 1, 0x0F),  # 5 ^ 15 = 10
         ECALL,
     ]
     await run_program(dut, prog)
@@ -489,15 +475,15 @@ async def shifts_and_set_less_than(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     prog = [
         addi(1, 0, 1),
-        slli(2, 1, 40),         # 1 << 40
-        addi(3, 0, -16),        # 0xFFFF...F0
-        srai(5, 3, 2),          # arithmetic >> 2 = -4
-        srli(6, 1, 0),          # 1
-        slti(7, 3, 0),          # -16 < 0 -> 1
-        sltiu(28, 1, 5),        # 1 <u 5 -> 1
-        addi(11, 0, 40),        # shift amount 40
-        sll(29, 1, 11),         # 1 << (x11[5:0]=40) -> 1<<40
-        srl(30, 2, 11),         # (1<<40) >> 40 -> 1
+        slli(2, 1, 40),  # 1 << 40
+        addi(3, 0, -16),  # 0xFFFF...F0
+        srai(5, 3, 2),  # arithmetic >> 2 = -4
+        srli(6, 1, 0),  # 1
+        slti(7, 3, 0),  # -16 < 0 -> 1
+        sltiu(28, 1, 5),  # 1 <u 5 -> 1
+        addi(11, 0, 40),  # shift amount 40
+        sll(29, 1, 11),  # 1 << (x11[5:0]=40) -> 1<<40
+        srl(30, 2, 11),  # (1<<40) >> 40 -> 1
         ECALL,
     ]
     await run_program(dut, prog)
@@ -514,12 +500,12 @@ async def shifts_and_set_less_than(dut):
 async def word_operations_sign_extend(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     prog = [
-        lui(1, 0x80000),        # x1 = 0xFFFF_FFFF_8000_0000 (sext of 0x80000<<12)
-        addiw(2, 0, 1),         # 1
-        addw(3, 1, 2),          # (0x80000000 + 1) as 32 -> 0x80000001 sext = negative
-        slliw(5, 2, 31),        # 1<<31 -> 0x80000000 sext negative
-        sraiw(6, 5, 31),        # -1
-        subw(7, 0, 2),          # -1
+        lui(1, 0x80000),  # x1 = 0xFFFF_FFFF_8000_0000 (sext of 0x80000<<12)
+        addiw(2, 0, 1),  # 1
+        addw(3, 1, 2),  # (0x80000000 + 1) as 32 -> 0x80000001 sext = negative
+        slliw(5, 2, 31),  # 1<<31 -> 0x80000000 sext negative
+        sraiw(6, 5, 31),  # -1
+        subw(7, 0, 2),  # -1
         ECALL,
     ]
     await run_program(dut, prog)
@@ -534,16 +520,16 @@ async def branches_taken_and_not_taken(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     # counts loop iterations: x1 from 0..5
     prog = [
-        addi(1, 0, 0),          # i = 0
-        addi(2, 0, 5),          # n = 5
-        addi(3, 0, 0),          # sum = 0
+        addi(1, 0, 0),  # i = 0
+        addi(2, 0, 5),  # n = 5
+        addi(3, 0, 0),  # sum = 0
         # loop:  (addr 12)
-        add(3, 3, 1),           # sum += i
-        addi(1, 1, 1),          # i += 1
-        blt(1, 2, -8),          # if i < n goto loop
-        beq(0, 0, 8),           # taken: skip next
-        addi(3, 0, 999),        # should be skipped
-        addi(5, 0, 42),         # marker
+        add(3, 3, 1),  # sum += i
+        addi(1, 1, 1),  # i += 1
+        blt(1, 2, -8),  # if i < n goto loop
+        beq(0, 0, 8),  # taken: skip next
+        addi(3, 0, 999),  # should be skipped
+        addi(5, 0, 42),  # marker
         ECALL,
     ]
     await run_program(dut, prog)
@@ -557,12 +543,12 @@ async def jal_jalr_control_flow(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     # main calls a "function" that sets x10=123 and returns via jalr ra
     prog = [
-        addi(2, 0, 0),          # 0: clobber-check reg
-        jal(1, 12),             # 4: call func at 4+12=16, ra=8
-        addi(2, 0, 7),          # 8: after return
-        ECALL,                  # 12: halt
-        addi(10, 0, 123),       # 16: func: x10 = 123
-        jalr(0, 1, 0),          # 20: ret -> ra (8)
+        addi(2, 0, 0),  # 0: clobber-check reg
+        jal(1, 12),  # 4: call func at 4+12=16, ra=8
+        addi(2, 0, 7),  # 8: after return
+        ECALL,  # 12: halt
+        addi(10, 0, 123),  # 16: func: x10 = 123
+        jalr(0, 1, 0),  # 20: ret -> ra (8)
     ]
     await run_program(dut, prog)
     assert reg(dut, "x10") == 123
@@ -575,20 +561,20 @@ async def loads_stores_roundtrip(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     base = 0x2000
     prog = [
-        lui(1, base >> 12),         # x1 = base (base is 0x2000, fits in upper imm)
+        lui(1, base >> 12),  # x1 = base (base is 0x2000, fits in upper imm)
         addi(2, 0, 0x55),
-        sd(2, 1, 0),                # store doubleword
+        sd(2, 1, 0),  # store doubleword
         addi(3, 0, -1),
-        sw(3, 1, 8),                # store 0xFFFFFFFF word
+        sw(3, 1, 8),  # store 0xFFFFFFFF word
         addi(5, 0, 0x7B),
-        sh(5, 1, 12),               # store halfword 0x007B
+        sh(5, 1, 12),  # store halfword 0x007B
         addi(6, 0, -2),
-        sb(6, 1, 16),               # store byte 0xFE
-        ld(7, 1, 0),                # load back doubleword -> 0x55
-        lw(28, 1, 8),               # load word sign ext -> -1
-        lwu(29, 1, 8),              # load word zero ext -> 0xFFFFFFFF
-        lhu(30, 1, 12),             # 0x7B
-        lb(31, 1, 16),              # -2
+        sb(6, 1, 16),  # store byte 0xFE
+        ld(7, 1, 0),  # load back doubleword -> 0x55
+        lw(28, 1, 8),  # load word sign ext -> -1
+        lwu(29, 1, 8),  # load word zero ext -> 0xFFFFFFFF
+        lhu(30, 1, 12),  # 0x7B
+        lb(31, 1, 16),  # -2
         ECALL,
     ]
     await run_program(dut, prog)
@@ -603,15 +589,15 @@ async def loads_stores_roundtrip(dut):
 async def mul_div_rem_correctness(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     prog = [
-        addi(1, 0, -7),             # -7
-        addi(2, 0, 3),              # 3
-        mul(3, 1, 2),               # -21
-        div(5, 1, 2),              # -7/3 = -2 (trunc toward zero)
-        rem(6, 1, 2),              # -7 % 3 = -1
-        divu(7, 1, 2),             # huge unsigned / 3
+        addi(1, 0, -7),  # -7
+        addi(2, 0, 3),  # 3
+        mul(3, 1, 2),  # -21
+        div(5, 1, 2),  # -7/3 = -2 (trunc toward zero)
+        rem(6, 1, 2),  # -7 % 3 = -1
+        divu(7, 1, 2),  # huge unsigned / 3
         remu(28, 1, 2),
-        mulh(29, 1, 2),            # high bits of -7*3 = -1
-        mulhu(30, 2, 2),           # high of 3*3 = 0
+        mulh(29, 1, 2),  # high bits of -7*3 = -1
+        mulhu(30, 2, 2),  # high of 3*3 = 0
         ECALL,
     ]
     await run_program(dut, prog)
@@ -631,15 +617,15 @@ async def div_by_zero_and_overflow(dut):
     prog = [
         addi(1, 0, 5),
         addi(2, 0, 0),
-        div(3, 1, 2),               # 5/0 -> -1 (all ones)
-        rem(5, 1, 2),               # 5%0 -> 5
-        divu(6, 1, 2),              # 5/0 -> all ones
-        remu(7, 1, 2),              # 5%0 -> 5
+        div(3, 1, 2),  # 5/0 -> -1 (all ones)
+        rem(5, 1, 2),  # 5%0 -> 5
+        divu(6, 1, 2),  # 5/0 -> all ones
+        remu(7, 1, 2),  # 5%0 -> 5
         # overflow: INT_MIN / -1
         addi(28, 0, -1),
-        slli(29, 28, 63),           # 0x8000...0000 = INT64_MIN
-        div(30, 29, 28),            # INT_MIN / -1 -> INT_MIN
-        rem(31, 29, 28),            # INT_MIN % -1 -> 0
+        slli(29, 28, 63),  # 0x8000...0000 = INT64_MIN
+        div(30, 29, 28),  # INT_MIN / -1 -> INT_MIN
+        rem(31, 29, 28),  # INT_MIN % -1 -> 0
         ECALL,
     ]
     await run_program(dut, prog)
@@ -657,13 +643,13 @@ async def word_mul_div(dut):
     prog = [
         addi(1, 0, -7),
         addi(2, 0, 3),
-        mulw(3, 1, 2),              # (-7*3) as 32 sext = -21
-        divw(5, 1, 2),             # -2
-        remw(6, 1, 2),             # -1
+        mulw(3, 1, 2),  # (-7*3) as 32 sext = -21
+        divw(5, 1, 2),  # -2
+        remw(6, 1, 2),  # -1
         addi(7, 0, 17),
         addi(28, 0, 5),
-        divuw(29, 7, 28),          # 17/5 = 3
-        remuw(30, 7, 28),          # 17%5 = 2
+        divuw(29, 7, 28),  # 17/5 = 3
+        remuw(30, 7, 28),  # 17%5 = 2
         ECALL,
     ]
     await run_program(dut, prog)
@@ -678,9 +664,9 @@ async def word_mul_div(dut):
 async def lui_auipc(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     prog = [
-        lui(1, 0x12345),            # x1 = 0x12345000
-        auipc(2, 0),                # x2 = pc(=4) + 0 = 4
-        addi(3, 1, 0x678),          # 0x12345678
+        lui(1, 0x12345),  # x1 = 0x12345000
+        auipc(2, 0),  # x2 = pc(=4) + 0 = 4
+        addi(3, 1, 0x678),  # 0x12345678
         ECALL,
     ]
     await run_program(dut, prog)
@@ -698,12 +684,12 @@ async def csr_mcycle_minstret_mscratch(dut):
         addi(0, 0, 0),
         addi(0, 0, 0),
         csrrs(2, CSR_MINSTRET, 0),  # later, larger
-        csrrs(5, CSR_MCYCLE, 0),    # mcycle snapshot 1
+        csrrs(5, CSR_MCYCLE, 0),  # mcycle snapshot 1
         addi(0, 0, 0),
-        csrrs(6, CSR_MCYCLE, 0),    # mcycle snapshot 2 (larger)
+        csrrs(6, CSR_MCYCLE, 0),  # mcycle snapshot 2 (larger)
         addi(7, 0, 0x2A),
         csrrw(0, CSR_MSCRATCH, 7),  # write mscratch = 42
-        csrrs(28, CSR_MSCRATCH, 0), # read back 42
+        csrrs(28, CSR_MSCRATCH, 0),  # read back 42
         csrrs(29, CSR_MHARTID, 0),  # 0
         ECALL,
     ]
@@ -735,7 +721,7 @@ async def ecall_halts(dut):
     prog = [
         addi(1, 0, 3),
         ECALL,
-        addi(1, 1, 100),            # must never execute
+        addi(1, 1, 100),  # must never execute
     ]
     await run_program(dut, prog)
     assert int(dut.halted.value) == 1
@@ -764,10 +750,10 @@ async def wavelet_mmio_rx_tx(dut):
     tx_data = sram_bytes + 0x10
     # program: load rx into x10, add 1, store to tx
     prog = [
-        lui(1, (sram_bytes >> 12)),     # x1 = sram_bytes base of MMIO (48KiB = 0xC000)
-        lw(10, 1, 0x00),                # read WAVELET_RX_DATA
+        lui(1, (sram_bytes >> 12)),  # x1 = sram_bytes base of MMIO (48KiB = 0xC000)
+        lw(10, 1, 0x00),  # read WAVELET_RX_DATA
         addi(11, 10, 1),
-        sw(11, 1, 0x10),                # write WAVELET_TX_DATA
+        sw(11, 1, 0x10),  # write WAVELET_TX_DATA
         ECALL,
     ]
     assert (sram_bytes & 0xFFF) == 0

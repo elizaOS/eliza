@@ -173,9 +173,7 @@ export { AGENT_READY_TIMEOUT_MS } from "./types";
  * main-tab app; callers can open the companion overlay separately.
  *
  * Resolved synchronously from the cached apps catalog at module load.
- * Falls back to "home" when no installed app declares
- * `elizaos.app.mainTab=true`, keeping the clouds/avatar assistant surface as
- * the default shell landing page.
+ * Falls back to chat when no installed app declares `elizaos.app.mainTab=true`.
  */
 const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
 

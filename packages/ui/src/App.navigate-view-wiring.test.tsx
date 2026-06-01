@@ -58,8 +58,10 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
 vi.mock("./platform/init", () => ({
+  isDesktopPlatform: () => false,
   isIOS: false,
   isNative: false,
+  isWebPlatform: () => true,
 }));
 
 vi.mock("./hooks/useDesktopTabs", () => ({

@@ -510,7 +510,9 @@ def test_blocked_results_require_blocked_missing_target_evidence_provenance() ->
         blocked_result = next(row for row in report["results"] if row["status"] == "blocked")
         blocked_result["provenance"] = provenance
         errors = run_benchmarks.validate_report(report)
-        if not any("blocked result provenance must be blocked_missing_target_evidence" in e for e in errors):
+        if not any(
+            "blocked result provenance must be blocked_missing_target_evidence" in e for e in errors
+        ):
             raise AssertionError((provenance, errors))
 
 

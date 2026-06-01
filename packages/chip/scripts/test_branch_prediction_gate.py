@@ -684,6 +684,7 @@ def write_valid_evidence_set(root: Path) -> None:
             },
         },
     )
+
     def write_full_rtl_shard(
         relpath: str,
         names: set[str],

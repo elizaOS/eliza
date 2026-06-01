@@ -66,7 +66,9 @@ def pass_fail(condition: bool, detail: str, fail_detail: str | None = None) -> t
     return ("pass", detail) if condition else ("fail", fail_detail or detail)
 
 
-def marker_check(check_id: str, text: str, markers: tuple[str, ...], detail: str) -> tuple[dict[str, str], int]:
+def marker_check(
+    check_id: str, text: str, markers: tuple[str, ...], detail: str
+) -> tuple[dict[str, str], int]:
     normalized_text = " ".join(text.split())
     missing = [marker for marker in markers if " ".join(marker.split()) not in normalized_text]
     status, resolved_detail = pass_fail(
@@ -74,7 +76,9 @@ def marker_check(check_id: str, text: str, markers: tuple[str, ...], detail: str
         detail,
         "missing markers: " + ", ".join(missing),
     )
-    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(missing)
+    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(
+        missing
+    )
 
 
 def main() -> int:
@@ -139,7 +143,13 @@ def main() -> int:
         "formal report includes credit-router BMC and induction checks",
         "missing formal checks: " + ", ".join(missing_formal),
     )
-    checks.append({"id": "e1x_mesh_liveness_credit_router_formal_checks_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_mesh_liveness_credit_router_formal_checks_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     mesh_text = MESH_RTL.read_text(encoding="utf-8") if MESH_RTL.is_file() else ""
     credit_text = CREDIT_RTL.read_text(encoding="utf-8") if CREDIT_RTL.is_file() else ""
@@ -174,7 +184,9 @@ def main() -> int:
         "mesh cocotb contains expected PE, corner-to-corner, X-then-Y, and independent-color tests",
         "missing mesh tests/helpers: " + ", ".join(missing_tests),
     )
-    checks.append({"id": "e1x_mesh_liveness_expected_mesh_tests_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_mesh_liveness_expected_mesh_tests_present", "status": status, "detail": detail}
+    )
 
     residual_blocker = "full_formal_network_liveness_proof_missing"
     failures = [check for check in checks if check["status"] != "pass"]

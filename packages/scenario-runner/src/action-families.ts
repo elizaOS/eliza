@@ -60,9 +60,11 @@ export function actionsAreScenarioEquivalent(
   // count as equivalent:
   //   1. Parent/sub-action family — one action's tokens are a leading prefix of
   //      the other's (CALENDAR_CREATE ↔ CALENDAR_CREATE_EVENT, SEND ↔ SEND_EMAIL).
-  //   2. Provider-qualified candidate — the expected tokens are a contiguous
-  //      suffix of the candidate (GOOGLE_CALENDAR_CREATE_EVENT ↔ CALENDAR_CREATE_EVENT),
-  //      so a provider prefix on the actual action still matches the expectation.
+  //   2. Provider-qualified candidate — a multi-token expectation is a
+  //      contiguous suffix of the candidate (GOOGLE_CALENDAR_CREATE_EVENT ↔
+  //      CALENDAR_CREATE_EVENT), so a provider prefix on the actual action still
+  //      matches the expectation. Single-token suffixes are deliberately
+  //      excluded; otherwise SEND_EMAIL would satisfy an EMAIL expectation.
   // This deliberately rejects the unbounded separator-stripped `includes`/token
   // -subset over-match where a strictly more generic candidate (LIFE, MESSAGE,
   // INBOX) was credited for a more specific expectation (LIFEOPS, READ_MESSAGES,
@@ -75,7 +77,7 @@ export function actionsAreScenarioEquivalent(
   return (
     isTokenPrefix(rightTokens, leftTokens) ||
     isTokenPrefix(leftTokens, rightTokens) ||
-    isTokenSuffix(rightTokens, leftTokens)
+    (rightTokens.length >= 2 && isTokenSuffix(rightTokens, leftTokens))
   );
 }
 

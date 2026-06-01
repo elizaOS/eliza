@@ -37,5 +37,8 @@ def test_e1x_repair_fuse_reader_gate_passes() -> None:
     assert report["summary"]["rtl_marker_count"] == 10
     assert report["summary"]["loader_marker_count"] == 5
     assert report["summary"]["verilator_lint_clean"] is True
-    assert report["summary"]["residual_blocker"] == "silicon_fuse_burning_and_foundry_otp_macro_missing"
+    assert (
+        report["summary"]["residual_blocker"]
+        == "silicon_fuse_burning_and_foundry_otp_macro_missing"
+    )
     assert "not silicon fuse burning" in report["claim_boundary"]

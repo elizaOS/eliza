@@ -127,9 +127,9 @@ async def ecc_status_counters_track_events(dut):
         dut.dec_valid.value = 0
         await Timer(1, units="ns")
 
-    await decode_clocked(code ^ 0x1)            # single
-    await decode_clocked(code ^ 0x2)            # single
-    await decode_clocked(code ^ 0x3)            # double (bits 0 and 1)
+    await decode_clocked(code ^ 0x1)  # single
+    await decode_clocked(code ^ 0x2)  # single
+    await decode_clocked(code ^ 0x3)  # double (bits 0 and 1)
     assert int(dut.corrected_count.value) == 2, int(dut.corrected_count.value)
     assert int(dut.detected_double_count.value) == 1, int(dut.detected_double_count.value)
 

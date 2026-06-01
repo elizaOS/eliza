@@ -6,7 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/memory_interconnect_contract.json"
 CHECKER = ROOT / "scripts/check_memory_interconnect_contract.py"
