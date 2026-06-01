@@ -249,7 +249,9 @@ const otelApiEntry = (() => {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
     if (fs.existsSync(bunDir)) {
       // Collect ALL ai@ entries; there may be multiple hash-variants.
-      const aiEntries = fs.readdirSync(bunDir).filter((d) => d.startsWith("ai@"));
+      const aiEntries = fs
+        .readdirSync(bunDir)
+        .filter((d) => d.startsWith("ai@"));
       for (const aiEntry of aiEntries) {
         candidateRoots.push(path.join(bunDir, aiEntry, "node_modules"));
       }
@@ -271,7 +273,11 @@ const otelApiEntry = (() => {
         // place the package directly at the entry root.
         const withNested = path.join(bunDir, otelEntry, "node_modules");
         const asDirect = path.join(bunDir, otelEntry);
-        if (fs.existsSync(path.join(withNested, "@opentelemetry/api/package.json"))) {
+        if (
+          fs.existsSync(
+            path.join(withNested, "@opentelemetry/api/package.json"),
+          )
+        ) {
           candidateRoots.push(withNested);
         } else if (fs.existsSync(path.join(asDirect, "package.json"))) {
           // The package itself is at the entry root; its parent is the "root"
@@ -886,15 +892,21 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
 
 /**
  * Resolved file path for bundling `@elizaos/core` in the renderer.
- * Linked eliza checkouts sometimes omit `dist/` until `bun run build`;
- * prefer the local browser source entry in dev so Vite does not need to parse
- * the huge bundled browser artifact during startup. Built artifacts remain as
- * fallbacks for published/cached installs.
+ *
+ * Prefer the pre-built `dist/browser/index.browser.js` BUNDLE: one browser-safe
+ * artifact (single request, single parse, node: builtins already stripped). The
+ * browser SOURCE entry (`src/index.browser.ts`) is the fallback ONLY when no
+ * build exists yet (a fresh linked checkout before `bun run build`).
+ *
+ * Why this order matters: the source entry transitively pulls 400+ individual
+ * core source modules, so the renderer paid 400+ HTTP round-trips + on-demand
+ * TS transforms AND tried to evaluate core's node:async_hooks / node:fs imports
+ * in the browser — minute-long cold loads that frequently never mounted.
+ * Serving the one pre-built bundle avoids all of that. The bundle is rebuilt by
+ * `bun run build` (and the desktop build watch), so the only thing traded is
+ * HMR on the runtime, which the renderer almost never edits.
  */
 function resolveElizaCoreBundlePath(): string {
-  const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
-  if (sourceBrowserEntry) return sourceBrowserEntry;
-
   const pkgDir = tryResolveElizaCorePkgDir();
   if (pkgDir) {
     const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");
@@ -936,6 +948,18 @@ function resolveElizaCoreBundlePath(): string {
       `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
     );
     return bunNode;
+  }
+  // Last resort: no built artifact anywhere. Fall back to the browser SOURCE
+  // entry so a fresh linked checkout (before `bun run build`) still boots,
+  // accepting the slow source-graph load until a build exists.
+  const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
+  if (sourceBrowserEntry) {
+    console.warn(
+      "[eliza][vite] @elizaos/core has no built dist/; falling back to the browser SOURCE entry " +
+        "(src/index.browser.ts). This pulls the full core source graph and is slow — run `bun run build` " +
+        "in your eliza checkout to serve the pre-built browser bundle instead.",
+    );
+    return sourceBrowserEntry;
   }
   throw new Error(
     `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from packages/app)"} and none in node_modules/.bun. ` +
