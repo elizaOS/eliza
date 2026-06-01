@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import {
+  assertReadyChecks,
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
@@ -64,6 +65,24 @@ async function screenshot(page: Page, name: string): Promise<void> {
     fullPage: false,
     attempts: 4,
   });
+}
+
+async function openViewManager(page: Page): Promise<void> {
+  if (page.url() === "about:blank") {
+    await openAppPath(page, "/views");
+  } else {
+    await page.evaluate(() => {
+      window.history.pushState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+  }
+  await assertReadyChecks(
+    page,
+    "view manager dynamic controls",
+    [{ selector: 'form[aria-label="Dynamic view management"]' }],
+    "all",
+    90_000,
+  );
 }
 
 async function installElectrobunDynamicViewBridge(
@@ -201,7 +220,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     },
   );
 
-  await openAppPath(page, "/views");
+  await openViewManager(page);
   await expect(
     page.getByRole("form", { name: "Dynamic view management" }),
   ).toBeVisible();
@@ -234,7 +253,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     .getByRole("button", { name: /^Actual Local Ledger Actual/ })
     .click();
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
-  await openAppPath(page, "/views");
+  await openViewManager(page);
 
   await page.getByRole("button", { name: "Edit Actual Local Ledger" }).click();
   await expect(page.getByLabel("Dynamic view ID")).toHaveValue(
@@ -298,7 +317,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   ).toBe(0);
   await screenshot(page, "03-local-switched");
 
-  await openAppPath(page, "/views");
+  await openViewManager(page);
 
   await page
     .getByTestId("view-card-actual-remote-ledger")
@@ -311,7 +330,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   expect(remoteBundleRequests).toBeGreaterThan(0);
   await screenshot(page, "04-remote-module-loaded");
 
-  await openAppPath(page, "/views");
+  await openViewManager(page);
   await page.getByRole("button", { name: "Edit Actual Remote Ledger" }).click();
   await page
     .getByLabel("Dynamic view title")
@@ -350,7 +369,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   );
   await screenshot(page, "05-remote-updated-reopened");
 
-  await openAppPath(page, "/views");
+  await openViewManager(page);
 
   await page
     .getByRole("button", { name: "Delete Actual Remote Ledger Updated" })

@@ -173,6 +173,7 @@ app.get("/", async (c) => {
       token_chain: tokenChain,
       token_name: tokenName,
       token_ticker: tokenTicker,
+      dockerImage: agent.docker_image,
       walletAddress,
       walletProvider,
       walletStatus,

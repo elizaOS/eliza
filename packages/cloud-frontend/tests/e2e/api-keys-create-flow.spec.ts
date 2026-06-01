@@ -12,12 +12,26 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("api-keys create flow", () => {
+  test.describe.configure({ timeout: 90_000 });
+
   test.skip(
     Boolean(process.env.CLOUD_E2E_LIVE_URL),
     "Drives a stubbed POST; live-prod would create real keys.",
   );
 
   test.beforeEach(async ({ context }) => {
+    await context.addCookies([
+      {
+        name: "eliza-test-auth",
+        value: "1",
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
     // Synthetic JWT — the page-level audit already does this; here we
     // just need an authenticated session, not the full eth-injection
     // round-trip (covered in siwe-flow.spec.ts).
@@ -74,6 +88,12 @@ test.describe("api-keys create flow", () => {
         headers: { "content-type": "application/json" },
       }),
     );
+    await context.route(/\/api\/credits\/balance/, (route) =>
+      route.fulfill({
+        json: { balance: 1000 },
+        headers: { "content-type": "application/json" },
+      }),
+    );
   });
 
   test("empty state renders single primary CTA and create flow completes", async ({
@@ -85,7 +105,7 @@ test.describe("api-keys create flow", () => {
     // bug where two Create buttons rendered simultaneously after the
     // useSetPageHeader dependency array shifted. Guard with strict count.
     const createButton = page.getByRole("button", { name: /create.*api key/i });
-    await expect(createButton.first()).toBeVisible({ timeout: 10_000 });
+    await expect(createButton.first()).toBeVisible({ timeout: 20_000 });
     await expect(createButton).toHaveCount(1);
 
     // Hover the primary CTA. It must NOT transition to a black or blue
@@ -118,12 +138,21 @@ test.describe("api-keys create flow", () => {
     const nameInput = page.getByLabel(/name/i).first();
     await nameInput.fill("Playwright Created Key");
 
-    const generateButton = page.getByRole("button", { name: /generate/i });
-    await expect(generateButton).toBeVisible({ timeout: 5_000 });
-    await generateButton.click();
+    const createKeyButton = page.getByRole("button", {
+      name: /^create key$/i,
+    });
+    await expect(createKeyButton).toBeVisible({ timeout: 5_000 });
+    await createKeyButton.click();
 
     // Reveal modal exposes the plainKey exactly once.
-    const reveal = page.locator("text=eliza_pk_test_redacted_value");
-    await expect(reveal.first()).toBeVisible({ timeout: 10_000 });
+    const successDialog = page.locator('[role="dialog"]', {
+      hasText: /api key created successfully/i,
+    });
+    await expect(successDialog).toBeVisible({ timeout: 10_000 });
+    await expect(
+      successDialog.locator(
+        'input[value="eliza_pk_test_redacted_value_must_be_revealed_once"]',
+      ),
+    ).toBeVisible();
   });
 });

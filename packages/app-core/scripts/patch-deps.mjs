@@ -35,6 +35,7 @@ import {
   patchBrokenElizaCoreRuntimeDists,
   patchCodexFolderApprovalPromptCompat,
   patchExtensionlessJsExports,
+  patchGitWorkspaceServiceEsmRequireCompat,
   patchNobleHashesCompat,
   patchPtyManagerCursorPositionCompat,
   patchPtyManagerEsmDirnameCompat,
@@ -94,6 +95,7 @@ patchCodexFolderApprovalPromptCompat(root);
 patchBrokenElizaCoreRuntimeDists(root);
 patchPtyManagerEsmDirnameCompat(root);
 patchPtyManagerCursorPositionCompat(root);
+patchGitWorkspaceServiceEsmRequireCompat(root);
 // @elizaos/agent and @elizaos/ui ship exports maps where glob targets still
 // carry the source extension (e.g. "./packages/agent/src/runtime/*.ts.js").
 // Bun fails to resolve those because the actual emitted dist files are *.js.

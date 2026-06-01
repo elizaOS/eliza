@@ -1122,6 +1122,7 @@ const PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER =
   "const __require = createRequire(import.meta.url);";
 const PTY_MANAGER_ESM_DIRNAME_MARKER =
   "const __dirname = dirname(fileURLToPath(import.meta.url));";
+const ESM_DYNAMIC_REQUIRE_IMPORT = 'import { createRequire } from "module";';
 const CODEX_TRUST_PROMPT_PATTERN_FROM =
   "do.?you.?trust.?the.?contents|trust.?this.?directory|yes,?.?continue|prompt.?injection";
 const CODEX_TRUST_PROMPT_PATTERN_TO =
@@ -1137,6 +1138,79 @@ const PTY_MANAGER_ESM_REQUIRE_PROLOGUE = `var __require = /* @__PURE__ */ ((x) =
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
 `;
+const ESM_DYNAMIC_REQUIRE_PATTERN =
+  /var __require = \/\* @__PURE__ \*\/ \(\(x\) => typeof require !== "undefined" \? require :[\s\S]*?throw Error\('Dynamic require of "' \+ x \+ '" is not supported'\);\n}\);\n/;
+
+/**
+ * Some Bun-built ESM bundles keep a generated __require shim that only works
+ * when a global CommonJS require already exists. Under Node ESM / tsx it
+ * catches as a fake "missing dependency" error even when the dependency is
+ * installed. Replace that shim with createRequire(import.meta.url).
+ */
+export function applyEsmDynamicRequireCompat(filePath) {
+  if (!existsSync(filePath)) return false;
+
+  const compatSource = readFileSync(filePath, "utf8");
+  if (compatSource.includes(PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER)) {
+    return false;
+  }
+  if (
+    !compatSource.includes(PTY_MANAGER_ESM_REQUIRE_PROLOGUE) &&
+    !ESM_DYNAMIC_REQUIRE_PATTERN.test(compatSource)
+  ) {
+    return false;
+  }
+
+  let next = compatSource.includes(PTY_MANAGER_ESM_REQUIRE_PROLOGUE)
+    ? compatSource.replace(
+        PTY_MANAGER_ESM_REQUIRE_PROLOGUE,
+        `${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n`,
+      )
+    : compatSource.replace(
+        ESM_DYNAMIC_REQUIRE_PATTERN,
+        `${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n`,
+      );
+  if (!next.includes(ESM_DYNAMIC_REQUIRE_IMPORT)) {
+    next = `${ESM_DYNAMIC_REQUIRE_IMPORT}\n${next}`;
+  }
+
+  if (next === compatSource) return false;
+  writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+/**
+ * git-workspace-service's ESM bundle uses the generated __require shim for
+ * @octokit/rest. Node/tsx loads the ESM entry for TS services, so GitHub
+ * workspace startup fails unless this bundle receives the createRequire patch.
+ */
+export function patchGitWorkspaceServiceEsmRequireCompat(
+  root,
+  log = console.log,
+) {
+  const searchRoots = dedupeRealPaths(
+    [root, resolve(root, "eliza")].filter((candidate) => existsSync(candidate)),
+  );
+  const candidates = dedupeRealPaths(
+    searchRoots.flatMap((searchRoot) =>
+      findPackageFilePaths(
+        searchRoot,
+        "git-workspace-service",
+        "dist/index.js",
+      ),
+    ),
+  );
+  let patched = false;
+  for (const filePath of candidates) {
+    if (applyEsmDynamicRequireCompat(filePath)) {
+      patched = true;
+      log(
+        `[patch-deps] Patched git-workspace-service ESM dynamic require compatibility: ${filePath}`,
+      );
+    }
+  }
+  return patched;
+}
 
 /**
  * pty-manager's published ESM bundle references __dirname but never defines it.
@@ -1156,7 +1230,6 @@ export function applyPtyManagerEsmDirnameCompat(filePath) {
 
   const pathImportPattern =
     /import\s+\{[^}]*\bdirname\b[^}]*\}\s+from\s+"path";/;
-  const moduleImport = 'import { createRequire } from "module";';
   const childProcessImportPattern =
     /import\s+\{[^}]*\bexecSync\b[^}]*\}\s+from\s+"child_process";/;
   if (
@@ -1170,10 +1243,10 @@ export function applyPtyManagerEsmDirnameCompat(filePath) {
   if (next.includes(PTY_MANAGER_ESM_REQUIRE_PROLOGUE)) {
     next = next.replace(
       PTY_MANAGER_ESM_REQUIRE_PROLOGUE,
-      `${moduleImport}\n${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n`,
+      `${ESM_DYNAMIC_REQUIRE_IMPORT}\n${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n`,
     );
   } else if (!next.includes(PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER)) {
-    next = `${moduleImport}\n${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n${next}`;
+    next = `${ESM_DYNAMIC_REQUIRE_IMPORT}\n${PTY_MANAGER_ESM_CREATE_REQUIRE_MARKER}\n${next}`;
   }
   if (!next.includes('import { fileURLToPath } from "url";')) {
     next = next.replace(

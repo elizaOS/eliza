@@ -17,6 +17,8 @@
 
 import { useCallback, useEffect } from "react";
 
+const SANDBOX_PROXY_ENABLED = !import.meta.env.PROD;
+
 // Allowed sandbox origins. Add docker sandbox host patterns here as the
 // docker-sandbox subsystem stabilizes; localhost is permitted for testing.
 const ALLOWED_ORIGIN_PATTERNS = [
@@ -150,8 +152,7 @@ export default function SandboxProxyPage() {
   }, []);
 
   useEffect(() => {
-    // Only enable in development
-    if (process.env.NODE_ENV !== "development") {
+    if (!SANDBOX_PROXY_ENABLED) {
       console.warn("[SandboxProxy] Disabled in production");
       return;
     }
@@ -168,8 +169,7 @@ export default function SandboxProxyPage() {
     };
   }, [handleMessage]);
 
-  // Invisible page - just shows status in dev
-  if (process.env.NODE_ENV !== "development") {
+  if (!SANDBOX_PROXY_ENABLED) {
     return (
       <div className="p-4">
         <p className="text-red-500">

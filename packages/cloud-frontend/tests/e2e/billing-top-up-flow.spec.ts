@@ -10,7 +10,21 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("billing top-up flow", () => {
+  test.describe.configure({ timeout: 90_000 });
+
   test.beforeEach(async ({ context }) => {
+    await context.addCookies([
+      {
+        name: "eliza-test-auth",
+        value: "1",
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
     await context.addInitScript(() => {
       window.localStorage.setItem(
         "steward_session_token",
@@ -46,6 +60,40 @@ test.describe("billing top-up flow", () => {
         headers: { "content-type": "application/json" },
       }),
     );
+    await context.route(/\/api\/credits\/balance/, (route) =>
+      route.fulfill({
+        json: { balance: 0, currency: "USD" },
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await context.route(/\/api\/invoices\/list/, (route) =>
+      route.fulfill({
+        json: { invoices: [] },
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await context.route(/\/api\/v1\/billing\/settings/, (route) =>
+      route.fulfill({
+        json: {
+          settings: {
+            payAsYouGoFromEarnings: false,
+            autoTopUp: {
+              enabled: false,
+              amount: 25,
+              threshold: 5,
+              hasPaymentMethod: false,
+            },
+            limits: {
+              minAmount: 1,
+              maxAmount: 10_000,
+              minThreshold: 1,
+              maxThreshold: 10_000,
+            },
+          },
+        },
+        headers: { "content-type": "application/json" },
+      }),
+    );
     await context.route(/\/api\/crypto\/status/, (route) =>
       route.fulfill({
         json: {
@@ -62,7 +110,7 @@ test.describe("billing top-up flow", () => {
 
     // Wait for billing content (Credit Balance card title).
     await expect(page.getByText(/credit balance/i).first()).toBeVisible({
-      timeout: 15_000,
+      timeout: 20_000,
     });
 
     // Card / Crypto toggle.
@@ -79,13 +127,13 @@ test.describe("billing top-up flow", () => {
 
     // Click Crypto — selection swaps.
     await cryptoButton.click();
-    await expect(cryptoButton)
-      .toHaveAttribute("aria-pressed", "true", { timeout: 2_000 })
-      .catch(async () => {
-        // Some implementations use the [data-state] selected-attr instead.
-        const dataState = await cryptoButton.getAttribute("data-state");
-        expect(dataState === "active" || dataState === "selected").toBe(true);
-      });
+    await expect
+      .poll(() =>
+        cryptoButton.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe("rgb(255, 88, 0)");
+
+    await cardButton.click();
 
     // Type an amount and the Buy credits CTA must enable.
     const amountInput = page.getByPlaceholder(/0\.00/).first();

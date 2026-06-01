@@ -94,7 +94,6 @@ export function AgentCard({
   const [isDeleting, setIsDeleting] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
-  const [isHovered, setIsHovered] = useState(false);
 
   const handleDuplicate = useCallback(
     async (e: React.MouseEvent) => {
@@ -346,16 +345,12 @@ export function AgentCard({
     [showDeleteConfirm, openAgentAdmin],
   );
 
-  const handleCardKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        if (!showDeleteConfirm) {
-          openAgentAdmin();
-        }
-      }
-    },
-    [showDeleteConfirm, openAgentAdmin],
+  const openCardLabel = t("cloud.agentCard.openAgent", {
+    defaultValue: "Open agent",
+  });
+
+  const removeSavedClassName = cn(
+    "pointer-events-auto flex-shrink-0 hidden items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-red-500/20 transition-colors group-hover:flex",
   );
 
   const isListView = viewMode === "list";
@@ -363,19 +358,21 @@ export function AgentCard({
   // List view
   if (isListView) {
     return (
-      <button
-        type="button"
+      <div
         className={cn(
           "min-w-0 w-full text-left bg-transparent border-0 p-0",
           !showDeleteConfirm && "cursor-pointer",
         )}
-        onClick={handleCardClick}
-        onKeyDown={handleCardKeyDown}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
         <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
-          <div className="flex items-center gap-4 p-4">
+          <button
+            type="button"
+            aria-label={`${openCardLabel}: ${agent.name}`}
+            className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+            onClick={handleCardClick}
+            disabled={showDeleteConfirm}
+          />
+          <div className="relative z-20 flex items-center gap-4 p-4 pointer-events-none">
             {/* Avatar */}
             <div className="relative flex-shrink-0 w-12 h-12 overflow-hidden rounded-lg">
               <Skeleton className="absolute inset-0 w-full h-full" />
@@ -449,11 +446,11 @@ export function AgentCard({
             )}
 
             {/* Remove button for saved agents */}
-            {!isOwned && isHovered && (
+            {!isOwned && (
               <button
                 type="button"
                 onClick={handleRemoveSaved}
-                className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-red-500/20 transition-colors"
+                className={removeSavedClassName}
                 title={t("cloud.agentCard.removeFromSaved", {
                   defaultValue: "Remove from saved",
                 })}
@@ -465,7 +462,7 @@ export function AgentCard({
             {/* Dropdown Menu */}
             <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
               <DropdownMenuTrigger
-                className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-white/10 transition-colors"
+                className="pointer-events-auto flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-white/10 transition-colors"
                 onClick={(e) => e.preventDefault()}
               >
                 <MoreHorizontal className="h-4 w-4 text-white" />
@@ -599,24 +596,26 @@ export function AgentCard({
             </AlertDialogContent>
           </AlertDialog>
         </div>
-      </button>
+      </div>
     );
   }
 
   // Grid view (default)
   return (
-    <button
-      type="button"
+    <div
       className={cn(
         "block h-full w-full text-left bg-transparent border-0 p-0",
         !showDeleteConfirm && "cursor-pointer",
       )}
-      onClick={handleCardClick}
-      onKeyDown={handleCardKeyDown}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
+        <button
+          type="button"
+          aria-label={`${openCardLabel}: ${agent.name}`}
+          className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+          onClick={handleCardClick}
+          disabled={showDeleteConfirm}
+        />
         <Skeleton className="absolute inset-0 w-full h-full" />
 
         <Image
@@ -636,7 +635,7 @@ export function AgentCard({
         <div className="absolute inset-0 bg-black/60" />
 
         {/* Top left badges */}
-        <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5">
+        <div className="pointer-events-none absolute top-3 left-3 z-20 flex items-center gap-1.5">
           {!isPublic && isOwned && (
             <div className="bg-black/30 rounded-md p-1.5">
               <Lock className=" h-4 w-4 text-white/70" />
@@ -674,11 +673,11 @@ export function AgentCard({
         </div>
 
         {/* Remove button for saved agents */}
-        {!isOwned && isHovered && (
+        {!isOwned && (
           <button
             type="button"
             onClick={handleRemoveSaved}
-            className="absolute top-3 right-12 z-20 flex items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors"
+            className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors group-hover:flex"
             title={t("cloud.agentCard.removeFromSaved", {
               defaultValue: "Remove from saved",
             })}
@@ -689,7 +688,7 @@ export function AgentCard({
 
         {/* Dropdown Menu */}
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-          <DropdownMenuTrigger className="absolute top-3 right-3 z-20 flex items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-black/50 transition-colors">
+          <DropdownMenuTrigger className="pointer-events-auto absolute top-3 right-3 z-20 flex items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-black/50 transition-colors">
             <MoreHorizontal className="h-4 w-4 text-white" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-40">
@@ -819,6 +818,6 @@ export function AgentCard({
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </button>
+    </div>
   );
 }

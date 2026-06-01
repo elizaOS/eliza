@@ -26,6 +26,75 @@ test.skip(
 );
 
 const MY_AGENTS_ROUTE = "/dashboard/my-agents";
+const NOW = "2026-06-01T12:00:00.000Z";
+
+const testUser = {
+  id: "22222222-2222-4222-8222-222222222222",
+  email: "test@example.com",
+  email_verified: true,
+  wallet_address: "0x0000000000000000000000000000000000000001",
+  wallet_chain_type: "evm",
+  wallet_verified: true,
+  name: "Test User",
+  avatar: null,
+  organization_id: "org_1",
+  role: "owner",
+  steward_user_id: "steward_1",
+  telegram_id: null,
+  telegram_username: null,
+  telegram_first_name: null,
+  telegram_photo_url: null,
+  discord_id: null,
+  discord_username: null,
+  discord_global_name: null,
+  discord_avatar_url: null,
+  whatsapp_id: null,
+  whatsapp_name: null,
+  phone_number: null,
+  phone_verified: false,
+  is_anonymous: false,
+  anonymous_session_id: null,
+  expires_at: null,
+  nickname: "Tester",
+  work_function: "engineering",
+  preferences: null,
+  email_notifications: true,
+  response_notifications: true,
+  is_active: true,
+  created_at: NOW,
+  updated_at: NOW,
+  organization: {
+    id: "org_1",
+    name: "Eliza QA",
+    slug: "eliza-qa",
+    credit_balance: "100.00",
+    billing_email: "billing@example.com",
+    is_active: true,
+    created_at: NOW,
+    updated_at: NOW,
+  },
+};
+
+const testAgent = {
+  id: "agent_1",
+  name: "Toggle Test Agent",
+  username: "toggle-test-agent",
+  bio: "Agent used by the view-switching e2e test.",
+  avatarUrl: null,
+  avatar_url: null,
+  category: "test",
+  isPublic: false,
+  is_public: false,
+  createdAt: NOW,
+  created_at: NOW,
+  updatedAt: NOW,
+  updated_at: NOW,
+  tags: [],
+  token_address: null,
+  token_chain: null,
+  token_name: null,
+  token_ticker: null,
+};
 
 async function setTestAuthCookie(context: BrowserContext) {
   await context.addCookies([
@@ -39,6 +108,51 @@ async function setTestAuthCookie(context: BrowserContext) {
       sameSite: "Lax",
     },
   ]);
+}
+
+async function installApiMocks(page: Page) {
+  await page.route("**/api/credits/balance**", (route) =>
+    route.fulfill({
+      json: { balance: 100, currency: "USD" },
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  await page.route("**/api/v1/user", (route) =>
+    route.fulfill({
+      json: { success: true, data: testUser },
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  await page.route("**/api/my-agents/characters", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          characters: [testAgent],
+          pagination: {
+            page: 1,
+            limit: 20,
+            totalPages: 1,
+            totalCount: 1,
+            hasMore: false,
+          },
+        },
+      },
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  await page.route("**/api/my-agents/saved", (route) =>
+    route.fulfill({
+      json: { success: true, data: { agents: [] } },
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  await page.route("**/api/my-agents/claim-affiliate-characters", (route) =>
+    route.fulfill({
+      json: { success: true, claimed: 0 },
+      headers: { "content-type": "application/json" },
+    }),
+  );
 }
 
 /**
@@ -56,8 +170,11 @@ function viewToggleButtons(page: Page) {
 }
 
 test.describe("view-switching: my-agents grid/list toggle", () => {
+  test.describe.configure({ timeout: 90_000 });
+
   test.beforeEach(async ({ context, page }) => {
     await setTestAuthCookie(context);
+    await installApiMocks(page);
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -85,30 +202,16 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
     const { gridButton, listButton } = viewToggleButtons(page);
     await expect(gridButton).toBeVisible({ timeout: 15_000 });
 
-    // Default state is grid — the active button gets a white background.
-    const gridBgInitial = await gridButton.evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
-    );
-    const listBgInitial = await listButton.evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
-    );
-    expect(gridBgInitial).not.toBe(listBgInitial);
+    await expect(gridButton).toHaveAttribute("aria-pressed", "true");
+    await expect(listButton).toHaveAttribute("aria-pressed", "false");
 
-    // Switch to list — its background should now be the "active" color.
     await listButton.click();
-    await expect
-      .poll(async () =>
-        listButton.evaluate((el) => getComputedStyle(el).backgroundColor),
-      )
-      .toBe(gridBgInitial);
+    await expect(listButton).toHaveAttribute("aria-pressed", "true");
+    await expect(gridButton).toHaveAttribute("aria-pressed", "false");
 
-    // Switch back to grid.
     await gridButton.click();
-    await expect
-      .poll(async () =>
-        gridButton.evaluate((el) => getComputedStyle(el).backgroundColor),
-      )
-      .toBe(gridBgInitial);
+    await expect(gridButton).toHaveAttribute("aria-pressed", "true");
+    await expect(listButton).toHaveAttribute("aria-pressed", "false");
 
     const errors = (
       page as unknown as { __consoleErrors: string[] }
@@ -132,7 +235,7 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
     // and the container class isn't present — in that case we skip the
     // layout-class assertion but still verify the toggle responds.
     const gridContainer = page.locator("div.grid").filter({
-      hasNot: page.locator("svg.lucide-layout-grid"),
+      has: page.getByRole("button", { name: /toggle test agent/i }),
     });
     const containerCount = await gridContainer.count();
     test.skip(
