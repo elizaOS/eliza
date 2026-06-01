@@ -797,6 +797,45 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  it("native sendPrompt re-spaces a word-split terminal result content array", async () => {
+    // Regression: codex-acp delivers the final message as an array of text
+    // blocks split at word boundaries with no carried space; a bare join("")
+    // fused them ("is"+"proven" -> "isproven"). The assembler must re-insert a
+    // single space at \w|\w boundaries while leaving already-spaced blocks as-is.
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-wordsplit",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [
+            { type: "text", text: "the change" },
+            { type: "text", text: "is" },
+            { type: "text", text: "proven and" },
+            { type: "text", text: "received" },
+            { type: "text", text: "at runtime" },
+          ],
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "answer");
+
+    expect(result.response).toBe(
+      "the change is proven and received at runtime",
+    );
+  });
+
   it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();

@@ -1608,6 +1608,21 @@ export class AcpService extends Service {
         this.appendOutput(sessionId, content.text);
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
+      // agent_thought_chunk: the model's reasoning / chain-of-thought streams
+      // in the SAME payload shape as agent_message_chunk (opencode emits it for
+      // `reasoning` parts — see vendor/opencode/.../acp/agent.ts). Forward the
+      // text as a dedicated `reasoning` event so the UI can surface it, but do
+      // NOT add it to finalText/appendOutput: reasoning is not the deliverable
+      // response, and folding it into the turn text would corrupt the
+      // task_complete summary and tool-output capture. The string guard means
+      // adapters that never emit a thought chunk simply no-op here.
+      else if (
+        sessionUpdate === "agent_thought_chunk" &&
+        content?.type === "text" &&
+        typeof content.text === "string"
+      ) {
+        this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
+      }
       // Some adapters put text directly at content level.
       else if (
         !sessionUpdate &&
@@ -2230,7 +2245,20 @@ function extractAssistantText(
     const parts = value
       .map((entry) => extractAssistantText(entry, depth + 1, seen))
       .filter((entry): entry is string => entry !== undefined);
-    return parts.join("") || undefined;
+    // Some adapters (notably codex-acp) deliver the final assistant message as
+    // an array of text content blocks split at word boundaries, where the
+    // inter-word space is carried on NEITHER adjacent block — a bare join("")
+    // then fuses the words ("is"+"proven" -> "isproven"). Re-insert a single
+    // space ONLY when the boundary sits between two word characters and the
+    // space is genuinely absent on both sides: this reproduces correctly
+    // spaced blocks byte-for-byte (single-block / already-spaced results are
+    // unchanged) and never touches punctuation or markdown sub-token splits.
+    const joined = parts.reduce((acc, part) => {
+      if (!acc) return part;
+      const needsSpace = /\w$/u.test(acc) && /^\w/u.test(part);
+      return needsSpace ? `${acc} ${part}` : `${acc}${part}`;
+    }, "");
+    return joined || undefined;
   }
   if (typeof value !== "object") return undefined;
   if (seen.has(value)) return undefined;

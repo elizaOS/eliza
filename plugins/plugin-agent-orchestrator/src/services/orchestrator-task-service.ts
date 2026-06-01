@@ -198,6 +198,8 @@ function describeEvent(event: string, data: unknown): string {
     }
     case "message":
       return truncate(str(record.text) ?? "Sub-agent message", 160);
+    case "reasoning":
+      return truncate(str(record.text) ?? "Sub-agent reasoning", 160);
     case "blocked":
       return truncate(str(record.message) ?? "Blocked on input", 160);
     case "login_required":
@@ -420,6 +422,15 @@ export class OrchestratorTaskService extends Service {
             direction: "stdout",
           });
         }
+        break;
+      }
+      case "reasoning": {
+        // Reasoning text rides the event stream (event.data.text), which the
+        // mapper forwards verbatim onto the task event record for the UI's
+        // ReasoningCell. It is intentionally NOT recorded as a message: the
+        // message DTO's `direction` is a closed union and reasoning is not part
+        // of the deliverable transcript. addEvent (in onSessionEvent) already
+        // persisted it; nothing further to apply to session/task state.
         break;
       }
       case "blocked":
