@@ -3979,8 +3979,8 @@
       "name": "@elizaos/plugin-mcp",
       "version": "2.0.3-beta.0",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/security": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "ajv": "^8.17.1",
         "json5": "^2.2.3",
