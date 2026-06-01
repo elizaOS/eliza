@@ -13,6 +13,10 @@ test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
   "Visual baselines are captured against local dev only; skipped in live-prod mode",
 );
+test.skip(
+  Boolean(process.env.CI) && process.platform !== "darwin",
+  "Visual baselines are committed for Darwin Chromium snapshots only",
+);
 
 const ROUTES = [
   { path: "/", name: "landing" },
