@@ -102,7 +102,10 @@ const STRIP_PATTERN_ENV: RegExp[] = [
   /^SUPABASE_.*(?:SERVICE_ROLE|SECRET)/i,
   /^STRIPE_.*(?:SECRET|WEBHOOK)/i,
   /^ELIZA_.*(?:SECRET|KEY|TOKEN)/i,
-  /^ELIZA_.*(?:SECRET|KEY|TOKEN)/i,
+  // LLM provider + connector credentials must not leak into spawned commands.
+  /^(?:ANTHROPIC|OPENAI|OPENROUTER|GROQ|XAI|GOOGLE|GEMINI|GOOGLE_GENERATIVE_AI|ELEVENLABS|DEEPGRAM|MISTRAL|COHERE|DISCORD|TELEGRAM|SLACK|FARCASTER|TWITTER|AWS)_.*(?:KEY|TOKEN|SECRET|PASSWORD)/i,
+  // Catch-all for credential-suffixed keys from any other provider/connector.
+  /_(?:API_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY)$/i,
 ];
 
 const DANGEROUS_COMMAND_PATTERNS: DangerousPattern[] = [
@@ -151,6 +154,39 @@ const DANGEROUS_COMMAND_PATTERNS: DangerousPattern[] = [
   },
 ];
 
+/**
+ * Build the set of "home-relative" candidate strings a credential pattern is
+ * tested against. The anchored CREDENTIAL_PATTERNS (e.g. `^/.ssh/...`) expect a
+ * path with the home root stripped, so we strip the agent's own home plus any
+ * `/root` or `/home/<user>` prefix. The full normalized path is always included
+ * so the non-anchored browser-store patterns continue to match anywhere.
+ */
+function credentialRelativePaths(normalized: string): string[] {
+  const candidates = new Set<string>([normalized]);
+
+  const home = os.homedir().replace(/\\/g, "/");
+  if (home && normalized.startsWith(`${home}/`)) {
+    candidates.add(normalized.slice(home.length));
+  }
+
+  // /root/... and /home/<user>/... — strip the home root so reads of other
+  // users' (and root's) credential files are caught regardless of os.homedir().
+  const otherHomeMatch = normalized.match(
+    /^\/root(?=\/)|^\/home\/[^/]+(?=\/)/i,
+  );
+  if (otherHomeMatch) {
+    candidates.add(normalized.slice(otherHomeMatch[0].length));
+  }
+
+  // /Users/<user>/... (macOS) home root.
+  const macHomeMatch = normalized.match(/^\/Users\/[^/]+(?=\/)/i);
+  if (macHomeMatch) {
+    candidates.add(normalized.slice(macHomeMatch[0].length));
+  }
+
+  return [...candidates];
+}
+
 export function validateFilePath(
   filePath: string,
   operation: "read" | "write" | "delete",
@@ -197,11 +233,11 @@ export function validateFilePath(
     }
   }
 
-  const home = os.homedir().replace(/\\/g, "/");
-  const relativeToHome = normalized.startsWith(`${home}/`)
-    ? normalized.slice(home.length)
-    : null;
-  if (relativeToHome) {
+  // Evaluate credential patterns against the path relative to ANY user's home
+  // (the agent's own home, /root, and /home/<user>), not just the current home,
+  // so reads of e.g. /root/.ssh/id_rsa or /home/other/.aws/credentials are
+  // still blocked. The anchored patterns expect a "/.ssh/..." style suffix.
+  for (const relativeToHome of credentialRelativePaths(normalized)) {
     for (const { pattern, label } of CREDENTIAL_PATTERNS) {
       if (pattern.test(relativeToHome)) {
         return {
@@ -212,18 +248,30 @@ export function validateFilePath(
     }
   }
 
-  if (operation !== "read") {
-    const patterns =
-      process.platform === "win32"
-        ? SYSTEM_DIR_PATTERNS_WIN32
-        : SYSTEM_DIR_PATTERNS_UNIX;
-
-    for (const { pattern, label } of patterns) {
+  // Sensitive UNIX system paths (/etc/shadow, /proc, /sys, /dev, …) are blocked
+  // for EVERY operation, including reads, so they cannot be exfiltrated via a
+  // read. The Windows program-directory patterns stay write/delete-only because
+  // reading config/log files there is a legitimate use case.
+  if (process.platform !== "win32") {
+    for (const { pattern, label } of SYSTEM_DIR_PATTERNS_UNIX) {
       if (pattern.test(normalized)) {
         return {
           allowed: false,
           reason: `Blocked: cannot ${operation} in ${label}.`,
         };
+      }
+    }
+  }
+
+  if (operation !== "read") {
+    if (process.platform === "win32") {
+      for (const { pattern, label } of SYSTEM_DIR_PATTERNS_WIN32) {
+        if (pattern.test(normalized)) {
+          return {
+            allowed: false,
+            reason: `Blocked: cannot ${operation} in ${label}.`,
+          };
+        }
       }
     }
 
