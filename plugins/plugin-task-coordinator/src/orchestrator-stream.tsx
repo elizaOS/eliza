@@ -525,6 +525,44 @@ function toolIcon(tool: ToolView): LucideIcon {
   );
 }
 
+// Codex labels a tool by the ACTION it took, not the raw tool name: "Ran",
+// "Read", "Edited", "Searched", not "bash"/"grep". Present tense while the call
+// is in flight, past tense once it has settled (the red badge carries failure,
+// so a failed run is still "Ran"). Tuple is [running, settled].
+const VERB_BY_KIND: Record<string, readonly [string, string]> = {
+  execute: ["Running", "Ran"],
+  read: ["Reading", "Read"],
+  edit: ["Editing", "Edited"],
+  search: ["Searching", "Searched"],
+  fetch: ["Fetching", "Searched web"],
+  move: ["Moving", "Moved"],
+  delete: ["Deleting", "Deleted"],
+  think: ["Thinking", "Thought"],
+};
+
+const VERB_BY_TITLE: Record<string, readonly [string, string]> = {
+  write: ["Writing", "Wrote"],
+  edit: ["Editing", "Edited"],
+  read: ["Reading", "Read"],
+  bash: ["Running", "Ran"],
+  shell: ["Running", "Ran"],
+  grep: ["Searching", "Searched"],
+  glob: ["Searching", "Searched"],
+  list: ["Listing", "Listed"],
+  webfetch: ["Fetching", "Searched web"],
+  fetch: ["Fetching", "Searched web"],
+};
+
+/** The action verb for a tool's header, status-aware. Falls back to the raw
+ * tool name for kinds we don't have a verb for, so nothing renders blank. */
+function toolVerb(tool: ToolView): string {
+  const pair =
+    VERB_BY_TITLE[tool.title.toLowerCase()] ??
+    VERB_BY_KIND[tool.kind.toLowerCase()];
+  if (!pair) return tool.title;
+  return tool.status === "running" ? pair[0] : pair[1];
+}
+
 /** The shortest meaningful one-liner about what a tool touched, shown in the
  * collapsed header (file name, command, or query). */
 function toolTarget(tool: ToolView): string | undefined {
@@ -657,8 +695,8 @@ function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
           <span className="w-3 shrink-0" />
         )}
         <Icon className="h-3.5 w-3.5 shrink-0 text-muted-strong" />
-        <span className="min-w-0 shrink truncate font-mono text-xs font-semibold text-txt">
-          {tool.title}
+        <span className="shrink-0 text-xs font-semibold text-txt">
+          {toolVerb(tool)}
         </span>
         {target && target !== tool.title ? (
           <span
