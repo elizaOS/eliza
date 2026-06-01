@@ -45,7 +45,9 @@ interface PRSummary {
 
 export type GitHubPrOpResult =
   | { op: "list"; prs: PRSummary[] }
-  | { op: "review"; id: number };
+  | { op: "review"; id: number }
+  | { requiresConfirmation: true; preview: string; awaitingUserInput: true }
+  | { cancelled: true };
 
 const SUPPORTED_OPS: ReadonlySet<GitHubPrOp> = new Set(["list", "review"]);
 
@@ -185,17 +187,19 @@ async function runReview(
     prompt: `${preview} Reply yes to confirm or no to cancel.`,
     callback,
   });
-  if (decision.status !== "confirmed") {
-    const text =
-      decision.status === "pending"
-        ? `${preview} Reply yes to confirm or no to cancel.`
-        : "GitHub PR review cancelled.";
+  if (decision.status === "pending") {
+    const text = `${preview} Reply yes to confirm or no to cancel.`;
     await callback?.({ text });
     return {
-      ...(decision.status === "pending"
-        ? { success: false as const, requiresConfirmation: true as const, preview }
-        : { success: false as const, error: text }),
+      success: true,
+      text,
+      data: { requiresConfirmation: true, preview, awaitingUserInput: true },
     };
+  }
+  if (decision.status === "cancelled") {
+    const text = "GitHub PR review cancelled.";
+    await callback?.({ text });
+    return { success: true, text, data: { cancelled: true } };
   }
 
   if (action === "request-changes" && !body) {
