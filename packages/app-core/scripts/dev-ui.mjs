@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-console.log(
-  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
-);
 
 /**
  * Development script that starts:
@@ -959,6 +956,9 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
+// Flips true the first time the UI port serves; tightens the health watchdog
+// from the cold-start grace to a fast liveness window thereafter.
+let viteSeenListening = false;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -1069,6 +1069,7 @@ function startVite() {
     );
   }
   viteStartedAt = Date.now();
+  viteSeenListening = false;
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -1139,9 +1140,18 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
     if (shuttingDown || !viteProcess) return;
 
     const listening = await isPortListening(UI_PORT);
-    if (!listening) {
+    if (listening) {
+      viteSeenListening = true;
+    } else {
       const ageMs = Date.now() - viteStartedAt;
-      if (ageMs > 60_000) {
+      // The cold pre-bundle (optimizeDeps.include) can take a while on a busy
+      // machine, so allow a generous grace before the port first serves; once
+      // vite has been seen listening, a wedge should be caught fast. Override
+      // the cold grace with ELIZA_VITE_HEALTH_GRACE_MS.
+      const coldGraceMs =
+        Number(process.env.ELIZA_VITE_HEALTH_GRACE_MS) || 120_000;
+      const limitMs = viteSeenListening ? 30_000 : coldGraceMs;
+      if (ageMs > limitMs) {
         console.log(
           `  ${green(logPrefix)} ${dim(
             `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,
@@ -1209,6 +1219,35 @@ if (uiOnly) {
   }
 
   let useWatch = !skipBunWatch;
+  // --watch on the API child re-evaluates the WHOLE resolved module graph.
+  // With --conditions=eliza-source, @elizaos/* resolve to src/*.ts, so the
+  // graph is the live TS source of core + agent + every plugin — any save to
+  // watched source SIGTERMs the API and reopens the PGlite vault. Node has no
+  // --watch-ignore; the only lever is --watch-path, which RESTRICTS the
+  // watched roots. Scope the watch to the runtime/agent source dirs so UI,
+  // test, dist, and docs edits don't reboot the agent. Opt out with
+  // ELIZA_DEV_WATCH_SCOPED=0 (e.g. a platform where recursive fs.watch throws
+  // ERR_FEATURE_UNAVAILABLE_ON_PLATFORM).
+  function resolveWatchPaths(devCwd) {
+    const elizaRoot = existsSync(path.join(devCwd, "eliza", "package.json"))
+      ? path.join(devCwd, "eliza")
+      : devCwd;
+    return [
+      path.join(elizaRoot, "packages", "app-core", "src", "runtime"),
+      path.join(elizaRoot, "packages", "agent", "src"),
+      path.join(elizaRoot, "packages", "core", "src"),
+      path.join(elizaRoot, "plugins"),
+    ].filter((candidate) => existsSync(candidate));
+  }
+  const scopedWatch = process.env.ELIZA_DEV_WATCH_SCOPED !== "0";
+  const watchPaths = useWatch && scopedWatch ? resolveWatchPaths(cwd) : [];
+  if (watchPaths.length > 0) {
+    console.log(
+      `  ${green(logPrefix)} ${dim(
+        `Scoped --watch to ${watchPaths.length} source root(s); UI/test/dist edits will not reboot the agent. Set ELIZA_DEV_WATCH_SCOPED=0 to watch the full import graph.`,
+      )}`,
+    );
+  }
   if (useWatch) {
     const elizaSubmodule = path.join(cwd, "eliza");
     const buildScanRoots = [
@@ -1235,7 +1274,12 @@ if (uiOnly) {
     "--import",
     "tsx",
     ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
-    ...(useWatch ? ["--watch"] : []),
+    ...(useWatch
+      ? [
+          "--watch",
+          ...watchPaths.map((watchPath) => `--watch-path=${watchPath}`),
+        ]
+      : []),
     devServerEntry,
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
