@@ -1378,6 +1378,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
+    limit?: number;
     count?: number;
     offset?: number;
     unique?: boolean;
@@ -1389,6 +1390,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
     const tableName = params.tableName;
+    // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
+    // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    const effectiveLimit = params.limit ?? params.count;
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
@@ -1447,10 +1451,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // Apply limit and offset for pagination
       // Build query conditionally to maintain proper types
       const rows = await (async () => {
-        if (params.count && offset !== undefined && offset > 0) {
-          return baseQuery.limit(params.count).offset(offset);
-        } else if (params.count) {
-          return baseQuery.limit(params.count);
+        if (effectiveLimit && offset !== undefined && offset > 0) {
+          return baseQuery.limit(effectiveLimit).offset(offset);
+        } else if (effectiveLimit) {
+          return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
         } else {

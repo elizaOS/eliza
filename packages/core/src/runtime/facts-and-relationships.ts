@@ -7,7 +7,12 @@ import type {
 	MessageHandlerExtractedRelationship,
 } from "../types/components";
 import type { Relationship } from "../types/environment";
-import { type Memory, MemoryType } from "../types/memory";
+import {
+	type FactKind,
+	type FactVerificationStatus,
+	type Memory,
+	MemoryType,
+} from "../types/memory";
 import type { ChatMessage, JSONSchema, ToolDefinition } from "../types/model";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
@@ -40,6 +45,14 @@ import { buildCanonicalSystemPrompt } from "./system-prompt";
 
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
 	"FACTS_AND_RELATIONSHIPS_VALIDATE";
+
+/**
+ * Confidence assigned to Stage-1 extracted facts. These are unverified,
+ * single-message extractions, so they sit below the reflection pass's
+ * confirmed-durable facts (0.7) and match the read-path default for
+ * unclassified facts (FACTS provider's DEFAULT_FACT_CONFIDENCE).
+ */
+const DEFAULT_STAGE_FACT_CONFIDENCE = 0.6;
 
 export const factsAndRelationshipsSchema: JSONSchema = {
 	type: "object",
@@ -470,6 +483,17 @@ async function persistFactsAndRelationships(
 							tags: ["fact", "extracted", "stage1"],
 							keywords,
 							extractedAt: Date.now(),
+							// Stage-1 extraction is a single-message, unverified pass.
+							// Classify as `current` (time-decaying) with default
+							// confidence so the read path treats these as transient
+							// claims rather than permanent durable identity facts (the
+							// reader otherwise defaults missing `kind` to `durable`).
+							// The reflection pass promotes confirmed facts to durable.
+							kind: "current" as FactKind,
+							category: "uncategorized",
+							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+							verificationStatus: "self_reported" as FactVerificationStatus,
+							validAt: new Date().toISOString(),
 						},
 					} as Memory,
 					"facts",

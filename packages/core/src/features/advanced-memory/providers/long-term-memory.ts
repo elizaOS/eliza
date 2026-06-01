@@ -7,7 +7,10 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
-import type { MemoryService } from "../services/memory-service.ts";
+import {
+	formatLongTermMemories,
+	type MemoryService,
+} from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 const MAX_LONG_TERM_MEMORY_TEXT_LENGTH = 5000;
@@ -75,8 +78,11 @@ export const longTermMemoryProvider: Provider = {
 				};
 			}
 
-			const formattedMemories =
-				await memoryService.getFormattedLongTermMemories(entityId);
+			// Format from the already-fetched memories rather than re-querying
+			// (getFormattedLongTermMemories would trigger a second identity-cluster
+			// fan-out, with a mismatched limit). This keeps memoryCount and the
+			// rendered text in agreement.
+			const formattedMemories = formatLongTermMemories(memories);
 			const trimmedFormattedMemories =
 				formattedMemories.length > MAX_LONG_TERM_MEMORY_TEXT_LENGTH
 					? `${formattedMemories.slice(0, MAX_LONG_TERM_MEMORY_TEXT_LENGTH)}...`
