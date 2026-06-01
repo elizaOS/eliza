@@ -5,54 +5,20 @@
  * Built as a standalone ES-module view bundle; loaded dynamically by the
  * frontend shell via `import("/api/views/views-manager/bundle.js")`.
  *
- * External dependencies (react, lucide-react) are provided by the shell host
- * environment. No @elizaos/ui import — this bundle must stay self-contained.
+ * External dependencies (react, lucide-react, @elizaos/ui) are provided by the
+ * shell host environment and externalized from this bundle.
  */
 
 import { useAgentElement } from "@elizaos/ui";
 import { LayoutGrid, PackageOpen, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+	fetchViewEntries,
+	requestViewNavigation,
+	type ViewEntry,
+} from "./viewManagerData";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface ViewEntry {
-	id: string;
-	label: string;
-	viewType?: "gui" | "tui";
-	description?: string;
-	icon?: string;
-	path?: string;
-	order?: number;
-	available: boolean;
-	bundleUrl?: string;
-	heroImageUrl?: string;
-	pluginName: string;
-}
-
-async function fetchViewEntries(
-	viewType?: "gui" | "tui",
-): Promise<ViewEntry[]> {
-	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetch(`/api/views${qs}`);
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const data = (await res.json()) as { views: ViewEntry[] };
-	return Array.isArray(data.views) ? data.views : [];
-}
-
-async function requestViewNavigation(
-	view: Pick<ViewEntry, "id" | "path" | "viewType">,
-) {
-	await fetch(
-		`/api/views/${encodeURIComponent(view.id)}/navigate${
-			view.viewType ? `?viewType=${view.viewType}` : ""
-		}`,
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ path: view.path, viewType: view.viewType }),
-		},
-	);
-}
+export { interact } from "./viewManagerData";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -528,23 +494,4 @@ export function ViewManagerTuiView() {
 			</div>
 		</div>
 	);
-}
-
-export async function interact(
-	capability: string,
-	params?: Record<string, unknown>,
-): Promise<unknown> {
-	if (capability === "terminal-list-views") {
-		return { views: await fetchViewEntries("tui") };
-	}
-	if (capability === "terminal-open-view") {
-		const viewId = typeof params?.viewId === "string" ? params.viewId : null;
-		if (!viewId) throw new Error("viewId is required");
-		const views = await fetchViewEntries("tui");
-		const view = views.find((entry) => entry.id === viewId);
-		if (!view) throw new Error(`View "${viewId}" not found`);
-		await requestViewNavigation(view);
-		return { opened: true, viewId, viewType: view.viewType ?? "gui" };
-	}
-	throw new Error(`Unsupported capability "${capability}"`);
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { interact } from "./ViewManagerView";
+import { interact } from "./viewManagerData";
 
 const viewsResponse = {
 	views: [
