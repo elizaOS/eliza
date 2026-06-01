@@ -8,6 +8,7 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
+	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
@@ -175,6 +176,60 @@ describe("live routing regressions", () => {
 			similes: ["LOOKUP_WEB"],
 		};
 		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
+	});
+
+	it("prefers an inline web-lookup over spawning a sub-agent for live-info", () => {
+		// Live regression: the planner surfaced WEB_FETCH into candidates but
+		// still selected TASKS_SPAWN_AGENT for "what's the current BTC price",
+		// spawning a coding agent instead of fetching inline. When the message
+		// reads as a live-info lookup and the direct candidates resolve to a
+		// web-lookup action, prefer the direct candidate so the spawn action is
+		// dropped from the turn.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["WEB_FETCH", "TASKS_SPAWN_AGENT"],
+				currentMessageText: "what's the current BTC price right now?",
+				directCandidateActions: ["WEB_FETCH"],
+			}),
+		).toBe(true);
+		// An explicit web-search action surfaced alongside the spawn is preferred
+		// just the same.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["TASKS_SPAWN_AGENT", "SEARCH"],
+				currentMessageText: "look up the latest ETH price",
+				directCandidateActions: ["SEARCH"],
+			}),
+		).toBe(true);
+	});
+
+	it("does not promote a coding/spawn request to a web-lookup (stays TASKS)", () => {
+		// `looksLikeWebSearchRequest` is false and `looksLikeCodingWorkRequest`
+		// is true for these, so the coding/spawn path is untouched — the planner
+		// keeps TASKS_SPAWN_AGENT and the direct web-lookup preference never fires.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["TASKS_SPAWN_AGENT"],
+				currentMessageText: "spawn a coding subagent to print today's date",
+				directCandidateActions: [],
+			}),
+		).toBe(false);
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["TASKS_SPAWN_AGENT"],
+				currentMessageText: "build a tiny static app called color-pop",
+				directCandidateActions: [],
+			}),
+		).toBe(false);
+		// Even a fabricated direct WEB_FETCH cannot promote a coding-work turn:
+		// the `looksLikeCodingWorkRequest` gate fires first.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["WEB_FETCH", "TASKS_SPAWN_AGENT"],
+				currentMessageText: "build a tiny static app called color-pop",
+				directCandidateActions: ["WEB_FETCH"],
+			}),
+		).toBe(false);
 	});
 
 	it("promotes explicit reply to direct shell/search action aliases", () => {
