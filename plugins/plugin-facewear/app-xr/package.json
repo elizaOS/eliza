@@ -25,6 +25,6 @@
     "qrcode-terminal": "^0.12.0",
     "typescript": "^5.4.0",
     "vite": "^8.0.13",
-    "vitest": "^1.0.0"
+    "vitest": "^4.1.8"
   }
 }
