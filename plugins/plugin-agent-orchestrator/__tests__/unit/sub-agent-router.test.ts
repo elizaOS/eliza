@@ -1253,7 +1253,12 @@ describe("SubAgentRouter", () => {
       expect(fetchMock).toHaveBeenCalledWith(imageUrl, expect.anything());
     });
 
-    it("rejects mapped app URLs whose local target was not written this session by default", async () => {
+    it("does not reject a served-200 mapped app URL for stale local mtime (GAP-C: live 200 is authoritative)", async () => {
+      // A deploy step that copies a build into place preserves the source
+      // file's mtime, so a healthy app can have files older than the session.
+      // The live HTTP 200 is authoritative — the wall-clock freshness gate must
+      // not false-flag it as stale (which used to spuriously suppress
+      // task_complete and withhold the real diff from "what did you change?").
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
       );
@@ -1299,13 +1304,14 @@ describe("SubAgentRouter", () => {
         });
         await new Promise((r) => setTimeout(r, 200));
 
+        // No spurious verify-retry, and the completion turn is posted as-is.
         expect(spawnSession).not.toHaveBeenCalled();
         expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
-        expect(posted?.content?.text).toContain(
+        expect(posted?.content?.text).not.toContain(
           "not updated during this session",
         );
-        expect(posted?.content?.text).toContain("[verification:");
+        expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }

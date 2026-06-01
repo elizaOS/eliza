@@ -108,7 +108,6 @@ function wrapsInShellBridge(pageFile: string): boolean {
  * controls into the ancestor registry via useAgentElement (controls-only mode).
  */
 const CONVERTED_SHELL_PAGES = [
-  "pages/HomeView",
   "pages/AppsPageView",
   "pages/ElizaOsAppsView",
   "pages/RelationshipsView",

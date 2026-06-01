@@ -250,8 +250,14 @@ export function ChatView({
   }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
 
   // ── Coding agent preflight ──────────────────────────────────────
+  // Only fire once the agent runtime is confirmed running so we don't hit the
+  // orchestrator/ACP routes during the brief post-boot window when services are
+  // still completing their async init (they return 503 until ready, and the
+  // browser logs those as red console errors even when the JS .catch swallows them).
+  const agentRunning = agentStatus?.state === "running";
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
   useEffect(() => {
+    if (!agentRunning) return;
     const controller = new AbortController();
     fetchWithCsrf("/api/coding-agents/preflight", { signal: controller.signal })
       .then((r) => r.json())
@@ -277,7 +283,7 @@ export function ChatView({
         /* preflight unavailable or aborted — hide code button */
       });
     return () => controller.abort();
-  }, []);
+  }, [agentRunning]);
 
   const handleCreateTask = useCallback(
     (description: string, agentType: string) => {

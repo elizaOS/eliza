@@ -74,3 +74,38 @@ export function sendError(
 ): void {
   sendJson(res, { error: message }, status);
 }
+
+/**
+ * Default backoff hint for clients polling a route whose backing service is
+ * still starting. The orchestrator's services (`ACP_SUBPROCESS_SERVICE`,
+ * `ORCHESTRATOR_TASK_SERVICE`) register lazily and finish `start()` a short
+ * time after the runtime's routes go live, so there is a brief window where a
+ * matched route has no service to serve. One second is long enough to avoid a
+ * tight retry loop and short enough that the UI recovers promptly.
+ */
+const SERVICE_INITIALIZING_RETRY_AFTER_MS = 1000;
+
+/**
+ * Send a 503 that honestly reports the backing service is still initializing,
+ * with a quiet-backoff signal for polling clients. This is NOT an empty-data
+ * fallback — the request genuinely cannot be served yet, so the status stays
+ * 503/unavailable. The `Retry-After` header (HTTP spec: integer seconds) plus
+ * the machine-readable `{ status: "initializing", retryAfterMs }` body let the
+ * dashboard back off instead of hammering the endpoint during the startup
+ * window. Callers pass the same human-readable message they would give
+ * `sendError(..., 503)`.
+ */
+export function sendServiceUnavailable(
+  res: ServerResponse,
+  message: string,
+  retryAfterMs = SERVICE_INITIALIZING_RETRY_AFTER_MS,
+): void {
+  const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  res.writeHead(503, {
+    "Content-Type": "application/json",
+    "Retry-After": String(retryAfterSeconds),
+  });
+  res.end(
+    JSON.stringify({ error: message, status: "initializing", retryAfterMs }),
+  );
+}
