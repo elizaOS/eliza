@@ -173,7 +173,14 @@ const runNode = () => {
     platform: process.platform,
     explicitNodePath: process.env.ELIZA_NODE_PATH,
   });
-  const nodeProcess = spawn(execPath, ["eliza.mjs", ...args], {
+  // Forks rename `eliza.mjs` to their own entry filename (e.g. `milady.mjs`).
+  // Letting them override the spawned filename via `ELIZA_ENTRY_FILE` avoids
+  // every fork having to ship a shim at the old name. Read from `env` (the
+  // local snapshot built at module load) for consistency with what the child
+  // process actually receives — `.env.worktree` overrides applied above are
+  // visible here too.
+  const entryFile = env.ELIZA_ENTRY_FILE?.trim() || "eliza.mjs";
+  const nodeProcess = spawn(execPath, [entryFile, ...args], {
     cwd,
     env,
     stdio: "inherit",

@@ -495,7 +495,7 @@ export function useFirstRunController(): FirstRunController {
       }
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [
       completeFirstRun,
@@ -543,7 +543,7 @@ export function useFirstRunController(): FirstRunController {
       await submitFirstRun(sourceDraft, "remote");
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [completeFirstRun, setState, submitFirstRun, syncIdentity],
   );
@@ -607,7 +607,7 @@ export function useFirstRunController(): FirstRunController {
       await client.submitFirstRun(plan.payload);
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [
       completeFirstRun,

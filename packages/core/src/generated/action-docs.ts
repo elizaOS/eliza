@@ -7909,6 +7909,26 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 				},
+				{
+					name: "slug",
+					description: "Skill slug for details, install, toggle, or uninstall.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Skill slug for details, install, toggle, or uninstall.",
+				},
+				{
+					name: "enabled",
+					description: "For action=toggle: true enables; false disables.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=toggle: true enables. false disables.",
+				},
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
@@ -7932,6 +7952,8 @@ export const allActionsSpec = {
 					params: {
 						SKILL: {
 							action: "search",
+							slug: "example",
+							enabled: false,
 						},
 					},
 				},

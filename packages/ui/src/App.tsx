@@ -24,7 +24,6 @@ import {
   useState,
 } from "react";
 import { createNavigateViewHandler } from "./app-navigate-view";
-import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -41,7 +40,6 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { ChatView } from "./components/pages/ChatView";
-import { HomeView } from "./components/pages/HomeView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
@@ -58,7 +56,6 @@ import {
 } from "./components/shell/ShellControllerContext";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
-import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
@@ -69,6 +66,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -80,7 +78,6 @@ import {
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
-  isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
@@ -597,7 +594,7 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    home: <HomeView />,
+    onboarding: <FirstRunScreen />,
     chat: <ChatView />,
     browser: <BrowserWorkspaceView />,
     companion: <ChatView />,
@@ -824,20 +821,6 @@ function greetingForTimeOfDay(): string {
 
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
-
-function canRenderStartupHome(
-  phase: ReturnType<typeof useApp>["startupCoordinator"]["phase"],
-  firstRunComplete: boolean,
-): boolean {
-  if (!firstRunComplete) return false;
-  return (
-    phase === "restoring-session" ||
-    phase === "resolving-target" ||
-    phase === "polling-backend" ||
-    phase === "starting-runtime" ||
-    phase === "hydrating"
-  );
-}
 
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
@@ -1127,19 +1110,9 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
-function HomeShellContent(): ReactNode {
-  return (
-    <div key="home-shell" className={`${APP_SHELL_CLASS} overflow-hidden`}>
-      <HomeView />
-    </div>
-  );
-}
-
 function ShellContent(props: ShellContentProps): ReactNode {
-  if (props.tab === "home") return <HomeShellContent />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
-  if (props.tab === "home") return <HomeShellContent />;
   if (props.tab === "stream") return <StreamShellContent />;
   if (props.isChatWorkspace) return <ChatWorkspaceShellContent {...props} />;
   if (props.isHeartbeats) return <HeartbeatsShellContent />;
@@ -1179,14 +1152,13 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat" || tab === "orchestrator";
+  return tab === "onboarding" || tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {
   const {
     startupError,
     startupCoordinator,
-    firstRunComplete,
     retryStartup,
     tab,
     setTab,
@@ -1208,10 +1180,7 @@ export function App() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
-  const renderStartupHome = canRenderStartupHome(
-    startupCoordinator.phase,
-    firstRunComplete,
-  );
+
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
     skip: !isCoordinatorReady || isPopout,
   });
@@ -1245,17 +1214,6 @@ export function App() {
     const id = schedule(() => prefetchRouteViewChunks());
     return () => cancel(id);
   }, [startupCoordinator.phase]);
-
-  // While the startup-home surface is showing, reflect it in the tab — but
-  // only when the user is on the root route. An explicit deep-link (e.g.
-  // /settings or /apps/<view>) must survive startup; pushing "home" here would
-  // rewrite the URL and strand the requested route on the home shell once the
-  // coordinator reaches "ready". Mirrors the isRoot gate in ready-phase hydration.
-  useEffect(() => {
-    if (!renderStartupHome || tab === "home") return;
-    if (!isRouteRootPath(getWindowNavigationPath())) return;
-    setTab("home");
-  }, [renderStartupHome, setTab, tab]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1685,49 +1643,6 @@ export function App() {
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
-        </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // StartupCoordinator gate — onboarding/pairing/error stay on the dedicated
-  // startup surfaces. Once first-run is complete, startup can continue in the
-  // background while the static home shell renders immediately.
-  if (
-    (startupCoordinator.phase !== "ready" || !firstRunComplete) &&
-    !renderStartupHome
-  ) {
-    // Pre-agent / first-run setup surface: the living crystal-ball-over-orange
-    // homescreen backdrop is a true full-viewport background; the first-run
-    // shell layers above it in Z and scrolls within itself.
-    return (
-      <BugReportProvider value={bugReport}>
-        <HomescreenBackdrop style={{ position: "fixed", inset: 0 }}>
-          <div
-            data-testid="pre-agent-cloud-shell"
-            className="flex h-full min-h-0 w-full flex-col overflow-y-auto text-txt"
-            style={{ borderRadius: "var(--radius-xs, 2px)" }}
-          >
-            <StartupScreen />
-          </div>
-        </HomescreenBackdrop>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  if (renderStartupHome) {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <div
-            data-testid="pre-agent-home-shell"
-            className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          >
-            <HomeShellContent />
-          </div>
-          <ShellOverlays actionNotice={actionNotice} />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

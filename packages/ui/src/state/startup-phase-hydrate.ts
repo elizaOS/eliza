@@ -298,7 +298,17 @@ export function bindReadyPhase(
       })
       .catch(() => {});
   };
-  hydratePty();
+  // Defer the initial hydration by 2 s. The orchestrator/ACP services complete
+  // their async init (setTimeout(0) + getServiceLoadPromise) a tick after the
+  // agent reports "running". Calling getCodingAgentStatus() in that gap hits
+  // routes that are still returning 503, and even though the .catch() above
+  // swallows the JS error, the browser logs every non-2xx fetch as a red
+  // console error. The WS "status" event independently triggers hydratePty()
+  // once the WebSocket connects, so deferring here does not miss session data.
+  let initialHydrateTimer: ReturnType<typeof setTimeout> | null = setTimeout(
+    hydratePty,
+    2_000,
+  );
   let ptyHydratedViaWs = false;
   // Only re-poll when sessions are active — avoids unnecessary 5-second API
   // calls during idle. WS events handle session discovery; ws-reconnected and
@@ -732,6 +742,10 @@ export function bindReadyPhase(
     unbindViewInteract();
     unbindConvUp();
     unbindPty();
+    if (initialHydrateTimer) {
+      clearTimeout(initialHydrateTimer);
+      initialHydrateTimer = null;
+    }
     if (ptyPollInterval) clearInterval(ptyPollInterval);
     if (handleVis) document.removeEventListener("visibilitychange", handleVis);
     client.disconnectWs();

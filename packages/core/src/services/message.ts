@@ -51,6 +51,7 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
+import { looksLikeTrainingCutoffLeak } from "../runtime/cutoff-leak-detector";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -61,6 +62,7 @@ import {
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
+import { looksLikeFabricatedModeration } from "../runtime/fabricated-moderation-detector";
 import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
@@ -3553,12 +3555,19 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
-	// the logic in `parseMessageHandlerOutput`: when the planner is about to
-	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
-	// dropped so the planner's own message reaches the user instead.
+	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
+	// Mirrors the logic in `parseMessageHandlerOutput`: when the planner is
+	// about to run, a prompt-contract violation in `replyText` from a
+	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
+	// leak, or a fabricated-moderation claim — is dropped so the planner's own
+	// message reaches the user instead.
 	const replyText =
-		shouldPlan && looksLikeRefusal(replyTextRaw) ? "" : replyTextRaw;
+		shouldPlan &&
+		(looksLikeRefusal(replyTextRaw) ||
+			looksLikeTrainingCutoffLeak(replyTextRaw) ||
+			looksLikeFabricatedModeration(replyTextRaw))
+			? ""
+			: replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,

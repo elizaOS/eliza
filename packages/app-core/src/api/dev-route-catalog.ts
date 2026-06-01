@@ -68,9 +68,9 @@ export interface DevRouteCatalogPayload {
  */
 const ROUTES: DevRouteEntry[] = [
   {
-    tabId: "home",
-    path: "/home",
-    label: "Home",
+    tabId: "onboarding",
+    path: "/onboarding",
+    label: "Onboarding",
     group: "Hidden",
     visibility: "all",
     featureFlag: null,
