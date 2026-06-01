@@ -85,6 +85,10 @@ function getLucideIconFileMap(): Map<string, string> {
 const LUCIDE_USED_BARREL_ID = "virtual:lucide-react-used";
 const LUCIDE_USED_BARREL_RESOLVED = `\0${LUCIDE_USED_BARREL_ID}`;
 
+// The lucide per-icon rewrite is build-only (see the plugin's configResolved).
+// In dev the barrel import is kept and pre-bundled, so we skip the rewrite.
+let lucideRewriteEnabled = true;
+
 let lucideUsedBarrelSource: string | null = null;
 function buildLucideUsedBarrelSource(): string {
   if (lucideUsedBarrelSource !== null) return lucideUsedBarrelSource;
@@ -1289,7 +1293,11 @@ export default defineConfig({
   base: "./",
   // Keep pre-bundle cache under the app dir (not node_modules/.vite) so Bun
   // installs don't fight Vite, and `bun run clean` / docs can target one path.
-  cacheDir: path.resolve(here, ".vite"),
+  // ELIZA_VITE_CACHE_DIR lets a parallel dev/measurement server use an isolated
+  // dep-optimize cache so it never invalidates the primary server's cache.
+  cacheDir: process.env.ELIZA_VITE_CACHE_DIR
+    ? path.resolve(process.env.ELIZA_VITE_CACHE_DIR)
+    : path.resolve(here, ".vite"),
   publicDir: path.resolve(here, "public"),
   define: {
     global: "globalThis",
@@ -1334,6 +1342,15 @@ export default defineConfig({
       // curated set instead of the whole library.
       name: "lucide-per-icon-imports",
       enforce: "pre" as const,
+      // The per-icon rewrite trades one barrel import for ~250 deep per-icon
+      // imports. That is correct for the production bundle (tree-shaking) but in
+      // dev it explodes into ~250 separate raw module round-trips on every cold
+      // load. In dev we instead leave the barrel import intact and pre-bundle
+      // `lucide-react` once via optimizeDeps.include (bundle size is irrelevant
+      // for the dev server), so the rewrite is build-only.
+      configResolved(resolved: { command: string }) {
+        lucideRewriteEnabled = resolved.command === "build";
+      },
       resolveId(source: string) {
         if (source === LUCIDE_USED_BARREL_ID)
           return LUCIDE_USED_BARREL_RESOLVED;
@@ -1346,6 +1363,7 @@ export default defineConfig({
         return null;
       },
       transform(code: string, id: string) {
+        if (!lucideRewriteEnabled) return null;
         if (id.includes("/node_modules/")) return null;
         if (!code.includes("lucide-react")) return null;
         const map = getLucideIconFileMap();
@@ -1834,6 +1852,15 @@ export default defineConfig({
       "three/examples/jsm/loaders/DRACOLoader.js",
       "three/examples/jsm/loaders/GLTFLoader.js",
       "three/examples/jsm/loaders/FBXLoader.js",
+      // Browser-safe deps that are otherwise served raw, file-by-file in dev
+      // (noDiscovery is on, so only this list is pre-bundled). Each entry here
+      // collapses dozens of cold-load module round-trips into one bundled chunk.
+      // lucide-react alone is ~250 per-icon requests once the build-only
+      // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
+      "lucide-react",
+      "yaml",
+      "uuid",
+      "adze",
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.
