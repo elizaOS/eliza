@@ -201,6 +201,7 @@
         "@capacitor/push-notifications": "8.0.3",
         "@capacitor/status-bar": "8.0.2",
         "@elizaos/app-core": "workspace:*",
+        "@elizaos/app-model-tester": "workspace:*",
         "@elizaos/capacitor-agent": "workspace:*",
         "@elizaos/capacitor-appblocker": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
@@ -661,7 +662,9 @@
         "@biomejs/biome": "^2.4.14",
         "@types/node": "^25.0.0",
         "bun-types": "^1.3.12",
+        "fast-check": "^3.23.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.1.7",
       },
     },
     "packages/cloud-sdk": {
@@ -4081,6 +4084,7 @@
       },
       "devDependencies": {
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "plugins/plugin-native-agent": {
@@ -4090,6 +4094,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4102,6 +4107,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4138,6 +4144,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
+        "fast-check": "^3.23.2",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
@@ -4152,8 +4159,10 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
+        "jsdom": "^29.1.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4166,6 +4175,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4179,6 +4189,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4208,6 +4219,7 @@
         "rollup": "^4.60.2",
         "swiftlint": "^2.0.0",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4237,6 +4249,7 @@
         "@capacitor/docgen": "^0.3.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4262,6 +4275,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4275,6 +4289,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4301,6 +4316,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4313,6 +4329,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4326,6 +4343,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4344,6 +4362,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4356,6 +4375,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4370,6 +4390,7 @@
         "@elizaos/native-plugin-shared-types": "workspace:*",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4382,6 +4403,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4394,6 +4416,7 @@
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -4955,7 +4978,6 @@
       "devDependencies": {
         "tsup": "^8.5.1",
         "vite": "^8.0.0",
-        "vitest": "^4.0.18",
       },
     },
     "plugins/plugin-tee": {
