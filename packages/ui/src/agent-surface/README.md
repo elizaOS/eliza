@@ -83,4 +83,3 @@ common cases.
 scoped actions at full parameter detail in the planner prompt (set by
 `POST /api/views/:id/navigate`), so the agent can act on whatever the user is
 looking at even with no intent keyword.
-</content>

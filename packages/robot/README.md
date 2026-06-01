@@ -86,5 +86,3 @@ uv run eliza-robot-benchmark-alberta --steps-per-task 16000 --seeds 3
   outside known asset dirs.
 
 See [`AGENTS.md`](./AGENTS.md) for the full agent contract.
-</content>
-</invoke>

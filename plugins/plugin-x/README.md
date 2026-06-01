@@ -115,5 +115,3 @@ bun run --cwd plugins/plugin-x format          # biome format --write
 - [Twitter API v2 docs](https://developer.twitter.com/en/docs/twitter-api)
 - [OAuth 2.0 Authorization Code with PKCE](https://developer.twitter.com/en/docs/authentication/oauth-2-0/authorization-code)
 - [Twitter automation rules](https://help.twitter.com/en/rules-and-policies/twitter-automation)
-</content>
-</invoke>

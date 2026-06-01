@@ -98,5 +98,3 @@ bun run --cwd plugins/plugin-clawville clean       # rm -rf dist
 
 To test against a local ClawVille backend, set
 `CLAWVILLE_API_URL=http://localhost:<port>` on the runtime before launching.
-</content>
-</invoke>
