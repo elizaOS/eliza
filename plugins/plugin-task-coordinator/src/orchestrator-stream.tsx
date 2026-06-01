@@ -584,18 +584,8 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
     if (truncated) blocks.push(<TruncatedNote key="content-trunc" />);
   }
 
-  if (tool.command) {
-    blocks.push(
-      <div
-        key="cmd"
-        className="rounded-md border border-border/40 bg-black/40 px-2.5 py-1 font-mono text-2xs text-txt"
-      >
-        <span className="select-none text-ok">$ </span>
-        <span className="whitespace-pre-wrap break-words">{tool.command}</span>
-      </div>,
-    );
-  }
-
+  // The command itself is already shown (untruncated on hover) in the card
+  // header, so the body carries only its output — no redundant `$` echo.
   if (tool.output) {
     const { body, truncated } = clamp(tool.output);
     blocks.push(
@@ -627,9 +617,10 @@ function ToolCallCard({
   const badge = STATUS_BADGE[tool.status];
   const BadgeIcon = badge.icon;
   const target = toolTarget(tool);
-  const hasBody = Boolean(
-    tool.newText !== undefined || tool.command || tool.output,
-  );
+  // The command lives in the header; only a diff/new content or captured
+  // output makes the card expandable. A command that printed nothing is a
+  // single tidy line — no chevron, no empty body.
+  const hasBody = Boolean(tool.newText !== undefined || tool.output);
   // Edit/write magnitude shown on the collapsed header so the reader sees the
   // size of a change without expanding it.
   const diffStat = useMemo(
@@ -644,7 +635,12 @@ function ToolCallCard({
   const meta: string[] = [];
   if (typeof tool.exitCode === "number" && tool.exitCode !== 0)
     meta.push(`exit ${tool.exitCode}`);
-  if (tool.durationMs !== undefined) meta.push(formatDuration(tool.durationMs));
+  // Only surface a duration once it's meaningful. A non-streaming command
+  // (e.g. `pip install --quiet`) emits its start and end events within the
+  // same tick, so a sub-second event-span is a logging artifact, not a real
+  // runtime — showing "1ms" for a multi-second install would be misleading.
+  if (tool.durationMs !== undefined && tool.durationMs >= 1000)
+    meta.push(formatDuration(tool.durationMs));
   // Open by default while the agent is mid-edit so the change is visible as it
   // streams; collapse finished read/search calls to keep the room scannable.
   const [open, setOpen] = useState(
@@ -673,7 +669,10 @@ function ToolCallCard({
           {tool.title}
         </span>
         {target && target !== tool.title ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted">
+          <span
+            title={target}
+            className="min-w-0 flex-1 truncate font-mono text-2xs text-muted"
+          >
             {target}
           </span>
         ) : (
