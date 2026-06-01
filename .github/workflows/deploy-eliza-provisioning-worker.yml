@@ -103,6 +103,49 @@ jobs:
           fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
+      - name: Ensure host prereqs (Node 24, swap, bunx symlink)
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            # Idempotent safety net for hosts provisioned BEFORE the cloud-init
+            # template that pre-installs these. Each block is a no-op if already
+            # set up — runs on every deploy so any host drift self-heals.
+
+            # Node 24: the systemd unit calls `tsx` which spawns a Node process.
+            # New cloud-init template installs it via NodeSource; older hosts
+            # (eliza-staging-1 from the first TF apply) lack it.
+            if ! command -v node >/dev/null 2>&1; then
+              echo "[host-prereqs] installing Node 24"
+              curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash -
+              sudo apt-get install -y nodejs
+            fi
+
+            # Swap: smaller shapes (cpx22, cax11) OOM during `turbo run build`.
+            # 8 GB swap once and forever; harmless on bigger shapes.
+            if [ ! -f /swapfile ]; then
+              echo "[host-prereqs] adding 8GB swap"
+              sudo fallocate -l 8G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+            fi
+
+            # bunx symlink: the canary `bun.sh/install` tarball stopped shipping
+            # bunx as a separate binary at some point; build scripts that call
+            # `bunx tsc` etc. then fail with `bun: command not found: bunx`.
+            # `bunx` is just `bun` reading argv[0] — a symlink is sufficient.
+            if [ ! -e /home/deploy/.bun/bin/bunx ] && [ -e /home/deploy/.bun/bin/bun ]; then
+              echo "[host-prereqs] creating bunx symlink"
+              ln -sf bun /home/deploy/.bun/bin/bunx
+            fi
+
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -198,6 +241,17 @@ jobs:
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
             bun run --cwd plugins/plugin-sql build
+
+            # Defensive workspace symlinks: `bun install` should create these
+            # automatically for any workspace package the root or a sibling
+            # depends on, but the daemon (in packages/scripts/, which has NO
+            # package.json and so is invisible to bun's workspace graph)
+            # imports `@elizaos/cloud-shared` at runtime. On a fresh host the
+            # symlink was missing — daemon then crashes with
+            # `Cannot find package '@elizaos/cloud-shared'`. Recreate it here
+            # idempotently after `bun install` is done.
+            mkdir -p node_modules/@elizaos
+            ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
