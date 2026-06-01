@@ -856,6 +856,20 @@ export class ActiveModelCoordinator {
 		status: "idle",
 	};
 
+	/**
+	 * The last model that successfully reached `status: "ready"`, plus the
+	 * inputs needed to re-load it. switchTo() tears the active model down
+	 * before loading the new one (unload-then-load); if the new load fails we
+	 * restore this so a failed switch never leaves the host with zero models
+	 * loaded while a working one existed moments earlier. `null` until the
+	 * first successful load (or after an unload).
+	 */
+	private lastReady: {
+		installed: InstalledModel;
+		overrides?: LocalInferenceLoadOverrides;
+		state: ActiveModelState;
+	} | null = null;
+
 	private readonly listeners = new Set<(state: ActiveModelState) => void>();
 
 	snapshot(): ActiveModelState {
@@ -945,76 +959,126 @@ export class ActiveModelCoordinator {
 		// path for users who haven't separately enabled plugin-local-ai.
 		const loader = this.getLoader(runtime);
 
+		// Snapshot the previously-active model BEFORE the unload-then-load tears
+		// it down, so a failed switch can restore it instead of leaving zero
+		// models loaded under the requested id.
+		const previous = this.lastReady;
+
 		try {
-			// RAM-budget admission control (W10 / J1): refuse a model that won't
-			// fit this host *before* touching the loader, so we never half-load
-			// and OOM. `assertModelFitsHost` throws `ModelDoesNotFitError` with
-			// the specific numbers + the largest fitting variant of the tier.
-			const probe = opts.hardware ?? (await probeHardware());
-			const admission = assertModelFitsHost(
-				installed,
-				hostRamMbFromProbe(probe),
-			);
-			if (admission.level === "tight") {
-				console.warn(
-					`[local-inference] Loading "${installed.id}" with tight RAM headroom (~${admission.minMb} MB floor, ${admission.recommendedMb} MB recommended; ${hostRamMbFromProbe(probe)} MB host). Expect swapping under sustained load.`,
-				);
-			}
-			const resolved = await resolveLocalInferenceLoadArgs(
-				installed,
-				overrides,
-			);
-			// WS2: warn one-shot when the tier declares vision but the
-			// per-tier mmproj GGUF isn't on disk yet. The text load still
-			// proceeds; vision capability is degraded for this session
-			// (plugin-vision falls back to its Florence-2 path).
-			this.warnIfVisionDegraded(installed, resolved.mmprojPath);
-			if (loader) {
-				await loader.unloadModel();
-				await loader.loadModel(resolved);
-			} else {
-				await localInferenceEngine.load(installed.path, resolved);
-			}
-			const runtimeLoad = loader
-				? null
-				: localInferenceEngine.currentRuntimeLoadConfig();
-			// Surface the effective load config so consumers (the benchmark
-			// harness, the Settings UI, the active-model SSE) can verify the
-			// requested overrides actually took hold instead of silently
-			// falling back to a smaller context or fp16 KV.
-			this.state = {
-				modelId: installed.id,
-				loadedAt: new Date().toISOString(),
-				status: "ready",
-				loadedContextSize:
-					runtimeLoad?.contextSize ?? resolved.contextSize ?? null,
-				loadedCacheTypeK: runtimeLoad
-					? runtimeLoad.cacheTypeK
-					: (resolved.cacheTypeK ?? null),
-				loadedCacheTypeV: runtimeLoad
-					? runtimeLoad.cacheTypeV
-					: (resolved.cacheTypeV ?? null),
-				loadedGpuLayers:
-					runtimeLoad !== null
-						? runtimeLoad.gpuLayers
-						: typeof resolved.gpuLayers === "number"
-							? resolved.gpuLayers
-							: null,
-			};
+			const ready = await this.performLoad(loader, installed, overrides, opts);
+			this.state = ready;
+			this.lastReady = { installed, overrides, state: ready };
 			if (installed.source === "eliza-download") {
 				await touchElizaModel(installed.id);
 			}
 		} catch (err) {
+			const failure = err instanceof Error ? err.message : String(err);
+			// Attempt to restore the previously-active model. The unload-then-load
+			// already tore it down, so without this the host has no model loaded.
+			if (previous && previous.installed.id !== installed.id) {
+				try {
+					const restored = await this.performLoad(
+						loader,
+						previous.installed,
+						previous.overrides,
+						opts,
+					);
+					this.state = restored;
+					this.lastReady = {
+						installed: previous.installed,
+						overrides: previous.overrides,
+						state: restored,
+					};
+					console.warn(
+						`[local-inference] Failed to switch to "${installed.id}" (${failure}); restored previously-active model "${previous.installed.id}".`,
+					);
+					this.emit();
+					return this.snapshot();
+				} catch (restoreErr) {
+					const restoreFailure =
+						restoreErr instanceof Error
+							? restoreErr.message
+							: String(restoreErr);
+					console.error(
+						`[local-inference] Failed to switch to "${installed.id}" (${failure}) AND failed to restore "${previous.installed.id}" (${restoreFailure}). No model is loaded.`,
+					);
+				}
+			}
+			// No prior model to restore (or restore also failed): report honestly
+			// that nothing is loaded rather than attributing a phantom id.
+			this.lastReady = null;
 			this.state = {
-				modelId: installed.id,
+				modelId: null,
 				loadedAt: null,
 				status: "error",
-				error: err instanceof Error ? err.message : String(err),
+				error: failure,
 			};
 		}
 
 		this.emit();
 		return this.snapshot();
+	}
+
+	/**
+	 * Run the unload-then-load against the loader (or standalone engine) and
+	 * build the `status: "ready"` state. Throws on any load failure; never
+	 * mutates `this.state`/`this.lastReady` so callers control rollback.
+	 */
+	private async performLoad(
+		loader: LocalInferenceLoader | null,
+		installed: InstalledModel,
+		overrides: LocalInferenceLoadOverrides | undefined,
+		opts: { hardware?: HardwareProbe; manifestLoader?: ManifestLoader },
+	): Promise<ActiveModelState> {
+		// RAM-budget admission control (W10 / J1): refuse a model that won't
+		// fit this host *before* touching the loader, so we never half-load
+		// and OOM. `assertModelFitsHost` throws `ModelDoesNotFitError` with
+		// the specific numbers + the largest fitting variant of the tier.
+		const probe = opts.hardware ?? (await probeHardware());
+		const admission = assertModelFitsHost(installed, hostRamMbFromProbe(probe));
+		if (admission.level === "tight") {
+			console.warn(
+				`[local-inference] Loading "${installed.id}" with tight RAM headroom (~${admission.minMb} MB floor, ${admission.recommendedMb} MB recommended; ${hostRamMbFromProbe(probe)} MB host). Expect swapping under sustained load.`,
+			);
+		}
+		const resolved = await resolveLocalInferenceLoadArgs(installed, overrides);
+		// WS2: warn one-shot when the tier declares vision but the
+		// per-tier mmproj GGUF isn't on disk yet. The text load still
+		// proceeds; vision capability is degraded for this session
+		// (plugin-vision falls back to its Florence-2 path).
+		this.warnIfVisionDegraded(installed, resolved.mmprojPath);
+		if (loader) {
+			await loader.unloadModel();
+			await loader.loadModel(resolved);
+		} else {
+			await localInferenceEngine.load(installed.path, resolved);
+		}
+		const runtimeLoad = loader
+			? null
+			: localInferenceEngine.currentRuntimeLoadConfig();
+		// Surface the effective load config so consumers (the benchmark
+		// harness, the Settings UI, the active-model SSE) can verify the
+		// requested overrides actually took hold instead of silently
+		// falling back to a smaller context or fp16 KV.
+		return {
+			modelId: installed.id,
+			loadedAt: new Date().toISOString(),
+			status: "ready",
+			loadedContextSize:
+				runtimeLoad?.contextSize ?? resolved.contextSize ?? null,
+			loadedCacheTypeK: runtimeLoad
+				? runtimeLoad.cacheTypeK
+				: (resolved.cacheTypeK ?? null),
+			loadedCacheTypeV: runtimeLoad
+				? runtimeLoad.cacheTypeV
+				: (resolved.cacheTypeV ?? null),
+			loadedGpuLayers:
+				runtimeLoad !== null
+					? runtimeLoad.gpuLayers
+					: typeof resolved.gpuLayers === "number"
+						? resolved.gpuLayers
+						: null,
+		};
 	}
 
 	async unload(runtime: AgentRuntime | null): Promise<ActiveModelState> {
@@ -1039,6 +1103,10 @@ export class ActiveModelCoordinator {
 			this.emit();
 			return this.snapshot();
 		}
+		// The model was deliberately unloaded — drop the restore snapshot so a
+		// later failed switch doesn't silently re-load a model the operator
+		// asked to unload.
+		this.lastReady = null;
 		this.state = {
 			modelId: null,
 			loadedAt: null,
