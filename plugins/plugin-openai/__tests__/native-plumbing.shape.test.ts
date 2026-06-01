@@ -69,6 +69,10 @@ vi.mock("ai", () => ({
 vi.mock("../providers", () => ({
   createOpenAIClient: () => ({
     chat: (modelName: string) => ({ modelName }),
+    // Genuine-OpenAI text now routes through the Responses API so the
+    // agent-level injector can attach `web_search`; both surfaces share the
+    // same param plumbing these tests assert.
+    responses: (modelName: string) => ({ modelName }),
   }),
 }));
 

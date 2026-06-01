@@ -4377,15 +4377,15 @@ export async function startEliza(
     }
   };
 
-  const installAnthropicWebSearchIfAvailable = async (): Promise<void> => {
+  const installServerSideWebSearchIfAvailable = async (): Promise<void> => {
     try {
-      const { installAnthropicWebSearch } = await import(
+      const { installServerSideWebSearch } = await import(
         "./web-search-tools.ts"
       );
-      installAnthropicWebSearch(runtime);
+      installServerSideWebSearch();
     } catch (err) {
       logger.debug(
-        `[eliza] Anthropic web search setup skipped: ${formatError(err)}`,
+        `[eliza] Server-side web search setup skipped: ${formatError(err)}`,
       );
     }
   };
@@ -4603,7 +4603,7 @@ export async function startEliza(
     await registerConversationProximityProvider();
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
-    await installAnthropicWebSearchIfAvailable();
+    await installServerSideWebSearchIfAvailable();
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();

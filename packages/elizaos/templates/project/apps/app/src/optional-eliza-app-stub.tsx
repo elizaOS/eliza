@@ -57,18 +57,6 @@ export function useCompanionSceneStatus() {
   return { avatarReady: false, teleportKey: "" };
 }
 
-export function useVincentState() {
-  return {
-    vincentConnected: false,
-    vincentLoginBusy: false,
-    vincentLoginError: null,
-    vincentConnectedAt: null,
-    handleVincentLogin: async () => {},
-    handleVincentDisconnect: async () => {},
-    pollVincentStatus: async () => false,
-  };
-}
-
 export function clearBackendCache() {}
 export async function detectAvailableBackends() {
   return { available: false, backends: [] };

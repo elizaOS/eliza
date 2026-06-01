@@ -316,8 +316,6 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   ValidationFunction,
-  VincentStateHookArgs,
-  VincentStateHookResult,
   VisibilityOperator,
 } from "./config";
 export * from "./config/index";

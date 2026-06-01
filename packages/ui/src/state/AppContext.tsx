@@ -77,7 +77,6 @@ import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTriggersState } from "./useTriggersState";
-import { useVincentState } from "./useVincentState";
 import { useWalletState } from "./useWalletState";
 
 export {
@@ -1100,15 +1099,6 @@ function AppProviderInner({
     disconnectLocked: brandingOverride?.cloudOnly === true,
   });
 
-  // ── Vincent state (extracted to useVincentState) ──────────────────
-  const vincentHook = useVincentState({ setActionNotice, t });
-  const {
-    vincentConnected,
-    vincentLoginBusy,
-    vincentLoginError,
-    handleVincentLogin,
-    handleVincentDisconnect,
-  } = vincentHook;
   const {
     elizaCloudEnabled,
     setElizaCloudEnabled,
@@ -2269,11 +2259,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2680,11 +2665,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
