@@ -373,14 +373,16 @@ function registeredAppShellPagePaths(): string[] {
 
 function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
   const source = readFileSync(PLUGIN_VIEWS_SPEC, "utf8");
-  return [...source.matchAll(/\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"\]/g)].map(
-    (match) => ({
-      manifestPath: PLUGIN_VIEWS_SPEC,
-      id: match[1] ?? "",
-      viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
-      path: match[3] ?? "",
-    }),
-  );
+  return [
+    ...source.matchAll(
+      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
+    ),
+  ].map((match) => ({
+    manifestPath: PLUGIN_VIEWS_SPEC,
+    id: match[1] ?? "",
+    viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
+    path: match[3] ?? "",
+  }));
 }
 
 function pluginViewCaseKey(viewCase: Pick<PluginViewCase, "id" | "viewType">) {

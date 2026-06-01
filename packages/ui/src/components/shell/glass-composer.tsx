@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -48,16 +48,40 @@ export function GlassIconButton({
   onPointerUp?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerCancel?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }): React.JSX.Element {
+  const pointerActivatedRef = React.useRef(false);
+  const handleClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (pointerActivatedRef.current) {
+        pointerActivatedRef.current = false;
+        return;
+      }
+      onClick?.(event);
+    },
+    [onClick],
+  );
+  const handleMouseDown = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (onPointerDown || onPointerUp || !onClick) return;
+      pointerActivatedRef.current = true;
+      onClick(event);
+      window.setTimeout(() => {
+        pointerActivatedRef.current = false;
+      }, 0);
+    },
+    [onClick, onPointerDown, onPointerUp],
+  );
+
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={icon === "mic" ? active : undefined}
       disabled={disabled}
-      onClick={onClick}
+      onClick={handleClick}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onMouseDown={handleMouseDown}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center transition-transform",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0",
@@ -67,7 +91,7 @@ export function GlassIconButton({
     >
       <svg
         viewBox="0 0 36 36"
-        className="h-full w-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none h-full w-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
         aria-hidden="true"
       >
         <path

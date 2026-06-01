@@ -32,8 +32,16 @@ type RenderTelemetrySink = (event: RenderTelemetryEvent) => void;
 
 let renderTelemetrySink: RenderTelemetrySink | null = null;
 
+type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
+};
+
 function readEnvValue(key: string): boolean | string | undefined {
   const meta = import.meta as ImportMetaWithEnv;
+  if (key === "VITE_ELIZA_RENDER_TELEMETRY") {
+    const explicit = meta.env?.VITE_ELIZA_RENDER_TELEMETRY;
+    if (explicit !== undefined) return explicit;
+  }
   const viteValue = meta.env?.[key];
   if (viteValue !== undefined) return viteValue;
   if (typeof process !== "undefined") {
@@ -43,6 +51,13 @@ function readEnvValue(key: string): boolean | string | undefined {
 }
 
 function isRenderTelemetryEnabled(): boolean {
+  if (
+    (globalThis as RenderTelemetryGlobal)
+      .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
+  ) {
+    return false;
+  }
+
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
   if (explicit === false || explicit === "0" || explicit === "false") {
     return false;

@@ -33,7 +33,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
       - name: Determine changed files
         id: changed

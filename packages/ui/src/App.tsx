@@ -73,6 +73,7 @@ import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
+import { Z_SHELL_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -1821,7 +1822,10 @@ export function App() {
           tab !== "views" && <GameViewOverlay />}
         <ShellOverlays actionNotice={actionNotice} />
         {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center">
+          <div
+            className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center"
+            style={{ zIndex: Z_SHELL_OVERLAY }}
+          >
             <ShellFoundationMount />
           </div>
         ) : null}

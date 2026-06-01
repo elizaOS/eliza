@@ -35,6 +35,7 @@ const PROXY_TARGET =
 const LIVE_DASHBOARD_ROUTES = [
   "/dashboard",
   "/dashboard/account",
+  "/dashboard/security",
   "/dashboard/settings",
   "/dashboard/billing",
   "/dashboard/agents",

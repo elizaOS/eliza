@@ -1,5 +1,16 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DockerNode } from "../../../db/repositories/docker-nodes";
+
+const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
+const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}
 
 const mocks = {
   nodes: [] as DockerNode[],
@@ -26,15 +37,6 @@ mock.module("../../../db/repositories/docker-nodes", () => ({
 mock.module("../docker-node-workloads", () => ({
   countAllocatedWorkloadsOnNode: mocks.countAllocated,
   countRetainedWorkloadsOnNode: mocks.countRetained,
-}));
-
-mock.module("../../config/containers-env", () => ({
-  containersEnv: {
-    defaultAgentImage: () => "ghcr.io/elizaos/eliza:latest",
-    defaultAgentImagePlatform: () => "linux/arm64",
-    defaultHcloudLocation: () => "fsn1",
-    defaultHcloudServerType: () => "cax21",
-  },
 }));
 
 mock.module("./hetzner-cloud-api", () => ({
@@ -73,7 +75,14 @@ const policy: AutoscalePolicy = {
 };
 
 describe("NodeAutoscaler Hetzner provisioning", () => {
+  let originalAgentImage: string | undefined;
+  let originalAgentImagePlatform: string | undefined;
+
   beforeEach(() => {
+    originalAgentImage = process.env[AGENT_IMAGE];
+    originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
+    process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
     mocks.createNode.mockClear();
     mocks.findAllNodes.mockClear();
     mocks.createServer.mockClear();
@@ -99,6 +108,11 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       },
       rootPassword: "root-secret",
     });
+  });
+
+  afterEach(() => {
+    restoreEnv(AGENT_IMAGE, originalAgentImage);
+    restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
   });
 
   test("creates a Hetzner server and registers the autoscaled docker node", async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
@@ -96,6 +96,10 @@ describe("runOnboardingChat", () => {
     generateText.mockReset();
     launchManagedElizaAgent.mockReset();
     cloudEnv = {};
+  });
+
+  afterEach(() => {
+    cloudEnv = process.env;
   });
 
   test("asks for a name before provisioning a trusted phone onboarding session", async () => {

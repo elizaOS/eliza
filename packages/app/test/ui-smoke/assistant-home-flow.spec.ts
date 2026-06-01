@@ -678,9 +678,7 @@ test.describe("assistant home app flow", () => {
     const mic = page.getByRole("button", { name: /start voice input/i });
     await expect(mic).toBeEnabled({ timeout: 30_000 });
     await mic.click();
-    await expect(
-      page.getByRole("button", { name: /stop voice input/i }),
-    ).toBeVisible();
+    await expect(page.getByTestId("home-voice-stop")).toBeVisible();
 
     const accepted = await page.evaluate(() => {
       const simulate = (
@@ -780,9 +778,9 @@ test.describe("assistant home app flow", () => {
     await page.mouse.down();
     // Holding past the push-to-talk threshold (200ms) begins capture, which
     // flips the trailing control into its "stop" state.
-    await expect(
-      page.getByRole("button", { name: /stop voice input/i }),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("home-voice-stop")).toBeVisible({
+      timeout: 5_000,
+    });
 
     const accepted = await page.evaluate(() => {
       const simulate = (

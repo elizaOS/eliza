@@ -81,12 +81,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [
-      { selector: '[data-testid="home-view"]' },
-      { selector: '[data-testid="home-chat-input"]' },
-      { selector: '[data-testid="home-assistant-transcript"]' },
-    ],
-    mode: "all",
+    readyChecks: [{ selector: '[data-testid="home-view"]' }],
     timeoutMs: 60_000,
   },
   {

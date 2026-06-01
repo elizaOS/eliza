@@ -12,6 +12,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpStub,
 } from "./_helpers/app-control-http-stub";
+import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
 type RuntimeWithScenarioLlmFixtures = {
   actions?: Array<{
@@ -54,13 +55,6 @@ function readPath(value: unknown, path: string): unknown {
 
 function valuesEqual(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected);
-}
-
-function matchesScenarioInput(expected: string) {
-  return (value: string) =>
-    value === expected ||
-    value.endsWith(`message:user:\n${expected}`) ||
-    value.includes(`\nmessage:user:\n${expected}`);
 }
 
 function expectRoutedAction(

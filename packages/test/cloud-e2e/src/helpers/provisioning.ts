@@ -18,6 +18,7 @@ export async function createCloudAgent(
   endpoints: ProvisioningEndpoints,
   apiKey: string,
   agentName: string,
+  options: { dockerImage?: string } = {},
 ): Promise<string> {
   const res = await fetch(`${endpoints.apiUrl}/api/v1/eliza/agents`, {
     method: "POST",
@@ -25,7 +26,10 @@ export async function createCloudAgent(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ agentName }),
+    body: JSON.stringify({
+      agentName,
+      ...(options.dockerImage ? { dockerImage: options.dockerImage } : {}),
+    }),
   });
 
   expect(
@@ -42,6 +46,21 @@ export async function createCloudAgent(
     body.sandboxId ?? body.id ?? body.data?.sandboxId ?? body.data?.id;
   expect(sandboxId, "expected sandbox id from create response").toBeTruthy();
   return sandboxId as string;
+}
+
+export async function getPersistedDockerImage(
+  sandboxId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const { agentSandboxesRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+  );
+  const row = await agentSandboxesRepository.findByIdAndOrg(
+    sandboxId,
+    organizationId,
+  );
+  expect(row, `expected persisted sandbox ${sandboxId}`).toBeTruthy();
+  return row?.docker_image ?? null;
 }
 
 export async function startAgentProvisioning(

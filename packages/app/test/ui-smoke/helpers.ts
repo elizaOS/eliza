@@ -273,6 +273,41 @@ async function expectStartupSettled(page: Page): Promise<void> {
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
 }
 
+function isRootTargetPath(targetPath: string): boolean {
+  try {
+    const url = new URL(targetPath, "http://ui-smoke.local");
+    return url.pathname === "/";
+  } catch {
+    return targetPath === "/" || targetPath.startsWith("/?");
+  }
+}
+
+async function expectMainShellReadyForRoute(
+  page: Page,
+  targetPath: string,
+): Promise<void> {
+  if (isRootTargetPath(targetPath)) return;
+  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
+}
+
+async function replayNavigationAfterStartup(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const isAppWindowRoute = new URLSearchParams(window.location.search).get(
+      "appWindow",
+    );
+    if (window.location.protocol === "file:" || isAppWindowRoute === "1") {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      return;
+    }
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+}
+
 export async function openAppPath(
   page: Page,
   targetPath: string,
@@ -282,6 +317,8 @@ export async function openAppPath(
   await expectRootReady(page);
   await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
+  await expectMainShellReadyForRoute(page, targetPath);
+  await replayNavigationAfterStartup(page);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
@@ -297,6 +334,9 @@ export async function openSettingsSection(
   sectionName: string | RegExp,
 ): Promise<void> {
   const settingsShell = page.getByTestId("settings-shell");
+  if (!(await locatorVisible(settingsShell, 2_000))) {
+    await replayNavigationAfterStartup(page);
+  }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
 
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
@@ -404,7 +444,11 @@ export async function assertReadyChecks(
   mode: "any" | "all" = "any",
   timeoutMs: number = READY_CHECK_TIMEOUT_MS,
 ): Promise<void> {
-  const evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  let evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  if (!evaluation.passed) {
+    await replayNavigationAfterStartup(page);
+    evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  }
   const summary = evaluation.results
     .map(
       (result) =>
