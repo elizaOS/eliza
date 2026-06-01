@@ -244,13 +244,16 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
  * left unset.
  *
- * In Cerebras mode the field defaults to `"low"` when unset: gpt-oss-120b
- * emits a separate reasoning channel and, left unbounded, spends the whole
- * token budget reasoning — returning empty visible content, which makes the
- * agent fall back to "I don't have a reply for that". `"low"` keeps reasoning
- * short so a reply always materializes. For non-Cerebras models an unset/
- * invalid value yields `undefined`, so they pay no overhead and the wire
- * stays clean. An explicit valid `OPENAI_REASONING_EFFORT` always wins.
+ * In Cerebras mode the field defaults to `"low"` when unset, but ONLY for
+ * reasoning-capable models (e.g. gpt-oss-*, deepseek-r1, qwen-3-thinking):
+ * gpt-oss-120b emits a separate reasoning channel and, left unbounded, spends
+ * the whole token budget reasoning — returning empty visible content, which
+ * makes the agent fall back to "I don't have a reply for that". `"low"` keeps
+ * reasoning short so a reply always materializes. Non-reasoning Cerebras models
+ * (Llama, etc.) reject `reasoning_effort`, so they must never receive the
+ * default. For all other models an unset/invalid value yields `undefined`, so
+ * they pay no overhead and the wire stays clean. An explicit valid
+ * `OPENAI_REASONING_EFFORT` always wins.
  *
  * Valid values follow the OpenAI spec exactly: `minimal`, `low`,
  * `medium`, `high`. Anything else is logged and ignored.
@@ -259,7 +262,30 @@ type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 
 const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "medium", "high"];
 
-function resolveReasoningEffort(runtime: IAgentRuntime): ReasoningEffort | undefined {
+/**
+ * Reasoning-capable model families that emit a separate reasoning channel and
+ * honor `reasoning_effort`. Used to gate the Cerebras `"low"` default so
+ * non-reasoning models (Llama, etc.) are never sent the field.
+ */
+function isReasoningModel(modelName: string | undefined): boolean {
+  if (!modelName) return false;
+  const m = modelName.toLowerCase();
+  return (
+    m.includes("gpt-oss") ||
+    m.includes("o1") ||
+    m.includes("o3") ||
+    m.includes("o4") ||
+    m.includes("deepseek-r1") ||
+    m.includes("thinking") ||
+    m.includes("reasoning") ||
+    m.includes("qwq")
+  );
+}
+
+function resolveReasoningEffort(
+  runtime: IAgentRuntime,
+  modelName?: string
+): ReasoningEffort | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -271,9 +297,11 @@ function resolveReasoningEffort(runtime: IAgentRuntime): ReasoningEffort | undef
     );
   }
   // gpt-oss-120b on Cerebras returns empty content when reasoning runs
-  // unbounded; default to "low" so a visible reply always fits. An explicit
-  // valid value above wins over this default.
-  if (isCerebrasMode(runtime)) {
+  // unbounded; default to "low" so a visible reply always fits — but only for
+  // reasoning-capable models. Non-reasoning Cerebras models (Llama, etc.)
+  // reject `reasoning_effort` and would break. An explicit valid value above
+  // wins over this default.
+  if (isCerebrasMode(runtime) && isReasoningModel(modelName)) {
     return "low";
   }
   return undefined;
@@ -281,12 +309,13 @@ function resolveReasoningEffort(runtime: IAgentRuntime): ReasoningEffort | undef
 
 function resolveProviderOptions(
   params: GenerateTextParams,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
+  modelName?: string
 ): Record<string, unknown> | undefined {
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
-  const reasoningEffort = resolveReasoningEffort(runtime);
+  const reasoningEffort = resolveReasoningEffort(runtime, modelName);
 
   if (
     !rawProviderOptions &&
@@ -929,7 +958,7 @@ async function generateTextByModelType(
   const modelName = getModelFn(runtime);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
-  const providerOptions = resolveProviderOptions(params, runtime);
+  const providerOptions = resolveProviderOptions(params, runtime, modelName);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
   const userContent = hasAttachments ? buildUserContent(paramsWithAttachments) : undefined;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
