@@ -1333,9 +1333,36 @@ function watchWorkspacePackagesPlugin(): Plugin {
     configureServer(server) {
       const watcherStartedAt = Date.now();
       const seenMtimes = new Map<string, number>();
-      server.watcher.add(path.resolve(elizaRoot, "packages"));
-      server.watcher.add(nativePluginsRoot);
+      // Watch ONLY workspace package.json manifests — an alias/dependency change
+      // there needs a full Vite restart. We deliberately do NOT add the entire
+      // packages/ + plugins/ trees: that re-globbed ~45k files (including ~1GB of
+      // benchmarks/os), bypassed server.watch.ignored, risked exhausting
+      // fs.inotify watches, and — via the old blanket full-reload below — turned
+      // every workspace source edit into a full page reload instead of HMR.
+      // Imported workspace *source* is already watched through Vite's module
+      // graph, so React Fast Refresh / HMR handles those edits natively.
+      const workspaceManifests: string[] = [];
+      for (const root of [
+        path.resolve(elizaRoot, "packages"),
+        nativePluginsRoot,
+      ]) {
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(root, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const manifest = path.join(root, entry.name, "package.json");
+          if (fs.existsSync(manifest)) workspaceManifests.push(manifest);
+        }
+      }
+      server.watcher.add(workspaceManifests);
       server.watcher.on("change", (file) => {
+        // Source edits are handled by Vite's own HMR / Fast Refresh; only a
+        // workspace manifest change forces a full server restart.
+        if (!file.endsWith("package.json")) return;
         const normalizedFile = file.split(path.sep).join("/");
         if (isIgnoredWorkspaceGeneratedOutput(normalizedFile)) return;
         const stat = fs.statSync(file, { throwIfNoEntry: false });
@@ -1343,14 +1370,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
         if (stat.mtimeMs < watcherStartedAt - 1000) return;
         if (seenMtimes.get(normalizedFile) === stat.mtimeMs) return;
         seenMtimes.set(normalizedFile, stat.mtimeMs);
-        if (file.includes("/packages/")) {
-          if (file.endsWith("package.json")) {
-            server.restart();
-          } else {
-            // Force a full reload on any other package file change (e.g. ts/tsx files)
-            server.hot.send({ type: "full-reload" });
-          }
-        }
+        server.restart();
       });
     },
   };
