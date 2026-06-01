@@ -3,7 +3,8 @@
  */
 
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
-import { Button, StatusBadge, useAgentElement } from "@elizaos/ui";
+import { Button, StatusBadge } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Copy, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 

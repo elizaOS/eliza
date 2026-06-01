@@ -1,6 +1,6 @@
 # @elizaos/plugin-matrix
 
-Matrix messaging integration plugin for ElizaOS agents.
+Matrix messaging integration plugin for elizaOS agents.
 
 ## Features
 
@@ -60,10 +60,7 @@ Set the following environment variables:
 
 ```typescript
 import matrixPlugin from "@elizaos/plugin-matrix";
-
-const agent = new Agent({
-  plugins: [matrixPlugin],
-});
+// Pass to the plugin list when constructing an AgentRuntime or character config.
 ```
 
 ### Actions

@@ -1,93 +1,67 @@
 # elizaOS Documentation
 
-Documentation for [elizaOS](https://github.com/elizaOS/eliza): an agent framework with memory, planning, and tool use.
+Source for the [elizaOS](https://github.com/elizaOS/eliza) documentation site, built with [Mintlify](https://mintlify.com). Covers the OS, runtime, app layer, Eliza Cloud, Chip, and Robot tracks.
 
-## Development
+## Local Development
 
-### Prerequisites
-
-- Node.js (v23 or higher)
-- bun (or npm/yarn)
-
-### Local Development Setup
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview documentation changes locally:
+Install the Mintlify CLI, then preview from this directory:
 
 ```bash
 bun install -g mint
+cd packages/docs
+mint dev
 ```
 
-### Running Locally
+The preview starts at `http://localhost:3000`. Brand assets (logos, favicons, OG embeds, banners) are automatically synced from `packages/shared` before dev and build.
 
-From the repository root:
-
-```bash
-cd packages/docs && mint dev
-```
-
-This starts a local preview, usually at `http://localhost:3000`. The repository root also has a `docs` symlink to `packages/docs` so existing `docs/...` paths keep resolving.
-
-### Project structure
+## Project Structure
 
 ```
 packages/docs/
-├── docs.json              # Mintlify configuration
-├── rest/                  # REST API reference
-├── guides/, plugins/      # Guides and reference content
-├── images/, logo/
-├── index.mdx
-└── quickstart.mdx
+├── docs.json          # Mintlify site config: navigation, colors, fonts, logo
+├── index.mdx          # Home page
+├── quickstart.mdx     # Quickstart
+├── tracks/            # Dimension-specific content (OS, Runtime, App, Cloud, Chip, Training)
+├── runtime/           # Runtime internals reference
+├── agents/            # Agent internals reference
+├── plugins/           # Plugin reference pages
+├── cli/               # CLI reference
+├── connectors/        # Connector pages (Discord, Telegram, iMessage, etc.)
+├── cloud/             # Eliza Cloud reference
+├── guides/            # How-to guides and tutorials
+├── user/              # End-user guides
+├── test/              # Test suite (nav integrity, broken links)
+└── public/            # Static assets (auto-generated — do not hand-edit)
 ```
 
-## Contributing
+## Adding or Editing Pages
 
-1. **Fork** this repository
-2. **Create** a new branch for your changes
-3. **Make** your documentation improvements
-4. **Test** locally using `mint dev`
-5. **Submit** a pull request
+1. Create a `.mdx` or `.md` file in the appropriate directory.
+2. Add its path (no extension) to the correct group in `docs.json` under `navigation.tabs`.
+3. Run tests to catch missing pages and broken links:
+   ```bash
+   bun run --cwd packages/docs test
+   ```
+4. Preview with `mint dev`.
 
-### Documentation Guidelines
+## Tests
 
-- Use clear, concise language
-- Include code examples where appropriate
-- Follow the existing structure and formatting
-- Test all code snippets
-- Add images/diagrams for complex concepts
+`test/docs.test.js` uses Node's built-in test runner. It validates:
 
-## Publishing Changes
+- `docs.json` is valid and has required Mintlify fields.
+- Navigation tabs and groups contain no duplicate labels or pages.
+- Every page referenced in navigation exists on disk.
+- All markdown files are non-empty.
+- All internal links in markdown and MDX files resolve to real files.
 
-Changes are automatically deployed when merged to the main branch. The documentation is hosted on Mintlify.
+## Publishing
 
-1. Install the Mintlify GitHub App on your repository
-2. Push changes to your default branch
-3. Changes will be automatically deployed to production
+Changes merged to the main branch are automatically deployed by the Mintlify GitHub App. The app must be installed on the repository and pointed at the default branch.
 
-Find the installation link in your [Mintlify dashboard](https://dashboard.mintlify.com).
-
-## Troubleshooting
-
-### Common Issues
-
-- **Dev environment not running**
-  - Run `mint update` to ensure you have the latest version of the CLI
-  - Check that you're in the correct directory with `docs.json`
-
-- **Page loads as 404**
-  - Ensure you're running the command in a folder containing `docs.json`
-  - Check that your page is properly listed in the navigation
-
-- **Changes not reflecting**
-  - Clear your browser cache
-  - Restart the development server
-  - Check for syntax errors in your MDX files
+If a page shows as 404 after deploy, confirm the file path appears in `docs.json` navigation and that the Mintlify CLI shows no errors locally.
 
 ## Learn More
 
 - [elizaOS GitHub Repository](https://github.com/elizaOS/eliza)
 - [Mintlify Documentation](https://mintlify.com/docs)
 - [MDX Documentation](https://mdxjs.com/)
-
-## License
-
-This documentation is part of the elizaOS project. Please refer to the main repository for license information.

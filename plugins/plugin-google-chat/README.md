@@ -17,7 +17,7 @@ Google Chat messaging integration for ElizaOS agents, providing full support for
 ### TypeScript/JavaScript
 
 ```bash
-npm install @elizaos-plugins/plugin-google-chat
+npm install @elizaos/plugin-google-chat
 ```
 ## Prerequisites
 
@@ -72,14 +72,10 @@ npm install @elizaos-plugins/plugin-google-chat
 ### TypeScript
 
 ```typescript
-import googleChatPlugin from "@elizaos-plugins/plugin-google-chat";
+import googleChatPlugin from "@elizaos/plugin-google-chat";
 
-const agent = createAgent({
-  plugins: [googleChatPlugin],
-  // ... other config
-});
-```
-# Register with ElizaOS runtime
+// Pass to the runtime's plugin list in your character config,
+// or let auto-enable activate it via a connectors.googlechat block.
 ```
 ## Actions
 

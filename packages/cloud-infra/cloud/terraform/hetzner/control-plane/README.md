@@ -53,12 +53,12 @@ scp packages/cloud-shared/.env.local root@<vm-ip>:/opt/eliza/cloud/.env.local
 
 ## Adopt the existing production VM into Terraform
 
-The current prod manager VM (`89.167.63.246`, historical hostname
-`milady`) was created by hand in May 2026. To bring it under Terraform
+The current prod manager VM (`89.167.63.246`, a legacy hand-assigned
+hostname) was created by hand in May 2026. To bring it under Terraform
 without recreating it, look up the Hetzner Cloud server ID
 (`hcloud server list`), then `terraform import 'hcloud_server.control_plane["1"]' <id>`
 plus a `terraform import` for each existing `hcloud_ssh_key`. The first
-plan after import shows the in-place rename `milady → eliza-1`, the new
+plan after import shows the in-place rename to `eliza-1`, the new
 labels, and the Cloudflare DNS record creation; `user_data` and `image`
 diffs are suppressed by `lifecycle { ignore_changes }`. One-shot — never
 re-run.

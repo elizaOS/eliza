@@ -1,47 +1,75 @@
 # @elizaos/plugin-ainex
 
-elizaOS plugin that drives the **Hiwonder AiNex** humanoid robot — and later other humanoids — through a single websocket bridge.
+elizaOS plugin that drives the **Hiwonder AiNex** humanoid robot — and other compatible humanoids — through a websocket bridge. Adds locomotion, servo, action-group, and text-conditioned policy control to any Eliza agent.
 
-The bridge process (Python, ported from `ainex-robot-code/bridge/`) brokers traffic between the agent and either:
+## How it works
+
+The bridge process (`python -m eliza_robot.bridge.server`) brokers traffic between the agent and either:
 
 - the **real robot** (servos, IMU, camera, battery), or
 - a **MuJoCo simulator** running the same robot profile, or
 - a **learned-policy backend** (RL skill, OpenPI VLA, etc.).
 
-This plugin is the thin TypeScript surface the Eliza agent uses to talk to that bridge. Heavy logic (sim, training, gait, perception) lives in `packages/robot/` and its Python sidecar.
+This plugin holds the websocket connection to that bridge, caches live telemetry, and exposes agent actions and context providers.
 
-## What this plugin gives the agent
+## Capabilities
 
-- **Actions** (placeholders today; wired up in later waves):
-  - `AINEX_WALK_FORWARD`, `AINEX_WALK_BACKWARD`
-  - `AINEX_SIDE_STEP_LEFT`, `AINEX_SIDE_STEP_RIGHT`
-  - `AINEX_TURN_LEFT`, `AINEX_TURN_RIGHT`
-  - `AINEX_STOP`, `AINEX_STAND`, `AINEX_SIT`
-  - `AINEX_WAVE`, `AINEX_BOW`
-  - `AINEX_PICK_UP`, `AINEX_PLACE_DOWN`
-  - `AINEX_SET_SERVO`, `AINEX_RUN_ACTION_GROUP`
-- **Providers**:
-  - `AINEX_ROBOT_STATE` — current pose, joint angles, IMU, walk-controller state
-  - `AINEX_PERCEPTION` — camera frame metadata + bridge-side detections (hands off to plugin-vision)
-  - `AINEX_POLICY_STATUS` — active learned-policy lifecycle
-  - `AINEX_BATTERY` — voltage and charge state
-- **Service** `AinexService` — owns the websocket bridge client connection.
+### Actions
 
-## Environment variables
+The plugin ships 15 programmatic locomotion actions by default:
 
-| Variable                    | Default                | Purpose                                                         |
-| --------------------------- | ---------------------- | --------------------------------------------------------------- |
-| `ELIZA_AINEX_BRIDGE_URL`   | `ws://localhost:9100`  | Websocket URL for the AiNex bridge server.                      |
-| `ELIZA_AINEX_PROFILE`      | `hiwonder-ainex`       | Robot profile descriptor name to load on the bridge.            |
-| `ELIZA_AINEX_CAMERA_FPS`   | `10`                   | Frame rate to subscribe to from the robot's camera stream.      |
+| Action | What it does |
+|---|---|
+| `AINEX_WALK_FORWARD` | Walk forward (continuous until stopped) |
+| `AINEX_WALK_BACKWARD` | Walk backward |
+| `AINEX_SIDE_STEP_LEFT` | Side-step left |
+| `AINEX_SIDE_STEP_RIGHT` | Side-step right |
+| `AINEX_TURN_LEFT` | Rotate left in place |
+| `AINEX_TURN_RIGHT` | Rotate right in place |
+| `AINEX_STOP` | Stop all walking |
+| `AINEX_STAND` | Stand upright |
+| `AINEX_SIT` | Sit down |
+| `AINEX_WAVE` | Wave gesture |
+| `AINEX_BOW` | Bow gesture |
+| `AINEX_PICK_UP` | Pick-up motion |
+| `AINEX_PLACE_DOWN` | Place-down motion |
+| `AINEX_SET_SERVO` | Drive one or more servos to target pulse positions |
+| `AINEX_RUN_ACTION_GROUP` | Play any named pre-recorded action group from the robot profile |
 
-The plugin auto-enables when `ELIZA_AINEX_BRIDGE_URL` is set, or when `features.ainex` is enabled in agent config.
+**Text-conditioned RL policy (opt-in):** Set `ELIZA_AINEX_MODE=rl` to replace the 15 actions with `AINEX_RUN_RL`, which ships free-form natural language instructions to the trained text-conditioned policy on the bridge. Use `ELIZA_AINEX_MODE=both` to expose all 16 actions simultaneously.
+
+### Providers (agent context)
+
+- **`AINEX_ROBOT_STATE`** — current walk velocity, IMU roll/pitch, head pan/tilt
+- **`AINEX_PERCEPTION`** — entities detected by the bridge's perception pipeline
+- **`AINEX_POLICY_STATUS`** — active learned-policy lifecycle state, task, and step count
+- **`AINEX_BATTERY`** — battery voltage (mV) and estimated charge percentage
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `ELIZA_AINEX_BRIDGE_URL` | `ws://localhost:9100` | WebSocket URL for the AiNex bridge server |
+| `ELIZA_AINEX_PROFILE` | `hiwonder-ainex` | Robot profile descriptor name to load on the bridge |
+| `ELIZA_AINEX_CAMERA_FPS` | `10` | Camera frame rate for subscription |
+| `ELIZA_AINEX_MODE` | `programmatic` | Action surface: `programmatic`, `rl`, or `both` |
+
+## Auto-enable
+
+The plugin enables automatically when `ELIZA_AINEX_BRIDGE_URL` is set in the environment, or when `features.ainex = true` (or `features.ainex.enabled = true`) is present in the agent config. No action is needed if neither condition is met; the plugin stays dormant.
+
+## Starting the bridge
+
+The bridge is a Python process in `packages/robot/`:
+
+```bash
+python -m eliza_robot.bridge.launch --target mujoco   # MuJoCo simulator
+python -m eliza_robot.bridge.launch --target hardware  # real robot
+```
+
+The plugin tolerates a missing bridge at agent startup and recovers automatically when the bridge comes up (exponential-backoff reconnect, 250 ms to 5 s).
 
 ## Related packages
 
-- `packages/robot/` — Python robotics stack (MuJoCo sim, Brax-PPO RL, bridge, perception, trajectory DB) plus a thin TS surface for shared types and re-exports. See [`packages/robot/README.md`](../../packages/robot/README.md).
-- `plugins/plugin-vision/` — camera + scene-analysis plugin that will consume the robot camera as a pluggable frame source (W5.1).
-
-## Status
-
-Skeleton only. All actions / providers / the bridge client return placeholder responses until wave W4.1 lands the real bridge client and W4.2 wires the providers + service to live data.
+- `packages/robot/` — Python robotics stack: MuJoCo simulation, Brax-PPO RL training, bridge server, perception, trajectory database, and shared TypeScript re-exports. See [`packages/robot/README.md`](../../packages/robot/README.md).
+- `plugins/plugin-vision/` — camera and scene-analysis plugin that consumes the robot camera as a pluggable frame source.

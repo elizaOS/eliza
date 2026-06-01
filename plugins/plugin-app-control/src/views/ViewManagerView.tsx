@@ -9,7 +9,7 @@
  * shell host environment and externalized from this bundle.
  */
 
-import { useAgentElement } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { LayoutGrid, PackageOpen, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {

@@ -1,4 +1,5 @@
-import { Button, type OverlayAppContext, useAgentElement } from "@elizaos/ui";
+import { Button, type OverlayAppContext } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { TerminalPluginView } from "@elizaos/ui/components/views/TerminalPluginView";
 import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";

@@ -1,6 +1,6 @@
 # @elizaos/plugin-imessage
 
-iMessage plugin for ElizaOS agents. Enables chat integration with Apple's iMessage on macOS.
+iMessage plugin for elizaOS agents. Enables chat integration with Apple's iMessage on macOS.
 
 **Note: This plugin only works on macOS systems.**
 
@@ -151,7 +151,7 @@ iMessage supports multiple target types:
 ### Building
 
 ```bash
-cd typescript && npm run build
+bun run --cwd plugins/plugin-imessage build
 ```
 
 ### Testing
@@ -159,7 +159,7 @@ cd typescript && npm run build
 Testing requires a macOS environment with Messages app configured:
 
 ```bash
-npm test
+bun run --cwd plugins/plugin-imessage test
 ```
 
 ## Troubleshooting

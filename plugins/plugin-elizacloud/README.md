@@ -37,14 +37,14 @@ helpers in `typescript/utils/sdk-client.ts`:
 | `createCloudApiClient(runtime)` | API-base requests such as `/responses`, `/embeddings`, `/models`, auth validation, containers, and relay JSON endpoints |
 | `createCloudApiClient(runtime, true)` | Embedding requests that may use `ELIZAOS_CLOUD_EMBEDDING_URL` / `ELIZAOS_CLOUD_EMBEDDING_API_KEY` |
 | `createElizaCloudClient(runtime)` | High-level SDK helpers and generated `client.routes.*` wrappers |
-| `typescript/utils/cloud-api.ts` | Backwards-compatible re-export of SDK classes and types |
+| `src/utils/cloud-api.ts` | Backwards-compatible re-export of SDK classes and types |
 
 `ELIZAOS_CLOUD_BASE_URL` remains the API base URL and defaults to
 `https://www.elizacloud.ai/api/v1`. `createElizaCloudClient` derives the site
 root from that API URL when generated SDK route wrappers need `/api/v1/...`
 paths.
 
-`typescript/providers/openai.ts` is the one intentional transport adapter that
+`src/providers/openai.ts` is the one intentional transport adapter that
 passes the configured base URL to the Vercel AI SDK's OpenAI-compatible client.
 It is not a hand-rolled Cloud API fetch path.
 
@@ -170,50 +170,29 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
    layer.
 5. Do not add direct `fetch()` calls for Eliza Cloud API routes in runtime code.
 
+When the Cloud API adds or changes public routes, update the SDK first (see the Development section above), then update this plugin to consume the new SDK route or helper.
+
+## Development
+
+```bash
+bun run --cwd plugins/plugin-elizacloud typecheck
+bun run --cwd plugins/plugin-elizacloud test
+bun run --cwd plugins/plugin-elizacloud build
+```
+
 When the Cloud API adds or changes public routes, update the SDK first:
 
 ```bash
-cd ../../packages/cloud-sdk
-bun run generate:routes
-bun run check:routes
-bun run test:e2e
+bun run --cwd packages/cloud-sdk generate:routes
+bun run --cwd packages/cloud-sdk check:routes
+bun run --cwd packages/cloud-sdk test:e2e
 ```
 
 Then update this plugin to consume the new SDK route or helper.
 
-## Development
-
-From the TypeScript package:
-
-```bash
-cd typescript
-bun run typecheck
-bun run test
-bun run build
-npm pack --dry-run
-```
-
-From the SDK package:
-
-```bash
-cd ../../packages/cloud-sdk
-bun run check:routes
-bun run test:e2e
-```
-
-`bun run test:e2e` in the SDK runs public real API checks by default and skips
-credentialed or destructive cases unless the required credentials and opt-in
-environment flags are present.
-
 ## Publishing
 
-The TypeScript package is published to npm as `@elizaos/plugin-elizacloud`.
-Publishing must include a compatible `@elizaos/cloud-sdk` release because the
-plugin depends on it directly.
-
-The repository also contains legacy Python and Rust package directories. The
-Eliza runtime integration and npm package are the TypeScript implementation
-documented above.
+This plugin is published to npm as `@elizaos/plugin-elizacloud`. Publishing requires a compatible `@elizaos/cloud-sdk` release because the plugin depends on it directly.
 
 ## License
 

@@ -1,85 +1,98 @@
 # @elizaos/plugin-instagram
 
-Instagram integration plugin for elizaOS agents.
+Instagram DM and public-comment connector for [elizaOS](https://github.com/elizaos/eliza) agents.
 
-## Overview
+## What it does
 
-This plugin provides Instagram integration for elizaOS agents, enabling:
+Adds Instagram integration to an Eliza agent:
 
-- Direct message handling
-- Post and story interactions
-- Comment management
-- Media upload support
-- User profile interactions
+- **Direct messages** — agent can send DMs to existing Instagram threads via the `MESSAGE` connector.
+- **Media comments** — agent can post and reply to comments on Instagram media via the `POST` connector.
+- **User lookup** — resolves Instagram usernames/handles to entity objects the runtime can reason about.
+- **Thread browsing** — lists and searches DM threads so the runtime can pick the right target.
+- **Multi-account** — configure multiple Instagram accounts; each gets its own connector pair.
+- **Workflow credentials** — supplies a `facebookGraphApi` token to workflow plugin nodes when `INSTAGRAM_PAGE_ACCESS_TOKEN` is set.
+
+> **Note:** The current service implementation contains API stubs. The connector and credential
+> plumbing is complete; production use requires wiring a real Instagram API client (e.g.
+> `instagram-private-api`) into the stub methods in `src/service.ts`.
 
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-instagram
-# or
 bun add @elizaos/plugin-instagram
 ```
 
-## Configuration
-
-The plugin requires the following environment variables:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `INSTAGRAM_USERNAME` | Yes | Your Instagram username |
-| `INSTAGRAM_PASSWORD` | Yes | Your Instagram password |
-| `INSTAGRAM_VERIFICATION_CODE` | No | 2FA verification code if enabled |
-| `INSTAGRAM_PROXY` | No | Proxy URL for API requests |
-
 ## Usage
-
-### TypeScript
 
 ```typescript
 import instagramPlugin from "@elizaos/plugin-instagram";
 
-// Add to your agent's plugins
-const agent = new Agent({
+const agent = new AgentRuntime({
   plugins: [instagramPlugin],
-  // ... other configuration
+  // ...
 });
 ```
-# Create configuration
-config = InstagramConfig.from_env()
 
-# Initialize service
-service = InstagramService(config)
+## Configuration
 
-# Start the service
-await service.start()
+Set credentials via environment variables (single account) or in `character.settings.instagram`
+(single or multi-account).
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `INSTAGRAM_USERNAME` | **Yes** | Instagram username |
+| `INSTAGRAM_PASSWORD` | **Yes** | Instagram password |
+| `INSTAGRAM_VERIFICATION_CODE` | No | 2FA code if account has it enabled |
+| `INSTAGRAM_PROXY` | No | HTTP/SOCKS proxy URL for API requests |
+| `INSTAGRAM_AUTO_RESPOND_DMS` | No | `"true"` to auto-respond to DMs |
+| `INSTAGRAM_AUTO_RESPOND_COMMENTS` | No | `"true"` to auto-respond to comments |
+| `INSTAGRAM_POLLING_INTERVAL` | No | Poll interval in seconds (default: `60`) |
+| `INSTAGRAM_PAGE_ACCESS_TOKEN` | No | Meta Graph API page access token for workflow nodes |
+| `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs for multi-account |
+
+### Character-level config
+
+```json
+{
+  "settings": {
+    "instagram": {
+      "username": "mybot",
+      "password": "secret",
+      "autoRespondToDms": true,
+      "accounts": {
+        "brand-a": { "username": "brand_a", "password": "..." }
+      }
+    }
+  }
+}
 ```
 
-## Event Types
+## Event types
 
-The plugin emits the following events:
+These event type strings are defined in `InstagramEventType` (exported from the package):
 
-- `INSTAGRAM_MESSAGE_RECEIVED` - Direct message received
-- `INSTAGRAM_MESSAGE_SENT` - Direct message sent
-- `INSTAGRAM_COMMENT_RECEIVED` - Comment on post received
-- `INSTAGRAM_LIKE_RECEIVED` - Like on post received
-- `INSTAGRAM_FOLLOW_RECEIVED` - New follower
-- `INSTAGRAM_STORY_VIEWED` - Story was viewed
-- `INSTAGRAM_STORY_REPLY_RECEIVED` - Reply to story received
+| Event | Description |
+|---|---|
+| `INSTAGRAM_MESSAGE_RECEIVED` | Incoming DM |
+| `INSTAGRAM_MESSAGE_SENT` | Outgoing DM sent |
+| `INSTAGRAM_COMMENT_RECEIVED` | Comment received on a post |
+| `INSTAGRAM_LIKE_RECEIVED` | Like received on a post |
+| `INSTAGRAM_FOLLOW_RECEIVED` | New follower |
+| `INSTAGRAM_UNFOLLOW_RECEIVED` | Lost a follower |
+| `INSTAGRAM_STORY_VIEWED` | Story viewed |
+| `INSTAGRAM_STORY_REPLY_RECEIVED` | Reply to a story |
 
 ## Development
 
 ```bash
-# Install dependencies
-bun install
-
-# Build all targets
-bun run build
-
-# Run tests
-bun run test
-
-# Lint
-bun run lint
+bun run --cwd plugins/plugin-instagram build       # compile
+bun run --cwd plugins/plugin-instagram dev         # watch
+bun run --cwd plugins/plugin-instagram test        # unit tests
+bun run --cwd plugins/plugin-instagram typecheck   # type-check only
+bun run --cwd plugins/plugin-instagram lint        # lint + autofix
 ```
 
 ## License

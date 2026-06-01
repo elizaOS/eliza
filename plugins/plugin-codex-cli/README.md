@@ -85,4 +85,4 @@ To reduce account/session weirdness against the ChatGPT Codex backend, each back
 
 ## Scope
 
-This package is the salvaged CodexBackend piece from the closed native-reasoning PR #7435. Wave 1 on `develop` owns native tool calling and the agent loop. This plugin only provides a Codex-backed model provider surface for that architecture.
+This plugin provides a Codex-backed model provider surface. It does not own a reasoning loop, planner, or context manager — those concerns belong to the agent runtime and other plugins.

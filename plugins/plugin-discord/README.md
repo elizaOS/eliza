@@ -1,6 +1,6 @@
 # @elizaos/plugin-discord
 
-A Discord plugin implementation for ElizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
+A Discord connector plugin for elizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
 
 ## Features
 
@@ -20,7 +20,7 @@ A Discord plugin implementation for ElizaOS, enabling rich integration with Disc
 
 ## Installation
 
-As this is a workspace package, it's installed as part of the ElizaOS monorepo:
+As this is a workspace package, it is installed as part of the elizaOS monorepo:
 
 ```bash
 bun install
@@ -90,7 +90,7 @@ Settings can also be configured in your character file under `settings.discord`:
 
 ## Slash Command Permissions
 
-The plugin uses a hybrid permission system that combines Discord's native features with ElizaOS-specific controls.
+The plugin uses a hybrid permission system that combines Discord's native features with elizaOS-specific controls.
 
 ### Permission Layers
 
@@ -100,7 +100,7 @@ Commands go through multiple permission checks in this order:
    - User must have required Discord permissions
    - Command must be available in the current context (guild vs DM)
 
-2. **ElizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
+2. **elizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
    - Commands only work in whitelisted channels
    - Unless command has `bypassChannelWhitelist: true`
 
@@ -191,7 +191,7 @@ From Discord.js `PermissionFlagsBits`:
 **Why Hybrid Approach?**
 
 - Discord's native permissions are powerful but limited to role-based access
-- ElizaOS needs programmatic control for channel restrictions and custom logic
+- elizaOS needs programmatic control for channel restrictions and custom logic
 - Combining both gives developers the best of both worlds
 
 **Why Simple Flags?**
@@ -247,7 +247,7 @@ The plugin emits the following Discord-specific events:
 
 ### DiscordService
 
-Main service class that extends ElizaOS Service:
+Main service class that extends elizaOS Service:
 
 - Handles authentication and session management
 - Manages Discord client connection
@@ -433,6 +433,7 @@ interface RoleLifecyclePayload {
 
 ```typescript
 import { DiscordEventTypes } from "@elizaos/plugin-discord";
+import { logger } from "@elizaos/core";
 
 // Alert on dangerous permission grants
 runtime.registerEvent({
@@ -445,12 +446,10 @@ runtime.registerEvent({
         dangerousPerms.includes(change.permission) &&
         change.newState === "ALLOW"
       ) {
-        console.warn(`⚠️ Dangerous permission granted!`, {
-          channel: payload.channel.name,
-          target: payload.target.name,
-          permission: change.permission,
-          grantedBy: payload.audit?.executorTag || "Unknown",
-        });
+        logger.warn(
+          { channel: payload.channel.name, target: payload.target.name, permission: change.permission, grantedBy: payload.audit?.executorTag || "Unknown" },
+          "[SecurityMonitor] Dangerous permission granted",
+        );
       }
     }
   },
@@ -465,10 +464,10 @@ runtime.registerEvent({
     );
 
     if (adminRoles.length > 0) {
-      console.warn(`⚠️ Admin role granted to ${payload.member.tag}`, {
-        roles: adminRoles.map((r) => r.name),
-        grantedBy: payload.audit?.executorTag || "Unknown",
-      });
+      logger.warn(
+        { member: payload.member.tag, roles: adminRoles.map((r) => r.name), grantedBy: payload.audit?.executorTag || "Unknown" },
+        "[SecurityMonitor] Admin role granted",
+      );
     }
   },
 });
@@ -477,10 +476,10 @@ runtime.registerEvent({
 runtime.registerEvent({
   name: DiscordEventTypes.ROLE_CREATED,
   handler: async (payload) => {
-    console.log(`New role created: ${payload.role.name}`, {
-      permissions: payload.role.permissions,
-      createdBy: payload.audit?.executorTag || "Unknown",
-    });
+    logger.info(
+      { role: payload.role.name, permissions: payload.role.permissions, createdBy: payload.audit?.executorTag || "Unknown" },
+      "[SecurityMonitor] New role created",
+    );
   },
 });
 ```
@@ -496,11 +495,10 @@ runtime.registerEvent({
     const botId = runtime.getSetting("DISCORD_APPLICATION_ID");
 
     if (payload.member.id === botId && payload.removed.length > 0) {
-      console.error(`🚨 Bot roles removed!`, {
-        removed: payload.removed.map((r) => r.name),
-        by: payload.audit?.executorTag || "Unknown",
-      });
-      // Could trigger alerts, notifications, etc.
+      logger.error(
+        { removed: payload.removed.map((r) => r.name), by: payload.audit?.executorTag || "Unknown" },
+        "[SecurityMonitor] Bot roles removed",
+      );
     }
   },
 });

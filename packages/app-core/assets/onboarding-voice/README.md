@@ -9,7 +9,7 @@ Generate (requires a downloaded Eliza-1 bundle with the OmniVoice model):
 
 ```
 bun packages/app-core/scripts/voice-preset/build-onboarding-voice.mjs \
-  --bundle ~/.milady/models/eliza-1/<bundle>
+  --bundle ~/.eliza/models/eliza-1/<bundle>
 ```
 
 This writes `<id>.wav` per line plus `manifest.json` into this directory.

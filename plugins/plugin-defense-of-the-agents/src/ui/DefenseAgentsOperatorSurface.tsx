@@ -7,7 +7,7 @@ import {
   GameOperatorShell,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { useAgentElement } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;

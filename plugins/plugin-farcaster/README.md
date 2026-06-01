@@ -1,108 +1,75 @@
 # @elizaos/plugin-farcaster
 
-A multi-language Farcaster plugin for elizaOS, providing full integration with the Farcaster decentralized social network via the Neynar API.
+Farcaster client plugin for [elizaOS](https://github.com/elizaOS/eliza). Gives an Eliza agent the ability to publish casts, reply to mentions, read its feed, and react to casts on the Farcaster decentralized social network via the [Neynar API](https://neynar.com).
 
-## Languages
+## Capabilities
 
-This plugin is implemented in three languages with full feature parity:
-
-- **TypeScript** - Primary implementation for Node.js and browser
-- **Python** - Python implementation for ML/AI pipelines
-- **Rust** - High-performance implementation with WASM support
-
-## Features
-
-- **Cast Management**: Send casts, reply to casts, and manage your timeline
-- **Profile Management**: Fetch and cache user profiles
-- **Mentions & Notifications**: Monitor and respond to mentions
-- **Timeline Provider**: Access your Farcaster feed
-- **Thread Support**: Navigate and respond within cast threads
-- **Embed Processing**: Handle images, videos, and embedded casts
-- **Webhook Support**: Real-time updates via webhooks
-- **Polling Mode**: Periodic fetching for simple deployments
+- **Cast publishing** — send new casts and thread replies; auto-truncates to 320 characters using the agent's language model when needed.
+- **Feed reading** — fetch and search the authenticated account's recent timeline.
+- **Mentions & interactions** — monitor mentions and respond in polling mode or via real-time webhook.
+- **Reactions** — like, unlike, recast, and remove recasts.
+- **Thread traversal** — walk a cast thread back to its root.
+- **Profile provider** — injects the agent's Farcaster profile (FID, username, display name) as context for social-posting and messaging tasks.
+- **Webhook handler** — `POST /webhook` route processes Neynar webhook events in real time.
+- **Multi-account** — one agent can manage multiple Farcaster accounts via namespaced env vars.
 
 ## Installation
 
-### TypeScript/Node.js
-
 ```bash
-npm install @elizaos/plugin-farcaster
-# or
 bun add @elizaos/plugin-farcaster
 ```
+
 ## Configuration
 
-The plugin requires the following environment variables:
-
-| Variable                   | Required | Description                                               |
-| -------------------------- | -------- | --------------------------------------------------------- |
-| `FARCASTER_FID`            | Yes      | Your Farcaster ID (FID)                                   |
-| `FARCASTER_SIGNER_UUID`    | Yes      | Neynar signer UUID for signing casts                      |
-| `FARCASTER_NEYNAR_API_KEY` | Yes      | Neynar API key for API access                             |
-| `FARCASTER_DRY_RUN`        | No       | Enable dry run mode (default: false)                      |
-| `FARCASTER_MODE`           | No       | Operation mode: 'polling' or 'webhook' (default: polling) |
-| `MAX_CAST_LENGTH`          | No       | Maximum cast length (default: 320)                        |
-| `FARCASTER_POLL_INTERVAL`  | No       | Polling interval in seconds (default: 120)                |
-| `ENABLE_CAST`              | No       | Enable auto-casting (default: true)                       |
-| `CAST_INTERVAL_MIN`        | No       | Min cast interval in minutes (default: 90)                |
-| `CAST_INTERVAL_MAX`        | No       | Max cast interval in minutes (default: 180)               |
-
-## Usage
-
-### TypeScript
+The plugin is auto-enabled when a `farcaster` connector block is present in the agent config. Register it manually if needed:
 
 ```typescript
 import farcasterPlugin from "@elizaos/plugin-farcaster";
 
-// Register with agent runtime
 const agent = new AgentRuntime({
   plugins: [farcasterPlugin],
-  // ... other config
+  // ...
 });
 ```
 
-## Actions
+### Environment variables
 
-Farcaster public posts are exposed through the primary `POST` action:
+| Variable                   | Required | Default            | Description |
+|----------------------------|----------|--------------------|-------------|
+| `FARCASTER_NEYNAR_API_KEY` | yes      | —                  | Neynar API key |
+| `FARCASTER_FID`            | yes      | —                  | Farcaster user ID (integer) |
+| `FARCASTER_SIGNER_UUID`    | yes      | —                  | Neynar signer UUID |
+| `FARCASTER_MODE`           | no       | `polling`          | `polling` or `webhook` |
+| `FARCASTER_HUB_URL`        | no       | `hub.pinata.cloud` | Farcaster hub base URL |
+| `FARCASTER_POLL_INTERVAL`  | no       | `120`              | Seconds between polling cycles |
+| `FARCASTER_DRY_RUN`        | no       | `false`            | Simulate without publishing |
+| `MAX_CAST_LENGTH`          | no       | `320`              | Max cast characters |
+| `ENABLE_CAST`              | no       | `true`             | Enable autonomous cast loop |
+| `CAST_INTERVAL_MIN`        | no       | `90`               | Min minutes between autonomous casts |
+| `CAST_INTERVAL_MAX`        | no       | `180`              | Max minutes between autonomous casts |
+| `CAST_IMMEDIATELY`         | no       | `false`            | Post first cast immediately on start |
+| `ENABLE_ACTION_PROCESSING` | no       | `false`            | Process mentions automatically |
+| `ACTION_INTERVAL`          | no       | `5`                | Minutes between action-processing cycles |
+| `MAX_ACTIONS_PROCESSING`   | no       | `1`                | Max interactions processed per cycle |
 
-- `POST operation=send` publishes a cast through the Farcaster PostConnector.
-- `POST operation=read` reads recent casts through the Farcaster PostConnector.
+For multi-account setups, prefix any variable with `FARCASTER_<ACCOUNT_ID>_` (e.g. `FARCASTER_MYACCT_FID`).
 
-Farcaster search is not advertised until the local Neynar client exposes a
-search primitive.
+### Webhook mode
+
+Set `FARCASTER_MODE=webhook` and configure your Neynar app to send webhook events to `POST /webhook` on your agent's public URL. The handler validates the `NeynarWebhookData` payload shape before processing.
 
 ## Providers
 
-### farcaster_profile
+### `farcasterProfile`
 
-Provides the agent's Farcaster profile information for context.
-
-### farcaster_thread
-
-Provides thread context for understanding conversation flow.
+Injects the agent's current Farcaster profile (FID, username, display name) into the context for turns in the `social_posting`, `messaging`, and `connectors` contexts.
 
 ## Development
 
-### Building
-
 ```bash
-# TypeScript
-bun run build
-# All languages
-bun run test
-
-# TypeScript only
-bun run test:ts
-
-# Python only
-bun run test:python
-
-# Rust only
-bun run test:rust
+bun run --cwd plugins/plugin-farcaster build       # build node + browser bundles
+bun run --cwd plugins/plugin-farcaster dev         # watch mode
+bun run --cwd plugins/plugin-farcaster test        # run all tests
+bun run --cwd plugins/plugin-farcaster typecheck   # type-check only
+bun run --cwd plugins/plugin-farcaster lint        # biome check + fix
 ```
-
-### Linting
-
-```bash
-# TypeScript
-bun run lint

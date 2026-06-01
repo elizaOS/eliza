@@ -15,7 +15,8 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input, useAgentElement } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────

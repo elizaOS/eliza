@@ -1,93 +1,89 @@
 # @elizaos/cloud-shared
 
-Single backend package consumed by `@elizaos/cloud-api` (Cloudflare Worker), `@elizaos/cloud-frontend` (Vite/React + Cloudflare Pages), `@elizaos/cloud-services/*`, and a few plugins.
+Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB schemas/repositories/migrations, server-side service library, transport types, and route/auth helpers.
 
-Was previously a workspace root with sub-packages `billing/`, `db/`, `lib/`, `types/`. Now collapsed into one package with subpath exports.
+## Role
 
-## Stack
+Single private workspace package (`@elizaos/cloud-shared`) consumed by the rest of the cloud stack:
 
-- **Runtime**: Bun (server) / browser (only the bits cloud-frontend imports)
-- **Database**: PostgreSQL via Drizzle ORM (Neon in prod, PGlite locally)
-- **API consumer**: `cloud-api` (Hono on Cloudflare Workers)
-- **UI consumer**: `cloud-frontend` (Vite + React 19, NOT Next.js)
+- `@elizaos/cloud-api` — Hono API on Cloudflare Workers (imports `lib/`, `db/`, `billing/`, `types/`).
+- `@elizaos/cloud-frontend` — Vite + React 19 (Cloudflare Pages); imports only the isomorphic bits (`billing/`, some `types/`).
+- `@elizaos/cloud-services/*` and a few plugins.
+
+It was once a workspace root with sub-packages `billing/`, `db/`, `lib/`, `types/`; now collapsed into one package exposed via subpath exports.
 
 ## Layout
 
 ```
 src/
-  billing/    @elizaos/cloud-shared/billing  — markup arithmetic (pure, isomorphic)
-  db/         @elizaos/cloud-shared/db       — drizzle schemas, repositories, migrations
-  lib/        @elizaos/cloud-shared/lib      — server services (Discord/Telegram/Twitter/Hetzner/sandbox/etc.)
-  types/      @elizaos/cloud-shared/types    — Cloudflare worker env + API DTO types
-  index.ts                                   — top-level barrel (re-exports as namespaces)
-drizzle.config.ts                            — points at ./src/db/{schemas,migrations}
+  index.ts                 top barrel — re-exports billing/db/lib/types as namespaces
+  billing/                 @elizaos/cloud-shared/billing — pure, isomorphic markup math
+    markup.ts              applyMarkup, Twilio SMS billing, USD rounding
+    credit-markup.ts       calculateCreditMarkup, platform fee breakdown
+    index.ts
+  db/                      @elizaos/cloud-shared/db — Drizzle (Neon prod, PGlite local)
+    schemas/               ~97 table schemas (apps, agents, billing, containers, ...)
+    repositories/          ~66 CQRS repositories (readers/writers split)
+    migrations/            generated SQL — never hand-edit applied migrations
+    client.ts              DB client; worker-neon-http.ts for Worker runtime
+    crypto/  utils/
+    index.ts
+  lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
+    services/              ~207 service modules (containers, gateways, billing, ...)
+    auth.ts auth-anonymous.ts auth-errors.ts   session/API-key/wallet auth
+    api/  middleware/  cors/  http/  session/   request-edge helpers
+    stripe.ts  pricing.ts  promotion-pricing.ts
+    utils/logger.ts        the structured logger used across lib/
+    index.ts
+  types/                   @elizaos/cloud-shared/types
+    cloud-api.ts           API DTO types
+    cloud-worker-env.ts    Cloudflare Worker env bindings
+    stripe-queue-message.ts
+    index.ts
+drizzle.config.ts          points at ./src/db/{schemas,migrations}
+scripts/messaging-gateway-preflight.mjs   preflight:messaging-gateways
+docs/                      WHY docs (auth consistency, provisioning, messaging gateways)
 ```
 
-Subpath imports: `import { ... } from "@elizaos/cloud-shared/db"`, `"@elizaos/cloud-shared/lib/services/x"`, etc.
+Subpath imports: `import { ... } from "@elizaos/cloud-shared/db"`, `".../billing"`, `".../lib/services/<x>"`, `".../types"`. Exports map: `.` `./billing` `./db` `./db/*` `./lib` `./lib/*` `./types` `./types/*` (see `package.json`).
+
+## Key exports
+
+- `src/index.ts` — namespaces: `billing`, `db`, `lib`, `types`.
+- `billing/index.ts` — `applyMarkup`, `applyMarkupCents`, `calculateCreditMarkup`, `calculateTwilioSmsBilling`, `roundUsd`, plus `DEFAULT_MARKUP_RATE`, `PLATFORM_MARKUP_MULTIPLIER`, `DEFAULT_PLATFORM_FEE_RATE`, and the `MarkupBreakdown` / `CreditMarkupBreakdown` types.
+- `db/index.ts` re-exports a few repositories (`userCharactersRepository`, `dockerNodesRepository`, `voiceImprintsRepository`); most schemas/repositories are imported by their own subpath, e.g. `@elizaos/cloud-shared/db/repositories/apps`.
+- `lib/index.ts` — `logger`, container/provisioning helpers (`WarmPoolManager`, `getHetznerContainersClient`, `provisioningJobService`, `elizaSandboxService`), `runWithCloudBindingsAsync`, envelope helpers (`envelope`, `errorEnvelope`).
 
 ## Commands
 
 ```bash
-bun install                                  # from repo root
-bun run --cwd packages/cloud-shared typecheck
-bun run --cwd packages/cloud-shared db:generate   # drizzle-kit generate
-bun run --cwd packages/cloud-shared db:migrate    # via scripts/cloud/admin/migrate-with-diagnostics.ts
-bun run --cwd packages/cloud-shared db:studio
+bun run --cwd packages/cloud-shared typecheck              # tsc --noEmit
+bun run --cwd packages/cloud-shared lint                   # biome check
+bun run --cwd packages/cloud-shared lint:fix
+bun run --cwd packages/cloud-shared test                   # bun test
+bun run --cwd packages/cloud-shared db:generate            # drizzle-kit generate
+bun run --cwd packages/cloud-shared db:migrate             # migrate-with-diagnostics.ts
+bun run --cwd packages/cloud-shared db:migrate:drizzle     # drizzle-kit migrate
+bun run --cwd packages/cloud-shared db:studio              # drizzle-kit studio
+bun run --cwd packages/cloud-shared db:check-migrations    # drizzle-kit check
+bun run --cwd packages/cloud-shared preflight:messaging-gateways
 ```
 
-From repo root:
-```bash
-bun run dev:cloud                            # cloud-api + cloud-frontend concurrently
-bun run typecheck:cloud                      # all four cloud-* packages
-bun run db:cloud:generate / db:cloud:migrate / db:cloud:studio
-```
+`build:linked-workspaces` defers to the repo-root `build:core`; there is no standalone build step here (consumers import `src/` directly).
 
-## Database Migrations
+## Config / env vars
 
-**Never use `db:push` — all schema changes go through migrations.**
+`db/database-url.ts` resolves the Postgres URL: `DATABASE_URL` in prod (Neon), with `pglite:server` for a local PGlite Postgres. The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, OpenRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra, etc.). See `.env.example` for the full set.
 
-### Schema Change Workflow
-1. Edit schema in `src/db/schemas/`
-2. `bun run db:generate`
-3. Review SQL in `src/db/migrations/`
-4. `bun run db:migrate`
-5. Commit both schema + migration
+## How to extend
 
-### Custom Migrations
-```bash
-bunx drizzle-kit generate --custom --name=descriptive_name
-```
+- **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud-shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).
+- **New service / use-case:** add a module under `src/lib/services/` (or the relevant `lib/` subdir). Keep business computation here, not in `cloud-api` routes. Import `logger` from `../utils/logger`. Export from `lib/index.ts` only if a consumer needs the top barrel; otherwise rely on the `./lib/*` subpath.
+- **New DTO type:** add to `src/types/cloud-api.ts` (or a sibling) and export via `types/index.ts`.
 
-### Rules
-- No `CREATE INDEX CONCURRENTLY` (runs in transaction)
-- Use `IF NOT EXISTS` / `IF EXISTS` for creating tables
-- Never edit applied migrations
-- NEVER use omnibus migrations that recreate the full schema or existing objects — they lock active tables in production. Instead:
-  1. Small targeted migrations that ONLY add new schema objects
-  2. Separate migrations for data backfills
-  3. Put cleanup/drops in their own migration
-  4. Group related objects but cap migrations at <100 lines
+## Conventions / gotchas
 
-## Type Checking
-
-`bun run typecheck` is mostly clean on cloud-shared's own source. Errors that surface are typically in transitive imports (e.g., `plugins/plugin-elizacloud/...`) that cloud-shared pulls in via tsconfig paths. Filter to verify your own changes:
-
-```bash
-bun run typecheck 2>&1 | grep -E "(your-file\.ts|your-other-file\.ts)"
-```
-
-Empty grep = your changes are clean.
-
-## Architecture rules (from repo `AGENTS.md`)
-
-- **No business computation in cloud-api routes** — derive in this package's `lib/` (use-cases) and return DTO fields the client just renders (commandments #2, #3, #4)
-- **CQRS in `db/repositories/`** — readers return domain objects, writers return void or ID (commandment #6)
-- **Validate at the route boundary, trust in use cases** — no duplicate inline regex (#7)
-- **DTO fields required by default** — no `?? 0` to mask missing fields (#8)
-- **Logger only, never console** — `import { logger } from "./utils/logger"` inside `lib/`; structured `[ClassName]` prefix on messages (#9)
-
-## Browser vs server
-
-`src/lib/` is server-only. Anything browser-shaped (React components, hooks, providers, zustand stores, clsx/tailwind-merge utilities) was moved to `packages/cloud-frontend/src/` during the migration. If you need to add new browser code, put it in cloud-frontend, not here.
-
-The exception: pure isomorphic helpers (string utilities, math, validation) can live in `lib/` or `billing/` and be consumed by both.
+- **`src/lib/` is server-only.** Browser code (React, hooks, stores, tailwind utils) lives in `cloud-frontend`, not here. Only pure isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
+- **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
+- **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud-shared typecheck 2>&1 | grep <your-file>`.
+- **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `AGENTS.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.

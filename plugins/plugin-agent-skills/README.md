@@ -32,7 +32,8 @@ const agent = createAgent({
 | `SKILLS_DIR` | Directory to load/install skills | `./skills` |
 | `SKILLS_AUTO_LOAD` | Load installed skills on startup | `true` |
 | `SKILLS_REGISTRY` | Skill registry URL | `https://clawhub.ai` |
-| `SKILLS_STORAGE_TYPE` | Storage mode: `memory`, `filesystem`, or `auto` | `auto` |
+| `BUNDLED_SKILLS_DIRS` | Comma-separated paths of read-only bundled skill dirs | — |
+| `OTTO_BUNDLED_SKILLS_DIR` | Legacy: single Otto bundled skills directory | — |
 
 ## Storage Modes
 
@@ -290,7 +291,7 @@ if (storage.type === 'memory') {
 import {
   parseFrontmatter,
   validateFrontmatter,
-  generateSkillsXml,
+  generateSkillsJson,
 } from '@elizaos/plugin-agent-skills';
 
 // Parse SKILL.md content
@@ -299,8 +300,8 @@ const { frontmatter, body } = parseFrontmatter(content);
 // Validate frontmatter
 const result = validateFrontmatter(frontmatter, 'skill-name');
 
-// Generate XML for prompts
-const xml = generateSkillsXml(skills, { includeLocation: true });
+// Generate JSON for prompts
+const json = generateSkillsJson(skills, { includeLocation: true });
 ```
 
 ## Testing

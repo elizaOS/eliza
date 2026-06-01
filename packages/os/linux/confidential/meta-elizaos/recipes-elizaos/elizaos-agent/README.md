@@ -21,7 +21,7 @@ measured rootfs:
 2. the in-domain attestation agent (dstack-guest-agent / tappd equivalent) that
    produces the runtime quote consumed by
    `packages/os/scripts/tee-evidence-bridge.mjs`,
-3. dm-crypt / disk tooling for the sealed `MILADY_STATE_DIR` volume.
+3. dm-crypt / disk tooling for the sealed `ELIZA_STATE_DIR` volume.
 
 The TEE policy blob (`../../../policy/confidential-policy.json`) is already
 installed by the `elizaos-confidential-profile` recipe above.

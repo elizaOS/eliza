@@ -42,7 +42,7 @@ upright H1 mid-stride with an alternating swing/stance gait. The full
 
 ```bash
 # train (GPU)
-MILADY_ROBOT_USE_GPU=1 uv run python scripts/train_playground_locomotion.py \
+ELIZA_ROBOT_USE_GPU=1 uv run python scripts/train_playground_locomotion.py \
   --env H1JoystickGaitTracking --num-timesteps 100000000 --num-envs 8192 \
   --num-evals 40 --out checkpoints/h1_walk
 # evaluate + render (CPU is fine; honest gate)

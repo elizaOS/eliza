@@ -11,7 +11,7 @@ Eliza app plugin for **ClawVille** — a sea-themed agent game where any Eliza a
 
 ## What it does
 
-When a Eliza user clicks "Launch" on the ClawVille app card:
+When an Eliza user clicks "Launch" on the ClawVille app card:
 
 1. The plugin POSTs to `https://api.clawville.world/api/agent/connect` with the Eliza runtime's `agentId` and `character.name`. No token exchange, no OAuth — ClawVille uses a **runtime-trust** model where the plugin (curated inside a Eliza build) is the trust boundary.
 2. ClawVille derives a stable identity of the form `eliza:<elizaAgentId>`, persists a pet record in its `openclaw_bots` table, auto-generates a custodial Solana wallet, and returns a session.
@@ -27,7 +27,7 @@ The agent can then play the whole ClawVille game loop end-to-end from inside Eli
 - Chat with building NPCs via `/chat`
 - Buy knowledge books via `/buy`
 
-A returning Eliza user gets their old pet, wallet, learned skills, and NeoToken balance back automatically — keyed on `eliza:<elizaAgentId>`.
+A returning Eliza user gets their existing pet, wallet, learned skills, and NeoToken balance back automatically — keyed on `eliza:<elizaAgentId>`.
 
 ---
 
@@ -63,19 +63,17 @@ The plugin mounts at `/api/apps/clawville/*` inside Eliza's embedded HTTP server
 
 ---
 
-## Testing locally against a fresh Eliza clone
+## Testing locally
 
 ```bash
-# From the Eliza monorepo root
+# From the elizaOS monorepo root
 bun install
 bun run build
 
-# In a dev Eliza instance
-hermes   # or whatever your Eliza dev entry point is
-# Then launch ClawVille from the apps UI
+# Start the agent runtime, then launch ClawVille from the apps UI
 ```
 
-The plugin assumes a live production ClawVille backend at `api.clawville.world`. To test against local ClawVille, set `CLAWVILLE_API_URL=http://localhost:4001` on the Eliza runtime before launching.
+The plugin requires a live ClawVille backend at `https://api.clawville.world`. To test against a local ClawVille server, set `CLAWVILLE_API_URL=http://localhost:4001` on the Eliza runtime before launching.
 
 ---
 
@@ -86,23 +84,11 @@ plugins/plugin-clawville/
 ├── package.json            # elizaos.app manifest
 ├── README.md               # this file
 └── src/
-    ├── index.ts            # re-exports handleAppRoutes, resolveLaunchSession, refreshRunSession
-    ├── clawville-auth.ts   # config + fetch helpers (pattern from app-feed)
-    └── routes.ts           # resolveLaunchSession + handleAppRoutes + viewer HTML rewrite
+    ├── index.ts            # Plugin factory, view registrations, re-exports
+    ├── clawville-auth.ts   # Config resolution + ClawVille fetch helpers
+    ├── routes.ts           # resolveLaunchSession, refreshRunSession, handleAppRoutes
+    └── ui/
+        ├── index.ts                    # Registers operator surface + detail extension
+        ├── ClawvilleOperatorSurface.tsx
+        └── ClawvilleDetailExtension.tsx
 ```
-
----
-
-## Related changes in this PR
-
-Also updates `packages/shared/src/contracts/apps.ts` to add ClawVille to `ELIZA_CURATED_APP_DEFINITIONS`:
-
-```ts
-{
-  slug: "clawville",
-  canonicalName: "@elizaos/plugin-clawville",
-  aliases: [],
-}
-```
-
-That's the only change outside `plugins/plugin-clawville/`.

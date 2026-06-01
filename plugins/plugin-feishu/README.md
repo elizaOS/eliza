@@ -1,10 +1,10 @@
-# Feishu/Lark Client Plugin for ElizaOS
+# Feishu/Lark Client Plugin for elizaOS
 
-This plugin integrates a Feishu (飞书) / Lark client with ElizaOS, allowing agents to interact via ByteDance's enterprise collaboration platform. It supports both the Chinese Feishu platform and the global Lark platform.
+This plugin integrates a Feishu (飞书) / Lark client with elizaOS, allowing Eliza agents to interact via ByteDance's enterprise collaboration platform. It supports both the Chinese Feishu platform and the global Lark platform.
 
 ## Features
 
-- **Seamless Feishu/Lark Integration**: Connects ElizaOS agents to Feishu/Lark through the Open Platform API.
+- **Seamless Feishu/Lark Integration**: Connects Eliza agents to Feishu/Lark through the Open Platform API.
 - **WebSocket Real-time Events**: Receives messages and events via WebSocket for low-latency interactions.
 - **Multi-region Support**: Works with both Feishu (China) and Lark (Global) platforms.
 - **Configuration Validation**: Ensures required settings are properly configured before starting.
@@ -43,36 +43,31 @@ FEISHU_DOMAIN=feishu  # or "lark" for global
 
 ### 3. Configure Your Character
 
-Create or modify your character configuration file:
+Add a `feishu` connector block to your character's `connectors` config (or set the env vars above). The plugin auto-enables when a `feishu` connector block is present and not explicitly disabled:
 
 ```json
 {
-  "clients": ["feishu"],
-  "settings": {
+  "connectors": {
     "feishu": {
-      "appId": "cli_xxx",
-      "appSecret": "your-app-secret",
-      "domain": "feishu"
+      "enabled": true
     }
   }
 }
 ```
 
+Env vars (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) are also read directly and serve as the `"default"` account when no per-account config is provided.
+
 ## Usage
 
-### Starting the Bot
+### Starting the Agent
 
-From the project root:
-
-```bash
-npm run dev
-```
-
-Or using bun:
+Load the plugin in your elizaOS agent. With credentials in the environment:
 
 ```bash
-bun start --character="characters/your-character.json"
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=your-secret elizaos start
 ```
+
+The plugin registers itself with the agent runtime's message connector system. No additional setup is required once the env vars are set and the plugin is loaded.
 
 ## API Endpoints
 
