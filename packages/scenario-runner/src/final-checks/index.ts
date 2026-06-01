@@ -242,6 +242,19 @@ function actionResultData(
   return toRecord(action.result?.data) ?? toRecord(action.result?.raw);
 }
 
+/**
+ * A synthesized REPLY is fabricated by the executor when the runtime emitted
+ * conversational text but the LLM did not actually select an action. It is NOT
+ * a genuine action selection, so action-selection checks must not be satisfied
+ * by it — otherwise a turn that free-texts instead of selecting the required
+ * action would falsely pass.
+ */
+function isSynthesizedReply(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
+  return toRecord(action.result?.data)?.source === "synthesized-reply";
+}
+
 function hasBrowserTaskCompletedValue(value: unknown): boolean {
   const record = toRecord(value);
   if (!record) {
@@ -388,7 +401,9 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
     status?: string;
     minCount?: number;
   };
-  const calls = ctx.actionsCalled.filter((a) => a.actionName === actionName);
+  const calls = ctx.actionsCalled.filter(
+    (a) => a.actionName === actionName && !isSynthesizedReply(a),
+  );
   const min = typeof minCount === "number" ? minCount : 1;
   if (calls.length < min) {
     return {
@@ -412,7 +427,9 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
 registerFinalCheckHandler("selectedAction", (check, { ctx }) => {
   const { actionName } = check as { actionName: string | string[] };
   const accepted = toArray(actionName);
-  const match = ctx.actionsCalled.find((a) => accepted.includes(a.actionName));
+  const match = ctx.actionsCalled.find(
+    (a) => accepted.includes(a.actionName) && !isSynthesizedReply(a),
+  );
   if (!match) {
     return {
       status: "failed",

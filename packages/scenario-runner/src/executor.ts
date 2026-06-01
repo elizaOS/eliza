@@ -1735,7 +1735,11 @@ export async function runScenario(
           actionName: "REPLY",
           parameters: undefined,
           result: {
-            success: true,
+            // Do NOT claim success: this entry is fabricated because the LLM
+            // failed to select an action, so it must not satisfy a
+            // status:"success" actionCalled assertion. The `source` marker lets
+            // final-checks (and the native export) tell it apart from a real
+            // LLM-selected REPLY so it cannot mask a genuine selection failure.
             text: execution.responseText,
             data: { source: "synthesized-reply" },
           },
