@@ -1504,6 +1504,46 @@ export default defineConfig({
       requireModule: _require,
     }),
     asyncLocalStoragePatchPlugin(),
+    // @opentelemetry/api is imported by `ai@6+` but is not hoisted to the
+    // workspace root under Bun canary's content-addressable store layout.
+    // resolve.alias covers it when otelApiEntry is found at config time, but
+    // when the store layout differs (e.g. CI Docker smoke) the alias is absent
+    // and Vite emits a hard "Rollup failed to resolve" error for node_modules
+    // imports before the rolldownOptions plugin layer can intercept them.
+    // This top-level Vite plugin intercepts the specifier unconditionally so
+    // the alias (when present) or the no-op stub (when absent) always wins.
+    {
+      name: "otel-api-resolver",
+      enforce: "pre" as const,
+      resolveId(id: string) {
+        if (id !== "@opentelemetry/api") return null;
+        if (otelApiEntry) return otelApiEntry;
+        return "\0otel-api-stub";
+      },
+      load(id: string) {
+        if (id !== "\0otel-api-stub") return null;
+        // Minimal no-op stub satisfying the named exports that `ai` reads at
+        // import time: trace, context, propagation, metrics, diag,
+        // SpanStatusCode, SpanKind, ROOT_CONTEXT, createContextKey,
+        // defaultTextMapPropagator, isSpanContextValid, INVALID_SPAN_CONTEXT,
+        // INVALID_TRACER_PROVIDER.
+        return `
+export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
+export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
+export const propagation = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const metrics = { getMeter: () => ({ createCounter: () => ({ add(){} }), createHistogram: () => ({ record(){} }), createGauge: () => ({ record(){} }), createObservableGauge: () => ({}) }) };
+export const diag = { setLogger: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, verbose: () => {} };
+export const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 };
+export const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 };
+export const ROOT_CONTEXT = {};
+export const createContextKey = (name) => Symbol(name);
+export const defaultTextMapPropagator = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const isSpanContextValid = () => false;
+export const INVALID_SPAN_CONTEXT = {};
+export const INVALID_TRACER_PROVIDER = {};
+`;
+      },
+    },
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
