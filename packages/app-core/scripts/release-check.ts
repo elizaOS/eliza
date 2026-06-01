@@ -1176,7 +1176,7 @@ function assertWindowsInstallerProofScript() {
   );
 
   const requiredSnippets = [
-    "Eliza-Setup-*.exe",
+    '"*-Setup-*.exe"',
     "smoke-test-windows.ps1",
     "ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER",
     "Start Menu",
