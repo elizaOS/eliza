@@ -26,6 +26,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, default="gpt-4o")
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Compatibility flag; lifecycle scenarios are expanded by default",
+    )
     parser.add_argument("--count-scenarios", action="store_true")
     parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument(
