@@ -416,7 +416,9 @@ function TuiStatusBadge({ view }: { view: ViewEntry }) {
 		<span
 			title={view.available ? "Ready" : "Missing"}
 			style={{
-				color: view.available ? "#7dd3fc" : "#fca5a5",
+				color: view.available
+					? viewManagerTheme.success
+					: viewManagerTheme.danger,
 				minWidth: 18,
 				display: "inline-flex",
 				alignItems: "center",
@@ -457,8 +459,8 @@ function TuiRefreshButton({
 			{...agentProps}
 			style={{
 				background: "transparent",
-				color: "#a7f3d0",
-				border: "1px solid rgba(167,243,208,0.45)",
+				color: viewManagerTheme.accent,
+				border: `1px solid ${viewManagerTheme.accentBorder}`,
 				borderRadius: 4,
 				padding: "4px 8px",
 				cursor: loading ? "not-allowed" : "pointer",
@@ -498,17 +500,21 @@ function TuiViewRow({
 				gap: 12,
 				alignItems: "center",
 				padding: "8px 0",
-				borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+				borderTop: index === 0 ? "none" : `1px solid ${viewManagerTheme.border}`,
 			}}
 		>
-			<span style={{ color: "#64748b" }}>
+			<span style={{ color: viewManagerTheme.subtle }}>
 				{String(index + 1).padStart(2, "0")}
 			</span>
-			<span style={{ color: "#e2e8f0", fontWeight: 700 }}>{view.label}</span>
-			<span style={{ color: "#a7f3d0" }}>{view.viewType ?? "gui"}</span>
+			<span style={{ color: viewManagerTheme.text, fontWeight: 700 }}>
+				{view.label}
+			</span>
+			<span style={{ color: viewManagerTheme.accent }}>
+				{view.viewType ?? "gui"}
+			</span>
 			<span
 				style={{
-					color: "#94a3b8",
+					color: viewManagerTheme.muted,
 					overflow: "hidden",
 					textOverflow: "ellipsis",
 				}}
@@ -522,12 +528,14 @@ function TuiViewRow({
 					gridColumn: "2 / 5",
 					display: "flex",
 					gap: 8,
-					color: "#94a3b8",
+					color: viewManagerTheme.muted,
 					fontSize: 12,
 				}}
 			>
 				<span>{view.pluginName.replace(/^@elizaos\//, "")}</span>
-				<span style={{ color: "#475569" }}>{view.path ?? "/"}</span>
+				<span style={{ color: viewManagerTheme.subtle }}>
+					{view.path ?? "/"}
+				</span>
 			</div>
 			<button
 				ref={ref}
@@ -539,8 +547,8 @@ function TuiViewRow({
 					gridColumn: "5",
 					gridRow: "1 / span 2",
 					background: "transparent",
-					color: "#7dd3fc",
-					border: "1px solid rgba(125,211,252,0.45)",
+					color: viewManagerTheme.accent,
+					border: `1px solid ${viewManagerTheme.accentBorder}`,
 					borderRadius: 4,
 					padding: "4px 8px",
 					cursor: "pointer",
@@ -595,29 +603,29 @@ export function ViewManagerTuiView() {
 			})}
 			style={{
 				minHeight: "100vh",
-				background: "#020617",
-				color: "#cbd5e1",
+				background: viewManagerTheme.page,
+				color: viewManagerTheme.text,
 				fontFamily:
 					'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
 				padding: 20,
 			}}
 		>
-			<div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+			<div style={{ color: viewManagerTheme.accent, marginBottom: 4 }}>
 				elizaos://views-manager --type=tui
 			</div>
 			<div
 				data-status={lastAction}
-				style={{ color: "#475569", marginBottom: 16 }}
+				style={{ color: viewManagerTheme.subtle, marginBottom: 16 }}
 			>
 				{loading ? "loading" : `${views.length} entries`} | {lastAction}
 			</div>
 
 			<div
 				style={{
-					border: "1px solid rgba(125,211,252,0.3)",
+					border: `1px solid ${viewManagerTheme.borderStrong}`,
 					borderRadius: 6,
 					padding: 16,
-					boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.8)",
+					background: viewManagerTheme.panel,
 				}}
 			>
 				<div
@@ -628,16 +636,20 @@ export function ViewManagerTuiView() {
 						marginBottom: 10,
 					}}
 				>
-					<strong style={{ color: "#e2e8f0" }}>registered tui views</strong>
+					<strong style={{ color: viewManagerTheme.text }}>
+						registered tui views
+					</strong>
 					<TuiRefreshButton
 						loading={loading}
 						onClick={() => void fetchViews()}
 					/>
 				</div>
 
-				{error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+				{error && <div style={{ color: viewManagerTheme.danger }}>{error}</div>}
 				{!error && views.length === 0 && !loading && (
-					<div style={{ color: "#64748b" }}>no tui views registered</div>
+					<div style={{ color: viewManagerTheme.subtle }}>
+						no tui views registered
+					</div>
 				)}
 				{views.map((view, index) => (
 					<TuiViewRow
