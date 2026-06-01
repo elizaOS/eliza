@@ -29,6 +29,13 @@ function goal(
         label: "GoalScout",
         roomId: "room-1",
         workdir: "/tmp/eliza-work",
+        recentContext: [
+          {
+            role: "user",
+            text: "Need the output to name a concrete next action.",
+            timestamp: 1780000000000,
+          },
+        ],
       },
       lifeopsGoalStyle: {
         kind: "sprint",
@@ -51,8 +58,8 @@ describe("buildLifeOpsGoalWorkstreamTaskInput", () => {
       roomId: "room-1",
       taskRoomId: "room-1",
       originalRequest: "LifeOps goal created from /goal.",
-      goal: expect.stringContaining(
-        "Keep momentum on LifeOps goal: ship useful upstream PRs",
+      goal: expect.stringMatching(
+        /Keep momentum on LifeOps goal: ship useful upstream PRs[\s\S]*user: Need the output to name a concrete next action\./,
       ),
       acceptanceCriteria: expect.arrayContaining([
         "Keep the goal moving with one concrete next action.",
@@ -62,6 +69,7 @@ describe("buildLifeOpsGoalWorkstreamTaskInput", () => {
         lifeopsGoalId: "goal-1",
         sourceRoomId: "room-1",
         sourceWorkdir: "/tmp/eliza-work",
+        sourceContextMessageCount: 1,
         privacyClass: "private",
         publicContextBlocked: true,
         lifeopsGoalStyle: expect.objectContaining({

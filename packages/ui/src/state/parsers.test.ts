@@ -47,7 +47,16 @@ describe("buildLifeOpsGoalCommandMetadata", () => {
   it("stores command provenance and style hints as metadata", () => {
     expect(getLifeOpsGoalCommandStyleLabel("maintenance")).toBe("Maintenance");
     expect(
-      buildLifeOpsGoalCommandMetadata("maintenance", { roomId: "room-1" }),
+      buildLifeOpsGoalCommandMetadata("maintenance", {
+        roomId: "room-1",
+        recentContext: [
+          {
+            role: "user",
+            text: "Keep the goal grounded in chat.",
+            timestamp: 1780000000000,
+          },
+        ],
+      }),
     ).toMatchObject({
       source: "chat_command",
       command: "/goal",
@@ -57,6 +66,13 @@ describe("buildLifeOpsGoalCommandMetadata", () => {
         framework: "codex",
         label: "GoalScout",
         roomId: "room-1",
+        recentContext: [
+          {
+            role: "user",
+            text: "Keep the goal grounded in chat.",
+            timestamp: 1780000000000,
+          },
+        ],
       },
       lifeopsGoalStyle: {
         kind: "maintenance",

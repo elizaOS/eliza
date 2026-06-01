@@ -410,10 +410,19 @@ export function useChatSend(deps: UseChatSendDeps) {
           const roomId = activeGoalConversationId
             ? await resolveConversationRoomId(activeGoalConversationId, null)
             : null;
+          const recentContext = conversationMessagesRef.current
+            .slice(-12)
+            .map((message) => ({
+              role: message.role,
+              text: message.text.slice(0, 1000),
+              timestamp: message.timestamp,
+            }))
+            .filter((message) => message.text.trim().length > 0);
           const record = await client.createLifeOpsGoal({
             title: parsedGoal.title,
             metadata: buildLifeOpsGoalCommandMetadata(parsedGoal.goalStyle, {
               roomId,
+              recentContext,
             }),
           });
           appendLocalCommandTurn(
@@ -638,7 +647,12 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       return { handled: false };
     },
-    [activeConversationId, appendLocalCommandTurn, resolveConversationRoomId],
+    [
+      activeConversationId,
+      appendLocalCommandTurn,
+      conversationMessagesRef,
+      resolveConversationRoomId,
+    ],
   );
 
   const runQueuedChatSend = useCallback(

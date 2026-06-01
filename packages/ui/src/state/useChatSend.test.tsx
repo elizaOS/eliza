@@ -63,13 +63,14 @@ function makeDeps(
   overrides: {
     activeConversationId?: string | null;
     conversations?: Conversation[];
+    messages?: ConversationMessage[];
   } = {},
 ): UseChatSendDeps {
   const conversationsRef = {
     current: overrides.conversations ?? [],
   } as MutableRefObject<Conversation[]>;
   const conversationMessagesRef = {
-    current: [],
+    current: overrides.messages ?? [],
   } as MutableRefObject<ConversationMessage[]>;
   const chatPendingImagesRef = {
     current: [],
@@ -240,6 +241,20 @@ describe("useChatSend LifeOps commands", () => {
     const deps = makeDeps({
       activeConversationId: "conv-lifeops",
       conversations: [conversation("conv-lifeops", "room-lifeops")],
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          text: "We need real PR-ready LifeOps workstreams.",
+          timestamp: 1780000000000,
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          text: "Next step is wiring goals into orchestrator tasks.",
+          timestamp: 1780000001000,
+        },
+      ],
     });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -265,6 +280,18 @@ describe("useChatSend LifeOps commands", () => {
           framework: "codex",
           label: "GoalScout",
           roomId: "room-lifeops",
+          recentContext: [
+            {
+              role: "user",
+              text: "We need real PR-ready LifeOps workstreams.",
+              timestamp: 1780000000000,
+            },
+            {
+              role: "assistant",
+              text: "Next step is wiring goals into orchestrator tasks.",
+              timestamp: 1780000001000,
+            },
+          ],
         }),
       }),
     });

@@ -16,6 +16,13 @@ export interface GoalWorkstreamConfig {
   label: string;
   roomId?: string;
   workdir?: string;
+  recentContext: GoalWorkstreamContextMessage[];
+}
+
+export interface GoalWorkstreamContextMessage {
+  role: string;
+  text: string;
+  timestamp?: number;
 }
 
 export interface OrchestratorTaskDetailLike {
@@ -70,6 +77,32 @@ export function metadataRecord(
     : undefined;
 }
 
+function normalizeContextMessages(
+  value: unknown,
+): GoalWorkstreamContextMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      const record = metadataRecord(entry);
+      if (!record) return null;
+      const text = stringValue(record.text);
+      if (!text) return null;
+      const role = stringValue(record.role) ?? "context";
+      const timestamp =
+        typeof record.timestamp === "number" &&
+        Number.isFinite(record.timestamp)
+          ? record.timestamp
+          : undefined;
+      return {
+        role,
+        text: text.slice(0, 1000),
+        ...(timestamp !== undefined ? { timestamp } : {}),
+      };
+    })
+    .filter((entry): entry is GoalWorkstreamContextMessage => entry !== null)
+    .slice(-12);
+}
+
 export function readGoalWorkstreamConfig(
   metadata: Record<string, unknown>,
 ): GoalWorkstreamConfig | null {
@@ -79,14 +112,35 @@ export function readGoalWorkstreamConfig(
   if (!enabled) return null;
   const roomId = stringValue(requested.roomId);
   const workdir = stringValue(requested.workdir);
+  const recentContext = normalizeContextMessages(requested.recentContext);
   return {
     enabled,
     autoSpawnAgent: booleanValue(requested.autoSpawnAgent) ?? true,
     framework: stringValue(requested.framework) ?? "codex",
     label: stringValue(requested.label) ?? "GoalScout",
+    recentContext,
     ...(roomId ? { roomId } : {}),
     ...(workdir ? { workdir } : {}),
   };
+}
+
+function formatContextMessage(
+  message: GoalWorkstreamContextMessage,
+  index: number,
+): string {
+  const role = message.role.replace(/\s+/g, " ").trim() || "context";
+  const text = message.text.replace(/\s+/g, " ").trim();
+  return `${index + 1}. ${role}: ${text}`;
+}
+
+function formatRecentContext(
+  messages: readonly GoalWorkstreamContextMessage[],
+): string | null {
+  if (messages.length === 0) return null;
+  return [
+    "Recent chat context:",
+    ...messages.map((message, index) => formatContextMessage(message, index)),
+  ].join("\n");
 }
 
 export function buildLifeOpsGoalWorkstreamTaskInput(
@@ -117,6 +171,7 @@ export function buildLifeOpsGoalWorkstreamTaskInput(
     description ? `Description: ${description}` : null,
     styleLabel ? `Goal style: ${styleLabel}` : null,
     promptHints.length > 0 ? `Hints: ${promptHints.join(" ")}` : null,
+    formatRecentContext(workstream?.recentContext ?? []),
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
@@ -143,6 +198,7 @@ export function buildLifeOpsGoalWorkstreamTaskInput(
       lifeopsGoalId: goal.id,
       ...(workstream?.roomId ? { sourceRoomId: workstream.roomId } : {}),
       ...(workstream?.workdir ? { sourceWorkdir: workstream.workdir } : {}),
+      sourceContextMessageCount: workstream?.recentContext.length ?? 0,
       ...(style ? { lifeopsGoalStyle: style } : {}),
       privacyClass: "private",
       publicContextBlocked: true,
@@ -157,7 +213,14 @@ export function buildLifeOpsGoalInitialAgentTask(
   return [
     input.goal,
     "",
-    "Briefly inspect available context, then return the next useful action for this LifeOps goal.",
+    "Return a LifeOps action brief, not a generic inspection plan.",
+    "Output exactly these sections:",
+    "1. Next action: one concrete action the owner or agent should take now.",
+    "2. Why now: one sentence grounded in the recent context above.",
+    "3. Blockers: list any missing information or say None.",
+    "4. Follow-up: one short check-in or subtask to keep this goal moving.",
+    "",
+    "Use the recent chat context when present. If workspace inspection is useful but unavailable, do not lead with that; still produce the best next action from the goal/context.",
     "Do not commit, push, or open pull requests unless the user explicitly asks.",
   ].join("\n");
 }

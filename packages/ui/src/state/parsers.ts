@@ -369,7 +369,14 @@ export function getLifeOpsGoalCommandStyleLabel(
 
 export function buildLifeOpsGoalCommandMetadata(
   goalStyle: LifeOpsGoalCommandStyle,
-  options: { roomId?: string | null } = {},
+  options: {
+    roomId?: string | null;
+    recentContext?: Array<{
+      role: string;
+      text: string;
+      timestamp?: number;
+    }>;
+  } = {},
 ): Record<string, unknown> {
   return {
     source: "chat_command",
@@ -380,6 +387,9 @@ export function buildLifeOpsGoalCommandMetadata(
       framework: "codex",
       label: "GoalScout",
       ...(options.roomId ? { roomId: options.roomId } : {}),
+      ...(options.recentContext?.length
+        ? { recentContext: options.recentContext.slice(-12) }
+        : {}),
     },
     lifeopsGoalStyle: {
       kind: goalStyle,
