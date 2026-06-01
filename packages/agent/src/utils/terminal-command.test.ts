@@ -20,31 +20,26 @@ describe("normalizeTerminalCommand", () => {
 
   it("round-trips CDATA content correctly through base64 encoding", () => {
     const originalScript = "set -e\necho hello";
-    const command = normalizeTerminalCommand(
-      `<![CDATA[${originalScript}]]>`,
-    );
+    const command = normalizeTerminalCommand(`<![CDATA[${originalScript}]]>`);
 
-    // Extract the base64 payload from the generated command
     const match = command.match(
       /^bash -lc "\$\(printf %s ([A-Za-z0-9+/=]+) \| base64 -d\)"$/,
     );
     expect(match).not.toBeNull();
-    const decoded = Buffer.from(match![1], "base64").toString("utf8");
+    const decoded = Buffer.from(match?.[1] ?? "", "base64").toString("utf8");
     expect(decoded).toBe(originalScript);
   });
 
   it("round-trips scripts containing shell metacharacters without corruption", () => {
     const originalScript =
-      'echo "hello world"\nfoo=$(cat /etc/hosts)\nls $HOME | grep \'bar\'';
-    const command = normalizeTerminalCommand(
-      `<![CDATA[${originalScript}]]>`,
-    );
+      "echo \"hello world\"\nfoo=$(cat /etc/hosts)\nls $HOME | grep 'bar'";
+    const command = normalizeTerminalCommand(`<![CDATA[${originalScript}]]>`);
 
     const match = command.match(
       /^bash -lc "\$\(printf %s ([A-Za-z0-9+/=]+) \| base64 -d\)"$/,
     );
     expect(match).not.toBeNull();
-    const decoded = Buffer.from(match![1], "base64").toString("utf8");
+    const decoded = Buffer.from(match?.[1] ?? "", "base64").toString("utf8");
     expect(decoded).toBe(originalScript);
   });
 
