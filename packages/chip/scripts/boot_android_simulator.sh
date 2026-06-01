@@ -12,9 +12,9 @@ fi
 report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.json}"
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
-aosp_dir_source=unset
+aosp_dir_source='unset'
 if [ -n "$aosp_dir" ]; then
-	aosp_dir_source=env
+	aosp_dir_source='env'
 elif [ "${ELIZA_DISABLE_AOSP_DIR_DEFAULTS:-0}" != "1" ] &&
 	[ -f /home/shaw/aosp/build/envsetup.sh ] &&
 	[ -d /home/shaw/aosp/device ]; then

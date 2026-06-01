@@ -1,13 +1,13 @@
 as_of: 2026-05-19
 blocked_until:
-- packages/chip/requirements.txt cocotb-coverage<=>cocotb conflict resolved
-- eliza-chip:linux-x86_64 docker image built
-- eliza-chip:llvm-build docker image built
-- build/llvm-stage2/bin/clang exists
-- build/reports/compiler/llvm-version.txt records a clang major >= 21
-- build/reports/compiler/llvm-build-sha.txt records the 40-character SHA matching
-  llvm-pin.json::upstream.commit_sha
-- build/reports/compiler/llvm-hello-rva23.dump shows RVV vector instructions
+  - packages/chip/requirements.txt cocotb-coverage<=>cocotb conflict resolved
+  - eliza-chip:linux-x86_64 docker image built
+  - eliza-chip:llvm-build docker image built
+  - build/llvm-stage2/bin/clang exists
+  - build/reports/compiler/llvm-version.txt records a clang major >= 21
+  - build/reports/compiler/llvm-build-sha.txt records the 40-character SHA matching
+    llvm-pin.json::upstream.commit_sha
+  - build/reports/compiler/llvm-hello-rva23.dump shows RVV vector instructions
 claim_boundary: 'pinned_recipe_only; no executable evidence of a built LLVM toolchain
   is
 
@@ -17,36 +17,36 @@ claim_boundary: 'pinned_recipe_only; no executable evidence of a built LLVM tool
 
   '
 forbidden_claims_without_required_evidence:
-- LLVM toolchain reproducible
-- RVA23 release-grade compile
-- ThinLTO + sample-PGO + Propeller + BOLT end-to-end
+  - LLVM toolchain reproducible
+  - RVA23 release-grade compile
+  - ThinLTO + sample-PGO + Propeller + BOLT end-to-end
 generated_utc: '2026-05-20T12:42:27Z'
 pinned_sha: de3ee84346d6dcf77ac20fe5c8acc95594886cbc
 pinned_sha_resolved_at_utc: 2026-05-19 10:15:30+00:00
 pinned_sha_source: git ls-remote https://github.com/llvm/llvm-project.git HEAD
 required_artifacts:
-- path: compiler/llvm-build/llvm-pin.json
-  purpose: source of truth for LLVM SHA, build flags, and RVA23 patch list
-- path: docs/toolchain/llvm-trunk-pin.md
-  purpose: human-readable pin policy and refresh procedure
-- path: scripts/bootstrap_llvm_container.sh
-  purpose: two-step docker build for eliza-chip:linux-x86_64 then eliza-chip:llvm-build
-- path: scripts/build_llvm_riscv.sh
-  purpose: two-stage build recipe executed inside the canonical Linux container
-- path: build/llvm-stage2/bin/clang
-  purpose: produced stage-2 cross-targeted clang
-- path: build/llvm-stage2/bin/ld.lld
-  purpose: produced stage-2 linker
-- path: build/llvm-stage2/bin/llvm-bolt
-  purpose: produced post-link optimizer
-- path: build/reports/compiler/llvm-version.txt
-  purpose: pinned `clang --version` text
-- path: build/reports/compiler/llvm-build-sha.txt
-  purpose: resolved LLVM commit SHA from the canonical build
-- path: build/reports/compiler/llvm-hello-rva23.dump
-  purpose: cross-compile smoke that exercises -march=rva23u64
-- path: build/reports/compiler/llvm-rva23-extensions.txt
-  purpose: stage-2 clang --print-supported-extensions snapshot
+  - path: compiler/llvm-build/llvm-pin.json
+    purpose: source of truth for LLVM SHA, build flags, and RVA23 patch list
+  - path: docs/toolchain/llvm-trunk-pin.md
+    purpose: human-readable pin policy and refresh procedure
+  - path: scripts/bootstrap_llvm_container.sh
+    purpose: two-step docker build for eliza-chip:linux-x86_64 then eliza-chip:llvm-build
+  - path: scripts/build_llvm_riscv.sh
+    purpose: two-stage build recipe executed inside the canonical Linux container
+  - path: build/llvm-stage2/bin/clang
+    purpose: produced stage-2 cross-targeted clang
+  - path: build/llvm-stage2/bin/ld.lld
+    purpose: produced stage-2 linker
+  - path: build/llvm-stage2/bin/llvm-bolt
+    purpose: produced post-link optimizer
+  - path: build/reports/compiler/llvm-version.txt
+    purpose: pinned `clang --version` text
+  - path: build/reports/compiler/llvm-build-sha.txt
+    purpose: resolved LLVM commit SHA from the canonical build
+  - path: build/reports/compiler/llvm-hello-rva23.dump
+    purpose: cross-compile smoke that exercises -march=rva23u64
+  - path: build/reports/compiler/llvm-rva23-extensions.txt
+    purpose: stage-2 clang --print-supported-extensions snapshot
 round3_attempt:
   artifacts:
     base_build_log: build/reports/compiler/llvm-container-base-build.log
@@ -87,15 +87,15 @@ round3_attempt:
 
     '
   stages_completed_in_attempt:
-  - apt_install (123.1s, ~600 packages, OK)
-  - venv_create (OK)
+    - apt_install (123.1s, ~600 packages, OK)
+    - venv_create (OK)
   stages_failed_in_attempt:
-  - pip_install_requirements (cocotb-coverage<>cocotb constraint conflict)
+    - pip_install_requirements (cocotb-coverage<>cocotb constraint conflict)
   status: BLOCKED
 schema: eliza.compiler.llvm_build_evidence.v1
 verification_commands:
-- scripts/bootstrap_llvm_container.sh
-- scripts/build_llvm_riscv.sh
-- scripts/build_llvm_riscv.sh --verify
-- scripts/check_compiler_versions.py --strict
-- scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2
+  - scripts/bootstrap_llvm_container.sh
+  - scripts/build_llvm_riscv.sh
+  - scripts/build_llvm_riscv.sh --verify
+  - scripts/check_compiler_versions.py --strict
+  - scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2

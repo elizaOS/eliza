@@ -82,6 +82,8 @@ status_file="$(mktemp "${TMPDIR:-/tmp}/e1-npu-cts-vts-build.XXXXXX")"
   cd "$aosp_tree"
   set +e
   if [ "$VERIFY_ONLY" -eq 0 ]; then
+    # Variables expand in the subshell (-lc '...'), not the outer shell; single quotes are intentional
+    # shellcheck disable=SC2016
     env AOSP_PRODUCT="$aosp_product" AOSP_CTS_VTS_BUILD_TARGETS="$targets" AOSP_MAKE_ARGS="$make_args" "$aosp_shell" -lc '
       source build/envsetup.sh &&
       lunch "$AOSP_PRODUCT" >/dev/null &&

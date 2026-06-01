@@ -322,9 +322,7 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True
-    if CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
-        return True
-    return False
+    return bool(CLASSIFIED_GENERATOR_LINE_RE.search(stripped))
 
 
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:

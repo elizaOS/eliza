@@ -429,7 +429,7 @@ def ap_payload_freshness_status(
     payload = rooted(AP_BENCHMARK_PAYLOAD)
     sidecar = rooted(AP_BENCHMARK_FRESHNESS_MANIFEST)
     linux_config = rooted(AP_BENCHMARK_LINUX_CONFIG)
-    workload = rooted(AP_BENCHMARK_WORKLOAD)
+    _workload = rooted(AP_BENCHMARK_WORKLOAD)
     kfrag = rooted(AP_BENCHMARK_KFRAG)
     source_inputs = ap_payload_source_inputs()
     stale_inputs: list[str] = []

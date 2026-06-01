@@ -5822,7 +5822,7 @@ def check_supplier_sample_release_gate() -> None:
         if value is not True:
             raise SystemExit(f"supplier sample release coupling unexpectedly open: {key}")
     for name, value in gate["cross_checks"].items():
-        expected_value = False if name == "every_required_evidence_path_is_absent" else True
+        expected_value = name != "every_required_evidence_path_is_absent"
         if value is not expected_value:
             raise SystemExit(f"supplier sample release cross-check failed: {name}")
     for blocker in [

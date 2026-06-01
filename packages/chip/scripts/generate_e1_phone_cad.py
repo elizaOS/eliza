@@ -3142,11 +3142,11 @@ def write_solid_cad_handoff_artifacts(
                 ys = sorted(set(round(v, 6) for v in ys))
 
                 cells: list[tuple[float, float, float, float]] = []
-                for x0, x1 in zip(xs, xs[1:]):
+                for x0, x1 in zip(xs, xs[1:], strict=False):
                     if x1 - x0 <= min_span_mm:
                         continue
                     cx = (x0 + x1) / 2.0
-                    for y0, y1 in zip(ys, ys[1:]):
+                    for y0, y1 in zip(ys, ys[1:], strict=False):
                         if y1 - y0 <= min_span_mm:
                             continue
                         cy = (y0 + y1) / 2.0
@@ -6385,7 +6385,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
             reader = STEPControl_Reader()
             status = reader.ReadFile(str(path))
             if status != IFSelect_RetDone:
-                raise RuntimeError(f"OCP STEP read failed: {status}")
+                raise RuntimeError(f"OCP STEP read failed: {status}") from cadquery_exc
             reader.TransferRoots()
             shape = reader.OneShape()
             box = Bnd_Box()

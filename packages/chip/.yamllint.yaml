@@ -35,4 +35,5 @@ rules:
       board/kicad/e1-phone/routed-development-board-intake-*.yaml
       board/kicad/e1-phone/pcb/*.metadata.yaml
       board/kicad/e1-phone/supplier-pinouts/
-      docs/evidence/pd/e1-soc-pd-input-contract.yaml
+      docs/evidence/
+      mechanical/e1-phone/review/routed-board-clearance-release-intake.yaml

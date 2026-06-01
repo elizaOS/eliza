@@ -1191,9 +1191,8 @@ def dependency_from_blocker_counts(report: dict[str, object]) -> BlockerDependen
 def report_has_repo_generatable_now(value: object) -> bool:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in ("repo_generatable_now", "can_generate_from_repo_now"):
-                if item is True:
-                    return True
+            if key in ("repo_generatable_now", "can_generate_from_repo_now") and item is True:
+                return True
             if key in ("repo_generatable_now_count", "can_close_from_current_repo_count"):
                 try:
                     if int(item or 0) > 0:
@@ -1558,7 +1557,7 @@ def android_release_readiness_action() -> str:
                 missing_archives = [str(path) for path in archives[:3]]
         commands = inventory.get("commands")
         if isinstance(commands, dict):
-            command_keys = [str(key) for key in commands.keys()][:6]
+            command_keys = [str(key) for key in commands][:6]
     missing_text = (
         f" Missing staged archives: {', '.join(missing_archives)}." if missing_archives else ""
     )

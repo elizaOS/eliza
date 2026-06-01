@@ -66,6 +66,8 @@ if insert not in text:
 path.write_text(text)
 PY
 fi
+# $(CONFIG_ELIZA_E1_BSP) is a Makefile variable — single quotes prevent premature shell expansion
+# shellcheck disable=SC2016
 if ! grep -q 'obj-$(CONFIG_ELIZA_E1_BSP).*eliza-e1/' "$linux_src/drivers/misc/Makefile"; then
 	printf '\nobj-$(CONFIG_ELIZA_E1_BSP)\t+= eliza-e1/\n' >> "$linux_src/drivers/misc/Makefile"
 fi
