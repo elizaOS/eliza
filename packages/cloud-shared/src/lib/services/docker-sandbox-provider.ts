@@ -668,8 +668,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       kmsEnv.ELIZA_KMS_BACKEND = backend;
       if (backend === "local") {
         const rootKey =
-          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() ||
-          process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
+          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() || process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
         if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
       }
     }
