@@ -63,6 +63,29 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function readDesktopBuildLockOwnerPid() {
+  try {
+    const rawOwner = fs.readFileSync(
+      path.join(DESKTOP_BUILD_LOCK_DIR, "owner"),
+      "utf8",
+    );
+    const pid = Number.parseInt(rawOwner.split(/\r?\n/, 1)[0] ?? "", 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
+  }
+}
+
 function withDesktopBuildLock(run) {
   const lockParent = path.dirname(DESKTOP_BUILD_LOCK_DIR);
   const staleAfterMs = 30 * 60 * 1000;
@@ -90,13 +113,19 @@ function withDesktopBuildLock(run) {
         continue;
       }
 
-      if (Date.now() - stat.mtimeMs > staleAfterMs) {
+      const ownerPid = readDesktopBuildLockOwnerPid();
+      if (
+        (ownerPid !== null && !isProcessAlive(ownerPid)) ||
+        Date.now() - stat.mtimeMs > staleAfterMs
+      ) {
         fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
         continue;
       }
 
       if (!announcedWait) {
-        console.log("[desktop-build] Waiting for another desktop build to finish...");
+        console.log(
+          "[desktop-build] Waiting for another desktop build to finish...",
+        );
         announcedWait = true;
       }
       sleepSync(250);
@@ -1012,7 +1041,10 @@ function copyRuntimeNodeModulesWithRetry() {
       );
       continue;
     }
-    fail(`${result.command} failed with exit code ${result.status}`, result.status);
+    fail(
+      `${result.command} failed with exit code ${result.status}`,
+      result.status,
+    );
   }
 }
 
@@ -1088,8 +1120,7 @@ function stageDesktopBuild() {
     // deep in the stage; skip gracefully unless the build was explicitly asked
     // for the native bits (CI passes --build-whisper on a tooled runner).
     const clangAvailable =
-      which("xcrun") &&
-      runCapture("xcrun", ["-f", "clang++"]).status === 0;
+      which("xcrun") && runCapture("xcrun", ["-f", "clang++"]).status === 0;
     if (!clangAvailable) {
       if (whisperExplicitlyRequested) {
         fail(
