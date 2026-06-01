@@ -1,5 +1,6 @@
+import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens } from "marked";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 // The coding agent writes markdown prose. We parse it with `marked` — a real
 // lexer, not a hand-rolled regex — then render its token AST directly to React
@@ -152,7 +153,7 @@ function renderToken(token: Token, key: string): ReactNode {
       return (
         <code
           key={key}
-          className="rounded-sm bg-bg/70 px-1 py-px font-mono text-[0.95em] text-txt-strong"
+          className="break-words rounded-sm bg-bg/70 px-1 py-px font-mono text-[0.95em] text-txt-strong"
         >
           {token.text}
         </code>
@@ -198,15 +199,48 @@ function renderToken(token: Token, key: string): ReactNode {
 }
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    // Guard for non-secure-context / older webviews where clipboard is absent.
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      return;
+    }
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopied(true);
+        // Brief confirmation, then revert to the resting copy icon.
+        setTimeout(() => setCopied(false), 1200);
+      },
+      () => undefined,
+    );
+  };
+
   return (
-    <div className="my-1 overflow-hidden rounded-sm border border-border/50 bg-bg/80">
+    <div className="group/code relative my-1 overflow-hidden rounded-sm border border-border/50 bg-bg/80">
       {lang ? (
         <div className="border-b border-border/40 px-2.5 py-0.5 font-mono text-3xs uppercase tracking-wide text-muted">
           {lang}
         </div>
       ) : null}
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy code"}
+        // Unobtrusive: faded until the block is hovered/focused, fully shown
+        // once copied. Green only as the success affordance.
+        className={`absolute right-1 top-1 z-10 rounded p-1 text-muted opacity-0 transition-[color,opacity] hover:bg-bg-hover/60 hover:text-txt focus-visible:opacity-100 group-hover/code:opacity-100 ${
+          copied ? "text-ok opacity-100" : ""
+        }`}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+        )}
+      </button>
       <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
-        <code>{code}</code>
+        <code className="whitespace-pre-wrap break-words">{code}</code>
       </pre>
     </div>
   );
