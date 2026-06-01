@@ -83,15 +83,32 @@ export function useShellController(): ShellController {
     }));
   }, [conversationMessages]);
 
+  const pendingSendsRef = React.useRef<string[]>([]);
+
   const send = React.useCallback(
     (text: string) => {
-      if (!ready) return;
       const trimmed = text.trim();
       if (!trimmed) return;
+      if (!ready) {
+        // Agent still booting — queue and flush on ready instead of dropping.
+        pendingSendsRef.current.push(trimmed);
+        return;
+      }
       void sendChatText(trimmed);
     },
     [ready, sendChatText],
   );
+
+  // Flush messages the user submitted while the agent was still booting.
+  React.useEffect(() => {
+    if (!ready) return;
+    const queued = pendingSendsRef.current;
+    if (queued.length === 0) return;
+    pendingSendsRef.current = [];
+    for (const text of queued) {
+      void sendChatText(text);
+    }
+  }, [ready, sendChatText]);
 
   const stopCapture = React.useCallback(() => {
     const handle = captureRef.current;
@@ -184,14 +201,12 @@ export function useShellController(): ShellController {
         ? "responding"
         : "idle";
 
-  // Allow text/voice submission whenever the agent is reachable, not
-  // mid-response, and a local text model (when required) is ready. Mirrors
-  // the ChatView composer gate plus the home model-readiness gate.
+  // Accept input while the agent is still booting; pre-ready sends queue (see
+  // `send`) and flush on ready. Still block mid-response, when the agent is
+  // stopped, or when a required local text model is not yet ready. Mirrors the
+  // ChatView composer gate plus the home model-readiness gate.
   const canSend =
-    ready &&
-    !chatSending &&
-    agentStatus?.state !== "stopped" &&
-    !modelStatus.blocksSend;
+    !chatSending && agentStatus?.state !== "stopped" && !modelStatus.blocksSend;
 
   return {
     phase,
