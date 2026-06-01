@@ -5,8 +5,8 @@ vi.mock("./api-base-owner", () => ({
   pushToWindow: vi.fn(),
 }));
 
-import * as apiBaseOwner from "./api-base-owner";
 import { publishAgentApiBase } from "./agent-ready-publish";
+import * as apiBaseOwner from "./api-base-owner";
 
 describe("publishAgentApiBase", () => {
   beforeEach(() => {
@@ -29,7 +29,10 @@ describe("publishAgentApiBase", () => {
 
     publishAgentApiBase("http://127.0.0.1:42", "t", [a, b]);
 
-    expect(apiBaseOwner.setCurrent).toHaveBeenCalledWith("http://127.0.0.1:42", "t");
+    expect(apiBaseOwner.setCurrent).toHaveBeenCalledWith(
+      "http://127.0.0.1:42",
+      "t",
+    );
     expect(apiBaseOwner.pushToWindow).toHaveBeenCalledTimes(2);
     expect(apiBaseOwner.pushToWindow).toHaveBeenNthCalledWith(1, a);
     expect(apiBaseOwner.pushToWindow).toHaveBeenNthCalledWith(2, b);
@@ -38,7 +41,10 @@ describe("publishAgentApiBase", () => {
   it("defaults targets to empty so a headless caller may omit windows", () => {
     publishAgentApiBase("http://127.0.0.1:9", "");
 
-    expect(apiBaseOwner.setCurrent).toHaveBeenCalledWith("http://127.0.0.1:9", "");
+    expect(apiBaseOwner.setCurrent).toHaveBeenCalledWith(
+      "http://127.0.0.1:9",
+      "",
+    );
     expect(apiBaseOwner.pushToWindow).not.toHaveBeenCalled();
   });
 });

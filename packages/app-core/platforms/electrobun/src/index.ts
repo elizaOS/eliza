@@ -37,6 +37,7 @@ import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import { getFloatingChatManager } from "./floating-chat-window";
 import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
+import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   markDesktopSessionStale,
@@ -1578,6 +1579,26 @@ function injectApiBaseIntoOpenRendererWindows(): void {
 }
 
 /**
+ * Snapshot of every currently-open renderer window the agent API base should
+ * be pushed to. Mirrors the window set in injectApiBaseIntoOpenRendererWindows.
+ * Returns an empty array when no window exists yet (headless boot).
+ */
+function collectOpenRendererWindows(): BrowserWindow[] {
+  const windows: BrowserWindow[] = [];
+  if (currentWindow) {
+    windows.push(currentWindow);
+  }
+  const pillWindow = getPillWindow();
+  if (pillWindow && pillWindow !== currentWindow) {
+    windows.push(pillWindow);
+  }
+  surfaceWindowManager?.forEachWindow((w) => {
+    windows.push(w as BrowserWindow);
+  });
+  return windows;
+}
+
+/**
  * Push real OS permission states into the agent REST API so the renderer's
  * PermissionsSection shows correct statuses and capability toggles unlock.
  */
@@ -1602,7 +1623,7 @@ async function syncPermissionsToRestApi(
   }
 }
 
-async function _startAgent(win: BrowserWindow): Promise<void> {
+async function _startAgent(): Promise<void> {
   const runtimeResolution = resolveDesktopRuntimeMode(
     process.env as Record<string, string | undefined>,
   );
@@ -1611,7 +1632,7 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     logger.info(
       `[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
     );
-    injectApiBase(win);
+    injectApiBaseIntoOpenRendererWindows();
     return;
   }
 
@@ -1644,11 +1665,9 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
       // the renderer behaves like a remote browser (password-required).
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
-      apiBaseOwner.notifyChange(win, rendererBase, apiToken);
-      const pillWindow = getPillWindow();
-      if (pillWindow && pillWindow !== win) {
-        apiBaseOwner.pushToWindow(pillWindow);
-      }
+      // Set the source-of-truth API base FIRST (correct even with zero open
+      // windows — Stage 2 headless boot), then push to every open window.
+      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -2491,23 +2510,21 @@ async function main(): Promise<void> {
   // already set the initial window.__ELIZA_API_BASE__ from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
-  if (currentWindow) {
-    const rt = resolveDesktopRuntimeMode(
-      process.env as Record<string, string | undefined>,
-    );
-    if (rt.mode === "external") {
-      injectApiBaseIntoOpenRendererWindows();
-    } else if (rt.mode === "local") {
-      logger.info("[Main] Starting embedded agent (local mode).");
-      _startAgent(currentWindow).catch((err) => {
-        logger.error(
-          `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        const error = err instanceof Error ? err.message : String(err);
-        sendToActiveRenderer("agentStartupFailed", { error });
-        console.error(`title: "${BRAND.appName} startup failed"`);
-      });
-    }
+  const rt = resolveDesktopRuntimeMode(
+    process.env as Record<string, string | undefined>,
+  );
+  if (rt.mode === "external") {
+    injectApiBaseIntoOpenRendererWindows();
+  } else if (rt.mode === "local") {
+    logger.info("[Main] Starting embedded agent (local mode).");
+    _startAgent().catch((err) => {
+      logger.error(
+        `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      const error = err instanceof Error ? err.message : String(err);
+      sendToActiveRenderer("agentStartupFailed", { error });
+      console.error(`title: "${BRAND.appName} startup failed"`);
+    });
   }
 
   void setupUpdater();
