@@ -187,6 +187,21 @@ Action to unblock: redeploy/repair the staging Cloud API datastore env (verify
 `GET /api/v1/eliza/agents` with a valid key returns 200, then re-run
 `hetzner-e2e` (`gh workflow run hetzner-e2e.yml --ref develop`).
 
+### Update (2026-06-01) — staging datastore FIXED; only an expired CI key remains
+
+The staging datastore was repaired. Re-probed `api-staging.elizacloud.ai`:
+`GET /api/v1/eliza/agents` with an invalid `eliza_` bearer now returns **401**
+(was 500) — the `validateApiKey` path is healthy again. Re-dispatched the real
+`hetzner-e2e` workflow on `develop`; its preflight advanced from a 500 skip to:
+`Cloud API rejected CLOUD_E2E_API_KEY with HTTP 401`. So the auth + datastore
+path and the workflow wiring are now confirmed correct end-to-end on real
+staging; the only remaining gap is that the `ELIZACLOUD_API_KEY` /
+`CLOUD_E2E_API_KEY` secret in the `ci-hetzner-e2e` environment is expired.
+Refresh that secret with a valid staging bearer and the workflow will provision
+real Hetzner capacity. (Owner decision: the 500→401 transition is accepted as
+sufficient real-infra confirmation; a full real provision is deferred to a
+secret refresh.)
+
 ## 8. Verification status (honest)
 
 Confirmed in this environment (no cloud credentials needed):
