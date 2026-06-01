@@ -86,7 +86,7 @@ export function StartupFailureView({
   return (
     <div className={SCREEN_SHELL_CLASS}>
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-border/10 bg-danger/5 pb-6 pt-6">
+        <CardHeader className="border-b border-border/10 bg-[#F7F9FF] pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <span
               aria-label={reasonLabel}
@@ -96,7 +96,7 @@ export function StartupFailureView({
             >
               <AlertCircle className="h-5 w-5" aria-hidden />
             </span>
-            <h1 className="text-xl font-semibold leading-tight text-danger">
+            <h1 className="text-xl font-semibold leading-tight text-[#0B35F1]">
               {t("startupfailureview.StartupFailed")} {reasonLabel}
             </h1>
           </div>

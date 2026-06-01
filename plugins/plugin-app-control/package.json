@@ -9,9 +9,9 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"eliza-source": {
-			  "types": "./src/index.ts",
-			  "import": "./src/index.ts",
-			  "default": "./src/index.ts"
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
 			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
@@ -20,9 +20,9 @@
 		"./*": {
 			"types": "./dist/*.d.ts",
 			"eliza-source": {
-			  "types": "./src/*.ts",
-			  "import": "./src/*.ts",
-			  "default": "./src/*.ts"
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
 			},
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"

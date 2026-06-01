@@ -376,6 +376,14 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   ) {
     return true;
   }
+  // @elizaos/core's importAiProvider lazy-loads AI SDK providers by string
+  // specifier; its /* @vite-ignore */ is stripped by Bun.build's minifier from
+  // dist/browser/index.browser.js, so vite:import-analysis re-warns in local
+  // mode (the symlinked core realpath has no node_modules segment). Intentional
+  // and resolves correctly at runtime.
+  if (text.includes("dynamic import cannot be analyzed by Vite")) {
+    return true;
+  }
   if (!text.includes("INEFFECTIVE_DYNAMIC_IMPORT")) {
     if (!text.includes("dynamically imported")) {
       return false;

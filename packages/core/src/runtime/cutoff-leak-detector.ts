@@ -47,8 +47,8 @@ const CUTOFF_LEAK_PATTERNS: readonly RegExp[] = [
 	/\b(?:knowledge|training)\s*cut[\s-]?off\b/i,
 	// "I was trained on | up to | until | through ...", "I was last updated | last trained"
 	/\bi\s+was\s+(?:trained\s+(?:on|up\s+to|until|through)|last\s+(?:updated|trained))\b/i,
-	// "the latest information / data / knowledge I have is/dates/goes from | to | up to | back to ..."
-	/\bthe latest (?:information|data|knowledge) i have (?:is|dates|goes)?\s*(?:from|to|up to|back to)\b/i,
+	// "the latest information / data / knowledge I have is/dates/goes from | to | up to | back to <date>"
+	/\bthe latest (?:information|data|knowledge) i have (?:is|dates|goes)?\s*(?:from|to|up to|back to)\s+(?:(?:early|mid|late)\s+)?(?:\d{4}|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i,
 	// "based on data through ...", "based on the data I was trained on", "based on my training data"
 	/\bbased on (?:data through|the data i was trained on|my training data)\b/i,
 	// "my training data | set | corpus"

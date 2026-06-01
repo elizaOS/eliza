@@ -1745,7 +1745,7 @@ export async function annotateUnverifiedUrls(
   // HEAD: we need the body for HTML, and many static hosts reject HEAD.)
   const probeOnce = async (
     url: string,
-  ): Promise<{ status: string | null; html?: string }> => {
+  ): Promise<{ status: string | null; html?: string; servedLive: boolean }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     try {
@@ -1765,7 +1765,7 @@ export async function annotateUnverifiedUrls(
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} (reachable; GET not allowed) @ ${new Date().toISOString()}`,
         );
-        return { status: null };
+        return { status: null, servedLive: false };
       }
       if (res.status < 200 || res.status >= 300) {
         const cachedMiss = await detectCachedMiss(url, res, controller.signal);
@@ -1775,25 +1775,26 @@ export async function annotateUnverifiedUrls(
           );
           return {
             status: `HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status})`,
+            servedLive: false,
           };
         }
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
         );
-        return { status: `HTTP ${res.status}` };
+        return { status: `HTTP ${res.status}`, servedLive: false };
       }
       const contentType = res.headers.get("content-type") ?? "";
       log?.(
         `[verify] probe ${url} → ${res.status} (${contentType.split(";")[0] || "?"}) @ ${new Date().toISOString()}`,
       );
       if (contentType.includes("text/html")) {
-        return { status: null, html: await res.text() };
+        return { status: null, html: await res.text(), servedLive: true };
       }
-      return { status: null };
+      return { status: null, servedLive: true };
     } catch (err) {
       const reason = err instanceof Error ? err.name : "unreachable";
       log?.(`[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`);
-      return { status: reason };
+      return { status: reason, servedLive: false };
     } finally {
       clearTimeout(timer);
     }
@@ -1812,7 +1813,7 @@ export async function annotateUnverifiedUrls(
     Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
   const probe = async (
     url: string,
-  ): Promise<{ status: string | null; html?: string }> => {
+  ): Promise<{ status: string | null; html?: string; servedLive: boolean }> => {
     let result = await probeOnce(url);
     if (result.status !== null && settleMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, settleMs));
@@ -1828,10 +1829,11 @@ export async function annotateUnverifiedUrls(
         dead.push({ url, status: result.status });
         return;
       }
-      // The probe just returned a healthy 200, so the served artifact is the
-      // authoritative liveness signal — pass servedLive so the mtime
-      // freshness gate can't false-flag a deploy-copied build as stale.
-      const localStatus = verifyMappedLocalUrl(url, routeVerification, true);
+      const localStatus = verifyMappedLocalUrl(
+        url,
+        routeVerification,
+        result.servedLive,
+      );
       if (localStatus) {
         dead.push({ url, status: localStatus });
         return;
@@ -1847,12 +1849,10 @@ export async function annotateUnverifiedUrls(
               dead.push({ url: subUrl, status: subResult.status, via: url });
               return;
             }
-            // Sub-resource also probed a healthy 200 — same authoritative
-            // live-serve signal as the parent page above.
             const subLocalStatus = verifyMappedLocalUrl(
               subUrl,
               routeVerification,
-              true,
+              subResult.servedLive,
             );
             if (subLocalStatus) {
               dead.push({ url: subUrl, status: subLocalStatus, via: url });

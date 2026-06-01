@@ -68,6 +68,14 @@ type GlobalWithLastFailedPluginNames = typeof globalThis & {
   [LAST_FAILED_PLUGIN_NAMES]?: string[];
 };
 
+const LAST_FAILED_PLUGIN_DETAILS = Symbol.for(
+  "@elizaos/plugin-resolver/last-failed-plugin-details",
+);
+
+type GlobalWithLastFailedPluginDetails = typeof globalThis & {
+  [LAST_FAILED_PLUGIN_DETAILS]?: Array<{ name: string; error: string }>;
+};
+
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-companion",
   "@elizaos/plugin-contacts",
@@ -769,16 +777,37 @@ async function findNearestNodeModulesDir(
   }
 }
 
-function setLastFailedPluginNames(pluginNames: readonly string[]): void {
-  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] = [
-    ...pluginNames,
-  ];
+function setLastFailedPlugins(
+  failed: ReadonlyArray<{ name: string; error: string }>,
+): void {
+  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] =
+    failed.map((plugin) => plugin.name);
+  (globalThis as GlobalWithLastFailedPluginDetails)[
+    LAST_FAILED_PLUGIN_DETAILS
+  ] = failed.map((plugin) => ({ name: plugin.name, error: plugin.error }));
 }
 
 export function getLastFailedPluginNames(): string[] {
   return [
     ...((globalThis as GlobalWithLastFailedPluginNames)[
       LAST_FAILED_PLUGIN_NAMES
+    ] ?? []),
+  ];
+}
+
+/**
+ * Full {name,error} detail for the plugins that failed to load on the last
+ * resolve pass. getLastFailedPluginNames() returns only names; this preserves
+ * the error message (e.g. a missing-export from a stale @elizaos/* copy) so the
+ * dev boot-history endpoint can surface it without log scraping.
+ */
+export function getLastFailedPluginDetails(): Array<{
+  name: string;
+  error: string;
+}> {
+  return [
+    ...((globalThis as GlobalWithLastFailedPluginDetails)[
+      LAST_FAILED_PLUGIN_DETAILS
     ] ?? []),
   ];
 }
@@ -1903,7 +1932,7 @@ export async function resolvePlugins(
     );
   }
 
-  setLastFailedPluginNames(failedPlugins.map((plugin) => plugin.name));
+  setLastFailedPlugins(failedPlugins);
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);

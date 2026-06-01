@@ -3,16 +3,8 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
-
 import "./components/chat/chat-source-registration";
 import {
-  type ComponentProps,
   type ComponentType,
   type LazyExoticComponent,
   lazy,
@@ -33,9 +25,6 @@ import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
-import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
-import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -71,7 +60,7 @@ import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_SHELL_OVERLAY } from "./lib/floating-layers";
+import { Z_OVERLAY, Z_SHELL_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -84,10 +73,8 @@ import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
 
-const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
-type MobileChatSurface = "left" | "center" | "right";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -244,33 +231,6 @@ function LazyViewBoundary({ children }: { children: ReactNode }) {
     >
       {children}
     </Suspense>
-  );
-}
-
-interface MobileChatSurfaceButtonProps {
-  icon: typeof PanelLeftOpen;
-  label: string;
-  onClick: () => void;
-  surface: MobileChatSurface;
-}
-
-function MobileChatSurfaceButton({
-  icon: Icon,
-  label,
-  onClick,
-  surface,
-}: MobileChatSurfaceButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={`chat-mobile-surface-${surface}`}
-      onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted  transition-colors hover:text-txt"
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
   );
 }
 
@@ -825,34 +785,25 @@ const APP_SHELL_CLASS =
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
-  activityEvents: ComponentProps<typeof TasksEventsPanel>["events"];
   characterHeaderActions: ReactNode | null;
-  clearActivityEvents: ComponentProps<typeof TasksEventsPanel>["clearEvents"];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   handleDeferredTaskOpen: (task: FlaminaGuideTopic) => void;
-  handleToggleWidgetsCollapsed: (next: boolean) => void;
   isAppsToolPage: boolean;
   isCharacterPage: boolean;
   isChat: boolean;
-  isChatMobileLayout: boolean;
-  isChatWorkspace: boolean;
   isCompanionTab: boolean;
   isDesktopWorkspacePage: boolean;
   isHeartbeats: boolean;
   isSettingsPage: boolean;
   isWallets: boolean;
-  mobileChatControls: { left: ReactNode; right: ReactNode } | null;
-  mobileChatSurface: MobileChatSurface;
   setCharacterHeaderActions: (actions: ReactNode | null) => void;
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
-  setMobileChatSurface: (surface: MobileChatSurface) => void;
   settingsInitialSection: string | null;
   tab: string;
   uiShellMode: string;
-  widgetsPanelCollapsed: boolean;
 };
 
 function CompanionShellContent(props: ShellContentProps): ReactNode {
@@ -883,27 +834,10 @@ function StreamShellContent(): ReactNode {
   );
 }
 
-function ChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
+function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div key={`chat-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header
-        mobileLeft={props.mobileChatControls?.left}
-        pageRightExtras={props.mobileChatControls?.right}
-        tasksEventsPanelOpen={props.isChat && !props.isChatMobileLayout}
-        hideNav={props.isChat}
-      />
+    <div key="chat-route-shell" className={APP_SHELL_CLASS}>
       <div className="flex flex-1 min-h-0 relative">
-        {!props.isChatMobileLayout && props.isChat ? (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]"
-            data-chat-shell-composer-underlay
-          />
-        ) : null}
-        {props.isChatMobileLayout ? (
-          <MobileChatWorkspaceShellContent {...props} />
-        ) : (
-          <DesktopChatWorkspaceShellContent {...props} />
-        )}
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -914,63 +848,6 @@ function ChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
         />
       </div>
     </div>
-  );
-}
-
-function MobileChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  const surfacePadding =
-    props.mobileChatSurface === "center" ? "px-2 pt-2" : "";
-  return (
-    <div
-      className={`flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden ${surfacePadding}`}
-    >
-      {props.mobileChatSurface === "left" ? (
-        <ConversationsSidebar
-          key="chat-sidebar-mobile"
-          mobile
-          onClose={() => props.setMobileChatSurface("center")}
-        />
-      ) : props.mobileChatSurface === "right" && props.isChat ? (
-        <TasksEventsPanel
-          open
-          events={props.activityEvents}
-          clearEvents={props.clearActivityEvents}
-          mobile
-        />
-      ) : (
-        <>
-          <DeferredSetupChecklist
-            className="mb-3"
-            onOpenTask={props.handleDeferredTaskOpen}
-          />
-          <ChatView />
-        </>
-      )}
-    </div>
-  );
-}
-
-function DesktopChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  return (
-    <>
-      <ConversationsSidebar key="chat-sidebar-desktop" />
-      <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-        <DeferredSetupChecklist
-          className="mx-3 mb-3 mt-3 xl:mx-5"
-          onOpenTask={props.handleDeferredTaskOpen}
-        />
-        <ChatView key="chat-view-desktop" />
-      </div>
-      {props.isChat ? (
-        <TasksEventsPanel
-          open
-          events={props.activityEvents}
-          clearEvents={props.clearActivityEvents}
-          collapsed={props.widgetsPanelCollapsed}
-          onToggleCollapsed={props.handleToggleWidgetsCollapsed}
-        />
-      ) : null}
-    </>
   );
 }
 
