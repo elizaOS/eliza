@@ -302,7 +302,7 @@ const strictGithubRoutes = [
     actionName: "GITHUB_ISSUE_CREATE",
     args: githubIssueParameters(true),
     contextIds: ["code"],
-    input: "create deterministic GitHub issue after confirmation",
+    input: "yes, create deterministic GitHub issue after confirmation",
     messageToUser: `Created issue ${REPO}#17: ${ISSUE_URL}`,
   },
   {
@@ -312,21 +312,21 @@ const strictGithubRoutes = [
       assignees: ["hubot", "octocat"],
     }),
     contextIds: ["code"],
-    input: "assign deterministic GitHub issue",
+    input: "yes, assign deterministic GitHub issue",
     messageToUser: `Assigned [hubot, octocat] to ${REPO}#17`,
   },
   {
     actionName: "GITHUB_ISSUE_CLOSE",
     args: githubActionParameters("issue_close", { number: 17 }),
     contextIds: ["code"],
-    input: "close deterministic GitHub issue",
+    input: "yes, close deterministic GitHub issue",
     messageToUser: `Closed ${REPO}#17: ${ISSUE_TITLE}`,
   },
   {
     actionName: "GITHUB_ISSUE_REOPEN",
     args: githubActionParameters("issue_reopen", { number: 17 }),
     contextIds: ["code"],
-    input: "reopen deterministic GitHub issue",
+    input: "yes, reopen deterministic GitHub issue",
     messageToUser: `Reopened ${REPO}#17: ${ISSUE_TITLE}`,
   },
   {
@@ -336,7 +336,7 @@ const strictGithubRoutes = [
       body: COMMENT_BODY,
     }),
     contextIds: ["code"],
-    input: "comment on deterministic GitHub issue",
+    input: "yes, comment on deterministic GitHub issue",
     messageToUser: `Commented on ${REPO}#17: ${COMMENT_URL}`,
   },
   {
@@ -346,7 +346,7 @@ const strictGithubRoutes = [
       labels: ["scenario", "reviewed"],
     }),
     contextIds: ["code"],
-    input: "label deterministic GitHub issue",
+    input: "yes, label deterministic GitHub issue",
     messageToUser: `Applied labels [scenario, reviewed] to ${REPO}#17`,
   },
   {
@@ -376,7 +376,7 @@ const strictGithubRoutes = [
       body: REVIEW_BODY,
     }),
     contextIds: ["code"],
-    input: "approve deterministic GitHub pull request",
+    input: "yes, approve deterministic GitHub pull request",
     messageToUser: `Submitted approve review on ${REPO}#17`,
   },
   {
@@ -828,19 +828,40 @@ export default scenario({
     {
       kind: "message",
       name: "GitHub issue create calls fake Octokit after confirmation",
-      text: "create deterministic GitHub issue after confirmation",
+      text: "yes, create deterministic GitHub issue after confirmation",
       assertTurn: expectGithubCreate,
+    },
+    {
+      kind: "action",
+      name: "GitHub issue assign asks for confirmation",
+      actionName: "GITHUB_ISSUE_ASSIGN",
+      text: "assign deterministic GitHub issue",
+      options: {
+        parameters: githubActionParameters("issue_assign", {
+          number: 17,
+          assignees: ["hubot", "octocat"],
+        }),
+      },
     },
     {
       kind: "message",
       name: "GitHub issue assign calls fake Octokit",
-      text: "assign deterministic GitHub issue",
+      text: "yes, assign deterministic GitHub issue",
       assertTurn: expectGithubIssueAssign,
+    },
+    {
+      kind: "action",
+      name: "GitHub issue close asks for confirmation",
+      actionName: "GITHUB_ISSUE_CLOSE",
+      text: "close deterministic GitHub issue",
+      options: {
+        parameters: githubActionParameters("issue_close", { number: 17 }),
+      },
     },
     {
       kind: "message",
       name: "GitHub issue close calls fake Octokit",
-      text: "close deterministic GitHub issue",
+      text: "yes, close deterministic GitHub issue",
       assertTurn: expectGithubIssueState(
         "GITHUB_ISSUE_CLOSE",
         "close",
@@ -848,9 +869,18 @@ export default scenario({
       ),
     },
     {
+      kind: "action",
+      name: "GitHub issue reopen asks for confirmation",
+      actionName: "GITHUB_ISSUE_REOPEN",
+      text: "reopen deterministic GitHub issue",
+      options: {
+        parameters: githubActionParameters("issue_reopen", { number: 17 }),
+      },
+    },
+    {
       kind: "message",
       name: "GitHub issue reopen calls fake Octokit",
-      text: "reopen deterministic GitHub issue",
+      text: "yes, reopen deterministic GitHub issue",
       assertTurn: expectGithubIssueState(
         "GITHUB_ISSUE_REOPEN",
         "reopen",
@@ -858,15 +888,39 @@ export default scenario({
       ),
     },
     {
+      kind: "action",
+      name: "GitHub issue comment asks for confirmation",
+      actionName: "GITHUB_ISSUE_COMMENT",
+      text: "comment on deterministic GitHub issue",
+      options: {
+        parameters: githubActionParameters("issue_comment", {
+          number: 17,
+          body: COMMENT_BODY,
+        }),
+      },
+    },
+    {
       kind: "message",
       name: "GitHub issue comment calls fake Octokit",
-      text: "comment on deterministic GitHub issue",
+      text: "yes, comment on deterministic GitHub issue",
       assertTurn: expectGithubIssueComment,
+    },
+    {
+      kind: "action",
+      name: "GitHub issue label asks for confirmation",
+      actionName: "GITHUB_ISSUE_LABEL",
+      text: "label deterministic GitHub issue",
+      options: {
+        parameters: githubActionParameters("issue_label", {
+          number: 17,
+          labels: ["scenario", "reviewed"],
+        }),
+      },
     },
     {
       kind: "message",
       name: "GitHub issue label calls fake Octokit",
-      text: "label deterministic GitHub issue",
+      text: "yes, label deterministic GitHub issue",
       assertTurn: expectGithubIssueLabel,
     },
     {
@@ -882,9 +936,23 @@ export default scenario({
       assertTurn: expectGithubParentPrList,
     },
     {
+      kind: "action",
+      name: "GitHub pull request review asks for confirmation",
+      actionName: "GITHUB_PR_REVIEW",
+      text: "approve deterministic GitHub pull request",
+      options: {
+        parameters: githubActionParameters("pr_review", {
+          as: "user",
+          number: 17,
+          review_action: "approve",
+          body: REVIEW_BODY,
+        }),
+      },
+    },
+    {
       kind: "message",
       name: "GitHub pull request review calls fake Octokit",
-      text: "approve deterministic GitHub pull request",
+      text: "yes, approve deterministic GitHub pull request",
       assertTurn: expectGithubPrReview,
     },
     {

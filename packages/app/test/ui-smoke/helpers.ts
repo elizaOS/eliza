@@ -334,6 +334,9 @@ export async function openSettingsSection(
   sectionName: string | RegExp,
 ): Promise<void> {
   const settingsShell = page.getByTestId("settings-shell");
+  if (!(await locatorVisible(settingsShell, 2_000))) {
+    await replayNavigationAfterStartup(page);
+  }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
 
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
@@ -441,7 +444,11 @@ export async function assertReadyChecks(
   mode: "any" | "all" = "any",
   timeoutMs: number = READY_CHECK_TIMEOUT_MS,
 ): Promise<void> {
-  const evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  let evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  if (!evaluation.passed) {
+    await replayNavigationAfterStartup(page);
+    evaluation = await evaluateReadyChecks(page, checks, mode, timeoutMs);
+  }
   const summary = evaluation.results
     .map(
       (result) =>

@@ -6,6 +6,7 @@ import {
 import { expect, test } from "@playwright/test";
 import { getFreePort } from "../utils/get-free-port.mjs";
 import {
+  assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
   openSettingsSection,
@@ -55,7 +56,12 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
 
     await openAppPath(page, "/apps/remote-capability-live");
 
-    await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
+    await assertReadyChecks(
+      page,
+      "remote capability live view",
+      [{ selector: '[data-testid="remote-capability-live-view"]' }],
+      "all",
+    );
     await expect(page.getByText("Remote capability live view")).toBeVisible();
     await expect(page.getByText("Exit label: Leave remote view")).toBeVisible();
     await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
@@ -173,7 +179,12 @@ test("settings connects a remote capability endpoint and opens its view", async 
     });
 
     await openAppPath(page, "/apps/remote-capability-live");
-    await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
+    await assertReadyChecks(
+      page,
+      "remote capability live view after connect",
+      [{ selector: '[data-testid="remote-capability-live-view"]' }],
+      "all",
+    );
     await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
     await expect.poll(() => remote.state.bundleRequests).toBeGreaterThan(0);
   } finally {

@@ -1,6 +1,12 @@
 import { ModelType } from "@elizaos/core";
 
 type JsonRecord = Record<string, unknown>;
+const MESSAGE_USER_MARKER = "message:user:\n";
+const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+const EXTERNAL_CONTENT_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+const EXTERNAL_CONTENT_SEPARATOR = "\n---\n";
+const MESSAGE_USER_SUFFIX_BOUNDARY =
+  /\n\n(?:event:|provider:|current_turn_boundary:|The Stage 1 router)/;
 
 export type RuntimeWithScenarioLlmFixtures = {
   scenarioLlmFixtures?: {
@@ -16,11 +22,31 @@ export type StrictActionRouteFixture = {
   messageToUser?: string;
 };
 
+function finalMessageUserText(value: string): string {
+  const markerIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
+  const messageText =
+    markerIndex === -1
+      ? value
+      : value.slice(markerIndex + MESSAGE_USER_MARKER.length);
+  const envelopeStart = messageText.lastIndexOf(EXTERNAL_CONTENT_START);
+  const envelopeEnd = messageText.lastIndexOf(EXTERNAL_CONTENT_END);
+  if (envelopeStart === -1 || envelopeEnd <= envelopeStart) {
+    return messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
+  }
+  const envelopeText = messageText.slice(
+    envelopeStart + EXTERNAL_CONTENT_START.length,
+    envelopeEnd,
+  );
+  const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
+  return (
+    separatorIndex === -1
+      ? envelopeText
+      : envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
+  ).trim();
+}
+
 function matchesScenarioInput(expected: string) {
-  return (value: string) =>
-    value === expected ||
-    value.endsWith(`message:user:\n${expected}`) ||
-    value.includes(`\nmessage:user:\n${expected}`);
+  return (value: string) => finalMessageUserText(value) === expected;
 }
 
 export function strictActionRouteFixtures(
