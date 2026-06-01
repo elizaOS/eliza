@@ -196,6 +196,8 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
