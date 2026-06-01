@@ -11,11 +11,17 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openExternalUrl } from "@elizaos/ui";
 
-vi.mock(
-  "react",
-  async () =>
-    await import("../../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"),
-);
+// Resolve the actual react entry the runtime uses so the mock deduplicates the
+// React instance regardless of the installed version (the bun store layout and
+// version are not stable enough to hardcode a path).
+const { reactEntry } = vi.hoisted(() => {
+  const { createRequire } = require("node:module") as typeof import("node:module");
+  const { fileURLToPath } = require("node:url") as typeof import("node:url");
+  const requireFromHere = createRequire(fileURLToPath(import.meta.url));
+  return { reactEntry: requireFromHere.resolve("react") };
+});
+
+vi.mock("react", async () => await import(reactEntry));
 
 const trainingClient = vi.hoisted(() => ({
   getTrainingStatus: vi.fn(),
@@ -52,6 +58,7 @@ const uiExtensionMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
     children,
     ...props

@@ -126,13 +126,21 @@ export const webFetch: Action & Record<string, unknown> = {
       return { text, success: false, data: { actionName: "WEB_FETCH" } };
     }
 
+    let parsedUrl: URL;
     try {
-      new URL(url);
+      parsedUrl = new URL(url);
     } catch {
       const text = `Not a valid URL: ${url}`;
       callback?.({ text });
       return { text, success: false, data: { actionName: "WEB_FETCH", url } };
     }
+
+    if (parsedUrl.protocol !== "https:") {
+      const text = `Refusing to fetch ${url}: only https URLs are allowed.`;
+      callback?.({ text });
+      return { text, success: false, data: { actionName: "WEB_FETCH", url } };
+    }
+
     try {
       const result = await performGuardedHttpGet(url, {
         headers: { Accept: "application/json, text/plain, */*" },
