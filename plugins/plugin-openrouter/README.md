@@ -114,12 +114,17 @@ app.listen(3000);
 
 ## Provided Models
 
-The plugin currently provides these model types:
+The plugin registers these model types:
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective text generation using the configured small model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
-- `TEXT_LARGE`: For more complex text generation tasks requiring larger models, using the configured large model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
-- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text and titles, using the configured image model.
-- `IMAGE`: Generates images from text prompts using the configured image generation model (e.g., Gemini 2.5 Flash Image Preview).
-- `TEXT_EMBEDDING`: Generates vector embeddings for text input, supporting configurable dimensions from 256 to 3072, using the configured embedding model.
+- `TEXT_NANO`: Fastest/cheapest text generation; falls back to the small model when no nano override is set.
+- `TEXT_SMALL`: Fast, cost-effective text generation (default: `google/gemini-2.0-flash-001`). Supports `tools`, `toolChoice`, and `responseSchema`.
+- `TEXT_MEDIUM`: Mid-tier text generation; falls back to the small model when no medium override is set.
+- `TEXT_LARGE`: Complex text generation tasks (default: `google/gemini-2.5-flash`). Supports `tools`, `toolChoice`, and `responseSchema`.
+- `TEXT_MEGA`: Largest text tasks; falls back to the large model when no mega override is set.
+- `RESPONSE_HANDLER`: Should-respond decisions; falls back to the nano model.
+- `ACTION_PLANNER`: Action planning; falls back to the medium model.
+- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text (default: `x-ai/grok-2-vision-1212`).
+- `IMAGE`: Generates images from text prompts (default: `google/gemini-2.5-flash-image-preview`).
+- `TEXT_EMBEDDING`: Vector embeddings with configurable dimensions (default: `openai/text-embedding-3-small`, 1536 dims).
 
-_Note: Audio Transcription is not currently implemented in this specific OpenRouter plugin._
+Audio transcription is not implemented.

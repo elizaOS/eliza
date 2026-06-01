@@ -21,7 +21,8 @@ packages/docs/
 ├── docs.json          # Mintlify site config: navigation, colors, fonts, logo
 ├── index.mdx          # Home page
 ├── quickstart.mdx     # Quickstart
-├── tracks/            # Dimension-specific content (OS, Runtime, App, Cloud, Chip, Training)
+├── tracks/            # Dimension-specific content (OS, Runtime, App, Cloud, Chip, Robot)
+├── apps/              # App layer pages (desktop, mobile, dashboard, ui-library)
 ├── runtime/           # Runtime internals reference
 ├── agents/            # Agent internals reference
 ├── plugins/           # Plugin reference pages

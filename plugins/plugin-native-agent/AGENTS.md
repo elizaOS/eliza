@@ -44,7 +44,7 @@ plugins/plugin-native-agent/
 Only these scripts exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-native-agent build   # tsc + rollup → dist/
+bun run --cwd plugins/plugin-native-agent build   # clean → tsc → rollup → dist/
 bun run --cwd plugins/plugin-native-agent clean   # remove dist/
 bun run --cwd plugins/plugin-native-agent watch   # tsc --watch
 ```

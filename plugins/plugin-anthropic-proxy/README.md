@@ -2,14 +2,7 @@
 
 Routes Anthropic API traffic from your eliza agent through a **Claude Max / Pro subscription** instead of paying per-token Extra Usage rates.
 
-This plugin is a port of the standalone Anthropic routing layer that has been running in production for ~6 weeks. The 7-layer transformation algorithm is byte-identical to the original `proxy.js v2.2.3`. The fingerprint dictionaries, however, are framework-specific:
-
-- **v0.2.0+** ships **eliza-default dictionaries** derived by profiling `@elizaos/native-reasoning`'s outbound `/v1/messages` calls. They map eliza tool names (`bash`, `read_file`, `spawn_agent`, ...) onto Claude-Code-shaped names (`Bash`, `Read`, `Agent`, ...) and strip eliza-distinctive system-prompt blocks (the `CHANNEL_GAG_HARD_RULE`).
-- **For non-eliza agents**, supply your own dictionaries via `config.json` (see `config.json.example`).
-
-## Why this exists
-
-In April 2026 Anthropic upgraded their detection beyond simple string matching to tool-name fingerprinting and system-prompt-template detection. v1.x string-only sanitization stopped working. The proxy this plugin embeds applies seven transformation layers (bidirectional) so requests look like they originate from the official Claude Code CLI:
+The plugin applies a 7-layer bidirectional transformation pipeline so requests look like they originate from the official Claude Code CLI:
 
 1. Billing header injection (84-char Claude Code identifier with dynamic SHA256 fingerprint per request)
 2. String trigger sanitization
@@ -20,6 +13,8 @@ In April 2026 Anthropic upgraded their detection beyond simple string matching t
 7. Full bidirectional reverse mapping on SSE + JSON responses
 
 Plus assistant-prefill stripping and thinking-block stripping for replay/session bugs.
+
+The default fingerprint dictionaries target the elizaOS tool surface (`@elizaos/native-reasoning`). For non-eliza agents, supply your own dictionaries via `config.json` (see `config.json.example`).
 
 ## Custom fingerprint dictionaries
 
@@ -83,7 +78,7 @@ If you hit a 401 (token expired) run:
 claude auth login
 ```
 
-The plugin re-reads the credentials file on every request, so a fresh login is picked up immediately — no need to restart the agent. Auto-rotation isn't included in this v0.1.0 release.
+The plugin re-reads the credentials file on every request, so a fresh login is picked up immediately — no need to restart the agent.
 
 ## Failure modes (intentional)
 
@@ -132,11 +127,9 @@ plugins/plugin-anthropic-proxy/
 │   └── utils/
 │       └── credentials-loader.ts      # ~/.claude/.credentials.json + JWT exp
 └── __tests__/
-    └── proxy.test.ts                  # vitest suite
+    ├── proxy.test.ts
+    ├── auto-enable.test.ts
+    ├── eliza-fingerprint.test.ts
+    └── manifest-engine.integration.test.ts
 ```
 
-## Version
-
-`0.1.0` — initial port from `ocplatform-routing-layer/proxy.js v2.2.3`.
-
-Algorithm changes happen upstream first. This package follows.

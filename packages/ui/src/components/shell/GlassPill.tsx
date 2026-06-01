@@ -30,7 +30,6 @@ export function GlassPill({
       )}
       aria-hidden
     >
-      {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative SVG filter, aria-hidden */}
       <svg
         aria-hidden
         role="none"

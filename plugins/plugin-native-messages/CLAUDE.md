@@ -26,7 +26,7 @@ plugins/plugin-native-messages/
     web.ts            Web fallback — sendSms throws; listMessages returns []
   android/
     src/main/
-      AndroidManifest.xml               READ_SMS / SEND_SMS / RECEIVE_SMS permission declarations
+      AndroidManifest.xml               READ_SMS / SEND_SMS / RECEIVE_SMS / RECEIVE_MMS / RECEIVE_WAP_PUSH permission declarations
       java/ai/eliza/plugins/messages/
         MessagesPlugin.kt               Capacitor @CapacitorPlugin("ElizaMessages"); implements
                                         sendSms (SmsManager + BroadcastReceiver delivery receipt)
@@ -42,7 +42,7 @@ Scripts defined in this package.json:
 
 ```bash
 bun run --cwd plugins/plugin-native-messages build          # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-messages clean          # rm -rf dist
+bun run --cwd plugins/plugin-native-messages clean          # node rm-path-recursive.mjs dist
 bun run --cwd plugins/plugin-native-messages prepublishOnly # same as build
 ```
 

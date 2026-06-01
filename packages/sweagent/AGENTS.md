@@ -46,7 +46,7 @@ This package is `private: true` and has no `exports` field. Nothing in the monor
 
 The TypeScript inspector server (`typescript/src/inspector/server.ts`) exports `startInspectorServer(options)`. It calls `resolvePathWithinRoot` on every `GET /api/trajectory/:filename` request to prevent path traversal.
 
-The web-browser tool (`typescript/tools/src/web-browser/index.ts`) calls `assertHttpHttpsUrl` before every `page.goto()` call and disables `page.evaluate()` entirely.
+The web-browser tool (`typescript/tools/src/web-browser/index.ts`) calls `assertHttpHttpsUrl` before every `page.goto()` call and disables the `executeScript()` method (throws on any call).
 
 ## Commands
 
@@ -59,9 +59,8 @@ bun run --cwd packages/sweagent test   # vitest run (security unit tests only)
 | Var | Where used | Effect |
 |-----|-----------|--------|
 | `WEB_BROWSER_HEADLESS` | `web-browser/index.ts` | Set to `"0"` to run Chromium with a visible window (default headless) |
-| `ELIZA_SWEAGENT_INSPECTOR_HOST` | documented in SECURITY.md | Bind host for inspector server; default `127.0.0.1`; set `0.0.0.0` only with explicit network controls |
 
-Inspector `port` and `trajectoryDir` are passed as CLI flags (`--port=`, `--dir=`), not env vars.
+Inspector `port` and `trajectoryDir` are passed as CLI flags, not env vars. TypeScript server: `--port=`, `--dir=`. Python server: `--port`, `--directory`. The `host` option in `startInspectorServer()` defaults to `127.0.0.1` and is not exposed as a CLI flag or env var in the current CLI entry point.
 
 ## Security advisories
 

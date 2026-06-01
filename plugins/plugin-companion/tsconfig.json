@@ -13,7 +13,8 @@
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
       "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
+      "../../../node_modules/.bun/node_modules",
+      "../../packages/ui/node_modules/@types"
     ],
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -68,7 +69,9 @@
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
       "lucide-react": ["./node_modules/lucide-react"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "three/webgpu": ["../../packages/ui/node_modules/@types/three/build/three.webgpu.d.ts"],
+      "three/tsl": ["../../packages/ui/node_modules/@types/three/build/three.tsl.d.ts"]
     }
   },
   "include": [

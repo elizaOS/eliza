@@ -97,6 +97,7 @@ src/
     steward-evm-account.ts         # viem CustomAccount that signs via Steward API (cloud-provisioned mode)
     steward-evm-bridge.ts          # Pre/post boot hooks: stewardEvmPreBoot, stewardEvmPostBoot
     steward-sidecar.ts             # Re-export from @elizaos/app-core
+    steward-sidecar/               # Per-submodule thin re-exports from @elizaos/app-core (health-check, helpers, process-management, types, wallet-setup)
     steward-wallet.ts              # Steward wallet helpers (resolve credentials path, load, save, status)
 
   security/

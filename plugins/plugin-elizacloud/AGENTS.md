@@ -45,7 +45,7 @@ The plugin has two distinct export surfaces:
 |---|---|---|---|
 | `CLOUD_AUTH` | `CloudAuthService` | `src/services/cloud-auth.ts` | Auth entry points — device auto-signup and Cloud SSO OAuth flow |
 | `CLOUD_BOOTSTRAP` | `CloudBootstrapServiceImpl` | `src/services/cloud-bootstrap.ts` | Exposes Cloud trust-anchor (JWKS URL, issuer, container id) without importing app-core |
-| `CLOUD_RELAY` | `CloudManagedGatewayRelayService` | `src/services/cloud-managed-gateway-relay.ts` | Long-poll relay enabling Cloud to push requests to a local agent |
+| `CLOUD_MANAGED_GATEWAY_RELAY` | `CloudManagedGatewayRelayService` | `src/services/cloud-managed-gateway-relay.ts` | Long-poll relay enabling Cloud to push requests to a local agent |
 | `CLOUD_MODEL_REGISTRY` | `CloudModelRegistryService` | `src/services/cloud-model-registry.ts` | Fetches and caches available models from Cloud (30 min TTL) |
 | `CLOUD_CONTAINER` | `CloudContainerService` | `src/services/cloud-container.ts` | ECS container lifecycle: create, list, poll status, delete |
 | `CLOUD_BRIDGE` | `CloudBridgeService` | `src/services/cloud-bridge.ts` | JSON-RPC 2.0 WebSocket bridge to cloud-hosted agents with exponential-backoff reconnect |
@@ -94,7 +94,7 @@ plugins/plugin-elizacloud/
     services/
       cloud-auth.ts                 CloudAuthService (CLOUD_AUTH)
       cloud-bootstrap.ts            CloudBootstrapServiceImpl (CLOUD_BOOTSTRAP)
-      cloud-managed-gateway-relay.ts CloudManagedGatewayRelayService (CLOUD_RELAY)
+      cloud-managed-gateway-relay.ts CloudManagedGatewayRelayService (CLOUD_MANAGED_GATEWAY_RELAY)
       cloud-model-registry.ts       CloudModelRegistryService (CLOUD_MODEL_REGISTRY)
       cloud-container.ts            CloudContainerService (CLOUD_CONTAINER)
       cloud-bridge.ts               CloudBridgeService (CLOUD_BRIDGE)
@@ -109,15 +109,18 @@ plugins/plugin-elizacloud/
       cloud-routes.ts               Core cloud login/disconnect/agent routes
       cloud-routes-autonomous.ts    Autonomous-mode cloud route handler
       cloud-status-routes.ts        /api/cloud/status and /api/cloud/credits
+      cloud-status-routes-autonomous.ts  Autonomous-mode status route handler
       cloud-billing-routes.ts       /api/cloud/billing/* proxy
       cloud-relay-routes.ts         Relay-status route
       cloud-provisioning.ts         isCloudProvisionedContainer helper
       cloud-coding-container-routes.ts  Coding-container management
       cloud-compat-routes.ts        Compat route shims
       cloud-features-routes.ts      Feature-flag routes
+      home-remote-runner-access-url.ts  Remote runner access URL helper
     cloud/
       auth.ts                       Auth helpers
       auth-service-types.ts         CloudAuthApiKeyService interface
+      backup.ts                     Backup helpers
       base-url.ts                   resolveCloudApiBaseUrl, normalizeCloudSiteUrl
       bridge-client.ts              ElizaCloudClient, CloudWalletDescriptor
       cloud-api-key.ts              resolveCloudApiKey, normalizeCloudApiKey
@@ -200,14 +203,14 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 | Cloud var | Bare fallback | Default |
 |---|---|---|
-| `ELIZAOS_CLOUD_NANO_MODEL` | `NANO_MODEL` | `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_NANO_MODEL` | `NANO_MODEL` | falls back to small model |
 | `ELIZAOS_CLOUD_SMALL_MODEL` | `SMALL_MODEL` | `openai/gpt-oss-120b:nitro` |
-| `ELIZAOS_CLOUD_MEDIUM_MODEL` | `MEDIUM_MODEL` | `openai/gpt-oss-120b:nitro` |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | `LARGE_MODEL` | `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_MEDIUM_MODEL` | `MEDIUM_MODEL` | falls back to small model |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | `LARGE_MODEL` | `deepseek/deepseek-v4-pro` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | `MEGA_MODEL` | falls back to large |
-| `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | `RESPONSE_HANDLER_MODEL` | nano model |
-| `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | `ACTION_PLANNER_MODEL` | medium model |
-| `ELIZAOS_CLOUD_RESEARCH_MODEL` | `RESEARCH_MODEL` | large model |
+| `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | `RESPONSE_HANDLER_MODEL` | falls back to small model |
+| `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | `ACTION_PLANNER_MODEL` | falls back to large model |
+| `ELIZAOS_CLOUD_RESEARCH_MODEL` | `RESEARCH_MODEL` | `o3-deep-research` |
 
 ### Optional — embeddings
 
@@ -224,11 +227,11 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 |---|---|
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` |
-| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | service default |
-| `ELIZAOS_CLOUD_TTS_MODEL` | `gpt-5-mini-tts` |
-| `ELIZAOS_CLOUD_TTS_VOICE` | `nova` |
+| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | `google/gemini-2.5-flash-image` |
+| `ELIZAOS_CLOUD_TTS_MODEL` | `eleven_flash_v2_5` |
+| `ELIZAOS_CLOUD_TTS_VOICE` | unset (cloud default voice) |
 | `ELIZAOS_CLOUD_TTS_INSTRUCTIONS` | unset |
-| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | service default |
+| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | `gpt-5-mini-transcribe` |
 
 ### Browser-only proxy vars (no secrets in client bundles)
 
@@ -269,5 +272,5 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 - **Routes use `rawPath: true`.** All `/api/cloud/*` routes bypass the plugin-name prefix so paths stay stable.
 - **TTS routing precedence.** This plugin's priority (50) does not govern TTS routing. The router-handler in `plugin-local-inference` runs at `MAX_SAFE_INTEGER` priority and enforces the `prefer-local` policy. Cloud TTS is a fallback; `CloudTtsUnavailableError` (from `src/models/speech.ts`) signals the router to try the next provider.
 - **Services start in dependency order.** `CloudAuthService` must be first; every other service calls `runtime.getService("CLOUD_AUTH")`. `dispose()` stops them in reverse order.
-- **`CloudBootstrapService` fails closed.** `getExpectedIssuer()` throws when `ELIZA_CLOUD_ISSUER` is unset. Never add a silent default — see `docs/security/remote-auth-hardening-plan.md` §3.2.
+- **`CloudBootstrapService` fails closed.** `getExpectedIssuer()` throws when `ELIZA_CLOUD_ISSUER` is unset. Never add a silent default.
 - **No `as` casts or `?? 0` fallbacks for missing pipeline data.** Follow the architecture rules in `AGENTS.md` at the repo root.

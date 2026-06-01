@@ -54,7 +54,7 @@ Backend selection happens once at `start()`:
 Only scripts that exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-device-filesystem build         # tsdown compile → dist/
+bun run --cwd plugins/plugin-device-filesystem build         # bun build (build.ts) → dist/
 bun run --cwd plugins/plugin-device-filesystem dev           # hot-rebuild
 bun run --cwd plugins/plugin-device-filesystem test          # vitest run
 bun run --cwd plugins/plugin-device-filesystem typecheck     # tsgo --noEmit

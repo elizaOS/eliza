@@ -69,7 +69,7 @@ plugins/plugin-farcaster/
 Only scripts that exist in this package.json:
 
 ```bash
-bun run --cwd plugins/plugin-farcaster build         # esbuild via build.ts (node + browser targets)
+bun run --cwd plugins/plugin-farcaster build         # Bun.build via build.ts (node + browser targets)
 bun run --cwd plugins/plugin-farcaster dev           # build --watch
 bun run --cwd plugins/plugin-farcaster clean         # rm -rf dist .turbo ...
 bun run --cwd plugins/plugin-farcaster typecheck     # tsgo --noEmit

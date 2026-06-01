@@ -46,7 +46,7 @@ plugins/plugin-aosp-local-inference/
 Only scripts defined in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-aosp-local-inference build       # tsc --noCheck type-emit only (no JS output)
+bun run --cwd plugins/plugin-aosp-local-inference build       # tsc --noCheck --noEmit (no type-checking, no output; parse validation only)
 bun run --cwd plugins/plugin-aosp-local-inference typecheck   # tsgo full typecheck
 bun run --cwd plugins/plugin-aosp-local-inference clean       # remove dist, .turbo, node_modules
 bun run --cwd plugins/plugin-aosp-local-inference test        # bun test __tests__
@@ -86,7 +86,7 @@ All env vars are read at call time (no module-load side effects).
 | `ELIZA_AOSP_OMNIVOICE_MASKGIT_STEPS` / `ELIZA_TTS_MASKGIT_STEPS` | No | Override MaskGit decode steps (1–64). |
 | `ELIZA_AOSP_TTS_MAX_SECONDS` | No | Maximum synthesized audio duration (default 30 s). |
 | `ELIZA_AOSP_LLAMA_DEBUG_LOG` | No | Path to append NDJSON debug events. Set to `"1"` to use `$ELIZA_STATE_DIR/aosp-llama-debug.log`. |
-| `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` | No | State root for model storage. Resolved by `@elizaos/core`'s `resolveStateDir()`. |
+| `ELIZA_STATE_DIR` | No | State root for model storage. Resolved by `@elizaos/core`'s `resolveStateDir()`. |
 
 ## How to extend
 

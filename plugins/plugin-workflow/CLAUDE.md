@@ -20,7 +20,7 @@ Adds workflow automation capabilities to an Eliza agent. Given a natural-languag
 |---|---|
 | `workflow_status` | Lists each user's workflows with last execution status. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `turn`. |
 | `ACTIVE_WORKFLOWS` | Lists active/inactive workflows for LLM context (IDs, names, node counts). Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `agent`. |
-| `PENDING_WORKFLOW_DRAFT` | Surfaces an in-flight draft so the agent routes confirmation/cancellation messages to `WORKFLOW` instead of `REPLY`. Contexts: `automation`, `connectors`. Cache scope: `conversation`. |
+| `PENDING_WORKFLOW_DRAFT` | Surfaces an in-flight draft so the agent routes confirmation/cancellation messages to `WORKFLOW` instead of `REPLY`. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `conversation`. |
 
 ### Services
 

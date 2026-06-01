@@ -108,6 +108,3 @@ bun run --cwd plugins/plugin-native-contacts build
 
 Runs TypeScript compilation and Rollup to produce `dist/esm/` (ESM) and `dist/plugin.cjs.js` (CJS).
 
-## License
-
-MIT

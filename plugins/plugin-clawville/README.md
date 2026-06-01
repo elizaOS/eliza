@@ -17,7 +17,7 @@ When an Eliza user clicks "Launch" on the ClawVille app card:
 2. ClawVille derives a stable identity of the form `eliza:<elizaAgentId>`, persists a pet record in its `openclaw_bots` table, auto-generates a custodial Solana wallet, and returns a session.
 3. The plugin stashes the session id, bot uuid, and wallet address on the runtime via `setSetting("CLAWVILLE_*", ...)`.
 4. Eliza's side panel renders an `AppSessionState` with the wallet address, session count, and suggested prompts ("Visit the Salvage Workshop", etc.).
-5. When the user (or their Eliza agent) sends in-game commands, the plugin proxies them to `POST https://api.clawville.world/api/agent/:sessionId/{move,visit-building,chat,buy}`.
+5. When the user (or their Eliza agent) sends in-game commands, the plugin proxies them to `POST https://api.clawville.world/api/agent/:sessionId/{move,visit-building,chat}`. (`buy` is not exposed by the ClawVille API and returns HTTP 400.)
 6. When Eliza's GameView wants to embed the game visually, it requests the viewer HTML at `GET /api/apps/clawville/viewer`, which this plugin builds by fetching `clawville.world/game`, rewriting asset URLs to absolute, injecting a bootstrap `<script>` that hides the login overlay, and serving the result with the appropriate CSP `frame-ancestors` directive for Electrobun / Capacitor / Tauri host shells.
 
 The agent can then play the whole ClawVille game loop end-to-end from inside Eliza:
@@ -25,7 +25,6 @@ The agent can then play the whole ClawVille game loop end-to-end from inside Eli
 - Move around the reef via `/move`
 - Visit buildings via `/visit-building` (earns NeoTokens + learns skills)
 - Chat with building NPCs via `/chat`
-- Buy knowledge books via `/buy`
 
 A returning Eliza user gets their existing pet, wallet, learned skills, and NeoToken balance back automatically — keyed on `eliza:<elizaAgentId>`.
 
@@ -58,8 +57,7 @@ The plugin mounts at `/api/apps/clawville/*` inside Eliza's embedded HTTP server
 | `POST` | `/api/apps/clawville/session/:sessionId/move` | Proxy to `POST /api/agent/:sessionId/move` (move the pet) |
 | `POST` | `/api/apps/clawville/session/:sessionId/visit-building` | Proxy to `POST /api/agent/:sessionId/visit-building` (enter a building + earn skills) |
 | `POST` | `/api/apps/clawville/session/:sessionId/chat` | Proxy to `POST /api/agent/:sessionId/chat` (talk to a building NPC) |
-| `POST` | `/api/apps/clawville/session/:sessionId/buy` | Proxy to `POST /api/agent/:sessionId/buy` (buy a knowledge book) |
-| `POST` | `/api/apps/clawville/session/:sessionId/control` | No-op pause/resume (ClawVille simulation runs server-side) |
+| `POST` | `/api/apps/clawville/session/:sessionId/buy` | Returns 400 — buy is not exposed by the current ClawVille API |
 
 ---
 

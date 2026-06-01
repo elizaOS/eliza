@@ -63,7 +63,7 @@ bun run --cwd plugins/plugin-rlm format:check   # biome format (read-only)
 
 ## Config / env vars
 
-All vars are defined in `types.ts` (`ENV_VARS` const) and consumed in `index.ts` init and `client.ts` `configFromEnv()`.
+Most vars are defined in `types.ts` (`ENV_VARS` const) and consumed in `index.ts` init and `client.ts` `configFromEnv()`. Exception: `ELIZA_RLM_PRICING_JSON` is read directly in `cost.ts` and is not in `ENV_VARS`.
 
 | Env var | Default | Description |
 |---|---|---|

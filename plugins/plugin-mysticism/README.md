@@ -80,9 +80,9 @@ The plugin exports three `FormDefinition` objects for use with a form service:
 
 | Export | ID | Description |
 |--------|----|-------------|
-| `tarotIntakeForm` | `tarot-intake` | Collects the user's question and preferred spread |
-| `astrologyIntakeForm` | `astrology-intake` | Collects birth date, time, and location |
-| `readingFeedbackForm` | `reading-feedback` | Captures user reflection after each revealed element |
+| `tarotIntakeForm` | `tarot_intake` | Collects the user's question and preferred spread |
+| `astrologyIntakeForm` | `astrology_intake` | Collects birth date, time, and location |
+| `readingFeedbackForm` | `reading_feedback` | Captures user reflection after each revealed element |
 
 ## REST API Routes
 
@@ -133,9 +133,9 @@ Optional pricing parameters, readable via `runtime.getSetting()` or environment 
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `MYSTICISM_PRICE_TAROT` | `0.01` | Base price in USDC for a tarot reading |
-| `MYSTICISM_PRICE_ICHING` | `0.01` | Base price in USDC for an I Ching reading |
-| `MYSTICISM_PRICE_ASTROLOGY` | `0.02` | Base price in USDC for an astrology reading |
+| `MYSTICISM_PRICE_TAROT` | `0.01` | Base price in SOL for a tarot reading |
+| `MYSTICISM_PRICE_ICHING` | `0.01` | Base price in SOL for an I Ching reading |
+| `MYSTICISM_PRICE_ASTROLOGY` | `0.02` | Base price in SOL for an astrology reading |
 
 These are configured suggestions — the agent decides the final amount when issuing a `PAYMENT` action with `action=request`. Invalid or negative values are logged as warnings and the default is used instead.
 
@@ -175,11 +175,7 @@ The service includes built-in crisis detection that scans user input for distres
 bun run --cwd plugins/plugin-mysticism build        # compile
 bun run --cwd plugins/plugin-mysticism dev          # watch build
 bun run --cwd plugins/plugin-mysticism test         # vitest
-bun run --cwd plugins/plugin-mysticism typecheck    # tsc --noEmit
+bun run --cwd plugins/plugin-mysticism typecheck    # tsc --noEmit --noCheck
 bun run --cwd plugins/plugin-mysticism lint         # biome check + fix
 bun run --cwd plugins/plugin-mysticism format       # biome format
 ```
-
-## License
-
-MIT

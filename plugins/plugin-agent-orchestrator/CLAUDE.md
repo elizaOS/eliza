@@ -57,7 +57,7 @@ All are sub-operations of the single `TASKS` parent action:
 |---|---|---|
 | `AcpService` | `ACP_SUBPROCESS_SERVICE` | ACP subprocess lifecycle, session state, event emission, transport selection |
 | `OrchestratorTaskService` | `ORCHESTRATOR_TASK_SERVICE` | Durable task store, sub-agent lifecycle API, event bridge from ACP to task records |
-| `SubAgentRouter` | `SUB_AGENT_ROUTER` | Subscribes to AcpService events, routes terminal events into the runtime as synthetic memories |
+| `SubAgentRouter` | `ACPX_SUB_AGENT_ROUTER` | Subscribes to AcpService events, routes terminal events into the runtime as synthetic memories |
 | `CodingWorkspaceService` | `CODING_WORKSPACE_SERVICE` | Git workspace lifecycle (clone, branch, commit, push, PR) |
 
 ### Evaluator
@@ -140,6 +140,7 @@ plugins/plugin-agent-orchestrator/
       bridge-routes.ts           /api/coding-agents/:id/credentials/* handlers
       parent-context-routes.ts   /api/coding-agents/:id/context handlers
       workspace-routes.ts        /api/workspace/* handlers
+      issue-routes.ts            /api/issues/* handlers (GitHub issue CRUD)
       route-utils.ts             parseBody, sendJson, sendError, RouteContext
   index.ts                      Re-export barrel (ESM root)
   index.node.ts                 Node-specific entry

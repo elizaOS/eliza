@@ -12,7 +12,7 @@ This plugin integrates the Suno AI API so Eliza agents can generate, custom-gene
 
 | Name | File | Purpose |
 |---|---|---|
-| `SUNO_STATUS` | `src/providers/suno.ts` | Injects Suno availability into `media`-context turns. Reports `configured: true/false` and the available subactions (`generate`, `custom_generate`, `extend`). Scope: `turn`; contextGate: `media`. |
+| `SUNO_STATUS` | `src/providers/suno.ts` | Injects Suno availability into `media`-context turns. Reports `configured: true/false` and the available subactions (`generate`, `custom_generate`, `extend`). Scope: `turn`; contextGate: `{ anyOf: ['media'] }`. |
 
 **Exported handler** (not a registered action — consumed by the MUSIC dispatcher)
 

@@ -109,7 +109,7 @@ The external OAuth endpoint is hardcoded: `https://heyvincent.ai`. No env overri
 
 - **`rawPath: true` is required on all routes.** Without it the runtime adds a plugin-name prefix that breaks the OAuth redirect URI.
 - **`/callback/vincent` is marked `public: true`** — this route must be reachable by the external browser before OAuth is complete.
-- **PKCE code verifiers are in-memory only** (`pendingLogins` Map). Pending logins expire after 10 minutes and are swept on each `start-login` call. A server restart during an OAuth flow requires starting login again.
+- **PKCE code verifiers are in-memory only** (`pendingLogins` Map). Pending logins expire after 10 minutes; expired entries are swept on each `start-login` and each `/callback/vincent` call. A server restart during an OAuth flow requires starting login again.
 - **OAuth redirect URI is always `http://<host>/callback/vincent`** using the `Host` header from the inbound request. This is intentionally HTTP/loopback since the redirect lands on the local agent server.
 - **Views bundle is built separately** via `vite.config.views.ts`. The `build:views` step must run for the dashboard UI to work; `build:js` alone is insufficient.
 - **Client prototype patching** in `src/client.ts` mutates `ElizaClient.prototype` at import time — import order matters if multiple plugins do this.

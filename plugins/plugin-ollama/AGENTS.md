@@ -35,7 +35,7 @@ plugins/plugin-ollama/
   index.ts                   Re-exports plugin + types/config utilities; default export = ollamaPlugin
   index.node.ts              Node/Bun entry (dist target)
   index.browser.ts           Browser entry (dist target)
-  auto-enable.ts             shouldEnable() — reads OLLAMA_BASE_URL; must stay import-free
+  auto-enable.ts             shouldEnable() — reads OLLAMA_BASE_URL; no runtime imports (type-only imports allowed)
   models/
     text.ts                  handleTextWithModelType and all exported text handlers
     embedding.ts             handleTextEmbedding

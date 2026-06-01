@@ -26,13 +26,11 @@ Both backends register under `serviceType = "tunnel"` and implement the same
 
 The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 
-| Value            | Behavior                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `local`          | Always register `LocalTailscaleService`.                                                                                                                                     |
-| `cloud`          | Always register `CloudTailscaleService`.                                                                                                                                     |
-| `auto` (default) | Register `CloudTailscaleService` when Eliza Cloud is connected (`ELIZAOS_CLOUD_API_KEY` set + `ELIZAOS_CLOUD_ENABLED=true`); otherwise fall back to `LocalTailscaleService`. |
-
-`isCloudConnected` from `@elizaos/cloud-routing` is the source of truth.
+| Value            | Behavior                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `local`          | Always register `LocalTailscaleService`.                                                                                          |
+| `cloud`          | Always register `CloudTailscaleService`.                                                                                          |
+| `auto` (default) | Register `CloudTailscaleService` when `isCloudConnected(runtime)` from `@elizaos/cloud-routing` returns true; otherwise `LocalTailscaleService`. |
 
 ## Settings
 
@@ -45,8 +43,7 @@ The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 | `TAILSCALE_DEFAULT_PORT`            | `3000`                             | Used when no port is extracted from the user message.                                                                   |
 | `TAILSCALE_AUTH_KEY_EXPIRY_SECONDS` | `3600`                             | Expiry hint passed to the cloud auth-key minter.                                                                        |
 | `ELIZAOS_CLOUD_API_KEY`             | —                                  | Required for the cloud backend.                                                                                         |
-| `ELIZAOS_CLOUD_BASE_URL`            | `https://www.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
-| `ELIZAOS_CLOUD_ENABLED`             | `false`                            | Required (truthy) for `auto` mode to pick the cloud backend.                                                            |
+| `ELIZAOS_CLOUD_BASE_URL`            | `https://api.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
 
 The cloud backend is not a subscription product. Each successful auth-key
 provisioning debits org credits once, using the Cloud Worker
@@ -102,7 +99,3 @@ bun run typecheck
 bun run lint
 bun run test
 ```
-
-## License
-
-MIT

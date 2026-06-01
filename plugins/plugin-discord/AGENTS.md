@@ -13,7 +13,7 @@ This plugin registers the `DiscordService` (and companion services) with the eli
 |---|---|---|
 | `DiscordService` | `"discord"` | Main gateway service — connects to Discord API, handles messages, voice, slash commands, reactions, history backfill, and emits `DiscordEventTypes.*` events |
 | `DiscordOwnerPairingServiceImpl` | `"OWNER_PAIRING_DISCORD"` | Registers the `/eliza-pair` slash command; relays pairing codes to the backend owner-bind service and DMs login links |
-| `DiscordUserAccountScraperImpl` | `"discord-user-account-scraper"` | Scrapes message history and DM inboxes from the Discord desktop app via CDP/browser automation |
+| `DiscordUserAccountScraperImpl` | `"discord_user_account_scraper"` | Scrapes message history and DM inboxes from the Discord desktop app via CDP/browser automation |
 
 ### Routes (registered with `rawPath: true`)
 | Method | Path | File | Purpose |
@@ -80,7 +80,13 @@ plugins/plugin-discord/
     discord-browser-scraper.ts  Browser-based scraper logic
     discord-desktop-cdp.ts    Desktop CDP probe and tab management utilities
     index.ts                  Barrel re-export
-  __tests__/                  Vitest unit tests
+  actions/
+    actionResultSemantics.ts  Action result helpers
+    setup-credentials.ts      Credential preset definitions used by /setup slash command
+  __tests__/                  Vitest unit tests (co-located fast tests)
+  test/                       Vitest unit + live integration tests
+    helpers/                  Shared test helpers (http.ts, pglite-runtime.ts)
+    live/                     Live integration specs (require real Discord credentials)
   tests.ts                    DiscordTestSuite for elizaOS plugin test runner
 ```
 
@@ -118,7 +124,7 @@ All settings can also be provided in the character file under `settings.discord`
 
 ## How to extend
 
-**Add a new slash command** — call `addCommand(runtime, commandSpec)` (from `slash-commands.ts`) in any service's `start()`. The spec shape is `DiscordSlashCommand` from `types.ts`. Handle responses by listening for `DISCORD_SLASH_COMMAND` or `DISCORD_MODAL_SUBMIT` events.
+**Add a new slash command** — either call `addCommand(commandSpec)` (from `slash-commands.ts`) with a `SlashCommand`-shaped object that includes an `execute(interaction, runtime)` function, or emit the `DISCORD_REGISTER_COMMANDS` event with an array of `DiscordSlashCommand` objects (from `types.ts`) for external registration. Handle responses by listening for `DISCORD_SLASH_COMMAND` or `DISCORD_MODAL_SUBMIT` events.
 
 **Add a new event handler** — subscribe to a `DiscordEventTypes.*` string event on the runtime from any plugin or service. All event payload types are in `types.ts` (`DiscordEventPayloadMap`).
 

@@ -30,7 +30,7 @@ src/
     index.ts                    Enums (TeeMode, TeeVendor, TeeType), interfaces,
                                 parseTeeMode(), parseTeeVendor()
   vendors/
-    types.ts                    TeeVendorInterface, TeeVendorNames enum
+    types.ts                    TeeVendorInterface, TeeVendorNames const object
     phala.ts                    PhalaVendor — wires providers; getActions() → []
     index.ts                    getVendor() factory, re-exports
   providers/
@@ -49,7 +49,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-tee build           # compile via build.ts (tsdown)
+bun run --cwd plugins/plugin-tee build           # compile via build.ts (Bun.build + tsc for declarations)
 bun run --cwd plugins/plugin-tee dev             # hot-reload build
 bun run --cwd plugins/plugin-tee test            # vitest run src/__tests__/
 bun run --cwd plugins/plugin-tee test:watch      # vitest watch
@@ -80,7 +80,7 @@ bun run --cwd plugins/plugin-tee clean           # rm dist .turbo tsconfig.tsbui
 
 **Add a new vendor:**
 1. Create `src/vendors/<name>.ts` implementing `TeeVendorInterface` (getActions, getProviders, getName, getDescription).
-2. Add an entry to `TeeVendorNames` enum in `src/vendors/types.ts`.
+2. Add an entry to the `TeeVendorNames` const object in `src/vendors/types.ts`.
 3. Register in the `vendors` map in `src/vendors/index.ts`.
 4. Select it via `TEE_VENDOR=<name>` at runtime.
 

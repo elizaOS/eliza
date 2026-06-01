@@ -66,9 +66,6 @@ Override with `CODING_TOOLS_BLOCKED_PATHS` (replace) or `CODING_TOOLS_BLOCKED_PA
 ## Requirements
 
 - Node.js runtime only (`eliza.platforms: ["node"]`).
-- Actions require `roleGate: minRole=ADMIN` — the calling user or agent must have ADMIN role.
+- FILE and WORKTREE require `roleGate: minRole=ADMIN`; SHELL requires `roleGate: minRole=OWNER`.
 - All actions are restricted to `contexts: ["code", "terminal", "automation"]`.
 
-## License
-
-MIT

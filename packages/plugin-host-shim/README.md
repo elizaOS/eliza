@@ -72,7 +72,3 @@ The parent frame forwards requests to the agent at `/api/plugins/remote/:name/in
 5. Export an `install<Platform>Shim()` function for view bundle authors.
 
 See `packages/plugin-host-shim-electrobun/src/index.ts` for a full example.
-
-## License
-
-MIT

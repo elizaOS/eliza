@@ -68,8 +68,8 @@ Settings are resolved in priority order: per-account object in `TWITCH_ACCOUNTS`
 | `TWITCH_USERNAME` | **Yes** | Bot's Twitch login name |
 | `TWITCH_CLIENT_ID` | **Yes** | Twitch application client ID |
 | `TWITCH_CHANNEL` | **Yes** | Primary channel to join (no `#` prefix) |
-| `TWITCH_CLIENT_SECRET` | No | Required alongside `TWITCH_REFRESH_TOKEN` to enable `RefreshingAuthProvider`; without it a `StaticAuthProvider` is used |
-| `TWITCH_REFRESH_TOKEN` | No | Paired with `TWITCH_CLIENT_SECRET` for auto-refresh |
+| `TWITCH_CLIENT_SECRET` | No | Enables `RefreshingAuthProvider` (checked alone; `TWITCH_REFRESH_TOKEN` is optional alongside it); without it a `StaticAuthProvider` is used |
+| `TWITCH_REFRESH_TOKEN` | No | Passed to `RefreshingAuthProvider` when `TWITCH_CLIENT_SECRET` is also set |
 | `TWITCH_CHANNELS` | No | Comma-separated additional channels to join at startup |
 | `TWITCH_REQUIRE_MENTION` | No | `"true"` — only process messages that @mention the bot username |
 | `TWITCH_ALLOWED_ROLES` | No | Comma-separated: `all` (default), `owner`, `moderator`, `vip`, `subscriber` |
@@ -95,7 +95,7 @@ Settings are resolved in priority order: per-account object in `TWITCH_ACCOUNTS`
 - **Message chunking** — messages over 500 chars are split at sentence/word boundaries with a 300 ms delay between chunks (`splitMessageForTwitch` in `src/types.ts`).
 - **Markdown stripping** — `stripMarkdownForTwitch` converts LLM output markdown to plain text before sending. Twitch does not render markdown.
 - **`oauth:` prefix** — access tokens with `oauth:` prefix are silently stripped by `normalizeToken`; both forms are accepted.
-- **Auth providers** — `RefreshingAuthProvider` activates only when BOTH `TWITCH_CLIENT_SECRET` and `TWITCH_REFRESH_TOKEN` are set; otherwise falls back to `StaticAuthProvider` (no auto-refresh).
+- **Auth providers** — `RefreshingAuthProvider` activates when `TWITCH_CLIENT_SECRET` is set (regardless of whether `TWITCH_REFRESH_TOKEN` is present); otherwise falls back to `StaticAuthProvider` (no auto-refresh).
 - **`auto-enable.ts` must stay lightweight** — it is imported by the auto-enable engine for every plugin at boot. No service initialization or heavy imports.
 - **Node-only** — declared `"runtime": "node"` in package.json; not compatible with browser or mobile runtimes.
 - **`TwitchWorkflowCredentialProvider` is duck-typed** — it satisfies the `workflow_credential_provider` service contract by string match only; it does not import `@elizaos/plugin-workflow` at compile time.

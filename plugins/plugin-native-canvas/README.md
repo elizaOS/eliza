@@ -138,7 +138,3 @@ await Canvas.destroy({ canvasId });
 - `a2uiPush` and `a2uiReset` prefer the `window.elizaA2UI` bridge when present; otherwise fall back to `postMessage`.
 - Call `attach()` before calling `setTouchEnabled()` — touch handlers are wired on attach.
 - Layer canvases are absolute-positioned siblings of the base canvas element; the host container should be `position: relative`.
-
-## License
-
-MIT — elizaOS

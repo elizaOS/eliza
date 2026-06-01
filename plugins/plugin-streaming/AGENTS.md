@@ -9,14 +9,14 @@ Adds RTMP streaming control to an Eliza agent. The agent can start, stop, and ch
 ## Plugin surface
 
 **Actions**
-- `STREAM` — start/stop/status for twitch, youtube, x, pumpfun; dispatches to `POST /api/stream/live`, `POST /api/stream/offline`, `GET /api/stream/status`; `roleGate: ADMIN`; similes: `START_STREAM`, `STOP_STREAM`, `GO_LIVE`, `GO_OFFLINE`, `STREAM_STATUS`, `IS_LIVE`.
+- `STREAM` — start/stop/status for twitch, youtube, x, pumpfun; dispatches to `POST /api/stream/live`, `POST /api/stream/offline`, `GET /api/stream/status`; `roleGate: ADMIN`; similes: `START_STREAM`, `STOP_STREAM`, `GET_STREAM_STATUS`, `GO_LIVE`, `GO_OFFLINE`, `STREAM_STATUS`, `IS_LIVE`.
 
 **Providers**
 - `streamStatus` — per-turn provider; fetches `GET /api/stream/status` for all four platforms and emits JSON context; `contexts: ["media", "automation"]`.
 
-**Services / singletons** (not registered as elizaOS Services, exported as module singletons)
-- `streamManager` (`StreamManager`) — FFmpeg lifecycle; video input modes: `pipe`, `avfoundation`, `screen`, `x11grab`, `file`, `testsrc`; audio sources: `silent`, `system`, `microphone`, `tts`, file path; volume/mute; auto-restart with exponential backoff.
-- `ttsStreamBridge` (`TtsStreamBridge`) — generates TTS (ElevenLabs, OpenAI, Edge TTS, local inference) and feeds PCM s16le 24 kHz mono into FFmpeg pipe:3; attach/detach lifecycle follows `streamManager.start()/stop()`.
+**Services / singletons** (not registered as elizaOS Services)
+- `streamManager` (`StreamManager`) — FFmpeg lifecycle; exported singleton from public API; video input modes: `pipe`, `avfoundation`, `screen`, `x11grab`, `file`, `testsrc`; audio sources: `silent`, `system`, `microphone`, `tts`, file path; volume/mute; auto-restart with exponential backoff.
+- `ttsStreamBridge` (`TtsStreamBridge`) — internal singleton (not re-exported from package index); generates TTS (ElevenLabs, OpenAI, Edge TTS, local inference) and feeds PCM s16le 24 kHz mono into FFmpeg pipe:3; attach/detach lifecycle follows `streamManager.start()/stop()`.
 
 **Route handler** (not registered in `Plugin.routes`; consumed externally)
 - `handleStreamRoute` — handles `/api/stream/*` and `/api/streaming/*` endpoints: frame ingest, MJPEG preview, stream start/stop, status, volume, mute/unmute, destination management, settings persistence, source switching.
@@ -133,6 +133,6 @@ Add a conditional branch in `handleStreamRoute()` in `src/api/stream-routes.ts`.
 - **TTS audio uses pipe:3.** `TtsStreamBridge` attaches to FFmpeg's 4th stdio fd. The PCM format is fixed: s16le, 24 kHz, mono. Audio is decoded via a second FFmpeg subprocess spawned per speak call.
 - **`handleStreamRoute` and `handleTtsRoutes` are not in `Plugin.routes`.** They are imperative route-handler functions intended to be wired into an HTTP server by the consuming runtime. The plugin object registers only `actions` and `providers`.
 - **Overlay layouts** are seeded from `destination.defaultOverlayLayout` on first stream start per destination, then persisted as JSON files. Subsequent starts read from the file.
-- **`streamingText.ts`** (`mergeStreamingText`, `resolveStreamingUpdate`) is a standalone utility for de-duplicating overlapping token-stream chunks; it has no dependency on streaming state.
+- **`streaming-text.ts`** (`mergeStreamingText`, `resolveStreamingUpdate`) is a standalone utility for de-duplicating overlapping token-stream chunks; it has no dependency on streaming state.
 - **`auto-enable.ts`** is a separate entry point referenced by the elizaOS plugin auto-enable system. It must stay import-free from the full plugin runtime (no `@elizaos/core` service imports).
 - **`node-edge-tts`** is an optional peer dependency for Edge TTS; the bridge catches the import error and surfaces a clear message if it is not installed.

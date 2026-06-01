@@ -14,7 +14,7 @@ Access is gated via `gatePluginSessionForHostedApp` (from `@elizaos/agent/servic
 
 | Name | File | Description |
 |---|---|---|
-| `RS_2004` | `src/actions/rs2004.ts` | Single Pattern C parent action. Accepts an `action` enum (30 ops) plus an optional `params` object. Dispatches to `RsSdkGameService.executeAction`. Similes cover all legacy action names (`RS_2004_WALK_TO`, `CHOP_TREE`, `ATTACK_NPC`, etc.). |
+| `RS_2004` | `src/actions/rs2004.ts` | Single Pattern C parent action. Accepts an `action` enum (31 ops) plus an optional `params` object. Dispatches to `RsSdkGameService.executeAction`. Similes cover all legacy action names (`RS_2004_WALK_TO`, `CHOP_TREE`, `ATTACK_NPC`, etc.). |
 
 Op set: `walk_to`, `chop`, `mine`, `fish`, `burn`, `cook`, `fletch`, `craft`, `smith`, `drop`, `pickup`, `equip`, `unequip`, `use`, `use_on_item`, `use_on_object`, `open`, `close`, `deposit`, `withdraw`, `buy`, `sell`, `attack`, `cast_spell`, `set_style`, `eat`, `talk`, `navigate_dialog`, `interact_object`, `open_door`, `pickpocket`.
 

@@ -50,7 +50,7 @@ pytest packages/benchmarks/action-calling/tests/ -v
 ## Notes
 
 - Results write to `<out>/action-calling-results.json` (path controlled by `--out`).
-- Scored by `_score_from_action_calling_json` in `registry/commands.py`.
+- Scored by `_score_from_action_calling_json` in `registry/scores.py`.
 - Score = geometric mean of five sub-rates: `native_tool_calls_ok`, `tool_name_match`, `args_parse_ok`, `required_keys_ok`, `arguments_match`.
 - Supports providers: `vllm`, `openai`, `groq`, `openrouter`, `anthropic`, `cerebras`, `eliza`, `hermes`, `openclaw`, `mock`.
 - Harness selection (eliza/hermes/openclaw/smithers) can also be forced via `ELIZA_BENCH_HARNESS` or `BENCHMARK_HARNESS` env vars.

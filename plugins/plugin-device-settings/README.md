@@ -1,6 +1,6 @@
 # @elizaos/plugin-device-settings
 
-Android device-settings overlay for elizaOS. Adds a full-screen UI panel that lets users adjust screen brightness, control per-stream audio volumes (media, ringtone, alarm, notifications, system, voice call), request Android default app roles (Home, Phone, SMS, Assistant), and jump directly to system settings panels — all through the `@elizaos/capacitor-system` native bridge.
+Android device-settings overlay for elizaOS. Adds a full-screen UI panel that lets users adjust screen brightness, control per-stream audio volumes (media, ring, alarm, notifications, system, voice call), request Android default app roles (Home, Phone, SMS, Assistant), and jump directly to system settings panels — all through the `@elizaos/capacitor-system` native bridge.
 
 ## What it does
 

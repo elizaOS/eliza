@@ -93,7 +93,8 @@ client.onMetrics((m) => {
 ## Trajectory logging
 
 ```typescript
-import { RLMClient, RLMTrajectoryIntegration } from "@elizaos/plugin-rlm";
+import { RLMClient } from "@elizaos/plugin-rlm";
+import { RLMTrajectoryIntegration } from "@elizaos/plugin-rlm/trajectory-integration";
 
 const client = new RLMClient();
 const integration = new RLMTrajectoryIntegration({ client });
@@ -128,6 +129,3 @@ plugins/plugin-rlm/
 - Paper: [Recursive Language Models](https://arxiv.org/abs/2512.24601) — Zhang, Kraska, Khattab (MIT CSAIL)
 - Official Python library: [github.com/alexzhang13/rlm](https://github.com/alexzhang13/rlm)
 
-## License
-
-MIT

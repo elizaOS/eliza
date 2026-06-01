@@ -53,7 +53,7 @@ Key environment variables (all optional unless noted):
 
 | Variable | Purpose |
 |---|---|
-| `MODELS_DIR` | Override the GGUF model directory (default: `~/.eliza/local-inference/models`) |
+| `MODELS_DIR` | Override the embedding model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | Small model filename (mobile/Capacitor adapter) |
 | `LOCAL_LARGE_MODEL` | Large model filename (mobile/Capacitor adapter) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to skip local embedding warm-up at boot |

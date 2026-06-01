@@ -7,7 +7,7 @@ Chat command system for [elizaOS](https://github.com/elizaos/eliza) agents. Adds
 - Provides a typed command registry that other plugins and the agent runtime use to register slash commands.
 - Detects `/` and `!`-prefixed messages and parses them into structured `ParsedCommand` objects.
 - Injects a `COMMAND_REGISTRY` provider into the LLM context — full command documentation only when the message is a command, an empty hint otherwise (keeps normal-message prompts clean).
-- Ships 24 built-in command *definitions* grouped by category. The actual Action handlers live in the agent or other plugins.
+- Ships 25 built-in command *definitions* grouped by category. The actual Action handlers live in the agent or other plugins.
 
 ## Built-in commands
 
@@ -15,8 +15,8 @@ Chat command system for [elizaOS](https://github.com/elizaos/eliza) agents. Adds
 |---|---|
 | Status | `/help` (`/h`, `/?`), `/commands` (`/cmds`), `/status` (`/s`), `/context` (`/ctx`), `/whoami` (`/who`) |
 | Session | `/stop` (`/abort`, `/cancel`), `/restart`\*, `/reset`\*, `/new`, `/compact` |
-| Options | `/think` (`/t`), `/verbose` (`/v`), `/reasoning`, `/elevated`\*, `/model` (`/m`), `/models`, `/usage`, `/queue` (`/q`) |
-| Management | `/allowlist`\*, `/approve`\*, `/subagents`\*, `/config`\*† (`/cfg`), `/debug`\*† |
+| Options | `/think` (`/thinking`, `/t`), `/verbose` (`/v`), `/reasoning` (`/reason`), `/elevated`\* (`/elev`), `/model` (`/m`), `/models`, `/usage`, `/queue` (`/q`) |
+| Management | `/allowlist`\* (`/allow`), `/approve`\*, `/subagents`\* (`/sub`), `/config`\*† (`/cfg`), `/debug`\*† |
 | Media | `/tts` (`/voice`) |
 | Tools | `/bash`\*‡ (`/sh`, `/!`) |
 
@@ -81,6 +81,3 @@ detectCommand("/think:high");         // { isCommand: true, command: { key: "thi
 normalizeCommandBody("@bot /status"); // "/status"
 ```
 
-## License
-
-Part of the elizaOS monorepo. See the root LICENSE file.

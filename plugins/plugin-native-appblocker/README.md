@@ -17,7 +17,7 @@ The plugin lets a Capacitor-based Eliza agent app:
 |---|---|---|
 | Android | Usage Access + system overlay | A foreground service polls foreground events every 500 ms and shows a full-screen shield when a blocked app is detected. |
 | iOS | Family Controls + ManagedSettings | `ManagedSettingsStore` shields selected apps. Timed blocks require a DeviceActivity extension (not yet implemented); only indefinite blocks are supported on iOS. |
-| Browser | None | All methods return `not-applicable` / `unavailable`. |
+| Browser | None | Permission checks return `status: "not-applicable"`, `getStatus` returns `status: "unavailable"`, mutations return `success: false`, list methods return empty arrays. |
 
 ## API
 
@@ -33,7 +33,8 @@ await AppBlocker.requestPermissions();
 // Android: get a list of installed launcher apps
 const { apps } = await AppBlocker.getInstalledApps();
 
-// Let the user pick apps via the OS picker (iOS uses FamilyActivityPicker)
+// iOS: opens FamilyActivityPicker and returns selected apps with tokenData.
+// Android: returns immediately with { apps: [], cancelled: true } — use getInstalledApps() instead.
 const { apps: selected, cancelled } = await AppBlocker.selectApps();
 
 // Block apps — pass packageNames (Android) or appTokens (iOS)

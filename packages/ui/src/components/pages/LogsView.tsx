@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /**
  * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout
@@ -29,9 +30,11 @@ export function LogsView({
   inModal?: boolean;
 } = {}) {
   return (
-    <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-      <LogsViewBody />
-    </ContentLayout>
+    <ShellViewAgentSurface viewId="logs">
+      <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+        <LogsViewBody />
+      </ContentLayout>
+    </ShellViewAgentSurface>
   );
 }
 

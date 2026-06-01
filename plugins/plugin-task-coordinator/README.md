@@ -51,7 +51,7 @@ Per-framework coding-agent settings (model, LLM provider, approval preset) are c
 
 ## Supported agent frameworks
 
-The settings panel manages configuration for: elizaOS, Pi Agent, OpenCode, Claude Code, and Codex.
+The settings panel manages configuration for: elizaOS, Pi Agent, OpenCode, Claude, and Codex.
 
 ## Build
 

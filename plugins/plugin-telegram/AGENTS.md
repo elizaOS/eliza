@@ -53,6 +53,8 @@ src/
   types.ts                    TelegramContent, Button, TelegramEventTypes, payload interfaces
   utils.ts                    cleanText, convertMarkdownToTelegram, convertToTelegramButtons
   tests.ts                    TelegramTestSuite (live smoke, requires TELEGRAM_TEST_CHAT_ID)
+  messageManager.test.ts      Unit tests for MessageManager (vitest, mocked runtime)
+  messageConnector.test.ts    Unit tests for connector registration and send routing (vitest, mocked runtime)
 ```
 
 ## Commands

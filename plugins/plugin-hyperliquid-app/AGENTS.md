@@ -54,7 +54,7 @@ src/
   routes.ts                 handleHyperliquidRoute — actual HTTP logic + Hyperliquid Info API client
   client.ts                 Extends ElizaClient prototype with hyperliquidStatus/Markets/Positions/Orders
   useHyperliquidState.ts    React hook; calls all four read endpoints, manages loading/error state
-  HyperliquidAppView.tsx    React UI component (standard + XR view)
+  HyperliquidAppView.tsx    React UI components: HyperliquidAppView (standard + XR) and HyperliquidTuiView (TUI)
   HyperliquidTuiView.test.tsx  Unit test for TUI view
   actions/
     perpetual-market.ts     PERPETUAL_MARKET action + PerpetualMarketService + provider pattern

@@ -18,6 +18,8 @@ This plugin integrates a Feishu (飞书) / Lark client with elizaOS, allowing El
 | `FEISHU_APP_SECRET` | String | Required | Application secret for authentication. |
 | `FEISHU_DOMAIN` | String | `"feishu"` | Domain to use: `"feishu"` for China or `"lark"` for global. |
 | `FEISHU_ALLOWED_CHATS` | JSON Array | `[]` | List of chat IDs the bot is allowed to interact with. |
+| `FEISHU_IGNORE_BOT_MESSAGES` | Boolean | `true` | Set to `"false"` to process messages from other bots. |
+| `FEISHU_RESPOND_ONLY_TO_MENTIONS` | Boolean | `false` | Set to `"true"` to respond only when the bot is @-mentioned. |
 | `FEISHU_TEST_CHAT_ID` | String | - | Chat ID for running tests. |
 
 ## Pre-Requisites
@@ -92,13 +94,17 @@ The plugin emits the following event types:
 
 | Event | Description |
 | ----- | ----------- |
+| `FEISHU_WORLD_CONNECTED` | WebSocket connection established |
 | `FEISHU_WORLD_JOINED` | Bot joined a new chat/group |
-| `FEISHU_WORLD_CONNECTED` | Bot connected successfully |
 | `FEISHU_WORLD_LEFT` | Bot left a chat/group |
-| `FEISHU_MESSAGE_RECEIVED` | A message was received |
-| `FEISHU_MESSAGE_SENT` | A message was sent |
 | `FEISHU_ENTITY_JOINED` | A user joined a chat |
 | `FEISHU_ENTITY_LEFT` | A user left a chat |
+| `FEISHU_ENTITY_UPDATED` | User profile updated in a chat |
+| `FEISHU_MESSAGE_RECEIVED` | A message was received |
+| `FEISHU_MESSAGE_SENT` | A message was sent |
+| `FEISHU_REACTION_RECEIVED` | Emoji reaction on a message |
+| `FEISHU_INTERACTION_RECEIVED` | Interactive card action |
+| `FEISHU_SLASH_START` | Slash command invocation |
 
 ## Security Best Practices
 
@@ -136,6 +142,3 @@ If messages are not being received:
 2. Check that `FEISHU_ALLOWED_CHATS` includes the chat ID (or is empty for all chats)
 3. Verify event subscription is properly configured
 
-## License
-
-MIT

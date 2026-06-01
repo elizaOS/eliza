@@ -29,10 +29,10 @@ packages/feed/
         plugin-autonomy/      Autonomous NPC trading/posting behaviors
         plugin-experience/    Experience/points system
         plugin-trajectory-logger/ Trajectory recording
+        plugin-user-core/     User coordinator plugin (limited read-only actions)
     shared/       Shared types, content analysis utilities, logging
     a2a/          Agent-to-Agent protocol integration (@a2a-js/sdk)
     mcp/          Model Context Protocol server for tool-using agents
-    training/     RL pipeline, ScamBench harness, HF/W&B integration
     pack-default/ Default NPC and organization content pack
     sim/          Standalone simulation CLI
     testing/      Shared test utilities, integration helpers

@@ -46,7 +46,7 @@ const agent = {
 
 ## Action
 
-### ROBLOX_ACTION
+### ROBLOX
 
 Route Roblox game integration through one compact action surface.
 
@@ -81,10 +81,10 @@ Provides information about the connected Roblox experience to the agent's contex
 Main service for managing Roblox connections and communication:
 
 ```typescript
-import { RobloxService, ROBLOX_SERVICE_NAME } from "@elizaos/plugin-roblox";
+import { RobloxService } from "@elizaos/plugin-roblox";
 
-// Get service from runtime
-const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+// Get service from runtime (serviceType is "roblox")
+const service = runtime.getService<RobloxService>(RobloxService.serviceType);
 
 // Send a message to all players
 await service.sendMessage(runtime.agentId, "Hello from Eliza!");

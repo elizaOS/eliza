@@ -40,8 +40,8 @@ src/
   generate-stream.test.ts
   kv-cache-resolver.test.ts
   token-tree-codec.test.ts
-android/                    Android-specific native stubs (Capacitor plugin glue)
-rollup.config.mjs           Rollup bundle config (CJS + ESM outputs)
+android/                    Reserved for Android-specific native stubs (currently empty)
+rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes from tsc)
 ```
 
 ## Commands

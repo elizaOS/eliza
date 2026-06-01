@@ -109,7 +109,6 @@ const agent = {
 ```json
 {
   "name": "MyAgent",
-  "clients": ["slack"],
   "settings": {
     "slack": {
       "shouldIgnoreBotMessages": true,
@@ -119,23 +118,9 @@ const agent = {
 }
 ```
 
-## Actions
+## Connector capabilities
 
-Slack messaging is exposed through the canonical message connector actions. Use
-`source: "slack"` when a request needs to target Slack explicitly.
-
-| Primary action | Operation | Description |
-|----------------|-----------|-------------|
-| `MESSAGE` | `send` | Send a message to a channel, DM, or thread |
-| `MESSAGE` | `read` | Read recent message history from a channel, DM, or thread |
-| `MESSAGE` | `search` | Search Slack message history |
-| `MESSAGE` | `list_channels` | List available channels |
-| `MESSAGE` | `list_servers` | List connected Slack workspaces |
-| `MESSAGE` | `react` | Add or remove emoji reactions |
-| `MESSAGE` | `edit` | Edit an existing message |
-| `MESSAGE` | `delete` | Delete a message |
-| `MESSAGE` | `pin` | Pin or unpin a message |
-| `MESSAGE` | `get_user` | Get information about a user |
+This plugin registers no elizaOS actions. Slack messaging is handled via the `MessageConnector` interface. The registered connector exposes these capabilities: `send_message`, `read_messages`, `search_messages`, `resolve_targets`, `list_rooms`, `list_servers`, `chat_context`, `user_context`, `react_message`, `edit_message`, `delete_message`, `pin_message`, `get_user`.
 
 ## Events
 
@@ -196,6 +181,3 @@ const channels = await slackService.listChannels();
 2. Check that the app-level token has `connections:write` scope
 3. Ensure only one instance of the bot is running per token
 
-## License
-
-MIT

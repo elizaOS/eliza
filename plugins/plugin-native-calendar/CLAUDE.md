@@ -37,7 +37,7 @@ plugins/plugin-native-calendar/
   src/
     index.ts          Entry: registers "AppleCalendar" Capacitor plugin, lazy-loads web fallback.
     definitions.ts    All TypeScript interfaces and types for the plugin API.
-    web.ts            Browser/web fallback — every method returns { ok: false, error: "not_supported" }.
+    web.ts            Browser/web fallback. checkPermissions/requestPermissions return { calendar: "restricted", canRequest: false }; all other methods return { ok: false, error: "not_supported" }.
   ios/Sources/CalendarPlugin/
     CalendarPlugin.swift  Swift implementation: EventKit CRUD, permission handling, JSON mapping.
   ElizaosCapacitorCalendar.podspec  CocoaPods spec (pod name: ElizaosCapacitorCalendar; iOS 15+; EventKit + UIKit).
@@ -77,5 +77,5 @@ None. This package reads no environment variables and has no runtime configurati
 - **iOS 17+ permission model.** `requestFullAccessToEvents` is used on iOS 17+; older devices fall back to `requestAccess(to:)`. `writeOnly` authorization maps to `restricted`, not `granted`.
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.
-- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (unpkg UMD). The `bun`/`development` export condition resolves directly to `src/index.ts` to skip the build step in dev.
+- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The `bun`/`development` export condition resolves directly to `src/index.ts` to skip the build step in dev.
 - See the root `AGENTS.md` for repo-wide architecture rules, naming conventions, and logger requirements.

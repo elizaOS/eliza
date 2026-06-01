@@ -54,6 +54,11 @@ src/
     circadian.ts                CircadianInsightContract interface, SleepWindow, SchedulingWindow;
                                   registerCircadianInsightContract / getCircadianInsightContract
     circadian-default.ts        createDefaultCircadianInsightContract() — built-in implementation
+    lifeops.ts                  LifeOps connector-degradation re-exports + LIFEOPS_TIME_WINDOW_NAMES,
+                                  LIFEOPS_DEFINITION_KINDS, and related types
+    lifeops-connector-degradation.ts  LIFEOPS_CONNECTOR_DEGRADATION_AXES tuple +
+                                  LifeOpsConnectorDegradation / LifeOpsConnectorDegradationAxis types
+    permissions.ts              SystemPermissionId / PermissionStatus types (shared system permission contracts)
   default-packs/
     index.ts                    registerHealthDefaultPacks; HEALTH_DEFAULT_PACKS; exports bedtime/wake-up/sleep-recap packs
     bedtime.ts                  bedtimeDefaultPack definition

@@ -85,7 +85,7 @@ Two localStorage keys are used for user preferences (no config required):
 **Add a new EVM chain:**
 1. Add a `ChainKey` variant to `src/inventory/chainConfig.ts` `ChainKey` union.
 2. Add a `ChainConfig` entry to `CHAIN_CONFIGS` with explorer URLs, TrustWallet slug, gas thresholds, stablecoins, and `nameVariants`.
-3. If the chain should appear in per-user filters, add its key to `PRIMARY_CHAIN_KEYS` and `PRIMARY_INVENTORY_CHAIN_KEYS` in `inventory-chain-filters.ts`.
+3. If the chain should appear in per-user filters, add its key to `PRIMARY_CHAIN_KEYS` in `chainConfig.ts` and to `PRIMARY_INVENTORY_CHAIN_KEYS` in `inventory-chain-filters.ts`.
 4. Optionally add an SVG to `ChainIcon.tsx`.
 
 **Add a new standalone view type:**

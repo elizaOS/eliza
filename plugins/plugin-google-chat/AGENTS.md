@@ -29,6 +29,7 @@ None registered directly. Messaging routes entirely through the `MessageConnecto
 | `GoogleChatEventTypes.MESSAGE_SENT` | `GOOGLE_CHAT_MESSAGE_SENT` | `sendMessage` succeeds |
 | `GoogleChatEventTypes.SPACE_JOINED` | `GOOGLE_CHAT_SPACE_JOINED` | Bot added to a space |
 | `GoogleChatEventTypes.SPACE_LEFT` | `GOOGLE_CHAT_SPACE_LEFT` | Bot removed from a space |
+| `GoogleChatEventTypes.REACTION_RECEIVED` | `GOOGLE_CHAT_REACTION_RECEIVED` | (declared, not currently emitted internally) |
 | `GoogleChatEventTypes.REACTION_SENT` | `GOOGLE_CHAT_REACTION_SENT` | `sendReaction` succeeds |
 | `GoogleChatEventTypes.CONNECTION_READY` | `GOOGLE_CHAT_CONNECTION_READY` | Account connected at startup |
 | `GoogleChatEventTypes.WEBHOOK_READY` | `GOOGLE_CHAT_WEBHOOK_READY` | (declared, not currently emitted internally) |
@@ -59,7 +60,7 @@ plugins/plugin-google-chat/
 Scripts available in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-google-chat build         # tsdown build to dist/
+bun run --cwd plugins/plugin-google-chat build         # tsc build to dist/
 bun run --cwd plugins/plugin-google-chat test          # vitest run (single pass)
 bun run --cwd plugins/plugin-google-chat test:watch    # vitest watch
 bun run --cwd plugins/plugin-google-chat lint          # biome check --write --unsafe

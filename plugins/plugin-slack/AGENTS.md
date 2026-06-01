@@ -27,10 +27,14 @@ Loaded via `@elizaos/plugin-slack`. Auto-enabled when `config.connectors.slack` 
 | `MESSAGE_SENT` | `SLACK_MESSAGE_SENT` |
 | `REACTION_ADDED` | `SLACK_REACTION_ADDED` |
 | `REACTION_REMOVED` | `SLACK_REACTION_REMOVED` |
-| `APP_MENTION` | `SLACK_APP_MENTION` |
+| `CHANNEL_JOINED` | `SLACK_CHANNEL_JOINED` |
+| `CHANNEL_LEFT` | `SLACK_CHANNEL_LEFT` |
 | `MEMBER_JOINED_CHANNEL` | `SLACK_MEMBER_JOINED_CHANNEL` |
 | `MEMBER_LEFT_CHANNEL` | `SLACK_MEMBER_LEFT_CHANNEL` |
+| `APP_MENTION` | `SLACK_APP_MENTION` |
+| `SLASH_COMMAND` | `SLACK_SLASH_COMMAND` |
 | `FILE_SHARED` | `SLACK_FILE_SHARED` |
+| `THREAD_REPLY` | `SLACK_THREAD_REPLY` |
 
 **Message connector capabilities:** `send_message`, `read_messages`, `search_messages`, `resolve_targets`, `list_rooms`, `list_servers`, `chat_context`, `user_context`, `react_message`, `edit_message`, `delete_message`, `pin_message`, `get_user`.
 

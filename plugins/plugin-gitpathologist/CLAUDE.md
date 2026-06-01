@@ -74,9 +74,9 @@ bun run --cwd plugins/plugin-gitpathologist clean         # rm dist .turbo
 |---|---|---|---|---|
 | `ELIZA_GITPATHOLOGIST` | boolean | No | auto | Force-enable (`true`) or force-disable (`false`) the plugin. When unset, plugin auto-enables if a `.git` directory is present. |
 | `GITPATHOLOGIST_BUDGET` | number | No | `20` | Maximum LLM narration calls per analysis. Set to `0` to run fully deterministic (no model calls). |
-| `GITPATHOLOGIST_CACHE_DIR` | string | No | `<repoRoot>/.gitpathology` | Override the cache directory. Relative paths are resolved against `repoRoot`. |
+| `GITPATHOLOGIST_CACHE_DIR` | string | No | `<repoRoot>/.eliza/gitpathology` | Override the cache directory. Relative paths are resolved against `repoRoot`. |
 
-The action reads `ELIZA_WORKSPACE_DIR` to resolve the repo root when running inside an Eliza agent workspace; falls back to `process.cwd()` when the variable is unset.
+The action reads `ELIZA_WORKSPACE_DIR` to resolve the repo root when running inside an Eliza agent workspace; falls back to `process.cwd()` when unset.
 
 ## How to extend
 

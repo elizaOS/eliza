@@ -107,7 +107,7 @@ Character-level multi-account config lives under `character.settings.signal` (`S
 - **Auth directory:** defaults to `~/.local/share/signal-cli` (signal-cli's hardcoded XDG path on all platforms including macOS — it does not use `Library/Application Support`). Override with `SIGNAL_AUTH_DIR`.
 - **Auto-reply is off by default.** Inbound messages are persisted as memories and emit `SIGNAL_MESSAGE_RECEIVED`, but the agent does not respond unless `SIGNAL_AUTO_REPLY=true`. Sends are expected to come from LifeOps or explicit caller actions.
 - **Multi-account:** configure multiple phone numbers under `character.settings.signal.accounts`. Each account gets its own `SignalApiClient`, event stream, and connector registration.
-- **Message size:** messages exceeding `MAX_SIGNAL_MESSAGE_LENGTH` (4 000 chars) are split automatically by `SignalService.splitMessage`.
+- **Message size:** messages exceeding `MAX_SIGNAL_MESSAGE_LENGTH` (4 000 chars) are split automatically before dispatch.
 - **Account IDs:** always normalized to lowercase via `normalizeAccountId`. The sentinel value `"default"` is used when no explicit ID is configured.
 - **No actions registered:** the plugin deliberately registers zero actions. Sending is done via the `MessageConnector` or direct service calls — not via natural-language action dispatch.
 

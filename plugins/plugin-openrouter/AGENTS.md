@@ -48,7 +48,7 @@ plugins/plugin-openrouter/
   types/
     index.ts                Plugin-local TypeScript interfaces (OpenRouterConfig, TextGenerationParams, etc.)
   __tests__/                Unit + live integration tests
-  build.ts                  tsdown build script (dual node/browser output)
+  build.ts                  Bun build script (node ESM + browser ESM + CJS outputs)
 ```
 
 ## Commands

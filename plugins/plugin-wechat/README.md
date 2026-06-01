@@ -79,6 +79,3 @@ npx elizaos plugins add @elizaos/plugin-wechat
 5. A background health check runs every 60 seconds and re-initiates login if
    the session expires.
 
-## License
-
-MIT

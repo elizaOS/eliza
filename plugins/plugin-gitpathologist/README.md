@@ -53,7 +53,7 @@ The agent will activate this action when the user says things like:
 |---|---|---|
 | `ELIZA_GITPATHOLOGIST` | auto | Set `true` to force-enable, `false` to force-disable. When unset, the plugin auto-enables in workspaces with a `.git` directory. |
 | `GITPATHOLOGIST_BUDGET` | `20` | Maximum LLM narration calls per analysis. Set to `0` to skip LLM narration entirely. |
-| `GITPATHOLOGIST_CACHE_DIR` | `<repoRoot>/.gitpathology` | Override the cache directory for pathology reports. |
+| `GITPATHOLOGIST_CACHE_DIR` | `<repoRoot>/.eliza/gitpathology` | Override the cache directory for pathology reports. |
 
 ## Requirements
 
@@ -99,7 +99,3 @@ const agent = new AgentRuntime({
 
 This commit introduced 1,240 churn lines across 23 files with no test coverage changes, signaling a large undisciplined patch...
 ```
-
-## License
-
-MIT

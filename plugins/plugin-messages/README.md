@@ -43,7 +43,7 @@ Reading and sending SMS requires Android to grant the default SMS role (`android
 The `MessagesTuiView` component and `interact()` function expose a programmatic terminal API:
 
 ```ts
-import { interact } from "@elizaos/plugin-messages";
+import { interact } from "@elizaos/plugin-messages/components/MessagesAppView";
 
 // List threads
 const { threads, ownsSmsRole } = await interact("terminal-list-threads", { limit: 50 });

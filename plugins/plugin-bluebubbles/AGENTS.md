@@ -139,5 +139,5 @@ blocks under `character.settings.bluebubbles.accounts.<id>`.
   `character.settings.bluebubbles.accounts.<accountId>`. The current service
   only instantiates the default account; the account scaffolding in
   `src/accounts.ts` is the extension point for full multi-account support.
-- **Build.** Uses `build.ts` (tsdown) via `bun run build.ts`. Output is ESM
+- **Build.** Uses `build.ts` (tsc) via `bun run build.ts`. Output is ESM
   only (`"type": "module"`), entry `dist/index.js`.

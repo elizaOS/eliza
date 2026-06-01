@@ -83,8 +83,11 @@ src/
     a11y.ts                  Accessibility tree query
     coords.ts                localToGlobal coordinate translation
     capabilities.ts          detectPlatformCapabilities
+    desktop.ts               High-level desktop helpers
+    helpers.ts               Shared platform utilities
     permissions.ts           classifyPermissionDeniedError
     process-list.ts          listProcesses / parsePsOutput
+    screenshot-quality.ts    Quality / compression settings for screenshots
     terminal.ts              Terminal session management (internal; not exposed as action)
     file-ops.ts              File primitives (internal; not exposed as action)
     screenshot.ts            Low-level screencapture wrappers
@@ -122,11 +125,15 @@ src/
   osworld/
     adapter.ts               OSWorld benchmark adapter
     action-converter.ts      OSWorld action → ComputerInterface translation
+    types.ts                 OSWorld-specific type definitions
 
   sandbox/
     sandbox-driver.ts        Sandbox driver (Docker/QEMU backends)
     docker-backend.ts        Docker backend
     qemu-backend.ts          QEMU backend
+    surface-types.ts         Shared surface type definitions
+    types.ts                 Sandbox-specific types
+    index.ts                 Public re-exports
 
   security/
     browser-script-policy.ts GHSA-rcvr-766c-4phv — browser_execute disabled by default
@@ -137,7 +144,7 @@ src/
 Only scripts that exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-computeruse build       # tsdown build → dist/
+bun run --cwd plugins/plugin-computeruse build       # Bun.build (build.ts) → dist/
 bun run --cwd plugins/plugin-computeruse test        # vitest run
 bun run --cwd plugins/plugin-computeruse typecheck   # tsgo --noEmit
 ```
@@ -183,7 +190,7 @@ Add a `Route` object to `computerUseRoutes` in `src/index.ts`, implement the han
 
 ### Register an OCR provider (from another plugin)
 
-Call `ComputerUseService.registerCoordOcrProvider(provider)` after obtaining the service via `runtime.getService("computeruse")`. plugin-vision does this at boot to contribute its hierarchical OCR adapter.
+Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mobile/ocr-provider.ts` (not a method on `ComputerUseService`). plugin-vision does this at boot to contribute its hierarchical OCR adapter.
 
 ## Conventions / gotchas
 

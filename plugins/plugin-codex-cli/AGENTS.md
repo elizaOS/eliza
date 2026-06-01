@@ -37,7 +37,7 @@ plugins/plugin-codex-cli/
     tool-format-openai.ts   toOpenAITool() / toOpenAITools() — maps elizaOS ToolDefinition to OpenAI function tool shape
   __tests__/
     codex-backend.test.ts   Unit tests for CodexBackend, message translation, and auth
-  build.ts                  tsdown build script
+  build.ts                  Bun.build script (node + browser bundles via Bun bundler; declarations via tsc)
   vitest.config.ts          Test config
 ```
 
@@ -46,7 +46,7 @@ plugins/plugin-codex-cli/
 All commands run from the plugin directory:
 
 ```bash
-bun run --cwd plugins/plugin-codex-cli build        # compile (tsdown)
+bun run --cwd plugins/plugin-codex-cli build        # compile (Bun.build + tsc for declarations)
 bun run --cwd plugins/plugin-codex-cli dev          # watch build
 bun run --cwd plugins/plugin-codex-cli test         # vitest run
 bun run --cwd plugins/plugin-codex-cli lint         # biome check --write --unsafe

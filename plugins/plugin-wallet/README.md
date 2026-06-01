@@ -31,7 +31,7 @@ Multi-DEX LP management for both EVM and Solana chains:
 - **EVM:** Uniswap V3, Aerodrome, PancakeSwap V3
 - **Solana:** Raydium CLMM, Orca Whirlpools, Meteora DLMM
 
-Access via the `lpManagerPlugin` export or the `liquidityAction` subaction.
+Access via the `lpManagerPlugin` export; LP actions are surfaced as the `LIQUIDITY` action (via `liquidityAction`).
 
 ### Market analytics
 
@@ -88,6 +88,3 @@ An append-only hash-chained audit log records all action validate/handler lifecy
 
 `src/sdk/` provides lower-level ERC-6551 token-bound account primitives, x402 micropayment protocol types, CCTP bridge helpers, and spend-policy tooling. These are primarily for plugin internals but are re-exported from the package barrel for external use. SDK source is MIT-licensed (attribution: agent-wallet-sdk); see `SDK-LICENSE`.
 
-## License
-
-MIT

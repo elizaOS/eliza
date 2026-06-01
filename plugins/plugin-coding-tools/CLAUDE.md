@@ -4,14 +4,14 @@ Native Claude-Code-style coding tools (FILE, SHELL, WORKTREE) for Eliza agents r
 
 ## Purpose / role
 
-Adds filesystem operations, shell command execution, and git worktree management to an Eliza agent. The plugin is **opt-in**: it auto-enables when `config.features.codingTools` (or legacy `config.features["coding-agent"]`) is truthy and the runtime environment supports a terminal (disabled on `ELIZA_BUILD_VARIANT=store` and on iOS; Android only when `ELIZA_RUNTIME_MODE=local-yolo`). All actions are gated to `contexts: ["code", "terminal", "automation"]` and require `roleGate: minRole=ADMIN`.
+Adds filesystem operations, shell command execution, and git worktree management to an Eliza agent. The plugin is **opt-in**: it auto-enables when `config.features.codingTools` (or legacy `config.features["coding-agent"]`) is truthy and the runtime environment supports a terminal (disabled on `ELIZA_BUILD_VARIANT=store` and on iOS; Android only when `ELIZA_RUNTIME_MODE=local-yolo`). All actions are gated to `contexts: ["code", "terminal", "automation"]`. FILE and WORKTREE require `roleGate: minRole=ADMIN`; SHELL requires `roleGate: minRole=OWNER`.
 
 ## Plugin surface
 
 ### Actions
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Supports `target=device` for reads/writes through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — runs local shell commands. Auto-backgrounds long-running commands (configurable via `CODING_TOOLS_SHELL_BG_BUDGET_MS`). Built-in and configurable command denylist (`CODING_TOOLS_DENY_COMMANDS`). Similes: `BASH`, `TERMINAL`, `RUN_COMMAND`.
+- **SHELL** — runs local shell commands. Auto-backgrounds long-running commands (configurable via `CODING_TOOLS_SHELL_BG_BUDGET_MS`). Built-in and configurable command denylist (`CODING_TOOLS_DENY_COMMANDS`). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Provider
@@ -121,7 +121,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 2. Export from `src/actions/index.ts`.
 3. Import and add to the `actions` array in `src/index.ts`.
 4. Use `contexts: [...CODING_TOOLS_CONTEXTS]` and `contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] }` so the action only fires in coding contexts.
-5. Use `roleGate: { minRole: "ADMIN" }` — all coding tools require ADMIN role.
+5. Use `roleGate: { minRole: "ADMIN" }` for FILE/WORKTREE actions, or `roleGate: { minRole: "OWNER" }` for SHELL-equivalent actions — match the role of the existing action you are most similar to.
 
 ### Add a new service
 
@@ -139,5 +139,5 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 - **Never throw from a handler** — return `failureToActionResult({ reason, message })` instead.
 - The `@vscode/ripgrep` binary is resolved at `RipgrepService` start time. If the binary is missing, GREP falls back gracefully.
 - The `device_filesystem` bridge (`target=device` on FILE) is provided by a separate service (`device_filesystem` service type) registered by a platform plugin (e.g. mobile). The coding-tools plugin does not register it — it only consumes it when present.
-- Tests live in `src/actions/__tests__/` and `src/services/` (as `*.test.ts` beside the source). See `AGENT_CONTRACT.md` for the action implementation brief.
+- Tests are co-located `*.test.ts` files beside their source in `src/actions/`, `src/services/`, and `src/lib/`. Integration tests live in `__tests__/plugin-integration.test.ts` at the package root. See `AGENT_CONTRACT.md` for the action implementation brief.
 - Import paths must use the `.js` extension on relative imports (ESM requirement).

@@ -36,20 +36,15 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
     bun run build
     ```
 
-## Browser and Node.js Compatibility
+## Build targets (Node, Browser, Edge)
 
-The `@elizaos/core` package features a dual build system that provides optimized builds for both Node.js and browser environments:
+`@elizaos/core` builds to three targets via conditional exports:
 
-- **Node.js Build**: Full API surface with all features including server utilities
-- **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
+- **Node.js Build**: Full API surface with all features including server utilities (`index.node.ts`)
+- **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
+- **Edge Build**: Edge-runtime subset (`index.edge.ts`)
 
 The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
-
-```bash
-npm install buffer
-```
-
-The dual build system uses conditional exports in package.json to automatically select the appropriate build based on the runtime environment.
 
 ## Configuration
 
@@ -159,7 +154,7 @@ Relevant runtime knobs:
 - `PROMPT_MAX_PARALLEL_CALLS`
 - `PROMPT_MODEL_SEPARATION`
 
-The batcher implementation lives in `src/utils/batch-queue/` (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`).
+The prompt batcher implementation lives in `src/utils/prompt-batcher/` (`batcher.ts`, `dispatcher.ts`). The lower-level queue primitives (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`) live in `src/utils/batch-queue/`.
 
 ### Task system
 

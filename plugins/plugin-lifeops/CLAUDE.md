@@ -59,7 +59,7 @@ Adds the full owner-operations surface to an Eliza agent: it registers action um
 
 | Service type | Class | File | Role |
 |---|---|---|---|
-| `browser_bridge` | `BrowserBridgePluginService` | `src/service.ts` | Browser extension companion pairing and session management |
+| `lifeops_browser_plugin` | `BrowserBridgePluginService` | `src/service.ts` | Browser extension companion pairing and session management |
 | `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
 | `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | macOS activity/screen-time tracking |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
@@ -238,7 +238,7 @@ bun run --cwd plugins/plugin-lifeops clean              # Remove dist/
 - **The runner never inspects `promptInstructions`.** Routing is done purely on structural `ScheduledTask` fields. See `src/lifeops/scheduled-task/runner.ts`.
 - **Approval flows require an approval queue.** Outbound message sends and document signatures go through `PgApprovalQueue` before any external dispatch. Never dispatch directly from action handlers.
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
-- **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces rules from `docs/audit/prompt-content-lint.md`. CI blocks packs that fail.
+- **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.
 - **plugin-google is auto-registered.** If `@elizaos/plugin-google` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
 - **Views are built separately.** The `build:views` step (Vite) produces `dist/views/bundle.js`. The main `build:js` step (tsup) does not include views. Run `build` to get both.
 - See root `AGENTS.md` for repo-wide architecture commandments, logger conventions, ESM rules, and naming.

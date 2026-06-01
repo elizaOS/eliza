@@ -64,7 +64,7 @@ plugins/plugin-native-screencapture/
   android/
     src/main/java/ai/eliza/plugins/screencapture/
       ScreenCapturePlugin.kt      Android impl: MediaProjection + MediaRecorder; coroutine-based
-    AndroidManifest.xml           FOREGROUND_SERVICE permission declaration
+    src/main/AndroidManifest.xml  FOREGROUND_SERVICE + RECORD_AUDIO + FOREGROUND_SERVICE_MEDIA_PROJECTION declarations
   ElizaosCapacitorScreencapture.podspec   CocoaPods spec (iOS 15.0+, Swift 5.9)
   rollup.config.mjs    Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js from compiled ESM
   tsconfig.json
@@ -89,7 +89,7 @@ This plugin reads no environment variables and has no configuration schema. All 
 
 Platform-specific requirements:
 - **iOS:** `NSMicrophoneUsageDescription` must be present in the host app's `Info.plist` when `captureMicrophone: true`. ReplayKit screen recording requires no separate entitlement on iOS 11+.
-- **Android:** `FOREGROUND_SERVICE` is declared in `AndroidManifest.xml`. `RECORD_AUDIO` is requested at runtime when `captureMicrophone: true`. Android 14+ (API 34) requires `FOREGROUND_SERVICE_MEDIA_PROJECTION`.
+- **Android:** `FOREGROUND_SERVICE`, `RECORD_AUDIO`, and `FOREGROUND_SERVICE_MEDIA_PROJECTION` (API 34+) are all declared in the plugin's `AndroidManifest.xml`. `RECORD_AUDIO` is also enforced at runtime via the `@CapacitorPlugin` `Permission` annotation — microphone permission is requested when `captureMicrophone: true`.
 - **Browser:** `getDisplayMedia` always shows a system OS picker dialog — there is no way to pre-grant or skip it. Microphone can be pre-requested via `requestPermissions()`.
 
 ## How to Extend

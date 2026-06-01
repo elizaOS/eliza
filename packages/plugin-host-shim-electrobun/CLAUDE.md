@@ -37,7 +37,7 @@ import { installElectrobunShim } from "@elizaos/plugin-host-shim-electrobun";
 
 | Method | Description |
 |---|---|
-| `resolveViewUrl(pluginName, relativePath)` | Returns `views://<pluginName>/<relativePath>` — the URL scheme Electrobun uses for plugin assets. |
+| `resolveViewUrl(pluginName, relativePath)` | Returns a `URL` object with scheme `views://<pluginName>/<relativePath>` — the URL scheme Electrobun uses for plugin assets. |
 | `request(method, params)` | Sends a `{ kind:"request", id, method, params }` envelope over the bridge and awaits the `response` reply. |
 | `on(event, handler)` | Subscribes to `event` envelopes from the host. Returns an unsubscribe function. |
 

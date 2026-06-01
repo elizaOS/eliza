@@ -20,9 +20,9 @@ No actions, providers, evaluators, routes, or events are registered. The sole co
 | Adapter factory (browser) | `createDatabaseAdapter(agentId)` | `index.browser.ts` |
 | Storage class (Node) | `FileStorage` | `index.ts` (unexported) |
 | Storage class (browser) | `BrowserLocalStorage` | `index.browser.ts` (unexported) |
-| Adapter class | `InMemoryDatabaseAdapter` | `adapter.ts` (re-used from plugin-inmemorydb) |
-| Vector index | `EphemeralHNSW` | `hnsw.ts` |
-| Storage interface + COLLECTIONS | `IStorage`, `COLLECTIONS` | `types.ts` |
+| Adapter class | `InMemoryDatabaseAdapter` | imported from `@elizaos/plugin-inmemorydb` |
+| Vector index | `EphemeralHNSW` | imported from `@elizaos/plugin-inmemorydb` |
+| Storage interface + COLLECTIONS | `IStorage`, `COLLECTIONS` | imported from `@elizaos/plugin-inmemorydb` |
 
 `init` hook behavior: checks `r.adapter`, `r.databaseAdapter`, and `r.hasDatabaseAdapter()` — exits if any adapter is present. Otherwise resolves the data directory via `LOCALDB_DATA_DIR` setting or env var (fallback: `.eliza-localdb/` in `process.cwd()`), constructs a `FileStorage`, wraps it in `InMemoryDatabaseAdapter`, initializes it, and calls `r.registerDatabaseAdapter()`.
 
@@ -32,13 +32,13 @@ No actions, providers, evaluators, routes, or events are registered. The sole co
 plugins/plugin-localdb/
   index.ts              Node plugin entry — FileStorage, plugin object, createDatabaseAdapter()
   index.browser.ts      Browser plugin entry — BrowserLocalStorage, plugin object, createDatabaseAdapter()
-  adapter.ts            InMemoryDatabaseAdapter — full IDatabaseAdapter (copy from plugin-inmemorydb)
-  hnsw.ts               EphemeralHNSW — cosine-distance HNSW vector index (IVectorStorage)
-  types.ts              IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS enum
+  adapter.ts            InMemoryDatabaseAdapter — local copy (NOT used by plugin entries; plugin imports from @elizaos/plugin-inmemorydb)
+  hnsw.ts               EphemeralHNSW — local copy used only by adapter.ts
+  types.ts              IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS — local copy used only by adapter.ts
   tsup.config.ts        Dual-entry build (index + index.browser), ESM only
 ```
 
-Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent files in `plugin-inmemorydb`. Changes to the shared logic must be kept in sync across both packages.
+Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent files in `plugin-inmemorydb` but are NOT imported by `index.ts` or `index.browser.ts`. The plugin entries import `InMemoryDatabaseAdapter`, `IStorage`, `COLLECTIONS`, and `EphemeralHNSW` directly from `@elizaos/plugin-inmemorydb`. The local copies are dead weight; if the upstream adapter is patched, no sync to these files is required for the plugin to function.
 
 ## Commands
 
@@ -63,19 +63,19 @@ The browser entry uses `localStorage` keyed by `elizaos:localdb:<agentId>`. No e
 
 To swap the backing store without forking the plugin:
 
-1. Implement `IStorage` from `types.ts` (all methods async).
+1. Implement `IStorage` from `@elizaos/plugin-inmemorydb` (all methods async).
 2. Call `new InMemoryDatabaseAdapter(yourStorage, agentId)` directly.
 3. Call `adapter.initialize()` before registering with the runtime.
 
-To add a new collection: add a key to `COLLECTIONS` in `types.ts`, then add CRUD methods in `adapter.ts` following the existing pattern (`this.storage.set/get/getWhere/delete`).
+To add a new collection: add a key to `COLLECTIONS` in `@elizaos/plugin-inmemorydb`'s `types.ts`, then add CRUD methods in the adapter following the existing pattern (`this.storage.set/get/getWhere/delete`).
 
 ## Conventions / gotchas
 
-- **Flush-on-write.** `FileStorage` writes `localdb.json` synchronously after every mutation. This is safe for small datasets but not designed for high-write throughput.
+- **Flush-on-write.** `FileStorage` awaits a full `writeFile` after every mutation. This is safe for small datasets but not designed for high-write throughput.
 - **Adapter gate.** The plugin will not register a second adapter. If another plugin (e.g., a SQL adapter) loads first, this plugin does nothing. Load order matters.
 - **No transaction atomicity.** `transaction()` calls the callback with `this` — no rollback.
 - **HNSW is ephemeral.** The vector index is rebuilt from scratch on each process start; embeddings stored in `localdb.json` are not re-indexed automatically. Semantic search results are empty until new memories with embeddings are written after startup.
 - **Default embedding dimension is 384.** Call `adapter.ensureEmbeddingDimension(n)` before writing memories with a different size; it re-initializes the HNSW index, clearing existing in-memory vectors.
 - **Batch API only.** No single-item helpers. Use `createEntities`, `getMemoriesByIds`, etc.
-- **Local copies of shared files.** `adapter.ts`, `hnsw.ts`, and `types.ts` are not imported from `plugin-inmemorydb` — they are file copies. Keep them in sync when patching the upstream adapter.
+- **Local copies are unused.** `adapter.ts`, `hnsw.ts`, and `types.ts` exist in this package but are not imported by either entry point. The plugin uses the versions from `@elizaos/plugin-inmemorydb`.
 - **Browser entry is separate.** The `exports` map routes `browser` consumers to `dist/index.browser.js`. Do not import from `index.ts` directly in a browser context.

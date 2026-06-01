@@ -25,10 +25,11 @@ src/
   index.ts      Plugin entry — exports commandsPlugin, commandRegistryProvider,
                 formatCommandResult, isAuthorized, isElevated, and re-exports
                 parser/registry/types
-  registry.ts   Per-runtime command store: DEFAULT_COMMANDS (24 built-in defs),
-                initForRuntime(), useRuntime(), registerCommand(),
-                unregisterCommand(), findCommandByAlias(), findCommandByKey(),
-                getEnabledCommands(), getCommandsByCategory(), startsWithCommand()
+  registry.ts   Per-runtime command store: DEFAULT_COMMANDS (25 built-in defs),
+                initForRuntime(), useRuntime(), registerCommand(), registerCommands(),
+                unregisterCommand(), resetCommands(), getCommands(),
+                getEnabledCommands(), getCommandsByCategory(),
+                findCommandByAlias(), findCommandByKey(), startsWithCommand()
   parser.ts     Text parsing: hasCommand(), detectCommand(), parseCommand(),
                 normalizeCommandBody(), extractCommand(), isCommandOnly()
   types.ts      Shared types: CommandDefinition, CommandContext, CommandResult,
@@ -42,7 +43,7 @@ auto-enable.ts  Lightweight shouldEnable() — reads config.features.commands;
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-commands build         # tsdown + tsc declarations
+bun run --cwd plugins/plugin-commands build         # bun build + tsc declarations
 bun run --cwd plugins/plugin-commands dev           # hot-rebuild with bun --hot
 bun run --cwd plugins/plugin-commands test          # vitest run
 bun run --cwd plugins/plugin-commands typecheck     # tsgo --noEmit
@@ -72,9 +73,9 @@ Defined in `src/registry.ts` as `DEFAULT_COMMANDS`. Each agent runtime receives 
 
 **Session** (`category: "session"`): `stop` (`/stop /abort /cancel`), `restart` (`/restart`, auth), `reset` (`/reset`, auth), `new` (`/new`), `compact` (`/compact`)
 
-**Options** (`category: "options"`): `think` (`/think /t`), `verbose` (`/verbose /v`), `reasoning` (`/reasoning`), `elevated` (`/elevated`, auth), `model` (`/model /m`), `models` (`/models`), `usage` (`/usage`), `queue` (`/queue /q`)
+**Options** (`category: "options"`): `think` (`/think /thinking /t`), `verbose` (`/verbose /v`), `reasoning` (`/reasoning /reason`), `elevated` (`/elevated /elev`, auth), `model` (`/model /m`), `models` (`/models`), `usage` (`/usage`), `queue` (`/queue /q`)
 
-**Management** (`category: "management"`): `allowlist` (`/allowlist`, auth), `approve` (`/approve`, auth), `subagents` (`/subagents`, auth), `config` (`/config`, auth, disabled by default), `debug` (`/debug`, auth, disabled by default)
+**Management** (`category: "management"`): `allowlist` (`/allowlist /allow`, auth), `approve` (`/approve`, auth), `subagents` (`/subagents /sub`, auth), `config` (`/config /cfg`, auth, disabled by default), `debug` (`/debug`, auth, disabled by default)
 
 **Media** (`category: "media"`): `tts` (`/tts /voice`)
 
@@ -107,7 +108,7 @@ registerCommand({
 - **Registry is per-agent.** `initForRuntime(agentId)` must be called in `plugin.init()` before any registry access; otherwise all agents share the fallback store. The plugin's own `init()` already does this.
 - **No action handlers here.** This plugin registers command *definitions* and the provider. The actual Action objects that handle commands live in the agent or other plugins.
 - **Similes must be slash-only.** Never add natural-language similes to command actions — the LLM will misroute conversational messages.
-- **`bash` command is elevated + disabled by default.** Both `requiresElevated: true` and `enabled: false`; `COMMANDS_BASH_ENABLED=true` is required to turn it on.
+- **`bash` command is elevated + disabled by default.** `requiresElevated: true` in the definition; `enabled` is set to `false` during `init()` because `COMMANDS_BASH_ENABLED` defaults to `"false"`. Set `COMMANDS_BASH_ENABLED=true` to enable it.
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.
 - **Parser accepts `/` or `!` prefix.** The `!` prefix is treated the same as `/`.
 - **`auto-enable.ts` is a separate entry point** — it must stay lightweight (no plugin runtime imports) because it is loaded by the auto-enable engine for every plugin at boot.

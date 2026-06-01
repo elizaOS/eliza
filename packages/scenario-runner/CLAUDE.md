@@ -32,8 +32,7 @@ packages/scenario-runner/
     types/                   # Supporting internal type files
   test/
     scenarios/               # 17 deterministic scenario files (*.scenario.ts)
-    fixtures/                # LLM proxy fixtures (pre-recorded responses)
-    mocks/helpers/           # prepareMockedTestEnvironment, lifeops-simulator, llm-proxy-plugin, etc.
+    fixtures/                # Misc test fixtures (e.g. mcp-stdio-fixture.mjs)
 ```
 
 ## Key exports

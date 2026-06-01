@@ -47,7 +47,7 @@ plugins/plugin-xai/
   __tests__/
     native-plumbing.shape.test.ts   Unit tests for tool-call normalization shapes
     plugin.live.test.ts             Live API integration test (requires XAI_API_KEY)
-  build.ts              tsdown build script
+  build.ts              Bun.build script (produces node ESM, browser ESM, CJS)
   vitest.config.ts      Vitest config
 ```
 

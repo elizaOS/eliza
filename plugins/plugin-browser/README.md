@@ -75,6 +75,7 @@ The plugin is opt-in. It activates when `config.features.browser` is truthy in t
 |---|---|
 | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | Full URL for the Stagehand command endpoint |
 | `STAGEHAND_SERVER_URL` | Stagehand base URL (commands go to `<url>/api/browser-command`) |
+| `ELIZA_BROWSER_STAGEHAND_URL` | Alias for `STAGEHAND_SERVER_URL` |
 | `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | Set `false` to disable automatic stagehand-server install/build |
 | `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | Set `true` to allow stagehand target on mobile |
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | Platform hint for target scoring (`ios`/`android`/`mobile`) |

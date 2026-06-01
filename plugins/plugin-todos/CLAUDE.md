@@ -40,7 +40,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-todos build        # tsdown compile → dist/
+bun run --cwd plugins/plugin-todos build        # bun build → dist/ (ESM) + tsc --emitDeclarationOnly
 bun run --cwd plugins/plugin-todos dev          # hot-rebuild via build.ts
 bun run --cwd plugins/plugin-todos test         # vitest run
 bun run --cwd plugins/plugin-todos typecheck    # tsgo --noEmit

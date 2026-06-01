@@ -173,6 +173,3 @@ This plugin works alongside:
 - **`@elizaos/plugin-sql`** — Required for persistent library and playlist storage
 - **`@elizaos/plugin-suno`** — Required for AI generation subactions
 
-## License
-
-MIT

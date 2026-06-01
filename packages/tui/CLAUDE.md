@@ -29,10 +29,12 @@ packages/tui/
       overlay.ts           Overlay layout math (resolveOverlayLayout, parseSizeValue)
     components/
       editor.ts            Editor — multi-line text input with autocomplete, scrolling
+      editor/              Editor internals (history, kill-ring, layout, undo, types)
       input.ts             Input — single-line text input with horizontal scroll
       text.ts              Text — word-wrapped multi-line text with padding
       truncated-text.ts    TruncatedText — single-line status/header text
       markdown.ts          Markdown — renders markdown with syntax highlighting
+      markdown/            Markdown internals (inline-renderer, list-renderer, table-renderer)
       loader.ts            Loader — animated spinner
       cancellable-loader.ts CancellableLoader — Loader + Escape key AbortSignal
       select-list.ts       SelectList — keyboard-navigable selection list
@@ -99,7 +101,7 @@ bun run --cwd packages/tui clean   # rm -rf dist/
 
 | Variable | Effect |
 |----------|--------|
-| `PI_TUI_WRITE_LOG=<path>` | Capture raw ANSI stream written to stdout |
+| `TUI_WRITE_LOG=<path>` | Capture raw ANSI stream written to stdout |
 | `TUI_HARDWARE_CURSOR=1` | Show real terminal cursor instead of fake cursor |
 | `TUI_CLEAR_ON_SHRINK=1` | Full clear when rendered content shrinks in height |
 
@@ -123,7 +125,7 @@ handle.setHidden(true);  // temporarily hide
 
 ### Customize keybindings
 
-Use `setEditorKeybindings(config)` at startup to remap `EditorAction` values to different key sequences. `DEFAULT_EDITOR_KEYBINDINGS` is the reference map.
+Use `setEditorKeybindings(manager)` at startup to remap `EditorAction` values to different key sequences. `DEFAULT_EDITOR_KEYBINDINGS` is the reference map.
 
 ## Conventions / Gotchas
 

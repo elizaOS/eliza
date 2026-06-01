@@ -32,15 +32,13 @@ Reads `window.ElizaosAndroidBridge` (must be set before calling), wires up the b
 
 Throws if `window.ElizaosAndroidBridge` is absent (configuration error on the Kotlin side).
 
+The returned `PluginHostShim` includes a `resolveViewUrl(pluginName, relativePath)` method that returns `https://appassets.androidplatform.net/plugins/<name>/<path>` — the URL scheme served by Android's `WebViewAssetLoader`. This is not a standalone export; access it via the returned shim object.
+
 ### Message wire format
 
 - **view → host (request):** `bridge.postMessage(JSON.stringify({ kind: "request", id, method, params }))`
 - **host → view (response):** `__elizaosAndroidDeliver(JSON.stringify({ kind: "response", id, ok, payload?, error? }))`
 - **host → view (event):** `__elizaosAndroidDeliver(JSON.stringify({ kind: "event", event, data }))`
-
-### `resolveViewUrl(pluginName, relativePath): URL`
-
-Returns `https://appassets.androidplatform.net/plugins/<name>/<path>` — the URL scheme served by Android's `WebViewAssetLoader`.
 
 ## Sibling packages
 

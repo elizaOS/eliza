@@ -18,7 +18,7 @@ Adds comprehensive music capability to an Eliza agent: playback of YouTube and d
 ### Providers
 - **`MUSIC_INFO`** (`src/providers/musicInfoProvider.ts`) — Injects track/artist/album metadata into agent state. Contexts: `media`, `knowledge`.
 - **`WIKIPEDIA_MUSIC`** (`src/providers/wikipediaProvider.ts`) — Extracts music context from Wikipedia via LLM parsing. Contexts: `media`, `knowledge`.
-- **`musicLibrary`** (`src/providers/musicLibraryProvider.ts`) — Library stats, recent/most-played songs. Contexts: `media`, `knowledge`.
+- **`MUSIC_LIBRARY`** (`src/providers/musicLibraryProvider.ts`) — Library stats, recent/most-played songs. Contexts: `media`, `knowledge`.
 - **`musicPlaylists`** (`src/providers/musicPlaylistsProvider.ts`) — User playlists as JSON context. Contexts: `media`, `knowledge`.
 - **`musicQueue`** (`src/providers/musicQueueProvider.ts`) — Current queue and now-playing track. Contexts: `media`, `knowledge`.
 
@@ -58,6 +58,7 @@ src/
   discordVoice.ts             Discord voice type bridge
   actions/
     music.ts                  MUSIC umbrella action (dispatcher)
+    music-player-action-docs.ts  Action parameter docs for the music-player surface
     musicLibrary.ts           Library sub-handler (playlist, search, play_query, download)
     playAudio.ts              play_audio sub-handler
     playbackOp.ts             Transport controls (pause/resume/skip/stop/queue)
@@ -71,7 +72,7 @@ src/
   providers/
     musicInfoProvider.ts      MUSIC_INFO provider
     wikipediaProvider.ts      WIKIPEDIA_MUSIC provider
-    musicLibraryProvider.ts   musicLibrary provider
+    musicLibraryProvider.ts   MUSIC_LIBRARY provider
     musicPlaylistsProvider.ts musicPlaylists provider
     musicQueueProvider.ts     musicQueue provider
   services/
@@ -100,6 +101,8 @@ src/
     djGuildSettings.ts        Per-guild DJ config
     djIntroOptions.ts         DJ intro prompt options
     djTips.ts                 DJ tip tracking
+    componentData.ts          Shared component data helpers
+    storageContext.ts         Storage context helpers
   core/
     broadcast.ts              Broadcast (stream multiplexer)
     streamCore.ts             Low-level stream helpers
@@ -114,7 +117,6 @@ src/
     index.ts                  TrackInfo, ArtistInfo, AlbumInfo, MusicInfoResult
     audioFeatures.ts          AudioFeatures, RecommendationRequest, TrackRecommendation
   utils/
-    audioCache.ts             (legacy; see services/audioCache.ts)
     ffmpegEnv.ts              FFmpeg binary resolution
     ytdlpCheck.ts             yt-dlp binary discovery
     ytdlpCli.ts               yt-dlp CLI helpers
@@ -123,6 +125,12 @@ src/
     musicDebug.ts             Debug logging helpers
     playbackTransportIntent.ts  Intent detection for transport controls
     resolveMusicGuildId.ts    Guild ID resolution helpers
+    json.ts                   JSON parse helpers
+    opusBroadcastNormalize.ts Opus broadcast normalization
+    progressiveMessage.ts     Progressive message helpers
+    retry.ts                  Retry utility
+    smartFetchService.ts      Smart fetch service
+    streamFallback.ts         Stream fallback logic
 ```
 
 ## Commands
@@ -136,7 +144,7 @@ bun run --cwd plugins/plugin-music lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-music lint:check     # biome check (no write)
 bun run --cwd plugins/plugin-music format         # biome format --write
 bun run --cwd plugins/plugin-music format:check   # biome format (no write)
-bun run --cwd plugins/plugin-music clean          # rm dist/ .turbo/
+bun run --cwd plugins/plugin-music clean          # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 bun run --cwd plugins/plugin-music test:e2e       # live smoke (requires running agent)
 ```
 
@@ -151,9 +159,9 @@ bun run --cwd plugins/plugin-music test:e2e       # live smoke (requires running
 | `SPOTIFY_CLIENT_ID` | No | — | Spotify recommendations; triggers auto-enable |
 | `SPOTIFY_CLIENT_SECRET` | No | — | Spotify auth; triggers auto-enable |
 | `SUNO_API_KEY` | No | — | AI music generation (generate/extend/custom_generate subactions) |
-| `MUSICBRAINZ_USER_AGENT` | No | `elizaOS/1.0` | Custom User-Agent for MusicBrainz API |
+| `MUSICBRAINZ_USER_AGENT` | No | `ElizaOS-MusicInfo/1.0.0 (https://github.com/elizaos/eliza)` | Custom User-Agent for MusicBrainz API |
 | `MUSIC_QUALITY_PREFERENCE` | No | `mp3_320` | Download quality preference |
-| `AUDIO_CACHE_DIR` | No | `~/.eliza/audio-cache` | Directory for pre-transcoded audio cache |
+| `AUDIO_CACHE_DIR` | No | `<cwd>/cache/audio` | Directory for pre-transcoded audio cache |
 
 ### Process env vars
 | Variable | Purpose |

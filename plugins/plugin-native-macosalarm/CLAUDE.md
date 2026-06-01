@@ -63,7 +63,7 @@ No runtime config keys are read from the agent runtime settings object. The only
 | `title` | `set` | Notification title |
 | `body` | `set` (optional) | Notification body |
 | `sound` | `set` (optional) | Sound name (`"default"` = critical sound; any named system sound) |
-| `id` | `cancel` (required), `set` (optional) | Alarm identifier; auto-generated UUID prefix if omitted on `set` |
+| `id` | `cancel` (required), `set` (optional) | Alarm identifier; auto-generated as `alarm-<UUID>` if omitted on `set` |
 
 ## How to extend
 

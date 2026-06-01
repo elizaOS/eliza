@@ -63,7 +63,7 @@ This is a Capacitor plugin, not an elizaOS action/provider/service plugin. It re
 ```
 plugins/plugin-native-canvas/
   src/
-    index.ts          Entry point — registerPlugin("ElizaCanvas", { web: CanvasWeb })
+    index.ts          Entry point — registerPlugin("ElizaCanvas", { web: loadWeb }) where loadWeb is a lazy dynamic import of CanvasWeb
     definitions.ts    All TypeScript interfaces and types (CanvasPlugin, CanvasLayer,
                       CanvasDrawBatchCommand, A2UIMessage, WebView* events, etc.)
     web.ts            CanvasWeb — full HTML5 Canvas + iframe web view implementation

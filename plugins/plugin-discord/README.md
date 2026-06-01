@@ -51,14 +51,14 @@ DISCORD_LISTEN_CHANNEL_IDS=123456789012345678
 DISCORD_VOICE_CHANNEL_ID=123456789012345678
 
 # Behavior Settings (Optional)
-# If true, ignore messages from other bots (default: true)
+# If true, ignore messages from other bots (default: false)
 DISCORD_SHOULD_IGNORE_BOT_MESSAGES=true
 
-# If true, ignore direct messages by default (default: true).
+# If true, ignore direct messages by default (default: false).
 # DMs can still be allowed explicitly via DISCORD_ALLOW_FROM / pairing allowlist.
 DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=true
 
-# If true, only respond when explicitly @mentioned (default: true)
+# If true, only respond when explicitly @mentioned (default: false)
 DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true
 
 # Testing (Optional)
@@ -186,39 +186,9 @@ From Discord.js `PermissionFlagsBits`:
 - `ManageRoles` - Role management
 - `Administrator` - Full access
 
-### Design Rationale
+### Actions / Providers
 
-**Why Hybrid Approach?**
-
-- Discord's native permissions are powerful but limited to role-based access
-- elizaOS needs programmatic control for channel restrictions and custom logic
-- Combining both gives developers the best of both worlds
-
-**Why Simple Flags?**
-
-- `guildOnly: true` is clearer than `contexts: [0]`
-- Abstracts Discord API details
-- Sensible defaults: zero config should "just work"
-
-**Why Keep Channel Whitelist?**
-
-- Discord's channel permissions are UI-based (Server Settings > Integrations)
-- Programmatic control is better for developer experience
-- Allows dynamic, runtime-based channel restrictions
-
-### Available Actions
-
-The plugin exposes shared connector actions only:
-
-| Action                           | Description                                              |
-| -------------------------------- | -------------------------------------------------------- |
-| **MESSAGE**                      | Send, read, search, list, react, edit, delete, pin, join, leave, or get user info through the Discord message connector |
-
-Credential pairing is handled by connector account providers and owner-only slash commands, not by a Discord-specific planner action.
-
-### Providers
-
-Discord message context is exposed through the MESSAGE connector hooks rather than Discord-specific prompt providers.
+No actions or providers are registered. The plugin operates entirely through services and events. Credential pairing is handled by connector account providers and owner-only slash commands.
 
 ### Event Types
 
@@ -268,7 +238,7 @@ Main service class that extends elizaOS Service:
 - Processes voice events and audio streams
 - Integrates with transcription services
 
-### Attachment Handler
+### AttachmentManager
 
 - Downloads and processes Discord attachments
 - Supports various media types

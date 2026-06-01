@@ -78,7 +78,7 @@ await runCli(process.argv, { name: "myapp", version: "1.0.0" });
 | `CLI_NAME` | No | `"elizaos"` | CLI binary name in help output |
 | `CLI_VERSION` | No | `"1.0.0"` | Version string shown by `--version` |
 
-Pass via character `agentConfig.pluginParameters` or as options to `buildProgram` / `runCli`.
+Pass directly to `buildProgram` / `runCli` as options (`{ name, version }`). These values are declared in `agentConfig.pluginParameters` but are not read from `process.env` — the `init` function does not use its config parameter.
 
 ## Using the progress reporter
 

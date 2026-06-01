@@ -51,9 +51,8 @@ plugins/plugin-whatsapp/
       factory.ts               ClientFactory.create() — selects BaileysClient or WhatsAppClient
       baileys-client.ts        Baileys (personal WA) WebSocket client
       interface.ts             IWhatsAppClient interface
-      whatsapp-routes.ts       QR-flow route helpers (applyWhatsAppQrOverride, handleWhatsAppRoute)
     api/
-      (see clients/ above — whatsapp-routes.ts is co-located here in src/api/)
+      whatsapp-routes.ts       QR-flow route helpers (applyWhatsAppQrOverride, handleWhatsAppRoute)
     services/                  Additional service helpers
     baileys/                   Baileys-specific auth/store adapters
     utils/                     config-detector, misc helpers
@@ -134,6 +133,6 @@ Configure multiple accounts under `character.settings.whatsapp.accounts.<id>` us
 - **Webhook security:** Cloud API webhook POSTs are rejected without a valid `X-Hub-Signature-256` (uses `WHATSAPP_APP_SECRET`). The GET verification route is public by design (Meta requires it).
 - **Bundle safety:** `src/index.ts` contains a large `__bundle_safety_*` array that force-binds re-exported names into the module init. Do not remove it — Bun's tree-shaker collapses re-exports into empty inits on mobile without it.
 - **External deps:** `@whiskeysockets/baileys` (Baileys WS), `qrcode` / `qrcode-terminal` (QR display), `pino` (Baileys logger). All are runtime deps. No native binaries.
-- **Text chunking:** Outbound text is split into chunks of ≤4000 chars by default (see `WHATSAPP_TEXT_CHUNK_LIMIT`). Groups can override `chunkMode` to `"newline"`.
+- **Text chunking:** Outbound text is split into chunks of ≤4096 chars by default (see `WHATSAPP_TEXT_CHUNK_LIMIT`). Groups can override `chunkMode` to `"newline"`.
 - **Pairing session limit:** Maximum 10 concurrent Baileys QR pairing sessions (`MAX_PAIRING_SESSIONS` in `setup-routes.ts`).
 - For repo-wide architecture rules, logger conventions, and ESM requirements see the root `AGENTS.md`.

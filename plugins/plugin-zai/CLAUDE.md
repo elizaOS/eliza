@@ -40,7 +40,7 @@ plugins/plugin-zai/
                             getLargeModel, getThinkingConfig, getCoTBudget, etc.
     events.ts               emitModelUsageEvent() — wraps runtime.emitEvent(MODEL_USED, ...)
   __tests__/                Unit tests (vitest)
-  build.ts                  Dual build script (node + browser via tsdown/vite)
+  build.ts                  Build script (node ESM + browser + CJS via Bun.build; tsc for declarations)
 ```
 
 ## Commands

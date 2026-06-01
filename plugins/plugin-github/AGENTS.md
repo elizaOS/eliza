@@ -50,6 +50,7 @@ Registers with `ConnectorAccountManager` at init to expose GitHub accounts (PAT 
 ```
 src/
   index.ts                     Plugin export, route wiring, plugin object
+  register-routes.ts           App-route plugin loader — registers githubPlugin via registerAppRoutePluginLoader
   types.ts                     GitHubIdentity, GitHubOctokitClient, GitHubActions, result types
   accounts.ts                  Account config reading (env + character settings + connector store)
   action-helpers.ts            Shared: service lookup, client resolution, param helpers
@@ -120,4 +121,4 @@ Add an entry to `githubRoutes` in `src/index.ts` and a handler in `src/routes/gi
 - **Rate limits surface cleanly.** `inspectRateLimit` in `rate-limit.ts` detects GitHub 429/403 rate-limit responses and formats a human-readable message with reset time.
 - **PAT storage is local-first.** `<state-dir>/credentials/github.json` (mode 0600). Written atomically via a tmp-rename. The token is never returned to the browser via the GET route.
 - **`GitHubOctokitClient` is a structural interface**, not the full Octokit class — tests can inject a mock without depending on the real Octokit.
-- **`tsup` builds two entry points:** `src/index.ts` and `src/register-routes.ts` (for route-only consumers that don't want the full plugin).
+- **`tsup` builds two entry points:** `src/index.ts` and `src/register-routes.ts`. `register-routes.ts` is an app-route plugin loader that calls `registerAppRoutePluginLoader("@elizaos/plugin-github", ...)` — it registers the full `githubPlugin`, it is not a route-only subset.

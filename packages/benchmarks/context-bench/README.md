@@ -21,7 +21,7 @@ This benchmark evaluates how well language models can:
 
 ```bash
 # Install the package
-cd benchmarks/context-bench/python
+cd benchmarks/context-bench
 pip install -e .
 
 # With optional dependencies for embeddings
@@ -241,7 +241,7 @@ Position/Length Accuracy Heatmap
 ## Running Tests
 
 ```bash
-cd benchmarks/context-bench/python
+cd benchmarks/context-bench
 pip install -e ".[dev]"
 pytest tests/ -v
 ```

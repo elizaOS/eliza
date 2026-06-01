@@ -118,6 +118,3 @@ await MobileSignals.openSettings({ target: "usageAccess" });
 - **Android:** Full support for device state and Health Connect. Usage stats require manual user grant via settings.
 - **Web:** Graceful fallback only. Health and screen-time capabilities are unavailable.
 
-## License
-
-MIT — elizaOS

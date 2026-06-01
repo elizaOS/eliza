@@ -1,6 +1,6 @@
-# Google Chat Plugin for ElizaOS
+# Google Chat Plugin for elizaOS
 
-Google Chat messaging integration for ElizaOS agents, providing full support for Google Workspace team communication.
+Google Chat messaging integration for elizaOS agents, providing full support for Google Workspace team communication.
 
 ## Features
 
@@ -49,7 +49,7 @@ npm install @elizaos/plugin-google-chat
 | `GOOGLE_CHAT_SERVICE_ACCOUNT` | Service account JSON string | One of these |
 | `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE` | Path to service account JSON file | required |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Default credentials path | |
-| `GOOGLE_CHAT_AUDIENCE_TYPE` | Audience type: `app-url` or `project-number` | Yes |
+| `GOOGLE_CHAT_AUDIENCE_TYPE` | Audience type: `app-url` or `project-number` (default: `app-url`) | No |
 | `GOOGLE_CHAT_AUDIENCE` | Audience value for token verification | Yes |
 | `GOOGLE_CHAT_WEBHOOK_PATH` | Webhook path (default: `/googlechat`) | No |
 | `GOOGLE_CHAT_SPACES` | Comma-separated list of spaces | No |
@@ -77,21 +77,13 @@ import googleChatPlugin from "@elizaos/plugin-google-chat";
 // Pass to the runtime's plugin list in your character config,
 // or let auto-enable activate it via a connectors.googlechat block.
 ```
-## Actions
+## Actions and Providers
 
-Google Chat messaging routes through the canonical `MESSAGE` action using
-`source: "google-chat"`.
-
-| Primary action | Operation | Description |
-|----------------|-----------|-------------|
-| `MESSAGE` | `send` | Send or thread a message in a Google Chat space |
-| `MESSAGE` | `react` | Add or remove a reaction when the connector supports it |
-| `MESSAGE` | `list_channels` | List spaces the bot is a member of |
-
-## Providers
-
-Google Chat does not register standalone planner providers. Space and user
-context is exposed through the Google Chat message connector hooks.
+No actions or providers are registered (`actions: []`, `providers: []`). All
+messaging capabilities — send, react, edit, delete, list spaces, direct message
+— are surfaced through the `MessageConnector` registered by `GoogleChatService`
+with `source: "google-chat"`. Capabilities: `send_message`, `send_thread_reply`,
+`send_attachment`, `send_reaction`, `list_spaces`, `direct_message`.
 
 ## Events
 
@@ -101,8 +93,10 @@ context is exposed through the Google Chat message connector hooks.
 | `GOOGLE_CHAT_MESSAGE_SENT` | Message sent successfully |
 | `GOOGLE_CHAT_SPACE_JOINED` | Bot added to a space |
 | `GOOGLE_CHAT_SPACE_LEFT` | Bot removed from a space |
+| `GOOGLE_CHAT_REACTION_RECEIVED` | Reaction received (declared, not currently emitted) |
 | `GOOGLE_CHAT_REACTION_SENT` | Reaction added successfully |
 | `GOOGLE_CHAT_CONNECTION_READY` | Service connected and ready |
+| `GOOGLE_CHAT_WEBHOOK_READY` | Webhook ready (declared, not currently emitted) |
 
 ## Message Limits
 
@@ -151,6 +145,3 @@ Google Chat uses resource names for identifying entities:
 2. Verify the bot is added to the target space
 3. Ensure proper IAM roles are assigned
 
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.

@@ -205,6 +205,34 @@ const json5EsmEntry = path.join(
   path.dirname(_require.resolve("json5/package.json")),
   "dist/index.mjs",
 );
+// @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
+// bundle (StackContextManager / streaming-context tracing) but is not hoisted
+// where packages/app can resolve the bare specifier, so Vite served its ~46
+// internal modules raw in dev. Resolve its ESM entry through core's scope and
+// alias the bare specifier to it so it can be pre-bundled + deduped to one copy.
+const otelApiEntry = (() => {
+  try {
+    const coreDir = path.dirname(
+      _require.resolve("@elizaos/core/package.json"),
+    );
+    const pkgJson = _require.resolve("@opentelemetry/api/package.json", {
+      paths: [coreDir],
+    });
+    const pkg = JSON.parse(fs.readFileSync(pkgJson, "utf8")) as {
+      module?: unknown;
+      main?: unknown;
+    };
+    const entry =
+      typeof pkg.module === "string"
+        ? pkg.module
+        : typeof pkg.main === "string"
+          ? pkg.main
+          : undefined;
+    return entry ? path.join(path.dirname(pkgJson), entry) : undefined;
+  } catch {
+    return undefined;
+  }
+})();
 
 function isExpectedWsProxySocketError(
   message: unknown,
@@ -1456,8 +1484,12 @@ export default defineConfig({
       "@capacitor/core",
       "@elizaos/app-core",
       "zod",
+      "@opentelemetry/api",
     ],
     alias: [
+      ...(otelApiEntry
+        ? [{ find: /^@opentelemetry\/api$/, replacement: otelApiEntry }]
+        : []),
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
@@ -1861,6 +1893,19 @@ export default defineConfig({
       "yaml",
       "uuid",
       "adze",
+      // zod was historically excluded over a Vite dep-optimize chunk
+      // invalidation that 404'd the optimized chunk mid-startup. Retested on
+      // Vite v8 + Rolldown (8 rapid reloads + 5 cold starts): no chunk 404/504
+      // and no forced re-optimize reload. Including it collapses ~90 raw
+      // per-load module round-trips (zod v4 core + all locales) into one chunk.
+      // zod/v3 and zod/v4 are separate package entry points: a few sources
+      // import "zod/v3" (the v3 compat surface) directly, which the bare "zod"
+      // pre-bundle does not cover, so pre-bundle those subpaths too.
+      "zod",
+      "zod/v3",
+      "zod/v4",
+      // Resolvable via the resolve.alias above (transitive through @elizaos/core).
+      "@opentelemetry/api",
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.
@@ -1957,9 +2002,6 @@ export default defineConfig({
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
       "@elizaos/vault",
-      // Vite occasionally invalidates zod's optimized chunk during dev startup,
-      // which leaves the UI serving a missing .vite/deps file.
-      "zod",
     ],
   },
   build: {
@@ -2029,6 +2071,11 @@ export default defineConfig({
     host: true,
     port: uiPort,
     strictPort: true,
+    // Proactively transform the boot entry's import graph at server start
+    // instead of lazily on the first browser request. On this app the eager
+    // graph is large (~1200 workspace source modules), so warming it parallelizes
+    // the transform work and shortens cold-load TTFB after a server (re)start.
+    warmup: { clientFiles: ["src/main.tsx"] },
     // Only pin the dev origin when the desktop shell explicitly asks for a
     // loopback public URL. Capacitor live reload and LAN/browser clients need
     // Vite to keep serving the current request host instead of rewriting

@@ -73,7 +73,7 @@ plugins/plugin-wallet/
         gov-router.ts          On-chain governance routing
         providers/             evmWalletProvider, tokenBalanceProvider
         routes/sign.ts         EVM sign/verify HTTP routes
-        dex/                   Uniswap V3, Aerodrome DEX adapters
+        dex/                   Uniswap V3, Aerodrome, PancakeSwap V3 DEX adapters
       solana/
         index.ts               solanaPlugin (sub-plugin composed into walletPlugin)
         service.ts             SolanaService, SolanaWalletService
@@ -124,7 +124,7 @@ plugins/plugin-wallet/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-wallet build        # tsdown build → dist/
+bun run --cwd plugins/plugin-wallet build        # Bun.build + tsc declarations → dist/
 bun run --cwd plugins/plugin-wallet check        # tsc --noEmit type check
 bun run --cwd plugins/plugin-wallet lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-wallet test         # vitest run

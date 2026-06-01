@@ -88,7 +88,7 @@ All scripts come from `package.json` in this package:
 bun run --cwd plugins/plugin-mysticism build        # compile via build.ts
 bun run --cwd plugins/plugin-mysticism dev          # watch build (bun --hot)
 bun run --cwd plugins/plugin-mysticism test         # vitest run
-bun run --cwd plugins/plugin-mysticism typecheck    # tsc --noEmit
+bun run --cwd plugins/plugin-mysticism typecheck    # tsc --noEmit --noCheck
 bun run --cwd plugins/plugin-mysticism lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-mysticism lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-mysticism format       # biome format --write
@@ -101,9 +101,9 @@ Read by `MysticismService.start()` via `runtime.getSetting()`. All optional.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `MYSTICISM_PRICE_TAROT` | number (string) | `"0.01"` | Base price in USDC for a tarot reading |
-| `MYSTICISM_PRICE_ICHING` | number (string) | `"0.01"` | Base price in USDC for an I Ching reading |
-| `MYSTICISM_PRICE_ASTROLOGY` | number (string) | `"0.02"` | Base price in USDC for an astrology reading |
+| `MYSTICISM_PRICE_TAROT` | number (string) | `"0.01"` | Base price in SOL for a tarot reading |
+| `MYSTICISM_PRICE_ICHING` | number (string) | `"0.01"` | Base price in SOL for an I Ching reading |
+| `MYSTICISM_PRICE_ASTROLOGY` | number (string) | `"0.02"` | Base price in SOL for an astrology reading |
 
 Also declared in `package.json#agentConfig.pluginParameters` so the elizaOS agent config UI surfaces them. Prices are suggestions only — the agent decides what to charge at request time.
 
@@ -124,7 +124,7 @@ Also declared in `package.json#agentConfig.pluginParameters` so the elizaOS agen
 
 1. Create a directory under `src/engines/<system>/` with `index.ts` exposing an engine class.
 2. Register it inside `MysticismService` constructor and wire up `startXReading`, `getNextXReveal`, `recordXFeedback`, and `getXSynthesis` methods following the pattern of the existing three.
-3. Extend the `ReadingSystem` union in `src/types.ts` and update the `READING_OP` action handler's `ReadingType` guard.
+3. Extend the `ReadingSystem` union in `src/types.ts` and update the `MYSTICISM_READING` action handler's `ReadingType` guard.
 
 ## Conventions / Gotchas
 

@@ -26,9 +26,11 @@ bun add @elizaos/capacitor-bun-runtime
 
 Capacitor 8 auto-discovers the plugin via the package metadata. Re-run
 `pod install` after adding it so the `ElizaosCapacitorBunRuntime` pod links
-into your iOS workspace. The pod links `JavaScriptCore.framework` and
-`Network.framework`, depends on `Capacitor`, and uses `LlamaCppCapacitor` for
-the native llama.cpp symbols in local builds.
+into your iOS workspace. The pod depends on `Capacitor` and links system
+frameworks including `JavaScriptCore` (compat builds only), `Network`,
+`Accelerate`, `Metal`, `MetalKit`, `MetalPerformanceShaders`, `Foundation`,
+`CoreML`, and `NaturalLanguage`. When `ELIZA_IOS_INCLUDE_LLAMA=1`, it also
+depends on `LlamaCpp` and `LlamaCppCapacitor` for native llama.cpp symbols.
 
 ## Bundle layout
 

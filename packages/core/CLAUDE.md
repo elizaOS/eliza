@@ -28,8 +28,9 @@ src/
                         pairing, hook, optimized-prompt, tool-policy, trajectories, triggerScheduling, approval
   features/             Self-contained capability bundles, each its own dir:
                         basic-capabilities (the core action/provider/evaluator/service bundle),
-                        advanced-capabilities, advanced-memory, advanced-planning, documents, messaging (triage),
-                        payments, plugin-manager, secrets, oauth, trust, autonomy, working-memory, ballots
+                        advanced-capabilities, advanced-memory, advanced-planning, approvals, autonomy, ballots,
+                        documents, messaging (triage), oauth, payments, plugin-config, plugin-manager,
+                        secrets, sub-agent-credentials, trajectories, trust, working-memory
   actions/              Action plumbing: action-schema, to-tool, validate-tool-args, subaction-dispatch
   providers/            First-party providers (setup-progress, skill-eligibility, linked-identities, ...)
   schemas/              Drizzle table schemas + character schema. schemas/index.ts: buildBaseTables, BaseTables

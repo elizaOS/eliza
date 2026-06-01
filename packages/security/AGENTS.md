@@ -10,7 +10,7 @@ Provides three things every privileged elizaOS service must use:
 2. `AuditDispatcher` + `AuditEvent` — Zod-validated event bus that fans out to one or more `AuditSink` implementations; every privileged action must emit through it.
 3. Low-level AEAD (AES-256-GCM) and HKDF-SHA256 primitives used internally by the KMS adapters.
 
-Consumed by: `packages/cloud-shared` (field crypto, auth events), `packages/agent` (audit wiring), `packages/soc2-verify` (control verification), `packages/plugin-remote-manifest` (manifest signing), `packages/core` (optimized prompt HMAC).
+Consumed by: `packages/cloud-shared` (field crypto, auth events), `packages/agent` (audit wiring), `packages/soc2-verify` (control verification), `packages/plugin-remote-manifest` (manifest signing), `packages/cloud-api` (auth layer), `packages/plugin-worker-runtime` (worker crypto).
 
 ## Layout
 

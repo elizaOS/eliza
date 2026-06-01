@@ -109,6 +109,3 @@ bun run --cwd plugins/plugin-native-system build
 
 The Android library is built by Gradle as part of the host Capacitor Android project (`npx cap build android`).
 
-## License
-
-MIT

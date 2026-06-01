@@ -85,8 +85,8 @@ src/
     journal-store.ts            JournalStore — low-level JSON read/write to disk
     types.ts                    JournalState, JournalMemory, JournalGoal, JournalProgressEntry
   ui/
-    index.ts                    Re-exports ScapeOperatorSurface and ScapeTuiView
-    ScapeOperatorSurface.tsx    React operator UI (embedded by elizaOS view system)
+    index.ts                    Re-exports ScapeOperatorSurface; registers it via registerOperatorSurface
+    ScapeOperatorSurface.tsx    React operator UI (ScapeOperatorSurface + ScapeTuiView both exported from here)
 ```
 
 ## Commands
