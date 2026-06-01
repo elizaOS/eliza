@@ -199,6 +199,5 @@ scripts
 .DS_Store
 experiments/
 evals/benchmarks
-CLAUDE.md
 .claude/
 outputs/
