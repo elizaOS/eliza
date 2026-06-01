@@ -73,17 +73,41 @@ describe("OPENAI_REASONING_EFFORT env-var forwarding", () => {
 
 describe("Cerebras default reasoning effort", () => {
   // CEREBRAS_API_KEY set with no OPENAI_API_KEY / OPENAI_BASE_URL ⇒ Cerebras mode.
-  it("defaults to 'low' in Cerebras mode when OPENAI_REASONING_EFFORT is unset", () => {
+  // The default only applies to reasoning-capable models (e.g. gpt-oss-120b);
+  // non-reasoning models (Llama, etc.) reject reasoning_effort and must not
+  // receive it, so these cases pass the model name explicitly.
+  const REASONING_MODEL = "gpt-oss-120b";
+
+  it("defaults to 'low' for a reasoning model in Cerebras mode when OPENAI_REASONING_EFFORT is unset", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
-    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      REASONING_MODEL
+    );
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
     ).toBe("low");
   });
 
+  it("does NOT default reasoning effort for a non-reasoning Cerebras model", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "llama-3.3-70b"
+    );
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
+  });
+
   it("lets an explicit valid OPENAI_REASONING_EFFORT override the Cerebras default", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" });
-    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      REASONING_MODEL
+    );
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
     ).toBe("high");
@@ -94,7 +118,11 @@ describe("Cerebras default reasoning effort", () => {
       CEREBRAS_API_KEY: "csk-test",
       OPENAI_REASONING_EFFORT: "extreme",
     });
-    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime);
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      REASONING_MODEL
+    );
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
     ).toBe("low");
@@ -104,7 +132,8 @@ describe("Cerebras default reasoning effort", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(
       { prompt: "hi", providerOptions: { openai: { reasoningEffort: "medium" } } } as never,
-      runtime
+      runtime,
+      REASONING_MODEL
     );
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
