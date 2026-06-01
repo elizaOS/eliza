@@ -60,7 +60,7 @@ pytest tests/ -v
 | `elizaos_adhdbench/config.py` | All tuneable axes (scale points, levels, configs) |
 | `elizaos_adhdbench/types.py` | Frozen scenario/result types |
 | `elizaos_adhdbench/reporting.py` | Markdown, JSON, ASCII scaling curve output |
-| `tests/` | pytest suite (142 passing tests) |
+| `tests/` | pytest suite (144 tests) |
 
 ## Notes
 

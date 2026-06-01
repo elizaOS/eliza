@@ -34,7 +34,7 @@ openclaw agent --local --json \
 ```bash
 # From the adapter directory (tests are fully mocked — no API keys needed)
 pip install -e .
-pytest packages/benchmarks/openclaw-adapter/tests/ -v
+pytest tests/ -v
 
 # Or from the benchmarks root
 pytest openclaw-adapter/tests/ -v

@@ -51,7 +51,7 @@ pytest tests/ -v
 | `eliza_lifeops_bench/scorer.py` | state_hash, output_substring, pass@k |
 | `eliza_lifeops_bench/lifeworld/` | Deterministic in-memory world state |
 | `eliza_lifeops_bench/scenarios/` | 492 static + 528 live scenarios by domain |
-| `eliza_lifeops_bench/agents/` | Adapters: eliza, hermes, openclaw, cerebras-direct, perfect, wrong |
+| `eliza_lifeops_bench/agents/` | Adapters: eliza, hermes, openclaw, cerebras-direct, perfect, smithers, wrong |
 | `eliza_lifeops_bench/clients/` | Provider clients (Cerebras, Anthropic, Hermes) |
 | `data/snapshots/` | Seeded deterministic LifeWorld snapshots |
 | `manifests/actions.manifest.json` | JSON-Schema dump of every Eliza action |

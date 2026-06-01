@@ -38,7 +38,7 @@ and a deterministic stub runtime. Completes in under 2 minutes with no API keys.
 
 ```bash
 cd packages/benchmarks/vision-language
-bun test          # vitest run (via package.json "test" script)
+bun run test      # vitest run
 ```
 
 ## Layout

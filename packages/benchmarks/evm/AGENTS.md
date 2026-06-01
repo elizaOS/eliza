@@ -8,7 +8,7 @@ the suite orchestrator registry.
 ## Run
 
 ```bash
-# From packages/benchmarks/ — local Anvil node (auto-spawned):
+# From packages/ — local Anvil node (auto-spawned):
 python -m benchmarks.evm.eliza_explorer
 
 # With an already-running external node (Anvil or otherwise):
@@ -51,7 +51,7 @@ Requires: Python 3.12+, Bun, and Foundry's `anvil` (for local mode).
 
 ```bash
 # From packages/benchmarks/ (no API keys needed — no network calls):
-pytest benchmarks/evm/test_evm_benchmark.py -v
+pytest evm/test_evm_benchmark.py -v
 ```
 
 The Bun typecheck tests (`TestTemplatesBunTypeCheck`) are skipped automatically if `bun` is not on

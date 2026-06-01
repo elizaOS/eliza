@@ -24,7 +24,7 @@ python eliza_adapter.py --all --mode execution --docker
 python -m openclaw.runner --all --output-dir ./outputs
 ```
 
-Available tasks: `setup`, `implementation`, `refactoring`, `testing`, `cli_arguments`, `error_handling`.
+Available tasks: `setup`, `implementation`, `testing`, `cli_arguments`, `error_handling` (execution mode); `refactoring` is conceptual-mode only.
 
 API key required: `OPENAI_API_KEY` (recommended), `CEREBRAS_API_KEY`, or `GROQ_API_KEY`.
 Model override: `--model <name>` or `BENCHMARK_MODEL_NAME` env var (default: `moonshotai/kimi-k2-instruct`).

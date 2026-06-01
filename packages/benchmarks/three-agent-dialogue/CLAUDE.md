@@ -69,4 +69,4 @@ unless `GROQ_API_KEY` is set.
   root (gitignored). Each run produces: `turns/<idx>-<speaker>.wav`, `mix.wav`,
   `transcripts.json`, `emotion.json`, `turn-events.json`, `verification.json`.
 - Not registered in `registry/commands.py` — no orchestrator invocation.
-- Full background: no README present (see this file).
+- Full background: [README.md](README.md).

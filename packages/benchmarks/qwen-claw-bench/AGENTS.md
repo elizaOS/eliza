@@ -67,7 +67,7 @@ cd qwen-claw-bench && python scripts/benchmark.py --help
   modes: `automated`, `llm_judge`, `hybrid`. Hybrid applies penalized scoring
   (LLM-judge term is zeroed when automated score < 0.75). Use `--simple-scoring`
   to disable the penalty.
-- Default judge model is `claude-opus-4.5`; configure in `openclaw.json`.
+- Default judge model is `claude-opus-4-5-20251101` (set in `lib_grading.py`); override with `--judge <model>` on `benchmark.py`. Judge credentials (`JUDGE_BASE_URL`, `JUDGE_API_KEY`) are read from `openclaw_config/.env`.
 - Not registered in `registry/commands.py` yet. Planned key: `qwen_claw_bench`.
   See [INTEGRATION.md](INTEGRATION.md) for adapter design.
 - Full background: [README.md](README.md).

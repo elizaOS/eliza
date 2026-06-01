@@ -15,7 +15,7 @@ bun run packages/benchmarks/personality-bench/src/runner.ts \
   --output-json report.json
 
 # Via the root workspace script
-bun run personality:bench --agent eliza
+bun run personality:judge --agent eliza
 
 # Via the package script (from this directory)
 bun run grade -- --run-dir <path> --output report.md --output-json report.json
@@ -55,7 +55,7 @@ bun x vitest run tests/judge.test.ts --reporter=verbose
 | `src/types.ts` | All shared types (`PersonalityScenario`, `PersonalityVerdict`, etc.) |
 | `src/bridge.ts` | Integration bridge for upstream scenario producers |
 | `tests/` | Vitest suite — unit + calibration + W3-2 smoke |
-| `tests/calibration/` | Ground-truth corpus (54 hand-graded + 16 adversarial JSONL) |
+| `tests/calibration/` | Ground-truth corpus (66 hand-graded + 21 adversarial JSONL) |
 
 ## Notes
 

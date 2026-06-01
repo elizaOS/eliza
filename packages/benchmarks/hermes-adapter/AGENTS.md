@@ -53,7 +53,7 @@ pytest tests/ -v
 | `hermes_adapter/server_manager.py` | `HermesAgentManager` — lifecycle owner for the subprocess server |
 | `hermes_adapter/harness_openai_proxy.py` | OpenAI-compatible proxy routing between harnesses |
 | `hermes_adapter/swe_env_smoke.py` | SWE-env smoke runner (`run_humanevalpack_swe_smoke`) |
-| `hermes_adapter/{lifeops,bfcl,clawbench,...}.py` | Per-benchmark `agent_fn` factories |
+| `hermes_adapter/{lifeops_bench,bfcl,clawbench,...}.py` | Per-benchmark `agent_fn` factories |
 | `tests/` | pytest suite for the adapter layer |
 | `pyproject.toml` | Package definition; install with `pip install -e .` |
 

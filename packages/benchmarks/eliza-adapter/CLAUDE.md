@@ -84,7 +84,7 @@ subprocess calls.
 | `fixtures/replay/smoke.replay.json` | Fixture used by replay_eval tests |
 | `run_osworld_mock.py` | Single-turn OSWorld mock smoke driver |
 | `tests/` | pytest suite (pure-Python, no live server) |
-| `conftest.py` | Adds `packages/benchmarks/` to `sys.path` for `benchmarks.*` imports |
+| `conftest.py` | Adds `packages/` to `sys.path` so `import benchmarks.*` resolves the top-level namespace package |
 
 ## Notes
 

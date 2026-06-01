@@ -43,7 +43,7 @@ pytest tests/ -v
 | `elizaos_experience_bench/generator.py` | Synthetic experience + learning-scenario generator |
 | `elizaos_experience_bench/evaluators/` | Retrieval, reranking, learning, and hard-case evaluators |
 | `elizaos_experience_bench/types.py` | `BenchmarkConfig`, `BenchmarkResult`, metrics DTOs |
-| `elizaos_experience_bench/eliza_runner.py` | TypeScript bridge runner (eliza-agent/eliza-bridge modes) |
+| `elizaos_experience_bench/eliza_runner.py` | Unused compatibility shim for the removed in-process Python runner; bridge modes route through `eliza_adapter.experience` directly in `run_benchmark.py` |
 | `tests/` | pytest suite covering generator, evaluators, runner, and bridge |
 
 ## Notes

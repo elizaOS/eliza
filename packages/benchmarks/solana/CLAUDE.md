@@ -1,9 +1,9 @@
 # Solana-Gym — Agent Guide
 
 Solana instruction-discovery benchmark: an agent discovers Solana on-chain
-instructions (across 8 programs, 236 unique program/discriminator pairs) by
-running TypeScript skills against a Surfpool sandbox. Registered in the suite
-registry as `solana`.
+instructions (across 8 programs, 364 catalog entries (236 covered by the
+deterministic phase)) by running TypeScript skills against a Surfpool sandbox.
+Registered in the suite registry as `solana`.
 
 ## Run
 
@@ -48,7 +48,7 @@ that `surfpool` is available (install via `cargo install surfpool`).
 
 ```bash
 # From packages/benchmarks/
-pytest benchmarks/solana/test_solana_benchmark.py -v
+pytest solana/test_solana_benchmark.py -v
 ```
 
 Tests that require Bun and installed `node_modules` are auto-skipped when those
@@ -60,7 +60,7 @@ are absent. Tests requiring live Surfpool or API keys are not in this suite.
 | --- | --- |
 | `eliza_explorer.py` | CLI entrypoint (`python -m benchmarks.solana.eliza_explorer`) |
 | `exploration_strategy.py` | Deterministic + LLM-assisted phase state machine |
-| `instruction_catalog.py` | Catalog of 8 programs and 236 unique instruction pairs |
+| `instruction_catalog.py` | Catalog of 8 programs and 364 unique instruction pairs (236 in deterministic phase) |
 | `skill_templates.py` | Pre-built TypeScript skill templates (deterministic phase) |
 | `trajectory.py` | JSONL trajectory writer |
 | `test_solana_benchmark.py` | pytest suite for catalog, templates, strategy, explorer |

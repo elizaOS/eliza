@@ -16,9 +16,9 @@ and delegates execution/evaluation to the Rust crates.
 # Direct — demo mode (no funds at risk, no key required), eliza TS bridge
 python -m benchmarks.HyperliquidBench --demo
 
-# Direct — specific task file, demo mode
+# Direct — coverage scenario, demo mode (dataset/tasks/ not yet populated)
 python -m benchmarks.HyperliquidBench \
-  --tasks hl_perp_basic_01.jsonl \
+  --coverage \
   --demo
 
 # Through the suite orchestrator (stores results, resolves provider/model)
@@ -46,9 +46,9 @@ python -m benchmarks.orchestrator run \
 python -m benchmarks.HyperliquidBench --mode deterministic --demo
 
 # Rust runner demo mode (validates full pipeline without touching live endpoints)
+# dataset/tasks/ is not yet populated; omit --plan to use the runner's built-in demo plan
 cargo run -p hl-runner --release -- \
   --demo \
-  --plan dataset/tasks/hl_perp_basic_01.jsonl:1 \
   --out runs/demo
 
 cargo run -p hl-evaluator --release -- \
@@ -84,7 +84,7 @@ the Rust `cargo test` target and the Makefile shortcuts (`make format`, `make ch
 | `crates/hl-evaluator/` | Rust CLI: normalizes signatures, applies scoring, emits score reports |
 | `crates/hl-common/` | Shared plan schema, action types, time utils, artifact helpers |
 | `dataset/domains-hl.yaml` | Domain weights + signature allowlists (scoring config) |
-| `dataset/tasks/` | Authoritative coverage task JSONL files |
+| `dataset/tasks/` | Authoritative coverage task JSONL files (not yet populated) |
 | `dataset/hian/` | HiaN case bundles (prompt, ground truth, metadata) |
 | `scripts/run_cov.sh` | Convenience wrapper: runner + evaluator in one call |
 | `scripts/run_hian.sh` | HiaN runner wrapper (validator not yet wired) |

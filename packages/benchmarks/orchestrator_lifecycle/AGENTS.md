@@ -48,7 +48,7 @@ pytest packages/benchmarks/orchestrator_lifecycle/tests/ -v
 | `dataset.py` | Loads scenario JSON files |
 | `reporting.py` | Writes result JSON to output dir |
 | `types.py` | `LifecycleConfig`, `ScenarioResult`, `LifecycleMetrics` |
-| `scenarios/` | 11 JSON scenario definitions + schema |
+| `scenarios/` | 12 JSON scenario definitions + schema |
 | `tests/` | pytest suite (smoke + evaluator + dataset + schema) |
 
 ## Notes
