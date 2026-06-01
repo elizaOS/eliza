@@ -49,7 +49,7 @@ plugins/plugin-ollama/
   types/
     index.ts                 OllamaConfig, TextGenerationParams, EmbeddingParams, etc.
   __tests__/                 Vitest unit tests
-  build.ts                   tsdown build script (node + browser targets)
+  build.ts                   Bun.build script (node + browser targets)
 ```
 
 ## Commands

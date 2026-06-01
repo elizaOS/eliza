@@ -69,19 +69,9 @@ Signed CLOB trading is not yet implemented. When credentials are present the sta
 | `CLOB_API_SECRET` | `POLYMARKET_CLOB_SECRET` | CLOB API secret |
 | `CLOB_API_PASSPHRASE` | `POLYMARKET_CLOB_PASSPHRASE` | CLOB API passphrase |
 
-## CLI parity checks
+## Orderbook semantics
 
-Use the same CLOB token id when comparing agent output with the Polymarket CLI:
-
-```sh
-polymarket-trader diagnose
-polymarket-trader gamma-markets --limit 3
-polymarket-trader quote <TOKEN_ID>
-polymarket-trader orderbook <TOKEN_ID>
-polymarket-trader balance --asset-type COLLATERAL
-```
-
-The `/api/polymarket/orderbook` route reads the full CLOB orderbook and derives best bid and best ask from all returned levels, matching CLI quote semantics when the upstream CLOB response is not sorted. Retry transient network errors such as `ECONNRESET` before treating parity checks as failures.
+The `/api/polymarket/orderbook` route reads the full CLOB orderbook for a token id and derives best bid, best ask, midpoint, and spread from all returned levels (it does not assume the upstream CLOB response is sorted). Use the CLOB `token_id`, not the Gamma `conditionId` — a market has one condition id but one or more CLOB token ids (one per outcome).
 
 ## Building
 

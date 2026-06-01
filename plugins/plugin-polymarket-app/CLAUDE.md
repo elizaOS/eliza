@@ -16,7 +16,7 @@ Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the
   - `action=read, kind=orderbook` — full CLOB orderbook for a `tokenId`.
   - `action=read, kind=positions` — wallet positions from Data API.
   - `action=place_order` — reports trading readiness; actual order signing is disabled.
-  - Legacy similes (still accepted): `POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, `POLYMARKET_PLACE_ORDER`, `POLYMARKET_BUY`, `POLYMARKET_SELL`, and ~10 others.
+  - Legacy similes (still accepted): `POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, `POLYMARKET_PLACE_ORDER`, `POLYMARKET_BUY`, `POLYMARKET_SELL`, and ~14 others (full list in `POLYMARKET_READ_COMPAT_SIMILES` / `POLYMARKET_PLACE_ORDER_COMPAT_SIMILES`, actions.ts).
 
 ### Providers
 - **`POLYMARKET_STATUS`** (`polymarketStatusProvider`) — injects per-turn context text: public-read readiness, API base URLs, trading credential status. Active only in `finance` / `crypto` contexts.
@@ -55,11 +55,11 @@ src/
   client.ts             PolymarketClient — type intersection of ElizaClient with typed fetch helpers for each route (methods patched onto ElizaClient.prototype)
   polymarket-app.ts     registerOverlayApp() call; exports polymarketApp + POLYMARKET_APP_NAME
   register.ts           Side-effect import of polymarket-app (triggers overlay registration)
-  register-routes.ts    (minor) Route registration utilities
-  ui.ts                 UI entry
-  PolymarketAppView.tsx React view component
-  usePolymarketState.ts React hook for view state
-  PolymarketTuiView.test.tsx  View unit test
+  register-routes.ts    registerAppRoutePluginLoader() — lazy-loads polymarketPlugin for app-route mounting
+  ui.ts                 View entry re-exporting PolymarketAppView, polymarketApp, usePolymarketState
+  PolymarketAppView.tsx Exports PolymarketAppView (desktop/XR), PolymarketTuiView (terminal), and interact()
+  usePolymarketState.ts usePolymarketState() React hook for view state
+  PolymarketTuiView.test.tsx  Unit test for PolymarketTuiView/interact
 ```
 
 ## Commands

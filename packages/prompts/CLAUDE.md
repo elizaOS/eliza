@@ -51,7 +51,9 @@ bun run --cwd packages/prompts clean                    # rm -rf dist
 
 ## Config / env vars
 
-None. The generators resolve repo paths from `import.meta.url` (`REPO_ROOT = ../../..`, scanning `plugins/` and writing into `packages/core`). No env vars are read.
+No required configuration. The generators resolve repo paths from `import.meta.url` (`REPO_ROOT = path.resolve(__dirname, "../../..")`, scanning `plugins/` and writing into `packages/core`).
+
+- `DEBUG_ACTION_SPEC` — optional. When set, `generate-plugin-action-spec.js` logs each scanned `.ts` file path to stderr during the plugin-action-spec scan.
 
 ## How to extend
 

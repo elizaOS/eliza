@@ -64,7 +64,7 @@ All actions are virtual sub-operations of the single `TASKS` parent action, prom
 | --- | --- | --- |
 | `TASKS_CREATE` | `create` | One-shot: spawn + prompt + return. Captures origin metadata for routing. |
 | `TASKS_SPAWN_AGENT` | `spawn_agent` | Start a long-lived ACP coding-agent session. Returns active session info. |
-| `TASKS_SEND_TO_AGENT` | `send` | Send a follow-up prompt to a running session. |
+| `TASKS_SEND` | `send` | Send a follow-up prompt to a running session (`SEND_TO_AGENT` simile). |
 | `TASKS_STOP_AGENT` | `stop_agent` | Cooperatively cancel + close a session. |
 | `TASKS_LIST_AGENTS` | `list_agents` | List active and persisted sessions. |
 | `TASKS_CANCEL` | `cancel` | Cancel an in-flight task while preserving history. |
@@ -186,7 +186,7 @@ node tests/e2e/acp-codex-smoke.mjs
 RUN_LIVE_ACPX=1 bun run test
 
 # Native ACP adapter smoke (gated, no-op unless enabled):
-RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
+RUN_LIVE_NATIVE_ACP=1 node tests/e2e/live-native-acp-smoke.mjs
 ```
 
 `acp-codex-smoke.mjs` exercises the legacy `acpx` path by spawning a real codex session, sending "what is 7 + 8?", and verifying `task_complete` fires with response `"15"`. The vitest live test (`__tests__/live/sub-agent-router.live.test.ts`) verifies the synthetic Memory routes back from a real subprocess into a test `messageService.handleMessage` with all routing keys intact. Both no-op (skip) when `acpx` isn't installed.
@@ -194,8 +194,8 @@ RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
 `live-native-acp-smoke.mjs` sets `ELIZA_ACP_TRANSPORT=native`, starts a native ACP adapter over stdio, sends a tiny math prompt, and verifies the prompt response ended with `stopReason: "end_turn"` and final text containing `15`. Optional providers require explicit commands:
 
 ```bash
-RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" bun run test:e2e:native
-RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" bun run test:e2e:native
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" node tests/e2e/live-native-acp-smoke.mjs
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" node tests/e2e/live-native-acp-smoke.mjs
 ```
 
 The native smoke skips successfully when `RUN_LIVE_NATIVE_ACP` is unset, when an optional provider command is not configured, or when the adapter reports missing authentication/credentials. Use `RUN_LIVE_NATIVE_ACP=1 bun run test -- __tests__/live/native-acp-smoke.live.test.ts` to run the same smoke through Vitest.
@@ -212,7 +212,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run test` | Run the plugin vitest suite. |
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |
-| `bun run test:e2e:native` | Run the gated native ACP adapter smoke when `RUN_LIVE_NATIVE_ACP=1`. |
+| `bun run test:watch` | Run the vitest suite in watch mode. |
 | `bun run lint:check` | Run Biome checks without writing changes. |
 | `bun run lint` | Run Biome checks with write/unsafe fixes. |
 | `bun run format:check` | Check formatting. |

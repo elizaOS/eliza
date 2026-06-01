@@ -49,8 +49,8 @@ const statuses = await manager.detectBackends();
 //   [
 //     { id: "in-house",   available: true,  signedIn: true,  label: "Eliza (local, encrypted)" },
 //     { id: "1password",  available: true,  signedIn: true,  label: "1Password" },
-//     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "...not signed in. Run `bw login`." },
-//     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "...not installed (CLI in beta)." },
+//     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "`bw` is installed but not signed in. Use the Sign-in button." },
+//     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "`protonpass-cli` not installed (vendor CLI is in beta)." },
 //   ]
 
 // User picks their backends in Settings:
@@ -109,8 +109,10 @@ separate cloud sync.
 
 ## Audit log
 
-Every operation appends one JSONL line to
-`~/.eliza/audit/vault.jsonl`:
+Every value-touching operation (`set`, `setReference`, `get`, `reveal`,
+`remove`) appends one JSONL line to `<stateDir>/audit/vault.jsonl`
+(default state dir `~/.local/state/eliza`, overridable via
+`ELIZA_STATE_DIR`):
 
 ```jsonl
 {"ts":1714330000000,"action":"set","key":"openrouter.apiKey"}

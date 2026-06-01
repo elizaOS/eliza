@@ -17,7 +17,8 @@ packages/cloud-sdk/
     types.ts                  All request/response interfaces + ElizaCloudClientOptions
     types.cloud-api.ts        DTOs mirrored from the Cloud API (CurrentUserDto, AgentDetailDto, etc.)
     public-routes.ts          ELIZA_CLOUD_PUBLIC_ENDPOINTS map + ElizaCloudPublicRoutesClient
-                              (generated — do not hand-edit; refresh with bun run generate:routes)
+                              (generated — do not hand-edit; refresh with
+                              node scripts/generate-public-routes.mjs)
     client.test.ts            Unit tests for ElizaCloudClient (mock fetch)
     live.e2e.test.ts          Live integration tests gated by env flags
     cloud-setup-session/

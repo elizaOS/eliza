@@ -10,13 +10,12 @@ sandbox), the on-disk install store, the worker↔host wire message types, artif
 verification, and RPC MAC helpers. It is not an elizaOS agent plugin itself — it exports no
 `Plugin` object — it is a shared library consumed by other packages.
 
-Primary consumers (workspace deps declared):
-- `packages/agent` — `remote-plugin-bridge.ts`, `release-plugin-policy.ts`
+Primary consumers (each declares a `workspace:*` dependency unless noted):
+- `packages/agent` — `src/services/remote-plugin-bridge.ts`, `src/runtime/release-plugin-policy.ts`
 - `packages/plugin-host-shim-ios` — mobile host shim
 - `packages/plugin-host-shim-android` — mobile host shim
 - `packages/app-core/platforms/electrobun` — desktop host, RPC schema, launch orchestrator, trace layer
-- `packages/core` — `src/types/plugin.ts` surface types
-- `packages/ui` — path-mapped for type resolution
+- `packages/ui` — no package.json dep; path-mapped to `src/` in `tsconfig.json` for type resolution
 
 ## Layout
 
@@ -42,8 +41,8 @@ packages/plugin-remote-manifest/
 
 ## Export surface
 
-The package exposes eight named subpath exports. Import the specific subpath rather than the
-barrel when only one subsystem is needed.
+The package exposes eight export entries: the barrel `.` plus seven named subpaths. Import the
+specific subpath rather than the barrel when only one subsystem is needed.
 
 | Import path | Key exports |
 |---|---|

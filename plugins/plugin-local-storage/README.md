@@ -14,7 +14,7 @@ The root directory is resolved in this order:
 
 1. `runtime.getSetting("LOCAL_STORAGE_PATH")`
 2. `process.env.LOCAL_STORAGE_PATH`
-3. `${ELIZA_STATE_DIR ?? `${os.homedir()}/.eliza`}/attachments`
+3. `<resolveStateDir()>/attachments` — `resolveStateDir()` from `@elizaos/core` honors `ELIZA_STATE_DIR`, then `$XDG_STATE_HOME/<namespace>`, then `~/.local/state/<namespace>` (namespace defaults to `eliza`).
 
 The directory is created on `start()` if missing.
 
@@ -36,9 +36,14 @@ The directory is created on `start()` if missing.
 the previous S3 service. They are ignored — keys always resolve under the
 configured storage root.
 
-## Migration from `@elizaos/plugin-s3-storage`
+## Usage
 
-To migrate from a self-hosted S3 bucket:
+Add `@elizaos/plugin-local-storage` to an agent's plugin list (it is opt-in,
+not globally auto-enabled). The default export `localStoragePlugin` registers
+`LocalFileStorageService` and nothing else — no actions, providers, evaluators,
+routes, or events. Resolve the service with
+`runtime.getService(ServiceType.REMOTE_FILES)`.
 
-- Point Eliza Cloud at it via the R2-compatible bucket UI, or
-- Copy attachments to the local storage root and run with this plugin.
+`generateSignedUrl` returns a permanent `file://` path, not an expiring URL. If
+you need a public or expiring URL, route attachment storage through Eliza Cloud
+instead.

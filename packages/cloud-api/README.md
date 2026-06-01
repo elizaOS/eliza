@@ -8,7 +8,7 @@ It is deployed standalone (`wrangler deploy`) rather than imported by other pack
 
 Endpoints are file-based, mirroring the Next.js App Router, but each leaf is a small Hono app. A `route.ts` at `v1/models/route.ts` is served at `/api/v1/models`. Dynamic segments use `[id]` directories and grouping uses `(group)` directories.
 
-A codegen step (`src/_generate-router.mjs`) walks the package, finds every `route.ts` / `route.tsx`, and writes `src/_router.generated.ts`, which exports `mountRoutes(app)`. Only leaves that import from `hono` are mounted. Run `bun run codegen` after adding or removing a route.
+A codegen step (`src/_generate-router.mjs`) walks the package, finds every `route.ts` / `route.tsx`, and writes `src/_router.generated.ts`, which exports `mountRoutes(app)`. Only Hono-shaped leaves are mounted — those that import from `hono`, or import the shared `createMcpsTransportApp` factory (the `mcps/*/[transport]` routes). Run `bun run codegen` after adding or removing a route.
 
 The Worker entrypoint (`src/index.ts`) answers `/api/health` directly and lazy-loads the full Hono stack (`src/bootstrap-app.ts`) on the first request, keeping cold-start work under Cloudflare's startup CPU budget.
 
@@ -36,7 +36,7 @@ bun install
 bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
 ```
 
-Copy `.dev.vars.example` for reference. Real secrets belong in the repo `.env.local`, not in the tracked template. Talking to live services (Neon, R2, Stripe, providers) requires the corresponding bindings/secrets.
+`.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Neon, R2, Stripe, providers) requires the corresponding bindings/secrets.
 
 ## Scripts
 

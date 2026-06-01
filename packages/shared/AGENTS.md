@@ -4,9 +4,9 @@ Shared cross-platform contract library for elizaOS: types, configuration schemas
 
 ## Purpose / role
 
-`@elizaos/shared` is the lowest-level internal package that can be imported by both Node.js server code and browser/React code without pulling in either runtime's native modules. It provides the HTTP API contract types, the full elizaOS configuration schema, Eliza Cloud helpers, local-inference metadata, brand tokens, connector status types, auth session helpers, and miscellaneous utilities. Consumers include `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`, and `@elizaos/browser-bridge-extension`.
+`@elizaos/shared` is the lowest-level internal package that can be imported by both Node.js server code and browser/React code without pulling in either runtime's native modules. It provides the HTTP API contract types, the full elizaOS configuration schema, Eliza Cloud helpers, local-inference metadata, brand tokens, connector status types, auth session helpers, and miscellaneous utilities. Consumers include `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/cloud-shared`, `@elizaos/os-homepage`, and `@elizaos/browser-bridge-extension`.
 
-React-bearing modules (`boot-config-react.tsx`, `branding-react.tsx`) are deliberately **not** re-exported from the root barrel to keep server-side boot paths React-free.
+The barrel must stay runtime-agnostic: the only React touchpoint is a type-only `import type { ReactNode } from "react"` in `config/config-catalog.ts`, which is erased at compile time, so the root `src/index.ts` is safe to import from a Node.js or Bun server boot path.
 
 ## Layout
 
@@ -19,16 +19,16 @@ packages/shared/
       http-helpers.ts            HTTP fetch helpers (shared between agent and UI)
       route-helpers.ts           Typed route builder utilities
     config/
-      types.ts                   Barrel re-exporter for all config sub-type files
-      types.eliza.ts             Master ElizaConfig shape (200+ config keys)
+      types.ts                   Barrel re-exporter for the config sub-type files (types.agents, types.gateway, …)
+      types.eliza.ts             Master ElizaConfig shape (~47 top-level config sections)
       schema.ts                  CONNECTOR_IDS list, config schema constants
       env-vars.ts                (empty; kept to satisfy deep imports)
-      boot-config.ts             BootConfig + resolution helpers
-      boot-config-store.ts       Zustand-like config store (browser-safe)
+      boot-config.ts             Re-export forwarder for boot-config-store (store-only, React-free)
+      boot-config-store.ts       AppBootConfig global-singleton store (getBootConfig/setBootConfig)
       branding.ts                Per-distribution branding tokens
       plugin-manifest.ts         Plugin manifest schema
       plugin-ui-spec.ts          Plugin UI declarative spec types
-      runtime-mode.ts            RuntimeMode enum
+      runtime-mode.ts            RuntimeModeConfig + isCloudRuntimeMode() helper
       zod-schema.*.ts            Zod validation schemas (agent-runtime, core)
       ...                        30+ additional config sub-modules
     contracts/
@@ -66,32 +66,32 @@ packages/shared/
       registry.ts                Awareness registry helpers
     i18n/
       keyword-matching.ts        i18n keyword matching utilities
-      keywords/                  Generated keyword data (do not hand-edit)
-      generated/                 Output of build:i18n
+      keywords/                  Source *.keywords.json files (hand-authored input)
+      generated/                 build:i18n output (validation-keyword-data; do not hand-edit)
     events/
       index.ts                   Typed eliza:* custom DOM event name constants
     types/
       index.ts                   Connector status types (WhatsApp/Telegram/Discord/…)
                                  ConfigUiHint, CronJob, SkillStatusEntry, TranslateFn
     utils/
-      asset-url.ts               assetUrl() helper for public/ resolution
-      errors.ts                  Shared error classes
-      eliza-globals.ts           window.__ELIZA_* global type declarations
+      asset-url.ts               resolveAppAssetUrl(), resolveApiUrl() — public/ + API URL resolvers
+      errors.ts                  errorMessage(), isTimeoutError(), isRedirectResponse() guards
+      eliza-globals.ts           ElizaWindow type + getElizaApiBase()/getElizaApiToken()
       eliza-root.ts              resolveElizaPackageRoot(), resolveElizaPackageRootSync() — package root resolver
-      rate-limiter.ts            RateLimiter class
-      streaming-text.ts          StreamingText accumulator
+      rate-limiter.ts            RateLimiter interface + createRateLimiter() factory
+      streaming-text.ts          mergeStreamingText(), computeStreamingDelta(), resolveStreamingUpdate()
       trajectory-format.ts       Trajectory log format helpers
       ...                        25+ additional utility modules
     runtime-env.ts               resolveRuntimePorts, resolveApiSecurityConfig
     connector-cred-types.ts      ConnectorCredentialType
-    connectors.ts                Connector descriptor registry
+    connectors.ts                Connector source alias helpers (normalizeConnectorSource, …)
     character-presets.ts         Built-in character preset definitions
-    voice.ts                     Voice system types
+    voice.ts                     Voice system types (VoicePreset, …)
     spoken-text.ts               Spoken text normalization
-    self-edit.ts                 Self-editing capability types
+    self-edit.ts                 Self-edit gating helpers (isSelfEditEnabled, env constants)
     restart.ts                   Agent restart request types
-    recent-messages-state.ts     RecentMessagesState snapshot type
-    format-error.ts              formatError() helper
+    recent-messages-state.ts     getRecentMessagesData() state accessor
+    format-error.ts              formatError(), formatErrorWithStack()
     env-utils.ts                 isTruthyEnvValue, env parsing helpers
     app-hero-art.ts              SVG/asset path constants
   assets/                        Static brand assets (logos, favicons, OG embeds)
@@ -105,7 +105,7 @@ packages/shared/
 
 All items below are re-exported from the root `@elizaos/shared` barrel unless noted.
 
-**Config types** — `ElizaConfig` and 200+ sub-types from `src/config/types.eliza.ts` (barrel-exported via `src/config/types.ts` → `export type { AgentConfig, … }`).
+**Config types** — `ElizaConfig` plus ~150 named sub-types defined across `src/config/types.*.ts` (`types.eliza`, `types.agents`, `types.gateway`, `types.hooks`, `types.messages`, `types.tools`, `types.agent-defaults`), barrel-collected by `src/config/types.ts` and aliased into the root barrel via the `export type { AgentConfig, … }` block in `src/index.ts`.
 
 **Runtime env** — `resolveRuntimePorts`, `resolveApiSecurityConfig`, `ELIZA_RUNTIME_ENV_KEYS`, `isMobilePlatform` from `src/runtime-env.ts`. Key env vars read: `ELIZA_PORT`, `ELIZA_API_PORT`, `ELIZA_UI_PORT`, `ELIZA_API_BIND`, `ELIZA_API_TOKEN`, `ELIZA_ALLOWED_ORIGINS`, `ELIZA_ALLOWED_HOSTS`, `ELIZA_ALLOW_NULL_ORIGIN`, `ELIZA_DISABLE_AUTO_API_TOKEN`, `ELIZA_PLATFORM`.
 
@@ -165,17 +165,17 @@ bun run --cwd packages/shared sync           # copy assets to consumer public/ d
 
 **Add a new shared utility:** place it in `src/utils/<name>.ts`, then add `export * from "./utils/<name>.js"` to `src/index.ts`.
 
-**Add i18n keyword data:** edit the source YAML in `src/i18n/keywords/`, then run `bun run --cwd packages/shared build:i18n` to regenerate `src/i18n/generated/`.
+**Add i18n keyword data:** edit the source `*.keywords.json` files in `src/i18n/keywords/`, then run `bun run --cwd packages/shared build:i18n` to regenerate `src/i18n/generated/`.
 
 **Add brand assets:** drop files under `assets/` or `assets-classic/`, update `src/brand/index.ts` constants, then run `bun run --cwd packages/shared sync` to propagate to consumers.
 
 ## Conventions / gotchas
 
-- **No Node.js-only imports at the root barrel level.** The root `src/index.ts` must be importable in both browser and Node.js contexts. React imports are confined to `boot-config-react.tsx` and `branding-react.tsx`, which are explicitly excluded from the barrel.
-- **Sub-path exports are the escape hatch.** Modules with heavy deps (e.g. React, figlet) use dedicated sub-path exports (`/brand`, `/local-inference`, `/steward-session-client`) so consumers opt in.
+- **No Node.js-only imports at the root barrel level.** The root `src/index.ts` must be importable in both browser and Node.js contexts. The only React reference is a type-only `import type { ReactNode }` in `config/config-catalog.ts` (erased at compile time); never add a value-level React import to a barrel-reachable module.
+- **Sub-path exports are the escape hatch.** Modules with heavier or environment-specific concerns use dedicated sub-path exports (`/brand`, `/local-inference`, `/steward-session-client`, `/dev-settings-*`) so consumers opt in.
 - **Cycle guard in `src/config/env-vars.ts`.** This file is an empty stub kept so older deep imports fail closed without creating a `shared → agent` cycle. `src/config/config.ts` is not a stub — it contains migration helpers (`migrateCloudEnabledToProviders`) and re-exports `ElizaConfig` from `types.eliza.ts` for backward compatibility. Do not import from `@elizaos/agent` in either file or you will break the bench-server boot.
 - **`src/contracts/theme.ts` exports only types**, not the runtime theme engine. The runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`) live in `@elizaos/ui`.
 - **`assets/` and `assets-classic/` are published** (listed in `files`). Do not place generated build artifacts there.
-- **i18n keyword files** under `src/i18n/generated/` and `src/i18n/keywords/` are generated by `scripts/generate-keywords.mjs`; do not hand-edit them.
+- **i18n keyword files** under `src/i18n/generated/` are produced by `scripts/generate-keywords.mjs` from the hand-authored `*.keywords.json` sources in `src/i18n/keywords/`; edit the sources, then regenerate — never hand-edit the `generated/` output.
 - **`STEWARD_REFRESH_TOKEN_KEY` / `readStoredStewardRefreshToken` / `writeStoredStewardRefreshToken` are deprecated.** Refresh tokens now live exclusively in the HttpOnly `steward-refresh-token` cookie. New callers must use `STEWARD_REFRESH_ENDPOINT` with `credentials: "include"`.
 - See the root `AGENTS.md` for monorepo-wide rules (ESM, logger-only, architecture layer rules, naming).

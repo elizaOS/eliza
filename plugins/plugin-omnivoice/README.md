@@ -7,7 +7,7 @@ Local text-to-speech for [elizaOS](https://github.com/elizaos/eliza) agents via 
 This plugin gives an Eliza agent fully offline TTS with no cloud round-trip. It registers `ModelType.TEXT_TO_SPEECH` backed by the `libomnivoice` shared library through Bun's native FFI. Three synthesis modes are supported:
 
 - **Voice design** — describe a voice by gender, age, pitch, style, volume, and emotion. The plugin converts those attributes into an OmniVoice instruct string automatically.
-- **Voice cloning** — provide a reference WAV at 24 kHz mono plus its transcript. The codec tokenizes the reference audio and the model reproduces the voice.
+- **Voice cloning** — provide a reference WAV at 24 kHz mono plus its transcript. The codec tokenizes the reference audio and the model reproduces the voice. Cloning is exposed by the synthesis core (`runSynthesis` with `reference` in `OmnivoiceSynthesizeOptions`), not by the `ModelType.TEXT_TO_SPEECH` handler input — that handler forwards only `text`, `lang`, `instruct`, `design`, and `singing`.
 - **Singing** — uses a separate singing model GGUF loaded from `OMNIVOICE_SINGING_MODEL_PATH`. Pass `singing: true` in the TTS input to route to this path.
 
 Output is always a 16-bit PCM WAV buffer, compatible with the same consumers as plugin-elevenlabs.
@@ -19,9 +19,9 @@ omnivoice.cpp has no ASR head. For speech-to-text pair this plugin with plugin-e
 - **Bun runtime.** The FFI layer uses `bun:ffi`; Node.js without Bun is not supported.
 - **libomnivoice shared library.** Build from the repo root:
   ```bash
-  node packages/inference/build-omnivoice.mjs
+  node plugins/plugin-local-inference/native/build-omnivoice.mjs
   ```
-  This produces `libomnivoice.{so,dylib,dll}` in `packages/inference/omnivoice.cpp/build/`.
+  This produces `libomnivoice.{so,dylib,dll}` in `plugins/plugin-local-inference/native/omnivoice.cpp/build/`. Point `OMNIVOICE_LIB_PATH` at that file.
 - **Model GGUFs.** Download from [HuggingFace Serveurperso/OmniVoice-GGUF](https://huggingface.co/Serveurperso/OmniVoice-GGUF). You need the base language model GGUF and the tokenizer/codec GGUF separately.
 
 ## Configuration
@@ -69,12 +69,6 @@ const wav = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
   design: { gender: "female", age: "young", emotion: "happy" },
 });
 
-// Voice cloning
-const wav = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
-  text: "Hello, world!",
-  reference: { audio24k: Float32Array, text: "reference transcript" },
-});
-
 // Singing
 const wav = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
   text: "La la la",
@@ -83,6 +77,23 @@ const wav = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 ```
 
 Output `wav` is a Node.js `Buffer` containing a 16-bit PCM WAV file.
+
+Voice cloning is not reachable through the model handler. Drive the synthesis core directly:
+
+```typescript
+import {
+  OmnivoiceContext,
+  runSynthesis,
+  pcmFloatToWavBuffer,
+} from "@elizaos/plugin-omnivoice";
+
+const ctx = await OmnivoiceContext.open({ modelPath, codecPath });
+const result = await runSynthesis(ctx, {
+  text: "Hello, world!",
+  reference: { audio24k: referenceSamples, text: "reference transcript" },
+});
+const wav = pcmFloatToWavBuffer(result.samples, result.sampleRate, result.channels);
+```
 
 ## Supported emotions
 

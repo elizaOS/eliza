@@ -53,7 +53,7 @@ src/
     tarot/
       index.ts              TarotEngine class (startReading, getNextReveal, getDeepening, getSynthesis)
       deck.ts               78-card Rider-Waite deck data
-      spreads.ts            Spread definitions (three_card, celtic_cross, horseshoe, single_card, relationship)
+      spreads.ts            Spread definitions (single, three_card, celtic_cross, relationship, career)
       interpreter.ts        Card meaning + prompt generation
     iching/
       index.ts              IChingEngine class

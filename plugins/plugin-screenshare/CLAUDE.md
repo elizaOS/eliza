@@ -90,7 +90,7 @@ The `GET /capabilities` route reports all three capability flags along with whic
 
 **Add a new route:** Add a branch in `handleAppRoutes` in `src/routes.ts`. Follow the pattern of reading and validating query/body params, calling session-store helpers or `@elizaos/plugin-computeruse` primitives, and replying with `ctx.json` / `ctx.error`.
 
-**Add a new input type:** Add a branch in `executeInput` in `src/routes.ts`. Dispatch to the appropriate `@elizaos/plugin-computeruse` primitive (e.g. `performDesktopDrag`).
+**Add a new input type:** Add a branch in `executeInput` in `src/routes.ts`. Dispatch to the appropriate `@elizaos/plugin-computeruse` primitive (e.g. `performDesktopScroll`, `performDesktopKeypress`).
 
 **Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/ScreenshareOperatorSurface.tsx`.
 

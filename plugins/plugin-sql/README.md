@@ -80,34 +80,31 @@ Both `PostgresConnectionManager` and `PGliteClientManager` are stored under `Sym
 
 ## Database Pool Configuration
 
-Default pool configuration:
+Default Postgres pool configuration (`src/pg/manager.ts`):
 
 ```typescript
 {
     max: 20,
+    min: 2,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
+    connectionTimeoutMillis: 5000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000
 }
 ```
 
-## Error Handling Configuration
+## Retry Configuration
+
+`BaseDrizzleAdapter` retries failed operations with exponential backoff and jitter (`src/base.ts`):
 
 ```typescript
 {
-    failureThreshold: 5,
-    resetTimeout: 60000,
-    halfOpenMaxAttempts: 3,
     maxRetries: 3,
     baseDelay: 1000,
     maxDelay: 10000,
-    jitterMax: 1000,
-    connectionTimeout: 5000
+    jitterMax: 1000
 }
 ```
-
-## Clean Shutdown
-
-The adapter registers handlers for `SIGINT`, `SIGTERM`, and `beforeExit` to close database connections properly.
 
 ## Requirements
 

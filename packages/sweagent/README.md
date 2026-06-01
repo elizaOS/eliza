@@ -39,5 +39,5 @@ This runs only the security unit tests (`security/__tests__/`).
 
 - Do not expose the inspector or browser tool servers on `0.0.0.0` without authentication.
 - The inspector HTTP server is **not shipped** in the elizaOS `develop` build — its absence is itself a mitigation.
-- Set `ELIZA_SWEAGENT_INSPECTOR_HOST=0.0.0.0` only when you explicitly need LAN access and have network controls in place.
-- The TypeScript web-browser tool requires Playwright (`chromium`) to be installed separately.
+- The inspector bind host is not env-configurable: the TypeScript server (`startInspectorServer`) defaults to `127.0.0.1` via its `host` option, and the Python server is hard-bound to `127.0.0.1`. Only `--port`/`--dir` (TS) and `--port`/`--directory` (Python) are exposed on the CLI.
+- The TypeScript web-browser tool requires Playwright (`chromium`) to be installed separately. The only runtime env var is `WEB_BROWSER_HEADLESS` (set to `"0"` for a visible window).

@@ -42,7 +42,7 @@ Scripts defined in this package.json:
 
 ```bash
 bun run --cwd plugins/plugin-native-messages build          # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-messages clean          # node rm-path-recursive.mjs dist
+bun run --cwd plugins/plugin-native-messages clean          # node ../../packages/scripts/rm-path-recursive.mjs dist
 bun run --cwd plugins/plugin-native-messages prepublishOnly # same as build
 ```
 

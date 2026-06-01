@@ -122,7 +122,7 @@ runtime.on("bluesky.mention_received", (payload: BlueSkyNotificationEventPayload
 ## Conventions / gotchas
 
 - **No actions registered.** The plugin is a connector/service plugin only. Social behaviors (reply generation, post creation) are driven by event handlers in the application layer responding to `bluesky.*` events, not by elizaOS actions.
-- **Dry-run mode.** When `BLUESKY_DRY_RUN=true`, `BlueSkyClient` skips all writes (post, delete, like, repost, sendMessage) and returns mock objects. Useful for testing without hitting the API.
+- **Dry-run mode.** When `BLUESKY_DRY_RUN=true`, `BlueSkyClient` skips all writes (post, delete, like, repost, sendMessage). `sendPost`/`sendMessage` return mock objects; `deletePost`/`likePost`/`repost` just log and return. Useful for testing without hitting the API.
 - **Multi-account.** Pass `BLUESKY_ACCOUNTS` as a JSON object keyed by account ID, or an array with `accountId` fields. Each account gets its own `BlueSkyClient`, `BlueSkyAgentManager`, and sub-services. The `"default"` account ID reads top-level env vars.
 - **Post limit.** AT Protocol enforces 300 grapheme-character posts. `BlueSkyPostService` uses LLM-assisted truncation via `prompts.ts` if generated content exceeds the limit.
 - **Auth.** BlueSky uses app passwords — not the main account password. Generate at `https://bsky.app/settings/app-passwords`.

@@ -1,92 +1,102 @@
 # @elizaos/plugin-clawville
 
-Eliza app plugin for **ClawVille** — a sea-themed agent game where any Eliza agent can enter a 3D underwater world, visit 10 specialist buildings (Tide Clock Grotto, Abyssal Vault, Salvage Workshop, …), and learn agent-development skills via the [agentskills.io](https://agentskills.io) open standard.
+Eliza app plugin for **ClawVille** — a sea-themed agent game. A connected Eliza
+agent enters a 3D world, moves around, visits one of ten specialist buildings,
+and chats with building NPCs, all from inside the Eliza runtime.
 
-**Homepage:** https://clawville.world
-**Backend API:** https://api.clawville.world
-**Skills catalog:** https://api.clawville.world/api/skills
-**License:** MIT
+- **Homepage / viewer:** https://clawville.world/game
+- **Backend API:** https://api.clawville.world
 
----
+This package is the `app`-kind plugin that embeds ClawVille in an Eliza build.
+It is consumed by the Eliza app/apps UI (which renders the app card and the
+operator surface) and by the runtime's embedded HTTP server (which mounts the
+`/api/apps/clawville/*` routes). Register it via `createAppClawvillePlugin()` or
+the default export `appClawvillePlugin`.
 
 ## What it does
 
-When an Eliza user clicks "Launch" on the ClawVille app card:
+When the ClawVille app is launched:
 
-1. The plugin POSTs to `https://api.clawville.world/api/agent/connect` with the Eliza runtime's `agentId` and `character.name`. No token exchange, no OAuth — ClawVille uses a **runtime-trust** model where the plugin (curated inside a Eliza build) is the trust boundary.
-2. ClawVille derives a stable identity of the form `eliza:<elizaAgentId>`, persists a pet record in its `openclaw_bots` table, auto-generates a custodial Solana wallet, and returns a session.
-3. The plugin stashes the session id, bot uuid, and wallet address on the runtime via `setSetting("CLAWVILLE_*", ...)`.
-4. Eliza's side panel renders an `AppSessionState` with the wallet address, session count, and suggested prompts ("Visit the Salvage Workshop", etc.).
-5. When the user (or their Eliza agent) sends in-game commands, the plugin proxies them to `POST https://api.clawville.world/api/agent/:sessionId/{move,visit-building,chat}`. (`buy` is not exposed by the ClawVille API and returns HTTP 400.)
-6. When Eliza's GameView wants to embed the game visually, it requests the viewer HTML at `GET /api/apps/clawville/viewer`, which this plugin builds by fetching `clawville.world/game`, rewriting asset URLs to absolute, injecting a bootstrap `<script>` that hides the login overlay, and serving the result with the appropriate CSP `frame-ancestors` directive for Electrobun / Capacitor / Tauri host shells.
+1. The plugin POSTs to `https://api.clawville.world/api/agent/connect` with the
+   runtime's `agentId` (sent as `elizaAgentId`) and the character name. There is
+   no token exchange — ClawVille uses a **runtime-trust** model where the plugin
+   is the trust boundary.
+2. ClawVille derives a stable identity of the form `eliza:<agentId>`, persists a
+   bot record in its `openclaw_bots` table, auto-generates a custodial Solana
+   wallet, and returns a session (`sessionId`, bot `uuid`, `walletAddress`).
+3. The plugin stashes those values on the runtime via
+   `setSetting("CLAWVILLE_*", ...)` so later panel refreshes reuse the session
+   instead of reconnecting.
+4. The side panel renders an `AppSessionState` (wallet address, total session
+   count, telemetry, and suggested prompts such as "Visit the nearest building").
+5. Commands are proxied to `POST /api/agent/:sessionId/{move,visit-building,chat}`.
+   A free-text `/message` route interprets natural language and dispatches to one
+   of those. (`buy` is not exposed by the ClawVille API and returns HTTP 400.)
+6. To embed the game visually, the host requests `GET /api/apps/clawville/viewer`,
+   which this plugin builds by fetching `clawville.world/game`, rewriting asset
+   URLs to absolute, injecting a bootstrap `<script>`, and serving with a
+   `frame-ancestors` CSP for Electrobun / Capacitor / Tauri host shells.
 
-The agent can then play the whole ClawVille game loop end-to-end from inside Eliza:
-
-- Move around the reef via `/move`
-- Visit buildings via `/visit-building` (earns NeoTokens + learns skills)
-- Chat with building NPCs via `/chat`
-
-A returning Eliza user gets their existing pet, wallet, learned skills, and NeoToken balance back automatically — keyed on `eliza:<elizaAgentId>`.
-
----
-
-## Per-agent configuration
-
-All settings are optional. Defaults work out of the box for production.
-
-| Setting | Default | Purpose |
-|---|---|---|
-| `CLAWVILLE_API_URL` | `https://api.clawville.world` | ClawVille backend base URL. Override for staging / local dev. |
-| `CLAWVILLE_VIEWER_URL` | `https://clawville.world/game` | Viewer HTML source. Override for staging / local dev. |
-| `CLAWVILLE_SESSION_ID` | _(auto-populated)_ | Stashed on the runtime after the first `/connect` call. Used by `refreshRunSession` to avoid reconnecting on every panel refresh. |
-| `CLAWVILLE_BOT_UUID` | _(auto-populated)_ | Stashed on the runtime alongside the session ID. Opaque primary key from ClawVille's `openclaw_bots` table. |
-| `CLAWVILLE_WALLET_ADDRESS` | _(auto-populated)_ | Base58 Solana public key of the pet's custodial wallet, auto-generated by ClawVille on first contact. |
-
-No API keys are required. ClawVille does not charge Eliza users for session creation.
-
----
+A returning agent gets its existing pet, wallet, and balance back automatically,
+keyed on `eliza:<agentId>`.
 
 ## Routes
 
-The plugin mounts at `/api/apps/clawville/*` inside Eliza's embedded HTTP server:
+Mounted at `/api/apps/clawville/*` (handled by `handleAppRoutes`):
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/apps/clawville/viewer` | Serves the embedded game HTML (fetches `clawville.world/game`, rewrites asset URLs, injects embed-mode bootstrap script, applies `frame-ancestors` CSP) |
-| `GET` | `/api/apps/clawville/session/:sessionId` | Current session state — perception + telemetry for the Eliza side panel |
-| `POST` | `/api/apps/clawville/session/:sessionId/move` | Proxy to `POST /api/agent/:sessionId/move` (move the pet) |
-| `POST` | `/api/apps/clawville/session/:sessionId/visit-building` | Proxy to `POST /api/agent/:sessionId/visit-building` (enter a building + earn skills) |
-| `POST` | `/api/apps/clawville/session/:sessionId/chat` | Proxy to `POST /api/agent/:sessionId/chat` (talk to a building NPC) |
-| `POST` | `/api/apps/clawville/session/:sessionId/buy` | Returns 400 — buy is not exposed by the current ClawVille API |
+| `GET` | `/viewer` | Embedded game HTML (fetch + rewrite + bootstrap + CSP) |
+| `GET` | `/session/:sessionId` | Session state — perception + telemetry for the side panel |
+| `POST` | `/session/:sessionId/message` | NL command router — free text → move / visit-building / chat |
+| `POST` | `/session/:sessionId/move` | Proxy to `POST /api/agent/:sessionId/move` |
+| `POST` | `/session/:sessionId/visit-building` | Proxy to `POST /api/agent/:sessionId/visit-building` |
+| `POST` | `/session/:sessionId/chat` | Proxy to `POST /api/agent/:sessionId/chat` |
+| `POST` | `/session/:sessionId/buy` | Returns 400 — buy is not exposed by the ClawVille API |
 
----
+## Configuration
 
-## Testing locally
+All settings are optional; production defaults work out of the box. Each is read
+from `runtime.getSetting(key)` first, then `process.env[key]`.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `CLAWVILLE_API_URL` | `https://api.clawville.world` | Backend base URL. Override for staging / local dev. |
+| `CLAWVILLE_VIEWER_URL` | `https://clawville.world/game` | Viewer HTML source. |
+| `CLAWVILLE_SESSION_ID` | _(auto-stashed)_ | Stashed after the first `/connect`; reused by `refreshRunSession`. |
+| `CLAWVILLE_BOT_UUID` | _(auto-stashed)_ | Opaque primary key from `openclaw_bots`. |
+| `CLAWVILLE_WALLET_ADDRESS` | _(auto-stashed)_ | Base58 Solana public key of the custodial wallet. |
+
+No API keys are required.
+
+## src/ layout
+
+```
+src/
+├── index.ts            # createAppClawvillePlugin() factory + view registrations + re-exports
+├── clawville-auth.ts   # resolveClawvilleConfig, clawvilleConnect, clawvillePerception,
+│                       #   proxyClawvilleRequest, stashClawvilleSession
+├── routes.ts           # resolveLaunchSession, refreshRunSession, handleAppRoutes,
+│                       #   collectLaunchDiagnostics, BUILDINGS, command routing
+└── ui/
+    ├── index.ts                    # registers operator surface + detail extension
+    ├── ClawvilleOperatorSurface.tsx  # operator panel; also exports ClawvilleTuiView
+    └── ClawvilleDetailExtension.tsx
+```
+
+## Commands
+
+Scripts from `package.json` (no test script is defined):
 
 ```bash
-# From the elizaOS monorepo root
-bun install
-bun run build
-
-# Start the agent runtime, then launch ClawVille from the apps UI
+bun run --cwd plugins/plugin-clawville build       # build:js + build:views + build:types
+bun run --cwd plugins/plugin-clawville build:js    # tsup (ESM)
+bun run --cwd plugins/plugin-clawville build:views # Vite views bundle (dist/views/bundle.js)
+bun run --cwd plugins/plugin-clawville build:types # tsc --noCheck declaration emit
+bun run --cwd plugins/plugin-clawville clean       # rm -rf dist
 ```
 
-The plugin requires a live ClawVille backend at `https://api.clawville.world`. To test against a local ClawVille server, set `CLAWVILLE_API_URL=http://localhost:4001` on the Eliza runtime before launching.
-
----
-
-## File layout
-
-```
-plugins/plugin-clawville/
-├── package.json            # elizaos.app manifest
-├── README.md               # this file
-└── src/
-    ├── index.ts            # Plugin factory, view registrations, re-exports
-    ├── clawville-auth.ts   # Config resolution + ClawVille fetch helpers
-    ├── routes.ts           # resolveLaunchSession, refreshRunSession, handleAppRoutes
-    └── ui/
-        ├── index.ts                    # Registers operator surface + detail extension
-        ├── ClawvilleOperatorSurface.tsx
-        └── ClawvilleDetailExtension.tsx
-```
+To test against a local ClawVille backend, set
+`CLAWVILLE_API_URL=http://localhost:<port>` on the runtime before launching.
+</content>
+</invoke>

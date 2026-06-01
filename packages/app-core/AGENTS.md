@@ -8,7 +8,7 @@ Repo-wide rules (logger-only, ESM, naming, architecture commandments, git workfl
 
 ```
 src/
-  entry.ts                  CLI process bootstrap → dist/entry.js (invoked by eliza.mjs wrapper; no `bin` field)
+  entry.ts                  CLI process bootstrap → dist/entry.js (imported by the generated app launcher; no `bin` field)
   index.ts                  Node/runtime barrel (the `.` export) — re-exports api/runtime/registry/security/services
   browser.ts                Browser-safe re-exports (pulls UI surface from @elizaos/ui)
   ui-compat.ts              Legacy UI-compat shims (`./ui-compat` export)
@@ -23,7 +23,7 @@ src/
     dev-stack.ts            /api/dev/stack discovery payload (ELIZA_DEV_STACK_SCHEMA)
     auth.ts, auth/          route authorization
     auth-bootstrap-routes.ts, auth-session-routes.ts, auth-pairing-routes.ts  first-run + device pairing auth
-    response.ts             sendJson / unwrap helpers
+    response.ts             sendJson / sendJsonError helpers
     secrets-*-routes.ts, server-wallet-trade.ts, *-compat-routes.ts
   runtime/                  Runtime loading + lifecycle
     eliza.ts                Eliza agent loader — boots AgentRuntime, loads plugins, starts API server
@@ -43,7 +43,7 @@ src/
   services/                 auth-store, steward-credentials/sidecar, vault-mirror/bootstrap, account-pool, task-host-capabilities, sensitive-requests, …
   platform/                 capacitor-bootstrap, ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
   permissions/types.ts, diagnostics/integration-observability.ts, connectors/ (capacitor sqlite/jsc/quickjs)
-scripts/                    171 build/packaging/sms-gateway/voice scripts (see package.json scripts)
+scripts/                    build/packaging/sms-gateway/voice scripts (namespaced in package.json scripts)
 platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitlements
 ```
 
@@ -86,6 +86,6 @@ Run from repo root with `--cwd packages/app-core`:
 - `src/platform/empty-node-module.ts` is a tsconfig-paths alias target for browser builds — it is intentionally NOT re-exported from `index.ts` (re-exporting would shadow the real Node `api/server` / `runtime/eliza` exports with noops). Browser bundlers alias it in; Node imports the originals.
 - `index.ts` re-exports `./services/steward-sidecar.ts` with an explicit `.ts` extension to disambiguate from the sibling `steward-sidecar/` directory after `tsc --rewriteRelativeImportExtensions`.
 - `registry/index.ts` uses a hoisted `var cacheSlot` (not `let`/`const`) to survive circular-import re-entry on Bun's strict ESM runtime (TDZ-hardening); `resolveEntriesDir()` falls back to `src/registry/entries` when `dist/registry/entries` is absent.
-- `entry.ts` builds to `dist/entry.js` and is launched by the `eliza.mjs` wrapper — there is no `bin` field; do not add one assuming a downstream installer.
+- `entry.ts` builds to `dist/entry.js` and is imported by the generated app launcher (desktop/Electrobun bundling emits a tiny ESM file that `import`s `dist/entry.js`) — there is no `bin` field; do not add one assuming a downstream installer.
 - `plugin-local-inference` is imported lazily in `runtime/eliza.ts` to avoid static plugin-boundary violations.
 - Peer deps `react`, `react-dom`, `three`; Capacitor mobile bridges are `optionalDependencies` (`@elizaos/capacitor-*`). Node `>=24`.

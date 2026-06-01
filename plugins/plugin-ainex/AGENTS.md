@@ -27,8 +27,8 @@ This plugin is the TypeScript agent surface for the AiNex robot bridge. It manag
 | `AINEX_SIT` | `action.play` → `sit` | Sit down |
 | `AINEX_WAVE` | `action.play` → `wave` | Wave |
 | `AINEX_BOW` | `action.play` → `bow` | Bow |
-| `AINEX_PICK_UP` | `action.play` → `pick_up` | Pick-up motion |
-| `AINEX_PLACE_DOWN` | `action.play` → `place_down` | Place-down motion |
+| `AINEX_PICK_UP` | `policy.start` (task `pick_up`) | Run the learned pick-up policy |
+| `AINEX_PLACE_DOWN` | `policy.start` (task `place_down`) | Run the learned place-down policy |
 | `AINEX_SET_SERVO` | `servo.set` | Drive one or more servos to target pulse positions |
 | `AINEX_RUN_ACTION_GROUP` | `action.play` | Play a named pre-recorded action group from the profile |
 
@@ -94,12 +94,10 @@ bun run --cwd plugins/plugin-ainex clean      # rm dist/ .turbo/
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `ELIZA_AINEX_BRIDGE_URL` | triggers auto-enable | `ws://localhost:9100` | WebSocket URL for the bridge server |
-| `ELIZA_AINEX_PROFILE` | no | `hiwonder-ainex` | Profile descriptor name to resolve on the bridge |
-| `ELIZA_AINEX_CAMERA_FPS` | no | `10` | Camera frame rate for subscription |
-| `ELIZA_AINEX_MODE` | no | `programmatic` | Action surface: `programmatic` (15 actions), `rl` (AINEX_RUN_RL only), `both` |
+| `ELIZA_AINEX_BRIDGE_URL` | triggers auto-enable | `ws://localhost:9100` | WebSocket URL for the bridge server (read in `AinexService._tryConnect`) |
+| `ELIZA_AINEX_MODE` | no | `programmatic` | Action surface: `programmatic` (15 actions), `rl` (AINEX_RUN_RL only), `both` (read in `selectActions`) |
 
-All vars are read via `runtime.getSetting()`. Plugin auto-enables if `ELIZA_AINEX_BRIDGE_URL` is set OR `features.ainex = true` in agent config.
+These two are the only settings the plugin reads via `runtime.getSetting()`. `ELIZA_AINEX_PROFILE` and `ELIZA_AINEX_CAMERA_FPS` are declared in `package.json` `agentConfig.pluginParameters` but are not consumed by this plugin — the active profile is resolved bridge-side via `profile.describe`. Plugin auto-enables if `ELIZA_AINEX_BRIDGE_URL` is set OR `features.ainex = true` in agent config.
 
 ## How to extend
 

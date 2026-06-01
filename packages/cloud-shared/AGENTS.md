@@ -73,7 +73,7 @@ bun run --cwd packages/cloud-shared preflight:messaging-gateways
 
 ## Config / env vars
 
-`db/database-url.ts` resolves the Postgres URL: `DATABASE_URL` in prod (Neon), with `pglite:server` for a local PGlite Postgres. The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, OpenRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra, etc.). See `.env.example` for the full set.
+`db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL`/`TEST_DATABASE_URL` (Neon in prod) wins; otherwise local (non-CI, non-production) dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR`/`LOCAL_DATABASE_PATH`; set `DISABLE_LOCAL_PGLITE_FALLBACK=1` to opt out). The `pglite:server` script runs a pglite-socket sidecar so `drizzle-kit` can connect. The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, OpenRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra, etc.). See `.env.example` for the full set.
 
 ## How to extend
 

@@ -62,7 +62,7 @@ All scripts in this package's `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-feed build          # JS + views bundle + types
-bun run --cwd plugins/plugin-feed build:js       # tsup: src/index.ts → dist/index.js
+bun run --cwd plugins/plugin-feed build:js       # tsup (../tsup.plugin-packages.shared.ts): transpiles every src file → dist/
 bun run --cwd plugins/plugin-feed build:views    # Vite: src/ui/FeedOperatorSurface.tsx → dist/views/bundle.js
 bun run --cwd plugins/plugin-feed build:types    # tsc: type declarations
 bun run --cwd plugins/plugin-feed clean          # rm -rf dist

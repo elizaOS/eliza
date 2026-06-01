@@ -20,11 +20,12 @@ No actions, providers, evaluators, routes, or events are registered. The sole co
 | Adapter factory (browser) | `createDatabaseAdapter(agentId)` | `index.browser.ts` |
 | Storage class (Node) | `FileStorage` | `index.ts` (unexported) |
 | Storage class (browser) | `BrowserLocalStorage` | `index.browser.ts` (unexported) |
-| Adapter class | `InMemoryDatabaseAdapter` | imported from `@elizaos/plugin-inmemorydb` |
-| Vector index | `EphemeralHNSW` | imported from `@elizaos/plugin-inmemorydb` |
-| Storage interface + COLLECTIONS | `IStorage`, `COLLECTIONS` | imported from `@elizaos/plugin-inmemorydb` |
+| Adapter class | `InMemoryDatabaseAdapter` | imported by entries from `@elizaos/plugin-inmemorydb` |
+| Storage interface | `IStorage` | imported by entries from `@elizaos/plugin-inmemorydb` |
 
-`init` hook behavior: checks `r.adapter`, `r.databaseAdapter`, and `r.hasDatabaseAdapter()` — exits if any adapter is present. Otherwise resolves the data directory via `LOCALDB_DATA_DIR` setting or env var (fallback: `.eliza-localdb/` in `process.cwd()`), constructs a `FileStorage`, wraps it in `InMemoryDatabaseAdapter`, initializes it, and calls `r.registerDatabaseAdapter()`.
+The entry files (`index.ts`, `index.browser.ts`) import only `InMemoryDatabaseAdapter` and `IStorage`. The package `@elizaos/plugin-inmemorydb` also exports `EphemeralHNSW` (vector index) and `COLLECTIONS`, but those are not referenced by this plugin's entry points — the adapter manages its own HNSW index internally.
+
+`init` hook behavior: checks `r.adapter`, `r.databaseAdapter`, and `r.hasDatabaseAdapter()` — exits if any adapter is present. Otherwise resolves the data directory via `LOCALDB_DATA_DIR` setting or env var (fallback: `.eliza-localdb/` in `process.cwd()`), constructs a `FileStorage`, wraps it in `InMemoryDatabaseAdapter`, initializes it, calls `r.registerDatabaseAdapter()`, and logs `Local database adapter registered`. The browser `init` does the same minus the log line.
 
 ## Layout
 
@@ -38,7 +39,7 @@ plugins/plugin-localdb/
   tsup.config.ts        Dual-entry build (index + index.browser), ESM only
 ```
 
-Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent files in `plugin-inmemorydb` but are NOT imported by `index.ts` or `index.browser.ts`. The plugin entries import `InMemoryDatabaseAdapter`, `IStorage`, `COLLECTIONS`, and `EphemeralHNSW` directly from `@elizaos/plugin-inmemorydb`. The local copies are dead weight; if the upstream adapter is patched, no sync to these files is required for the plugin to function.
+Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent files in `plugin-inmemorydb` but are NOT imported by `index.ts` or `index.browser.ts`. The plugin entries import only `InMemoryDatabaseAdapter` and `IStorage` from `@elizaos/plugin-inmemorydb`. The local copies are dead weight; if the upstream adapter is patched, no sync to these files is required for the plugin to function.
 
 ## Commands
 
@@ -75,7 +76,7 @@ To add a new collection: add a key to `COLLECTIONS` in `@elizaos/plugin-inmemory
 - **Adapter gate.** The plugin will not register a second adapter. If another plugin (e.g., a SQL adapter) loads first, this plugin does nothing. Load order matters.
 - **No transaction atomicity.** `transaction()` calls the callback with `this` — no rollback.
 - **HNSW is ephemeral.** The vector index is rebuilt from scratch on each process start; embeddings stored in `localdb.json` are not re-indexed automatically. Semantic search results are empty until new memories with embeddings are written after startup.
-- **Default embedding dimension is 384.** Call `adapter.ensureEmbeddingDimension(n)` before writing memories with a different size; it re-initializes the HNSW index, clearing existing in-memory vectors.
+- **Default embedding dimension is 384.** Call `adapter.ensureEmbeddingDimension(n)` before writing memories with a different size; when `n` differs from the current dimension it re-inits the HNSW index with the new dimension (subsequent `add()` calls validate against it).
 - **Batch API only.** No single-item helpers. Use `createEntities`, `getMemoriesByIds`, etc.
 - **Local copies are unused.** `adapter.ts`, `hnsw.ts`, and `types.ts` exist in this package but are not imported by either entry point. The plugin uses the versions from `@elizaos/plugin-inmemorydb`.
 - **Browser entry is separate.** The `exports` map routes `browser` consumers to `dist/index.browser.js`. Do not import from `index.ts` directly in a browser context.

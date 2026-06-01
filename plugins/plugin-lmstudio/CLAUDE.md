@@ -32,12 +32,13 @@ plugins/plugin-lmstudio/
   index.node.ts          Node/Bun build entry
   index.browser.ts       Browser build entry
   auto-enable.ts         Lightweight manifest entry-point for the autoEnableModule check (env-only)
+  build.ts               Bun.build script (node + browser + cjs bundles, then tsc declarations)
   models/
     text.ts              All text generation handlers; resolveModelForType; streaming + structured output
     embedding.ts         handleTextEmbedding via @ai-sdk/openai-compatible textEmbeddingModel
     index.ts             Re-exports all handlers
   utils/
-    client.ts            createLMStudioClient — @ai-sdk/openai-compatible factory, one per runtime
+    client.ts            createLMStudioClient — @ai-sdk/openai-compatible provider factory
     config.ts            getSetting, getBaseURL, getApiKey, getSmallModel, getLargeModel, getEmbeddingModel, shouldAutoDetect
     detect.ts            detectLMStudio — probes GET /v1/models; parseModelsResponse; DetectionResult
     model-usage.ts       normalizeTokenUsage, estimateUsage, estimateEmbeddingUsage, emitModelUsed (MODEL_USED event)
@@ -55,7 +56,7 @@ plugins/plugin-lmstudio/
 These are the scripts available in this package:
 
 ```bash
-bun run --cwd plugins/plugin-lmstudio build          # tsdown build (node + browser)
+bun run --cwd plugins/plugin-lmstudio build          # Bun.build via build.ts (node + browser + cjs) + tsc declarations
 bun run --cwd plugins/plugin-lmstudio dev            # watch build
 bun run --cwd plugins/plugin-lmstudio test           # unit tests (vitest)
 bun run --cwd plugins/plugin-lmstudio test:unit      # same as test
@@ -97,7 +98,7 @@ All vars are optional. Resolution order: `runtime.getSetting(key)` → `process.
 ## Conventions / gotchas
 
 - **Model resolution is cached per runtime instance.** The first call to `GET /v1/models` is stored in a `WeakMap<IAgentRuntime, Promise<string | null>>`. Tests that use multiple runtimes are unaffected; tests that reuse the same runtime instance will see cached results.
-- **Streaming + structured output are mutually exclusive.** `handleTextWithModelType` drops `outputSpec` when `stream: true` is set alongside a `responseSchema`, to avoid LM Studio model engine inconsistencies.
+- **Streaming + structured output are mutually exclusive.** When `stream: true` is set alongside a `responseSchema`, `handleTextWithModelType` keeps the structured output and routes through `generateText` instead of streaming, to avoid LM Studio model engine inconsistencies. (Note: if both `tools` and `responseSchema` are present, the structured output is dropped instead — see the `tools && outputSpec` branch.)
 - **Embeddings do not throw on missing model.** When `LMSTUDIO_EMBEDDING_MODEL` is unset, a zero vector is returned. This matches plugin-ollama but means embedding quality silently degrades — always set this var when using memory/recall features.
 - **Browser build is available** (`dist/browser/index.browser.js`) but LM Studio itself is a local desktop app; browser use only makes sense when LM Studio is behind a CORS-permissive reverse proxy.
 - **Dependencies:** `@ai-sdk/openai-compatible` (provider factory) and `ai` (Vercel AI SDK core — `generateText`, `streamText`, `embed`, `Output`). Both are runtime deps; `@elizaos/core` is a peer dep.

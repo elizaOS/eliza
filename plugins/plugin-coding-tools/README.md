@@ -9,7 +9,7 @@ The plugin registers three umbrella actions and a set of supporting services:
 | Action | Operations | Description |
 |---|---|---|
 | **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Paths must be absolute. Optional `target=device` routes through a device filesystem bridge for mobile. |
-| **SHELL** | `run`, `clear_history`, `view_history` | Runs local shell commands with a configurable timeout. Long-running commands auto-background and return a `task_id`. Built-in and user-configurable command denylist. |
+| **SHELL** | `run`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
 Supporting services (automatically started):
@@ -47,9 +47,7 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. Files outside these roots are rejected. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in) | Comma-separated absolute paths to block — replaces the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Paths to add to the default blocklist. |
-| `CODING_TOOLS_DENY_COMMANDS` | — | Comma-separated command prefixes SHELL must refuse (combined with built-in denylist). |
-| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Hard timeout for shell commands (ms). |
-| `CODING_TOOLS_SHELL_BG_BUDGET_MS` | `15000` | Commands running longer than this auto-background (ms). |
+| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Default SHELL timeout (ms); per-call `timeout` clamps to `[100, 600000]`. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |

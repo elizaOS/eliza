@@ -35,12 +35,15 @@ None registered. The plugin operates entirely through services and events.
 
 ```
 plugins/plugin-discord/
-  index.ts                    Plugin definition; init registers connector provider, reads env vars, logs banner
+  index.ts                    Plugin definition + public barrel exports; init registers connector provider, reads env vars, logs banner
+  index.browser.ts            Browser entry stub (Discord.js needs Node APIs; exports a no-op plugin)
+  banner.ts                   printBanner — ANSI startup banner with tiered invite-URL permissions
   service.ts                  DiscordService — main gateway service (discord.js Client, message/voice/interaction handling)
   voice.ts                    VoiceManager helper called by DiscordService for audio RX/TX, STT integration
   config.ts                   Config types: DiscordConfig, DiscordAccountConfig, DiscordGuildEntry, DiscordChannelConfig, etc.
   types.ts                    DiscordEventTypes enum, all event payload interfaces, DiscordSettings, error classes, snowflake helpers
   accounts.ts                 Multi-account helpers: resolveDiscordAccount, normalizeDiscordToken, listDiscordAccountIds
+  account-client-pool.ts      Per-account client/manager state pool (DiscordAccountClientState)
   allowlist.ts                Message gating: validateMessageAllowed, resolveDiscordAllowListMatch, resolveDiscordChannelConfig
   permissions.ts              Permission tiers, generateInviteUrl, getPermissionValues
   permissionEvents.ts         Elevated permissions helpers (hasElevatedPermissions, isElevatedRole)
@@ -59,20 +62,24 @@ plugins/plugin-discord/
   discord-reactions.ts        Reaction add/remove handlers
   discord-profiles.ts         Profile resolution helpers (avatar, entity display name)
   discord-avatar-cache.ts     Avatar URL caching utilities
+  profileSync.ts              Bot username/avatar sync on startup (DISCORD_SYNC_PROFILE)
   discord-commands.ts         Command sync utilities (REST-based command registration)
   connector-account-provider.ts  Registers this plugin as a connector account provider with ConnectorAccountManager
   sensitive-request-adapter.ts   Wraps DM-sent sensitive requests for approval flows
   inbound-envelope.ts         Normalises raw Discord messages into elizaOS Memory objects
   attachments.ts              Attachment download and media type detection
-  addressing.ts               Channel/user ID resolution helpers
-  identity.ts                 Bot identity helpers (isSelf, botUserId)
+  addressing.ts               isDiscordUserAddressed — detects whether the bot is being addressed in a message
+  identity.ts                 Owner/entity ID resolution + world/entity metadata (resolveElizaOwnerEntityId, resolveDiscordRuntimeEntityId, buildDiscordWorldMetadata)
   debouncer.ts                Generic debounce utility used by message-coalesce
+  typing.ts                   Typing-indicator controller (start/stop) for a channel
+  status-reactions.ts         Status reaction scope helper (acknowledge inbound messages with an emoji)
+  reasoning-tags.ts           Strips reasoning/thinking tags from model output before sending
   draft-chunking.ts           Streaming draft chunking logic
   draft-stream.ts             Draft streaming over Discord message edits
-  staleness.ts                Stale-world detection helpers
+  staleness.ts                Stale-message guard (tag/skip/ignore behavior for out-of-sequence messages)
   auto-enable.ts              Character-level auto-enable resolution
   environment.ts              Env var validation (DISCORD_API_TOKEN required check)
-  compat.ts                   Runtime proxy for serverId/messageServerId API version shim
+  compat.ts                   Type-only cross-core shim (ICompatRuntime/WorldCompat/RoomCompat widen serverId/messageServerId)
   constants.ts                DISCORD_SERVICE_NAME = "discord"
   utils.ts                    Misc runtime helpers (getMessageService, normalizeDiscordMessageText, etc.)
   user-account-scraper/
@@ -83,6 +90,8 @@ plugins/plugin-discord/
   actions/
     actionResultSemantics.ts  Action result helpers
     setup-credentials.ts      Credential preset definitions used by /setup slash command
+  prompts/                    Source JSON for generated action/provider/evaluator docs
+  generated/specs/            Auto-generated canonical action/provider doc specs (do not edit)
   __tests__/                  Vitest unit tests (co-located fast tests)
   test/                       Vitest unit + live integration tests
     helpers/                  Shared test helpers (http.ts, pglite-runtime.ts)
@@ -102,7 +111,7 @@ bun run --cwd plugins/plugin-discord typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-discord lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-discord format      # biome format --write
 bun run --cwd plugins/plugin-discord test:e2e    # live smoke test via app-core runner
-bun run --cwd plugins/plugin-discord clean       # rm dist + generated .d.ts files
+bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated .d.ts files
 ```
 
 ## Config / env vars
@@ -115,9 +124,13 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + generated .d.ts fil
 | `CHANNEL_IDS` | No | Comma-separated channel IDs the bot is restricted to (whitelist) |
 | `DISCORD_LISTEN_CHANNEL_IDS` | No | Comma-separated channel IDs where the bot ingests messages but does NOT reply |
 | `DISCORD_VOICE_CHANNEL_ID` | No | Voice channel ID to auto-join on guild scan; defaults to most-populated channel |
-| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | `"true"` to ignore messages from other bots (default: `false`) |
-| `DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES` | No | `"true"` to ignore DMs (default: `false`) |
-| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"true"` to only reply when @-mentioned (default: `false`) |
+| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | `"false"` to process messages from other bots (default: `true` — see `DISCORD_DEFAULTS` in `environment.ts`) |
+| `DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES` | No | `"false"` to process DMs (default: `true`) |
+| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"false"` to reply without an @-mention (default: `true`) |
+| `DISCORD_DM_POLICY` | No | DM access policy: `open` / `allowlist` / `pairing` / `disabled` (default: `pairing`) |
+| `DISCORD_ALLOW_FROM` | No | Comma-separated Discord user IDs allowed under the `allowlist` DM policy |
+| `DISCORD_AUTO_REPLY` | No | `"true"` to auto-generate replies; default `false` (messages are ingested but not answered) |
+| `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel used by `DiscordTestSuite` |
 
 All settings can also be provided in the character file under `settings.discord` (as `DiscordConfig` / `DiscordAccountConfig`) — character settings override env vars.
@@ -135,7 +148,7 @@ All settings can also be provided in the character file under `settings.discord`
 ## Conventions / gotchas
 
 - **Discord snowflake IDs are not UUIDs.** Use `stringToUuid(discordId)` to store them in UUID fields. Use `createUniqueUuid(runtime, discordId)` for `worldId`/`roomId` (agent-namespaced). Never use `asUUID()` on raw Discord IDs — it throws.
-- **`messageServerId` is the correct field** for server IDs on `Room` and `World` objects (not `serverId`). The `compat.ts` shim handles older core versions transparently.
+- **`messageServerId` is the correct field** for server IDs on `Room` and `World` objects (not `serverId`). `compat.ts` is a type-only shim (`ICompatRuntime`/`WorldCompat`/`RoomCompat`) that widens these fields so the code typechecks across core versions — there is no runtime proxy.
 - **Native dependencies.** `@discordjs/opus` and `libsodium-wrappers` have native binaries. They must build successfully in the Node.js environment; the plugin does not run in browsers (see `eliza.platforms: ["node"]`).
 - **Voice requires ffmpeg.** The `fluent-ffmpeg` dep expects a system `ffmpeg` binary on `PATH` for audio processing.
 - **Multi-account mode** is activated by setting `DISCORD_BOT_TOKENS` (comma-separated) instead of `DISCORD_API_TOKEN`. See `accounts.ts` for resolution order.

@@ -12,7 +12,7 @@ This plugin gives an Eliza agent the ability to analyze the commit history of a 
 
 The analysis runs a five-phase pipeline: parse `git log`, classify each commit by type, score commits on a health scale using an exponential moving average, detect quality peaks and drift inflections, then (optionally) call the agent's configured text model to write a narrative post-mortem for each drift event.
 
-Reports are cached on disk keyed to the repository HEAD sha, so repeat queries within the same commit are instant.
+Reports are cached on disk by `sha256(surface + since)` and validated against the repository HEAD sha, so a repeat query at the same commit returns the cached report instantly, while any new commit invalidates it.
 
 ## Capabilities
 

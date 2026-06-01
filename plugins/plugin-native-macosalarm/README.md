@@ -79,4 +79,4 @@ The `ALARM` action requires the agent's user to have at minimum the `ADMIN` role
 
 - macOS only — no Windows or Linux support.
 - The Swift binary must be compiled locally; pre-built binaries are not bundled in the npm package.
-- Alarms persist only in the macOS notification center queue for the process that scheduled them; they do not survive a full `UNUserNotificationCenter` identity change.
+- `UNUserNotificationCenter` requires the helper to run from a signed app bundle. Invoked as a bare CLI it throws an `NSInternalInconsistencyException` (`bundleProxyForCurrentProcess is nil`); packaging/signing is owned downstream.

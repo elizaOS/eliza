@@ -8,7 +8,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 - **Text embeddings** — `text-embedding-3-small` by default; dimension configurable.
 - **Image generation** — DALL-E 3 by default (`dall-e-3`).
 - **Image description** — vision model analyzes an image URL and returns `{ title, description }`.
-- **Audio transcription** — Whisper-based transcription; accepts `Buffer`, `Blob`, `File`, or a URL.
+- **Audio transcription** — speech-to-text (`gpt-5-mini-transcribe` by default); accepts `Buffer`, `Blob`, `File`, or a URL.
 - **Text-to-speech** — returns an `ArrayBuffer` of audio. Six voices; mp3/wav/flac/opus/aac/pcm output.
 - **Deep research** — `ModelType.RESEARCH` via the OpenAI Responses API (`o3-deep-research` by default); returns annotated, multi-source research reports.
 - **Tokenizer** — encode/decode using js-tiktoken (browser-safe, no network calls).

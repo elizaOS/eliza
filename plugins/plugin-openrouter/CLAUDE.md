@@ -54,7 +54,7 @@ plugins/plugin-openrouter/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-openrouter build          # compile (tsdown, node + browser)
+bun run --cwd plugins/plugin-openrouter build          # bun build.ts (node ESM + browser ESM + CJS)
 bun run --cwd plugins/plugin-openrouter dev            # hot-rebuild watch mode
 bun run --cwd plugins/plugin-openrouter test           # vitest unit suite
 bun run --cwd plugins/plugin-openrouter test:unit      # __tests__/ only
@@ -87,8 +87,7 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 | `OPENROUTER_IMAGE_GENERATION_MODEL` | no | `google/gemini-2.5-flash-image-preview` | Override for IMAGE generation. |
 | `OPENROUTER_EMBEDDING_MODEL` | no | `openai/text-embedding-3-small` | Override for TEXT_EMBEDDING. |
 | `OPENROUTER_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector size. Valid: 256, 384, 512, 768, 1024, 1536, 2048, 3072. |
-| `OPENROUTER_AUTO_CLEANUP_IMAGES` | no | `false` | Auto-delete generated images after delay. |
-| `OPENROUTER_TOOL_EXECUTION_MAX_STEPS` | no | `15` | Max steps for multi-step tool execution. |
+| `OPENROUTER_AUTO_CLEANUP_IMAGES` | no | `false` | Flag read by `shouldAutoCleanupImages()` in `utils/config.ts`. |
 | `SMALL_MODEL`, `LARGE_MODEL`, etc. | no | — | Generic fallbacks when OPENROUTER_* variants are unset. |
 
 `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` are read in `embedding.ts` for the embeddings request headers.

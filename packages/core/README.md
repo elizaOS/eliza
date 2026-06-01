@@ -2,17 +2,16 @@
 
 ## Overview
 
-The `@elizaos/core` package provides a robust foundation for building AI agents with dynamic interaction capabilities. It enables agents to manage entities, memories, and context, and to interact with external systems, going beyond simple message responses to handle complex scenarios and execute tasks effectively.
+`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the CLI), and every `@elizaos/*` plugin.
 
-## Key Features
+## Key concepts
 
-- **AgentRuntime:** Central orchestrator for managing agent lifecycle, plugins, and interactions.
-- **Actions:** Define tasks the agent can perform, with validation and execution logic.
-- **Providers:** Supply real-time data and context to the agent, enabling interaction with dynamic environments and external APIs.
-- **Evaluators:** Process conversation data to extract insights, build long-term memory, and maintain contextual awareness.
-- **Plugin System:** Extensible architecture allowing for modular addition of functionalities.
-- **Entity and Memory Management:** Core support for tracking entities and their associated information.
-- **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
+- **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
+- **Actions:** Tasks the agent can perform, each with a `validate` and `handler` function.
+- **Providers:** Supply data and context to the runtime and its components.
+- **Evaluators:** Process conversation data to extract facts, build memory, and reflect.
+- **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
+- **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
 ## Installation
 
@@ -52,12 +51,11 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
-- `SECRET_SALT`: Secret salt for encryption purposes.
+- `SECRET_SALT`: Encryption salt, read by `getSalt()` in `src/settings.ts`. In production it must be set to a non-default value unless `ELIZA_ALLOW_DEFAULT_SECRET_SALT=true`.
 - `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
-- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
-- `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Basic-capabilities-related; see plugin docs. Shown in the basic-capabilities banner when set.
+- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
 
 **Example `.env`:**
 
@@ -144,15 +142,15 @@ Important behavior:
 - Context is declarative and composable: `providers`, `contextBuilder`, and `contextResolvers` can be mixed.
 - Dispatching is affinity-aware, so unrelated prompt sections are not merged into the same call just because they arrived at the same time.
 
-Relevant runtime knobs:
+Relevant runtime knobs (all `PROMPT_BATCHER_*`, read in `src/runtime.ts`):
 
-- `PROMPT_BATCH_SIZE`
-- `PROMPT_MAX_DRAIN_INTERVAL_MS`
-- `PROMPT_MAX_SECTIONS_PER_CALL`
-- `PROMPT_PACKING_DENSITY`
-- `PROMPT_MAX_TOKENS_PER_CALL`
-- `PROMPT_MAX_PARALLEL_CALLS`
-- `PROMPT_MODEL_SEPARATION`
+- `PROMPT_BATCHER_BATCH_SIZE`
+- `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`
+- `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`
+- `PROMPT_BATCHER_PACKING_DENSITY`
+- `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`
+- `PROMPT_BATCHER_MAX_PARALLEL_CALLS`
+- `PROMPT_BATCHER_MODEL_SEPARATION`
 
 The prompt batcher implementation lives in `src/utils/prompt-batcher/` (`batcher.ts`, `dispatcher.ts`). The lower-level queue primitives (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`) live in `src/utils/batch-queue/`.
 
@@ -236,7 +234,7 @@ The runtime talks to persistence through the `IDatabaseAdapter` interface. Adapt
 import { AgentRuntime } from "@elizaos/core";
 
 const runtime = new AgentRuntime({
-  character,           // a Character (see src/character.ts)
+  character,           // a Character (type in src/types/agent.ts; helpers in src/character.ts)
   plugins: [
     // your plugins; each contributes actions/providers/evaluators/services
   ],

@@ -56,7 +56,7 @@ src/
   data-routes.ts                Data + webhook HTTP routes
   webhook-auth.ts               X-BlueBubbles-Webhook-Secret validation
   constants.ts                  Service name, default paths, policy constants
-  types.ts                      Domain types (BlueBubblesConfig, Message, Chat…)
+  types.ts                      Domain types (BlueBubblesConfig, BlueBubblesMessage, BlueBubblesChat…)
   actions/index.ts              Empty — messaging uses connector hooks only
   providers/index.ts            Empty — context via connector getChatContext/getUserContext
 auto-enable.ts                  Lightweight shouldEnable() for the plugin engine

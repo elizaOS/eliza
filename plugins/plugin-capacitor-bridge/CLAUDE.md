@@ -54,8 +54,17 @@ src/
     fs-proxy.ts                     Sandboxed re-export of node:fs for use inside ios/bridge.ts
     fs-promises-proxy.ts            Sandboxed re-export of node:fs/promises
 
-android/
-  src/main/AndroidManifest.xml      Checked by pre-build script
+android/                            Native Capacitor manifest fragment + Kotlin computer-use services
+                                    (merged into the host app at Capacitor sync time; not built by tsup).
+  src/main/AndroidManifest.xml      Service/permission declarations; checked by pre-build script
+  src/main/java/ai/elizaos/computeruse/
+    ScreenCaptureService.kt         MediaProjection foreground service
+    ElizaAccessibilityService.kt    Cross-app view tree + gesture dispatch
+    Camera2Source.kt                Camera2 frame source
+    ComputerUsePlugin.kt            Capacitor plugin entry
+    AospPrivilegedBridge.kt         AOSP privileged-mode bridge
+    UsageStatsHelper.kt             PACKAGE_USAGE_STATS reader
+  src/main/res/xml/accessibility_service_config.xml
 
 scripts/
   check-android-manifest.mjs        Pre-build: validates AndroidManifest.xml has no stray tools:* attrs

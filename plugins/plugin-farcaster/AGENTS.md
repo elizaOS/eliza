@@ -59,9 +59,9 @@ plugins/plugin-farcaster/
     index.ts                      castUuid, neynarCastToCast, splitPostContent
     asyncqueue.ts                 Serial async queue used by interaction processor
     callbacks.ts                  Post-cast callback helpers
-    prompts.ts                    Prompt templates for cast generation / truncation
-  prompts/                        Additional prompt template files
-  generated/specs/                Auto-generated provider spec helpers (do not hand-edit)
+    prompts.ts                    formatCast / formatTimeline cast+timeline formatting helpers
+  prompts/                        actions.json / evaluators.json / providers.json plugin spec manifests
+  generated/specs/                spec-helpers.ts + specs.ts — provider/action spec lookups (do not hand-edit)
 ```
 
 ## Commands
@@ -121,5 +121,5 @@ Read via `validateFarcasterConfig()` in `utils/config.ts` against `FarcasterConf
 - **Post connector registration.** `FarcasterService.registerSendHandlers` wires `FarcasterCastService.handleSendPost` / `fetchFeed` / `searchPosts` into the runtime's `registerPostConnector`. This only succeeds if the runtime supports that method; absence is silently skipped.
 - **LRU caches.** `FarcasterClient` caches cast lookups (TTL 30 min, max 9 000 entries) and profile lookups (TTL 15 min, max 1 000). Keep this in mind during testing — stale cache entries will not trigger network calls.
 - **Webhook mode vs polling mode.** Set `FARCASTER_MODE=webhook` and point Neynar to `POST /webhook` on your agent's public URL. In `polling` mode, `InteractionManager` fetches mentions on `FARCASTER_POLL_INTERVAL`.
-- **`generated/specs/`** — auto-generated; do not edit by hand. Provider spec names come from here.
-- **Browser build.** The package exports a `browser` condition (`dist/browser/`). Browser-safe code must not import Node-only APIs.
+- **`generated/specs/`** — auto-generated; do not edit by hand. Provider spec names (`requireProviderSpec("farcasterProfile")`) come from here.
+- **Browser build is a stub.** The `browser` export condition (`dist/browser/`) builds `index.browser.ts`, which only re-exports the types and a no-op `farcasterPlugin` whose `init` logs a warning ("not supported directly in browsers. Use a server proxy"). The real Neynar-backed plugin runs Node-only; browsers must call it through a server proxy.

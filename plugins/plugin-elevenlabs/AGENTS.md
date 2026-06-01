@@ -40,7 +40,7 @@ Scripts that exist in this package's `package.json`:
 bun run --cwd plugins/plugin-elevenlabs build          # compile dist/
 bun run --cwd plugins/plugin-elevenlabs dev            # watch build (--hot)
 bun run --cwd plugins/plugin-elevenlabs test           # run __tests__
-bun run --cwd plugins/plugin-elevenlabs clean          # remove dist/
+bun run --cwd plugins/plugin-elevenlabs clean          # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 bun run --cwd plugins/plugin-elevenlabs lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-elevenlabs lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-elevenlabs format         # biome format --write

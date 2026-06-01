@@ -22,7 +22,6 @@ src/
                        / createDefaultChannel / createRequestIdAllocator
   runtime-proxy.ts   RuntimeProxy class + buildRuntimeProxyApi() + SUPPORTED_RUNTIME_METHODS
   error.ts           toWireError / fromWireError / WireError — error serialisation
-  error.d.ts         Pre-built declarations for the ./error subpath export
   dispatch.test.ts   Unit tests for the dispatcher
 ```
 

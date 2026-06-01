@@ -105,7 +105,7 @@ src/
     wallet-os-store-actions.ts                  # OS keychain read/write actions
 
   api/
-    wallet.ts                      # Core wallet primitives (getWalletAddresses, fetchSolanaNativeBalance)
+    wallet.ts                      # Core wallet primitives (getWalletAddresses, fetchSolanaNativeBalanceViaRpc)
     wallet-evm-balance.ts          # fetchEvmNativeBalanceViaRpc
     wallet-rpc.ts                  # resolveWalletRpcReadiness
     wallet-routes.ts               # Route handler shared helpers

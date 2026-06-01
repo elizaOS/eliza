@@ -30,10 +30,11 @@ plugins/plugin-mcp/
     provider.ts               MCP provider — formats connected-server summary for agent state
     routes-mcp.ts             handleMcpRoutes — /api/mcp/config, /api/mcp/status, marketplace
     mcp-marketplace.ts        Client for registry.modelcontextprotocol.io (search + details)
-    prompts.ts                errorAnalysisTemplate (Handlebars-style)
+    prompts.ts                All Handlebars-style prompt templates (tool/resource
+                                selection, reasoning, feedback, errorAnalysis)
     actions/
       mcp.ts                  mcpAction handler — op routing (call_tool / read_resource)
-    templates/
+    templates/                Thin re-export shims over prompts.ts
       toolSelectionTemplate.ts
       toolReasoningTemplate.ts
       resourceSelectionTemplate.ts
@@ -121,7 +122,7 @@ Add a branch in `src/routes-mcp.ts` `handleMcpRoutes`. The host server passes a 
 
 - **Node-only.** `index.browser.ts` is a no-op shim. The MCP SDK's stdio and SSE transports require Node.js APIs. The `eliza.platforms` field in `package.json` is `["node"]`.
 - **Service type key is lowercase `"mcp"`.** `McpService.serviceType = "mcp"`. The status route resolves the service by uppercase `"MCP"` for legacy compat — keep this in mind if you refactor.
-- **Tool schema fixup runs synchronously.** `createMcpToolCompatibilitySync` uses `require()` internally; this is intentional (called during server listing, not at import time).
+- **Tool schema fixup runs synchronously.** `createMcpToolCompatibilitySync` uses `require()` internally; this is intentional (called lazily during tool listing in `fetchToolsList`, not at import time).
 - **Ping monitoring is stdio-only.** HTTP/SSE transports do not use the ping interval; reconnect is handled by transport error/close events.
 - **Config changes require a restart.** The service reads `settings.mcp` once at init. `restartConnection(name)` re-initializes a single server without full restart; adding/removing servers requires plugin reinit.
 - **Security validation is blocking.** `validateMcpServerConfig` from `@elizaos/agent` runs before every connection and spawn. Servers that fail validation are silently skipped (logged at error level).

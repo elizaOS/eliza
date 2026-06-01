@@ -11,7 +11,7 @@ This package is the canonical integration-test harness for elizaOS plugins and a
 ```
 packages/scenario-runner/
   bin/
-    eliza-scenarios          # CLI entry shim — calls src/cli.ts
+    eliza-scenarios          # CLI entry shim — imports the built dist/cli.js
   schema/
     index.js / index.d.ts   # ScenarioDefinition, ScenarioTurn, CapturedAction, etc.
   src/
@@ -24,7 +24,7 @@ packages/scenario-runner/
     judge.ts                 # judgeTextWithLlm() — LLM-as-judge (Cerebras gpt-oss-120b or fallback)
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
-    seeds.ts                 # applyScenarioSeedStep — seed step dispatch (lifeops entries, clock)
+    seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
     types.ts                 # TurnReport / ScenarioReport / AggregateReport / RunnerContext
     final-checks/
@@ -69,7 +69,7 @@ import type { ScenarioDefinition, ScenarioTurn, CapturedAction }
   from "@elizaos/scenario-runner/schema";
 ```
 
-`runScenario(scenario, runtime, opts)` is the core API. The CLI calls it for each discovered file. The runtime factory (`createScenarioRuntime`) is used internally by the CLI and is also re-exported from `runtime-factory.ts` for programmatic use.
+`runScenario(scenario, runtime, opts)` is the core API. The CLI calls it for each discovered file. The runtime factory (`createScenarioRuntime`) is defined in `runtime-factory.ts` and is **not** part of the package's main entry; import it from the `@elizaos/scenario-runner/runtime-factory` subpath (or relatively, e.g. `./src/runtime-factory.ts`, when working inside this repo).
 
 ## CLI — `eliza-scenarios`
 
@@ -80,7 +80,7 @@ eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
 eliza-scenarios list <dir> [fileGlob ...]
 ```
 
-Exit codes: `0` = all passed/skipped-with-SKIP_REASON, `1` = at least one failed, `2` = config error.
+Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
 
 ## Commands
 
@@ -99,7 +99,7 @@ bun run --cwd packages/scenario-runner clean
 | Env var | Effect |
 |---|---|
 | `SCENARIO_USE_LLM_PROXY` / `ELIZA_SCENARIO_USE_LLM_PROXY` | `1` = use deterministic LLM proxy instead of a live provider |
-| `SCENARIO_LLM_PROXY_STRICT` / `ELIZA_SCENARIO_LLM_PROXY_STRICT` | `1` = strict fixture consumption (fails if fixtures left unconsumed) |
+| `SCENARIO_LLM_PROXY_STRICT` / `ELIZA_SCENARIO_LLM_PROXY_STRICT` | `1` = strict mode: every LLM call must match a registered fixture, else it throws |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include scenarios with `status: "pending"` |
 | `SKIP_REASON` | Set to a non-empty string to allow skipped scenarios without failing exit 2 |
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Float, default `0.8`; minimum LLM judge score to pass |
@@ -168,7 +168,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 ## Conventions / gotchas
 
 - **Single shared runtime per CLI invocation.** PGLite cannot be torn down and recreated (segfaults). For true per-scenario isolation, invoke `eliza-scenarios run` once per scenario from a shell loop.
-- **Deterministic mode.** `SCENARIO_USE_LLM_PROXY=1` + `SCENARIO_LLM_PROXY_STRICT=1` uses pre-recorded LLM fixtures from `test/fixtures/`. Strict mode asserts all fixtures were consumed. Fixtures live next to scenarios in `_helpers/` subdirs.
+- **Deterministic mode.** `SCENARIO_USE_LLM_PROXY=1` swaps the live provider for the deterministic LLM proxy plugin (`packages/test/mocks/helpers/llm-proxy-plugin.ts`). With `SCENARIO_LLM_PROXY_STRICT=1`, any LLM call that has no registered fixture throws instead of falling back. Fixtures are registered programmatically per scenario via `registerStrictActionRouteFixtures` from `test/scenarios/_helpers/strict-llm-action-fixtures.ts` — not loaded from a fixtures directory. (`test/fixtures/` holds only the MCP stdio fixture.)
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
 - **Embedding stub.** By default a zero-vector 1024-dim embedding stub is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.

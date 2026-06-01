@@ -10,8 +10,8 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Actions
 
-- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Supports `target=device` for reads/writes through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — runs local shell commands. Auto-backgrounds long-running commands (configurable via `CODING_TOOLS_SHELL_BG_BUDGET_MS`). Built-in and configurable command denylist (`CODING_TOOLS_DENY_COMMANDS`). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by an external `shell` service when present). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Provider
@@ -63,7 +63,7 @@ plugins/plugin-coding-tools/
       run-shell.ts                runShell helper (child_process wrapper with timeout/streaming)
       run-git-command.ts          runGitCommand helper
       terminal-capabilities.ts    Platform capability detection
-      secrets.ts                  Redacts secrets from shell output
+      secrets.ts                  detectSecrets — flags AWS/GitHub/OpenAI/etc. tokens to gate WRITE/EDIT
   auto-enable.ts                  Lightweight auto-enable module (env reads only; no plugin runtime imports)
   AGENT_CONTRACT.md               Implementation brief for action-writing agents
   build.ts                        tsdown build script
@@ -89,9 +89,7 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. When set, paths outside these roots are rejected. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Comma-separated paths to **add** to the default blocklist. |
-| `CODING_TOOLS_DENY_COMMANDS` | — | Comma-separated command prefixes SHELL must refuse (e.g. `rm -rf /,sudo`). Combined with built-in denylist. |
-| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Hard ceiling for SHELL commands (ms). |
-| `CODING_TOOLS_SHELL_BG_BUDGET_MS` | `15000` | Commands exceeding this budget auto-background and return a `task_id`. |
+| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Default SHELL timeout (ms); per-call `timeout` clamps to `[100, 600000]`. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Pre-stat byte cap on FILE action=read. Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
@@ -137,7 +135,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 - **Read before write**: `FileStateService.assertWritable` will reject a write if the file was modified externally since the last read. The agent must re-read first.
 - **`conversationId` = `message.roomId`** (string-coerced). Missing `roomId` is a hard failure.
 - **Never throw from a handler** — return `failureToActionResult({ reason, message })` instead.
-- The `@vscode/ripgrep` binary is resolved at `RipgrepService` start time. If the binary is missing, GREP falls back gracefully.
+- The `@vscode/ripgrep` binary is resolved at `RipgrepService` start time; if that import fails it falls back to a system `rg` on `PATH`.
 - The `device_filesystem` bridge (`target=device` on FILE) is provided by a separate service (`device_filesystem` service type) registered by a platform plugin (e.g. mobile). The coding-tools plugin does not register it — it only consumes it when present.
 - Tests are co-located `*.test.ts` files beside their source in `src/actions/`, `src/services/`, and `src/lib/`. Integration tests live in `__tests__/plugin-integration.test.ts` at the package root. See `AGENT_CONTRACT.md` for the action implementation brief.
 - Import paths must use the `.js` extension on relative imports (ESM requirement).

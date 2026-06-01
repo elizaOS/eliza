@@ -42,7 +42,7 @@ plugins/plugin-minecraft/
   src/
     index.ts                   Plugin object export; wires all services/actions/providers
     protocol.ts                JsonValue, JsonObject, MinecraftBridgeRequest/Response types
-    types.ts                   MinecraftSession, MinecraftWorldState (zod schema)
+    types.ts                   MinecraftSession, MinecraftActionResult, minecraftWorldStateSchema (zod) + MinecraftWorldState type
     actions/
       index.ts                 Re-exports minecraftAction
       mc.ts                    MC action — 13 ops, normalizeOp(), full handler switch
@@ -66,7 +66,8 @@ plugins/plugin-minecraft/
   protocol/schema.json         JSON schema for the bridge protocol
   prompts/evaluators.json      Prompt templates (evaluators)
   generated/specs/specs.ts     Generated API specs
-  build.ts                     esbuild build script
+  build.ts                     Bun.build bundler script
+  shared/README.md             Notes on the cross-language protocol artifacts
 ```
 
 ## Commands
@@ -74,7 +75,7 @@ plugins/plugin-minecraft/
 All scripts are in `plugins/plugin-minecraft/package.json`.
 
 ```bash
-bun run --cwd plugins/plugin-minecraft build        # compile plugin (esbuild via build.ts)
+bun run --cwd plugins/plugin-minecraft build        # bundle plugin (Bun.build via build.ts)
 bun run --cwd plugins/plugin-minecraft dev          # watch mode (bun --hot build.ts)
 bun run --cwd plugins/plugin-minecraft test         # vitest run
 bun run --cwd plugins/plugin-minecraft typecheck    # tsgo --noEmit
@@ -126,7 +127,7 @@ These can also be set per-agent via `agentConfig.pluginParameters` in `package.j
 ### Add a new service
 
 1. Create `src/services/<name>-service.ts` extending `Service` from `@elizaos/core`.
-2. Export a `SERVICE_TYPE` constant and the class.
+2. Export a service-type constant (e.g. `MINECRAFT_SERVICE_TYPE`) and the class.
 3. Add it to the `services` array in `src/index.ts`.
 4. Wire up `dispose()` in `src/index.ts` if the service needs teardown.
 

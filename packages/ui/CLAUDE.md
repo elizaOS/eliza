@@ -9,7 +9,7 @@ view instrumentation, GenUI, voice, and platform/bridge glue.
 A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
 shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`,
-`@elizaos/homepage`, and many plugin UI packages (`plugin-wallet-ui`,
+the `eliza-app` homepage, and many plugin UI packages (`plugin-wallet-ui`,
 `plugin-companion`, `plugin-messages`, `plugin-training`, `plugin-feed`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
@@ -53,9 +53,16 @@ src/
                               (buildPluginConfigUiSpec, evaluateVisibility, validators, catalogs)
   genui/                      Agent-generated UI (A2UI-compatible subset): validator,
                               renderer, actions, streaming. See genui/README.md
-  navigation/                 Tab model + default-landing resolution
+  navigation/                 Tab model + default-landing resolution (resolveDefaultLandingTab)
   layouts/                    page-layout, content-layout, chat-panel-layout, workspace-layout
-  hooks/                      ~110 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...)
+  services/                   Client-side services: local-inference (model catalog,
+                              downloader, engine, assignments), app-updates
+  homescreen/                 Homescreen canvas + scene apply/history + face-rig
+  backgrounds/                Background host + registry (BackgroundHost, CloudVideoBackground)
+  companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
+  views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
+  hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
+                              many more use* hooks live alongside their features
   widgets/                    Chat sidebar widget registry + WidgetHost + visibility
   themes/                     apply-theme, presets
   voice/                      Voice capture factory, character voice config, local ASR

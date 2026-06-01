@@ -56,7 +56,7 @@ All vars are read via `runtime.getSetting(key)` first, then `process.env[key]`.
 |---|---|---|---|
 | `OMNIVOICE_MODEL_PATH` | Yes | — | Path to the omnivoice base LM GGUF (e.g. `omnivoice-base-Q8_0.gguf`) |
 | `OMNIVOICE_CODEC_PATH` | Yes | — | Path to the omnivoice tokenizer/codec GGUF (e.g. `omnivoice-tokenizer-Q8_0.gguf`) |
-| `OMNIVOICE_LIB_PATH` | No | auto-search | Absolute path to `libomnivoice.{so,dylib,dll}`; if omitted, `ffi.ts` searches `packages/inference/omnivoice.cpp/build/` relative to cwd |
+| `OMNIVOICE_LIB_PATH` | No | auto-search | Absolute path to `libomnivoice.{so,dylib,dll}`; if omitted, `ffi.ts` searches `packages/inference/omnivoice.cpp/build/` (and `../../` of it) relative to `process.cwd()`. The real build output lives at `plugins/plugin-local-inference/native/omnivoice.cpp/build/`, so set this explicitly unless running from a cwd where the auto-search path resolves |
 | `OMNIVOICE_SINGING_MODEL_PATH` | No | — | GGUF for the singing codepath; required only if `singing: true` is passed in TTS input |
 | `OMNIVOICE_LANG` | No | `"English"` | Default language hint passed to `ov_tts_params.lang`; `""` = auto-detect |
 | `OMNIVOICE_INSTRUCT` | No | — | Default voice-design instruct string (e.g. `"female young adult moderate happy"`) |
@@ -84,7 +84,7 @@ Auto-enable also responds to agent config `features.localTts: true` or `features
 ## Conventions / gotchas
 
 - **Bun-only runtime.** The FFI layer uses `bun:ffi` (`dlopen`, `JSCallback`, `ptr`, `toArrayBuffer`). The plugin will throw `OmnivoiceNotInstalled` in Node.js without Bun's native FFI. The browser build exports a no-op stub.
-- **libomnivoice must be built separately.** The shared library is not bundled. Build it with `node packages/inference/build-omnivoice.mjs` from the repo root; it produces `libomnivoice.{so,dylib,dll}` in `packages/inference/omnivoice.cpp/build/`. Set `OMNIVOICE_LIB_PATH` or place the output where `ffi.ts` searches.
+- **libomnivoice must be built separately.** The shared library is not bundled. Build it with `node plugins/plugin-local-inference/native/build-omnivoice.mjs` from the repo root; it produces `libomnivoice.{so,dylib,dll}` in `plugins/plugin-local-inference/native/omnivoice.cpp/build/`. Set `OMNIVOICE_LIB_PATH` to that file (the C source and ABI header live at `plugins/plugin-local-inference/native/omnivoice.cpp/src/`).
 - **GGUFs from HuggingFace.** Download from `https://huggingface.co/Serveurperso/OmniVoice-GGUF`. The speech and codec GGUFs are required independently.
 - **C ABI versioning.** `OV_ABI_VERSION = 2` in `ffi.ts` must match the version the shared library was built with. A mismatch causes `ov_init` to return NULL.
 - **Struct layouts are manual.** `buildLayout()` in `ffi.ts` mirrors C struct field order and alignment. If `omnivoice.h` changes, update `OV_INIT_PARAMS_LAYOUT`, `OV_AUDIO_LAYOUT`, and `OV_TTS_PARAMS_LAYOUT` in lockstep.

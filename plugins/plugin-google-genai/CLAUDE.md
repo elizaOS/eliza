@@ -67,7 +67,7 @@ Settings are read first from `runtime.getSetting(key)`, then from `process.env`.
 
 | Env var | Required | Default | Notes |
 |---|---|---|---|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | — | Also accepted: `GOOGLE_API_KEY`, `GEMINI_API_KEY` (auto-enable only) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | — | The only key `getApiKey` reads. `GOOGLE_API_KEY` and `GEMINI_API_KEY` trigger auto-enable (`auto-enable.ts`) but are not read as the API key. |
 | `GOOGLE_NANO_MODEL` / `NANO_MODEL` | No | falls back to small | |
 | `GOOGLE_SMALL_MODEL` / `SMALL_MODEL` | No | `gemini-2.0-flash-001` | |
 | `GOOGLE_MEDIUM_MODEL` / `MEDIUM_MODEL` | No | falls back to small | |

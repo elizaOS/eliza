@@ -51,7 +51,9 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract is defined in `src/lifeops/wave1-types.ts`.
+The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
+(the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
+is a slightly diverged copy consumed only by the `first-run` module.
 
 ## Runtime layout
 
@@ -177,7 +179,7 @@ plugin's public exports only. See `plugins/plugin-health/README.md`.
 
 ## Where to look next
 
-- Frozen interface types: `src/lifeops/wave1-types.ts`.
+- Frozen interface types: `src/lifeops/scheduled-task/types.ts`.
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.

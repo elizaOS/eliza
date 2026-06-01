@@ -11,7 +11,7 @@ Shell command execution plugin for elizaOS. Adds sandboxed shell access, PTY sup
 - Provides the `SHELL_HISTORY` context provider so the agent always knows its cwd and recent commands.
 - Provides `ExecApprovalService` to gate commands through an allowlist and user-approval flow.
 
-The `SHELL` and `MANAGE_PROCESS` actions that expose shell execution to the agent are in `@elizaos/plugin-coding-tools`, which consumes this plugin's services.
+The agent-facing `SHELL` action that exposes shell execution is in `@elizaos/plugin-coding-tools`, which consumes this plugin's services. Its `action` parameter (list/poll/kill/etc.) drives `ShellService.processAction()`.
 
 ## Installation
 

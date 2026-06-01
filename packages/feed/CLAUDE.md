@@ -86,7 +86,7 @@ See `.env.example` for the full annotated list. Key vars:
 | Database | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `DATABASE_READ_REPLICA_URL`, `DATABASE_POOL_MAX` |
 | Auth (Steward) | `STEWARD_JWT_SECRET`, `STEWARD_TENANT_API_KEY`, `NEXT_PUBLIC_STEWARD_API_URL`, `STEWARD_API_URL` |
 | LLM | `ELIZACLOUD_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (at least one required) |
-| Cache | `REDIS_URL`, `KV_REST_API_URL` |
+| Cache | `REDIS_URL` |
 | Storage | `BLOB_READ_WRITE_TOKEN` (Vercel Blob; MinIO locally) |
 | Game | `GAME_START=true`, `CRON_SECRET` |
 | Agents | `FEED_A2A_API_KEY` |

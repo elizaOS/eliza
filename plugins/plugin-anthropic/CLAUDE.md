@@ -30,8 +30,8 @@ No actions, providers, evaluators, services, routes, or event handlers are regis
 ```
 plugins/plugin-anthropic/
 ├── index.ts                  # Plugin definition, model dispatch wiring, built-in test suite
-├── index.node.ts             # Node/Bun re-export (main entry per package.json exports.node)
-├── index.browser.ts          # Browser re-export (package.json exports.browser)
+├── index.node.ts             # Node/Bun build entrypoint (re-exports index.ts; build.ts → dist/node)
+├── index.browser.ts          # Browser build entrypoint (re-exports index.ts; build.ts → dist/browser)
 ├── auto-enable.ts            # Auto-enable check: reads ANTHROPIC_API_KEY / CLAUDE_API_KEY
 ├── init.ts                   # initializeAnthropic() — auth mode detection and startup log
 ├── models/
@@ -50,7 +50,8 @@ plugins/plugin-anthropic/
 │   ├── claude-cli.ts         # CLI auth mode: generateViaCli / streamViaCli via `claude -p`
 │   ├── events.ts             # emitModelUsageEvent() — fires EventType.MODEL_USED after each call
 │   └── retry.ts              # executeWithRetry(), formatModelError(), sanitizeUrlForLogs()
-└── __tests__/                # Unit and integration tests
+└── __tests__/                # credential-store.test.ts, native-plumbing.shape.test.ts,
+                              #   native-plumbing.live.test.ts (live API; excluded by default)
 ```
 
 ## Commands
@@ -66,7 +67,7 @@ bun run --cwd plugins/plugin-anthropic test:integration  # vitest --dir __tests_
 bun run --cwd plugins/plugin-anthropic typecheck      # tsgo --noEmit
 bun run --cwd plugins/plugin-anthropic lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-anthropic format         # biome format --write
-bun run --cwd plugins/plugin-anthropic clean          # rm dist/ .turbo/
+bun run --cwd plugins/plugin-anthropic clean          # rm -rf dist .turbo + tsbuildinfo
 ```
 
 ## Config / env vars

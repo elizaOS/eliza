@@ -32,7 +32,7 @@ eliza_robot/            Python package (pip: eliza-robot)
     locomotion_metrics.py
   perception/           Camera frames, ASR, ONNX inference, SLAM, world model
   trajectory_db/        SQLite-backed trajectory store (db.py, models.py, schema.py)
-  profiles/             Profile loader (schema.py = RobotProfile Pydantic v2 model, DEFAULT_PROFILE_ID)
+  profiles/             Profile loader (__init__.py = load_profile/list_profiles/DEFAULT_PROFILE_ID)
     schema.py           RobotProfile Pydantic v2 model (canonical source of truth)
   asimov_1/             ASIMOV-1 integration (CAD edit loop, MuJoCo assets, bridge targets)
   schema/               AiNex canonical constants and adapters (canonical.py, embodied_context.py, hyperscape_adapter.py)
@@ -111,7 +111,6 @@ uv run eliza-robot-benchmark-alberta --steps-per-task 16000 --seeds 3
 | `ELIZA_ROBOT_PROFILES_ROOT` | Override profiles manifest dir | `profiles/` in package root |
 | `ELIZA_ROBOT_ASSETS_ROOT` | Override binary assets dir | `assets/profiles/` in package root |
 | `JAX_PLATFORMS` | Force CPU JAX locally | Set to `cpu` for local dev |
-| `XLA_FLAGS` | JAX XLA flags (persistent cache) | Cache under `~/.cache/eliza-robot/` |
 
 ## How to extend
 

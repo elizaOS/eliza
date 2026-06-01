@@ -99,7 +99,7 @@ const content = await bridge.read("notes/todo.md");
 ## Conventions / gotchas
 
 - All relative paths flow through `normalizeDevicePath()` before reaching either backend. It rejects empty strings, absolute POSIX/Windows paths, `..` segments, and NUL bytes. Pass `{ allowRoot: true }` only for directory listing at the root.
-- The Node backend performs a secondary path-escape check after `path.resolve()` — resolving through symlinks could still escape the root, so callers cannot trick it with clever relative paths.
+- The Node backend performs a secondary path-escape check (`resolveNodePath`): after `path.resolve(nodeRoot, relative)` it verifies the absolute result still starts with `nodeRoot + sep`, so a relative path that normalizes back out of the root is rejected. This is a string-prefix check on the resolved path; it does not dereference symlinks.
 - `@capacitor/filesystem` is an `optionalDependency`. The Capacitor branch is only entered when `isCapacitorNative()` returns true, so the package need not be present on desktop builds.
 - iOS users need `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` in the host app's `Info.plist` for files to be visible in Files.app. That change belongs in the host app repo, not here.
 - Android requires no manifest changes for `Directory.Documents` — Capacitor Filesystem handles scoped storage (Android 10+) internally.

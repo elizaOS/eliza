@@ -28,7 +28,7 @@ All are sub-operations of the single `TASKS` parent action:
 |---|---|---|
 | `create` | `TASKS_CREATE` | One-shot: spawn + prompt + return. Records origin metadata for routing. |
 | `spawn_agent` | `TASKS_SPAWN_AGENT` | Start a long-lived ACP coding-agent session. Returns active session info. |
-| `send` | `TASKS_SEND_TO_AGENT` | Send a follow-up prompt to a running session. |
+| `send` | `TASKS_SEND` | Send a follow-up prompt to a running session. (`SEND_TO_AGENT` is a simile.) |
 | `stop_agent` | `TASKS_STOP_AGENT` | Cooperatively cancel and close a session. |
 | `list_agents` | `TASKS_LIST_AGENTS` | List active and persisted sessions. |
 | `cancel` | `TASKS_CANCEL` | Cancel an in-flight task, preserve history. |
@@ -178,14 +178,13 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
-| `ELIZA_ACP_FORMAT` | `json` | ACP event format for legacy transports |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
 | `ACPX_DEFAULT_TIMEOUT_MS` | `300000` | Per-prompt timeout in ms |
 | `ACPX_APPROVE_ALL` | `false` | When `true`, defaults sessions to approve-all preset |
 | `ACPX_NO_TERMINAL` | `true` | Pass `--no-terminal` so agents use ACP events, not terminal UI |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Default working directory for ACP sessions |
-| `ACPX_FORMAT` | `json` | Deprecated alias for `ELIZA_ACP_FORMAT` |
+| `ACPX_FORMAT` | `json` | ACP event format for the legacy CLI transport |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep SubAgentRouter registered but unbound |
 | `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap; force-stops ping-pong loops |
 | `ACPX_PROGRESS_MODE` / `ELIZA_SUB_AGENT_PROGRESS_MODE` | `compact` | Progress UX: `compact`, `threaded`, or `silent` |

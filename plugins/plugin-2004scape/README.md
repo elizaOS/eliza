@@ -95,5 +95,6 @@ When the plugin is active, a `2004scape` tab appears in the elizaOS agent deskto
 
 - Live game session view
 - Pause / resume autoplay controls
-- Goal and intent controls
+- Operator guidance input plus steering suggestions
+- Current goal and intent display
 - Recent activity log

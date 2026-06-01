@@ -20,7 +20,7 @@ packages/app/
   src/
     main.tsx                 React boot: platform init, plugin loading, root render
     app-config.ts            Exports APP_CONFIG, APP_BRANDING_BASE, APP_LOG_PREFIX, APP_NAMESPACE, APP_URL_SCHEME
-    brand-env.ts             Builds ELIZA_* env aliases from the app's envPrefix (ELIZA_API_PORT → ELIZA_API_PORT, etc.)
+    brand-env.ts             buildBrandEnvAliases(): maps `<envPrefix>_*` vars to canonical `ELIZA_*` (e.g. <PREFIX>_API_PORT → ELIZA_API_PORT)
     character-catalog.ts     Default character catalog (calls buildElizaCharacterCatalog from @elizaos/shared)
     deep-link-routing.ts     Maps custom URL scheme paths to hash routes (chat, voice, lifeops, wallet, etc.)
     ios-runtime.ts           Re-exports IosRuntimeConfig helpers from @elizaos/ui
@@ -59,7 +59,7 @@ packages/app/
 
 ## Key internal modules
 
-- `src/app.config.ts` — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. Copy this file to white-label a new app.
+- `app.config.ts` (package root) — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. `src/app-config.ts` re-exports it as `APP_CONFIG` plus derived `APP_BRANDING_BASE`/`APP_LOG_PREFIX`/`APP_NAMESPACE`/`APP_URL_SCHEME`. Copy `app.config.ts` to white-label a new app.
 - `src/plugin-loader.ts` — `APP_PLUGIN_SPECS` map of `@elizaos/app-*` → dynamic import. `initializeAppPlugins()` loads all plugins in parallel and calls `setBootConfig()` on `@elizaos/ui`. This is the canonical plugin init path.
 - `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects (feed, scape, shopify-ui, etc.), not for exported components.
 - `src/main.tsx` — React entry point. Calls `initializeAppModules()` (parallel-loads plugins, assembles `AppBootConfig`), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
@@ -76,7 +76,7 @@ packages/app/
 All scripts from this package's `package.json`:
 
 ```bash
-bun run --cwd packages/app dev                        # Vite dev server (renderer only, port resolved from ELIZA_API_PORT/UI_PORT)
+bun run --cwd packages/app dev                        # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
 bun run --cwd packages/app build                      # Full app build (scripts/build.mjs)
 bun run --cwd packages/app build:web                  # Vite build only (no capacitor sync)
 bun run --cwd packages/app plugin:build               # Plugin-only build
@@ -122,8 +122,8 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 
 | Variable | Purpose |
 |---|---|
-| `ELIZA_API_PORT` | Agent API server port (default 31337) |
-| `ELIZA_PORT` | UI server port (default 2138) |
+| `ELIZA_API_PORT` | Agent API server port (default 31337; `ELIZA_PORT` is a fallback) |
+| `ELIZA_UI_PORT` | Vite dev/UI server port (default 2138) |
 | `ELIZA_APP_SOURCEMAP` | Enable source maps in production build |
 | `ELIZA_DESKTOP_VITE_FAST_DIST` | Set by Electrobun dev orchestrator for Rollup watch mode |
 | `ELIZA_DEV_POLLING` | Enable filesystem polling for watch (useful in VMs) |

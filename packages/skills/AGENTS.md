@@ -4,7 +4,7 @@ Bundled skills library and skill loading utilities for elizaOS agents.
 
 ## Purpose
 
-This package ships 34 bundled skills (markdown instruction files) and the TypeScript API for discovering, loading, and formatting them. The agent runtime (`packages/agent`) calls `getSkillsDir()` at startup to pass the bundled skills directory to `@elizaos/plugin-agent-skills`, which injects relevant skills into the agent's system prompt each turn. `@elizaos/plugin-agent-skills` also imports the loader and formatter directly.
+This package ships 34 bundled skills (markdown instruction files) and the TypeScript API for discovering, loading, and formatting them. The agent runtime (`packages/agent`, `runtime/eliza.ts`) calls `getSkillsDir()` at startup to locate the bundled skills directory; `@elizaos/plugin-agent-skills` (`api/skill-discovery-helpers.ts`) also calls `getSkillsDir()` to scan bundled skills. `getSkillsDir` is the only symbol consumers import from this package today.
 
 This package is **not** a plugin — it exports pure utility functions and the bundled skill files. It does not register actions, providers, or services.
 
@@ -20,7 +20,7 @@ packages/skills/
     frontmatter.ts    — parseFrontmatter(), resolveSkillMetadata(), resolveSkillProvenance(), serializeSkillFile()
     formatter.ts      — formatSkillsForPrompt(), formatSkillEntriesForPrompt(), buildSkillCommandSpecs()
   skills/             — 34 bundled skill directories, each with a SKILL.md
-  test/               — unit tests for each src module
+  test/               — formatter.test.ts, frontmatter.test.ts, provenance.test.ts, resolver.test.ts
 ```
 
 ## Key Exports

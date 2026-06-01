@@ -30,13 +30,14 @@ and update hooks key off those names. Product identity is elizaOS; Tails
 references are retained only for provenance, licenses, and internal plumbing.
 
 The Android side targets a curated list of devices where AOSP can be flashed
-safely. Manifests in `release/` enumerate supported devices, channels
-(`alpha` / `beta` / `stable`), and signing keys.
+safely. Flash manifests under `android/installer/manifests/` enumerate the
+supported devices; OS release manifests carry a channel
+(`alpha` / `beta` / `stable` / `nightly`, validated in `scripts/os-release-lib.mjs`).
 
 ## Building locally
 
-Building a live image requires Docker, root-equivalent container privileges,
-and ~20 GB free disk. See `linux/README.md` for prerequisites and the
+Building a live image requires Docker run with `--privileged` (live-build needs
+binfmt_misc and loop devices). See `linux/README.md` for prerequisites and the
 step-by-step build flow.
 
 ## Flashing

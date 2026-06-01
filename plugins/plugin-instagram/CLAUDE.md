@@ -125,9 +125,10 @@ pattern).
   methods before shipping to production.
 - **Multi-account:** Each configured account gets its own `InstagramService` instance. The `start()`
   static method iterates `listInstagramAccountIds()` and registers one connector pair per account.
-- **Caption/comment length caps:** `MAX_CAPTION_LENGTH = 2200`, `MAX_COMMENT_LENGTH = 1000`,
-  `MAX_DM_LENGTH = 1000` — enforced in `service.ts`; `contentShaping.postProcess` auto-truncates
-  comments via `truncateInstagramComment`.
+- **Length caps:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
+  `service.ts` — DMs over the cap throw in `sendDirectMessage`, and `contentShaping.postProcess`
+  auto-truncates comments via the module-local `truncateInstagramComment`. `MAX_CAPTION_LENGTH = 2200`
+  is defined in `constants.ts` but not yet enforced (no caption posting path exists in the stubs).
 - **PostConnector target:** `POST operation=send` requires `mediaId`, `target`, or `replyTo` in
   `content.metadata`; throws without one.
 - **WorkflowCredentialProvider is duck-typed** — it does not import `@elizaos/plugin-workflow` at

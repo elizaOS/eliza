@@ -49,8 +49,8 @@ plugins/plugin-slack/
     index.ts                     Plugin object, init(), dispose(), public exports
     service.ts                   SlackService — Socket Mode, event handlers, connector registration, message send/receive, account management
     types.ts                     All exported types, interfaces, enums, error classes, constants (SLACK_SERVICE_NAME, MAX_SLACK_MESSAGE_LENGTH, etc.)
-    accounts.ts                  Multi-account config resolution helpers (resolveSlackAccount, listEnabledSlackAccounts, etc.)
-    config.ts                    TypeScript config shape types (SlackConfig, SlackThreadConfig, etc.)
+    accounts.ts                  Multi-account config types (SlackAccountConfig, SlackMultiAccountConfig, etc.) and resolution helpers (resolveSlackAccount, listEnabledSlackAccounts, etc.)
+    config.ts                    Character-settings config shape types (SlackConfig, SlackThreadConfig)
     connector-account-provider.ts  ConnectorAccountManager bridge — lists, creates, patches, deletes accounts; OAuth v2 flow
     connector-credential-refs.ts   Persists connector credential references
     workflow-credential-provider.ts  SlackWorkflowCredentialProvider service
@@ -65,7 +65,7 @@ plugins/plugin-slack/
 Only scripts defined in `package.json`. Run from the plugin dir or with `--cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-slack build        # compile with build.ts (tsdown)
+bun run --cwd plugins/plugin-slack build        # compile with build.ts (bun build + tsc declarations)
 bun run --cwd plugins/plugin-slack dev          # hot-reload build
 bun run --cwd plugins/plugin-slack test         # vitest run
 bun run --cwd plugins/plugin-slack typecheck    # tsgo --noEmit
@@ -89,7 +89,7 @@ Resolved via `runtime.getSetting(...)`. Single-account flat env vars or structur
 | `SLACK_SHOULD_IGNORE_BOT_MESSAGES` | No | `"true"` to suppress messages from other bots. Default: `false`. |
 | `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"true"` to require `@mention` before responding. Default: `false`. |
 
-Multi-account config: set `character.settings.slack.accounts` as a record keyed by account ID. Each account supports the full `SlackAccountConfig` shape from `src/config.ts`.
+Multi-account config: set `character.settings.slack.accounts` as a record keyed by account ID. Each account supports the full `SlackAccountConfig` shape from `src/accounts.ts`.
 
 ## How to extend
 

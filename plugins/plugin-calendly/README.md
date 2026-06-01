@@ -79,7 +79,8 @@ const myPlugin = {
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `op` | `"book" \| "cancel"` | Yes | Operation to perform |
+| `subaction` | `"book" \| "cancel"` | Yes | Operation to perform |
+| `confirmed` | boolean | No | Must be `true` to proceed with a cancellation after the preview (ignored for `book`) |
 | `slug` | string | No | Event-type slug for own-event booking |
 | `durationMinutes` | number | No | Desired duration (minutes) for own-event booking |
 | `eventUuid` | string | No | Scheduled event UUID for cancellation |

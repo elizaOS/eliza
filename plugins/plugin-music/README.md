@@ -97,7 +97,7 @@ MUSICBRAINZ_USER_AGENT=YourAppName/1.0.0 (https://yourapp.com)
 ### Other Settings
 
 ```bash
-# Audio cache directory (default: ~/.eliza/audio-cache)
+# Audio cache directory (default: <cwd>/cache/audio)
 AUDIO_CACHE_DIR=/path/to/cache
 
 # Download quality preference (default: mp3_320)
@@ -125,7 +125,7 @@ All music operations route through a single **`MUSIC`** action with a verb-shape
 | `skip` | Skip to next track (requires `confirmed: true`) |
 | `stop` | Stop playback (requires `confirmed: true`) |
 | `queue_view` | Show current queue |
-| `queue_add` | Add a track to the queue |
+| `queue_add` | Add a track to the queue (requires `confirmed: true`) |
 | `queue_clear` | Clear the queue (requires `confirmed: true`) |
 | `playlist_play` | Load and play a saved playlist |
 | `playlist_save` | Save current queue as a playlist (requires `confirmed: true`) |
@@ -139,7 +139,7 @@ All music operations route through a single **`MUSIC`** action with a verb-shape
 | `extend` | Extend existing Suno audio |
 | `custom_generate` | Custom Suno generation with style/BPM/key |
 
-Legacy action names such as `MUSIC_LIBRARY`, `PLAYLIST_OP`, `SEARCH_YOUTUBE`, `PLAY_MUSIC_QUERY`, `DOWNLOAD_MUSIC`, `PLAYBACK_OP`, and `MUSIC_GENERATION` are accepted as similes.
+The `MUSIC` action aggregates similes from its sub-handlers, so legacy intent names such as `PAUSE_MUSIC`, `PLAY_YOUTUBE`, `PLAYLIST`, `SEARCH_YOUTUBE`, `PLAY_MUSIC_QUERY`, `DOWNLOAD_MUSIC`, and `GENERATE_MUSIC` still match. The verb-shaped aliases in `SUBACTION_ALIASES` (e.g. `playlist`, `search_youtube`, `routing`, `zones`, `next`, `unpause`) are also accepted for the `action` parameter.
 
 ## HTTP Streaming API
 

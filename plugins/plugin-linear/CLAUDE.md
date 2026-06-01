@@ -96,8 +96,8 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-linear build        # tsdown compile → dist/
-bun run --cwd plugins/plugin-linear dev          # build with --hot (watch)
+bun run --cwd plugins/plugin-linear build        # Bun.build bundle + tsc .d.ts → dist/
+bun run --cwd plugins/plugin-linear dev          # bun --hot build.ts (rebuild on change)
 bun run --cwd plugins/plugin-linear test         # vitest run
 bun run --cwd plugins/plugin-linear test:watch   # vitest watch
 bun run --cwd plugins/plugin-linear typecheck    # tsgo --noEmit

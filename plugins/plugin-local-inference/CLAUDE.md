@@ -24,15 +24,15 @@ This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBED
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
 ### HTTP routes (mounted by app-core)
-Import from `@elizaos/plugin-local-inference/routes`:
-- Catalog, download, status, and chat-command routes via `handleLocalInferenceRoutes` (`src/local-inference-routes.ts`)
+Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferenceRoutes`, which is exported from the root `@elizaos/plugin-local-inference`):
+- Catalog, download, status, and chat-command routes via `handleLocalInferenceRoutes` (`src/local-inference-routes.ts`, root subpath)
 - TTS: `handleLocalInferenceTtsRoute` (`src/routes/local-inference-tts-route.ts`)
 - ASR: `handleLocalInferenceAsrRoute` (`src/routes/local-inference-asr-route.ts`)
 - Voice first-run: `handleVoiceFirstRunRoutes` (`src/routes/voice-first-run-routes.ts`)
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
 - Voice profiles: `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
-- OpenAI-compat routes: `src/routes/local-inference-compat-routes.ts`
+- Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
 
 ### Runtime boot exports
 Import from `@elizaos/plugin-local-inference/runtime`:
@@ -54,9 +54,9 @@ src/
 
   routes/
     index.ts                      Re-exports all route handlers
-    local-inference-tts-route.ts  POST /local-inference/tts
-    local-inference-asr-route.ts  POST /local-inference/asr
-    local-inference-compat-routes.ts  OpenAI-compat /v1/chat/completions etc.
+    local-inference-tts-route.ts  POST /api/tts/local-inference
+    local-inference-asr-route.ts  POST /api/asr/local-inference
+    local-inference-compat-routes.ts  /api/local-inference/* catalog, downloads, hardware, providers, routing
     voice-first-run-routes.ts     Voice onboarding flow
     voice-models-routes.ts        Voice model install/update routes
     family-member-route.ts        Family-member voice encoder route
@@ -154,7 +154,7 @@ Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (default
 ### Add a new backend capability (e.g. a new image-gen backend)
 1. Implement the capability in `src/services/imagegen/` following the `ImageGenBackend` interface.
 2. Export it from `src/services/imagegen/index.ts`.
-3. Register it via `createImageGenCapabilityRegistration(...)` inside `LocalInferenceService.init()` in `service.ts`.
+3. Register it via `createImageGenCapabilityRegistration(...)` inside `LocalInferenceService.getMemoryArbiter()` in `service.ts` (the private `registerImageGenCapability(arbiter)` helper).
 4. The `MemoryArbiter` will then dispatch `arbiter.requestImageGen(...)` calls to your backend.
 
 ### Register a new arbiter capability (cross-plugin)

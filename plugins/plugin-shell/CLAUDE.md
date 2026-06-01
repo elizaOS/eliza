@@ -17,7 +17,7 @@ Adds shell-execution capability to an Eliza agent: run system commands within a 
 
 - `shellHistoryProvider` (`name = "SHELL_HISTORY"`, `position = 99`) — injects the last 10 commands (with stdout/stderr/exit code), current working directory, allowed directory, and recent file operations into context. Only fires in `terminal` or `code` contexts.
 
-**Actions:** none — this plugin registers no actions. The canonical `SHELL` and `MANAGE_PROCESS` actions live in `@elizaos/plugin-coding-tools`, which consumes `ShellService`.
+**Actions:** none — this plugin registers no actions. The agent-facing `SHELL` action lives in `@elizaos/plugin-coding-tools` (`src/actions/bash.ts`), which consumes `ShellService`; its `action` parameter (e.g. `list`, `poll`, `kill`) maps to `ShellService.processAction()` for process management.
 
 **Evaluators / Routes / Events:** none.
 
@@ -51,7 +51,7 @@ plugins/plugin-shell/
 │   ├── ptyKeys.ts              # encodeKeySequence(), encodePaste(), stripDsrRequests()
 │   ├── shellArgv.ts            # Shell argument parsing helpers
 │   └── processQueue.ts         # Async process queue utility
-└── prompts.ts                  # Prompt templates (if any)
+└── prompts.ts                  # commandExtractionTemplate — LLM prompt to extract a shell command from a request
 ```
 
 ## Commands
@@ -99,5 +99,5 @@ Config is validated by zod in `utils/config.ts → loadShellConfig()`. Missing o
 - **Sandbox mode** — when `shouldUseSandboxExecution(runtime)` is true, commands route through `SandboxManager.exec()` instead of spawning directly. Background/PTY options are silently ignored in sandbox mode.
 - **Platform gating** — iOS and `ELIZA_BUILD_VARIANT=store` builds never enable this plugin. Android requires `ELIZA_RUNTIME_MODE=local-yolo`. Check `auto-enable.ts → terminalSupportedByEnv`.
 - **processRegistry is module-level** — `services/processRegistry.ts` holds process state in module-scope Maps. In tests, call `resetProcessRegistryForTests()` between cases.
-- **No actions here** — `SHELL` and `MANAGE_PROCESS` actions are owned by `@elizaos/plugin-coding-tools`. This plugin only provides the service, approval service, and history provider.
+- **No actions here** — the agent-facing `SHELL` action is owned by `@elizaos/plugin-coding-tools`. This plugin only provides the service, approval service, and history provider.
 - **`SHELL_ALLOWED_DIRECTORY` must exist** — `loadShellConfig()` calls `fs.statSync()` and throws `ENOENT` if the path does not exist. Set it before the agent starts.

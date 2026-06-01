@@ -3,9 +3,9 @@
 Mobile llama.cpp adapter for elizaOS. A thin wrapper over
 [`llama-cpp-capacitor`](https://github.com/arusatech/annadata-llama-cpp) that
 maps its contextId-based API onto elizaOS's `LocalInferenceLoader` contract,
-so the standard `ActiveModelCoordinator` in `@elizaos/app-core` can switch
-between the desktop (node-llama-cpp) engine and mobile native inference
-transparently.
+so the `ActiveModelCoordinator` in `@elizaos/ui`
+(`src/services/local-inference/`) can switch between the desktop
+(node-llama-cpp) engine and mobile native inference transparently.
 
 ## What it does
 
@@ -32,31 +32,38 @@ transparently.
   handles iOS (arm64 + x86_64 with Metal) and Android (arm64-v8a,
   armeabi-v7a, x86, x86_64) itself.
 - It does not run on web. On Electrobun / Vite the desktop agent uses the
-  standalone `node-llama-cpp` engine in `@elizaos/app-core`.
+  standalone `node-llama-cpp` engine (`LocalInferenceEngine` in
+  `@elizaos/ui`, `src/services/local-inference/engine.ts`).
 - It does not export an elizaOS `Plugin` object; it is wired manually via
   `registerCapacitorLlamaLoader`.
 
-## Setup in apps/app
+## Consumption
 
-1. Install the dependency (already declared here):
+This package is consumed by `@elizaos/ui` in
+`src/api/ios-local-agent-kernel.ts`, which dynamically imports
+`@elizaos/capacitor-llama` and uses the `capacitorLlama` singleton for the
+mobile local-agent kernel. The Capacitor app shell lives in `packages/app`
+(its `package.json` declares the `llama-cpp-capacitor` native dependency).
 
-   ```bash
-   bun install
-   ```
+Two ways to wire the adapter into a runtime:
 
-2. Register the loader during Capacitor bootstrap (in the runtime init path
-   that owns the mobile `AgentRuntime`):
+- **`registerCapacitorLlamaLoader(runtime)`** — registers a
+  `localInferenceLoader` service backed by separate chat and embedding adapter
+  instances. Call it during the mobile runtime bootstrap, in the init path that
+  owns the mobile `AgentRuntime`:
 
-   ```ts
-   import { registerCapacitorLlamaLoader } from "@elizaos/capacitor-llama";
+  ```ts
+  import { registerCapacitorLlamaLoader } from "@elizaos/capacitor-llama";
 
-   // After runtime boot, before the Model Hub is mounted:
-   registerCapacitorLlamaLoader(runtime);
-   ```
+  registerCapacitorLlamaLoader(runtime);
+  ```
 
-3. Run `bunx cap sync` in `apps/app` to pick up the native plugin. iOS and
-   Android builds will pull in `llama-cpp-capacitor`'s prebuilt native
-   libraries automatically.
+- **`capacitorLlama`** — the default singleton `LlamaAdapter`, used directly by
+  callers that don't need per-role context separation.
+
+After adding native code, run `bunx cap sync` in `packages/app` to pick up the
+native plugin. iOS and Android builds pull in `llama-cpp-capacitor`'s prebuilt
+native libraries automatically.
 
 ## Configuration
 
@@ -72,9 +79,9 @@ Explicit `cacheTypeK`/`cacheTypeV` fields on `LoadOptions` take precedence over 
 - Only **one model is loaded per adapter role** at a time. `load()` disposes
   the previous context for that adapter before reinitializing, so VRAM is
   never double-allocated.
-- GGUF files are downloaded to the app sandbox by the `@elizaos/app-core`
-  downloader (shared with desktop). The mobile UI filters the catalog to
-  small/tiny models only.
+- GGUF files are downloaded to the app sandbox by the `@elizaos/ui`
+  downloader (`src/services/local-inference/downloader.ts`, shared with
+  desktop). The mobile UI filters the catalog to small/tiny models only.
 - Streaming tokens flow over Capacitor's native event bus
   (`@LlamaCpp_onToken`). Subscribe via `capacitorLlama.onToken(listener)`.
 - The `buun-llama-cpp` fork exposes optional `setCacheType`, `setSpecType`,

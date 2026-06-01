@@ -78,7 +78,7 @@ plugins/plugin-cli/
     utils.ts      Progress reporter, duration/byte helpers, CLI name resolution
     types.ts      All shared interfaces and type aliases
   __tests__/
-    core-test-mock.ts   vi.mock for @elizaos/core logger (used by test files)
+    core-test-mock.ts   vitest setupFile (vi.mock of @elizaos/core logger)
   package.json
   tsconfig.json
   biome.json

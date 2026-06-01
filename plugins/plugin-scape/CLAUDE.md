@@ -20,11 +20,11 @@ Legacy similes (all resolve to `SCAPE`): `SCAPE_WALK_TO`, `MOVE_TO`, `GO_TO`, `T
 |------|----------------|
 | `SCAPE_BOT_STATE` | Agent vitals, position, combat state from the latest perception snapshot |
 | `SCAPE_INVENTORY` | Inventory + equipment (occupied slots only) |
-| `SCAPE_NEARBY` | Nearby NPCs, players, and ground items sorted by Chebyshev distance |
+| `SCAPE_NEARBY` | Nearby NPCs, players, ground items, and scenery objects within the perception radius (capped per category) |
 | `SCAPE_JOURNAL` | Recent journal memories from `JournalService` |
 | `SCAPE_GOALS` | Active and recent goals from `JournalService` |
 
-All providers require `minRole: ADMIN` and are scoped to contexts `["game", "automation", "world", "state"]`.
+All providers require `minRole: ADMIN`. `SCAPE_BOT_STATE`, `SCAPE_INVENTORY`, and `SCAPE_NEARBY` are scoped to contexts `["game", "automation", "world", "state"]`; `SCAPE_JOURNAL` additionally enables `"memory"` and `"tasks"`, and `SCAPE_GOALS` additionally enables `"tasks"`.
 
 ### Services
 | Class | serviceType | What it does |
@@ -103,7 +103,7 @@ bun run --cwd plugins/plugin-scape clean        # rm -rf dist
 
 ## Config / env vars
 
-All resolved in priority order: `runtime.getSetting(key)` → `character.settings.secrets[key]` → `process.env[key]`.
+All resolved by `resolveSetting` in priority order: `runtime.getSetting(key)` (which covers character secrets) → `process.env[key]`. Blank/whitespace values are treated as unset.
 
 | Var | Required | Default | Purpose |
 |-----|----------|---------|---------|

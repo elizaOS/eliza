@@ -90,7 +90,7 @@ No API keys are required. ClawVille uses a runtime-trust model — the plugin is
 1. Add a new subroute string to the `ClawvilleSubroute` union in `src/routes.ts`.
 2. Add a branch in `parseSessionSubroute` to recognise the path segment.
 3. Handle the new subroute in `proxyCommand` — either proxy it via `proxyClawvilleRequest` or return a structured error.
-4. Add it to `buildCommandResult`'s `resultMessage` switch.
+4. Add a case to the `resultMessage` switch (called by `buildCommandResult`).
 5. Register the route in `handleAppRoutes`.
 
 **Add a building:**

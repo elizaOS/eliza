@@ -14,10 +14,10 @@ Consumed by: the Android host app (Kotlin/Java), which calls `installAndroidShim
 packages/plugin-host-shim-android/
   src/
     index.ts           Single entry — exports installAndroidShim()
-  dist/                Compiled output (tsc, ESNext, DOM lib)
+  dist/                Compiled output (tsc, target ES2022, module ESNext, DOM lib)
   package.json
   tsconfig.json        Typecheck config (noEmit, strict, DOM lib)
-  tsconfig.build.json  Build config (extends tsconfig.json, noEmit:false)
+  tsconfig.build.json  Build config (extends tsconfig.json, noEmit:false, excludes *.test.ts)
 ```
 
 ## Key exports
@@ -32,7 +32,7 @@ Reads `window.ElizaosAndroidBridge` (must be set before calling), wires up the b
 
 Throws if `window.ElizaosAndroidBridge` is absent (configuration error on the Kotlin side).
 
-The returned `PluginHostShim` includes a `resolveViewUrl(pluginName, relativePath)` method that returns `https://appassets.androidplatform.net/plugins/<name>/<path>` — the URL scheme served by Android's `WebViewAssetLoader`. This is not a standalone export; access it via the returned shim object.
+The returned `PluginHostShim` includes a `resolveViewUrl(pluginName, relativePath)` method that returns a `URL` for `https://appassets.androidplatform.net/plugins/<name>/<path>` (with `pluginName` passed through `encodeURIComponent`) — the URL scheme served by Android's `WebViewAssetLoader`. This is not a standalone export; access it via the returned shim object.
 
 ### Message wire format
 
@@ -52,7 +52,7 @@ The returned `PluginHostShim` includes a `resolveViewUrl(pluginName, relativePat
 ## Commands
 
 ```bash
-bun run --cwd packages/plugin-host-shim-android build       # tsc compile → dist/
+bun run --cwd packages/plugin-host-shim-android build       # tsc --noCheck → dist/
 bun run --cwd packages/plugin-host-shim-android clean       # rm -rf dist
 bun run --cwd packages/plugin-host-shim-android typecheck   # tsgo --noEmit
 bun run --cwd packages/plugin-host-shim-android test        # bun test src/
@@ -79,5 +79,5 @@ None. All configuration is implicit in the WebView setup on the Kotlin side:
 - **DOM lib required.** `tsconfig.json` includes `"lib": ["ES2022", "DOM"]` because this code runs inside a WebView, not in Node/Bun. Do not remove the DOM lib.
 - **Private package.** `"private": true` — not published to npm; bundled into the Android host app's JS entry point.
 - **`installAndroidShim` must run before any `getHostShim()` calls.** The Kotlin side must invoke the view bundle's bootstrap entry (which calls `installAndroidShim()`) before plugin view code executes.
-- **Request IDs are sequential integers per shim instance.** `nextId` is module-local; a new shim instance resets the counter, so do not create multiple shim instances in one WebView session.
+- **Request IDs are sequential integers per shim instance.** `nextId` is a closure variable inside `installAndroidShim` (starts at 0, first request ID is 1); a new shim instance resets the counter, so do not create multiple shim instances in one WebView session.
 - **JSON-only wire.** All data crossing the bridge is serialized as JSON strings. `JsonValue` from `@elizaos/plugin-remote-manifest` enforces this at the type level.

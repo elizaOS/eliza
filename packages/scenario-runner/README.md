@@ -12,7 +12,7 @@ The scenario runner is the integration-testing harness for elizaOS plugins and a
 # run a single scenario directory with a live LLM provider key
 OPENAI_API_KEY=sk-... eliza-scenarios run ./test/scenarios --scenario my-scenario-id
 
-# deterministic mode — no LLM key required, uses pre-recorded fixtures
+# deterministic mode — no LLM key required, uses the fixture-backed LLM proxy
 SCENARIO_USE_LLM_PROXY=1 eliza-scenarios run ./test/scenarios
 
 # list discovered scenarios without running them
@@ -88,7 +88,7 @@ eliza-scenarios run  <dir>
 | Variable | Effect |
 |---|---|
 | `SCENARIO_USE_LLM_PROXY=1` | Use deterministic fixture-based LLM proxy (no API key needed) |
-| `SCENARIO_LLM_PROXY_STRICT=1` | Fail if any LLM fixtures are left unconsumed |
+| `SCENARIO_LLM_PROXY_STRICT=1` | Strict proxy: throw on any LLM call without a registered fixture |
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Minimum judge score threshold (default: `0.8`) |
 | `SKIP_REASON` | Set to allow intentional scenario skips without exit code 2 |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include `status: "pending"` scenarios |

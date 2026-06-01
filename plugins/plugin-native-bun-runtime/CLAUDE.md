@@ -50,7 +50,7 @@ plugins/plugin-native-bun-runtime/
     SandboxPaths.swift            iOS sandbox path helpers
     bridge/
       HTTPBridge.swift            fetch / HTTP client bridge functions
-      HTTPServerBridge.swift      http_serve_* (disabled on iOS store builds)
+      HTTPServerBridge.swift      http_serve_* (disabled on iOS)
       FSBridge.swift              File system bridge functions
       LlamaBridge.swift           llama_* dispatch surface
       LlamaBridgeImpl.swift       Links against LlamaCpp.xcframework
@@ -119,8 +119,8 @@ Runtime options passed to `start()`:
 ## How to extend
 
 **Add a new bridge function (iOS):**
-1. Create or edit a `*Bridge.swift` file under `ios/Sources/ElizaBunRuntimePlugin/bridge/`.
-2. Register the function in `BridgeInstaller.swift` using the existing `installBridgeFn(_:name:)` pattern.
+1. Create or edit a `*Bridge.swift` file under `ios/Sources/ElizaBunRuntimePlugin/bridge/`. Each bridge module is a class with an `install(into ctx: JSContext)` method.
+2. Inside `install(into:)`, register the function with `ctx.installBridgeFunction(name:)` (the `JSContext` extension defined in `JSContextHelpers.swift`). For a brand-new bridge module, also construct it and call its `install(into: ctx)` from `BridgeInstaller.install(into:...)`, then add it to `BridgeKit`.
 3. If the function is llama-specific, guard it behind `#if ELIZA_IOS_INCLUDE_LLAMA`.
 
 **Add a method to the public TS API:**

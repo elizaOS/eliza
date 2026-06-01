@@ -6,7 +6,7 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 
 | Subdir          | Contains                                                                                     |
 | --------------- | -------------------------------------------------------------------------------------------- |
-| `src/entry.ts`  | CLI process bootstrap (built to `dist/entry.js`, launched by the `eliza.mjs` wrapper).       |
+| `src/entry.ts`  | CLI process bootstrap (built to `dist/entry.js`, imported by the generated app launcher).      |
 | `src/cli/`      | Commander CLI: `start`, `setup`, `doctor`, `db`, `config`, `dashboard`, `update`, `auth`, …  |
 | `src/api/`      | Dashboard HTTP API: server, auth/pairing routes, dev-stack discovery, secrets/wallet routes. |
 | `src/runtime/`  | Eliza agent loader (`eliza.ts`), dev server, runtime-mode (local/remote), Electrobun desktop runtimes. |
@@ -25,7 +25,7 @@ import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 // Targeted subpaths (see package.json exports for the full list)
 import { loadRegistry } from "@elizaos/app-core/registry";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
-import { ensureAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
+import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 ```
 
 The full subpath list lives in the `exports` map of `package.json`.

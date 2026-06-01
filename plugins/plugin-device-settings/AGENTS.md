@@ -29,7 +29,7 @@ src/
   index.ts                         Public barrel — re-exports everything below
   plugin.ts                        Plugin object (appDeviceSettingsPlugin / default)
   register.ts                      Side-effect: registers the overlay app on elizaOS boot
-  ui.ts                            Alternate UI barrel (same exports as index, .tsx extensions)
+  ui.ts                            UI-only barrel (DeviceSettingsAppView + device-settings-app exports, explicit .tsx/.ts extensions)
   components/
     device-settings-app.ts         OverlayApp descriptor + registerDeviceSettingsApp()
     DeviceSettingsAppView.tsx      React overlay component (brightness, volume, roles, shortcuts)

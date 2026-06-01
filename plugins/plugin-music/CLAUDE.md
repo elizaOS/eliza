@@ -197,13 +197,13 @@ bun run --cwd plugins/plugin-music test:e2e       # live smoke (requires running
 
 ## Conventions / Gotchas
 
-- **yt-dlp required at runtime.** Audio download and caching depend on `yt-dlp` in PATH. Discovery order: `YT_DLP_PATH` env → common system paths → `scripts/bin/yt-dlp`. Install via `brew install yt-dlp`, `pipx install yt-dlp`, or download binary.
+- **yt-dlp required at runtime.** Audio download and caching depend on `yt-dlp`. Discovery order (`src/utils/ytdlpCheck.ts`): `YT_DLP_PATH` env → workspace `scripts/bin/yt-dlp` → common system paths (`/usr/local/bin`, `/usr/bin`, `/opt/homebrew/bin`). Install via `brew install yt-dlp`, `pipx install yt-dlp`, or download binary.
 - **ffmpeg/ffprobe required.** Bundled via `ffmpeg-static`/`ffprobe-static` deps; paths overridden by `FFMPEG_PATH`/`FFPROBE_PATH`.
 - **Discord wiring is deferred.** The plugin init waits for the `discord` service load promise before wiring the voice manager. Music works web-only if Discord is absent.
 - **`@elizaos/plugin-suno` is a hard dep.** Generation subactions (`generate`, `extend`, `custom_generate`) delegate to `sunoGenerateMusicHandler` from that package; they are skipped/unreachable if `SUNO_API_KEY` is absent.
-- **Confirmation required for destructive ops.** `skip`, `stop`, `queue_clear`, `playlist_save`, and `download` require `confirmed: true` in the action options.
+- **Confirmation required for destructive ops.** `skip`, `stop`, `queue_add`, `queue_clear`, `playlist_save`, and `download` require `confirmed: true` in the action options (gated via `requireMusicConfirmation` in `src/actions/confirmation.ts`).
 - **MusicBrainz is the zero-config metadata source.** All other metadata APIs (Last.fm, Genius, TheAudioDB) are optional enhancements.
-- **MusicStorageService is not configured by env vars.** Storage dir and quality mode are constructor arguments; `MusicLibraryService` controls them internally.
+- **MusicStorageService is a standalone exported utility.** It is not registered as a plugin service or auto-wired into `MusicLibraryService`; it is exported from `src/index.ts` for callers that want a permanent high-quality archive. Storage dir (`<cwd>/storage/music`) and quality mode are constructor arguments, not env vars.
 - **`@elizaos/plugin-sql` is expected for persistence.** Library, playlists, preferences, and analytics components write to the agent's database via runtime memory/cache APIs.
 
 See the repo-wide rules in the root `AGENTS.md`.

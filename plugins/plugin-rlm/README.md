@@ -92,17 +92,12 @@ client.onMetrics((m) => {
 
 ## Trajectory logging
 
-```typescript
-import { RLMClient } from "@elizaos/plugin-rlm";
-import { RLMTrajectoryIntegration } from "@elizaos/plugin-rlm/trajectory-integration";
-
-const client = new RLMClient();
-const integration = new RLMTrajectoryIntegration({ client });
-const result = await integration.infer("Analyze this long document...");
-const costs = integration.getCostSummary(integration.getTrajectoryIds()[0]);
-```
-
-Pass an optional `logger` implementing `TrajectoryLogger` to integrate with `plugin-trajectory-logger`.
+`trajectory-integration.ts` provides `RLMTrajectoryIntegration`, which wraps an
+`RLMClient` with step-level cost tracking and optional logging to an external
+`TrajectoryLogger` (compatible with `plugin-trajectory-logger`). It is an
+internal source module — the package's public entrypoint exports only
+`rlmPlugin`, `RLMClient`, `configFromEnv`, `stubResult`, `resetClient`,
+`DEFAULT_CONFIG`, `ENV_VARS`, and the RLM types.
 
 ## Architecture
 

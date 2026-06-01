@@ -4,7 +4,7 @@ The runtime heart of elizaOS: `AgentRuntime`, the plugin abstractions (actions /
 
 ## Role
 
-`@elizaos/core` defines the contracts an Eliza agent runs on and the runtime that executes them. Plugins implement `Plugin` and the runtime wires their actions/providers/evaluators/services into the message-handling loop. Consumed by `@elizaos/agent`, `@elizaos/server`, the CLI, and every plugin. It builds to three targets (Node, browser, edge) via conditional exports — keep Node-only code out of the browser/edge entries.
+`@elizaos/core` defines the contracts an Eliza agent runs on and the runtime that executes them. Plugins implement `Plugin` and the runtime wires their actions/providers/evaluators/services into the message-handling loop. Consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the CLI), and every plugin. It builds to three targets (Node, browser, edge) via conditional exports — keep Node-only code out of the browser/edge entries.
 
 ## Layout
 
@@ -14,7 +14,7 @@ src/
   index.node.ts         Full Node API surface (the real export list — start here)
   index.browser.ts      Browser-safe subset (no fs/process-bound modules)
   index.edge.ts         Edge-runtime subset
-  runtime.ts            AgentRuntime class (~700+, `class AgentRuntime implements IAgentRuntime`); the central orchestrator
+  runtime.ts            AgentRuntime class (~9000 lines, `class AgentRuntime implements IAgentRuntime` at L703); the central orchestrator
   runtime-composition.ts  loadCharacters / createRuntimes / settings merge (Node-only boot helpers)
   runtime-env.ts        Runtime environment + state resolution
   plugin.ts             Plugin load/validate/resolve: loadPlugin, resolvePlugins, validatePlugin, resolvePluginDependencies
@@ -87,10 +87,10 @@ bun run --cwd packages/core clean         # remove dist + emitted src artifacts
 
 Read by the runtime (see README for the full WHY of each):
 - `LOG_LEVEL`, `LOG_JSON_FORMAT`, `LOG_FILE` — logger behavior (`src/logger.ts`).
-- `SECRET_SALT` — encryption salt (`src/secrets.ts`, `src/security/redact.ts`).
-- `ALLOW_NO_DATABASE` — fall back to `InMemoryDatabaseAdapter` on `initialize()` when no adapter is provided.
-- `SHOULD_RESPOND_MODEL` (`small`/`large`), `BASIC_CAPABILITIES_KEEP_RESP`, `DISABLE_MEMORY_CREATION`, `ALLOW_MEMORY_SOURCE_IDS` — message/basic-capabilities behavior.
-- Prompt-batcher knobs: `PROMPT_BATCH_SIZE`, `PROMPT_MAX_DRAIN_INTERVAL_MS`, `PROMPT_MAX_SECTIONS_PER_CALL`, `PROMPT_PACKING_DENSITY`, `PROMPT_MAX_TOKENS_PER_CALL`, `PROMPT_MAX_PARALLEL_CALLS`, `PROMPT_MODEL_SEPARATION`.
+- `SECRET_SALT` — encryption salt, read by `getSalt()` in `src/settings.ts` (`ELIZA_ALLOW_DEFAULT_SECRET_SALT` overrides the production non-default check).
+- `ALLOW_NO_DATABASE` — fall back to `InMemoryDatabaseAdapter` on `initialize()` when no adapter is provided (`runtime.ts`).
+- `SHOULD_RESPOND_MODEL` (`small`/`large`, `services/message.ts`), `BASIC_CAPABILITIES_KEEP_RESP` (`services/message.ts`) — message/basic-capabilities behavior.
+- Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `runtime.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
 - `ELIZA_STATE_DIR` — state-dir resolution (`utils/state-dir.ts`); `ELIZA_WORKSPACE_DIR` — workspace folder (`utils/workspace-folder-config.ts`).
 
 Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (it handles legacy aliases).
@@ -110,6 +110,6 @@ Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (i
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
-- `runtime.ts` is very large (~265 KB) — navigate by symbol, not by reading top-to-bottom.
+- `runtime.ts` is very large (~9000 lines / ~259 KB) — navigate by symbol, not by reading top-to-bottom.
 - `src/generated/` and parts of `src/i18n/generated/` are build artifacts; regenerate via prebuild rather than editing.
 - Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../AGENTS.md) — not restated here.

@@ -10,9 +10,7 @@ A Discord connector plugin for elizaOS, enabling rich integration with Discord s
 - Slash command registration and interaction handling
 - Support for Discord attachments and media files
 - Voice channel join/leave functionality
-- Conversation summarization
-- Media transcription capabilities
-- Channel state and voice state providers
+- Media transcription for voice and attachments
 - Channel restriction support (limit bot to specific channels)
 - Robust permissions management and audit event tracking
 - Event-driven architecture with comprehensive event handling
@@ -38,7 +36,6 @@ DISCORD_API_TOKEN=your_api_token
 # Channel Restrictions (Optional)
 # Comma-separated list of Discord channel IDs to restrict the bot to.
 # If not set, the bot operates in all channels.
-# These channels cannot be removed via the leaveChannel action.
 CHANNEL_IDS=123456789012345678,987654321098765432
 
 # Listen-only channels (Optional)
@@ -51,14 +48,14 @@ DISCORD_LISTEN_CHANNEL_IDS=123456789012345678
 DISCORD_VOICE_CHANNEL_ID=123456789012345678
 
 # Behavior Settings (Optional)
-# If true, ignore messages from other bots (default: false)
+# If true, ignore messages from other bots (default: true)
 DISCORD_SHOULD_IGNORE_BOT_MESSAGES=true
 
-# If true, ignore direct messages by default (default: false).
+# If true, ignore direct messages by default (default: true).
 # DMs can still be allowed explicitly via DISCORD_ALLOW_FROM / pairing allowlist.
 DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=true
 
-# If true, only respond when explicitly @mentioned (default: false)
+# If true, only respond when explicitly @mentioned (default: true)
 DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true
 
 # Testing (Optional)
@@ -476,13 +473,7 @@ runtime.registerEvent({
 
 ## Cross-Core Compatibility
 
-This plugin includes a compatibility layer (`compat.ts`) that allows it to work with both old and new versions of `@elizaos/core`. The compatibility layer:
-
-- Automatically handles `serverId` vs `messageServerId` differences
-- Uses a runtime proxy to intercept and adapt API calls
-- Requires no changes to existing code
-
-When migrating to a new core version, see the comments in `compat.ts` for removal instructions.
+This plugin includes a type-level compatibility layer (`compat.ts`) so it typechecks against both old and new versions of `@elizaos/core`. It exports widened types (`ICompatRuntime`, `WorldCompat`, `RoomCompat`) that allow either `serverId` or `messageServerId` on `World`/`Room` objects and on the `ensureConnection`/`ensureWorldExists`/`ensureRoomExists` runtime methods. There is no runtime proxy — it is purely TypeScript declarations consumed where the runtime is referenced (`service.ts`, `messages.ts`, `voice.ts`, `discord-interactions.ts`, `discord-history.ts`).
 
 ## Testing
 
@@ -497,5 +488,5 @@ bun run test
 - Ensure that your `.env` file includes the required `DISCORD_API_TOKEN`
 - The bot requires appropriate Discord permissions (send messages, connect to voice, etc.)
 - If no token is provided, the plugin will load but remain non-functional with appropriate warnings
-- The plugin uses Discord.js v14.18.0 with comprehensive intent support
+- The plugin uses discord.js v14 (`^14.26.4`) with comprehensive intent support
 - Slash commands and modal/component interactions bypass channel whitelists

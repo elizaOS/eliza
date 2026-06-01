@@ -12,13 +12,18 @@ This plugin gives an Eliza agent a full skill lifecycle: discover skills from th
 | Name | File | Description |
 |------|------|-------------|
 | `USE_SKILL` | `src/actions/use-skill.ts` | Canonical entry point — invokes an enabled skill by slug. Accepts `mode` (`auto`/`guidance`/`script`). Similes: `INVOKE_SKILL`, `RUN_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`, `USE_AGENT_SKILL`, `RUN_AGENT_SKILL`, `USE_CAPABILITY`, `RUN_CAPABILITY`. |
-| `SKILL` | `src/actions/skill.ts` | Management parent action; `plugin.ts` promotes it via `promoteSubactionsToActions`, yielding virtual `SKILL_<OP>` actions. Routes by `op` parameter or message-text pattern. |
-| `SKILL_SEARCH` | `src/actions/search-skills.ts` | Search the ClawHub catalog. |
-| `SKILL_DETAILS` | `src/actions/get-skill-details.ts` | Fetch full metadata for a skill slug. |
-| `SKILL_SYNC` | `src/actions/sync-catalog.ts` | Trigger a manual catalog refresh. |
-| `SKILL_TOGGLE` | `src/actions/toggle-skill.ts` | Enable or disable an installed skill. |
-| `SKILL_INSTALL` | `src/actions/install-skill.ts` | Download and install a skill from the registry. |
-| `SKILL_UNINSTALL` | `src/actions/uninstall-skill.ts` | Remove an installed skill. |
+| `SKILL` (`skillAction`) | `src/actions/skill.ts` | Catalog-management parent action. Exposes one `action` parameter with enum `search`/`details`/`sync`/`toggle`/`install`/`uninstall`, and routes each op to the matching subaction module below (by the `action` param or by message-text pattern). |
+
+`plugin.ts` registers the parent via `...promoteSubactionsToActions(skillAction)`, which synthesizes virtual top-level actions `SKILL_SEARCH`, `SKILL_DETAILS`, `SKILL_SYNC`, `SKILL_TOGGLE`, `SKILL_INSTALL`, `SKILL_UNINSTALL` from that enum (each just pins the discriminator and delegates to `skillAction.handler`). The op-handler modules are NOT separate top-level actions — each exports an `*Action` whose `name` is `"SKILL"` and is consumed only through the parent's `ROUTES`:
+
+| Op | Export | File |
+|----|--------|------|
+| `search` | `searchSkillsAction` | `src/actions/search-skills.ts` |
+| `details` | `getSkillDetailsAction` | `src/actions/get-skill-details.ts` |
+| `sync` | `syncCatalogAction` | `src/actions/sync-catalog.ts` |
+| `toggle` | `toggleSkillAction` | `src/actions/toggle-skill.ts` |
+| `install` | `installSkillAction` | `src/actions/install-skill.ts` |
+| `uninstall` | `uninstallSkillAction` | `src/actions/uninstall-skill.ts` |
 
 ### Providers
 | Name | File | Description |
@@ -57,7 +62,7 @@ plugins/plugin-agent-skills/
 │   ├── types.ts            # All domain types (SkillFrontmatter, OttoMetadata, etc.)
 │   ├── parser.ts           # parseFrontmatter, validateFrontmatter, generateSkillsJson, estimateTokens
 │   ├── storage.ts          # ISkillStorage, MemorySkillStore, FileSystemSkillStore, createStorage
-│   ├── agent-runtime-shim.ts  # Thin shim over AgentRuntime for testability
+│   ├── agent-runtime-shim.ts  # No-op integration-telemetry span factory + resolveDefaultAgentWorkspaceDir helper
 │   ├── actions/
 │   │   ├── use-skill.ts    # USE_SKILL action (canonical invocation)
 │   │   ├── skill.ts        # SKILL parent action (routes to sub-actions below)

@@ -6,7 +6,7 @@ Forensic git-history analysis for Eliza agents: per-surface health timeline, dri
 
 This plugin adds git repository forensics to any Eliza agent running in a Node.js environment. It answers questions like "when did this code get bad?" or "where did rot start in `src/payments/`?" by walking `git log`, scoring each commit, detecting quality inflection points, and optionally calling the agent's configured small-text model to write a narrative explanation.
 
-The plugin is opt-in by default unless `ELIZA_GITPATHOLOGIST=true` is set or the service is listed explicitly. It auto-detects whether the workspace has a `.git` directory at service start.
+The plugin is opt-in: the elizaOS agent's plugin collector auto-loads the package when the workspace has a `.git` directory (and the platform is not mobile), unless `ELIZA_GITPATHOLOGIST` overrides that decision. `ELIZA_GITPATHOLOGIST`, `GITPATHOLOGIST_BUDGET`, and `GITPATHOLOGIST_CACHE_DIR` are all declared in the package's `agentConfig.pluginParameters`, but only `GITPATHOLOGIST_BUDGET` and `GITPATHOLOGIST_CACHE_DIR` are read inside this package; `ELIZA_GITPATHOLOGIST` is consumed by the agent runtime's plugin collector. The service itself performs no `.git` detection — `GitPathologyService.start()` registers unconditionally once the package is loaded.
 
 ## Plugin surface
 
@@ -40,7 +40,7 @@ src/
     inflect.ts               Phase 4 — peak and drift inflection detection
     narrate.ts               Phase 5 — LLM narration for drift commits (optional)
   cache/
-    report-cache.ts          Disk-backed JSON cache keyed by sha256(surface+since)
+    report-cache.ts          Disk-backed JSON cache keyed by sha256(surface + '\0' + since)
 ```
 
 ## Pipeline (scan → classify → score → inflect → narrate)
@@ -58,7 +58,7 @@ Reports are cached by key = `sha256(surface + '\0' + since)`. A cache hit is onl
 All scripts require a built `dist/` (run `build` first or use the repo-level turborepo pipeline).
 
 ```bash
-bun run --cwd plugins/plugin-gitpathologist build         # tsdown compile
+bun run --cwd plugins/plugin-gitpathologist build         # Bun.build (ESM + CJS) + tsc declarations
 bun run --cwd plugins/plugin-gitpathologist test          # vitest run
 bun run --cwd plugins/plugin-gitpathologist typecheck     # tsgo --noEmit
 bun run --cwd plugins/plugin-gitpathologist lint          # biome check --write --unsafe
@@ -101,7 +101,7 @@ The action reads `ELIZA_WORKSPACE_DIR` to resolve the repo root when running ins
 
 - **`git` binary required at runtime.** The scan phase calls `spawnSync("git", ...)` directly. The plugin will fail to start meaningfully in environments without `git` on `PATH`.
 - **Node-only.** `exports.node` is the sole distribution target. Do not add browser-compatible code paths.
-- **Secret scrubbing is mandatory before LLM calls.** All commit text and diff snippets pass through `scrubSecretsDeep` before leaving the process or being stored in cache. Never bypass this.
+- **Secret scrubbing is mandatory before LLM calls and cache writes.** `narrate()` runs `scrubSecrets` (string version) over every commit subject and diff snippet before they reach the model prompt; the service runs `scrubSecretsDeep` over the whole `PathologyReport` (including cached reads) before returning or writing to disk. Never bypass either.
 - **Cache is HEAD-keyed, not time-keyed.** Any commit to the repo invalidates existing cache entries for that surface. This is intentional.
 - **Narrate falls back gracefully.** If the runtime provides no `useModel` function or `budget=0`, `narrate()` uses `deterministicRotCause()` and logs a warning. The report is still valid.
 - **No background work.** The service has no timers or subscriptions. Everything is on-demand via `runReport()`.

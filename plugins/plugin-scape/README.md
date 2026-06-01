@@ -19,7 +19,7 @@ First-class Eliza agent integration for **xRSPS** — a TypeScript OSRS private 
 - **Scape Journal** — persistent cross-session memory. Memories, goals, and progress snapshots are written to `~/.eliza/scape-journals/<agentId>.json`.
 - **Operator steering** — send a directive via the Apps UI or `POST /api/apps/scape/prompt` to override the agent's current goal. Supports `pause` / `resume` to halt and restart the autonomous loop.
 - **In-game steering** — a human player can type `::steer <text>` in public game chat to set the agent's goal.
-- **First-class account** — the agent logs in as a real xRSPS player account using the same scrypt auth and Postgres-backed persistence human players use. Skills, inventory, position, and journal accumulate across sessions.
+- **First-class account** — the agent logs in as a real xRSPS player account using the same scrypt auth and account/player persistence human players use. Skills, inventory, position, and journal accumulate across sessions.
 
 ## Actions
 

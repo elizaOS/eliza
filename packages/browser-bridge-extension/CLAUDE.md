@@ -4,7 +4,7 @@ Browser extension (Chrome + Safari) that pairs a user's browser profile with an 
 
 ## Purpose / role
 
-This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It communicates with the elizaOS agent API server (default `http://127.0.0.1:31337`) over HTTP using a companion pairing token. The corresponding server-side routes live in `packages/app-core/src/api/` under the `/api/browser-bridge/` prefix. The `@elizaos/shared` package provides shared types consumed by both sides (`LifeOpsBrowserSession`, `LifeOpsBrowserCompanionSyncResponse`, etc.).
+This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It communicates with the elizaOS agent API server (default `http://127.0.0.1:31337`) over HTTP using a companion pairing token. The corresponding `/api/browser-bridge/*` server-side routes live in `plugins/plugin-browser/src/routes/bridge.ts` (mounted by the plugin-collector); the `/api/website-blocker` route is served by `plugins/plugin-native-websiteblocker`. The `@elizaos/shared` package provides the session contracts consumed by both sides (`LifeOpsBrowserSession`, `CompleteLifeOpsBrowserSessionRequest`).
 
 ## Layout
 

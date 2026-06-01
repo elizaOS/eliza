@@ -6,8 +6,9 @@ NEAR AI Cloud TEE inference provider for Eliza agents via an OpenAI-compatible A
 
 Registers `TEXT_SMALL` and `TEXT_LARGE` model handlers so any Eliza agent can route
 text-generation requests through the NEAR AI Cloud inference API
-(`https://cloud-api.near.ai/v1` by default). The plugin is **opt-in by default** and
-auto-enables when `NEARAI_API_KEY` is present in the environment (see `auto-enable.ts`).
+(`https://cloud-api.near.ai/v1` by default). The plugin is **off by default** and
+auto-enables when `NEARAI_API_KEY` is present in the environment (`shouldEnable()` in
+`auto-enable.ts`, referenced via `elizaos.plugin.autoEnableModule` in `package.json`).
 It ships dual builds for both Node.js and browser environments.
 
 ## Plugin surface
@@ -56,9 +57,9 @@ bun run --cwd plugins/plugin-nearai build         # compile dist/
 bun run --cwd plugins/plugin-nearai dev           # watch build
 bun run --cwd plugins/plugin-nearai test          # vitest run
 bun run --cwd plugins/plugin-nearai test:watch    # vitest watch
-bun run --cwd plugins/plugin-nearai lint          # biome check --write
-bun run --cwd plugins/plugin-nearai typecheck     # tsgo --noEmit
-bun run --cwd plugins/plugin-nearai clean         # rm dist/ .turbo/
+bun run --cwd plugins/plugin-nearai lint          # biome check --write --unsafe
+bun run --cwd plugins/plugin-nearai typecheck     # tsgo --noEmit -p tsconfig.json
+bun run --cwd plugins/plugin-nearai clean         # rm -rf dist .turbo + tsbuildinfo
 ```
 
 ## Config / env vars

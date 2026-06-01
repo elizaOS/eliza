@@ -18,9 +18,10 @@ Six connector contributions registered against the LifeOps
 - `withings`
 - `oura`
 
-Each pair-and-disconnect flow, dispatch surface, and credential boundary
-lives under `src/connectors/`. Connectors return typed `DispatchResult` —
-not booleans.
+`src/connectors/index.ts` registers the `ConnectorContribution`s (Wave-1
+stub dispatchers whose `send`/`read` return typed `DispatchResult`, not
+booleans). The concrete OAuth pair/disconnect, credential storage, and
+provider readers live under `src/health-bridge/`.
 
 ### Anchors
 
@@ -32,13 +33,14 @@ Four anchors registered against the `AnchorRegistry`:
 - `nap.start`
 
 Anchors back the `relative_to_anchor` trigger on
-`ScheduledTask`s — for example, `morning-brief` fires `relative_to_anchor`
-on `wake.confirmed` with a small offset.
+`ScheduledTask`s — for example, the `wake-up` pack fires
+`relative_to_anchor("wake.confirmed", 0)` and the `sleep-recap` pack fires
+`relative_to_anchor("wake.confirmed", 240)`.
 
 ### Bus families
 
-Eight families registered against the `FamilyRegistry` and published on the
-`ActivitySignalBus`:
+Eight families registered against the `BusFamilyRegistry`
+(`runtime.busFamilyRegistry`) and published on the `ActivitySignalBus`:
 
 - `health.sleep.detected`
 - `health.sleep.ended`
@@ -56,15 +58,18 @@ Eight families registered against the `FamilyRegistry` and published on the
 - `sleep-recap` — recap after sleep ends.
 
 Each pack is a `ScheduledTask` (or set thereof) consuming the LifeOps spine.
-The plugin registers them lazily — only when at least one health connector
-pairs.
+`registerHealthDefaultPacks(runtime)` registers all three packs whenever the
+runtime exposes a `defaultPackRegistry`; if it is absent the plugin logs a
+single skip line and contributes nothing.
 
 ### Domain logic
 
 - `src/sleep/` — sleep / circadian / regularity engines.
-- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `app-lifeops` pending Wave-2 (W2-D) decoupling.
-- `src/health-bridge/` — proxied surfaces consumed by LifeOps
-  (`/api/lifeops/health/summary`, `/api/lifeops/health/sync`).
+- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `plugins/plugin-lifeops/src/lifeops/service-mixin-screentime.ts` pending Wave-2 (W2-D) decoupling.
+- `src/health-bridge/` — `detectHealthBackend` (HealthKit on darwin, Google
+  Fit REST fallback), the Strava/Fitbit/Withings/Oura OAuth-bridged readers,
+  the per-provider OAuth flow, and the `createLifeOpsHealth*` record
+  factories. These are direct function exports, not HTTP routes.
 
 ## How LifeOps consumes plugin-health
 
@@ -75,11 +80,12 @@ LifeOps does not import internal modules. Consumption goes through:
 2. **Anchor contributions** — registered via `registerHealthAnchors(runtime)`
    into the `AnchorRegistry`.
 3. **Bus families** — registered via `registerHealthBusFamilies(runtime)`
-   into `FamilyRegistry`.
+   into `BusFamilyRegistry` (`runtime.busFamilyRegistry`).
 4. **Default packs** — registered via `registerHealthDefaultPacks(runtime)`.
 5. **Public exports** — `detectHealthBackend`, sleep utilities, screen-time
    helpers exported from `@elizaos/plugin-health` and re-exported by
-   `app-lifeops` only where the surface is part of the LifeOps public API.
+   `@elizaos/plugin-lifeops` only where the surface is part of the LifeOps
+   public API.
 
 If the LifeOps runtime registries are not available at boot, the plugin
 logs a single skip line and contributes nothing. This is the soft-dependency
@@ -87,16 +93,17 @@ posture.
 
 ## Soft-dependency posture
 
-`plugin-health` does not require `app-lifeops`. Other apps can consume the
-plugin by registering their own implementations of:
+`plugin-health` does not require `@elizaos/plugin-lifeops`. Other apps can
+consume the plugin by registering their own implementations of:
 
-- `ConnectorRegistry` (with `register` / `get` / `list`)
-- `AnchorRegistry` (with `register` / `resolve`)
-- `FamilyRegistry` (with `register`)
-- A `ScheduledTaskRunner` that accepts the default packs
+- `ConnectorRegistry` (with `register` / `list` / `get` / `byCapability`)
+- `AnchorRegistry` (with `register` / `list` / `get`)
+- `BusFamilyRegistry` (with `register` / `list`)
+- `DefaultPackRegistry` (with `register` / `list` / `get`)
 
-The contracts the plugin builds against live in `src/contracts/health.ts`
-and `plugins/plugin-lifeops/docs/audit/wave1-interfaces.md` §1, §3.
+The structural contracts the plugin builds against live in
+`src/connectors/contract-stubs.ts`, `src/default-packs/contract-stubs.ts`,
+and `src/contracts/health.ts`.
 
 ## Where to look next
 

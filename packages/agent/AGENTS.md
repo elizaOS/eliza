@@ -42,7 +42,7 @@ src/
     plugin-auto-enable.ts Plugin auto-enable resolution
     paths.ts              resolveUserPath() and state/path helpers
     env-vars.ts, schema.ts, model-metadata.ts, owner-contacts.ts
-  services/               Business-logic services (capability-broker, permissions-registry, plugin-manager/-installer/-compiler, relationships-graph, agent-export, shell-execution-router, tee-*, dstack-tee-provider, cove-quote)
+  services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, tee-*, dstack-tee-provider, cove-quote)
   actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory, compact-conversation)
   providers/              Providers for createElizaPlugin (workspace, admin-trust/-panel, session, rolodex, recent/relevant-conversations, pending-permissions, escalation-trigger, page-scoped-context, ...)
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts

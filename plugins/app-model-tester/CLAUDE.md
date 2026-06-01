@@ -76,7 +76,7 @@ No plugin-specific env vars are read at load time. Model provider credentials (A
 ## How to extend
 
 **Add a new probe kind:**
-1. Add the new `TestKind` literal to the union in `src/routes.ts` and `src/ModelTesterAppView.tsx`.
+1. Add the new literal to the `TestKind` union in `src/routes.ts` and to the `TestId` union in `src/ModelTesterAppView.tsx`.
 2. Add a `MODEL_TESTS` entry in `src/routes.ts` with the matching `ModelType` constant.
 3. Add a `case` branch in `runModelTest()` (`src/routes.ts`) that calls `runtime.useModel(...)` and returns a plain serialisable object.
 4. Add a `TEST_COPY` entry in `src/ModelTesterAppView.tsx` for the UI label/subtitle.

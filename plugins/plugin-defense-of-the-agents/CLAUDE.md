@@ -31,7 +31,7 @@ The UI components are registered via `@elizaos/app-core/ui-compat`:
 | `refreshRunSession(ctx)` | Called on UI poll — returns cached or fresh session state |
 | `stopRun(ctx)` | Called on stop — clears game loop, flushes per-agent caches |
 | `collectLaunchDiagnostics(ctx)` | Returns `AppLaunchDiagnostic[]` when the remote API was unreachable at launch |
-| `handleAppRoutes(ctx)` | HTTP multiplexer for `GET /api/apps/defense-of-the-agents/viewer`, session state, and session message/command POSTs |
+| `handleAppRoutes(ctx)` | HTTP multiplexer: `GET .../viewer` (embedded viewer HTML), `GET .../session/<id>` (session state), `POST .../session/<id>/message` (commands), `POST .../session/<id>/control` (rejected — no pause/resume) |
 
 ## Layout
 

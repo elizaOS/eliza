@@ -23,7 +23,7 @@ The agent operates in `spectate-and-steer` mode — it plays autonomously, but a
 | Embedded spectator viewer | Proxied live HTML from `defenseoftheagents.com` with auth UI stripped |
 | Manual command parsing | Natural-language lane/recall/ability commands, JSON deployment bodies, explicit messages |
 | Dashboard operator surface | `DefenseAgentsOperatorSurface` — telemetry, activity feed, strategy panel |
-| Sidebar detail panel | `DefenseAgentsDetailExtension` — hero status and quick-action controls |
+| Sidebar detail panel | `DefenseAgentsDetailExtension` — renders the operator surface in a compact `detail` variant |
 | TUI view | `DefenseAgentsTuiView` — terminal-friendly layout |
 
 ## Enabling the plugin

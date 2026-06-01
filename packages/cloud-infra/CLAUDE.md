@@ -56,21 +56,25 @@ packages/cloud-infra/
           cloud-init/
             bootstrap.yaml.tftpl   # cloud-init template: installs Docker, sets up systemd units
       gcp/
-        01-foundation/             # GCP foundation (VPC, IAM) — experimental, not CI-wired
-        02-k8s/                    # GKE cluster — experimental, not CI-wired
-  tests/
+        01-foundation/             # GCP foundation (VPC, IAM, GKE module) — experimental, not CI-wired
+        02-k8s/                    # GKE cluster resources — experimental, not CI-wired
+    tests/                         # Chainsaw operator E2E suites (require a running kind cluster)
+      .chainsaw.yaml               # Chainsaw Configuration (name eliza-operator-tests; timeouts, parallelism)
+      README.md                    # Per-suite coverage map for the Server operator + agent-server
+      0*-<name>/                   # Numbered suites (Server CR input + chainsaw-test.yaml + asserts)
+  tests/                           # Top-level Bun smoke tests (YAML-parse only, no cluster needed)
     local-values.test.ts           # Validates CNPG + Redis Helm values YAML structure
     local-manifests.test.ts        # Validates K8s manifests (apiVersion/kind/metadata)
-    chainsaw-config.test.ts        # Validates .chainsaw.yaml for cluster integration tests
+    chainsaw-config.test.ts        # Validates cloud/tests/.chainsaw.yaml shape (kind/timeouts/parallelism)
 ```
 
 ## Key subsystems
 
 ### Local dev cluster (`cloud/local/`)
 
-Brings up a `kind` cluster with namespaces `eliza-agents` and `eliza-infra`, applies manifests (Redis, redis-rest REST adapter, external-service aliases), and installs CNPG + Bitnami Redis via Helm using the values files in this directory.
+`setup.sh` brings up a `kind` cluster with namespaces `eliza-agents` and `eliza-infra`, applies the manifests (redis alias, redis-rest REST adapter, external-service aliases), then Helm-installs KEDA, metrics-server, the CloudNativePG operator + a CNPG Postgres cluster, and Bitnami Redis using the values files in this directory. It also builds the Pepr Server operator (from `cloud-services/operator`) and the `agent-server` image, then applies the `shared-*.yaml` Server CRs.
 
-The `shared-eliza.yaml` manifest is a `eliza.ai/v1alpha1` Server custom resource — it requires the elizaOS operator to be installed in the cluster to be reconciled.
+The `shared-eliza.yaml` manifest is a `eliza.ai/v1alpha1` Server custom resource — it requires the Pepr operator (which `setup.sh` deploys) to be reconciled.
 
 ### Docker Compose (`cloud/docker-compose.yml`)
 
@@ -87,6 +91,10 @@ The current production control-plane VM runs:
 - `cloudflared` — public tunnel (`sandboxes.elizacloud.ai`)
 
 Remote state lives in Cloudflare R2 bucket `eliza-terraform-state`. Use `backend-staging.hcl` or `backend-production.hcl` for `terraform init -backend-config=`.
+
+### Chainsaw operator E2E (`cloud/tests/`)
+
+Numbered [Chainsaw](https://kyverno.github.io/chainsaw/) suites (`cloud/tests/0*/`) that exercise the Pepr Server operator against a running kind cluster: they apply Server CRs and assert the generated Deployment / Service / KEDA ScaledObject plus the agent-server HTTP lifecycle. Driven by `cloud/tests/.chainsaw.yaml` (`chainsaw test --config .chainsaw.yaml`). The top-level `tests/chainsaw-config.test.ts` only validates that config's shape; running the suites themselves needs `chainsaw` plus the cluster from `setup.sh`.
 
 ## Commands
 

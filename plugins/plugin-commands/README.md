@@ -77,7 +77,7 @@ import { hasCommand, detectCommand, normalizeCommandBody } from "@elizaos/plugin
 
 hasCommand("/help");                   // true
 hasCommand("hello world");            // false
-detectCommand("/think:high");         // { isCommand: true, command: { key: "think", args: ["high"], ... } }
-normalizeCommandBody("@bot /status"); // "/status"
+detectCommand("/think:high");          // { isCommand: true, command: { key: "think", args: ["high"], ... } }
+normalizeCommandBody("@bot /status", "bot"); // "/status"
 ```
 

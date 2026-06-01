@@ -24,7 +24,7 @@ Add the plugin to your agent's character file:
 }
 ```
 
-The plugin self-enables when `SHOPIFY_ACCESS_TOKEN` is set in the agent's environment. No explicit opt-in is required when that variable is present.
+The plugin self-enables when `SHOPIFY_ACCESS_TOKEN` or `SHOPIFY_ACCOUNTS` is set in the agent's environment. No explicit opt-in is required when either variable is present.
 
 ## Configuration
 

@@ -17,7 +17,7 @@ Cross-platform screen capture Capacitor plugin for elizaOS. Captures screenshots
 | Screenshot | Yes (getDisplayMedia) | Yes (UIKit) | Yes (MediaProjection) |
 | Screen recording | Yes (MediaRecorder) | Yes (ReplayKit) | Yes (MediaRecorder) |
 | Pause/resume | Yes | Yes | API 24+ only |
-| System audio | Browser-dependent | Yes (RPSampleBufferType.audioApp) | API 29+ |
+| System audio | Browser-dependent | Yes (RPSampleBufferType.audioApp) | No (microphone only) |
 | Microphone audio | Yes | Yes | Yes |
 
 ## Installation
@@ -103,12 +103,12 @@ await ScreenCapture.requestPermissions();
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `quality` | `'low' \| 'medium' \| 'high' \| 'highest'` | `'high'` | Quality preset (affects fps + bitrate on native) |
+| `quality` | `'low' \| 'medium' \| 'high' \| 'highest'` | `'high'` | Quality preset (sets bitrate on iOS; sets fps + bitrate on Android) |
 | `fps` | `number` | 30 | Frames per second (1–60; overrides quality preset) |
 | `bitrate` | `number` | Estimated | Video bitrate in bits/s (overrides quality preset) |
 | `maxDuration` | `number` | unlimited | Stop automatically after N seconds |
 | `maxFileSize` | `number` | unlimited | Stop automatically after N bytes |
-| `captureSystemAudio` | `boolean` | `true` | Include app/system audio in recording |
+| `captureSystemAudio` | `boolean` | `true` | Include app/system audio (browser + iOS; Android records microphone only) |
 | `captureMicrophone` | `boolean` | `false` | Include microphone audio in recording |
 
 ## Building from source

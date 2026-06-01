@@ -42,12 +42,13 @@ Three views registered in `src/index.ts`:
 
 ### Routes
 
-`src/routes.ts` exports HTTP route handlers registered under `/api/apps/2004scape/`:
+`src/routes.ts` provides the viewer/session HTTP handler plus app-lifecycle hook exports:
 
-- `GET /api/apps/2004scape/viewer` — proxies and injects the 2004scape game client HTML
-- `GET /api/apps/2004scape/viewer/proxy/*` — transparent proxy to `RS_SDK_SERVER_URL`
-- App lifecycle routes (`/prepare`, `/run`, `/diagnostic`) — called by the elizaOS app session framework
-- Session routes (`/api/apps/2004scape/session/:id`, `.../message`, `.../control`, `.../bridge/sync`) — operator dashboard ↔ embedded game client bridge
+- `handleAppRoutes(ctx)` dispatches the HTTP routes under `/api/apps/2004scape/`:
+  - `GET /api/apps/2004scape/viewer` — proxies and injects the 2004scape game client HTML
+  - `GET /api/apps/2004scape/viewer/proxy/*` — transparent proxy to `RS_SDK_SERVER_URL`
+  - Session routes (`GET /api/apps/2004scape/session/:id`, plus POST `.../message`, `.../control`, `.../bridge/sync`) — operator dashboard ↔ embedded game client bridge
+- App-lifecycle hooks (`prepareLaunch`, `resolveLaunchSession`, `refreshRunSession`, `collectLaunchDiagnostics`, `resolveViewerAuthMessage`, `stopRun`) — named function exports invoked by the elizaOS app/remote-plugin bridge, not URL routes.
 
 ### Gateway
 

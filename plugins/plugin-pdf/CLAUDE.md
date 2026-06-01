@@ -42,7 +42,7 @@ All scripts are from `package.json`. Run from repo root with `--cwd`:
 bun run --cwd plugins/plugin-pdf build          # production build (node + browser)
 bun run --cwd plugins/plugin-pdf dev            # watch mode build
 bun run --cwd plugins/plugin-pdf test           # vitest run
-bun run --cwd plugins/plugin-pdf typecheck      # tsc --noEmit (tsgo)
+bun run --cwd plugins/plugin-pdf typecheck      # tsgo --noEmit
 bun run --cwd plugins/plugin-pdf lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-pdf lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-pdf format         # biome format --write

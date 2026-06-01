@@ -4,7 +4,7 @@ Pure TypeScript type contracts for elizaOS. Zero runtime code, zero runtime depe
 
 ## What it is
 
-This package contains the shared type definitions used across the elizaOS monorepo. Types that need to be referenced by both server-side packages (like `@elizaos/core`) and client-side packages (like the web dashboard) live here so neither side has to depend on the full runtime.
+This package contains the shared type definitions used across the elizaOS monorepo. Its direct dependents are `@elizaos/core` and `@elizaos/shared`. Types that need to be referenced by both the runtime and client-side packages (the web dashboard reaches them transitively through `@elizaos/shared`) live here so neither side has to depend on the full runtime.
 
 ## What it contains
 
@@ -13,7 +13,7 @@ This package contains the shared type definitions used across the elizaOS monore
 | `cloud-topology` | `ElizaCloudService`, `ResolvedElizaCloudTopology` — how the local runtime sees its relationship to Eliza Cloud |
 | `deployment` | `DeploymentTargetRuntime`, `DeploymentTargetConfig` — local / cloud / remote deployment shapes |
 | `roles` | `RoleName` (`OWNER > ADMIN > USER > GUEST`), `RolesWorldMetadata`, `RolesConfig` |
-| `service-routing` | `LinkedAccountConfig`, `ServiceRouteConfig`, `ServiceRoutingConfig`, provider ID union, credential key union |
+| `service-routing` | `LinkedAccountConfig`, `LinkedAccountProviderId`, `ServiceRouteConfig`, `ServiceRoutingConfig`, `ServiceCapability`, `ServiceTransport` |
 | `style` | `CharacterLanguage`, `StylePreset`, `MessageExample` — character/persona shapes consumed by onboarding and the character loader |
 | `wallet` | EVM + Solana balances, NFTs, BSC trade execution (quote/execute/transfer), Steward vault, trading-profile ledger, market overview |
 

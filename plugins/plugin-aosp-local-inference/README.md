@@ -27,7 +27,7 @@ All handlers self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on non-AOSP platf
 
 ## How to enable
 
-This package is loaded by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/app-core`'s `ensure-local-inference-handler.ts`. It is not an elizaOS plugin with auto-discovery — activation requires calling `ensureAospLocalInferenceHandlers(runtime)` after the agent runtime starts.
+This package is loaded by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`. It is not an elizaOS plugin with auto-discovery — activation requires calling `ensureAospLocalInferenceHandlers(runtime)` after the agent runtime starts.
 
 Set the following environment variable before launching the bun process (done automatically by `ElizaAgentService.java` in AOSP builds):
 
@@ -39,7 +39,7 @@ The package also auto-activates on `process.arch === "riscv64"` without requirin
 
 ## Required native libraries
 
-The following shared libraries must be present in `cwd/{abi}/` (where `{abi}` is `arm64-v8a`, `x86_64`, or `riscv64`). They are compiled by `scripts/elizaos/compile-libllama.mjs`:
+The following shared libraries must be present in `cwd/{abi}/` (where `{abi}` is `arm64-v8a`, `x86_64`, or `riscv64`). They are compiled by `packages/app-core/scripts/aosp/compile-libllama.mjs`:
 
 - `libllama.so` — elizaOS/llama.cpp fork (`v0.1.0-eliza`, based on `apothic/llama.cpp-1bit-turboquant` @ `main-b8198-b2b5273`)
 - `libeliza-llama-shim.so` — struct-by-value wrapper (NEEDED-links `libllama.so`)
@@ -53,7 +53,7 @@ The following shared libraries must be present in `cwd/{abi}/` (where `{abi}` is
 Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority order:
 
 1. `assignments.json` + `registry.json` (managed by the local-inference service)
-2. `manifest.json` (written by `scripts/elizaos/stage-default-models.mjs`)
+2. `manifest.json` (written by `packages/app-core/scripts/aosp/stage-default-models.mjs`)
 3. Glob fallback scan for `*.gguf` matching expected name patterns
 
 Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not staged:
@@ -73,7 +73,7 @@ Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not st
 | `ELIZA_MTP` | — | Set `"1"` for MTP speculative decoding |
 | `ELIZA_AOSP_TTS_PREWARM` | — | Set `"true"` to pre-warm TTS at boot |
 | `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` | — | Set `"1"` to skip HuggingFace download |
-| `ELIZA_AOSP_LLAMA_DEBUG_LOG` | — | Set `"1"` for NDJSON debug log |
+| `ELIZA_AOSP_LLAMA_DEBUG_LOG` | — | Set `"1"` for line-delimited debug log |
 
 See `CLAUDE.md` for the full variable reference.
 

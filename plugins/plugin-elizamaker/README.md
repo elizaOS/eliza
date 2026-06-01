@@ -1,6 +1,6 @@
 # @elizaos/plugin-elizamaker
 
-Adds an ERC-8041 NFT drop system to an Eliza agent: public and whitelist minting, Twitter/X-verified Merkle proofs, and Eliza NFT holder verification.
+Adds an ERC-8041 NFT drop system to an Eliza agent: public and whitelist minting plus Twitter/X-verified Merkle proofs, exposed as HTTP API routes on the agent server.
 
 ## What this plugin does
 
@@ -11,8 +11,9 @@ When enabled, the plugin exposes HTTP API routes directly on the agent's server.
 - Mint a "shiny" variant (0.1 ETH + gas)
 - Mint with a whitelist Merkle proof for whitelisted wallets
 - Verify Twitter/X ownership to join the whitelist (via a public tweet containing their wallet address + `#ElizaAgent`)
-- Check Eliza NFT holder status on Base mainnet and auto-whitelist holders
 - Query current Merkle root and generate proofs for any address
+
+The package also exports Eliza NFT holder-check helpers (`verifyElizaHolder` / `verifyAndWhitelistHolder` in `nft-verify.ts`), but no HTTP route currently invokes them.
 
 ## Actions / capabilities added
 
@@ -72,7 +73,7 @@ Or reference it by package name in your agent character config if the runtime su
 4. On success the wallet is added to `whitelist.json` in the agent state dir.
 5. Call `GET /api/whitelist/merkle/proof` to get the `bytes32[]` proof, then submit with `POST /api/drop/mint-whitelist`.
 
-Alternatively, holding an Eliza NFT on Base mainnet auto-whitelists the wallet (checked via `verifyAndWhitelistHolder` from `nft-verify.ts`).
+Note: `nft-verify.ts` exports `verifyElizaHolder` / `verifyAndWhitelistHolder` for NFT-based whitelisting, but these are not wired to any route. The `nftVerified` field returned by `GET /api/whitelist/status` is currently an alias of the Twitter verification state.
 
 ## Environment variables
 

@@ -76,5 +76,5 @@ interface SmsMessageSummary {
 bun run --cwd plugins/plugin-native-messages build
 ```
 
-Requires `bun`, `tsc`, and `rollup` (all listed as dev dependencies).
+Runs with `bun`; `typescript` (`tsc`) and `rollup` are dev dependencies.
 

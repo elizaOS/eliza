@@ -20,7 +20,7 @@ In browser environments a web fallback is provided using `document.visibilitySta
 | Battery on/off charging | Yes | Yes | Yes (Battery Status API) |
 | Sleep stage / biometrics | HealthKit | Health Connect | No |
 | Screen time / usage | DeviceActivity + FamilyControls | `PACKAGE_USAGE_STATS` | No |
-| Background refresh | `BGAppRefreshTask` | Not available | No |
+| Background refresh | Not available (foreground monitoring only) | Not available | No |
 
 ## Installation
 

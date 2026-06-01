@@ -35,7 +35,7 @@ ios/Sources/MobileAgentBridgePlugin/
   MobileAgentBridgePlugin.swift   URLSessionWebSocketTask tunnel + WebView IPC dispatch.
 
 android/src/main/java/ai/eliza/plugins/mobileagentbridge/
-  MobileAgentBridgePlugin.kt      OkHttp WebSocket tunnel + foreground-service agent dispatch.
+  MobileAgentBridgePlugin.kt      OkHttp WebSocket tunnel + dispatch into the registered ElizaAgentService.
 
 ElizaosCapacitorMobileAgentBridge.podspec   CocoaPods spec for iOS native build.
 rollup.config.mjs                           Bundles CJS + ESM outputs.

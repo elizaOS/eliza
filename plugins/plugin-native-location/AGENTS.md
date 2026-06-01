@@ -102,7 +102,7 @@ Native platform permissions are requested at runtime via `requestPermissions()` 
 - **Capacitor bridge, not elizaOS Plugin object.** Do not look for `actions`, `providers`, or `services` — this package does not export any. It integrates with Capacitor, not the elizaOS agent runtime directly.
 - **`@capacitor/core` is a peer dep.** The Capacitor version in the host app must be `^8.3.1`. Do not bundle it.
 - **Web permission flow is implicit.** `requestPermissions()` on web calls `getCurrentPosition` internally to trigger the browser permission prompt — there is no direct Permissions API call for geolocation.
-- **Android background location is Android 10+ only.** The `background` field in `LocationPermissionStatus` is only populated on API 29+; earlier versions mirror the foreground state.
+- **Android background location is a separate permission on Android 10+.** On API 29+ the `background` field in `LocationPermissionStatus` reflects the distinct `ACCESS_BACKGROUND_LOCATION` grant; earlier versions mirror the foreground state.
 - **iOS accuracy mapping.** `"high"` maps to `kCLLocationAccuracyNearestTenMeters` (not `kCLLocationAccuracyBest`). Only `"best"` gives `kCLLocationAccuracyBest`.
 - **Watch IDs are not integers.** Android and iOS both use UUID strings; web uses a prefixed timestamp string. Always treat watchId as an opaque string.
 - **Build requires native toolchains.** TypeScript builds with `bun run build`; native iOS/Android code is compiled by Xcode / Gradle during host app builds, not here.

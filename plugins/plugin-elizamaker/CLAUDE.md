@@ -4,7 +4,7 @@ ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG 
 
 ## Purpose / role
 
-Adds an on-chain NFT drop system to an Eliza agent: exposes HTTP API routes for minting ERC-8041 agent NFTs (public, shiny, and whitelist variants), Twitter/X-verified whitelist proofs using Merkle trees, and Eliza NFT holder verification on Base mainnet. Loaded by adding `@elizaos/plugin-elizamaker` to the agent's plugin list; opt-in only (no default-enable). Requires EVM wallet config and a deployed ERC-8041 collection contract to activate drop/mint functionality.
+Adds an on-chain NFT drop system to an Eliza agent: exposes HTTP API routes for minting ERC-8041 agent NFTs (public, shiny, and whitelist variants) and Twitter/X-verified whitelist proofs using Merkle trees. It also exports Eliza NFT holder-check helpers (`nft-verify.ts`), though those are not wired to any route. Loaded by adding `@elizaos/plugin-elizamaker` to the agent's plugin list; opt-in only (no default-enable). Requires EVM wallet config and a deployed ERC-8041 collection contract to activate drop/mint functionality.
 
 ## Plugin surface
 
@@ -89,6 +89,7 @@ Whitelist data is persisted to `<stateDir>/whitelist.json` (mode 0600). OG code 
 - **Merkle tree is in-memory and rebuilt per request** from `whitelist.json`. No caching — acceptable for small whitelists; add caching if the list grows large.
 - **FxTwitter API** (`api.fxtwitter.com`) is used for tweet verification — no API key required. Rate limits apply.
 - **Eliza NFT contract** is hardcoded to `0x5Af0D9827E0c53E4799BB226655A1de152A425a5` on Base mainnet. `ELIZA_NFT_RPC_URL` overrides the RPC but not the address.
+- **NFT verification helpers are not route-wired.** `verifyElizaHolder` and `verifyAndWhitelistHolder` (`nft-verify.ts`) are exported but no HTTP route calls them. The `nftVerified` field in `/api/whitelist/status` is an alias of the Twitter verification state (`nftVerified: twitterVerified`), not a real on-chain check.
 - **OG code** is a silent UUID written at first startup to `~/.eliza/.og`. It is surfaced in `/api/whitelist/status` as `ogCode`. Validation helpers (`generateValidCodes`, `isValidOGCode`) are exported from `og-tracker.ts` but not re-exported from the package index and not called at runtime — reserved for external scripts.
 - Route handler requires a real Node.js `http.IncomingMessage` / `http.ServerResponse` — will throw `TypeError` if passed a non-Node HTTP adapter.
 - See root `AGENTS.md` for repo-wide conventions (logger usage, ESM, naming, architecture rules).

@@ -32,7 +32,7 @@ plugins/plugin-groq/
   auto-enable.ts        Checks for GROQ_API_KEY — used by elizaOS plugin auto-enable engine
   index.node.ts         Node entry — re-exports index.ts
   index.browser.ts      Browser entry — re-exports index.ts
-  build.ts              tsdown build script (node + browser targets)
+  build.ts              Bun.build script (node + browser targets)
   __tests__/
     smoke.test.ts              Plugin registration contract shape tests
     retry.test.ts              classifyRetryError unit tests
@@ -48,7 +48,7 @@ plugins/plugin-groq/
 All scripts run from the package root via:
 
 ```bash
-bun run --cwd plugins/plugin-groq build         # tsdown compile (node + browser)
+bun run --cwd plugins/plugin-groq build         # Bun.build compile (node + browser)
 bun run --cwd plugins/plugin-groq dev           # watch mode build
 bun run --cwd plugins/plugin-groq test          # vitest run
 bun run --cwd plugins/plugin-groq typecheck     # tsgo --noEmit

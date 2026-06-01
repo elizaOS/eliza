@@ -89,7 +89,8 @@ authorization dialog in the Discord desktop app, then subscribe to channels via
 ## Session storage
 
 OAuth tokens are persisted at `<stateDir>/discord-local/session.json`. `stateDir` is resolved by
-`resolveStateDir()` from `@elizaos/core` (defaults to `~/.eliza`).
+`resolveStateDir()` from `@elizaos/core` (`ELIZA_STATE_DIR`, else `$XDG_STATE_HOME/eliza`, else
+`~/.local/state/eliza`).
 
 ## Limitations
 

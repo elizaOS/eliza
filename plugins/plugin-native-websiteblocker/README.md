@@ -39,9 +39,10 @@ This package is a Capacitor plugin, not a standalone elizaOS runtime plugin. It 
 ### Android
 
 - Android VPN consent is required before the first block. `startBlock` triggers the system VPN permission dialog automatically if consent has not been granted.
-- Declare the following in your `AndroidManifest.xml` (already present in the plugin's manifest):
-  - `android.permission.INTERNET`
-  - `android.permission.FOREGROUND_SERVICE`
+- The plugin's `AndroidManifest.xml` already declares the required permissions and service binding:
+  - `android.permission.FOREGROUND_SERVICE` / `android.permission.FOREGROUND_SERVICE_SPECIAL_USE`
+  - `android.permission.POST_NOTIFICATIONS`
+  - `android.permission.RECEIVE_BOOT_COMPLETED`
   - `BIND_VPN_SERVICE` on `WebsiteBlockerVpnService`
 
 ### Browser / web

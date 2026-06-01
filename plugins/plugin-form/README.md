@@ -26,15 +26,13 @@ Add the plugin to your agent character config:
 ```json
 {
   "plugins": ["@elizaos/plugin-form"],
-  "settings": {
-    "features": {
-      "form": true
-    }
+  "features": {
+    "form": true
   }
 }
 ```
 
-The plugin auto-enables when `config.features.form` is truthy. No environment variables are required.
+The plugin auto-enables when `config.features.form` is truthy (`true`, or an object whose `enabled` is not `false`). No environment variables are required.
 
 ## Built-in field types
 

@@ -90,9 +90,9 @@ In production full Bun mode, the Swift host calls the directly linked
 `ElizaBunEngine` ABI, starts `agent-bundle.js ios-bridge --stdio`, and forwards
 React requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
-the native plugin is available. The foreground JSContext ITTP kernel is retained
-only for development/sideload compatibility builds; iOS store builds fail closed
-instead of falling back to ITTP.
+the native plugin is available. The JSContext compatibility host is retained
+only for development/sideload builds; iOS store builds fail closed instead of
+falling back to it.
 
 ## Llama backend
 

@@ -11,7 +11,7 @@ A standalone, dependency-light CLI (only `@clack/prompts`, `commander`, `picocol
 ```
 src/
   cli.ts               #!/usr/bin/env node — Commander program; default action = interactive @clack menu
-  index.ts             Library exports (create, info, upgrade, version, plugins, loadManifest, types)
+  index.ts             Library exports (create, info, upgrade, version, registerPluginsCommand, submitPluginToRegistry, loadManifest, types)
   commands/
     index.ts           Barrel re-exporting every command function
     create.ts          `create` — prompt template/lang/name, render tree, init upstream submodule, write metadata
@@ -45,7 +45,7 @@ Commands registered on the Commander program: `version`, `info`, `create`, `upgr
 
 ## Templates
 
-Two real templates (`templates-manifest.json`): `plugin` and `project` (`project` is also exposed under the `project` id; `create`/`info` accept it via `aliases`). Each `templates/<id>/template.json` defines `id/name/description/kind/version/languages` and an optional `upstream` (git-submodule) block. `min-plugin` / `min-project` are minimal scaffolds (have `SCAFFOLD.md`, no `template.json`) and are not surfaced in the manifest.
+Two real templates (`templates-manifest.json`): `plugin` and `project`. Each `templates/<id>/template.json` defines `id/name/description/kind/version/languages` plus an optional `aliases` list and an optional `upstream` (git-submodule) block; `getTemplateById` (`manifest.ts`) matches `-t/--template` against either the id or an alias. `min-plugin` / `min-project` are minimal scaffolds (have `SCAFFOLD.md`, no `template.json`) and are not surfaced in the manifest.
 
 Token replacement (`scaffold.ts`): plugin templates substitute `${PLUGINNAME}`, `${PLUGINDESCRIPTION}`, `${GITHUB_USERNAME}`, `${REPO_URL}`, `__ELIZAOS_VERSION__`, and `plugin-starter` variants; project templates substitute `__PROJECT_SLUG__`, `__APP_NAME__`, `__BUNDLE_ID__`, etc. Longest-match-first so prefixes don't clobber.
 

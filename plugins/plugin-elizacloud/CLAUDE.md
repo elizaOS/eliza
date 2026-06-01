@@ -119,11 +119,11 @@ plugins/plugin-elizacloud/
       home-remote-runner-access-url.ts  Remote runner access URL helper
     cloud/
       auth.ts                       Auth helpers
-      auth-service-types.ts         CloudAuthApiKeyService interface
+      auth-service-types.ts         CloudAuthApiKeyService interface, normalizeCloudApiKey, isCloudAuthApiKeyService
       backup.ts                     Backup helpers
       base-url.ts                   resolveCloudApiBaseUrl, normalizeCloudSiteUrl
       bridge-client.ts              ElizaCloudClient, CloudWalletDescriptor
-      cloud-api-key.ts              resolveCloudApiKey, normalizeCloudApiKey
+      cloud-api-key.ts              resolveCloudApiKey, resolveCloudApiBaseUrl, normalizeCloudSecret
       cloud-manager.ts              CloudManager orchestrator
       cloud-proxy.ts                Proxy utilities
       cloud-wallet.ts               Wallet descriptor types
@@ -177,7 +177,7 @@ bun run --cwd plugins/plugin-elizacloud test:unit   # unit tests only
 bun run --cwd plugins/plugin-elizacloud test:integration  # integration tests only
 bun run --cwd plugins/plugin-elizacloud test:e2e    # live smoke test via app-core script
 bun run --cwd plugins/plugin-elizacloud lint        # biome check --write --unsafe
-bun run --cwd plugins/plugin-elizacloud clean       # rm -rf dist .turbo
+bun run --cwd plugins/plugin-elizacloud clean       # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 ```
 
 ## Config / env vars
@@ -228,9 +228,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` |
 | `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | `google/gemini-2.5-flash-image` |
-| `ELIZAOS_CLOUD_TTS_MODEL` | `eleven_flash_v2_5` |
-| `ELIZAOS_CLOUD_TTS_VOICE` | unset (cloud default voice) |
-| `ELIZAOS_CLOUD_TTS_INSTRUCTIONS` | unset |
+| `ELIZAOS_CLOUD_TTS_MODEL` | `gpt-5-mini-tts` |
 | `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | `gpt-5-mini-transcribe` |
 
 ### Browser-only proxy vars (no secrets in client bundles)

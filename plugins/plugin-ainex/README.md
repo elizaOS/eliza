@@ -50,9 +50,9 @@ The plugin ships 15 programmatic locomotion actions by default:
 | Environment variable | Default | Purpose |
 |---|---|---|
 | `ELIZA_AINEX_BRIDGE_URL` | `ws://localhost:9100` | WebSocket URL for the AiNex bridge server |
-| `ELIZA_AINEX_PROFILE` | `hiwonder-ainex` | Robot profile descriptor name to load on the bridge |
-| `ELIZA_AINEX_CAMERA_FPS` | `10` | Camera frame rate for subscription |
 | `ELIZA_AINEX_MODE` | `programmatic` | Action surface: `programmatic`, `rl`, or `both` |
+
+`ELIZA_AINEX_BRIDGE_URL` and `ELIZA_AINEX_MODE` are the only settings the plugin reads. (`ELIZA_AINEX_PROFILE` and `ELIZA_AINEX_CAMERA_FPS` are declared as plugin parameters but not consumed here; the active profile is resolved bridge-side.)
 
 ## Auto-enable
 
@@ -63,9 +63,11 @@ The plugin enables automatically when `ELIZA_AINEX_BRIDGE_URL` is set in the env
 The bridge is a Python process in `packages/robot/`:
 
 ```bash
-python -m eliza_robot.bridge.launch --target mujoco   # MuJoCo simulator
-python -m eliza_robot.bridge.launch --target hardware  # real robot
+python -m eliza_robot.bridge.server --backend mujoco --port 9100  # MuJoCo simulator
+python -m eliza_robot.bridge.server --backend mock --port 9100    # in-memory mock
 ```
+
+`packages/robot` also ships convenience scripts: `bun run --cwd packages/robot robot:bridge:mujoco` and `robot:bridge:mock`. See `packages/robot/README.md` for the full `--backend` list (mock, mujoco, ros, isaac, ...).
 
 The plugin tolerates a missing bridge at agent startup and recovers automatically when the bridge comes up (exponential-backoff reconnect, 250 ms to 5 s).
 

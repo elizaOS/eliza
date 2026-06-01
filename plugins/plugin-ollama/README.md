@@ -179,7 +179,7 @@ This plugin forwards those fields to the Vercel AI SDK **`generateText`** or **`
 | **`streamText.textStream` failed** / **`AI_NoOutputGeneratedError`** / process exit after Ollama **500** | Ollama returned an error body (e.g. **insufficient system memory** for the model) during a **streaming** `/api/chat` call; AI SDK retried then failed. | Check logs for **`ollamaResponseBody`** (plugin now extracts it). Free RAM on the Ollama host, use a smaller model, or lower concurrency. Streaming errors occur while **`useModel`** consumes **`textStream`**, not only inside **`generateText`**. |
 | Connection errors | Ollama not running or wrong URL | `curl` the `/api/tags` endpoint; fix `OLLAMA_API_ENDPOINT`. |
 
-More context: [Ollama plugin docs](https://docs.eliza.ai/) (registry page: `plugin-registry/llm/ollama`).
+More context: [elizaOS documentation](https://docs.elizaos.ai/).
 
 ## Changelog
 

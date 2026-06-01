@@ -4,7 +4,7 @@ Plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP route 
 
 ## Purpose / role
 
-This package consolidates all plugin-management HTTP surfaces that were previously split across `@elizaos/agent` and `@elizaos/app-core`. It exposes two route-handler entry points plus thin forwarder functions for install/uninstall operations. It is a library package — not a runtime-loaded `Plugin` object — consumed by the agent HTTP server and by app-core's compat layer. There is no `agentConfig.pluginParameters` because no runtime env vars are read directly by this package.
+This package consolidates all plugin-management HTTP surfaces that were previously split across `@elizaos/agent` and `@elizaos/app-core`. It exposes two route-handler entry points plus thin forwarder functions for install/uninstall operations. It is a library package — not a runtime-loaded `Plugin` object — consumed by the agent HTTP server and by app-core's compat layer. Its `package.json` `agentConfig.pluginParameters` is empty (`{}`) because no runtime env vars are read directly by this package.
 
 ## Plugin surface
 

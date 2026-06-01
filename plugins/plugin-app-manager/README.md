@@ -30,7 +30,7 @@ When `@elizaos/agent` wires this package in, the agent's API server gains:
 |---|---|---|
 | `ELIZA_APPS_REGISTRY_REFRESH_TIMEOUT_MS` | `5000` | Timeout (ms) for registry refresh during `listInstalled`. Minimum 250. |
 | `ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY` | `false` | Set to `1`/`true` to also look in `apps/app-<slug>` directories for hero images. |
-| `BOT_NAME` / `BOT_PASSWORD` | — | Substituted into `{BOT_NAME}` / `{RS_SDK_BOT_NAME}` template vars in app URLs. |
+| `BOT_NAME` / `BOT_PASSWORD` | — | Fallback values for the `{RS_SDK_BOT_NAME}` / `{RS_SDK_BOT_PASSWORD}` template vars in app launch URLs. |
 | `NODE_ENV` | — | `"production"` selects the production Hyperscape client URL. |
 
 The run store path defaults to `<stateDir>/apps/runs.v2.json` where `stateDir` is resolved by `@elizaos/agent/config/paths`. Override per instance with `new AppManager({ stateDir: '/custom/path' })`.

@@ -88,7 +88,7 @@ src/
     audio-pipeline.ts         AudioPipeline — PCM decode + ASR routing
     vision-pipeline.ts        VisionPipeline — camera frame capture + VLM describe
   devices/
-    registry.ts               DEVICE_REGISTRY — profiles for all 4 device types
+    registry.ts               DEVICE_REGISTRY — 5 profiles (meta-quest, xreal, even-realities, apple-vision-pro, simulator); simulator defined inline
     apple-vision-pro.ts / even-realities.ts / meta-quest.ts / xreal.ts
   protocol/
     smartglasses.ts           G1 binary protocol (encode* functions, event types)
@@ -126,13 +126,14 @@ All settings are optional. The plugin reads them via `runtime.getSetting()` (fal
 
 | Setting / env var | Default | Description |
 |-------------------|---------|-------------|
-| `FACEWEAR_WS_PORT` | `31338` | WebSocket port for XR streaming (Quest 3, XReal, Vision Pro) |
+| `XR_WS_PORT` | `31338` | WebSocket port for XR streaming (Quest 3, XReal, Vision Pro). Read by `XRSessionService` via `XR_WS_PORT_ENV`; default is `XR_WS_PORT_DEFAULT` |
 | `FACEWEAR_SMARTGLASSES_TRANSPORT` | `"auto"` | Even Realities transport: `auto` \| `even-bridge` \| `web-bluetooth` \| `noble` |
 | `FACEWEAR_SCAN_TIMEOUT_MS` | `10000` | BLE scan timeout in ms (Noble transport) |
 | `FACEWEAR_AUTO_INIT` | `true` | Send G1 connection-ready init packets automatically |
 | `FACEWEAR_INIT_MODE` | `"lens-specific"` | G1 init mode: `lens-specific` \| `official` \| `android-f4` |
 | `XR_APP_URL` | local IP | Override the URL shown on the `/xr/connect` pairing page |
-| `XR_WS_PORT` | `31338` | Alias for `FACEWEAR_WS_PORT` read by `XRSessionService` |
+
+`FACEWEAR_WS_PORT` is declared in `agentConfig.pluginParameters` (package.json) as the surfaced plugin parameter, but the runtime port is read from `XR_WS_PORT` — keep their defaults in sync.
 
 Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTGLASSES_AUTO_INIT`, `SMARTGLASSES_INIT_MODE` are still read and mapped to the `FACEWEAR_*` settings.
 
@@ -163,7 +164,7 @@ Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTG
 
 ## Conventions / gotchas
 
-- **`@abandonware/noble` is an optional dep.** It is unavailable in browser contexts and on some CI runners. `NobleG1Transport` must never be imported unconditionally at module load — it is always required lazily inside `SmartglassesService.start()`.
+- **`@abandonware/noble` is an optional dep.** It is unavailable in browser contexts and on some CI runners. The native module is never imported at module load — `getNobleG1Transport()` (called from `SmartglassesService` transport selection) loads it lazily via a dynamic import and returns `null` when it is missing.
 - **Transport auto-selection order:** `even-bridge` → `web-bluetooth` → `noble`. Set `FACEWEAR_SMARTGLASSES_TRANSPORT` to force one.
 - **View bundles** (`build:views`) must be built before `test` — the test script runs `build:views && emulator:build` before vitest.
 - **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it.

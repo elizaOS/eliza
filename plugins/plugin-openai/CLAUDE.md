@@ -39,7 +39,7 @@ plugins/plugin-openai/
   index.browser.ts       # Browser entrypoint
   auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY or CEREBRAS_API_KEY set
   init.ts                # initializeOpenAI(): validates API key on startup (no-op in browser)
-  build.ts               # Bun.build config (node ESM + browser ESM + CJS)
+  build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
   models/
     index.ts             # Re-exports all handlers
     text.ts              # handleTextSmall/Nano/Medium/Large/Mega/ResponseHandler/ActionPlanner
@@ -60,15 +60,15 @@ plugins/plugin-openai/
   types/
     index.ts             # Plugin-local types: TTSVoice, ImageSize, TokenUsage, TextStreamResult,
                          #   OpenAIPluginConfig, API response shapes, etc.
-  prompts/               # evaluators.json (plugin evaluator definitions)
+  prompts/               # evaluators.json (empty evaluators stub — plugin ships no evaluators)
   __tests__/             # Vitest unit tests
 ```
 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-openai build          # Bun.build (node ESM + browser ESM + CJS)
-bun run --cwd plugins/plugin-openai dev            # watch build
+bun run --cwd plugins/plugin-openai build          # Bun.build (node ESM + browser ESM) + tsc d.ts
+bun run --cwd plugins/plugin-openai dev            # hot-reload build (bun --hot build.ts)
 bun run --cwd plugins/plugin-openai test           # vitest unit suite
 bun run --cwd plugins/plugin-openai typecheck      # tsgo --noEmit
 bun run --cwd plugins/plugin-openai lint           # biome check --write --unsafe

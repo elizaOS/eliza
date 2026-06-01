@@ -59,7 +59,7 @@ src/
     use-computer-agent.ts    COMPUTER_USE_AGENT (WS7 autonomous loop)
     window.ts                WINDOW parent action
     window-handlers.ts       Per-verb handlers called by window.ts
-    clipboard.ts             Clipboard read/write helpers (used by COMPUTER_USE)
+    clipboard.ts             clipboardAction (CLIPBOARD parent action) — defined but NOT registered in index.ts
     helpers.ts               resolveActionParams, buildScreenshotAttachment, …
 
   actor/                     WS7 autonomous desktop loop
@@ -114,6 +114,8 @@ src/
   services/
     computer-use-service.ts  ComputerUseService (serviceType = "computeruse")
     vision-context-provider.ts  VisionContextProvider (serviceType = "vision-context")
+    desktop-control.ts       Low-level desktop control primitives + DesktopControl* types
+    index.ts                 Barrel re-exports for services/
 
   mobile/
     ocr-provider.ts          OcrProvider / CoordOcrProvider interfaces (plugin-vision contributes impls)
@@ -163,7 +165,8 @@ All read via `runtime.getSetting()` / `process.env`. Declared in `package.json#a
 | `COMPUTER_USE_APPROVAL_MODE` | enum | `"full_control"` | No | `full_control` / `smart_approve` / `approve_all` / `off` |
 | `COMPUTER_USE_BROWSER_HEADLESS` | boolean | `false` | No | Headless browser (useful in CI) |
 | `ELIZA_COMPUTERUSE_DRIVER` | enum | `"nutjs"` | No | Input driver: `nutjs` (@nut-tree-fork/nut-js) or `legacy` (cliclick/xdotool/PowerShell) |
-| `BROWSER_EXECUTE_DISABLED` | boolean | `true` | No | Keeps `browser_execute` disabled (GHSA-rcvr-766c-4phv) |
+
+`BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
 
 ## How to extend
 
@@ -195,7 +198,7 @@ Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mo
 ## Conventions / gotchas
 
 - **Approval flow**: every destructive action passes through `ComputerUseApprovalManager`. The default mode is `full_control` (auto-approve). Switch to `smart_approve` or `approve_all` via env or the `/api/computer-use/approval-mode` route. `off` denies all.
-- **`browser_execute` is disabled by default** (GHSA-rcvr-766c-4phv). Use `dom`, `clickables`, `click`, `type`, `navigate`, `screenshot` browser subactions instead.
+- **`browser_execute` is always disabled** (GHSA-rcvr-766c-4phv) — `isBrowserExecuteAllowed()` returns `false` unconditionally; no setting re-enables it. Use `dom`, `clickables`, `click`, `type`, `navigate`, `screenshot` browser subactions instead.
 - **Coordinate system**: each display has its own local coordinate space. `src/platform/coords.ts` translates local→global when needed. Always pass `displayId` when targeting a specific monitor.
 - **nutjs native bindings**: `@nut-tree-fork/nut-js` requires native compilation. If the build fails, set `ELIZA_COMPUTERUSE_DRIVER=legacy` to fall back to shell tools.
 - **Scene is per-turn**: `sceneProvider` calls `SceneBuilder.onAgentTurn()` once per turn. Code that needs the scene outside a provider turn should call `ComputerUseService.getCurrentScene()` or `refreshScene("active")`.

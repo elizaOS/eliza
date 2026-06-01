@@ -30,7 +30,7 @@ Development checkouts resolve it with `workspace:*`; published packages are
 expected to consume the npm-published SDK version.
 
 Runtime code must not build direct Eliza Cloud HTTP calls by hand. Use the SDK
-helpers in `typescript/utils/sdk-client.ts`:
+helpers in `src/utils/sdk-client.ts`:
 
 | Helper | Use |
 | --- | --- |
@@ -110,10 +110,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `openai/gpt-oss-120b:nitro` |
 | `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `openai/gpt-oss-120b:nitro` |
 | `ELIZAOS_CLOUD_MEDIUM_MODEL` | Medium planning model override | `MEDIUM_MODEL` or small model |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `deepseek/deepseek-v4-pro` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
-| `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | nano model |
-| `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | medium model |
+| `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
+| `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
 | `ELIZAOS_CLOUD_RESEARCH_MODEL` | Research model override | large model |
 | `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | Optional custom embedding API base URL | unset |
@@ -121,11 +121,9 @@ Get an API key from
 | `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `1536` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | Vision model used for image descriptions | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Max image-description response tokens | `8192` |
-| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | service default |
+| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/gemini-2.5-flash-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | Text-to-speech model | `gpt-5-mini-tts` |
-| `ELIZAOS_CLOUD_TTS_VOICE` | Text-to-speech voice | `nova` |
-| `ELIZAOS_CLOUD_TTS_INSTRUCTIONS` | Optional TTS style instructions | unset |
-| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | Audio transcription model | service default |
+| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | Audio transcription model | `gpt-5-mini-transcribe` |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | Enables experimental telemetry metadata | `false` |
 
 Browser builds must not receive secrets directly. Use
@@ -170,7 +168,7 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
    layer.
 5. Do not add direct `fetch()` calls for Eliza Cloud API routes in runtime code.
 
-When the Cloud API adds or changes public routes, update the SDK first (see the Development section above), then update this plugin to consume the new SDK route or helper.
+When the Cloud API adds or changes public routes, update the SDK first (see the Development section below), then update this plugin to consume the new SDK route or helper.
 
 ## Development
 
@@ -180,15 +178,14 @@ bun run --cwd plugins/plugin-elizacloud test
 bun run --cwd plugins/plugin-elizacloud build
 ```
 
-When the Cloud API adds or changes public routes, update the SDK first:
+When the Cloud API adds or changes public routes, update `@elizaos/cloud-sdk`
+first, then update this plugin to consume the new SDK route or helper:
 
 ```bash
-bun run --cwd packages/cloud-sdk generate:routes
-bun run --cwd packages/cloud-sdk check:routes
-bun run --cwd packages/cloud-sdk test:e2e
+bun run --cwd packages/cloud-sdk build
+bun run --cwd packages/cloud-sdk typecheck
+bun run --cwd packages/cloud-sdk test
 ```
-
-Then update this plugin to consume the new SDK route or helper.
 
 ## Publishing
 

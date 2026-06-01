@@ -4,7 +4,7 @@ Routes Anthropic API traffic from your eliza agent through a **Claude Max / Pro 
 
 The plugin applies a 7-layer bidirectional transformation pipeline so requests look like they originate from the official Claude Code CLI:
 
-1. Billing header injection (84-char Claude Code identifier with dynamic SHA256 fingerprint per request)
+1. Billing header injection (`x-anthropic-billing-header` text block carrying the CC version plus a 3-character SHA256 fingerprint computed per request)
 2. String trigger sanitization
 3. Tool name fingerprint bypass (PascalCase CC convention rename)
 4. System prompt template bypass (strip + paraphrase)
@@ -100,6 +100,8 @@ plugins/plugin-anthropic-proxy/
 ├── index.ts                           # Plugin export + init
 ├── index.node.ts                      # Node entry
 ├── index.browser.ts                   # Browser noop
+├── auto-enable.ts                      # shouldEnable() opt-in check
+├── config.json.example                # Custom fingerprint dictionary shape
 ├── build.ts                           # Bun build script
 ├── package.json
 ├── tsconfig.json / tsconfig.build.json
@@ -107,7 +109,8 @@ plugins/plugin-anthropic-proxy/
 ├── bunfig.toml
 ├── src/
 │   ├── proxy/
-│   │   ├── constants.ts               # Bit-for-bit constants from proxy.js
+│   │   ├── constants.ts               # Algorithm constants + DEFAULT_* dict re-exports
+│   │   ├── eliza-fingerprint.ts       # ELIZA_* default fingerprint dictionaries
 │   │   ├── billing-fingerprint.ts     # Layer 1: SHA256 fingerprint
 │   │   ├── sanitize.ts                # Layer 2: string sanitize
 │   │   ├── tool-rename.ts             # Layer 3/6: quoted name renames

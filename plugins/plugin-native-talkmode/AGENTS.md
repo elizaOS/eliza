@@ -45,7 +45,7 @@ plugins/plugin-native-talkmode/
     Sources/TalkModePlugin/
       TalkModePlugin.swift   Native iOS: AVSpeechSynthesizer + SFSpeechRecognizer + ElevenLabs PCM/MP3
   android/
-    src/main/java/ai/       Android native implementation (Kotlin)
+    src/main/java/ai/eliza/plugins/talkmode/TalkModePlugin.kt   Android native implementation (Kotlin)
   ElizaosCapacitorTalkmode.podspec   CocoaPods spec (requires AVFoundation + Speech frameworks)
   rollup.config.mjs          Builds IIFE (dist/plugin.js) and CJS (dist/plugin.cjs.js) from ESM
   tsconfig.json
@@ -92,7 +92,7 @@ The `speak()` call also accepts a `TTSDirective` for per-utterance overrides (vo
 1. Declare the method signature in `src/definitions.ts` on `TalkModePlugin`.
 2. Implement it in `src/web.ts` (web fallback).
 3. Implement it in `ios/Sources/TalkModePlugin/TalkModePlugin.swift` (register in `pluginMethods`).
-4. Implement it in the Android Kotlin source under `android/src/main/java/ai/`.
+4. Implement it in the Android Kotlin source at `android/src/main/java/ai/eliza/plugins/talkmode/TalkModePlugin.kt`.
 5. Run `bun run --cwd plugins/plugin-native-talkmode build` to verify TS compiles.
 
 **Add a new event:**
@@ -105,7 +105,7 @@ The `speak()` call also accepts a `TTSDirective` for per-utterance overrides (vo
 - **Not an elizaOS Plugin object.** There is no `actions`, `providers`, `services`, or `evaluators` array. It is a Capacitor plugin registered with `registerPlugin("TalkMode", { web: loadWeb })`. Import `TalkMode` from `@elizaos/capacitor-talkmode` in UI/app code.
 - **ElevenLabs on web is blocked by CORS.** The web implementation always falls back to `SpeechSynthesis`; `usedSystemTts` will always be `true` in the browser. ElevenLabs streaming TTS only works in native (iOS/Android) and Electrobun contexts.
 - **iOS native frameworks required.** The CocoaPods spec declares `AVFoundation` and `Speech` frameworks. iOS 13.0+ minimum deployment target.
-- **Web STT auto-restarts.** `recognition.onend` restarts the recogniser if the session is still enabled, preventing silent dropout on Chrome's 60-second recognition limit.
+- **Web STT auto-restarts.** `recognition.onend` restarts the recogniser if the session is still enabled (`state === "listening"`), preventing silent dropout when the browser ends a recognition run.
 - **`speak()` on web always forces `lang` to `en-US` unless `directive.language` is set** — this prevents browser-locale drift (e.g. numbers read in Chinese on Chinese-locale systems).
 - **Silence detection is stateful.** On iOS, `silenceWindow` (default 0.7 s) drives a `Task` timer that finalises in-flight transcripts. Adjust via `silenceWindowMs` in config.
 - **Peer dep:** `@capacitor/core ^8.3.1` is required at the app level.

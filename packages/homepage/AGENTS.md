@@ -22,33 +22,38 @@ packages/homepage/
       connected.tsx             "/connected" — post-auth dashboard (linked platforms, sign-out)
     components/
       authed-shell.tsx          Layout wrapper for auth-gated routes (QueryProvider + AuthProvider)
-      brand/eliza-logo.tsx      Eliza SVG logo component
-      ShaderBackground/         Three.js / react-three-fiber WebGL gradient wave (lazy-loaded)
-      ChatUI/                   Canvas-rendered chat bubble surface for the onboarding demo
-      ModelViewers/ModelB.tsx   3D model viewer (react-three/fiber)
+      BlobButton.tsx            Animated blob CTA button
+      brand/eliza-logo.tsx      Eliza SVG logo component (ElizaLogo)
+      ShaderBackground/         react-three/fiber WebGL gradient wave (gradientWaveMaterial + ShaderBackground, lazy-loaded)
+      ChatUI/renderChatToCanvas.ts  Canvas-rendered chat bubble surface for the onboarding demo
+      ModelViewers/ModelB.tsx   3D model viewer (react-three/fiber); eager import in leaderboard
       login/phone-number-input.tsx  E.164 phone input with country picker
+      login/country-flag.tsx    Country flag glyph for the phone picker
       providers/query-provider.tsx  TanStack Query client wrapper
       DocumentMetaManager.tsx   <title> / <meta> manager
       QRCode.tsx                QR code renderer (inline SVG)
-      VideoCall.tsx             Video call UI component
+      VideoCall.tsx             Video call UI component (lazy-loaded)
     lib/
-      api/client.ts             Base fetch helpers (elizacloudFetch, elizacloudAuthFetch, getAuthToken)
-      api/siws.ts               Sign-In-With-Solana (SIWS) — nonce/verify against Cloud API
+      api/client.ts             Base fetch helpers (elizacloudFetch, elizacloudAuthFetch, getAuthToken, getElizacloudUrl)
+      api/siws.ts               Sign-In-With-Solana (SIWS) — signInWithSolana, nonce/verify against Cloud API
       context/auth-context.tsx  AuthProvider + useAuth hook — session token in localStorage
-      hooks/                    Custom React hooks
+      hooks/use-eliza-app-provisioning-chat.ts  Provisioning-chat hook for onboarding
       contact.ts                SMS / WhatsApp number constants and href builders
       query-client.ts           Shared TanStack Query client instance
-      utils.ts                  clsx / tailwind-merge utility
+      spring-types.ts           react-spring type helper
+      utils.ts                  clsx / tailwind-merge utility (cn)
     providers/
-      I18nProvider.tsx          i18n context + useT() hook
+      I18nProvider.tsx          i18n context + useT() / useI18n() hooks
     i18n/locales/               JSON translation files (en, es, ja, ko, pt, tl, vi, zh-CN)
     generated/
       release-data.ts           Auto-generated from GitHub Releases API — do not edit by hand
-    types/                      Shared TypeScript types
+    types/
+      speech-recognition.d.ts   Ambient SpeechRecognition Web API types
   public/                       Static assets (logos, favicons, OG images, install scripts)
   tests/
-    smoke.node.test.mjs         Node --test smoke suite
-    e2e/                        Playwright e2e specs (aesthetic audit, route coverage, visual)
+    smoke.node.test.mjs         Node --test smoke suite (the `test` script)
+    contact.test.ts             SMS/WhatsApp href unit test
+    e2e/                        Playwright e2e specs (aesthetic-audit, route-coverage, visual, live-routes, ...)
   scripts/
     generate-contact-sheet.mjs  Generates HTML contact sheet from Playwright screenshots
   vite.config.ts                Vite config — aliases, gh404Fallback plugin, bundle visualizer
@@ -120,7 +125,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
 - **Vite aliases override `@elizaos/ui` barrel imports.** The `@elizaos/ui` alias in `vite.config.ts` resolves to `CloudVideoBackground.tsx` only (not the full barrel). Use explicit sub-path imports like `@elizaos/ui/button`, `@elizaos/ui/cloud-ui`, etc. Adding new sub-paths requires a new alias entry in `vite.config.ts`.
-- **ShaderBackground and ModelB are lazy-loaded.** Do not import them eagerly — they pull in `three` and `@react-three/fiber` which are large. Keep them behind `React.lazy()` + `Suspense`.
+- **ShaderBackground and VideoCall are lazy-loaded** in `leaderboard.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` is imported eagerly because it drives the messaging surface on first paint — but it pulls in `three`/`@react-three/fiber`, so don't add more eager `three` imports elsewhere.
 - **GitHub Pages deep-link fallback:** The `gh404Fallback` Vite plugin copies `index.html` → `404.html` at build time. `public/_redirects` and `public/_headers` serve the same purpose on Cloudflare Pages.
 - **`CF_PAGES=1` disables the 404.html copy** — set this env var when building for Cloudflare Pages.
 - **Dev server port is 4444** (not the standard 5173). `bun run dev` is required; `vite preview` alone will not have the correct env from the orchestrator.

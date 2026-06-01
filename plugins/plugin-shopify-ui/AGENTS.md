@@ -4,7 +4,7 @@ Shopify store management dashboard — REST routes and React views for orders, p
 
 ## Purpose / role
 
-Adds a full Shopify store dashboard to an Eliza agent. The plugin registers seven HTTP routes under `/api/shopify/*` that proxy to the Shopify Admin GraphQL API (2025-04), and three elizaOS views (standard, XR, TUI) that render the dashboard UI. It is opt-in: load it explicitly via `registerAppRoutePluginLoader` or by importing `shopifyPlugin` and adding it to the runtime plugin list.
+Adds a full Shopify store dashboard to an Eliza agent. The plugin registers seven HTTP routes under `/api/shopify/*` that proxy to the Shopify Admin GraphQL API (2025-04), and three elizaOS views (standard, XR, TUI) that render the dashboard UI. It is opt-in: import `shopifyPlugin` and add it to the runtime plugin list, or import the side-effect module `src/register-routes.ts` (which calls `registerAppRoutePluginLoader` to register a lazy loader).
 
 ## Plugin surface
 
@@ -38,6 +38,7 @@ All views are bundled at `dist/views/bundle.js`.
 
 ```
 src/
+  index.ts               Public barrel: re-exports panels, views, routes, shopifyPlugin, shopifyApp, the hook
   plugin.ts              Plugin object: routes array + views array. Start here.
   routes.ts              handleShopifyRoute — all seven HTTP handlers; GraphQL helper shopifyGql
   shopify-app.ts         OverlayApp registration (shopifyApp, SHOPIFY_APP_NAME)
@@ -51,6 +52,7 @@ src/
   InventoryLevelsPanel.tsx Inventory tab panel component
   CustomersPanel.tsx     Customers tab panel component
   StoreOverviewCard.tsx  Overview tab summary card (shop name, counts)
+  ShopifyTuiView.test.tsx  Co-located component test for the TUI view
 assets/
   hero.png               elizaos.app manifest hero image
 test/
@@ -61,8 +63,8 @@ test/
 
 ```bash
 bun run --cwd plugins/plugin-shopify-ui build           # tsup + vite views + tsc types
-bun run --cwd plugins/plugin-shopify-ui build:js        # tsup only (plugin.ts entry)
-bun run --cwd plugins/plugin-shopify-ui build:views     # vite bundle (ShopifyAppView / ShopifyTuiView)
+bun run --cwd plugins/plugin-shopify-ui build:js        # tsup only (compiles every src/ file, no bundling)
+bun run --cwd plugins/plugin-shopify-ui build:views     # vite bundle (entry src/ShopifyAppView.tsx, also exports ShopifyTuiView)
 bun run --cwd plugins/plugin-shopify-ui build:types     # tsc declaration emit
 bun run --cwd plugins/plugin-shopify-ui clean           # rm -rf dist
 bun run --cwd plugins/plugin-shopify-ui test            # vitest unit + component tests
@@ -106,4 +108,4 @@ Required Shopify API scopes: `read_products`, `write_products`, `read_orders`, `
 - **`rawPath: true`:** All routes bypass the runtime's plugin-name prefix. The paths are `/api/shopify/*` exactly — not `/api/plugin-shopify-ui/shopify/*`.
 - **`registerOverlayApp` side-effect:** Importing `src/register.ts` (or `src/shopify-app.ts`) immediately calls `registerOverlayApp`. In server-only (non-browser) builds, guard against importing these modules.
 - **No actions, providers, services, or evaluators:** This plugin is routes + views only. It has no agent-facing natural language actions.
-- See `../AGENTS.md` (repo root) for global conventions: logger-only logging, ESM module rules, naming, architecture commandments.
+- See `../../AGENTS.md` (repo root) for global conventions: logger-only logging, ESM module rules, naming, architecture commandments.

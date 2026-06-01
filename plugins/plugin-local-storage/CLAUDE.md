@@ -37,7 +37,7 @@ plugins/plugin-local-storage/
     types.ts               UploadResult, JsonUploadResult, JsonValue hierarchy, CONTENT_TYPES map, getContentType()
     services/
       local-storage.ts     LocalFileStorageService — resolveStorageRoot(), all read/write methods
-  build.ts                 Build entrypoint (tsdown)
+  build.ts                 Build entrypoint (Bun.build, Node ESM only)
   vitest.config.ts         Test config
   package.json
 ```

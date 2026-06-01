@@ -36,9 +36,9 @@ src/
 functions/               Cloudflare Pages Functions: _middleware.ts, _proxy.ts (proxies /api to the Cloud API worker).
 scripts/
   prerender.mjs          Splices entry-server output into dist/index.html (FCP/LCP win).
-  run-e2e.mjs            Playwright runner (boots preview, injected-ethereum login).
+  run-e2e.mjs            Playwright runner (boots the vite dev server, injected-ethereum login).
   generate-assistant-concept-images.ts
-vite.config.ts           Build + dev config: @/ alias map, shims, manualChunks, env defines.
+vite.config.ts           Build + dev config: @/ alias map, shims, rolldown code-splitting groups, env defines.
 playwright.config.ts     E2E projects: chromium-desktop / mobile.
 wrangler.toml            Cloudflare Pages: name=eliza-cloud, API_UPSTREAM per env.
 ```

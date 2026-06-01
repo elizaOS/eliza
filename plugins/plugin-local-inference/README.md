@@ -30,7 +30,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 - Node.js 20+ or Bun runtime.
 - `node-llama-cpp` (optional peer dependency) — required for the desktop/server llama.cpp path. Install it in the elizaOS agent package; it will not be automatically installed.
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows, `mflux` for Apple Silicon image-gen, `whisper.cpp` built with the shared library flag for ASR.
-- An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/models/:id/download`).
+- An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
 
 ## Enabling the plugin
 
@@ -53,7 +53,7 @@ Key environment variables (all optional unless noted):
 
 | Variable | Purpose |
 |---|---|
-| `MODELS_DIR` | Override the embedding model directory (default: `~/.eliza/models`) |
+| `MODELS_DIR` | Override the GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | Small model filename (mobile/Capacitor adapter) |
 | `LOCAL_LARGE_MODEL` | Large model filename (mobile/Capacitor adapter) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to skip local embedding warm-up at boot |
@@ -67,10 +67,12 @@ Key environment variables (all optional unless noted):
 
 ## Architecture notes
 
-The plugin has three subpath exports used by the elizaOS runtime:
+The plugin exposes these subpath exports (see `package.json` `exports`):
 
-- `@elizaos/plugin-local-inference` — plugin object, `GENERATE_MEDIA` action, route helpers.
+- `@elizaos/plugin-local-inference` — plugin object, `GENERATE_MEDIA` action, `handleLocalInferenceRoutes`, embedding presets.
 - `@elizaos/plugin-local-inference/runtime` — boot-time handler registration (`ensureLocalInferenceHandler`), embedding warm-up policy, mobile gate.
+- `@elizaos/plugin-local-inference/runtime/embedding-presets` — `detectEmbeddingPreset`, `EMBEDDING_PRESETS`.
+- `@elizaos/plugin-local-inference/routes` — HTTP route handlers (`handleLocalInferenceCompatRoutes`, TTS/ASR, voice) mounted by app-core.
 - `@elizaos/plugin-local-inference/services` — full service surfaces (engine, arbiter, catalog, recommendation, voice) for deep integrations.
 
 The **MemoryArbiter** (`services/memory-arbiter.ts`) is the single coordination point for all model handles across modalities. On memory-constrained devices (mobile, low-RAM desktop), the arbiter evicts models by priority before loading a new one. Cross-plugin consumers (vision, image-gen) register capabilities via `arbiter.registerCapability(...)` rather than loading models independently.

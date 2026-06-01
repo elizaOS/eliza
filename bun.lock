@@ -2842,6 +2842,7 @@
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -2970,6 +2971,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.16.0",
         "react": "^19.0.0",
       },

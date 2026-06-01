@@ -16,7 +16,7 @@ local agent route surface used by the rest of the mobile app.
 | --- | --- |
 | Web    | Stub. Returns `state: "error"` with an explanatory message. |
 | iOS    | Outbound WebSocket tunnel. Proxies path-only requests through the WebView IPC bridge; no listening port is opened. |
-| Android | Outbound WebSocket tunnel. Proxies path-only requests to the token-protected local agent service. |
+| Android | Outbound WebSocket tunnel. Proxies path-only requests into the registered `ElizaAgentService` via reflection; no listening port is opened. |
 
 ## Relay frame protocol
 

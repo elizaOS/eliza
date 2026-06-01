@@ -12,7 +12,7 @@ Adds Calendly scheduling capabilities to an Eliza agent: listing the connected u
 |------|------|--------------|
 | Service | `CalendlyService` (`serviceType: "calendly"`) | Owns Calendly API access; wraps `calendly-client.ts`; supports N accounts via `accounts.ts`. |
 | Provider | `calendlyEventTypes` | Read-only; surfaces connected user's active event types (name, slug, duration, scheduling URL) as JSON context. Active in `connectors` and `productivity` routing contexts. Cache scope: per-turn. |
-| Action | `CALENDLY` (exported as `calendlyOpAction`) | Unified router for `op: "book"` (URL handoff or own-event booking link) and `op: "cancel"` (cancellation with `requireConfirmation` guard). Active in `calendar`, `automation`, `connectors` contexts. Role gate: `ADMIN`. |
+| Action | `CALENDLY` (exported as `calendlyOpAction`) | Unified router for `subaction: "book"` (URL handoff or own-event booking link) and `subaction: "cancel"` (cancellation with `requireConfirmation` guard). Active in `calendar`, `automation`, `connectors` contexts. Role gate: `ADMIN`. |
 
 Note: the plugin registers `actions: []` in the `Plugin` object — `calendlyOpAction` is exported from the package for host apps to compose into their own plugin arrays or action lists. If you want `CALENDLY` in the default plugin surface, add `calendlyOpAction` to the `actions` array in `src/index.ts`.
 

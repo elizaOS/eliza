@@ -106,7 +106,7 @@ curl -X POST http://localhost:3000/api/readings/tarot \
   }'
 ```
 
-Valid `spreadId` values: `three_card`, `celtic_cross`, `horseshoe`, `single_card`, `relationship`.
+Valid `spreadId` values: `single`, `three_card`, `celtic_cross`, `relationship`, `career`.
 
 ### Example: Start an Astrology Reading
 

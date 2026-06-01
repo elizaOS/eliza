@@ -4,7 +4,7 @@ AOSP-only llama.cpp FFI bindings (via `bun:ffi`) and local-inference bootstrap f
 
 ## Purpose / role
 
-This package wires `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION` model handlers for Eliza agents running on Android (AOSP). It is not an elizaOS `Plugin` object — it exports two call-time bootstrap functions consumed by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/app-core`'s `ensure-local-inference-handler.ts`. Both modules self-gate on `ELIZA_LOCAL_LLAMA=1` (or `process.arch === "riscv64"`) and are no-ops on every other platform, so they can be imported unconditionally from the mobile agent barrel without breaking non-AOSP builds.
+This package wires `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION` model handlers for Eliza agents running on Android (AOSP). It is not an elizaOS `Plugin` object — it exports two call-time bootstrap functions consumed by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`. Both modules self-gate on `ELIZA_LOCAL_LLAMA=1` (or `process.arch === "riscv64"`) and are no-ops on every other platform, so they can be imported unconditionally from the mobile agent barrel without breaking non-AOSP builds.
 
 ## Plugin surface
 
@@ -31,7 +31,7 @@ plugins/plugin-aosp-local-inference/
     aosp-llama-adapter.ts           bun:ffi loader: dlopen libllama.so + shim, AospLlamaAdapter class, loader registration
     aosp-llama-streaming.ts         Streaming-LLM FFI bindings for libelizainference.so streaming symbols
     aosp-local-inference-bootstrap.ts  Model-handler registrar: TEXT_* handlers, OmniVoice/fused-TTS, ASR, cloud-fallback, pre-warm
-    aosp-debug-log.ts               Append-only NDJSON debug log to $ELIZA_STATE_DIR/aosp-llama-debug.log (gated by ELIZA_AOSP_LLAMA_DEBUG_LOG)
+    aosp-debug-log.ts               Append-only line-delimited debug log to $ELIZA_STATE_DIR/aosp-llama-debug.log (gated by ELIZA_AOSP_LLAMA_DEBUG_LOG)
   __tests__/
     aosp-abi-riscv64.test.ts        ABI path resolution tests for riscv64
     aosp-kokoro-tts-handler.test.ts TTS handler unit tests
@@ -85,7 +85,7 @@ All env vars are read at call time (no module-load side effects).
 | `ELIZA_AOSP_TTS_PREWARM_DELAY_MS` / `ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS` | No | Pre-warm delay (default 5000 ms) and timeout (default 45000 ms). |
 | `ELIZA_AOSP_OMNIVOICE_MASKGIT_STEPS` / `ELIZA_TTS_MASKGIT_STEPS` | No | Override MaskGit decode steps (1–64). |
 | `ELIZA_AOSP_TTS_MAX_SECONDS` | No | Maximum synthesized audio duration (default 30 s). |
-| `ELIZA_AOSP_LLAMA_DEBUG_LOG` | No | Path to append NDJSON debug events. Set to `"1"` to use `$ELIZA_STATE_DIR/aosp-llama-debug.log`. |
+| `ELIZA_AOSP_LLAMA_DEBUG_LOG` | No | Path to append line-delimited debug events. Set to `"1"` to use `$ELIZA_STATE_DIR/aosp-llama-debug.log`. |
 | `ELIZA_STATE_DIR` | No | State root for model storage. Resolved by `@elizaos/core`'s `resolveStateDir()`. |
 
 ## How to extend
@@ -103,13 +103,13 @@ All env vars are read at call time (no module-load side effects).
 **Add a new native symbol to the shim:**
 1. Add the typed signature to `ShimSymbols` or `LlamaSymbols` in `src/aosp-llama-adapter.ts`.
 2. Add the FFIType descriptor to `dlopenShim` / `dlopenLlama`.
-3. Update `eliza_llama_shim.c` in `scripts/elizaos/llama-shim/` and rebuild `libeliza-llama-shim.so`.
+3. Update `eliza_llama_shim.c` in `packages/app-core/scripts/aosp/llama-shim/` and rebuild `libeliza-llama-shim.so`.
 
 ## Conventions / gotchas
 
 - **bun:ffi only.** This module targets Bun at runtime. `bun:ffi` is imported lazily via `import(specifier)` to avoid breaking Vite/Vitest/Node bundlers. Tests run under `bun test`; any non-Bun test runner will not be able to exercise the FFI paths.
 - **Bundle-safety sink.** `src/index.ts` contains a `const __bundle_safety_*` array that references every re-exported binding. This prevents Bun.build's tree-shaker from collapsing the barrel into an empty init function, which causes `ReferenceError` at runtime on device. Do not remove this pattern.
-- **No Plugin object.** This package does not export or register an elizaOS `Plugin`. Both exported bootstrap functions are called explicitly by the agent entrypoint or app-core; they are not auto-discovered by the plugin loader.
+- **No Plugin object.** This package does not export or register an elizaOS `Plugin`. Both exported bootstrap functions are called explicitly by the agent entrypoint or `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`; they are not auto-discovered by the plugin loader.
 - **Struct-by-value workaround.** `bun:ffi` cannot pass llama.cpp structs by value. `libeliza-llama-shim.so` wraps every struct-by-value entry point with a pointer-style equivalent. The shim's `*_params_default()` functions return `malloc`'d pointers; callers must free them with the matching `*_params_free()`. The adapter always does this in `try/finally`.
 - **ABI dirs.** Native `.so` files are expected at `cwd/{abi}/libllama.so` etc., where `{abi}` is `arm64-v8a`, `x86_64`, or `riscv64`. `ElizaAgentService.java` sets `LD_LIBRARY_PATH` to this dir before spawning bun.
 - **libllama.so fork.** The bundled `libllama.so` is built from the `apothic/llama.cpp-1bit-turboquant` fork (tag `main-b8198-b2b5273`) extended with `elizaOS/llama.cpp @ v0.1.0-eliza`. It adds KV-cache quant types TBQ3_0=43, TBQ4_0=44, QJL1_256=46, Q4_POLAR=47. Stock llama.cpp `.so` files will not expose these types.

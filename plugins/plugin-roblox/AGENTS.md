@@ -98,6 +98,6 @@ All read via `runtime.getSetting(...)` in `utils/config.ts`:
 - **Action timeout**: all Roblox service calls are wrapped in a 15-second `Promise.race` timeout (`ROBLOX_ACTION_TIMEOUT_MS`).
 - **Player ID caps**: `targetPlayerIds` is capped at 25 entries (`MAX_ROBLOX_TARGET_IDS`); messages are capped at 1000 characters.
 - **Service singleton**: `RobloxService` is a singleton instance across the process. Each agent UUID gets its own `RobloxAgentManager`. Do not hold state on the service instance directly.
-- **Validation guard**: `validate()` in `robloxAction.ts` returns `false` if both `ROBLOX_API_KEY` and `ROBLOX_UNIVERSE_ID` are not set, so the action never fires for unconfigured agents.
+- **Validation guard**: `validate()` in `robloxAction.ts` returns `false` unless both `ROBLOX_API_KEY` and `ROBLOX_UNIVERSE_ID` are set (`Boolean(apiKey && universeId)`), so the action never fires for unconfigured agents.
 - ESM only (`"type": "module"`). Node runtime required (`eliza.platforms: ["node"]`).
 - See the root `AGENTS.md` for repo-wide conventions (logger, architecture rules, naming).

@@ -5,7 +5,7 @@ Wallet management plugin for elizaOS agents. Provides EVM and Solana wallet infr
 ## What it does
 
 - **Wallet operations:** generate or import EVM/Solana wallets; read addresses and balances; export private keys; read/write config.
-- **Steward vault integration:** connects to a [Steward](https://stwd.cloud) signing vault for cloud-managed key custody, policy enforcement, pending approval queues, and webhook events.
+- **Steward vault integration:** connects (via the `@stwd/sdk` client) to a Steward signing vault for cloud-managed key custody, policy enforcement, pending approval queues, and webhook events.
 - **Browser wallet bridge:** relays sign/transaction requests between an in-browser wallet (MetaMask, Phantom, etc.) and the agent's API server.
 - **DEX trading:** BSC trade preflight, quote, and execution; token transfers; transaction status tracking.
 - **Context providers:** injects wallet balances and receive addresses into the agent's planning context every turn so the LLM can answer portfolio/holdings/address questions without invoking a mutating action.

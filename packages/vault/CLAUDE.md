@@ -4,7 +4,7 @@ Secrets and config vault for Eliza agents — one API for sensitive credentials 
 
 ## Purpose / role
 
-Provides a single storage interface for all sensitive values (API keys, wallet private keys, tokens) and non-sensitive config. Sensitive values are AES-256-GCM encrypted at rest with a master key held in the OS keychain. External password-manager references (1Password, Bitwarden) are first-class: the value lives in the external tool, the vault stores only the pointer.
+Provides a single storage interface for all sensitive values (API keys, wallet private keys, tokens) and non-sensitive config. Sensitive values are AES-256-GCM encrypted at rest with a master key held in the OS keychain. External password-manager references (`PasswordManagerReference.source` is `1password` | `protonpass`) are first-class: the value lives in the external tool, the vault stores only the pointer. (Bitwarden is supported as a saved-login / detection backend, but not as a reference source.)
 
 **Primary consumers:** `packages/agent` (vault bootstrap, profile resolver, wallet storage, signer backend), `packages/app-core` (secrets-manager routes, inventory routes, vault bootstrap service, vault mirror), `packages/security` (KMS local adapter), `packages/ui` (vault settings tabs).
 
@@ -152,6 +152,6 @@ await test.dispose(); // removes temp dir
 - **Audit log records keys, never values.** `reveal(key, caller)` is the designated "show plaintext" affordance; the caller id appears in the JSONL so users can see who requested a reveal.
 - **Sensitive vs non-sensitive split**: `{ sensitive: true }` → AES-256-GCM ciphertext in PGlite, master key from OS keychain. Omit → plaintext `value` column in PGlite. The same `set/get` API handles both.
 - **Non-sensitive values never go to external password managers.** `SecretsManager.set()` enforces this unconditionally, regardless of user preferences routing config.
-- **External backend direct writes are not yet supported.** Calling `manager.set(key, value, { sensitive: true })` when the active backend is `"1password"` or `"bitwarden"` throws. Store a reference with `vault.setReference()` after creating the item in the vendor tool.
+- **External backend direct writes are not yet supported.** `ManagerImpl.set()` only writes when the resolved target backend is `"in-house"`; any other resolved backend (`"1password"`, `"protonpass"`, `"bitwarden"`) throws. For 1Password / Proton Pass, store a reference with `vault.setReference()` after creating the item in the vendor tool (references are resolved by `resolveReference()` at use time).
 - **`VaultMissError`** is thrown (not null-returned) on a missing key by `get()`. Use `has()` or catch `VaultMissError` when a key may be absent.
 - **Ciphertext wire format**: `v1:<nonce_b64>:<tag_b64>:<ct_b64>`. The vault key string is bound as AES-GCM AAD, so a ciphertext cannot be moved to a different key slot without failing decryption.

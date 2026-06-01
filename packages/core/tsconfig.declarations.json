@@ -34,9 +34,5 @@
 		"src/index.browser.ts",
 		"src/testing/**/*.ts"
 	],
-	"exclude": [
-		"src/**/*.test.ts",
-		"src/**/*.spec.ts",
-		"src/__tests__/**/*"
-	]
+	"exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]
 }

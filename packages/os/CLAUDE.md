@@ -32,7 +32,7 @@ packages/os/
         package-lists/         per-arch .list.chroot package lists
         includes.chroot/       files dropped into the live image chroot
     agent/                     runtime agent payload staging (node_modules)
-    desktop-shell/             desktop shell TypeScript package (node_modules only, schemas/)
+    desktop-shell/             desktop shell TypeScript package (staged node_modules only so far)
     crates/elizad/             Rust-based elizad system daemon (gen/ only so far)
     scripts/                   build helpers (prepare-elizaos-app-overlay.mjs, usb-write.sh …)
     schemas/                   JSON schemas: model-catalog, update-manifest

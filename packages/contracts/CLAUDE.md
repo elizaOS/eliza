@@ -4,7 +4,7 @@ Pure TypeScript type contracts for elizaOS — no runtime code, no dependencies.
 
 ## Purpose / role
 
-This package extracts shared type definitions from `@elizaos/core` so they can be imported by packages that need types but not the full runtime (e.g., `@elizaos/shared`, `@elizaos/cloud-frontend`, UI layers). `@elizaos/core` re-exports a curated subset of these types as a transition shim (`src/index.ts`, lines 16-22). `@elizaos/shared` re-exports the full wallet and service-routing contract types. Nothing in this package executes at runtime — it is declaration-only after build.
+This package extracts shared type definitions from `@elizaos/core` so they can be imported by packages that need types but not the full runtime. The only direct dependents are `@elizaos/core` and `@elizaos/shared`; UI and cloud-frontend layers consume these types transitively through `@elizaos/shared`. `@elizaos/core` re-exports a curated subset of these types as a transition shim (`src/index.ts`, lines 16-22). `@elizaos/shared` re-exports the full wallet and service-routing contract types. Nothing in this package executes at runtime — it is declaration-only after build.
 
 ## Layout
 
@@ -15,8 +15,8 @@ src/
   deployment.ts       DeploymentTargetRuntime, DeploymentTargetConfig
   roles.ts            RoleName, RoleGrantSource, RolesWorldMetadata,
                       ConnectorAdminWhitelist, RolesConfig
-  service-routing.ts  LinkedAccount* types, ServiceCapability, ServiceRouteConfig,
-                      ServiceRoutingConfig, plus per-provider credential key union
+  service-routing.ts  LinkedAccount* types, LinkedAccountProviderId union,
+                      ServiceCapability, ServiceRouteConfig, ServiceRoutingConfig
   style.ts            CHARACTER_LANGUAGES const, CharacterLanguage, StylePreset,
                       MessageExample, MessageExampleContent
   wallet.ts           All wallet shapes: balances, NFTs, BSC trade, Steward,

@@ -116,7 +116,10 @@ Additionally, a separate `TODO(audit-sink)` covers Steward (or Steward-fronted) 
 
 ## SOC2 controls
 
-- **CC6.1** (logical access) — all sensitive material is gated behind a single `KmsClient`.
-- **CC6.7** (data in transit / at rest) — AES-256-GCM with mandatory AAD; Steward-held keys for production.
-- **CC4.1** (monitoring) — every privileged action emits an `AuditEvent`.
-- **C1.1** (confidentiality) — key namespace forces scoping (system / org / user) and version-aware rotation.
+The control surface this package serves is mapped in [`docs/SOC2.md`](docs/SOC2.md):
+
+- **C1.1** (encryption at rest) — AES-256-GCM envelope encryption with mandatory AAD for all Confidential / Restricted data.
+- **CC6.7** (encryption in transit) — HMAC-SHA256 and Ed25519 signing primitives used by webhook ingress and plugin manifest verification.
+- **CC6.8** (integrity) — DSPy prompt HMAC verification and plugin manifest verification ride this package's primitives.
+
+Audit-on-use is enforced by the `AuditDispatcher`: every privileged action emits an `AuditEvent` through it.

@@ -72,7 +72,7 @@ Set these environment variables (or provide them via agent `pluginParameters`):
 | `GOOGLE_CLIENT_SECRET` | Yes | OAuth 2.0 client secret (keep private) |
 | `GOOGLE_REDIRECT_URI` | Yes | Redirect URI registered in Google Cloud Console |
 
-The plugin reads these via `runtime.getSetting()` with `process.env` fallback. Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
+The plugin reads these via `runtime.getSetting()`. Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
 
 ## Enabling the plugin
 

@@ -32,7 +32,7 @@ The plugin object (`healthPlugin`) registers no actions, providers, or evaluator
 - `getCircadianInsightContract(runtime)` — resolves the registered `CircadianInsightContract` from the runtime; returns `null` if not registered.
 - `registerCircadianInsightContract(runtime, contract)` — attaches an implementation.
 - `createDefaultCircadianInsightContract()` — factory for the built-in implementation.
-- `getHealthProviderSpec(kind)` / `setHealthProviderSpec(kind, spec)` — read/write the per-provider OAuth + API-base-URL registry.
+- `getHealthProviderSpec(provider)` / `setHealthProviderSpec(spec)` — read/register a `HealthProviderSpec` in the per-provider OAuth registry (the spec carries its own `provider` key).
 
 ## Layout
 
@@ -72,18 +72,18 @@ src/
     health-oauth.ts             Per-provider OAuth dance and pending-session state
     health-provider-registry.ts HealthProviderSpec registry; getHealthProviderSpec / setHealthProviderSpec
     health-records.ts           createLifeOpsHealth* record factories
-    service-normalize-health.ts normaliseHealthSignal — normalises inbound health-signal payloads
+    service-normalize-health.ts normalizeHealthSignal — normalizes inbound health-signal payloads
   screen-time/
     index.ts                    Type-only exports: LifeOpsScreenTimePerAppUsage, LifeOpsScreenTimeSummaryPayload
   sleep/
     index.ts                    Barrel: all sleep/circadian domain helpers
     awake-probability.ts        computeAwakeProbability — logistic awake-probability model
     circadian-rules.ts          Circadian state transitions; WAKE_CONFIRM_WINDOW_MS hysteresis
-    sleep-cycle.ts              SleepCycle model; resolveCurrentSleepCycle
+    sleep-cycle.ts              resolveLifeOpsSleepCycle; classifyLifeOpsSleepCycleType; resolveLifeOpsDayBoundary
     sleep-cycle-dispatch.ts     Sleep-cycle event dispatch helpers
     sleep-episode-store.ts      SleepEpisodeRepository helpers; pure domain, no SQL coupling
     sleep-episode-types.ts      SleepEpisodeRepository interface; LifeOpsHealthSleepEpisode derivatives
-    sleep-recap.ts              buildSleepRecapPayload
+    sleep-recap.ts              SleepRecap interface (recap payload shape)
     sleep-regularity.ts         computeSleepRegularity — regularity scoring
     sleep-wake-events.ts        Sleep/wake event detection helpers
     source-reliability.ts       resolveActivitySignalReliability — per-source confidence weights
@@ -109,7 +109,16 @@ bun run --cwd plugins/plugin-health lint:check    # biome check (read-only)
 
 ## Config / env vars
 
-This plugin reads no env vars directly. Connector OAuth credentials (client IDs, secrets, tokens) are stored in the runtime credential store managed by `health-oauth.ts`. They are not env-var-gated; the connector contribution's `start()` call provisions credentials through the runtime OAuth flow.
+| Env var | Read in | Purpose |
+|---|---|---|
+| `ELIZA_TOKEN_ENCRYPTION_KEY` | `util/token-encryption.ts` | AES-256-GCM key for OAuth tokens at rest; falls back to a lazily-created `<credentialsDir>/.encryption-key` file (mode 0600) when unset. |
+| `ELIZA_<PREFIX>_CLIENT_ID` / `ELIZA_<PREFIX>_CLIENT_SECRET` / `ELIZA_<PREFIX>_PUBLIC_BASE_URL` | `health-bridge/health-oauth.ts` | Per-provider OAuth config. `<PREFIX>` is the provider `envPrefix`: `STRAVA`, `FITBIT`, `WITHINGS`, `OURA`. |
+| `ELIZA_HEALTHKIT_CLI_PATH` | `health-bridge/health-bridge.ts` | Path to the HealthKit native CLI helper (darwin). |
+| `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | `health-bridge/health-bridge.ts` | Access token for the Google Fit REST fallback. |
+| `ELIZA_TEST_HEALTH_BACKEND` | `health-bridge/health-bridge.ts` | Force a specific backend (test override). |
+| `ELIZA_MOCK_GOOGLE_BASE` / `ELIZA_MOCK_HEALTH_BASE` / `ELIZA_MOCK_<PROVIDER>_BASE` | `health-bridge/health-bridge.ts`, `health-bridge/health-connectors.ts` | Loopback-only mock API bases for tests (`<PROVIDER>` upper-cased). |
+
+The OAuth-dir root is resolved via `resolveOAuthDir` from `@elizaos/core`, so its own env knobs are owned upstream, not here.
 
 ## How to extend
 
@@ -117,7 +126,7 @@ This plugin reads no env vars directly. Connector OAuth credentials (client IDs,
 
 1. Add the kind string to `HEALTH_CONNECTOR_KINDS` in `src/connectors/index.ts`.
 2. Add entries to `HEALTH_CONNECTOR_CAPABILITIES` and `CONNECTOR_LABELS` in the same file.
-3. Add a `HealthProviderSpec` entry via `setHealthProviderSpec(kind, spec)` in `src/health-bridge/health-provider-registry.ts` (or call it at runtime boot).
+3. Add a `HealthProviderSpec` entry via `setHealthProviderSpec(spec)` (the spec carries its own `provider` and `envPrefix`) in `src/health-bridge/health-provider-registry.ts` (or call it at runtime boot).
 4. Wire the OAuth reader in `src/health-bridge/health-connectors.ts`.
 5. Export from `src/health-bridge/index.ts` if new public helpers are added.
 

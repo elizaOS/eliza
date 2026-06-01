@@ -28,7 +28,7 @@ Dev server runs on `:4455`.
 
 ```bash
 bun run --cwd packages/os-homepage build
-bun run --cwd packages/os-homepage deploy -- --commit-dirty=true
+bun run --cwd packages/os-homepage deploy
 ```
 
 The deploy target is the `elizaos-homepage` Cloudflare Pages project. The custom domain `os.elizacloud.ai` must be pointed at the Pages project with a CNAME before Cloudflare can complete custom-domain verification.

@@ -55,7 +55,7 @@ plugins/plugin-native-swabble/
     definitions.ts        All TypeScript interfaces: SwabblePlugin, SwabbleConfig, event types
     web.ts                Browser/desktop WebPlugin implementation (WakeWordGate + audio capture)
   ios/Sources/SwabblePlugin/
-    SwabblePlugin.swift   Native iOS/macOS implementation (Speech framework + Whisper.cpp)
+    SwabblePlugin.swift   Native iOS/macOS implementation (SFSpeechRecognizer)
   android/src/main/java/ai/eliza/plugins/swabble/
     SwabblePlugin.kt      Native Android implementation (SpeechRecognizer)
   rollup.config.mjs       Builds IIFE + CJS bundles from tsc output
