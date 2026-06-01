@@ -19,6 +19,7 @@ ARG OCI_LICENSES="MIT"
 ARG VERSION=""
 ARG VERSION_CLEAN=""
 ARG REVISION=""
+ARG TAILSCALE_VERSION=1.90.8
 
 FROM node:${NODE_VERSION}-slim AS pruner
 WORKDIR /app
@@ -148,6 +149,7 @@ ARG OCI_LICENSES
 ARG VERSION
 ARG VERSION_CLEAN
 ARG REVISION
+ARG TAILSCALE_VERSION
 LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.description="${OCI_DESCRIPTION}" \
       org.opencontainers.image.source="${OCI_SOURCE}" \
@@ -157,6 +159,19 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
   && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  case "$(dpkg --print-architecture)" in \
+    amd64) TAILSCALE_ARCH=amd64 ;; \
+    arm64) TAILSCALE_ARCH=arm64 ;; \
+    *) echo "Unsupported architecture for tailscale: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz" \
+    -o /tmp/tailscale.tgz; \
+  tar -xzf /tmp/tailscale.tgz -C /tmp; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscale" /usr/local/bin/tailscale; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
+  rm -rf /tmp/tailscale.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
 
 # Install yt-dlp from upstream GitHub release. See Dockerfile.cloud for rationale.
 RUN ARCH="$(dpkg --print-architecture)" \
