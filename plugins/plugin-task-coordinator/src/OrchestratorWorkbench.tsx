@@ -851,9 +851,10 @@ function WorkbenchHeader({
       </Button>
       <Button
         size="sm"
+        variant="ghost"
         disabled={busy}
         onClick={onNewTask}
-        className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
+        className="h-7 gap-1.5 border border-accent/50 px-2.5 text-xs-tight font-semibold text-accent hover:bg-accent/10 hover:text-accent"
         aria-label={newTaskLabel}
         title={newTaskLabel}
         data-testid="orchestrator-new-task"
@@ -2398,11 +2399,14 @@ export function OrchestratorWorkbench() {
           <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
             {tasks.length === 0 ? (
               loading ? (
-                <p className="p-2 text-xs text-muted">
-                  {t("orchestrator.loadingTasks", {
-                    defaultValue: "Loading tasks…",
-                  })}
-                </p>
+                <div className="space-y-1.5 p-1" aria-hidden>
+                  {["a", "b", "c", "d"].map((id) => (
+                    <div
+                      key={id}
+                      className="h-12 animate-pulse rounded-md border border-border/30 bg-bg-accent/30"
+                    />
+                  ))}
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
                   <Activity className="h-7 w-7 text-muted/50" />
@@ -2413,8 +2417,9 @@ export function OrchestratorWorkbench() {
                   </p>
                   <Button
                     size="sm"
+                    variant="ghost"
                     onClick={() => setCreateOpen(true)}
-                    className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
+                    className="h-7 gap-1.5 border border-accent/50 px-2.5 text-xs-tight font-semibold text-accent hover:bg-accent/10 hover:text-accent"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {t("orchestrator.action.newTask", {
@@ -2508,6 +2513,16 @@ export function OrchestratorWorkbench() {
                     );
                   })
                 )}
+                {detail.activeSessionCount > 0 ? (
+                  // A faint shimmer at the tail, where the next message forms —
+                  // an in-place "responding" cue (the footer bar shows the
+                  // session count; this shows the response is coming).
+                  <div
+                    className="mt-5 h-2.5 w-2/3 animate-pulse rounded bg-bg-accent/40"
+                    data-testid="orchestrator-streaming"
+                    aria-hidden
+                  />
+                ) : null}
               </div>
               {detail.activeSessionCount > 0 ? (
                 <div
@@ -2593,12 +2608,19 @@ export function OrchestratorWorkbench() {
                   </span>
                 </div>
               ) : null}
-              <div className="flex flex-1 items-center justify-center p-6">
-                <p className="text-xs text-muted">
-                  {t("orchestrator.loadingTask", {
-                    defaultValue: "Loading task…",
-                  })}
-                </p>
+              <div
+                role="status"
+                className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4"
+                aria-label={t("orchestrator.loadingTask", {
+                  defaultValue: "Loading task…",
+                })}
+              >
+                {["a", "b", "c"].map((id) => (
+                  <div key={id} className="space-y-1.5" aria-hidden>
+                    <div className="h-3 w-24 animate-pulse rounded bg-bg-accent/40" />
+                    <div className="h-16 animate-pulse rounded-md border border-border/30 bg-bg-accent/25" />
+                  </div>
+                ))}
               </div>
             </>
           ) : (
