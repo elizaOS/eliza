@@ -1,1 +1,18 @@
-export { uniqBy as default } from "../../../../../node_modules/.bun/es-toolkit@1.47.0/node_modules/es-toolkit/dist/compat/array/uniqBy.mjs";
+function resolveIteratee(iteratee) {
+  if (typeof iteratee === "function") return iteratee;
+  return (value) => value?.[iteratee];
+}
+
+export default function uniqBy(collection, iteratee) {
+  if (collection == null) return [];
+  const selector = resolveIteratee(iteratee);
+  const seen = new Set();
+  const result = [];
+  for (const item of collection) {
+    const key = selector(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}

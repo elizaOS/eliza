@@ -1,1 +1,5 @@
-export { isPlainObject as default } from "../../../../../node_modules/.bun/es-toolkit@1.47.0/node_modules/es-toolkit/dist/compat/predicate/isPlainObject.mjs";
+export default function isPlainObject(value) {
+  if (Object.prototype.toString.call(value) !== "[object Object]") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === null || prototype === Object.prototype;
+}

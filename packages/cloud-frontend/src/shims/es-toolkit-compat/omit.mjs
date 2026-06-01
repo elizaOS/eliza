@@ -1,1 +1,7 @@
-export { omit as default } from "../../../../../node_modules/.bun/es-toolkit@1.47.0/node_modules/es-toolkit/dist/compat/object/omit.mjs";
+export default function omit(object, paths) {
+  if (object == null) return {};
+  const excluded = new Set(Array.isArray(paths) ? paths : [paths]);
+  return Object.fromEntries(
+    Object.entries(object).filter(([key]) => !excluded.has(key)),
+  );
+}
