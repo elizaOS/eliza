@@ -4,7 +4,6 @@ import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
-	findCanonicalWebLookupActionName,
 	findWebLookupActionName,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
@@ -177,92 +176,6 @@ describe("live routing regressions", () => {
 			similes: ["LOOKUP_WEB"],
 		};
 		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
-	});
-
-	it("resolves the keyless web-lookup action by canonical name, not a SEARCH simile collision", () => {
-		// Live regression: the v5 planner action-surface backstop used
-		// `findWebLookupActionName`, which returns the first action whose name OR
-		// simile matches any lookup name. An unrelated action that merely carries a
-		// "SEARCH" simile (CONTACT_SEARCH) sorted ahead of WEB_FETCH and won,
-		// force-exposing the wrong action and never exposing WEB_FETCH — so
-		// live-info still spawned a coding agent. `findCanonicalWebLookupActionName`
-		// matches by canonical NAME only and prefers WEB_FETCH.
-		const actions: Array<Pick<Action, "name" | "similes">> = [
-			{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
-			{ name: "TASKS", similes: [] },
-			{ name: "WEB_FETCH", similes: ["LOOKUP_WEB"] },
-		];
-		expect(findCanonicalWebLookupActionName(actions)).toBe("WEB_FETCH");
-		// The simile-based resolver mis-resolves the same set to CONTACT_SEARCH,
-		// which is exactly the bug the canonical resolver guards against.
-		expect(findWebLookupActionName(actions)).toBe("CONTACT_SEARCH");
-		// When a real web-search action exists but no WEB_FETCH, the canonical
-		// resolver still returns it (never the SEARCH-simile collision).
-		expect(
-			findCanonicalWebLookupActionName([
-				{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
-				{ name: "WEB_SEARCH", similes: [] },
-			]),
-		).toBe("WEB_SEARCH");
-		// And when nothing canonical is present, it declines (no false positive on
-		// a bare SEARCH-simile action), letting callers fall back deliberately.
-		expect(
-			findCanonicalWebLookupActionName([
-				{ name: "CONTACT_SEARCH", similes: ["SEARCH"] },
-				{ name: "TASKS", similes: [] },
-			]),
-		).toBeUndefined();
-	});
-
-	it("prefers WEB_FETCH over SEARCH-simile collisions for direct live-info ownership", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "CONTACT_SEARCH",
-					similes: ["SEARCH"],
-					description: "Search local contacts",
-				},
-				{
-					name: "WEB_FETCH",
-					similes: ["LOOKUP_WEB"],
-					description: "Fetch public URLs",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
-
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: { text: "what is the current BTC price in USD?" },
-			}),
-		).toMatchObject({
-			actionName: "WEB_FETCH",
-			reasons: ["direct:web-search"],
-		});
-	});
-
-	it("prefers an inline web-lookup over spawning a sub-agent for live-info", () => {
-		// Live regression: the planner surfaced WEB_FETCH into candidates but
-		// still selected TASKS_SPAWN_AGENT for "what's the current BTC price",
-		// spawning a coding agent instead of fetching inline. When the message
-		// reads as a live-info lookup and the direct candidates resolve to a
-		// web-lookup action, prefer the direct candidate so the spawn action is
-		// dropped from the turn.
-		expect(
-			shouldPreferDirectCurrentCandidateActions({
-				candidateActions: ["WEB_FETCH", "TASKS_SPAWN_AGENT"],
-				currentMessageText: "what's the current BTC price right now?",
-				directCandidateActions: ["WEB_FETCH"],
-			}),
-		).toBe(true);
-		// An explicit web-search action surfaced alongside the spawn is preferred
-		// just the same.
-		expect(
-			shouldPreferDirectCurrentCandidateActions({
-				candidateActions: ["TASKS_SPAWN_AGENT", "SEARCH"],
-				currentMessageText: "look up the latest ETH price",
-				directCandidateActions: ["SEARCH"],
-			}),
-		).toBe(true);
 	});
 
 	it("does not promote a coding/spawn request to a web-lookup (stays TASKS)", () => {
