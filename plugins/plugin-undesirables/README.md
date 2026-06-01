@@ -5,23 +5,23 @@
 [![npm version](https://img.shields.io/npm/v/plugin-undesirables.svg)](https://www.npmjs.org/package/plugin-undesirables)
 [![npm downloads](https://img.shields.io/npm/dw/plugin-undesirables.svg)](https://www.npmjs.org/package/plugin-undesirables)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
-[![ElizaOS](https://img.shields.io/badge/ElizaOS-v2_Compatible-purple.svg)](https://elizaos.ai)
+[![elizaOS](https://img.shields.io/badge/elizaOS-v2_Compatible-purple.svg)](https://elizaos.ai)
 [![MCP Server](https://img.shields.io/badge/MCP_Server-35+_Tools-green.svg)](https://github.com/sailorpepe/undesirables-mcp-server)
 [![x402](https://img.shields.io/badge/x402-Oracle_API-orange.svg)](https://oracle.the-undesirables.com)
 
-> Personality-as-Code for ElizaOS agents. Live market data from 370K+ indexed products. Zero config required.
+> Personality-as-Code for elizaOS agents. Live market data from 370K+ indexed products. Zero config required.
 
 ---
 
 ## What This Does
 
-`plugin-undesirables` gives any ElizaOS agent a structured personality, live TCG market data, and 24 specialized skills — with zero configuration required.
+`plugin-undesirables` gives any elizaOS agent a structured personality, live TCG market data, and 26 specialized skills — with zero configuration required.
 
 Install the plugin, and your agent immediately gets:
 
 - **A working personality** — a demo soul loads automatically. NFT holders get their unique AI identity.
 - **Live market data** — real product prices from 370K+ indexed TCG products, injected into every relevant conversation.
-- **24 skills** — market analysis, portfolio checks, entry signals, exit strategies, risk assessment, content creation, and more.
+- **26 skills** — market analysis, portfolio checks, entry signals, exit strategies, risk assessment, content creation, and more.
 - **Passive market intelligence** — an evaluator that detects card/market topics and enriches the agent's context with live pricing data automatically.
 
 ---
@@ -36,7 +36,7 @@ The Undesirables ecosystem has three tiers. The plugin is the free entry point.
 │  Free — no keys, no wallets, no payments                 │
 │                                                          │
 │  ✓ Demo soul (loads automatically, zero config)          │
-│  ✓ All 24 skills                                         │
+│  ✓ All 26 skills                                         │
 │  ✓ 9 personality-driven actions                          │
 │  ✓ Live Oracle data (search + daily market snapshot)     │
 │  ✓ Passive market intelligence evaluator                 │
@@ -74,7 +74,7 @@ The plugin provides free personality and data. The Oracle API provides paid comp
 npm install plugin-undesirables
 ```
 
-Add to your ElizaOS `character.json`:
+Add to your elizaOS `character.json`:
 
 ```json
 {
@@ -82,7 +82,7 @@ Add to your ElizaOS `character.json`:
 }
 ```
 
-That's it. Your agent loads a demo personality with all 24 skills and live Oracle data. No wallet, no API key, no workspace download needed.
+That's it. Your agent loads a demo personality with all 26 skills and live Oracle data. No wallet, no API key, no workspace download needed.
 
 ### Option B: NFT Holder (Unique Soul)
 
@@ -130,9 +130,9 @@ Your agent gets a unique personality derived from your NFT's visual traits — B
 | `UNDESIRABLE_EXIT_STRATEGY` | Exit planning — TP1/TP2/TP3 levels, stop losses, time-based rules |
 | `UNDESIRABLE_RISK_ASSESSMENT` | Risk rating 1–10 with SAFE / CAUTION / DANGER verdict |
 
-### Skills (24)
+### Skills (26)
 
-All 24 skills are available to every user — demo and NFT holder alike.
+All 26 skills are available to every user — demo and NFT holder alike.
 
 | Category | Skills |
 |----------|--------|
@@ -141,7 +141,7 @@ All 24 skills are available to every user — demo and NFT holder alike.
 | **Risk** | Risk Assessment, Volatility Scan, Liquidation Watch, MEV Detection |
 | **DeFi** | Farm Yield, Compound Strategy, Snipe Launch, Memecoin Scanner, Ape Checklist |
 | **Social** | Whale Tracker, Copy Trade, Prediction Log |
-| **Content** | Content Creation, Image Generation, Music Generation, Video Production |
+| **Content** | Content Creation, Image Generation, Music Generation, Video Production, Meme Machine |
 
 ---
 
@@ -149,7 +149,7 @@ All 24 skills are available to every user — demo and NFT holder alike.
 
 | Feature | Demo (Free) | NFT Holder |
 |---------|:-----------:|:----------:|
-| All 24 skills | ✓ | ✓ |
+| All 26 skills | ✓ | ✓ |
 | Live Oracle data | ✓ | ✓ |
 | Market intelligence evaluator | ✓ | ✓ |
 | All 9 actions | ✓ | ✓ |
@@ -184,7 +184,7 @@ neuroticism: 28
 
 The `undesirables-soul` provider injects this context into **every** agent response. Two different Undesirable agents will give completely different takes on the same question, filtered through their individual psychology.
 
-Workspaces are keyed by `runtime.agentId`. Multiple Undesirable agents can run in the same ElizaOS instance without personality collision.
+Workspaces are keyed by `runtime.agentId`. Multiple Undesirable agents can run in the same elizaOS instance without personality collision.
 
 ---
 
@@ -214,7 +214,7 @@ Workspaces are keyed by `runtime.agentId`. Multiple Undesirable agents can run i
 ## Ecosystem
 
 ### Plugins & SDKs
-- **[plugin-undesirables](https://www.npmjs.com/package/plugin-undesirables)** — ElizaOS personality + market data (this package)
+- **[plugin-undesirables](https://www.npmjs.com/package/plugin-undesirables)** — elizaOS personality + market data (this package)
 - **[undesirables-mcp-server](https://pypi.org/project/undesirables-mcp-server/)** — 35+ tool MCP server ([GitHub](https://github.com/sailorpepe/undesirables-mcp-server) · [Glama](https://glama.ai/mcp/servers/sailorpepe/undesirables-mcp-server) · [Official MCP Registry](https://registry.modelcontextprotocol.io))
 - **[tcg-oracle-tools](https://pypi.org/project/tcg-oracle-tools/)** — Python SDK for the Oracle API
 

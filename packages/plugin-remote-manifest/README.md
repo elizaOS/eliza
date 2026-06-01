@@ -111,8 +111,8 @@ Every remote plugin must ship a `plugin.json` in its root:
 ```bash
 bun run packages/plugin-remote-manifest/scripts/sign-manifest.ts \
   --tarball ./my-plugin-1.2.3.tgz \
-  --signer ops@example.com \
-  --out ./my-plugin-1.2.3.tgz.sig.json
+  [--signer ops@example.com] \
+  [--out ./my-plugin-1.2.3.tgz.sig.json]
 ```
 
 Reads `ELIZA_KMS_BACKEND` (`memory | local | steward`, default `local`). Emits a JSON sidecar

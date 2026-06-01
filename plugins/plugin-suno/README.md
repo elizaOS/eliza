@@ -79,7 +79,3 @@ interface GenerationResponse {
 ```
 
 Responses larger than 4000 bytes are truncated before being returned to the agent context.
-
-## Source reference
-
-[github.com/gcui-art/suno-api](https://github.com/gcui-art/suno-api)

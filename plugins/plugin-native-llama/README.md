@@ -81,6 +81,3 @@ Explicit `cacheTypeK`/`cacheTypeV` fields on `LoadOptions` take precedence over 
   and `getNativeKernels` bridge methods for TurboQuant KV caches and MTP
   speculative decoding. Stock builds warn-and-no-op on those calls.
 
-## Licensing
-
-MIT — matches `llama-cpp-capacitor` and llama.cpp upstream.

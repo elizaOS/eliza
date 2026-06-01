@@ -58,7 +58,7 @@ src/
 Only scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-x402 build        # compile via build.ts (tsdown)
+bun run --cwd plugins/plugin-x402 build        # compile via build.ts (bun build)
 bun run --cwd plugins/plugin-x402 clean        # rm -rf dist
 bun run --cwd plugins/plugin-x402 typecheck    # tsgo --noEmit
 bun run --cwd plugins/plugin-x402 lint         # no-op (lint skipped)

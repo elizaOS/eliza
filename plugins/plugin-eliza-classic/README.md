@@ -36,7 +36,7 @@ Add it to your agent's plugin list:
 ```ts
 import elizaClassicPlugin from "@elizaos/plugin-eliza-classic";
 
-const agent = await AgentRuntime.create({
+const agent = new AgentRuntime({
   plugins: [elizaClassicPlugin],
   // ...
 });
@@ -56,6 +56,3 @@ bun run --cwd plugins/plugin-eliza-classic build
 
 Output goes to `dist/`. Browser and Node ESM bundles are produced separately (`index.js` / `index.browser.js`).
 
-## License
-
-Part of the elizaOS monorepo. See the root LICENSE file.

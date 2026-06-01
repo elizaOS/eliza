@@ -92,9 +92,9 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 | Capability | Default backend | Optional / alternative |
 |-----------|-----------------|----------------------|
 | Scene description | VLM via `runtime.useModel(IMAGE_DESCRIPTION)` | Any registered IMAGE_DESCRIPTION provider |
-| Object detection | YOLOv8n/v11n (onnxruntime-node) | COCO-SSD (optional dep) |
-| Pose detection | onnxruntime-node | `@tensorflow-models/pose-detection` (optional dep) |
-| OCR | RapidOCR/PP-OCRv5 (onnxruntime-node) | Apple Vision (iOS/macOS), Tesseract.js |
+| Object detection | COCO-SSD via `@tensorflow/tfjs-node` (optional dep) | YOLOv8n ggml (native/yolo.cpp — migration target) |
+| Pose detection | MoveNet via `@tensorflow-models/pose-detection` (optional dep) | ggml port (in progress) |
+| OCR | Apple Vision (darwin, when registered) → DocTR ggml (native/doctr.cpp) | No onnxruntime or Tesseract path |
 | Face recognition | face-api.js | GGML backend, MediaPipe BlazeFace (experimental) |
 
 ## Platform notes
@@ -111,6 +111,3 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 - All inference runs locally unless a remote IMAGE_DESCRIPTION provider is registered.
 - Consider access implications before enabling in shared or sensitive environments.
 
-## License
-
-MIT

@@ -185,7 +185,7 @@ Instructions here...
 ## Actions
 
 ### USE_SKILL
-Canonical entry point for invoking an enabled skill. Dispatches to the skill's bundled script or returns its SKILL.md guidance based on `mode`. Listed similes (`RUN_SKILL`, `INVOKE_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`) absorb older inbound callers.
+Canonical entry point for invoking an enabled skill. Dispatches to the skill's bundled script or returns its SKILL.md guidance based on `mode`. Similes: `INVOKE_SKILL`, `RUN_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`, `USE_AGENT_SKILL`, `RUN_AGENT_SKILL`, `USE_CAPABILITY`, `RUN_CAPABILITY`.
 
 ### SKILL
 Catalog management parent action. Use `op=search`, `op=details`, `op=sync`, `op=toggle`, `op=install`, or `op=uninstall`.
@@ -306,12 +306,6 @@ const json = generateSkillsJson(skills, { includeLocation: true });
 
 ## Testing
 
-The plugin includes comprehensive tests across TypeScript, Python, and Rust implementations.
-
-### Run Tests (Without API Key)
-
 ```bash
-# TypeScript - from monorepo root
-bun run --filter @elizaos/plugin-agent-skills test
-# TypeScript
-ANTHROPIC_API_KEY=your-key bun run --filter @elizaos/plugin-agent-skills test
+bun run --cwd plugins/plugin-agent-skills test
+```

@@ -43,7 +43,7 @@ All exported from `src/routes.ts` and re-exported from `src/index.ts`.
 
 ### TUI interact capabilities
 
-`HyperscapeTuiView` exports an `interact` function for terminal surface automation:
+`HyperscapeOperatorSurface.tsx` exports a top-level `interact` function for terminal surface automation:
 
 - `terminal-hyperscape-state` — returns current TUI view metadata
 - `terminal-hyperscape-command` — sends an operator message (`runId`, `content` required)

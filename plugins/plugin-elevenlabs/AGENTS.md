@@ -25,7 +25,7 @@ plugins/plugin-elevenlabs/
     index.node.ts      Node entry — re-exports index.ts (used as module/cjs)
     index.browser.ts   Browser entry — re-exports index.ts (used as browser build)
   __tests__/
-    streaming.test.ts  Unit tests for streaming utilities
+    streaming.test.ts  Functional tests for TTS streaming path (chunk draining, SDK params, error propagation)
   build.ts             Bun build script
   package.json
 ```
@@ -45,7 +45,7 @@ bun run --cwd plugins/plugin-elevenlabs lint           # biome check --write --u
 bun run --cwd plugins/plugin-elevenlabs lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-elevenlabs format         # biome format --write
 bun run --cwd plugins/plugin-elevenlabs format:check   # biome format (read-only)
-bun run --cwd plugins/plugin-elevenlabs typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-elevenlabs typecheck      # tsgo --project tsconfig.json --noEmit
 ```
 
 ## Config / env vars

@@ -99,7 +99,7 @@ Required Shopify API scopes: `read_products`, `write_products`, `read_orders`, `
 
 ## Conventions / gotchas
 
-- **Dual build:** The plugin has two independent outputs. `tsup` compiles `src/plugin.ts` (the server-side route plugin, Node-compatible). `vite build:views` compiles `ShopifyAppView.tsx` and `ShopifyTuiView` for browser delivery at `dist/views/bundle.js`. Changes to server logic go through tsup; changes to the React UI go through vite.
+- **Dual build:** The plugin has two independent outputs. `tsup` compiles all `src/` files (all routes, views, and helpers — server-compatible ESM, no bundling). `vite build:views` bundles `ShopifyAppView.tsx` and `ShopifyTuiView` into `dist/views/bundle.js` for in-browser delivery. Server-side changes go through tsup; browser bundle changes go through vite.
 - **GraphQL API version is pinned:** `API_VERSION = "2025-04"` in `src/routes.ts`. When upgrading, update this constant and verify all field paths against the new schema.
 - **Inventory pagination cap:** The inventory endpoint fetches at most 50 products × 10 variants × 10 locations in a single GraphQL query. There is no cursor pagination for inventory. Large catalogs will be truncated.
 - **Product page cursor:** The products endpoint simulates page-N by re-fetching cursor chains from page 1. Deep pagination is expensive. Prefer search (`?q=`) to reduce result sets.

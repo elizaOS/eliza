@@ -114,6 +114,3 @@ bun run --cwd plugins/plugin-web-search typecheck  # type-check only
 - [`@elizaos/core`](https://github.com/elizaOS/eliza) — elizaOS runtime interfaces
 - [`@tavily/core`](https://www.npmjs.com/package/@tavily/core) — Tavily search client
 
-## License
-
-Part of the elizaOS project. See the repository root for license details.

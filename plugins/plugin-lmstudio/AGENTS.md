@@ -40,7 +40,7 @@ plugins/plugin-lmstudio/
     client.ts            createLMStudioClient — @ai-sdk/openai-compatible factory, one per runtime
     config.ts            getSetting, getBaseURL, getApiKey, getSmallModel, getLargeModel, getEmbeddingModel, shouldAutoDetect
     detect.ts            detectLMStudio — probes GET /v1/models; parseModelsResponse; DetectionResult
-    model-usage.ts       normalizeTokenUsage, estimateUsage, emitModelUsed (MODEL_USED event)
+    model-usage.ts       normalizeTokenUsage, estimateUsage, estimateEmbeddingUsage, emitModelUsed (MODEL_USED event)
   types/
     index.ts             LMStudioConfig, LMStudioModelInfo, LMStudioModelsResponse
   __tests__/
@@ -64,7 +64,7 @@ bun run --cwd plugins/plugin-lmstudio lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-lmstudio format         # biome format --write
 bun run --cwd plugins/plugin-lmstudio format:check   # biome format (read-only)
 bun run --cwd plugins/plugin-lmstudio typecheck      # tsc --noEmit --noCheck
-bun run --cwd plugins/plugin-lmstudio clean          # rm dist .turbo tsconfig.tsbuildinfo
+bun run --cwd plugins/plugin-lmstudio clean          # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 ```
 
 ## Config / env vars

@@ -50,7 +50,7 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
 
 - **API client** (`@elizaos/ui/api`) — `ElizaClient` plus per-domain client
   modules for agents, chat, cloud, automations, and more.
-- **Agent surface** (`@elizaos/ui/agent-surface`) — `useAgentElement` and the
+- **Agent surface** (re-exported from `@elizaos/ui`) — `useAgentElement` and the
   provider/overlay that let the agent address, focus, fill, and click view
   elements. See `src/agent-surface/README.md`.
 - **GenUI** (`@elizaos/ui/genui`) — declarative, agent-generated UI (an
@@ -72,6 +72,3 @@ bun run --cwd packages/ui stories:dev # component stories
 
 This is a library; there is no standalone dev server — run it through a host app.
 
-## License
-
-MIT

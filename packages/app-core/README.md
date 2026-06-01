@@ -22,12 +22,10 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 // Node/runtime barrel
 import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 
-// Browser-safe surface (re-exports React/UI from @elizaos/ui)
-import { Button, useApp } from "@elizaos/app-core/browser";
-
-// Targeted subpaths
+// Targeted subpaths (see package.json exports for the full list)
 import { loadRegistry } from "@elizaos/app-core/registry";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
+import { ensureAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 ```
 
 The full subpath list lives in the `exports` map of `package.json`.

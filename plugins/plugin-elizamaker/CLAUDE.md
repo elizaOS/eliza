@@ -72,7 +72,7 @@ Whitelist data is persisted to `<stateDir>/whitelist.json` (mode 0600). OG code 
 
 **Add a new route:**
 1. Add a `{ type, path, rawPath: true }` entry to `elizaMakerRouteSpecs` in `src/plugin.ts`.
-2. Add the handler branch in `src/drop-routes.ts` inside `handleDropRoutes()` — match on `method` and `pathname`, use `ctx.json()` / `ctx.error()` to respond.
+2. Add the handler branch in `src/drop-routes.ts` inside `handleDropRoutes()` — match on `method` and `pathname`, destructure `json` and `error` from `ctx` and call `json(res, data)` / `error(res, message)` to respond.
 3. No other registration needed; all routes share the single `elizaMakerRoute` handler.
 
 **Add a new service:**
@@ -89,6 +89,6 @@ Whitelist data is persisted to `<stateDir>/whitelist.json` (mode 0600). OG code 
 - **Merkle tree is in-memory and rebuilt per request** from `whitelist.json`. No caching — acceptable for small whitelists; add caching if the list grows large.
 - **FxTwitter API** (`api.fxtwitter.com`) is used for tweet verification — no API key required. Rate limits apply.
 - **Eliza NFT contract** is hardcoded to `0x5Af0D9827E0c53E4799BB226655A1de152A425a5` on Base mainnet. `ELIZA_NFT_RPC_URL` overrides the RPC but not the address.
-- **OG code** is a silent UUID written at first startup to `~/.eliza/.og`. It is surfaced in `/api/whitelist/status` as `ogCode`. Validation logic (`generateValidCodes`, `isValidOGCode`) is exported but not called at runtime — reserved for external scripts.
+- **OG code** is a silent UUID written at first startup to `~/.eliza/.og`. It is surfaced in `/api/whitelist/status` as `ogCode`. Validation helpers (`generateValidCodes`, `isValidOGCode`) are exported from `og-tracker.ts` but not re-exported from the package index and not called at runtime — reserved for external scripts.
 - Route handler requires a real Node.js `http.IncomingMessage` / `http.ServerResponse` — will throw `TypeError` if passed a non-Node HTTP adapter.
 - See root `AGENTS.md` for repo-wide conventions (logger usage, ESM, naming, architecture rules).

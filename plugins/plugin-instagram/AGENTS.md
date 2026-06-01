@@ -55,7 +55,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-instagram build        # tsdown compile → dist/
+bun run --cwd plugins/plugin-instagram build        # bun build → dist/
 bun run --cwd plugins/plugin-instagram dev          # watch build (bun --hot)
 bun run --cwd plugins/plugin-instagram test         # vitest run
 bun run --cwd plugins/plugin-instagram test:watch   # vitest watch

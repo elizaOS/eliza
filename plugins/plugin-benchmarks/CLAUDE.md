@@ -35,7 +35,7 @@ plugins/plugin-benchmarks/
       visualwebbench.ts        VISUALWEBBENCH_TASK action (VisualWebBench vision tasks)
   __tests__/
     plugin.test.ts             Vitest suite — verifies action counts, umbrella names, promoted virtuals
-  build.ts                     Build script (tsdown)
+  build.ts                     Build script (Bun.build)
   vitest.config.ts             Test config
   package.json
 ```

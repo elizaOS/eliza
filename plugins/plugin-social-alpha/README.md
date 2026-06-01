@@ -96,6 +96,3 @@ bun run --cwd plugins/plugin-social-alpha test
 
 Primary support is Solana. Ethereum and Base are partially supported for ticker resolution via DexScreener.
 
-## License
-
-MIT

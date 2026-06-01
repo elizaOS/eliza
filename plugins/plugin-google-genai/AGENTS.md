@@ -50,7 +50,7 @@ plugins/plugin-google-genai/
 Scripts that exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-google-genai build          # tsdown build (node + browser bundles)
+bun run --cwd plugins/plugin-google-genai build          # Bun.build (node + browser + CJS bundles, then tsc for declarations)
 bun run --cwd plugins/plugin-google-genai dev            # build --watch
 bun run --cwd plugins/plugin-google-genai typecheck      # tsgo --noEmit
 bun run --cwd plugins/plugin-google-genai test           # vitest run (all tests)
@@ -58,7 +58,7 @@ bun run --cwd plugins/plugin-google-genai test:unit      # vitest run --dir __te
 bun run --cwd plugins/plugin-google-genai test:integration  # vitest run --dir __tests__/integration
 bun run --cwd plugins/plugin-google-genai lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-google-genai format         # biome format --write
-bun run --cwd plugins/plugin-google-genai clean          # rm -rf dist .turbo
+bun run --cwd plugins/plugin-google-genai clean          # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
 ```
 
 ## Config / env vars

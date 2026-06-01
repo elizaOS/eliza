@@ -56,7 +56,6 @@ No environment variables or settings are required. The plugin reads data from th
 The package also exports utilities useful for building custom trajectory views:
 
 - `summarizePhases(detail, options)` — maps a `TrajectoryDetail` into `PhaseSummary[]` with status and summary text per phase.
-- `extractShouldRespondDecision(call)` — parses a `should_respond` LLM call response into a `{ decision, reasoning }` object.
 - `PHASES` — readonly tuple `["HANDLE", "PLAN", "ACTION", "EVALUATE"]`.
 - `fetchTrajectoryList(options)` — typed fetch for `GET /api/trajectories`.
 - `fetchTrajectoryDetail(id, options)` — typed fetch for `GET /api/trajectories/:id`.

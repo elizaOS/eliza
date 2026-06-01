@@ -126,6 +126,3 @@ bun run build:docs   # regenerate README from JSDoc, then build
 bun run clean        # remove dist/
 ```
 
-## License
-
-MIT

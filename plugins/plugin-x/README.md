@@ -1,6 +1,6 @@
 # @elizaos/plugin-x
 
-X (formerly Twitter) connector for Eliza agents via the official Twitter API v2.
+X (formerly Twitter) connector for elizaOS agents via the official Twitter API v2.
 
 ## 🚨 TL;DR - Quick Setup
 
@@ -522,6 +522,3 @@ Monitor your usage at: https://developer.twitter.com/en/portal/dashboard
 - [Rate Limits Reference](https://developer.twitter.com/en/docs/twitter-api/rate-limits)
 - [elizaOS Documentation](https://github.com/elizaos/eliza)
 
-## 📝 License
-
-This plugin is part of elizaOS. See the repository root for license information.

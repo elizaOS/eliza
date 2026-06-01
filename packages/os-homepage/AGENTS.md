@@ -13,8 +13,7 @@ packages/os-homepage/
   src/
     main.tsx                  Entry point — mounts <App> wrapped in <I18nProvider>
     App.tsx                   Router (path-based, no router library) — dispatches to:
-                                HomePage (/)
-                                ReleaseDownloads (/#download)
+                                HomePage (/) — includes ReleaseDownloads as a section at #download
                                 CheckoutPage (/checkout)
                                 CheckoutResult (/checkout/success, /checkout/cancel)
                                 ProductDetail (/hardware/:slug)

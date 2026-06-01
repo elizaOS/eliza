@@ -131,7 +131,7 @@ Full TypeScript definitions are in `src/definitions.ts`. Key types:
 | `VideoCaptureOptions` | Options for `startRecording` (quality, duration, size, audio, bitrate) |
 | `VideoResult` | Path (blob URL or file path), duration, dimensions, file size, mime type |
 | `CameraSettings` | flash, zoom, focusMode, exposureMode, exposureCompensation, whiteBalance |
-| `CameraPermissionStatus` | camera / microphone / photos: `"granted"` \| `"denied"` \| `"prompt"` |
+| `CameraPermissionStatus` | camera / microphone: `"granted"` \| `"denied"` \| `"prompt"`; photos additionally allows `"limited"` |
 
 ## Platform notes
 
@@ -140,6 +140,3 @@ Full TypeScript definitions are in `src/definitions.ts`. Key types:
 - **Android:** Camera2 API-backed.
 - **Node (Electrobun desktop):** Supported via Electrobun native modules.
 
-## License
-
-MIT

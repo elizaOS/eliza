@@ -59,7 +59,7 @@ plugins/plugin-shell/
 Only scripts that exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-shell build          # tsdown build → dist/
+bun run --cwd plugins/plugin-shell build          # bun build → dist/
 bun run --cwd plugins/plugin-shell dev            # hot-reload build (bun --hot)
 bun run --cwd plugins/plugin-shell test           # vitest run
 bun run --cwd plugins/plugin-shell clean          # rm -rf dist .turbo

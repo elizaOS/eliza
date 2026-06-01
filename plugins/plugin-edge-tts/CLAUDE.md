@@ -37,7 +37,7 @@ plugins/plugin-edge-tts/
   __tests__/
     smoke.test.ts       Unit tests (voice mapping, rate conversion, settings validation)
     core-test-mock.ts   Mock AgentRuntime for tests
-  build.ts              tsdown build script (node + browser targets)
+  build.ts              Bun.build() script (node ESM, browser ESM, node CJS targets)
   vitest.config.ts      Vitest config
 ```
 
@@ -99,4 +99,4 @@ This plugin has a single responsibility (TTS model handler). The typical extensi
 - **5000-character limit.** Enforced explicitly before calling the TTS service. The upstream service has its own practical limit near this value; errors above it are opaque network failures.
 - **Type declarations.** `node-edge-tts` ships no TypeScript types. The hand-written declarations in `src/types/node-edge-tts.d.ts` are the authoritative type source for this package.
 - **`synthesizeEdgeSpeech`** passes `null` as the runtime to `getEdgeTTSSettings`, so it reads only from `process.env`. Do not call it inside an agent handler where a runtime is available — use `runtime.useModel(ModelType.TEXT_TO_SPEECH, ...)` instead.
-- **Dual build targets.** `build.ts` produces `dist/node/` and `dist/browser/` bundles. The `exports` map in `package.json` selects the right bundle per environment. Keep `index.node.ts` and `index.browser.ts` as thin re-exports; all logic lives in `src/index.ts` (node) or `src/index.browser.ts` (browser stub).
+- **Triple build targets.** `build.ts` produces `dist/node/` (ESM), `dist/browser/` (ESM), and `dist/cjs/` (CJS) bundles. The `exports` map in `package.json` selects the right bundle per environment. Keep `index.node.ts` and `index.browser.ts` as thin re-exports; all logic lives in `src/index.ts` (node) or `src/index.browser.ts` (browser stub).

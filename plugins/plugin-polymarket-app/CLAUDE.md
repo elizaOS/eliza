@@ -52,7 +52,7 @@ src/
   routes.ts             handlePolymarketRoute() — all HTTP route logic; fetches Gamma/CLOB/Data APIs
   polymarket-contracts.ts  All shared interfaces and API base URL constants
   orderbook.ts          derivePolymarketTopOfBook() — best-bid/ask derivation from raw CLOB levels
-  client.ts             PolymarketClient — extends ElizaClient with typed fetch helpers for each route
+  client.ts             PolymarketClient — type intersection of ElizaClient with typed fetch helpers for each route (methods patched onto ElizaClient.prototype)
   polymarket-app.ts     registerOverlayApp() call; exports polymarketApp + POLYMARKET_APP_NAME
   register.ts           Side-effect import of polymarket-app (triggers overlay registration)
   register-routes.ts    (minor) Route registration utilities

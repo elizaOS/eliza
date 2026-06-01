@@ -104,6 +104,6 @@ Native platform permissions are requested at runtime via `requestPermissions()` 
 - **Web permission flow is implicit.** `requestPermissions()` on web calls `getCurrentPosition` internally to trigger the browser permission prompt — there is no direct Permissions API call for geolocation.
 - **Android background location is Android 10+ only.** The `background` field in `LocationPermissionStatus` is only populated on API 29+; earlier versions mirror the foreground state.
 - **iOS accuracy mapping.** `"high"` maps to `kCLLocationAccuracyNearestTenMeters` (not `kCLLocationAccuracyBest`). Only `"best"` gives `kCLLocationAccuracyBest`.
-- **Watch IDs are not integers.** Android uses UUID strings; web uses a prefixed timestamp string. Always treat watchId as an opaque string.
+- **Watch IDs are not integers.** Android and iOS both use UUID strings; web uses a prefixed timestamp string. Always treat watchId as an opaque string.
 - **Build requires native toolchains.** TypeScript builds with `bun run build`; native iOS/Android code is compiled by Xcode / Gradle during host app builds, not here.
 - **`docgen` regenerates README.md.** If you run `bun run build:docs` or `bun run docgen`, README.md is overwritten from JSDoc in `definitions.ts`. Keep JSDoc accurate.

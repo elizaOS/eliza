@@ -15,10 +15,10 @@ Adds a form-session lifecycle to any Eliza agent: define structured forms, colle
 - **`FORM_CONTEXT`** (`formContextProvider`) — injected into every agent turn when a form session is active or stashed. Outputs a `form_context_json` block (required/optional × filled/missing fields, uncertain fields, pending external fields, and a single `instruction` directive). Also exposes `data.nextField`, `hasActiveForm`, `formProgress`, `formStatus`, `stashedCount` for action and template use.
 
 ### Actions
-- **`FORM`** (`formAction`) — noun-shaped router. Currently implements subaction `restore`: rehydrates the most recent stashed form before the agent generates its reply so the resumed form is already in provider scope. Future verbs (start, submit, cancel) land here.
+- **`FORM`** (`formAction`) — noun-shaped router exported from the package but NOT registered in the plugin's `actions: []` by default. Currently implements subaction `restore`: rehydrates the most recent stashed form before the agent generates its reply so the resumed form is already in provider scope. Add it to a consuming plugin's action list to activate it. Future verbs (start, submit, cancel) land here.
 
 ### Evaluators
-- **`formEvaluator`** (`evaluators/extractor.ts`) — post-turn evaluator (`EvaluatorPriority` 100). Detects form intent (`submit`, `stash`, `cancel`, `undo`, `skip`, `autofill`, `fill_form`, `other`) via LLM extraction, updates field states in the active session, and triggers `FORM_SUBCONTROLS_FILLED` / `FORM_EXTERNAL_ACTIVATED` events for composite/external control types. The `restore` intent is intentionally NOT handled here — it lives in the FORM action so context is ready before response generation.
+- **`formEvaluator`** (`evaluators/extractor.ts`) — post-turn evaluator (`EvaluatorPriority.FORM` = 50). Detects form intent (`submit`, `stash`, `cancel`, `undo`, `skip`, `autofill`, `fill_form`, `explain`, `example`, `progress`, `other`) via LLM extraction, updates field states in the active session, and triggers `FORM_SUBCONTROLS_FILLED` / `FORM_EXTERNAL_ACTIVATED` events for composite/external control types. The `restore` intent is intentionally NOT handled here — it lives in the FORM action so context is ready before response generation.
 
 ### Events emitted
 `FORM_FIELD_EXTRACTED`, `FORM_SUBFIELD_UPDATED`, `FORM_SUBCONTROLS_FILLED`, `FORM_EXTERNAL_ACTIVATED`, `FORM_FIELD_CONFIRMED`, `FORM_FIELD_CANCELLED`

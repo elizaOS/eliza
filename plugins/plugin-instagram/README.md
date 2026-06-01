@@ -95,6 +95,3 @@ bun run --cwd plugins/plugin-instagram typecheck   # type-check only
 bun run --cwd plugins/plugin-instagram lint        # lint + autofix
 ```
 
-## License
-
-MIT

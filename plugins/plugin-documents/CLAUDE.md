@@ -86,7 +86,7 @@ All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`,
 
 ## Conventions / gotchas
 
-- **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/agent/api/documents-service-loader`. If the service is unavailable at request time, the route returns 503 with a `Retry-After: 5` header.
+- **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/agent/api/documents-service-loader`. If the service times out during loading, the route returns 503 with a `Retry-After: 5` header; if the service is simply absent (e.g. agent not running), it returns 503 without that header.
 - **Scope defaults.** When no scope is specified on upload, the default is `user-private` for USER role, `agent-private` for AGENT role, and `global` for OWNER/RUNTIME.
 - **Bundled and character documents** are read-only: `getDocumentEditability` and `getDocumentDeleteability` enforce this in the presenter, and the PATCH/DELETE handlers check these flags before proceeding.
 - **Image upload.** Images are stored as text. If `includeImageDescriptions: true` is passed in the metadata, the handler calls `runtime.useModel(ModelType.IMAGE_DESCRIPTION, ...)` to generate a description. If the model call fails, a warning is included in the response and a fallback stub is stored.

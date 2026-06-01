@@ -1,6 +1,6 @@
 # plugin-undesirables
 
-Personality-as-Code for elizaOS agents — structured soul workspaces, live TCG market data, and 24 financial/creative skills.
+Personality-as-Code for elizaOS agents — structured soul workspaces, live TCG market data, and 26 financial/creative skills.
 
 ## Purpose / role
 
@@ -74,7 +74,7 @@ The workspace directory is expected to contain:
 - `SYSTEM_PROMPT.txt` — optional base system prompt
 - `MEMORY.md` — optional persistent memory entries
 - `PREDICTIONS_LEDGER.json` — optional JSON array of past predictions
-- `skills/` — optional directory of `<skill_name>.md` files (override the built-in 24 skills)
+- `skills/` — optional directory of `<skill_name>.md` files (override the built-in 26 skills)
 
 ## How to extend
 
@@ -99,7 +99,7 @@ The workspace directory is expected to contain:
 - **YAML parsing:** frontmatter is parsed with `js-yaml` `JSON_SCHEMA` mode (no function tags). `__proto__`, `constructor`, `prototype` keys are explicitly stripped.
 - **Skill content prompt injection:** user-provided skill `.md` files are wrapped in `<untrusted_skill_data>` with a security notice. Do not remove this wrapper when adding skill context to prompts.
 - **Oracle fetch:** `oracleFetch()` enforces an 8-second `AbortSignal` timeout and `redirect: "error"`. Always use this helper for Oracle API calls.
-- **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 24 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid.
+- **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 26 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid.
 - **No npm scope:** this package is published as `plugin-undesirables` (not `@elizaos/plugin-undesirables`). It is a community plugin, not a first-party elizaOS package.
 - **License:** BUSL-1.1 — not MIT/Apache. Review before redistributing.
 - **`MemeTrendService`** is a declared stub. Its `pollTrends()` method is never called. Do not treat it as functional until it is wired to a real polling loop.

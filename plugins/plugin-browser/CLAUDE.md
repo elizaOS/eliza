@@ -49,6 +49,8 @@ src/
   lifeops-session-contracts.ts     LifeOps browser session types
   packaging.ts                     Companion extension build/reveal/download helpers
   workspace.ts                     Workspace-level re-exports
+  browser-capture-hooks.ts         BrowserCaptureHooks interface + global registration helpers
+  browser-workspace-hooks.ts       BrowserWorkspaceHooks interface + global registration helpers
   actions/
     browser.ts                     BROWSER action
     browser-autofill-login.ts      autofill_login subaction (vault-gated)
@@ -64,7 +66,7 @@ src/
     bridge-target.ts               `bridge` BrowserTarget — dispatches to Chrome/Safari companion
     stagehand-target.ts            `stagehand` BrowserTarget — Playwright/Stagehand fallback
   workspace/
-    browser-workspace.ts           Public API re-export for the workspace
+    browser-workspace.ts           Public API surface and main command router (executeBrowserWorkspaceCommand)
     browser-workspace-types.ts     All workspace types and interfaces
     browser-workspace-state.ts     Mutable tab/session state
     browser-workspace-helpers.ts   Utilities and command normalization
@@ -83,7 +85,7 @@ auto-enable.ts                     Standalone shouldEnable check (no transitive 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-browser typecheck   # tsc --noEmit type check
+bun run --cwd plugins/plugin-browser typecheck   # tsgo --noEmit type check
 bun run --cwd plugins/plugin-browser test        # vitest run
 bun run --cwd plugins/plugin-browser build       # tsup + tsc types into dist/
 bun run --cwd plugins/plugin-browser clean       # rm -rf dist

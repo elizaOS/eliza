@@ -41,6 +41,7 @@ bun add @elizaos/plugin-imessage
 | `IMESSAGE_GROUP_POLICY` | Group policy: open, allowlist, disabled | No |
 | `IMESSAGE_ALLOW_FROM` | Comma-separated handles for allowlist | No |
 | `IMESSAGE_ENABLED` | Enable/disable the plugin | No |
+| `IMESSAGE_BACKFILL` | Rows before current DB tip to replay on startup | No |
 
 ### Agent Configuration
 
@@ -59,21 +60,16 @@ bun add @elizaos/plugin-imessage
 
 ### Permissions
 
-1. Open System Preferences > Security & Privacy > Privacy
+1. Open System Settings > Privacy & Security > Full Disk Access
 2. Grant Full Disk Access to:
-   - Terminal (or your terminal app)
-   - Your Node.js/Python executable
-3. Allow Messages app to be controlled via AppleScript
+   - Your terminal app (or the Eliza process)
+3. Allow Messages app to be controlled via AppleScript (Automation permission)
 
 ### CLI Tool (Optional)
 
-For enhanced functionality, you can use an iMessage CLI tool like `imsg`:
+For enhanced functionality, you can use an iMessage CLI tool (e.g. `imsg`). Set the path once installed:
 
 ```bash
-# Install a CLI tool (example)
-brew install imessage-cli
-
-# Configure the path
 IMESSAGE_CLI_PATH=/usr/local/bin/imsg
 ```
 
@@ -181,6 +177,3 @@ bun run --cwd plugins/plugin-imessage test
 2. Verify the recipient has iMessage enabled
 3. Check for rate limiting (try again later)
 
-## License
-
-MIT

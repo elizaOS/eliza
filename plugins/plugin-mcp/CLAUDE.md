@@ -67,7 +67,7 @@ plugins/plugin-mcp/
 All scripts in `plugins/plugin-mcp/package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-mcp build        # tsdown build → dist/
+bun run --cwd plugins/plugin-mcp build        # bun build.ts → dist/ (ESM + CJS + .d.ts)
 bun run --cwd plugins/plugin-mcp dev          # hot-rebuild with bun --hot
 bun run --cwd plugins/plugin-mcp test         # vitest run
 bun run --cwd plugins/plugin-mcp typecheck    # tsgo --noEmit

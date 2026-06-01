@@ -150,7 +150,7 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **Loopback HTTP only.** The client (`src/client/api.ts`) and all action helpers call the Eliza dashboard over `http://127.0.0.1:<port>`. Port is auto-detected; never hardcode it.
 - **APP action requires owner role.** `hasOwnerAccess` from `@elizaos/core` gates all `APP` writes. `VIEWS` read modes are open; write modes (`create`, `edit`, `delete`) are owner-gated.
 - **Multi-turn flows.** `APP create` and `VIEWS create` use `hasPendingIntent` / `hasPendingViewsCreateIntent` to detect follow-up choice replies (`new`, `edit-N`, `cancel`). Both check a pending-task record in the runtime before routing to the create sub-handler.
-- **Build has two steps.** `tsup` compiles the main entry and the worker entry. `vite build:views` compiles the React view bundle separately. Both must run for a complete build (`bun run build` handles both via `build:views` post-step).
+- **Build has three steps.** `tsup` compiles the main entry and the worker entry to ESM. `tsc` emits declarations only (`--emitDeclarationOnly`). `vite build:views` compiles the React view bundle separately. All three run in sequence via `bun run build`.
 - **`puppeteer-core` is an optional peer dep.** `AppVerificationService` only loads it when a browser step is requested and the dep is present. Set `ELIZA_BROWSER_VERIFY_OPTIONAL=1` if you want failures there to be non-blocking.
 - **`AppWorkerHostService` does not auto-start workers on boot.** Workers are only spawned when explicitly invoked; the Phase 2.5 wiring does that.
 - **Restricted platforms.** `isRestrictedPlatform()` in `src/actions/views.ts` returns `true` on iOS/Android store builds. Use it to gate dynamic-plugin creation flows.

@@ -2,8 +2,6 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-Built on Smithers-backed workflow execution with plugin-local workflow contracts. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
-
 ## Configuration
 
 No workflow-specific env vars are required. The plugin's `EmbeddedWorkflowService` runs CRUD + execution + scheduler + webhook handling locally inside the agent, persisted to the agent's Postgres schema.
@@ -49,9 +47,11 @@ All routes mount at `/api/workflow/`:
 - `GET    /api/workflow/workflows/:id`
 - `PUT    /api/workflow/workflows/:id`
 - `DELETE /api/workflow/workflows/:id`
-- `POST   /api/workflow/workflows/:id/run` — trigger execution
-- `GET    /api/workflow/executions/:id` — execution status / result
-- `POST   /api/workflow/executions/:id/cancel`
+- `POST   /api/workflow/workflows/:id/activate`
+- `POST   /api/workflow/workflows/:id/deactivate`
+- `GET    /api/workflow/workflows/:id/executions`
+- `GET    /api/workflow/executions` — list executions (with workflowId/status/limit/cursor filters)
+- `GET    /api/workflow/executions/:id` — execution detail
 - Webhook endpoints for trigger nodes are exposed dynamically per workflow.
 
 ## Development
@@ -66,6 +66,3 @@ bun run lint
 
 Lint/format is [Biome 2.x](https://biomejs.dev). TypeScript 6+. ESM only.
 
-## License
-
-MIT.

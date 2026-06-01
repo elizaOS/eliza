@@ -135,7 +135,3 @@ bun run --cwd plugins/plugin-native-talkmode build
 ```
 
 Outputs ESM to `dist/esm/`, CJS to `dist/plugin.cjs.js`, and IIFE to `dist/plugin.js`.
-
-## License
-
-MIT — elizaOS

@@ -58,17 +58,24 @@ export default {
 
 ## Action surface
 
-| Action | Purpose |
-| --- | --- |
-| `ACPX_CREATE_TASK` (`CREATE_TASK`) | One-shot: spawn + prompt + return. Captures origin metadata for routing. |
-| `SPAWN_AGENT` | Start a long-lived ACP coding-agent session. Returns `data.agents[]`. |
-| `SEND_TO_AGENT` | Send a follow-up prompt to a running session. The main agent uses this to push a sub-agent further when its proof is unsatisfying. |
-| `STOP_AGENT` | Cooperatively cancel + close a session. |
-| `LIST_AGENTS` | List active and persisted sessions. |
-| `CANCEL_TASK` | Cancel an in-flight task while preserving history. |
-| `TASK_HISTORY` / `TASK_CONTROL` / `TASK_SHARE` | ACP session lifecycle and sharing helpers. |
-| `PROVISION_WORKSPACE` / `FINALIZE_WORKSPACE` | Git workspace setup, commit, push, PR open. |
-| `MANAGE_ISSUES` | GitHub issue create/list/update/close. |
+All actions are virtual sub-operations of the single `TASKS` parent action, promoted via `promoteSubactionsToActions` with the `TASKS_` prefix.
+
+| Promoted action | Sub-operation | Purpose |
+| --- | --- | --- |
+| `TASKS_CREATE` | `create` | One-shot: spawn + prompt + return. Captures origin metadata for routing. |
+| `TASKS_SPAWN_AGENT` | `spawn_agent` | Start a long-lived ACP coding-agent session. Returns active session info. |
+| `TASKS_SEND_TO_AGENT` | `send` | Send a follow-up prompt to a running session. |
+| `TASKS_STOP_AGENT` | `stop_agent` | Cooperatively cancel + close a session. |
+| `TASKS_LIST_AGENTS` | `list_agents` | List active and persisted sessions. |
+| `TASKS_CANCEL` | `cancel` | Cancel an in-flight task while preserving history. |
+| `TASKS_HISTORY` | `history` | Retrieve past task sessions. |
+| `TASKS_CONTROL` | `control` | Lifecycle control: pause/resume/stop/continue/archive/reopen. |
+| `TASKS_SHARE` | `share` | Share a task session. |
+| `TASKS_PROVISION_WORKSPACE` | `provision_workspace` | Clone repo, create git worktree for a task. |
+| `TASKS_SUBMIT_WORKSPACE` | `submit_workspace` | Commit, push, open PR for a workspace. |
+| `TASKS_MANAGE_ISSUES` | `manage_issues` | GitHub issue create/list/get/update/comment/close/reopen/add_labels. |
+| `TASKS_ARCHIVE` | `archive` | Archive a completed coding task. |
+| `TASKS_REOPEN` | `reopen` | Reopen an archived task. |
 
 ## Providers
 
@@ -76,12 +83,14 @@ export default {
 - `ACTIVE_SUB_AGENTS` — cache-stable view of currently-routed sub-agent sessions; sorted by sessionId, structural fields only (no timestamps, no message excerpts), so the planner-visible block stays cached across status flips.
 - `ACTIVE_WORKSPACE_CONTEXT` — live workspace/session state.
 - `CODING_AGENT_EXAMPLES` — structured action call examples.
+- `CODING_SESSION_CHANGES` — real git changeset for "show me the diff" queries.
 
 ## Services
 
 - `AcpService` — ACP subprocess lifecycle, session state, event emission, and transport selection. Registers under `ACP_SUBPROCESS_SERVICE`.
-- `SubAgentRouter` (canonical) — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
-- `CodingWorkspaceService` — git workspace lifecycle helpers.
+- `OrchestratorTaskService` — durable task store, sub-agent lifecycle API, event bridge from ACP to task records. Registers under `ORCHESTRATOR_TASK_SERVICE`.
+- `SubAgentRouter` — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Registers under `ACPX_SUB_AGENT_ROUTER`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
+- `CodingWorkspaceService` — git workspace lifecycle helpers. Registers under `CODING_WORKSPACE_SERVICE`.
 
 ```ts
 import { AcpService, SubAgentRouter } from "@elizaos/plugin-agent-orchestrator";
@@ -212,7 +221,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 
 ## Status
 
-`2.0.0-beta.2` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is available behind `ELIZA_ACP_TRANSPORT=native`.
+`2.0.3-beta.0` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is the default (`ELIZA_ACP_TRANSPORT=native`).
 
 ## Contributing
 

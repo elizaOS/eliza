@@ -90,6 +90,3 @@ Edge TTS is **not available in browser environments** because it requires:
 
 For browser TTS, use `@elizaos/plugin-elevenlabs` or `@elizaos/plugin-openai` instead.
 
-## License
-
-MIT

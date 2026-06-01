@@ -77,7 +77,3 @@ All messages are JSON strings passed through the `JavascriptInterface`.
 - [`@elizaos/plugin-host-shim-ios`](../plugin-host-shim-ios) — iOS WKWebView implementation
 - [`@elizaos/plugin-host-shim-electrobun`](../plugin-host-shim-electrobun) — Electrobun desktop implementation
 - [`@elizaos/plugin-remote-manifest`](../plugin-remote-manifest) — shared manifest types
-
-## License
-
-MIT

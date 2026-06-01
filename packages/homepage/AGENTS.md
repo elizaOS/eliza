@@ -73,6 +73,7 @@ bun run --cwd packages/homepage typecheck      # tsc -b (generates release-data 
 bun run --cwd packages/homepage lint           # Biome check --write --unsafe
 bun run --cwd packages/homepage lint:check     # Biome check (read-only)
 bun run --cwd packages/homepage format         # Biome format --write
+bun run --cwd packages/homepage format:check   # Biome format (read-only)
 bun run --cwd packages/homepage test           # Node --test smoke suite
 bun run --cwd packages/homepage test:e2e       # Playwright e2e (all specs)
 bun run --cwd packages/homepage test:audit     # Aesthetic audit + contact sheet

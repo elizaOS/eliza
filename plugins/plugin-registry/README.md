@@ -21,7 +21,6 @@ Plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP route 
 import {
   // Agent-tier route handler
   handlePluginRoutes,
-  type PluginRouteContext,
 
   // App-core compat-tier route handler + list builder
   handlePluginsCompatRoutes,

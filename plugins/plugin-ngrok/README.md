@@ -67,6 +67,3 @@ If you see `ERR_NGROK_15002`, your account requires a registered domain. Set `NG
 
 `NgrokService` spawns the `ngrok http <port>` CLI subprocess and polls `http://localhost:4040/api/tunnels` (ngrok's local API) to discover the public HTTPS URL. It retries up to 3 times at 2-second intervals. Once the URL is obtained, it is exposed via `getUrl()` and `getStatus()`.
 
-## License
-
-Part of the elizaOS project. See the repository root for license information.

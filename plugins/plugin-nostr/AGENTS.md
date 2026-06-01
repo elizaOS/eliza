@@ -39,6 +39,8 @@ plugins/plugin-nostr/
     providers/
       identityContext.ts      identityContextProvider implementation
       index.ts                Re-exports providers
+    __tests__/
+      accounts.test.ts        Unit tests for account resolution
   auto-enable.ts              shouldEnable() hook read by the plugin auto-enable engine
 ```
 
@@ -47,12 +49,13 @@ plugins/plugin-nostr/
 Only scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-nostr build       # compile via build.ts
-bun run --cwd plugins/plugin-nostr test        # vitest run
-bun run --cwd plugins/plugin-nostr lint        # biome check --write --unsafe
-bun run --cwd plugins/plugin-nostr lint:check  # biome check (read-only)
-bun run --cwd plugins/plugin-nostr format      # biome format --write
-bun run --cwd plugins/plugin-nostr typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-nostr build         # compile via build.ts
+bun run --cwd plugins/plugin-nostr test          # vitest run
+bun run --cwd plugins/plugin-nostr lint          # biome check --write --unsafe
+bun run --cwd plugins/plugin-nostr lint:check    # biome check (read-only)
+bun run --cwd plugins/plugin-nostr format        # biome format --write
+bun run --cwd plugins/plugin-nostr format:check  # biome format (read-only)
+bun run --cwd plugins/plugin-nostr typecheck     # tsgo --noEmit
 ```
 
 ## Config / env vars

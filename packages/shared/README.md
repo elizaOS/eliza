@@ -15,10 +15,6 @@ Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/
 - **Custom event constants** — typed `eliza:*` DOM event name constants used across app, bridge, and component layers
 - **Shared utilities** — error formatting, rate limiter, streaming text, trajectory format, env parsing, and more
 
-## Why it exists
-
-Without a shared layer, every package (`agent`, `app-core`, `ui`, `cloud-api`, etc.) would define its own copies of the API contract types and configuration shapes, causing drift and type mismatches at the HTTP boundary. `@elizaos/shared` is the single source of truth that all packages import from.
-
 ## Who uses it
 
 Direct dependents: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`, `@elizaos/browser-bridge-extension`, and `@elizaos/cloud-shared`.
@@ -72,6 +68,3 @@ bun run --cwd packages/shared test        # run tests
 - React-dependent modules (`boot-config-react.tsx`, `branding-react.tsx`) are intentionally excluded from the root barrel.
 - Do not import from `@elizaos/agent` inside this package — it creates an ESM cycle that breaks server boot. See comments in `src/config/config.ts`.
 
-## License
-
-MIT

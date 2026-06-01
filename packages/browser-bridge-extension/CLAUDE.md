@@ -31,7 +31,7 @@ packages/browser-bridge-extension/
     build.mjs                 Bun build script; produces IIFE bundles + manifest.json in dist/<chrome|safari>/
     package-chrome.mjs        Packages dist/chrome into a .zip for Chrome Web Store
     package-safari.mjs        Invokes xcrun to wrap dist/safari into a Safari Web Extension
-    package-stores.mjs        Packages store asset screenshots/descriptions
+    package-store-assets.mjs  Packages store asset screenshots/descriptions
     package-release.mjs       Orchestrates all packaging steps
     extension-smoke.mjs       Node smoke test for Chrome build artifacts
     extension-smoke-safari.mjs  Node smoke test for Safari build artifacts

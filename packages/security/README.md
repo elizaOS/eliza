@@ -1,12 +1,12 @@
 # @elizaos/security
 
-Foundation package for Eliza's SOC2 compliance work. Provides three things:
+Foundation package for elizaOS SOC2 compliance. Provides three things:
 
-1. A single `KmsClient` interface that every encryption/signing/HMAC call in Eliza must flow through.
+1. A single `KmsClient` interface that every encryption/signing/HMAC call in elizaOS must flow through.
 2. An `AuditDispatcher` + `AuditEvent` schema that every privileged action must emit through.
 3. Low-level AEAD/HKDF primitives used internally by the adapters.
 
-Open-source only. Production backs onto [Steward](https://github.com/Steward-Fi/steward) — Eliza's agent-wallet / credential-proxy / auth platform. No AWS KMS, no GCP KMS, no proprietary services.
+Open-source only. Production backs onto [Steward](https://github.com/Steward-Fi/steward) — elizaOS's agent-wallet / credential-proxy / auth platform. No AWS KMS, no GCP KMS, no proprietary services.
 
 ## KMS
 

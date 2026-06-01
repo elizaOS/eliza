@@ -20,7 +20,7 @@ Gives an Eliza agent the ability to read and write a Shopify store via the Admin
 | `orders` | order, fulfill, ship, refund, return | List, get, or fulfill orders |
 | `customers` | customer, buyer, shopper, client | List or search customers |
 
-Legacy similes (older callers still resolve): `MANAGE_SHOPIFY_PRODUCTS`, `MANAGE_SHOPIFY_INVENTORY`, `MANAGE_SHOPIFY_ORDERS`, `MANAGE_SHOPIFY_CUSTOMERS`, `LIST_PRODUCTS`, `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `CHECK_INVENTORY`, `ADJUST_INVENTORY`, `LIST_ORDERS`, `FULFILL_ORDER`, `LIST_CUSTOMERS`, `FIND_CUSTOMER`.
+Legacy similes (older callers still resolve): `MANAGE_SHOPIFY_PRODUCTS`, `MANAGE_SHOPIFY_INVENTORY`, `MANAGE_SHOPIFY_ORDERS`, `MANAGE_SHOPIFY_CUSTOMERS`, `LIST_PRODUCTS`, `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `SEARCH_PRODUCTS`, `CHECK_INVENTORY`, `ADJUST_INVENTORY`, `CHECK_STOCK`, `UPDATE_STOCK`, `LIST_ORDERS`, `CHECK_ORDERS`, `FULFILL_ORDER`, `ORDER_STATUS`, `LIST_CUSTOMERS`, `FIND_CUSTOMER`, `SEARCH_CUSTOMERS`.
 
 Write operations (create product, update product, adjust inventory, fulfill order) gate through `gateDestructiveConfirmation` — the agent will ask the user to confirm before executing.
 
@@ -118,7 +118,7 @@ Accounts can also be declared in `character.settings.shopify.accounts` (array or
 
 ## Conventions / gotchas
 
-- **LLM intent classification**: each operation handler uses `ModelType.TEXT_SMALL` to classify free-text intent when structured parameters are absent. The classifier retries up to 2 times. Keep prompts minimal and deterministic.
+- **LLM intent classification**: each operation handler uses `ModelType.TEXT_SMALL` to classify free-text intent when structured parameters are absent. Keep prompts minimal and deterministic.
 - **Confirmation gate**: all write operations call `requireShopifyConfirmation` (which delegates to `gateDestructiveConfirmation`). Never skip this for mutations.
 - **Inventory item IDs**: Shopify variant GIDs (`gid://shopify/ProductVariant/<n>`) share the numeric suffix with inventory item GIDs (`gid://shopify/InventoryItem/<n>`). The handlers derive one from the other by swapping the type segment — do not query a separate endpoint.
 - **Variant fetching cap**: `listProducts` returns first 5 variants per product. If a product has more than 5 variants, deep inventory operations may need a dedicated variant query.

@@ -21,7 +21,7 @@ packages/cloud-routing/
                       isCloudConnected, cloudServiceApisBaseUrl,
                       toRuntimeSettings
     types.ts        — CloudRoute, FeatureCloudRoute, RouteSpec, CloudRouteSource
-    resolve.test.ts — vitest unit suite (imported via ./resolve.ts direct path)
+    resolve.test.ts — vitest unit suite (imports directly from ./features.ts and ./resolve.ts)
   dist/             — compiled output (tsc NodeNext)
 ```
 
@@ -31,7 +31,7 @@ All exports are re-exported from `src/index.ts`:
 
 **Types**
 - `CloudRouteSource` — `"local-key" | "cloud-proxy" | "disabled"`
-- `CloudRoute` — discriminated union on `source`; routable variants add `baseUrl`, `headers`, `reason`
+- `CloudRoute` — discriminated union on `source`; all variants have `reason`; routable variants additionally have `baseUrl` and `headers`
 - `FeatureCloudRoute` — `CloudRoute & { feature: string; policy: FeaturePolicy }`
 - `RouteSpec` — caller-provided descriptor: `{ service, localKeySetting, upstreamBaseUrl, localKeyAuth }`
 - `RuntimeSettings` — interface with `getSetting(key: string): string | boolean | number | null | undefined`

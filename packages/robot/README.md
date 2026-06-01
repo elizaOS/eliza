@@ -59,7 +59,7 @@ uv run python -m eliza_robot.bridge.server --backend mock --policy-checkpoint ch
 uv run python -m eliza_robot.rl.alberta.benchmark --steps-per-task 16000 --seeds 3
 uv run eliza-robot-benchmark-alberta --steps-per-task 16000 --seeds 3
 bun run --cwd packages/robot build        # tsdown — TS surface
-bun run --cwd packages/robot typecheck    # tsc --noEmit
+bun run --cwd packages/robot typecheck    # tsgo --noEmit
 bun run --cwd packages/robot test         # vitest + pytest shim
 bun run --cwd packages/robot test:py      # uv run pytest tests/ -q
 ```

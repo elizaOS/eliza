@@ -53,7 +53,7 @@ src/
 Only scripts defined in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-line build          # compile via build.ts (tsdown)
+bun run --cwd plugins/plugin-line build          # compile via build.ts (bunx tsc)
 bun run --cwd plugins/plugin-line test           # vitest run
 bun run --cwd plugins/plugin-line test:watch     # vitest watch
 bun run --cwd plugins/plugin-line lint           # biome check --write --unsafe
@@ -108,5 +108,5 @@ Multi-account config can also be provided via `character.settings.line` (see `Li
 - **Push vs reply.** `sendMessage()` / `sendFlexMessage()` / etc. use the push API (requires a messaging-enabled plan). `replyMessage()` uses the reply token from a webhook event (free tier works, but the token expires quickly).
 - **Batch limit.** The LINE API accepts at most 5 messages per push call (`MAX_LINE_BATCH_SIZE = 5`). `sendMessage()` splits long text automatically via `splitMessageForLine()`.
 - **`@line/bot-sdk` v11.** Types are namespaced under `messagingApi.*` and `webhook.*`. Import from the namespaces, not the package root.
-- **`LINE_CHANNEL_SECRET` is required at runtime** only when the caller uses `createMiddleware()` for signature verification. The service will start without it but `validateSettings()` throws if both token and secret are absent.
+- **`LINE_CHANNEL_SECRET` is required.** `validateSettings()` throws if either `LINE_CHANNEL_ACCESS_TOKEN` or `LINE_CHANNEL_SECRET` is absent. Both must be set for the service to start.
 - **`LINE_ENABLED=false`** stops the service cleanly without throwing; useful for disabling LINE in a shared character file.

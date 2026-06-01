@@ -44,7 +44,9 @@ const { sessionId } = await svc.createSession({
   cwd: "/absolute/path/to/project",
   model: "claude-opus-4-5",        // optional; defaults to claude CLI default
   initialPrompt: "List files in src/",
-  extraEnv: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY! },
+  // Note: ANTHROPIC_API_KEY cannot be passed via extraEnv (filterEnv throws for API_KEY/TOKEN keys).
+  // The worker reads it from process.env via Bun env permissions.
+  extraEnv: { ANTHROPIC_BASE_URL: "https://api.anthropic.com" }, // safe non-sensitive key example
 });
 
 // Send additional prompts
@@ -69,7 +71,7 @@ await svc.terminate({ sessionId });
 | `ELIZA_SUB_AGENT_SESSIONS_DIR` | `~/.eliza/sub-agent-sessions` | Where session transcript directories are written. |
 | `ELIZA_SUB_AGENT_SESSION_RETENTION_DAYS` | `30` | Age threshold for transcript pruning. |
 
-`ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` must be supplied via `extraEnv` in `createSession` — they are not forwarded automatically from the parent environment.
+`ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are available to the worker process via Bun env permissions declared in the plugin descriptor. They cannot be forwarded to the claude subprocess via `extraEnv` — `filterEnv` throws for keys matching `SENSITIVE_ENV_RE` (`TOKEN` and `API_KEY` both match). Only non-sensitive keys (e.g. `ANTHROPIC_BASE_URL`) may be passed via `extraEnv`.
 
 ## Sandbox smoke tests
 

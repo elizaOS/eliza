@@ -75,7 +75,3 @@ const created = await AppleCalendar.createEvent({
 ## Config / Env Vars
 
 None. This package reads no environment variables. Authorization is granted at the OS level by the user.
-
-## License
-
-MIT — elizaOS

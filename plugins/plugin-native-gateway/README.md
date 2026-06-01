@@ -149,8 +149,3 @@ bun run verify:android  # ./gradlew clean build test
 
 > **Note:** `bun run build:docs` regenerates this README from JSDoc comments in `src/definitions.ts`. Manual edits will be overwritten on the next docgen run.
 
----
-
-## License
-
-MIT — elizaOS

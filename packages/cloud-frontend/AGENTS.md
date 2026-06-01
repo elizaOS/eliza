@@ -21,7 +21,7 @@ src/
   providers/             React context providers:
                            StewardProvider.tsx        Steward auth session, syncs JWT to api client.
                            ConditionalWalletProviders  wagmi/rainbowkit + solana wallet adapters.
-                           CreditsProvider.tsx         polls /api/credits, useCredits().
+                           CreditsProvider.tsx         polls /api/credits/balance, useCredits().
                            I18nProvider.tsx            language resolution + useT/useI18n.
   hooks/                 use-session-auth, use-job-poller, use-admin, use-streaming-message, ...
   lib/

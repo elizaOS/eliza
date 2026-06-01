@@ -61,7 +61,7 @@ plugins/plugin-anthropic-proxy/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-anthropic-proxy build       # tsdown build
+bun run --cwd plugins/plugin-anthropic-proxy build       # Bun.build() (build.ts)
 bun run --cwd plugins/plugin-anthropic-proxy dev         # watch build
 bun run --cwd plugins/plugin-anthropic-proxy typecheck   # tsgo --noEmit
 bun run --cwd plugins/plugin-anthropic-proxy test        # vitest run

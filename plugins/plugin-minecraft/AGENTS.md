@@ -24,7 +24,7 @@ The `action` parameter selects the op; `params` carries op-specific fields. Natu
 | `MC_WAYPOINTS` | List of named waypoints stored via `WaypointsService` (up to 50). Per-turn, dynamic. |
 | `MC_VISION` | Semantic environment snapshot: biome, what the bot is looking at, nearby ore/log blocks (radius 16), nearby entities. Issues a `scan` request to the bridge. |
 
-`MC_WORLD_STATE` is also exported as `minecraftStateProvider` for backward-compatible reference.
+`MC_WORLD_STATE` is also aliased internally as `minecraftStateProvider` (a module-private const in `src/index.ts`, not a public export).
 
 ### Services
 

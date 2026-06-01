@@ -80,7 +80,7 @@ MCP supports multiple transport types for connecting to servers. Each type has i
 | Option            | Type     | Description                                            |
 | ----------------- | -------- | ------------------------------------------------------ |
 | `type`            | string   | Must be "stdio"                                        |
-| `command`         | string   | _Optional_ The command to run the MCP server           |
+| `command`         | string   | The command to run the MCP server                      |
 | `args`            | string[] | _Optional_ Command-line arguments for the server       |
 | `env`             | object   | _Optional_ Environment variables to pass to the server |
 | `cwd`             | string   | _Optional_ Working directory to run the server in      |
@@ -130,10 +130,9 @@ The plugin includes one provider that adds MCP capabilities to the agent's conte
 
 ### Actions
 
-The plugin provides two actions for interacting with MCP servers:
+The plugin provides one action for interacting with MCP servers:
 
-1. **`CALL_MCP_TOOL`**: Executes tools from connected MCP servers
-2. **`READ_MCP_RESOURCE`**: Accesses resources from connected MCP servers
+1. **`MCP`**: Single entry point for all MCP operations. Use `action=call_tool` to invoke an MCP tool, `action=read_resource` to read an MCP resource. Similes include `CALL_MCP_TOOL`, `READ_MCP_RESOURCE`, `USE_TOOL`, and others.
 
 ## 🔄 Plugin Flow
 
@@ -142,7 +141,7 @@ The following diagram illustrates the MCP plugin's flow for tool selection and e
 ```mermaid
 graph TD
     %% Starting point - User request
-    start[User Request] --> action[CALL_MCP_TOOL Action]
+    start[User Request] --> action[MCP Action]
 
     %% MCP Server Validation
     action --> check{MCP Servers Available?}

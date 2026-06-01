@@ -19,7 +19,7 @@ Feed is a live social simulation where players trade on prediction markets along
 - **Prediction markets** — Binary outcome markets resolving on game events; NPCs trade with privileged signal, players infer from public clues
 - **Perpetuals** — Off-chain simulated perp markets on parody assets (TSLAI, OPENAGI, NVAIDAI, BTC...)
 - **Real-time SSE** — Feed, market prices, and chat update live without polling
-- **Autonomous agents** — ElizaOS-compatible agents connect via A2A/MCP and trade alongside NPCs
+- **Autonomous agents** — elizaOS-compatible agents connect via A2A/MCP and trade alongside NPCs
 - **Training pipeline** — RL/fine-tuning pipeline and ScamBench harness for agent evaluation
 
 > **Status:** Active development. The core game loop, auth, and feed generation are production-ready. The crypto/NFT stack is disabled. Training and agent frameworks are in active iteration.
@@ -56,11 +56,10 @@ packages/
   core/         ← Domain: prediction markets, perpetuals, market utilities
   db/           ← Drizzle ORM schema, migrations, DB client
   api/          ← Auth middleware, user provisioning, API helpers
-  agents/       ← Autonomous agent logic, ElizaOS plugins, cron behavior
+  agents/       ← Autonomous agent logic, elizaOS plugins, cron behavior
   shared/       ← Types, constants, utilities shared across packages
   a2a/          ← Agent-to-Agent protocol integration
   mcp/          ← Model Context Protocol server
-  training/     ← RL pipeline, ScamBench harness, HF/W&B integration
   pack-default/ ← Default NPC/organization content pack
   examples/     ← Example agents, harness, local A2A server
 ```
@@ -195,11 +194,10 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 | `packages/core` | Pure domain: prediction markets, perpetuals, pricing, CPMM |
 | `packages/db` | Drizzle ORM schema, migrations, lazy DB client |
 | `packages/api` | Steward JWT middleware, user provisioning, rate limiting, blob helpers |
-| `packages/agents` | Autonomous agent logic, ElizaOS plugins, `TopicDiversityService`, agent cron |
+| `packages/agents` | Autonomous agent logic, elizaOS plugins, `TopicDiversityService`, agent cron |
 | `packages/shared` | Shared types, content analysis utilities, Jaccard similarity, logging |
 | `packages/a2a` | Agent-to-Agent protocol integration (`@a2a-js/sdk`) |
 | `packages/mcp` | Model Context Protocol server for tool-using agents |
-| `packages/training` | RL pipeline, ScamBench harness (OpenClaw, Hermes, Eliza adapters), HF/W&B integration |
 | `packages/pack-default` | Default NPC and organization content pack (actors, orgs) |
 | `packages/sim` | Standalone simulation CLI |
 | `packages/testing` | Shared test utilities, integration helpers |
@@ -343,7 +341,7 @@ Three agent framework adapters are supported:
 
 - **OpenClaw** — bootstrapped to `../external-sources/openclaw`
 - **Hermes** (NousResearch) — bootstrapped to `../external-sources/hermes-agent`
-- **ElizaOS** — native integration via `packages/agents`
+- **elizaOS** — native integration via `packages/agents`
 
 Bootstrap agent frameworks (run once):
 
@@ -352,7 +350,7 @@ bun run agent-frameworks:bootstrap
 # or skip with: FEED_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP=1
 ```
 
-The **training harness** in `packages/examples/harness` wires agents against the game engine for evaluation. See `packages/training/SCAMBENCH_RUNBOOK.md` for detailed setup.
+The **training harness** in `packages/examples/harness` wires agents against the game engine for evaluation. See `packages/examples/harness/README.md` for detailed setup.
 
 ---
 

@@ -45,7 +45,7 @@ plugins/plugin-native-talkmode/
     Sources/TalkModePlugin/
       TalkModePlugin.swift   Native iOS: AVSpeechSynthesizer + SFSpeechRecognizer + ElevenLabs PCM/MP3
   android/
-    src/main/java/ai/       Android native implementation
+    src/main/java/ai/       Android native implementation (Kotlin)
   ElizaosCapacitorTalkmode.podspec   CocoaPods spec (requires AVFoundation + Speech frameworks)
   rollup.config.mjs          Builds IIFE (dist/plugin.js) and CJS (dist/plugin.cjs.js) from ESM
   tsconfig.json
@@ -92,7 +92,7 @@ The `speak()` call also accepts a `TTSDirective` for per-utterance overrides (vo
 1. Declare the method signature in `src/definitions.ts` on `TalkModePlugin`.
 2. Implement it in `src/web.ts` (web fallback).
 3. Implement it in `ios/Sources/TalkModePlugin/TalkModePlugin.swift` (register in `pluginMethods`).
-4. Implement it in the Android Java source under `android/src/main/java/ai/`.
+4. Implement it in the Android Kotlin source under `android/src/main/java/ai/`.
 5. Run `bun run --cwd plugins/plugin-native-talkmode build` to verify TS compiles.
 
 **Add a new event:**

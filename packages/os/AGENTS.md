@@ -44,7 +44,7 @@ packages/os/
     Makefile                   build entry (make build ARCH=x86_64|arm64|riscv64)
     vendor/eliza/               elizaOS brand vendor tree
       AndroidProducts.mk
-      apps/ElizaOSLauncher/    privileged launcher Android.bp
+      apps/Eliza/              privileged launcher Android.bp
       bootanimation/           desc.txt + generation scripts
       init/init.eliza.rc
       overlays/                resource overlays
@@ -96,7 +96,7 @@ packages/os/
   release/
     schema/                    JSON schemas: confidential-image-manifest, confidential-policy, dstack-pins
     VERIFY.md                  release verification docs
-    beta-2026-05-16/manifest.json   active release manifest (defaultManifestPath in os-release-lib.mjs)
+    beta-2026-05-16/manifest.json   configured default manifest path in os-release-lib.mjs (not yet created; create when cutting a release)
 
   docs/                        Engineering notes (TEE plan, CI/CD roadmap, release plan, apt repo)
 ```
@@ -227,4 +227,4 @@ Place it under `android/vendor/eliza/` following AOSP vendor tree conventions. B
 - **Release manifest schema lives in `release/schema/`.** `os-release-lib.mjs` is the single source of truth for validation logic — change it there, not in individual scripts.
 - **The confidential profile (`linux/confidential/`) is a scaffold, not built.** The reproducible Yocto image build is blocked on a dedicated build host. Do not treat any file there as a produced artifact.
 - **AOSP build needs a Linux x86_64 host with KVM** for x86_64/arm64 Cuttlefish; riscv64 runs under QEMU TCG but needs the same AOSP checkout at `AOSP_ROOT`.
-- **Default release manifest path** used by scripts is `packages/os/release/beta-2026-05-16/manifest.json` (set in `os-release-lib.mjs:defaultManifestPath`). Update this constant when cutting a new release manifest.
+- **Default release manifest path** used by scripts is `packages/os/release/beta-2026-05-16/manifest.json` (set in `os-release-lib.mjs:defaultManifestPath`). This path does not yet exist in the repo — create the directory and manifest file when cutting a release, then update this constant accordingly.

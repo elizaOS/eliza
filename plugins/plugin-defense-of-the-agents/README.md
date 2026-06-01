@@ -62,7 +62,7 @@ Send these as messages in the Defense of the Agents session panel:
 - `Learn Fireball` (or any ability name) — pick an ability when a choice is available.
 - `Review strategy` — trigger an immediate strategy self-review.
 - `{"strategy": {"heroClass": "ranged", "preferredLane": "top"}}` — update strategy via JSON.
-- `Say <text>` / `Message <text>` — broadcast an in-game message (max 140 chars).
+- `Say <text>` / `Message <text>` / `Announce <text>` — broadcast an in-game message (max 140 chars).
 
 ## Links
 

@@ -45,9 +45,4 @@ The USB flasher under `usb-installer/` handles target selection, format, write, 
 
 ## User-facing docs
 
-The elizaOS track in the docs site covers install, channels, recovery, and per-platform flashing:
-
-- [`/tracks/elizaos/overview`](../docs/tracks/elizaos/overview.mdx)
-- [`/tracks/elizaos/linux`](../docs/tracks/elizaos/linux.mdx)
-- [`/tracks/elizaos/aosp`](../docs/tracks/elizaos/aosp.mdx)
-- [`/tracks/elizaos/install`](../docs/tracks/elizaos/install.mdx)
+Engineering notes for this package live in `docs/` (TEE plan, CI/CD roadmap, release plan, apt repo). Per-subsystem README files: `linux/README.md`, `android/README.md`, `usb-installer/README.md`.

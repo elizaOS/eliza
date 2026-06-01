@@ -55,7 +55,7 @@ test/
 All scripts require a built `dist/` first (via `bun run build`).
 
 ```bash
-bun run --cwd plugins/plugin-trajectory-logger typecheck   # tsc --noEmit
+bun run --cwd plugins/plugin-trajectory-logger typecheck   # tsgo --noEmit
 bun run --cwd plugins/plugin-trajectory-logger lint        # biome check src
 bun run --cwd plugins/plugin-trajectory-logger test        # vitest run
 bun run --cwd plugins/plugin-trajectory-logger build       # build:js + build:views + build:types

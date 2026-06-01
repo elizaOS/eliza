@@ -40,8 +40,8 @@ src/
 - `appMessagesPlugin` / `default` — the `Plugin` object; import this to register the plugin.
 - `MessagesAppView` — full-screen overlay React component (used as the app entry).
 - `MessagesPluginView` — same view, wrapped with a default `OverlayAppContext` for plugin-view use.
-- `MessagesTuiView` — terminal-style React component; exposes `data-view-state` JSON for agent inspection.
-- `interact(capability, params?)` — programmatic terminal API for agents; see capabilities below.
+- `MessagesTuiView` — terminal-style React component; exposes `data-view-state` JSON for agent inspection. Exported from `src/components/MessagesAppView.tsx` only — not re-exported from the package root.
+- `interact(capability, params?)` — programmatic terminal API for agents; see capabilities below. Exported from `src/components/MessagesAppView.tsx` only — not re-exported from the package root.
 - `messagesApp` / `registerMessagesApp` / `MESSAGES_APP_NAME` — overlay app descriptor and registration.
 
 ### `interact()` terminal capabilities

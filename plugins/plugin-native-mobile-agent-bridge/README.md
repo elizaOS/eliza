@@ -6,10 +6,9 @@ can reach it. Phone-side companion to the Mac-side
 
 This package owns the phone-to-relay tunnel for a phone-hosted Eliza
 agent. The JS surface (`startInboundTunnel`, `stopInboundTunnel`,
-`getTunnelStatus`, `stateChange` event) is stable, and the native
-implementations now hold an outbound WebSocket to the relay. Relay
-requests are proxied into the same local agent route surface used by the
-rest of the mobile app.
+`getTunnelStatus`, `stateChange` event) is stable. Native implementations
+hold an outbound WebSocket to the relay and proxy requests into the same
+local agent route surface used by the rest of the mobile app.
 
 ## Status
 
@@ -19,14 +18,7 @@ rest of the mobile app.
 | iOS    | Outbound WebSocket tunnel. Proxies path-only requests through the WebView IPC bridge; no listening port is opened. |
 | Android | Outbound WebSocket tunnel. Proxies path-only requests to the token-protected local agent service. |
 
-## Why this exists
-
-iOS apps cannot bind a publicly reachable listening socket. Today the
-device-bridge architecture only flows in one direction: phones dial out
-to Mac-hosted agents. To support the reverse — a Mac dialing an agent
-running on the user's phone — the phone must hold an outbound
-connection that a relay (Eliza Cloud) brokers to a matching connection
-from the Mac.
+## Relay frame protocol
 
 Tunnel frames use a path-only HTTP request envelope. The relay never
 sends absolute URLs, and the plugin rejects `//host` and scheme-bearing

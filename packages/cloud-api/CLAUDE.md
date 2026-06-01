@@ -28,8 +28,8 @@ src/
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
   lib/mcp/                 mcps-transport-gateway.ts (createMcpsTransportApp factory).
   stubs/                   Build-time stand-ins for node-only deps unavailable in workerd
-                           (elizaos-core, ssh2, undici, plugin-sql, s3 adapter) — wired via
-                           wrangler.toml alias/define.
+                           (elizaos-core, ssh2, undici, plugin-sql, plugin-elevenlabs,
+                           s3 adapter) — wired via wrangler.toml alias/define.
 
 <resource>/.../route.ts    Route handlers live in top-level resource dirs (NOT under src/):
                            v1/, auth/, agents/, billing/, stripe/, mcp/, mcps/, a2a/,
@@ -76,7 +76,7 @@ bun run --cwd packages/cloud-api agent:build    # build the cloud agent containe
 
 ## Config / env vars
 
-Worker bindings and env vars are declared in `wrangler.toml` and typed by `Bindings` in `@/types/cloud-worker-env` (cloud-shared). Local dev reads `.dev.vars` (gitignored); `.dev.vars.example` is the tracked template. `bun run dev` regenerates `.dev.vars` from repo `.env`/`.env.local` via `packages/scripts/sync-api-dev-vars.ts`.
+Worker bindings and env vars are declared in `wrangler.toml` and typed by `Bindings` in `@/types/cloud-worker-env` (cloud-shared). Local dev reads `.dev.vars` (gitignored); `.dev.vars.example` is the tracked template. `bun run dev` regenerates `.dev.vars` from repo `.env`/`.env.local` via `packages/scripts/cloud/admin/sync-api-dev-vars.ts`.
 
 Representative bindings (see `Bindings` for the full set): `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon Postgres in cloud, PGlite locally), `BLOB` (R2), `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` / `OPENROUTER_API_KEY` / `AI_GATEWAY_API_KEY`, `ELEVENLABS_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`, `STEWARD_API_URL`, `JWT_SIGNING_KEY_ID` / `JWT_SIGNING_PRIVATE_KEY` / `JWT_SIGNING_PUBLIC_KEY`, `R2_PUBLIC_HOST`. Stripe/crypto webhook secrets are read by their respective route handlers.
 

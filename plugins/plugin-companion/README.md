@@ -56,7 +56,7 @@ plugins: [appCompanionPlugin]
 Alternatively, to register the companion as an overlay app (for hosts that use the overlay app registry):
 
 ```ts
-import "@elizaos/plugin-companion/plugin"; // side-effect: calls registerCompanionApp()
+import "@elizaos/plugin-companion/register"; // side-effect: calls registerCompanionApp()
 // or explicitly:
 import { registerCompanionApp } from "@elizaos/plugin-companion";
 registerCompanionApp();

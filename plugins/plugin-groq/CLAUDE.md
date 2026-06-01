@@ -51,7 +51,7 @@ All scripts run from the package root via:
 bun run --cwd plugins/plugin-groq build         # tsdown compile (node + browser)
 bun run --cwd plugins/plugin-groq dev           # watch mode build
 bun run --cwd plugins/plugin-groq test          # vitest run
-bun run --cwd plugins/plugin-groq typecheck     # tsc --noEmit
+bun run --cwd plugins/plugin-groq typecheck     # tsgo --noEmit
 bun run --cwd plugins/plugin-groq lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-groq lint:check    # biome check (read-only)
 bun run --cwd plugins/plugin-groq format        # biome format --write

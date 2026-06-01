@@ -63,7 +63,7 @@ None. This plugin reads no environment variables and has no elizaOS config keys.
 Required Android permissions (runtime-requested by the host app):
 - `ACCESS_WIFI_STATE` — required by `getConnectedNetwork` and `listAvailableNetworks`.
 - `CHANGE_WIFI_STATE` — required by `connectToNetwork` and `disconnectFromNetwork`.
-- `ACCESS_FINE_LOCATION` — required for `WifiManager.scanResults` on API 26+ (Android 8+); without it the scan returns an empty list rather than an error.
+- `ACCESS_FINE_LOCATION` — required for `WifiManager.scanResults` on API 26+ (Android 8+); without it the plugin rejects `listAvailableNetworks` with an error (does NOT silently return an empty list).
 - `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` — used by the `ConnectivityManager.requestNetwork` path on API 29+.
 
 ## How to extend

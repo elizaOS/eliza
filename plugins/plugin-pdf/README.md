@@ -94,6 +94,3 @@ Builds for both Node.js and browser environments. The `exports` field in `packag
 
 - [`unpdf`](https://github.com/unjs/unpdf) — PDF parsing (wraps PDF.js for Node + browser)
 
-## License
-
-MIT

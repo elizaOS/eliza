@@ -31,7 +31,7 @@ plugins/plugin-pdf/
     core-test-mock.ts   Vitest mock for @elizaos/core (Service, ServiceType, logger)
   prompts/
     evaluators.json     (reserved; not loaded by current plugin surface)
-  build.ts              tsdown build script (node + browser dual output)
+  build.ts              Bun.build script (node + browser dual output)
 ```
 
 ## Commands
@@ -77,7 +77,7 @@ Edit `services/pdf.ts`. The class extends `Service` from `@elizaos/core`. Add th
 - **Dual build (node + browser).** `build.ts` produces `dist/node/index.node.js` and `dist/browser/index.browser.js`. The `exports` field in `package.json` routes consumers automatically. Keep both entry points in sync when adding exports.
 - **`unpdf` dependency.** Replaces the older `pdfjs-dist` reference in README; actual runtime dep is `unpdf ^1.4.0` (`getDocumentProxy`). Do not import `pdfjs-dist` directly.
 - **Buffer input.** All public methods accept `Buffer` (Node.js) and convert internally to `Uint8Array` for `unpdf`. Browser callers must supply a compatible buffer.
-- **`cleanUpContent` strips control characters** (C0 except `\t`, `\r`, `\n`, and DEL). Call it on any raw text before surfacing to the agent.
+- **`cleanUpContent` strips control characters** (C0 except `\t`, `\r`, `\n`; also strips DEL/0x7F). Call it on any raw text before surfacing to the agent.
 - **No actions registered.** The plugin surface is service-only. To expose PDF capabilities to the LLM turn loop, an action must be added explicitly (see "How to Extend").
 - **`ServiceType.PDF`** is the lookup key. Use `runtime.getService<PdfService>(ServiceType.PDF)` — not a string literal.
 - **Logging uses `logger` from `@elizaos/core`**, prefixed `PdfService:` per repo convention.

@@ -22,7 +22,7 @@ src/
   runtime/
     eliza.ts              startEliza() / bootElizaRuntime() / startInCloudMode() — core boot orchestration
     eliza-plugin.ts       createElizaPlugin() — the "eliza" Plugin (workspace/session providers, lifecycle actions, services)
-    core-plugins.ts       CORE_PLUGINS / BLOCKING_ / DEFERRED_ / OPTIONAL_ / MOBILE_ / ANDROID_ plugin name lists
+    core-plugins.ts       CORE_PLUGINS / BLOCKING_ / DEFERRED_ / OPTIONAL_ / MOBILE_ / ELIZAOS_ANDROID_ plugin name lists
     plugin-resolver.ts    resolvePlugins() — resolve plugin names → modules; getLastFailedPluginNames()
     plugin-collector.ts   collectPluginNames(), CHANNEL/OPTIONAL/PROVIDER_PLUGIN_MAP
     plugin-lifecycle.ts   Plugin install/eject/reinject lifecycle
@@ -108,7 +108,7 @@ Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `
 
 - **Add an Eliza action/provider to the agent plugin:** add the file under `src/actions/` or `src/providers/`, export it through the directory barrel (`actions/index.ts`), then wire it into the `actions`/`providers` arrays in `createElizaPlugin()` (`runtime/eliza-plugin.ts`). Parent actions with subactions are flattened via `promoteSubactionsToActions(...)`.
 - **Add an HTTP route:** create `src/api/<name>-routes.ts` exporting a handler, register it in `api/dispatch-route.ts`, and export it from `api/index.ts`. Every route needs a real client caller (root AGENTS.md rule 10).
-- **Add/enable a bundled plugin:** add the package name to the appropriate list in `runtime/core-plugins.ts` (`CORE_PLUGINS`, `BLOCKING_`/`DEFERRED_`, `MOBILE_`/`ANDROID_`) and add it as a `workspace:*` dependency in `package.json`.
+- **Add/enable a bundled plugin:** add the package name to the appropriate list in `runtime/core-plugins.ts` (`CORE_PLUGINS`, `BLOCKING_`/`DEFERRED_`, `MOBILE_`/`ELIZAOS_ANDROID_`) and add it as a `workspace:*` dependency in `package.json`.
 - **Add a service:** put it under `src/services/`, register the class in the `services` array of `createElizaPlugin()`, and export from `services/index.ts`.
 
 ## Conventions / gotchas

@@ -66,14 +66,14 @@ bun run --cwd packages/plugin-sub-agent-claude-code clean
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Forwarded to Claude Code subprocess (via explicit `extraEnv` — NOT the safe-env allowlist). |
-| `CLAUDE_CODE_OAUTH_TOKEN` | — | OAuth token forwarded to subprocess when set. |
+| `ANTHROPIC_API_KEY` | — | Available to the worker process via Bun env permissions (`remote.permissions.bun.env`). Cannot be forwarded to the claude subprocess via `extraEnv` — `filterEnv` throws for keys matching `SENSITIVE_ENV_RE` (`API_KEY` pattern matches). |
+| `CLAUDE_CODE_OAUTH_TOKEN` | — | Available to the worker process via Bun env permissions. Cannot be forwarded via `extraEnv` — `TOKEN` pattern matches `SENSITIVE_ENV_RE`. |
 | `ELIZA_WORKSPACE_DIR` | — | Workspace root for `cwd` validation. Falls back to `ELIZA_STATE_DIR`, then `process.cwd()`. |
 | `ELIZA_STATE_DIR` | — | State dir; used as workspace root fallback. |
 | `ELIZA_SUB_AGENT_SESSIONS_DIR` | `~/.eliza/sub-agent-sessions` | Directory for per-session transcript logs. |
 | `ELIZA_SUB_AGENT_SESSION_RETENTION_DAYS` | `30` | Days before transcript directories are pruned. |
 
-`ANTHROPIC_API_KEY` must be passed via `params.extraEnv` in `createSession` — the env allowlist (`SAFE_ENV_KEYS`) does not forward it automatically. Passing sensitive keys via `extraEnv` throws if the key matches the blocklist regex `/(TOKEN|SECRET|KEY|PASSWORD|...)/i`. Use `ANTHROPIC_API_KEY` (allowed by explicit plugin permission) rather than arbitrary credential keys.
+`ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are granted to the worker process via `remote.permissions.bun.env` in `plugin.ts`, so the worker itself can read them from `process.env`. They cannot be forwarded to the claude subprocess via `params.extraEnv` — `filterEnv` throws when any `extraEnv` key matches `SENSITIVE_ENV_RE` (`/(TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|DATABASE_URL|WALLET|PRIVATE|MNEMONIC|API_KEY)/i`), and both keys match. Only non-sensitive keys (e.g. `ANTHROPIC_BASE_URL`) may be passed via `extraEnv`.
 
 ## How to extend
 
@@ -95,7 +95,7 @@ Add the absolute path to `BINARY_DIR_ALLOWLIST` in `src/sandbox.ts`.
 
 - **No `@elizaos/core` dep.** The Plugin shape is intentionally loosely typed to avoid pulling the full core dep tree into the worker process. The worker-runtime validates structurally.
 - **`cwd` must be absolute and under a workspace root or `/tmp`.** Symlink escapes are rejected via `realpathSync`. Pass absolute paths; relative paths throw `SubAgentCwdError`.
-- **Binary resolution uses a static whitelist.** The `claude` binary must be in one of the dirs in `BINARY_DIR_ALLOWLIST` (e.g. `/usr/local/bin`, `~/.local/bin`, `~/.bun/bin`). Paths outside the list throw `SubAgentBinaryError`.
+- **Binary resolution uses a static whitelist.** The `claude` binary must be in one of the dirs in `BINARY_DIR_ALLOWLIST` (`/usr/local/bin`, `/usr/bin`, `/opt/homebrew/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`). Paths outside the list throw `SubAgentBinaryError`.
 - **Missing sandbox helper is a WARN, not an error.** Dev boxes without `bwrap` or `sandbox-exec` still spawn processes with env-allowlist-only. Production deploys should treat this WARN as a P1 fix.
 - **Session transcripts are redacted before write.** `SessionRecorder` strips common credential patterns (API keys, GH tokens, Slack tokens, ETH/BTC addresses, card numbers) before flushing to disk. This is a coarse pass; combine with workspace isolation.
 - **`pruneOldSessions` is fire-and-forget.** Called at service start; errors are silently swallowed (non-critical cleanup).

@@ -101,14 +101,14 @@ bun run --cwd plugins/plugin-cli typecheck      # tsgo --noEmit
 
 ## Config / env vars
 
-Read during `init` and by `resolveCliName` / `buildProgram`:
+Declared in `agentConfig.pluginParameters` but **not read from `process.env`** by any source file. Pass values directly to `buildProgram` / `runCli` as call-site options:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `CLI_NAME` | No | `"elizaos"` | CLI binary name shown in help output |
 | `CLI_VERSION` | No | `"1.0.0"` | Version string shown by `--version` |
 
-Pass these through the agent character config (`agentConfig.pluginParameters`) or set them as environment variables; `buildProgram` also accepts `name` and `version` directly as call-site options.
+Pass via `buildProgram({ name: "myapp", version: "2.0.0" })` or `runCli(argv, { name, version })`. The `init` function does not read the config parameter (`_config` is intentionally unused).
 
 ## How to extend
 

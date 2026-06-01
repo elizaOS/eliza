@@ -24,9 +24,11 @@ Declare in your app's `AndroidManifest.xml` (already present in the plugin manif
 |---|---|
 | `android.permission.SEND_SMS` | `sendSms` |
 | `android.permission.READ_SMS` | `listMessages` |
-| `android.permission.RECEIVE_SMS` | Receiving inbound SMS (future use) |
+| `android.permission.RECEIVE_SMS` | Declared in plugin manifest |
+| `android.permission.RECEIVE_MMS` | Declared in plugin manifest |
+| `android.permission.RECEIVE_WAP_PUSH` | Declared in plugin manifest |
 
-Request both permissions before calling any plugin method. Calls made without the required permission are rejected immediately.
+Request the permissions your methods need before calling them. Calls made without the required permission are rejected immediately.
 
 ## API
 
@@ -76,6 +78,3 @@ bun run --cwd plugins/plugin-native-messages build
 
 Requires `bun`, `tsc`, and `rollup` (all listed as dev dependencies).
 
-## License
-
-MIT

@@ -10,7 +10,7 @@ This plugin is the TypeScript agent surface for the AiNex robot bridge. It manag
 
 ### Service
 
-- **`AinexService`** (`src/service.ts`) — singleton service (`serviceType = "ainex"`). Opens `AinexBridgeClient`, loads the robot profile via `profile.describe`, caches `BasicTelemetrySnapshot`, `PerceptionSnapshot`, `PolicyStatusSnapshot`, and `SafetySnapshot` from incoming bridge events. Exposes `getBridge()`, `getTelemetry()`, `getPerception()`, `getPolicyStatus()`, `snapshotCamera()`.
+- **`AinexService`** (`src/service.ts`) — singleton service (`serviceType = "ainex"`). Opens `AinexBridgeClient`, loads the robot profile via `profile.describe`, caches `BasicTelemetrySnapshot`, `PerceptionSnapshot`, `PolicyStatusSnapshot`, and `SafetySnapshot` from incoming bridge events. Exposes `getBridge()`, `getProfile()`, `getTelemetry()`, `getPerception()`, `getPolicyStatus()`, `getSafety()`, `snapshotCamera()`.
 
 ### Actions (default: 15 programmatic, `ELIZA_AINEX_MODE=programmatic`)
 

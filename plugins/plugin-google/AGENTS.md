@@ -81,7 +81,7 @@ bun run --cwd plugins/plugin-google typecheck      # tsgo --noEmit
 
 ## Config / env vars
 
-All three are read via `runtime.getSetting(key)` with `process.env` fallback during `init`. All are required for the OAuth flow to work; absence causes `createGoogleConnectorAccountProvider` to throw.
+All three are read via `runtime.getSetting(key)` at OAuth time. All are required for the OAuth flow to work; absence causes the `startOAuth` handler to throw.
 
 | Var | Required | Description |
 |-----|----------|-------------|

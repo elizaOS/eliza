@@ -15,7 +15,7 @@ src/
   cli/                      Commander CLI
     run-main.ts             runCli(): env normalize, dotenv, build + parse program
     program/build-program.ts  buildProgram(): help + preaction hooks + commands
-    program/command-registry.ts  registerProgramCommands(): start, setup, doctor, db, config, dashboard, update, auth, benchmark, capability-router, subclis
+    program/command-registry.ts  registerProgramCommands(): start, setup, doctor, db, configure, config, dashboard, update, auth, benchmark, capability-router, subclis
     program/register.*.ts   one file per command
     profile.ts, argv.ts, doctor/  profile env, arg parsing, doctor checks
   api/                      Dashboard HTTP API (server-side)
@@ -50,7 +50,7 @@ platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitl
 ## Key exports / surface
 
 - Default `.` import → `src/index.ts`: `startApiServer`, the Eliza runtime loader (`runtime/eliza`), `loadRegistry`/`getApps`/`getPlugins`/`getConnectors`/`getEntry`, `registerCuratedApp`, auth helpers, security stores, vault + steward services.
-- Subpath exports (see `package.json` `exports`): `./agent-bridge`, `./api/auth`, `./api/response`, `./api/automation-node-contributors`, `./api/ios-local-agent-transport`, `./registry`, `./first-run/first-run-config`, `./security/*`, `./services/vault-mirror`, `./services/steward-credentials`, `./services/task-host-capabilities`, `./platform/*`, `./ui-compat`.
+- Subpath exports (see `package.json` `exports`): `./agent-bridge`, `./api/auth`, `./api/response`, `./api/automation-node-contributors`, `./api/compat-route-shared`, `./api/ios-local-agent-transport`, `./registry`, `./first-run/first-run-config`, `./security/agent-vault-id`, `./security/platform-secure-store`, `./security/platform-secure-store-node`, `./services/vault-mirror`, `./services/steward-credentials`, `./services/steward-sidecar/helpers`, `./services/task-host-capabilities`, `./services/app-updates/update-policy`, `./platform/native-plugin-entrypoints`, `./platform/ios-runtime-backends`, `./platform/empty-node-module`, `./platform/native-library-policy`, `./ui-compat`.
 - `src/browser.ts` is the browser-safe surface; it re-exports React/UI from `@elizaos/ui` and the desktop runtimes from `runtime/desktop`.
 
 ## Commands
@@ -72,7 +72,7 @@ Run from repo root with `--cwd packages/app-core`:
 - `DATABASE_URL` → bridged to `POSTGRES_URL` for `plugin-sql` (cloud/sandbox provisioners inject `DATABASE_URL`).
 - `ELIZAOS_CLOUD_API_KEY` (dev fallback `ELIZA_DEV_CLOUD_API_KEY` in non-prod).
 - `ELIZA_API_PROCESS_SPAWNED_AT_MS` / `ELIZA_PROCESS_SPAWNED_AT_MS` — startup timing (dev-server).
-- `ELIZA_DEV_STACK_SCHEMA` payload from `api/dev-stack.ts`. State dir via `@elizaos/core` `resolveStateDir`. Provider key aliases normalized in `run-main.ts` (`Z_AI_API_KEY`→`ZAI_API_KEY`, `KIMI_API_KEY`→`MOONSHOT_API_KEY`).
+- `/api/dev/stack` response schema tag is the `ELIZA_DEV_STACK_SCHEMA` constant (`"elizaos.dev.stack/v1"`) from `api/dev-stack.ts` — it is a code constant, not an env var. State dir via `@elizaos/core` `resolveStateDir`. Provider key aliases normalized in `run-main.ts` (`Z_AI_API_KEY`→`ZAI_API_KEY`, `KIMI_API_KEY`→`MOONSHOT_API_KEY`).
 
 ## How to extend
 

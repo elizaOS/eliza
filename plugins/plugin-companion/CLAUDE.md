@@ -133,7 +133,7 @@ The current plugin registers no providers, evaluators, or services beyond the `P
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the `bundlePath` in each view registration points to. Both must be run for a complete build.
 - **Peer dependencies.** `three`, `@pixiv/three-vrm`, `react`, and `react-dom` are peer deps — they must be present in the host application. Do not import them as direct deps.
 - **Animation assets are gzip-compressed.** `VrmAnimationLoader` expects `.glb.gz` and `.fbx.gz` paths. `gzipAnimationPath()` in the catalog appends `.gz` automatically — do not double-suffix.
-- **`__ELIZA_VRM_ENGINES__`** is a debug global on `window` that `scene-overlay-bridge.ts` uses to locate the active `VrmEngine` instance at runtime. Do not remove this registration from `VrmEngine`.
+- **`__ELIZA_VRM_ENGINES__`** is a debug global on `window` that `scene-overlay-bridge.ts` uses to locate the active `VrmEngine` instance at runtime. Do not remove this registration from `VrmViewer`.
 - **Emote HTTP call is fire-and-forget.** `PLAY_EMOTE` returns success/failure but does not await animation completion. The 2 500 ms `AbortController` timeout prevents indefinite hangs when the dashboard server is unreachable.
 - **Storybook** dev requires the Three.js and VRM peer deps. Run `bun run --cwd plugins/plugin-companion storybook` from within the plugin directory.
 - See the root `AGENTS.md` for repo-wide architecture rules, naming conventions, logger requirements, and ESM/module standards.

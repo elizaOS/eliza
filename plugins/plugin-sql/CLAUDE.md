@@ -24,7 +24,7 @@ plugins/plugin-sql/
   package.json                  npm manifest; scripts, deps
   README.md                     human-facing docs
   src/
-    index.ts                    Generic/default entry (re-exports from both node + browser)
+    index.ts                    Default entry (same implementation as index.node.ts; uses ./utils)
     index.node.ts               Node/Bun entry: PostgreSQL + PGlite; createDatabaseAdapter()
     index.browser.ts            Browser entry: PGlite-only plugin
     base.ts                     BaseDrizzleAdapter — shared IDatabaseAdapter implementation
@@ -79,7 +79,7 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | Variable | Required | Default | Effect |
 |----------|----------|---------|--------|
 | `POSTGRES_URL` | No | — | PostgreSQL connection string. When absent, PGlite is used. |
-| `PGLITE_DATA_DIR` | No | `./pglite` | Directory (or `idb://` URL) for PGlite data storage. |
+| `PGLITE_DATA_DIR` | No | `.eliza/.elizadb` | Directory (or `idb://` URL) for PGlite data storage. |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |

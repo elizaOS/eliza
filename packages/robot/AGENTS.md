@@ -32,17 +32,18 @@ eliza_robot/            Python package (pip: eliza-robot)
     locomotion_metrics.py
   perception/           Camera frames, ASR, ONNX inference, SLAM, world model
   trajectory_db/        SQLite-backed trajectory store (db.py, models.py, schema.py)
-  profiles/             Profile loader and bundled manifests
+  profiles/             Profile loader (schema.py = RobotProfile Pydantic v2 model, DEFAULT_PROFILE_ID)
     schema.py           RobotProfile Pydantic v2 model (canonical source of truth)
-    hiwonder-ainex/     Hiwonder AiNex profile (default, DEFAULT_PROFILE_ID)
   asimov_1/             ASIMOV-1 integration (CAD edit loop, MuJoCo assets, bridge targets)
-  schema/               Pydantic schemas shared with the TS surface
+  schema/               AiNex canonical constants and adapters (canonical.py, embodied_context.py, hyperscape_adapter.py)
 
 profiles/               Per-robot profile manifests (profile.yaml + per-profile config)
   hiwonder-ainex/
   unitree-g1/
   unitree-h1/
   unitree-r1/
+  asimov-1/
+  erobot/
 assets/                 Binary assets (URDF, STL, MJCF XML) — never commit large blobs
   profiles/<id>/        Per-profile binaries
 scripts/                CLI helpers and CI gates (e.g. check-no-large-binaries.sh)

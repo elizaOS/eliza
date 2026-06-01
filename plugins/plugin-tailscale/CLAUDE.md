@@ -27,19 +27,18 @@ src/
   types.ts                          Re-exports ITunnelService, TunnelStatus, TunnelProvider from @elizaos/plugin-tunnel; adds TailscaleBackendMode
   environment.ts                    validateTailscaleConfig() — reads + validates all env vars via zod
   accounts.ts                       Multi-account config: readTailscaleAccounts(), resolveTailscaleAccount(), TailscaleAccountConfig
+  accounts.test.ts
   connector-account-provider.ts     createTailscaleConnectorAccountProvider() — adapts accounts.ts to ConnectorAccountManager
+  connector-account-provider.test.ts
   providers/
     tailscale-status.ts             tailscaleStatusProvider — injects tunnel status into LLM context
   services/
     TunnelBackendSelector.ts        readBackendMode(), selectTunnelBackend() — chooses LocalTailscaleService or CloudTailscaleService
     LocalTailscaleService.ts        Drives local `tailscale` CLI; requires tailscale installed + authed
     CloudTailscaleService.ts        Mints cloud auth key, joins tailnet, runs serve/funnel
+    CloudTailscaleService.test.ts
   __tests__/
     TailscaleTestSuite.ts           elizaOS test suite class (used in plugin.tests)
-  accounts.test.ts
-  connector-account-provider.test.ts
-  services/
-    CloudTailscaleService.test.ts
 ```
 
 ## Commands

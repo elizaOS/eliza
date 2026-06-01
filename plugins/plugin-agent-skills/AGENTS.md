@@ -11,8 +11,8 @@ This plugin gives an Eliza agent a full skill lifecycle: discover skills from th
 ### Actions
 | Name | File | Description |
 |------|------|-------------|
-| `USE_SKILL` | `src/actions/use-skill.ts` | Canonical entry point — invokes an enabled skill by slug. Accepts `mode` (`auto`/`guidance`/`script`). Similes: `RUN_SKILL`, `INVOKE_SKILL`. |
-| `SKILL` | `src/actions/skill.ts` | Management parent action; promotes sub-actions via `promoteSubactionsToActions`. Routes by `op` keyword in message text. |
+| `USE_SKILL` | `src/actions/use-skill.ts` | Canonical entry point — invokes an enabled skill by slug. Accepts `mode` (`auto`/`guidance`/`script`). Similes: `INVOKE_SKILL`, `RUN_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`, `USE_AGENT_SKILL`, `RUN_AGENT_SKILL`, `USE_CAPABILITY`, `RUN_CAPABILITY`. |
+| `SKILL` | `src/actions/skill.ts` | Management parent action; `plugin.ts` promotes it via `promoteSubactionsToActions`, yielding virtual `SKILL_<OP>` actions. Routes by `op` parameter or message-text pattern. |
 | `SKILL_SEARCH` | `src/actions/search-skills.ts` | Search the ClawHub catalog. |
 | `SKILL_DETAILS` | `src/actions/get-skill-details.ts` | Fetch full metadata for a skill slug. |
 | `SKILL_SYNC` | `src/actions/sync-catalog.ts` | Trigger a manual catalog refresh. |
@@ -140,7 +140,7 @@ Auto-enable gate (not a runtime env var): `config.features.agentSkills` must be 
 1. Extend `AgentSkillsService` in `src/services/skills.ts` or create a new class extending `Service` from `@elizaos/core`.
 2. Add to `ALL_SERVICES` in `src/plugin.ts`.
 
-**Authoring a SKILL.md:** See the Agent Skills spec at https://agentskills.io/specification and the scaffold template at `src/api/skill-scaffold.md`.
+**Authoring a SKILL.md:** See the Agent Skills spec at https://agentskills.io/specification and the scaffold template at `src/api/skill-scaffold.md` (template string also exported as `skillScaffoldMarkdown` from `src/api/skill-scaffold.ts`).
 
 ## Conventions / gotchas
 

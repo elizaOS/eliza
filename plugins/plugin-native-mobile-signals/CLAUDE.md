@@ -17,7 +17,7 @@ This package registers one Capacitor plugin: **`MobileSignals`**.
 | `openSettings(options?)` | Opens a specific native settings page (app, health, battery optimization, etc.). |
 | `startMonitoring(options?)` | Starts event streaming; returns initial device + health snapshots. |
 | `stopMonitoring()` | Stops event streaming and removes all native listeners. |
-| `getSnapshot()` | Synchronous read of current device + health state without streaming. |
+| `getSnapshot()` | One-shot async read of current device + health state without streaming. |
 | `scheduleBackgroundRefresh()` | Schedules a native background-refresh task (iOS BGAppRefreshTask). |
 | `cancelBackgroundRefresh()` | Cancels any scheduled background-refresh task. |
 | `addListener("signal", fn)` | Subscribes to `MobileSignalsSignal` events (device snapshot or health snapshot). |
@@ -57,7 +57,7 @@ tsconfig.json                          TypeScript config (emits to dist/esm/)
 Scripts that exist in this package's `package.json`:
 
 ```bash
-# Build: tsc + rollup (outputs dist/esm/ and dist/plugin.cjs.js)
+# Build: tsc + rollup (outputs dist/esm/, dist/plugin.cjs.js, dist/plugin.js)
 bun run --cwd plugins/plugin-native-mobile-signals build
 
 # Clean dist/
@@ -119,5 +119,5 @@ Extend `MobileSignalsSnapshot` or `MobileSignalsHealthSnapshot` in `src/definiti
 - `rawUsageExportAvailable` is permanently `false` in `MobileSignalsScreenTimeStatus` — this is intentional (Apple does not expose raw usage export).
 - On iOS, Screen Time features require Apple's restricted `com.apple.developer.family-controls` entitlement, which must be provisioned by Apple. The `validate:ios-screen-time` script is the canonical check.
 - `dist/` is committed for publishing but should be regenerated via `build` before any release.
-- The package uses dual output: ESM (`dist/esm/`) for tree-shaking consumers, CJS (`dist/plugin.cjs.js`) for CommonJS hosts. The `bun`/`development` export condition resolves directly to `src/index.ts` for local dev.
+- The package uses three outputs: ESM (`dist/esm/`) for tree-shaking consumers, CJS (`dist/plugin.cjs.js`) for CommonJS hosts, and IIFE (`dist/plugin.js`) for unpkg/browser script-tag use. The `bun`/`development` export condition resolves directly to `src/index.ts` for local dev.
 - See root `AGENTS.md` for repo-wide conventions (logging, ESM, naming, architecture rules).

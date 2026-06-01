@@ -62,7 +62,7 @@ pairs.
 ### Domain logic
 
 - `src/sleep/` — sleep / circadian / regularity engines.
-- `src/screen-time/` — screen-time aggregation.
+- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `app-lifeops` pending Wave-2 (W2-D) decoupling.
 - `src/health-bridge/` — proxied surfaces consumed by LifeOps
   (`/api/lifeops/health/summary`, `/api/lifeops/health/sync`).
 
@@ -102,6 +102,5 @@ and `plugins/plugin-lifeops/docs/audit/wave1-interfaces.md` §1, §3.
 
 - Plugin entry: `src/index.ts`.
 - LifeOps consumption: `plugins/plugin-lifeops/README.md`.
-- Frozen contracts: `plugins/plugin-lifeops/docs/audit/wave1-interfaces.md`
-  §5 (this plugin's contributions) and §3 (the connector / channel /
-  transport contracts the plugin implements).
+- Frozen contracts: see `plugins/plugin-lifeops/AGENTS.md` for the connector /
+  channel / transport contracts this plugin implements.

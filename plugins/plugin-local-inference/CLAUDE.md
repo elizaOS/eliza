@@ -39,7 +39,7 @@ Import from `@elizaos/plugin-local-inference/runtime`:
 - `ensureLocalInferenceHandler` — registers `TEXT_SMALL`/`TEXT_LARGE`/`TEXT_EMBEDDING` handlers and wires the routing-policy layer at boot.
 - `shouldWarmupLocalEmbeddingModel` — policy gate for embedding warm-up.
 - `shouldEnableMobileLocalInference` — gate for Capacitor/mobile paths.
-- `detectEmbeddingPreset`, `EMBEDDING_PRESETS`, `EmbeddingPreset`, `EmbeddingTier` — embedding-model preset detection.
+- `detectEmbeddingPreset` — embedding-model preset detection. (`EMBEDDING_PRESETS`, `EmbeddingPreset`, `EmbeddingTier` are exported from `@elizaos/plugin-local-inference/runtime/embedding-presets` and from the main root subpath.)
 
 ## Layout
 

@@ -28,11 +28,11 @@ plugins/plugin-omnivoice/
     singing.ts          Singing model codepath: separate lazy OmnivoiceContext, runSingingSynthesis
     emotion-local.ts    Emotion taxonomy + coercion helpers (local mirror of packages/ui/src/voice/emotion.ts)
     errors.ts           Error classes: OmnivoiceNotInstalled, OmnivoiceModelMissing, OmnivoiceSynthesisFailed, OmnivoiceTranscriptionNotSupported
-    discover.ts         Filesystem discovery of GGUF pairs under <stateDir>/models/omnivoice/
+    discover.ts         Filesystem discovery of GGUF pairs under <stateDir>/models/omnivoice/{speech,singing}/
     shutdown.ts         Process-lifecycle cleanup: registerOmnivoiceShutdownHooks, closeOmnivoiceShutdown
     types.ts            Public TS types: Emotion, OmnivoiceVoiceDesign, OmnivoiceSynthesizeOptions, OmnivoiceSynthesisResult, OmnivoiceContextOptions
   auto-enable.ts        shouldEnable() — probed by elizaOS plugin loader to decide auto-activation
-  build.ts              Custom tsdown build script
+  build.ts              Custom Bun.build script (dual Node + browser build)
   __tests__/            Unit tests (vitest)
 ```
 

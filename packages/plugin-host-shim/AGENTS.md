@@ -9,7 +9,7 @@ This package defines the `PluginHostShim` interface and the module-level singlet
 - `@elizaos/plugin-host-shim-electrobun` — Electrobun BrowserView via `globalThis.__elizaosElectrobunBridge`
 - `@elizaos/plugin-host-shim-ios` — iOS WKWebView bridge
 - `@elizaos/plugin-host-shim-android` — Android WebView bridge
-- `@elizaos/plugin-host-shim` (`./web` export) — web/XR iframe via `window.postMessage`
+- `@elizaos/plugin-host-shim` (`./web` export) — web/XR iframe via `window.parent.postMessage`
 
 View bundle code always imports from `@elizaos/plugin-host-shim` (the contract); the platform package is imported once, early in the bundle, to install the concrete implementation.
 

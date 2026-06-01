@@ -88,7 +88,3 @@ handle.remove();
 bun run build   # tsc then rollup — produces dist/esm/, dist/plugin.js, dist/plugin.cjs.js
 bun run watch   # tsc --watch (no rollup)
 ```
-
-## License
-
-MIT — elizaOS contributors.

@@ -38,7 +38,7 @@ DTOs are imported from `@elizaos/cloud-shared`; shared UI from `@elizaos/ui`; br
 
 ```bash
 bun install
-bun run --cwd packages/cloud-frontend dev      # vite dev server on http://localhost:5173
+bun run --cwd packages/cloud-frontend dev      # vite dev server on http://localhost:3000
 ```
 
 The browser always calls the API same-origin (`/api/*`). For SSR/scripts the base resolves from `VITE_API_URL` / `NEXT_PUBLIC_API_URL`. Steward auth defaults to the same-origin `/steward` mount; override with `NEXT_PUBLIC_STEWARD_API_URL`.

@@ -72,6 +72,3 @@ await WebsiteBlocker.stopBlock();
 - Hostnames are normalized: protocols and paths are stripped, hostnames without a dot are rejected.
 - `durationMinutes` can be a number or a numeric string. Omit or pass `null` for an indefinite block.
 
-## License
-
-MIT

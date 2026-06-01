@@ -49,12 +49,13 @@ plugins/plugin-native-desktop/
 
 ## Commands
 
-Only these scripts exist in package.json:
+Scripts in package.json:
 
 ```bash
 bun run --cwd plugins/plugin-native-desktop build    # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-desktop clean    # delete dist/
 bun run --cwd plugins/plugin-native-desktop watch    # tsc --watch (no rollup)
+# prepublishOnly runs build automatically before npm publish
 ```
 
 ## Config / env vars

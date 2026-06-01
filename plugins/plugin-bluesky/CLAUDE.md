@@ -69,7 +69,7 @@ plugins/plugin-bluesky/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-bluesky build        # compile (tsdown)
+bun run --cwd plugins/plugin-bluesky build        # compile (Bun.build + tsc for .d.ts)
 bun run --cwd plugins/plugin-bluesky dev          # watch build (--hot)
 bun run --cwd plugins/plugin-bluesky test         # vitest run
 bun run --cwd plugins/plugin-bluesky typecheck    # tsgo --noEmit

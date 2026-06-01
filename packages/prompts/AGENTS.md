@@ -6,7 +6,7 @@ Single source of truth for the LLM prompt templates the elizaOS runtime uses, pl
 
 - Holds every shared prompt template as a plain string export in `src/index.ts` (no runtime logic). `@elizaos/core` re-exports these via `packages/core/src/prompts.ts`, and `packages/core/src/features/autonomy/service.ts` consumes the autonomy templates. The runtime fills `{{...}}` placeholders with `composePrompt` from core.
 - Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
-- This package ships no compiled JS for `src/` — `main`/`module`/`exports['.']` point at `src/index.ts` directly (consumed by TS tooling / bundlers in the monorepo). The `dist/` mapping in `exports` is only for the generated CSS / `.js` paths the codegen scripts touch elsewhere.
+- This package ships no compiled JS for `src/` — `main`/`exports['.']` point at `src/index.ts` directly (consumed by TS tooling / bundlers in the monorepo). The `dist/` subpath mappings in `exports` (`./*.css` and `./*`) exist for potential subpath consumers; no codegen script in this package writes to `dist/`.
 
 ## Layout
 

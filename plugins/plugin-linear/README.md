@@ -121,6 +121,3 @@ Linear uses numeric priorities: `1` = Urgent, `2` = High, `3` = Normal, `4` = Lo
 - The activity log is in-memory and resets when the agent stops. Maximum 1000 entries.
 - All four providers are gated to the `automation` and `connectors` contexts, so they appear only when those contexts are active.
 
-## License
-
-MIT

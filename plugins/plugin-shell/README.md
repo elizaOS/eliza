@@ -109,7 +109,3 @@ bun run --cwd plugins/plugin-shell build    # build dist/
 bun run --cwd plugins/plugin-shell test     # vitest
 bun run --cwd plugins/plugin-shell dev      # hot-reload build
 ```
-
-## License
-
-MIT

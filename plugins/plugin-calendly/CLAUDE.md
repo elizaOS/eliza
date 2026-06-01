@@ -22,7 +22,7 @@ Note: the plugin registers `actions: []` in the `Plugin` object — `calendlyOpA
 src/
   index.ts                        Plugin entry; exports calendlyPlugin + all public types
   types.ts                        Shared types: CalendlyEventType, CalendlyScheduledEvent,
-                                  CalendlyAvailability, CalendlyActionResult, CalendlyActions enum
+                                  CalendlyAvailability, CalendlyActionResult, CalendlyActions const
   accounts.ts                     Multi-account resolution (env, character settings, CALENDLY_ACCOUNTS JSON)
   calendly-client.ts              Raw Calendly v2 HTTP client (no caching, no retry):
                                     getCalendlyUser, listCalendlyEventTypes,

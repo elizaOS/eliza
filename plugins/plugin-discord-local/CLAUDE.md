@@ -96,8 +96,8 @@ All settings are read via `runtime.getSetting(key)`.
 Session tokens are persisted to `<stateDir>/discord-local/session.json`. `resolveStateDir()` from
 `@elizaos/core` determines `stateDir`.
 
-The IPC socket is located by scanning `DISCORD_IPC_DIR`, `XDG_RUNTIME_DIR`, `TMPDIR`, `/tmp`,
-`/private/tmp`, and `~/Library/Application Support/discord` (recursive, macOS fallback).
+The IPC socket is located by scanning `DISCORD_IPC_DIR`, `XDG_RUNTIME_DIR`, `TMPDIR`, `TMP`,
+`TEMP`, `/tmp`, `/private/tmp`, and `~/Library/Application Support/discord` (recursive, macOS fallback).
 
 ## How to extend
 

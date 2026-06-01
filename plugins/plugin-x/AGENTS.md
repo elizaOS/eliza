@@ -4,7 +4,7 @@ X (formerly Twitter) connector for elizaOS agents: posting, mentions, replies, D
 
 ## Purpose / role
 
-Adds an `XService` to the Eliza agent runtime that bridges the agent to X/Twitter via Twitter API v2. The plugin registers as a message connector (DMs) and post connector (public tweets), starts autonomous polling loops for mentions/interactions/timeline/discovery, and wires OAuth 1.0a env-var credentials or OAuth 2.0 PKCE into the connector account manager.
+Adds an `XService` to the elizaOS agent runtime that bridges the agent to X/Twitter via Twitter API v2. The plugin registers as a message connector (DMs) and post connector (public tweets), starts autonomous polling loops for mentions/interactions/timeline/discovery, and wires OAuth 1.0a env-var credentials or OAuth 2.0 PKCE into the connector account manager.
 
 Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) is present and not explicitly disabled. Entry-point check lives in `auto-enable.ts`.
 
@@ -57,19 +57,23 @@ plugins/plugin-x/
       auth-providers/
         factory.ts                 createTwitterAuthProvider — picks env-mode vs PKCE
         pkce.ts                    createCodeVerifier / createCodeChallenge helpers
+        env.ts                     Env-mode (OAuth 1.0a) auth provider
+        oauth2-pkce.ts             OAuth 2.0 PKCE auth provider
+        interactive.ts             Interactive authorization flow helpers
+        token-store.ts             Token persistence helpers
+        types.ts                   Auth provider type definitions
     services/
       x.service.ts                 XService + TwitterClientInstance (orchestrates all sub-clients)
       IPostService.ts              IPostService interface; Post / CreatePostOptions / GetPostsOptions types
       PostService.ts               TwitterPostService — createPost / getPosts / getMentions via ClientBase
       IMessageService.ts           IMessageService interface; Message / SendMessageOptions types
       MessageService.ts            TwitterMessageService — DM send/list via ClientBase
-      error-handler.ts             Shared API error handling helpers
+    utils.ts                       sendTweet, SentTweet, fetchMediaData, parseActionResponseFromText; re-exports utils/error-handler
     utils/
-      index.ts                     sendTweet, SentTweet
       settings.ts                  getSetting(runtime, key) — checks runtime settings then process.env
       memory.ts                    createMemorySafe, ensureTwitterContext, isTweetProcessed, buildTwitterMessageMetadata
       time.ts                      getEpochMs
-      accounts.ts                  (test file) account resolution unit tests
+      error-handler.ts             Shared API error handling helpers
 ```
 
 ## Commands

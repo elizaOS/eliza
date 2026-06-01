@@ -37,7 +37,7 @@ import macosAlarmPlugin from "@elizaos/macosalarm";
 bun run --cwd plugins/plugin-native-macosalarm build
 ```
 
-This runs `tsc` and then `swiftc swift-helper/main.swift -O -o bin/macosalarm-helper`.
+This runs `tsc --noCheck` and then `swiftc swift-helper/main.swift -O -o bin/macosalarm-helper`.
 
 ## Configuration
 

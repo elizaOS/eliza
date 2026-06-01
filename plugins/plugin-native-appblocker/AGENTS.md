@@ -4,7 +4,7 @@ Capacitor plugin that blocks selected apps on Android (Usage Access + system ove
 
 ## Purpose / role
 
-This is a Capacitor native plugin — not an elizaOS action/service plugin. It exposes a JavaScript API (`AppBlocker`) that a Capacitor-based Eliza agent app can call to check permissions, let the user select apps to block, apply a block, and remove it. It has no runtime on the web (all methods return `not-applicable`). It is opt-in: the consuming app must register `ElizaAppBlockerPlugin` with Capacitor and call into the JS API.
+This is a Capacitor native plugin — not an elizaOS action/service plugin. It exposes a JavaScript API (`AppBlocker`) that a Capacitor-based Eliza agent app can call to check permissions, let the user select apps to block, apply a block, and remove it. It has no runtime on the web: `checkPermissions`/`requestPermissions` return `status: "not-applicable"`, `getStatus` returns `status: "unavailable"`, `blockApps`/`unblockApps` return `success: false`, and `getInstalledApps`/`selectApps` return empty results. It is opt-in: the consuming app must register `ElizaAppBlockerPlugin` with Capacitor and call into the JS API.
 
 ## Plugin surface
 
@@ -15,7 +15,7 @@ This is a Capacitor plugin, not an elizaOS plugin. It does not register elizaOS 
 | `AppBlocker.checkPermissions()` | Returns current permission status and engine capabilities |
 | `AppBlocker.requestPermissions()` | Opens system settings to grant Usage Access + overlay (Android) or triggers Family Controls auth (iOS) |
 | `AppBlocker.getInstalledApps()` | Returns list of installed launcher apps (Android only; iOS returns `[]`) |
-| `AppBlocker.selectApps()` | Opens the system app-picker UI; returns selected `InstalledApp[]` with `tokenData` on iOS |
+| `AppBlocker.selectApps()` | iOS: opens `FamilyActivityPicker` and returns selected apps with `tokenData`. Android: returns `{ apps: [], cancelled: true }` (no picker UI on Android — use `getInstalledApps` to build your own list) |
 | `AppBlocker.blockApps(options)` | Activates blocking for given `packageNames` (Android) or `appTokens` (iOS); optional `durationMinutes` |
 | `AppBlocker.unblockApps()` | Removes all active blocks |
 | `AppBlocker.getStatus()` | Returns full `AppBlockerStatus` including active state, blocked count, engine, and permission details |

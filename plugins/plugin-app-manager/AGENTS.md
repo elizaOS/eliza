@@ -13,7 +13,7 @@ This package registers **no elizaOS plugin object**. It exports pure TypeScript 
 | Export | Kind | Description |
 |---|---|---|
 | `AppManager` | Class (service) | In-memory run registry with persistent JSON store. Manages launch, stop, attach, detach, heartbeat, and stale-run sweeping. |
-| `handleAppsRoutes` | Function | HTTP route dispatcher for all `/api/apps/*` endpoints. Returns `boolean` — `true` if handled, `false` if not matched. |
+| `handleAppsRoutes` | Function | HTTP route dispatcher for all `/api/apps/*` endpoints. Returns `Promise<boolean>` — `true` if handled, `false` if not matched. |
 | `readAppRunStore` | Function | Read `runs.v2.json` from state dir, normalizing and migrating from v1. |
 | `writeAppRunStore` | Function | Atomically write runs to `runs.v2.json`. |
 | `resolveAppRunStoreFilePath` | Function | Returns absolute path to `<stateDir>/apps/runs.v2.json`. |
@@ -121,4 +121,4 @@ The state-dir path used by `readAppRunStore` / `writeAppRunStore` comes from `@e
 - **URL safety.** `normalizeSafeAppUrl` rejects non-`http:`/`https:` protocols and protocol-relative `//` forms. Any launch or viewer URL that fails this check throws and aborts launch.
 - **Run persistence.** Runs are written atomically to `<stateDir>/apps/runs.v2.json` via `writeJsonAtomicSync` after every mutation. On startup `AppManager` reads and normalizes existing runs (migrating from `runs.v1.json` if present).
 - **Agents-list guard.** App launch must not replace the user's active character config. If `agents.list` in `eliza.config.json` changes during launch, it is restored via `shouldRestoreAgentsListAfterAppLaunch` (imported from `@elizaos/agent`).
-- **Dependencies.** This package imports from `@elizaos/agent` (config, services, registry client) via workspace `*`. It has no circular dependency on itself but does depend on agent internals — keep that boundary in mind if reorganizing.
+- **Dependencies.** Declared dependencies are `@elizaos/core`, `@elizaos/plugin-registry`, and `@elizaos/shared`. The source also imports from `@elizaos/agent` subpaths (config, services, registry client) at runtime — `@elizaos/agent` is not listed in `package.json` but is provided by the host at runtime. Keep that boundary in mind if reorganizing.

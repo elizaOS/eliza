@@ -58,11 +58,11 @@ plugins/plugin-anthropic/
 Scripts from `plugins/plugin-anthropic/package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-anthropic build          # tsdown build (node + browser + cjs)
+bun run --cwd plugins/plugin-anthropic build          # Bun.build (node + browser + cjs, via build.ts)
 bun run --cwd plugins/plugin-anthropic dev            # build in watch mode
-bun run --cwd plugins/plugin-anthropic test           # run all tests (vitest)
-bun run --cwd plugins/plugin-anthropic test:unit      # only __tests__/unit
-bun run --cwd plugins/plugin-anthropic test:integration  # only __tests__/integration
+bun run --cwd plugins/plugin-anthropic test           # run all tests (vitest, excludes *.live.test.ts)
+bun run --cwd plugins/plugin-anthropic test:unit      # vitest --dir __tests__/unit (no unit/ subdir exists; all tests are in __tests__/ root)
+bun run --cwd plugins/plugin-anthropic test:integration  # vitest --dir __tests__/integration (no integration/ subdir exists)
 bun run --cwd plugins/plugin-anthropic typecheck      # tsgo --noEmit
 bun run --cwd plugins/plugin-anthropic lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-anthropic format         # biome format --write

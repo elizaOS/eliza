@@ -41,6 +41,7 @@ packages/docs/
 │   ├── memory-and-state.mdx
 │   ├── personality-and-behavior.mdx
 │   └── runtime-and-lifecycle.mdx
+├── apps/                       # App layer pages (desktop, mobile, dashboard, ui-library)
 ├── plugins/                    # Plugin reference pages
 ├── cli/                        # CLI reference (create-plugin, create-project, overview)
 ├── connectors/                 # Connector reference (Discord, Telegram, iMessage, etc.)
@@ -108,7 +109,9 @@ Top-level tabs as of current content:
 - **App** — app/desktop/mobile layer
 - **Cloud** — Eliza Cloud managed APIs and services
 - **Chip** — E1 RISC-V SoC
-- **Training** — model training
+- **Robot** — embodiment pages (tracks/training/robot, tracks/training/feed)
+- **CLI** — CLI reference (create-project, create-plugin, overview)
+- **Reference** — configuration, deployment, advanced topics, security
 
 ## Brand asset sync
 

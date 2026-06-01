@@ -35,6 +35,7 @@ See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, naming, ar
 | `FEISHU_REACTION_RECEIVED` | `FEISHU_REACTION_RECEIVED` | Emoji reaction on a message |
 | `FEISHU_INTERACTION_RECEIVED` | `FEISHU_INTERACTION_RECEIVED` | Interactive card action |
 | `FEISHU_SLASH_START` | `FEISHU_SLASH_START` | Slash command invocation |
+| `FEISHU_ENTITY_UPDATED` | `FEISHU_ENTITY_UPDATED` | User profile updated in a chat |
 
 **Message connector** registered at `FeishuService.registerSendHandlers` with capabilities: `send_message`, `send_card`, `send_image`, `send_file`. Supports `resolveTargets`, `listRecentTargets`, `listRooms`, `fetchMessages`, `searchMessages`, `getChatContext`, `getUserContext`.
 

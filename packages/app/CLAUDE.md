@@ -62,14 +62,14 @@ packages/app/
 - `src/app.config.ts` — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. Copy this file to white-label a new app.
 - `src/plugin-loader.ts` — `APP_PLUGIN_SPECS` map of `@elizaos/app-*` → dynamic import. `initializeAppPlugins()` loads all plugins in parallel and calls `setBootConfig()` on `@elizaos/ui`. This is the canonical plugin init path.
 - `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects (feed, scape, shopify-ui, etc.), not for exported components.
-- `src/main.tsx` — React entry point. Calls `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell, iOS full-Bun smoke), then `initializeAppModules()`, then mounts `<App>` from `@elizaos/ui`.
+- `src/main.tsx` — React entry point. Calls `initializeAppModules()` (parallel-loads plugins, assembles `AppBootConfig`), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
 
 ## Boot sequence
 
 1. `src/main.tsx` runs before React mounts.
-2. `initializePlatform()` — per-platform init: storage bridge, keyboard, lifecycle, network, mobile device bridge, desktop shell.
-3. `initializeAppModules()` (or `initializeAppPlugins()` in the plugin-loader refactor path) — parallel-loads all `@elizaos/app-*` / `@elizaos/plugin-*` modules, calls `registerCompanionApp()`, `registerLifeOpsApp()`, assembles `AppBootConfig`, calls `setBootConfig()`.
-4. React `createRoot` renders `<AppProvider><App /></AppProvider>` from `@elizaos/ui`.
+2. `initializeAppModules()` — parallel-loads all `@elizaos/app-*` / `@elizaos/plugin-*` modules, calls `registerCompanionApp()`, `registerLifeOpsApp()`, assembles `AppBootConfig`, calls `setBootConfig()`.
+3. React `createRoot` renders `<AppProvider><App /></AppProvider>` from `@elizaos/ui`.
+4. `initializePlatform()` — per-platform init: storage bridge, keyboard, lifecycle, network, mobile device bridge, desktop shell. Runs concurrently after mount (not before).
 
 ## Commands
 

@@ -1,6 +1,6 @@
 # @elizaos/plugin-twitch
 
-Twitch chat integration plugin for ElizaOS agents.
+Twitch chat integration plugin for elizaOS agents.
 
 ## Features
 
@@ -48,7 +48,7 @@ Set the following environment variables:
 ### Allowed Roles
 
 - `all` - Anyone can interact
-- `owner` / `broadcaster` - Channel owner only
+- `owner` - Channel owner/broadcaster only
 - `moderator` - Moderators
 - `vip` - VIP users
 - `subscriber` - Subscribers

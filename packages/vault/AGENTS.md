@@ -69,7 +69,7 @@ import { getSavedLogin, setSavedLogin, listSavedLogins, deleteSavedLogin, setAut
 import { listOnePasswordLogins, listBitwardenLogins, revealOnePasswordLogin, revealBitwardenLogin, BackendNotSignedInError } from "@elizaos/vault";
 
 // PGlite implementation (advanced use)
-import { PgliteVaultImpl, defaultPgliteVaultDataDir, reconcileStalePglitePid } from "@elizaos/vault";
+import { PgliteVaultImpl, defaultPgliteVaultDataDir } from "@elizaos/vault";
 
 // Testing
 import { createTestVault } from "@elizaos/vault";
@@ -79,7 +79,7 @@ import { createTestVault } from "@elizaos/vault";
 ## Commands
 
 ```bash
-bun run --cwd packages/vault build       # compile via tsdown → dist/
+bun run --cwd packages/vault build       # compile via tsc → dist/
 bun run --cwd packages/vault test        # vitest run (all test files)
 bun run --cwd packages/vault test:watch  # vitest watch mode
 bun run --cwd packages/vault typecheck   # tsgo --noEmit

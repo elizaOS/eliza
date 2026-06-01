@@ -98,7 +98,7 @@ The gateway protocol uses JSON frames over WebSocket. Three frame types:
 - `res` — server response: `{ type: "res", id: UUID, ok: boolean, payload?, error? }`
 - `event` — server push: `{ type: "event", event: string, payload?, seq?: number }`
 
-Connection is established by sending a `connect` method frame with protocol range `minProtocol: 3, maxProtocol: 3`. Reconnection uses exponential backoff starting at 800 ms, capped at 15 s (web/iOS) or 30 s (Android). Request timeout is 60 s for `send()`.
+Connection is established by sending a `connect` method frame with protocol range `minProtocol: 3, maxProtocol: 3`. Reconnection uses exponential backoff starting at 800 ms, capped at 15 s (web, iOS, and Android). Request timeout is 60 s for `send()`.
 
 mDNS service type: `_eliza-gw._tcp` (local.) on iOS/Android; `_eliza-gw._tcp.` on Android NsdManager.
 

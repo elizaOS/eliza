@@ -6,7 +6,7 @@ the elizaOS Cloud control-plane:
 - `eliza-provisioning-worker` — pulls jobs from the `jobs` table and SSHs
   into sandbox cores
 - `eliza-agent-router` — subdomain HTTP routing
-- `cloudflared` — secure tunnel for `sandboxes.waifu.fun`
+- `cloudflared` — secure tunnel for `sandboxes.elizacloud.ai`
 - `headscale` — VPN mesh for cross-core agent traffic
 
 The **data plane** (the sandbox cores themselves) is **not** managed here —

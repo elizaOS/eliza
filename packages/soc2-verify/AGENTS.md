@@ -18,8 +18,8 @@ packages/soc2-verify/
     controls/
       index.ts        Assembles ALL_CHECKS (all 27 checks ordered by TSC category)
       audit-actions.ts  CC4 — audit action comprehensiveness check
-      codeowners.ts   CC6 — CODEOWNERS, branch-protection, SECURITY.md checks
-      db-and-pii.ts   C1 — DB SSL, KMS adoption, PII/soft-delete columns, log retention
+      codeowners.ts   CC6/CC9 — CODEOWNERS, branch-protection, SECURITY.md checks
+      db-and-pii.ts   CC6.7/C1 — DB SSL, KMS adoption, PII/soft-delete columns, log retention
       dynamic.ts      C1/CC4/PI1 — live round-trip tests using @elizaos/security adapters
       k8s.ts          CC6.6 — k8s securityContext + NetworkPolicy checks
       observability.ts CC7 — monitoring config + alert rules checks

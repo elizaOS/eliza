@@ -23,7 +23,7 @@ Registers `LocalFileStorageService` under `ServiceType.REMOTE_FILES` so Eliza ag
 | `downloadFile` | `(_unusedBucket, key, localPath)` | Reads and writes to `localPath` on disk. |
 | `delete` | `(_unusedBucket, key)` | Removes the stored object. Not idempotent — throws on missing key. |
 | `exists` | `(_unusedBucket, key) → boolean` | Returns whether the key exists. |
-| `generateSignedUrl` | `(fileName, _expiresIn?) → string` | Returns a `file://` absolute URL. No expiry; `_expiresIn` is ignored. |
+| `generateSignedUrl` | `(fileName, _expiresIn?) → Promise<string>` | Returns a `file://` absolute URL. No expiry; `_expiresIn` is ignored. |
 | `root` | getter `→ string` | Absolute path of the storage root. Useful for tests and tooling. |
 
 Exported types from `src/types.ts`: `UploadResult`, `JsonUploadResult`, `JsonValue`, `JsonPrimitive`, `JsonObject`, `JsonArray`, `CONTENT_TYPES`, `getContentType`.
@@ -48,7 +48,7 @@ plugins/plugin-local-storage/
 bun run --cwd plugins/plugin-local-storage build        # compile to dist/
 bun run --cwd plugins/plugin-local-storage dev          # watch build (--hot)
 bun run --cwd plugins/plugin-local-storage test         # vitest run
-bun run --cwd plugins/plugin-local-storage typecheck    # tsc --noEmit
+bun run --cwd plugins/plugin-local-storage typecheck    # tsgo --noEmit
 bun run --cwd plugins/plugin-local-storage lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-local-storage lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-local-storage format       # biome format --write

@@ -37,7 +37,7 @@ plugins/plugin-native-phone/
       AndroidManifest.xml         Declares permissions: CALL_PHONE, READ_PHONE_STATE, ANSWER_PHONE_CALLS,
                                   MANAGE_OWN_CALLS, READ_CALL_LOG, WRITE_CALL_LOG
       java/ai/eliza/plugins/phone/
-        PhonePlugin.kt            @CapacitorPlugin(name="ElizaPhone") — all four PluginMethods
+        PhonePlugin.kt            @CapacitorPlugin(name="ElizaPhone") — all five PluginMethods
   rollup.config.mjs               Bundles dist/esm → dist/plugin.js (IIFE) + dist/plugin.cjs.js
   package.json
   tsconfig.json
