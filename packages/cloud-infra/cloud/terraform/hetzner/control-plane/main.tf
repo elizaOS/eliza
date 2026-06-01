@@ -28,7 +28,7 @@ resource "hcloud_server" "control_plane" {
   # `milady` VM. The environment lives in labels, not the hostname, so the
   # prod/staging distinction shows up in the Hetzner Console filter
   # without bloating the hostname every operator types into SSH.
-  name        = "eliza-${each.value}"
+  name        = "eliza-${var.environment}-${each.value}"
   location    = var.hcloud_location
   server_type = var.hcloud_server_type
   image       = var.hcloud_image
@@ -38,7 +38,7 @@ resource "hcloud_server" "control_plane" {
   })
 
   user_data = templatefile("${path.module}/cloud-init/bootstrap.yaml.tftpl", {
-    hostname          = "eliza-${each.value}"
+    hostname          = "eliza-${var.environment}-${each.value}"
     deploy_branch     = var.deploy_branch
     operator_ssh_keys = var.ssh_public_keys
   })
@@ -49,6 +49,8 @@ resource "hcloud_server" "control_plane" {
     ignore_changes = [
       user_data, # bootstrap runs once at first boot
       image,     # updating image rebuilds — explicit `terraform taint` to opt in
+      name,      # legacy VMs may not follow the env-prefixed naming convention; renaming is out of band
+      ssh_keys,  # operator key rotations don't recreate the box (keys are baked into authorized_keys at boot)
     ]
   }
 }

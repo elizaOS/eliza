@@ -9,3 +9,4 @@ crash.*.log
 # Only `.tfvars.example` lives in the repo.
 *.tfvars
 !*.tfvars.example
+.envrc
