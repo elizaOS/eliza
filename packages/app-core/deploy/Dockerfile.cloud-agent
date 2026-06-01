@@ -27,10 +27,13 @@ RUN set -eux; \
   esac; \
   curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz" \
     -o /tmp/tailscale.tgz; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz.sha256" \
+    -o /tmp/tailscale.tgz.sha256; \
+  echo "$(cat /tmp/tailscale.tgz.sha256)  /tmp/tailscale.tgz" | sha256sum -c -; \
   tar -xzf /tmp/tailscale.tgz -C /tmp; \
   install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscale" /usr/local/bin/tailscale; \
   install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
-  rm -rf /tmp/tailscale.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
+  rm -rf /tmp/tailscale.tgz /tmp/tailscale.tgz.sha256 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
 
 WORKDIR /app
 
