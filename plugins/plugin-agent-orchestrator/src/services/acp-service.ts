@@ -1623,6 +1623,30 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
+      // plan: opencode emits the agent's todo/plan list as a `plan` update with
+      // entries [{content, status, priority}] (driven by its todowrite tool —
+      // see vendor/opencode/.../acp/agent.ts). Forward a sanitized snapshot as a
+      // `plan` event so the task's currentPlan can drive the plan/todo dock.
+      // Validated at this boundary (raw -> typed); an adapter that never emits a
+      // plan simply no-ops here.
+      else if (
+        sessionUpdate === "plan" &&
+        Array.isArray(updateBlock?.entries)
+      ) {
+        const entries = updateBlock.entries
+          .map((entry) => asRecord(entry))
+          .filter(
+            (entry): entry is Record<string, unknown> => entry !== undefined,
+          )
+          .map((entry) => ({
+            content: stringifyMaybe(entry.content) ?? "",
+            status: stringifyMaybe(entry.status) ?? "pending",
+            priority: stringifyMaybe(entry.priority) ?? "medium",
+          }))
+          .filter((entry) => entry.content !== "");
+        if (entries.length > 0)
+          this.emitSessionEvent(sessionId, "plan", { entries });
+      }
       // Some adapters put text directly at content level.
       else if (
         !sessionUpdate &&

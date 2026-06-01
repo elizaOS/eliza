@@ -35,6 +35,7 @@ export type SessionEventName =
   | "error"
   | "message"
   | "reasoning"
+  | "plan"
   | "reconnected"
   | string;
 

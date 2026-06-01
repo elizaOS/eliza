@@ -57,6 +57,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { PlanDock } from "./orchestrator-plan";
 import {
   buildConversation,
   ConversationBlockView,
@@ -2461,6 +2462,11 @@ export function OrchestratorWorkbench() {
                 onOpenInspector={() => setInspectorOpen((prev) => !prev)}
                 t={t}
               />
+              {detail.currentPlan ? (
+                <div className="border-b border-border/50 px-4 py-2">
+                  <PlanDock plan={detail.currentPlan} />
+                </div>
+              ) : null}
               <div
                 ref={listRef}
                 onScroll={handleListScroll}

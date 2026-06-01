@@ -836,6 +836,61 @@ describe("AcpService", () => {
     );
   });
 
+  it("native sendPrompt forwards an ACP plan update as a sanitized 'plan' event", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const planPayloads: Array<{ entries?: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      if (event === "plan") planPayloads.push(payload as { entries?: unknown });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-plan",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "plan",
+            entries: [
+              {
+                content: "Write the file",
+                status: "in_progress",
+                priority: "medium",
+              },
+              {
+                content: "Read it back",
+                status: "pending",
+                priority: "medium",
+              },
+              { content: "", status: "pending", priority: "medium" },
+            ],
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        result: { stopReason: "end_turn" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    await service.sendPrompt(sessionId, "go");
+
+    expect(planPayloads.length).toBeGreaterThan(0);
+    // empty-content entry dropped; the rest sanitized to {content,status,priority}
+    expect(planPayloads[0]?.entries).toEqual([
+      { content: "Write the file", status: "in_progress", priority: "medium" },
+      { content: "Read it back", status: "pending", priority: "medium" },
+    ]);
+  });
+
   it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
