@@ -3237,6 +3237,20 @@ export async function startEliza(
 
   // 2. Push channel secrets into process.env for plugin discovery
   applyConnectorSecretsToEnv(config);
+  // Cloud sandbox (Path A / double-connect): in a provisioned container that
+  // does NOT own its connectors, strip the connector bot tokens so the
+  // container does not also connect to Discord/Telegram while the gateway
+  // holds the connection. MUST run AFTER applyConnectorSecretsToEnv (which can
+  // repopulate the tokens from config.connectors) and BEFORE plugin
+  // auto-enable / resolvePlugins below. Also clears the matching config
+  // connector blocks so nothing downstream re-derives the token. No-op
+  // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
+  {
+    const { applySandboxConnectorOwnership } = await import(
+      "./sandbox-character.ts"
+    );
+    applySandboxConnectorOwnership(process.env, config);
+  }
   // Kick off the Discord App ID lookup (network, up to a 10s timeout) without
   // blocking. It only writes DISCORD_APPLICATION_ID, which nothing reads until
   // the Discord connector initializes during plugin resolution — so we await it
@@ -3550,7 +3564,27 @@ export async function startEliza(
   }
 
   // 3. Build elizaOS Character from Eliza config
+  // Cloud sandbox (Path A): if the provisioner injected the assigned
+  // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
+  // container boots AS that character (e.g. "Nyx") instead of the bundled
+  // default preset. No-op when the env var is absent.
+  let sandboxRouteAgentId: string | null = null;
+  {
+    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
+      await import("./sandbox-character.ts");
+    applySandboxCharacterFromEnv(config);
+    sandboxRouteAgentId = resolveSandboxRouteAgentId();
+  }
   const character = buildCharacterFromConfig(config);
+
+  // Pin the runtime agent id to the platform character_id so the gateways can
+  // resolve `agent:<id>:server` and address `/agents/<id>/message` against
+  // this container. Without this the runtime would derive an id from the
+  // character name (stringToUuid(name)) which the gateway does not know.
+  // Scoped to provisioned containers via the route-id env var.
+  if (sandboxRouteAgentId) {
+    character.id = sandboxRouteAgentId as UUID;
+  }
 
   const primaryModel = resolvePrimaryModel(config);
   const preferredProviderId = resolvePreferredProviderId(config);
@@ -5054,14 +5088,47 @@ export async function startEliza(
   if (opts?.serverOnly) {
     logger.info("[eliza] Running in server-only mode (no interactive chat)");
 
+    // Cloud sandbox self-registration (Path A). When this runtime is the
+    // entrypoint of a Hetzner-provisioned container, the provisioner injects
+    // the SANDBOX_REGISTRY_* env vars. Writing the `agent:<id>:server` +
+    // `server:<name>:url` keys to the shared Upstash Redis lets the
+    // multi-tenant gateways resolve this container as the inference target
+    // and forward inbound platform messages here. Returns null (no-op) for
+    // every non-provisioned runtime, so this is inert outside the cloud
+    // container. See packages/agent/src/runtime/sandbox-registry.ts.
+    const { buildSandboxRegistryFromEnv } = await import(
+      "./sandbox-registry.ts"
+    );
+    const sandboxRegistry = buildSandboxRegistryFromEnv();
+    if (sandboxRegistry) {
+      try {
+        await sandboxRegistry.register();
+      } catch (err) {
+        logger.error(
+          `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next hb_signal succeeds): ${formatError(err)}`,
+        );
+      }
+      sandboxRegistry.startHeartbeat(30_000);
+    }
+
     // Keep process alive — the API server handles all interaction
     const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
 
     registerSignalShutdownHandlers({
       getRuntime: () => runtime,
       getSandboxManager: () => sandboxManager,
-      beforeShutdown: () => {
+      beforeShutdown: async () => {
         clearInterval(keepAlive);
+        if (sandboxRegistry) {
+          sandboxRegistry.stopHeartbeat();
+          try {
+            await sandboxRegistry.unregister();
+          } catch (err) {
+            logger.warn(
+              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
+            );
+          }
+        }
       },
     });
 

@@ -35,6 +35,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Api-Key",
   "X-Eliza-Token",
   "X-ElizaOS-Token",
+  "X-Server-Token",
   "X-Eliza-Export-Token",
   "X-Eliza-Client-Id",
   "X-ElizaOS-Client-Id",
@@ -434,8 +435,53 @@ export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
   return true;
 }
 
+/**
+ * Resolve the shared service-to-service secret used by the cloud gateways to
+ * authenticate inbound forwards to this container. The Discord / webhook
+ * gateways attach this value as the `X-Server-Token` header on
+ * `POST /agents/:id/message` (see gateway-discord `forwardToServer`). It is the
+ * same contract the Kubernetes `agent-server` honours; mirroring it here lets a
+ * provisioned container accept gateway-routed messages without the gateway
+ * having to know the per-agent inbound API token.
+ *
+ * Returns an empty string when unconfigured, in which case the X-Server-Token
+ * path is disabled and existing Bearer / loopback auth is unaffected.
+ */
+function getServerSharedSecret(): string {
+  const raw = process.env.AGENT_SERVER_SHARED_SECRET;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * Extract the `X-Server-Token` header value, if present and non-empty.
+ */
+function extractServerToken(req: http.IncomingMessage): string | null {
+  const value = req.headers["x-server-token"];
+  const token = firstHeaderValue(value);
+  const trimmed = token?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * True when the request carries a valid `X-Server-Token` matching the
+ * configured `AGENT_SERVER_SHARED_SECRET`. When the secret is unset this always
+ * returns false, so the header carries no authority and there is no regression
+ * for deployments that never configure it.
+ */
+export function isServerTokenAuthorized(req: http.IncomingMessage): boolean {
+  const expected = getServerSharedSecret();
+  if (!expected) return false;
+  const provided = extractServerToken(req);
+  if (!provided) return false;
+  return tokenMatches(expected, provided);
+}
+
 export function isAuthorized(req: http.IncomingMessage): boolean {
   if (isTrustedLocalRequest(req)) return true;
+
+  // Accept the cloud gateway's shared service token first (mirrors the K8s
+  // agent-server contract). Disabled automatically when the secret is unset.
+  if (isServerTokenAuthorized(req)) return true;
 
   const expected = getConfiguredApiToken();
   if (!expected) return false;

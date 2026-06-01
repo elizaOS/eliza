@@ -1267,13 +1267,28 @@ export class GatewayManager {
       return;
     }
 
-    const route = await resolveAgentServer(this.redis, conn.characterId);
-    if (!route) {
-      logger.warn("No server found for agent", {
+    // Path A routing: prefer a self-registered container when its registry
+    // key exists (`agent:<characterId>:server`). This is the FEATURE FLAG for
+    // container routing: only agents whose container has self-registered take
+    // this branch. Every other agent (incl. the working in-worker agent that
+    // never registers) falls through to forwardEvent -> CF in-worker, which
+    // is the live, proven path. Gradual + reversible: removing the registry
+    // key reverts an agent to in-worker with zero redeploy.
+    let route: Awaited<ReturnType<typeof resolveAgentServer>> = null;
+    try {
+      route = await resolveAgentServer(this.redis, conn.characterId);
+    } catch (error) {
+      logger.warn("resolveAgentServer failed; falling back to in-worker", {
         connectionId,
         agentId: conn.characterId,
-        project: this.config.project,
+        error: sanitizeError(error),
       });
+    }
+
+    if (!route) {
+      // No container registered for this agent — use the in-worker CF path.
+      await this.forwardEvent(connectionId, conn, "MESSAGE_CREATE", eventData);
+      conn.eventsRouted++;
       return;
     }
 

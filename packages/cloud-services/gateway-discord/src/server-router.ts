@@ -72,10 +72,33 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * Returns true when the server URL is a direct host:port endpoint (the
+ * Hetzner-provisioned container model) rather than a K8s headless Service
+ * (`{name}.{namespace}.svc`). Direct targets are already up — the
+ * provisioning daemon manages their lifecycle — so there is no Deployment to
+ * scale and `wakeServer` must be a no-op for them.
+ */
+function isDirectServerUrl(serverUrl: string): boolean {
+  try {
+    const { hostname } = new URL(serverUrl);
+    return !(hostname.endsWith(".svc") || hostname.includes(".svc."));
+  } catch {
+    // Unparseable URL — treat as direct so we never attempt a K8s PATCH.
+    return true;
+  }
+}
+
 async function wakeServer(
   serverName: string,
   serverUrl: string,
 ): Promise<void> {
+  // Hetzner containers (direct host:port URLs) are already running; there is
+  // no K8s Deployment to scale. The gateways run on Railway, not K8s, so the
+  // service-account token below is also absent there. Skip explicitly to
+  // avoid both a pointless K8s API call and misleading error logs.
+  if (isDirectServerUrl(serverUrl)) return;
+
   const token = getK8sToken();
   if (!token) return;
 

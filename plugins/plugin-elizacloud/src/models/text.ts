@@ -194,6 +194,34 @@ function buildSpanSamplerHeader(
   return JSON.stringify(body);
 }
 
+/**
+ * Extract the authoritative USD cost the metered cloud gateway charged for a
+ * request, when it surfaces one. The gateway is the only honest source of USD
+ * (it owns the model-pricing table + platform markup); we prefer it over any
+ * client-side token estimate. Checks the response body `usage.cost_usd` first,
+ * then the `X-Eliza-Cost-Usd` response header. Returns undefined when neither
+ * is present so consumers fall back to a token-based estimate.
+ */
+function extractCostUsd(
+  usage: unknown,
+  response?: { headers?: { get?: (name: string) => string | null } }
+): number | undefined {
+  const fromBody = firstNumber(
+    asRecord(usage).cost_usd,
+    asRecord(usage).costUsd,
+    asRecord(usage).cost
+  );
+  if (typeof fromBody === "number" && Number.isFinite(fromBody)) {
+    return fromBody;
+  }
+  const header = response?.headers?.get?.("X-Eliza-Cost-Usd");
+  if (header) {
+    const parsed = Number(header);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 function isReasoningModel(modelName: string): boolean {
   const lower = modelName.toLowerCase();
   return REASONING_MODEL_PATTERNS.some((pattern) => lower.includes(pattern));
@@ -814,11 +842,23 @@ async function generateTextWithModel(
   }
 
   if (data.usage) {
-    emitModelUsageEvent(runtime, modelType, prompt, {
-      inputTokens: data.usage.input_tokens ?? 0,
-      outputTokens: data.usage.output_tokens ?? 0,
-      totalTokens: data.usage.total_tokens ?? 0,
-    });
+    emitModelUsageEvent(
+      runtime,
+      modelType,
+      prompt,
+      {
+        inputTokens: data.usage.input_tokens ?? 0,
+        outputTokens: data.usage.output_tokens ?? 0,
+        totalTokens: data.usage.total_tokens ?? 0,
+      },
+      {
+        modelName: getModelNameForType(runtime, modelType),
+        ...(() => {
+          const costUsd = extractCostUsd(data.usage, response);
+          return typeof costUsd === "number" ? { costUsd } : {};
+        })(),
+      }
+    );
   }
 
   const text = extractResponsesOutputText(data);
@@ -897,7 +937,13 @@ async function generateNativeChatCompletion(
 
   const usage = convertNativeUsage(data.usage);
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, context.prompt, usage);
+    emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+      modelName: context.modelName,
+      ...(() => {
+        const costUsd = extractCostUsd(data.usage, response);
+        return typeof costUsd === "number" ? { costUsd } : {};
+      })(),
+    });
   }
 
   const text = extractChatCompletionText(data);
