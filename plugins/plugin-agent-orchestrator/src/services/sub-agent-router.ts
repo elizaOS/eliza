@@ -52,13 +52,13 @@ interface DeadUrl {
   via?: string;
 }
 
-interface RouteUrlMapping {
+export interface RouteUrlMapping {
   urlPrefix: string;
   localPath: string;
   requireFresh?: boolean;
 }
 
-interface RouteUrlVerification {
+export interface RouteUrlVerification {
   workdir: string;
   sessionStartedAtMs: number;
   mappings: RouteUrlMapping[];
@@ -1721,7 +1721,7 @@ function routingKindFromPayloadBanner(data: unknown): string | undefined {
  * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
  * their intended form.
  */
-async function annotateUnverifiedUrls(
+export async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
   referenceText?: string,
@@ -1828,7 +1828,10 @@ async function annotateUnverifiedUrls(
         dead.push({ url, status: result.status });
         return;
       }
-      const localStatus = verifyMappedLocalUrl(url, routeVerification);
+      // The probe just returned a healthy 200, so the served artifact is the
+      // authoritative liveness signal — pass servedLive so the mtime
+      // freshness gate can't false-flag a deploy-copied build as stale.
+      const localStatus = verifyMappedLocalUrl(url, routeVerification, true);
       if (localStatus) {
         dead.push({ url, status: localStatus });
         return;
@@ -1844,9 +1847,12 @@ async function annotateUnverifiedUrls(
               dead.push({ url: subUrl, status: subResult.status, via: url });
               return;
             }
+            // Sub-resource also probed a healthy 200 — same authoritative
+            // live-serve signal as the parent page above.
             const subLocalStatus = verifyMappedLocalUrl(
               subUrl,
               routeVerification,
+              true,
             );
             if (subLocalStatus) {
               dead.push({ url: subUrl, status: subLocalStatus, via: url });
@@ -1939,6 +1945,7 @@ function pageDirectoryForRelativePath(
 function verifyMappedLocalUrl(
   url: string,
   routeVerification: RouteUrlVerification | undefined,
+  servedLive = false,
 ): string | undefined {
   if (!routeVerification) return undefined;
   for (const mapping of routeVerification.mappings) {
@@ -1952,6 +1959,7 @@ function verifyMappedLocalUrl(
       localTarget,
       routeVerification.sessionStartedAtMs,
       mapping.requireFresh !== false,
+      servedLive,
     );
   }
   return undefined;
@@ -1991,6 +1999,7 @@ function verifyLocalTarget(
   target: string,
   sessionStartedAtMs: number,
   requireFresh: boolean,
+  servedLive = false,
 ): string | undefined {
   const file = localFileForTarget(target);
   if (!file) {
@@ -2000,7 +2009,13 @@ function verifyLocalTarget(
   if (stat.size <= 0) {
     return `mapped local target missing or empty: ${path.relative(process.cwd(), file)}`;
   }
-  if (requireFresh && stat.mtimeMs < sessionStartedAtMs - 5000) {
+  // A live HTTP 200 is authoritative for a served URL: the artifact exists,
+  // is non-empty, and is actually being served right now. Deploy steps that
+  // copy a build into place preserve the source file's mtime, so the
+  // wall-clock freshness comparison false-positives on a healthy app whose
+  // files predate the session. Only fall back to the mtime gate when the URL
+  // is NOT confirmed served — there the file is the only liveness signal.
+  if (requireFresh && !servedLive && stat.mtimeMs < sessionStartedAtMs - 5000) {
     return `mapped local target was not updated during this session: ${path.relative(process.cwd(), file)}`;
   }
   return undefined;
