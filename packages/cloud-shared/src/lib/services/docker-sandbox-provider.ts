@@ -643,7 +643,39 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
     const stewardContainerUrl = resolveStewardContainerEnvUrl();
     const proxyEnv = buildStewardProxyEnv();
+
+    // Propagate the orchestrator's KMS configuration into the container so
+    // field-level encryption (per-agent Neon DB) uses the same backend + root
+    // key on both ends. Without this the container's resolveKmsBackend() falls
+    // through to the `steward` default and crashes at boot when no steward
+    // config is present:
+    //   "ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}"
+    // which times out the sandbox health check and fails provisioning. The
+    // daemon already requires a usable KMS, so inheriting its backend + root
+    // key keeps the fleet consistent. Spread before `...environmentVars` so an
+    // explicit per-agent override still wins. See elizaOS/eliza#8062.
+    const kmsEnv: Record<string, string> = {};
+    {
+      const isKmsBackend = (v: string | undefined): v is string =>
+        v === "memory" || v === "local" || v === "steward";
+      const declared = environmentVars.ELIZA_KMS_BACKEND?.trim();
+      const inherited = process.env.ELIZA_KMS_BACKEND?.trim();
+      const backend = isKmsBackend(declared)
+        ? declared
+        : isKmsBackend(inherited)
+          ? inherited
+          : "local";
+      kmsEnv.ELIZA_KMS_BACKEND = backend;
+      if (backend === "local") {
+        const rootKey =
+          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() ||
+          process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
+        if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
+      }
+    }
+
     const baseEnv: Record<string, string> = {
+      ...kmsEnv,
       ...environmentVars,
       ...vpnEnvVars,
       ...proxyEnv,

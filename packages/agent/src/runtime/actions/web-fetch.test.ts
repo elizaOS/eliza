@@ -65,7 +65,10 @@ describe("WEB_FETCH action", () => {
         new Response(JSON.stringify({ data: { price: 42 } }), { status: 200 }),
     );
 
-    const { result } = await runHandler({ url: TEST_URL, extract: "data.price" });
+    const { result } = await runHandler({
+      url: TEST_URL,
+      extract: "data.price",
+    });
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("42");

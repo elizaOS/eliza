@@ -17,23 +17,27 @@ describe("validateMcpServerConfig env hardening (GHSA-54rx-pcr9-hg9x)", () => {
       ),
     ).toMatch(/not allowed for security reasons/i);
     expect(
-      await validateMcpServerConfig(stdioConfig("npx", ["pkg"], { PATH: "/tmp" })),
+      await validateMcpServerConfig(
+        stdioConfig("npx", ["pkg"], { PATH: "/tmp" }),
+      ),
     ).toMatch(/not allowed for security reasons/i);
   });
 
   it("rejects blocked CLI flags on package runners", async () => {
     expect(
       await validateMcpServerConfig(
-        stdioConfig("npx", ["-c", "require('fs').readFileSync('/etc/passwd')"], {}),
+        stdioConfig(
+          "npx",
+          ["-c", "require('fs').readFileSync('/etc/passwd')"],
+          {},
+        ),
       ),
     ).toMatch(/not allowed for npx/i);
   });
 
   it("rejects blocked CLI flags on interpreters", async () => {
     expect(
-      await validateMcpServerConfig(
-        stdioConfig("node", ["--eval", "1"], {}),
-      ),
+      await validateMcpServerConfig(stdioConfig("node", ["--eval", "1"], {})),
     ).toMatch(/not allowed for node/i);
   });
 

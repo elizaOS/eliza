@@ -26,11 +26,11 @@ import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { NewActionButton } from "../ui/new-action-button";
 import { StatusBadge } from "../ui/status-badge";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   BUILT_IN_TEMPLATES,

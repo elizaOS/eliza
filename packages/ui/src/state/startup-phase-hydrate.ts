@@ -151,7 +151,7 @@ function shouldNotifyDesktopForAssistantEvent(
 export async function runHydrating(
   deps: HydratingDeps,
   dispatch: (event: StartupEvent) => void,
-  cancelled: { current: boolean },
+  _cancelled: { current: boolean },
 ): Promise<void> {
   const warn = (scope: string, err: unknown) => {
     if (isTransientOptionalFetchFailure(err)) return;

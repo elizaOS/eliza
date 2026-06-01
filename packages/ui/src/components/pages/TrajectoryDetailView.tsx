@@ -460,7 +460,8 @@ export function TrajectoryDetailView({
     role: "button",
     label: "Clear pipeline stage filter",
     group: "trajectory-pipeline",
-    description: "Reset the active pipeline stage filter and show all LLM calls",
+    description:
+      "Reset the active pipeline stage filter and show all LLM calls",
     onActivate: () => setActiveStage(null),
   });
 

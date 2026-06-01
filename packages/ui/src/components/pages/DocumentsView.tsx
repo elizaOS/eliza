@@ -201,9 +201,7 @@ function SearchResultListItem({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
-          <div className="truncate text-sm font-semibold text-txt">
-            {title}
-          </div>
+          <div className="truncate text-sm font-semibold text-txt">{title}</div>
         </div>
         <div className="mt-1 line-clamp-2 text-xs text-muted">
           {result.text}

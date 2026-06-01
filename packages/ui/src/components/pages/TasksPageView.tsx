@@ -13,29 +13,29 @@ export function TasksPageView() {
         className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6"
         data-testid="tasks-view"
       >
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-sm border border-info/25 bg-info/12 text-info">
-            <ListTodo className="h-4 w-4" />
-          </span>
-          <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-            {t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}
-          </h1>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-sm border border-info/25 bg-info/12 text-info">
+              <ListTodo className="h-4 w-4" />
+            </span>
+            <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
+              {t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}
+            </h1>
+          </div>
+          <p className="max-w-3xl text-sm leading-6 text-muted-strong">
+            {t("taskseventspanel.TasksViewDescription", {
+              defaultValue:
+                "Detailed status, history, approvals, and coordinator output for coding-agent tasks.",
+            })}
+          </p>
         </div>
-        <p className="max-w-3xl text-sm leading-6 text-muted-strong">
-          {t("taskseventspanel.TasksViewDescription", {
-            defaultValue:
-              "Detailed status, history, approvals, and coordinator output for coding-agent tasks.",
-          })}
-        </p>
-      </div>
 
-      <PagePanel
-        variant="inset"
-        className="min-h-[18rem] rounded-sm p-4 lg:p-5"
-      >
-        <CodingAgentTasksPanel fullPage />
-      </PagePanel>
+        <PagePanel
+          variant="inset"
+          className="min-h-[18rem] rounded-sm p-4 lg:p-5"
+        >
+          <CodingAgentTasksPanel fullPage />
+        </PagePanel>
       </div>
     </ShellViewAgentSurface>
   );
