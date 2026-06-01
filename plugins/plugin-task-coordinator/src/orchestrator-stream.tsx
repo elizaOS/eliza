@@ -21,10 +21,10 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { DiffView } from "./orchestrator-diff";
+import { type ReactNode, useMemo, useState } from "react";
+import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
 import { MarkdownText } from "./orchestrator-markdown";
-import { formatClockTime, stripAnsi } from "./view-format";
+import { formatClockTime, formatDuration, stripAnsi } from "./view-format";
 
 // The orchestrator room renders a coding-agent session the way Claude Code /
 // Codex do: a single flowing conversation of (1) the user's prompts, (2) the
@@ -62,6 +62,11 @@ export interface ToolView {
   query?: string;
   /** Tool result/output, ANSI-stripped. */
   output?: string;
+  /** Process exit code for `execute` tools (0 = success); null/undefined when
+   * not an exec tool or not yet finished. */
+  exitCode?: number | null;
+  /** Wall-clock duration in ms from the tool's first to last event. */
+  durationMs?: number;
 }
 
 export type ConversationBlock =
@@ -154,6 +159,19 @@ function pickString(
   for (const key of keys) {
     const value = obj[key];
     if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return undefined;
+}
+
+/** First finite number among `keys` on `obj`. */
+function pickNumber(
+  obj: Record<string, unknown> | undefined,
+  ...keys: string[]
+): number | undefined {
+  if (!obj) return undefined;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
   }
   return undefined;
 }
@@ -257,6 +275,7 @@ function toToolView(
   let rawInput: Record<string, unknown> | undefined;
   let output: string | undefined;
   let outputDiff: ToolOutput["diff"];
+  let exitCode: number | undefined;
   for (const event of events) {
     const call = rawToolCall(event);
     if (!call) continue;
@@ -273,7 +292,20 @@ function toToolView(
       parsed.diff?.newText !== undefined
     )
       outputDiff = parsed.diff;
+    const nextExit =
+      pickNumber(asRecord(call.exitStatus), "exitCode") ??
+      pickNumber(call, "exitCode");
+    if (nextExit !== undefined) exitCode = nextExit;
   }
+  // A finished exec tool's exit code is the authoritative status — opencode tops
+  // its tool events out at in_progress, so the code is what distinguishes a
+  // success from a failure.
+  if (typeof exitCode === "number") status = exitCode === 0 ? "done" : "failed";
+  // Wall-clock span from the tool's first to last event.
+  const durationMs =
+    events.length > 1
+      ? events[events.length - 1].timestamp - events[0].timestamp
+      : undefined;
   return {
     id,
     title,
@@ -289,6 +321,8 @@ function toToolView(
       outputDiff?.oldText,
     query: pickString(rawInput, "pattern", "query", "regex", "glob"),
     output,
+    exitCode,
+    durationMs: durationMs && durationMs > 0 ? durationMs : undefined,
   };
 }
 
@@ -596,6 +630,21 @@ function ToolCallCard({
   const hasBody = Boolean(
     tool.newText !== undefined || tool.command || tool.output,
   );
+  // Edit/write magnitude shown on the collapsed header so the reader sees the
+  // size of a change without expanding it.
+  const diffStat = useMemo(
+    () =>
+      tool.newText === undefined
+        ? null
+        : countDiff(lineDiff(tool.oldText ?? "", tool.newText)),
+    [tool.oldText, tool.newText],
+  );
+  // Codex-style result suffix: a non-zero exit code (red badge already conveys
+  // failure) and the wall-clock duration, both dim/mono.
+  const meta: string[] = [];
+  if (typeof tool.exitCode === "number" && tool.exitCode !== 0)
+    meta.push(`exit ${tool.exitCode}`);
+  if (tool.durationMs !== undefined) meta.push(formatDuration(tool.durationMs));
   // Open by default while the agent is mid-edit so the change is visible as it
   // streams; collapse finished read/search calls to keep the room scannable.
   const [open, setOpen] = useState(
@@ -630,6 +679,9 @@ function ToolCallCard({
         ) : (
           <span className="flex-1" />
         )}
+        {diffStat && (diffStat.added > 0 || diffStat.removed > 0) ? (
+          <DiffStat added={diffStat.added} removed={diffStat.removed} />
+        ) : null}
         <span
           className={`flex shrink-0 items-center gap-1 text-2xs ${badge.tone}`}
         >
@@ -638,6 +690,11 @@ function ToolCallCard({
           />
           {badge.label}
         </span>
+        {meta.length > 0 ? (
+          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted/70">
+            {meta.join(" · ")}
+          </span>
+        ) : null}
         <span className="shrink-0 tabular-nums text-2xs text-muted/70">
           {formatClockTime(at, locale)}
         </span>
@@ -687,7 +744,7 @@ export function ConversationBlockView({
       >
         <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
           <span
-            className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
+            className="inline-block h-1.5 w-1.5 rounded-full bg-muted-strong"
             aria-hidden
           />
           <span className="font-semibold tracking-tight text-txt/90">

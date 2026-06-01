@@ -90,6 +90,37 @@ export function lineDiff(oldText: string, newText: string): DiffRow[] {
   return rows;
 }
 
+/** Count added vs removed lines in an already-aligned diff, so a tool header
+ * can show the edit magnitude without re-running the alignment. */
+export function countDiff(rows: DiffRow[]): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const row of rows) {
+    if (row.type === "add") added++;
+    else if (row.type === "remove") removed++;
+  }
+  return { added, removed };
+}
+
+/**
+ * Compact '+N −M' magnitude badge for a tool-call header. Green addition count
+ * + red removal count (meaning-correct; see ROW_TONE), neutral otherwise.
+ */
+export function DiffStat({
+  added,
+  removed,
+}: {
+  added: number;
+  removed: number;
+}): ReactNode {
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-2xs tabular-nums">
+      <span className="text-ok">+{added}</span>
+      <span className="text-red-500">&minus;{removed}</span>
+    </span>
+  );
+}
+
 const ROW_TONE: Record<DiffRow["type"], string> = {
   context: "text-txt/80",
   add: "bg-ok/10 text-ok",
@@ -133,7 +164,7 @@ export function DiffView({
 
   return (
     <div
-      className="overflow-auto rounded-md border border-border/40 bg-bg/60 font-mono text-2xs leading-relaxed"
+      className="overflow-auto rounded-sm border border-border/40 bg-bg-accent font-mono text-2xs leading-relaxed"
       style={{ maxHeight: "18rem" }}
       data-testid="orchestrator-diff"
     >

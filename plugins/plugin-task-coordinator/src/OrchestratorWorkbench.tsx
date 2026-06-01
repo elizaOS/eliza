@@ -1111,8 +1111,8 @@ function AcceptanceSection({
     >
       <ul className="space-y-1">
         {criteria.map((criterion, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: composite criterion+index key with index as tiebreaker
           <li
+            // biome-ignore lint/suspicious/noArrayIndexKey: criteria strings may repeat, so index disambiguates the composite key
             key={`${criterion}-${index}`}
             className="flex items-start gap-1.5 text-xs-tight text-txt"
           >
@@ -1935,6 +1935,23 @@ function TimelineHeader({
   );
 }
 
+// base.css still routes --bg-accent/--bg-hover/--bg-muted/--ring/--focus/--info/
+// --link through --brand-blue (the de-blued theme.css is dormant). The design
+// rule is no-blue, so neutralize those tokens scoped to this view — mode-safe,
+// derived from the foreground (the Codex foreground-ramp approach), never hex.
+// A global base.css fix belongs in a separate packages/ui change.
+const ORCHESTRATOR_THEME: CSSProperties & Record<`--${string}`, string> = {
+  "--bg-accent": "color-mix(in srgb, var(--txt) 4%, transparent)",
+  "--bg-hover": "color-mix(in srgb, var(--txt) 6%, transparent)",
+  "--bg-muted": "color-mix(in srgb, var(--txt) 9%, transparent)",
+  "--ring": "color-mix(in srgb, var(--txt) 32%, transparent)",
+  "--focus": "color-mix(in srgb, var(--txt) 12%, transparent)",
+  "--status-info-bg": "color-mix(in srgb, var(--txt) 6%, transparent)",
+  "--info": "var(--muted-strong)",
+  "--link-color": "var(--text-strong)",
+  "--link-hover-color": "var(--accent)",
+};
+
 export function OrchestratorWorkbench() {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
@@ -2311,6 +2328,7 @@ export function OrchestratorWorkbench() {
   return (
     <div
       className="relative flex h-full min-h-0 w-full flex-col bg-bg text-txt"
+      style={ORCHESTRATOR_THEME}
       data-testid="orchestrator-workbench"
     >
       <span data-view-state={viewState} hidden />

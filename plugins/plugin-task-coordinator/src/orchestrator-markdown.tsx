@@ -165,7 +165,7 @@ function renderToken(token: Token, key: string): ReactNode {
           title={token.title ?? undefined}
           target="_blank"
           rel="noreferrer"
-          className="text-info underline underline-offset-2"
+          className="text-txt-strong underline underline-offset-2 transition-colors hover:text-accent"
         >
           {renderChildren(token.tokens, key)}
         </a>

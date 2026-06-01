@@ -71,3 +71,13 @@ export function formatUsd(value: number, locale?: string): string {
     maximumFractionDigits: value !== 0 && value < 1 ? 4 : 2,
   }).format(value);
 }
+
+/** Humanize a millisecond duration for tool timings: "420ms", "4.1s", "2m 30s". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}

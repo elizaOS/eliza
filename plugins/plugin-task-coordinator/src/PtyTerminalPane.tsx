@@ -38,6 +38,20 @@ export function PtyTerminalPane({
       const cssVar = (name: string, fallback: string) =>
         cs.getPropertyValue(name).trim() || fallback;
 
+      // ANSI palette tracks the active eliza theme — no hardcoded blue/Tokyo-Night
+      // hex. Tokens: foreground=--txt, dim=--muted, accent(orange)=--accent,
+      // success(green)=--ok. Red is the meaning-correct color for ANSI errors,
+      // which eliza has no neutral token for, so the sanctioned error red is used.
+      const fg = cssVar("--txt", "#e4e4e7");
+      const dim = cssVar("--muted", "rgba(255, 255, 255, 0.58)");
+      const dimStrong = cssVar("--muted-strong", "rgba(255, 255, 255, 0.74)");
+      const accent = cssVar("--accent", "#ff5800");
+      const ok = cssVar("--ok", "#4ade80");
+      // Sanctioned error red (text-red-500 / text-red-400) — eliza maps
+      // --destructive to orange, but ANSI red must read as error.
+      const errorRed = "#ef4444";
+      const brightErrorRed = "#f87171";
+
       const term = new Terminal({
         allowTransparency: true,
         convertEol: true,
@@ -47,28 +61,28 @@ export function PtyTerminalPane({
         scrollback: 5000,
         theme: {
           background: "rgba(0, 0, 0, 0)",
-          black: "#1a1b26",
-          blue: "#7aa2f7",
-          brightBlack: "#6e7681",
-          brightBlue: "#8fb3ff",
-          brightCyan: "#a2e9ff",
-          brightGreen: "#b9f27c",
-          brightMagenta: "#caa9fa",
-          brightRed: "#ff7a93",
-          brightWhite: "#ffffff",
-          brightYellow: "#ffd580",
-          cursor: cssVar("--accent", "#5a9a2a"),
-          cyan: "#7dcfff",
-          foreground: cssVar("--txt", "#e4e4e7"),
-          green: "#9ece6a",
-          magenta: "#bb9af7",
-          red: "#f7768e",
+          black: dim,
+          blue: accent,
+          brightBlack: dim,
+          brightBlue: accent,
+          brightCyan: ok,
+          brightGreen: ok,
+          brightMagenta: accent,
+          brightRed: brightErrorRed,
+          brightWhite: fg,
+          brightYellow: accent,
+          cursor: accent,
+          cyan: ok,
+          foreground: fg,
+          green: ok,
+          magenta: accent,
+          red: errorRed,
           selectionBackground: cssVar(
             "--accent-muted",
-            "rgba(90, 154, 42, 0.3)",
+            "rgba(255, 88, 0, 0.3)",
           ),
-          white: "#c0caf5",
-          yellow: "#e0af68",
+          white: dimStrong,
+          yellow: accent,
         },
       });
 
