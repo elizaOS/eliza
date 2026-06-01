@@ -293,9 +293,20 @@ export function HomescreenCanvas({
         rafId = 0;
       };
 
-      // Animate unless the user asked for reduced motion, in which case draw a
-      // single static frame and hold there.
-      const applyMotionPreference = () => {
+      // Decide whether the render loop should run. Two reasons to hold instead
+      // of animate:
+      //  - the tab/window is hidden — a full-rate Three.js loop would otherwise
+      //    keep burning GPU/battery in the background with nothing on screen;
+      //  - the user asked for reduced motion (WCAG 2.3.3) — hold one static
+      //    frame so the sphere stays visible but frozen.
+      // Re-evaluated on mount, reduced-motion change, visibility change, and
+      // GPU context restore so the loop is never left running while hidden.
+      const applyActiveState = () => {
+        if (document.hidden) {
+          // Not visible — fully pause; there is nothing to paint.
+          stopLoop();
+          return;
+        }
         if (reducedMotion?.matches) {
           stopLoop();
           renderFrame(false);
@@ -326,8 +337,11 @@ export function HomescreenCanvas({
       const ro = new ResizeObserver(resize);
       ro.observe(container);
 
-      applyMotionPreference();
-      reducedMotion?.addEventListener("change", applyMotionPreference);
+      applyActiveState();
+      reducedMotion?.addEventListener("change", applyActiveState);
+      // Pause the render loop while the tab/window is hidden; resume on return.
+      const onVisibilityChange = () => applyActiveState();
+      document.addEventListener("visibilitychange", onVisibilityChange);
 
       // A lost GPU context (sleep/wake, driver reset, too many live contexts)
       // would otherwise leave a permanently black canvas while the loop keeps
@@ -344,14 +358,15 @@ export function HomescreenCanvas({
         currentScene = (current as SceneInstance & { __scene: THREE.Scene })
           .__scene;
         resize();
-        applyMotionPreference();
+        applyActiveState();
       };
       el.addEventListener("webglcontextlost", onContextLost);
       el.addEventListener("webglcontextrestored", onContextRestored);
 
       cleanup = () => {
         stopLoop();
-        reducedMotion?.removeEventListener("change", applyMotionPreference);
+        reducedMotion?.removeEventListener("change", applyActiveState);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
         el.removeEventListener("webglcontextlost", onContextLost);
         el.removeEventListener("webglcontextrestored", onContextRestored);
         ro.disconnect();

@@ -1139,7 +1139,6 @@ function ShellContent(props: ShellContentProps): ReactNode {
   if (props.tab === "home") return <HomeShellContent />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
-  if (props.tab === "home") return <HomeShellContent />;
   if (props.tab === "stream") return <StreamShellContent />;
   if (props.isChatWorkspace) return <ChatWorkspaceShellContent {...props} />;
   if (props.isHeartbeats) return <HeartbeatsShellContent />;
