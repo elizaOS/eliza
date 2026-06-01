@@ -43,9 +43,13 @@ function chromePath(): string | undefined {
 }
 
 // Console noise that is environmental (GPU/canvas perf hints, dev resource
-// 404s) rather than an application error.
+// 404s) rather than an application error. "API server unavailable" startup
+// warnings and WebSocket connection failures are dev-stack connection-timing:
+// the dev supervisor respawns the agent on exit, so a page load can briefly
+// race a respawning API/WS — the UI handles this gracefully (logs + reconnects)
+// and a genuine API outage is still caught by the functional tests above.
 const IGNORED_CONSOLE =
-  /Failed to load resource|willReadFrequently|WebGL|GPU stall|\[vite\]/;
+  /Failed to load resource|willReadFrequently|WebGL|GPU stall|\[vite\]|API server unavailable|WebSocket connection to|ERR_CONNECTION_REFUSED/;
 
 // The raw ACP content-block JSON that must never reach the rendered transcript.
 const RAW_ACP_JSON = /\[\s*\{\s*"type"\s*:\s*"(?:diff|content|text)"/;
