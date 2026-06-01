@@ -3,15 +3,8 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import {
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  useAgentElement,
-  useApp,
-} from "@elizaos/ui";
+import { PageLayout, PagePanel, Sidebar, SidebarContent, SidebarPanel, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";

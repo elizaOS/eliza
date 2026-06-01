@@ -1,18 +1,5 @@
-import {
-  type AppOperatorSurfaceProps,
-  type AgentElementRole,
-  Button,
-  type ButtonProps,
-  client,
-  Input,
-  type InputProps,
-  SurfaceBadge,
-  SurfaceEmptyState,
-  SurfaceSection,
-  selectLatestRunForApp,
-  useAgentElement,
-  useApp,
-} from "@elizaos/ui";
+import { type AppOperatorSurfaceProps, type AgentElementRole, Button, type ButtonProps, client, Input, type InputProps, SurfaceBadge, SurfaceEmptyState, SurfaceSection, selectLatestRunForApp, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Copy,
   ExternalLink,

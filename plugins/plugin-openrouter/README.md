@@ -1,6 +1,6 @@
 # @elizaos/plugin-openrouter
 
-This plugin provides integration with various models available through the OpenRouter API via the ElizaOS platform.
+elizaOS plugin that routes text generation, image description, image generation, and text embedding through the [OpenRouter](https://openrouter.ai) API, giving Eliza agents access to hundreds of hosted models via a single API key.
 
 ## Usage
 

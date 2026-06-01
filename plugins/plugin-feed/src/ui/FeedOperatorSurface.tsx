@@ -19,12 +19,8 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import {
-  Button,
-  Input,
-  TerminalPluginView,
-  useAgentElement,
-} from "@elizaos/ui";
+import { Button, Input, TerminalPluginView } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   extractAgentSummary,

@@ -1,12 +1,5 @@
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TooltipHint,
-  TooltipProvider,
-  useAgentElement,
-} from "@elizaos/ui";
+import { Sidebar, SidebarContent, SidebarPanel, SidebarScrollRegion, TooltipHint, TooltipProvider } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   BriefcaseBusiness,
   CalendarDays,

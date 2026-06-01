@@ -1,9 +1,5 @@
-import {
-  formatShortDate,
-  SegmentedControl,
-  Skeleton,
-  useAgentElement,
-} from "@elizaos/ui";
+import { formatShortDate, SegmentedControl, Skeleton } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { useState } from "react";
 import type { ShopifyOrder } from "./useShopifyDashboard";

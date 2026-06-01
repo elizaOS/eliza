@@ -1,14 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/ui";
-import {
-  Badge,
-  Button,
-  Skeleton,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  useAgentElement,
-} from "@elizaos/ui";
+import { Badge, Button, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   BarChart3,
   ChevronLeft,

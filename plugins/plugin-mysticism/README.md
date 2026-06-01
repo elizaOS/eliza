@@ -1,29 +1,28 @@
 # @elizaos/plugin-mysticism
 
-Mystical divination engines for ElizaOS agents — Tarot, I Ching, and Astrology readings with progressive revelation, emotional attunement, and optional payment integration.
+Mystical divination engines for elizaOS agents — Tarot, I Ching, and Astrology readings with progressive revelation, emotional attunement, and optional payment integration.
 
 ## Overview
 
-This plugin gives ElizaOS agents the ability to perform three classical divination systems as interactive, multi-turn conversations:
+This plugin gives elizaOS agents the ability to perform three classical divination systems as interactive, multi-turn conversations:
 
-- **Tarot** — Full 78-card Rider-Waite deck with multiple spread layouts (Three Card, Celtic Cross, etc.), card-by-card progressive reveal, and positional interpretation.
+- **Tarot** — Full 78-card Rider-Waite deck with multiple spread layouts (Three Card, Celtic Cross, Horseshoe, Single Card, Relationship), card-by-card progressive reveal, and positional interpretation.
 - **I Ching** — Three-coin method hexagram casting with full 64-hexagram corpus, changing line detection, and transformed hexagram support.
 - **Astrology** — Natal chart calculation from birth data with planetary positions, house placements, aspect detection, and sign-by-sign interpretation.
 
 Each system follows a phased reading lifecycle: **intake → casting → interpretation → synthesis → closing**, allowing the agent to pace the experience naturally and respond to user feedback between revelations.
 
+No external APIs are required — all computation uses bundled static data.
+
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-mysticism@next
-# or
-bun add @elizaos/plugin-mysticism@next
+bun add @elizaos/plugin-mysticism
 ```
 
 ### Peer Dependencies
 
-- `@elizaos/core` (v2.x)
-- Optional `@elizaos/plugin-form` for shared FORM service intake flows
+- `@elizaos/core` (workspace or published `alpha` dist-tag)
 
 ## Quick Start
 
@@ -40,7 +39,6 @@ Or import and register it directly:
 ```typescript
 import { mysticismPlugin } from "@elizaos/plugin-mysticism";
 
-// Add to your agent's plugin list
 const character = {
   plugins: [mysticismPlugin],
 };
@@ -48,42 +46,52 @@ const character = {
 
 ## Actions
 
-| Action | Similes | Description |
-|--------|---------|-------------|
-| `TAROT_READING` | `READ_TAROT`, `DRAW_CARDS`, `TAROT_SPREAD`, `CARD_READING` | Initiate a tarot card reading |
-| `ICHING_READING` | `CAST_HEXAGRAM`, `CONSULT_ICHING`, `THROW_COINS`, `ORACLE_READING` | Initiate an I Ching divination |
-| `ASTROLOGY_READING` | `BIRTH_CHART`, `NATAL_CHART`, `HOROSCOPE_READING`, `ZODIAC_READING` | Initiate a natal chart reading |
-| `READING_FOLLOWUP` | `CONTINUE_READING`, `NEXT_CARD`, `NEXT_LINE`, `PROCEED_READING` | Reveal the next element in an active reading |
-| `DEEPEN_READING` | `EXPLORE_DEEPER`, `TELL_MORE`, `ELABORATE_READING` | Provide deeper interpretation of a specific element |
-| `REQUEST_PAYMENT` | `CHARGE_USER`, `ASK_FOR_PAYMENT` | Request payment for a reading session |
-| `CHECK_PAYMENT` | `VERIFY_PAYMENT`, `PAYMENT_STATUS` | Verify payment status for the current session |
+The plugin registers two actions. Both are expanded via `promoteSubactionsToActions` before the runtime sees them.
+
+| Action | Contexts | Min Role | Description |
+|--------|----------|----------|-------------|
+| `MYSTICISM_READING` | `knowledge`, `general` | `USER` | Reading router. Set `type` to `tarot`, `astrology`, or `iching`; set `action` to `start`, `followup`, or `deepen`. |
+| `PAYMENT` | `finance`, `payments` | `OWNER` | Payment router. Set `action` to `check` (read payment status) or `request` (ask user to pay). |
+
+### MYSTICISM_READING parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `type` | yes | `tarot` \| `astrology` \| `iching` |
+| `action` | yes | `start` \| `followup` \| `deepen` |
+| `question` | no | Focus question for the reading |
+| `context` | no | Additional context (e.g., birth data hint for astrology) |
+
+Similes (trigger phrases): `READING`, `TAROT_READING`, `READ_TAROT`, `DRAW_CARDS`, `ICHING_READING`, `CAST_HEXAGRAM`, `ASTROLOGY_READING`, `BIRTH_CHART`, `NATAL_CHART`, `READING_FOLLOWUP`, `CONTINUE_READING`, `DEEPEN_READING`, `EXPLORE_DEEPER`, and more.
 
 ## Providers
 
+All three providers are dynamic and keyword-gated — they return empty text when the current message is not relevant, keeping context window usage low.
+
 | Provider | Description |
 |----------|-------------|
-| `READING_CONTEXT` | Injects active reading session state into the agent's context |
-| `ECONOMIC_CONTEXT` | Provides payment history and revenue facts |
-| `MYSTICAL_KNOWLEDGE` | Grounds the agent's interpretations with domain-specific symbolism |
+| `READING_CONTEXT` | Injects active reading session state (progress, revealed elements, payment status, user feedback) |
+| `ECONOMIC_CONTEXT` | Injects user payment history, configured prices, and current session payment status |
+| `MYSTICAL_KNOWLEDGE` | Injects practitioner guidelines, reader personality adaptation, and crisis-awareness rules |
 
 ## Forms
 
-| Form | Description |
-|------|-------------|
-| `tarot-intake` | Collects the user's question and preferred spread |
-| `astrology-intake` | Collects birth date, time, and location |
-| `reading-feedback` | Captures user reflection after each revealed element |
+The plugin exports three `FormDefinition` objects for use with a form service:
+
+| Export | ID | Description |
+|--------|----|-------------|
+| `tarotIntakeForm` | `tarot-intake` | Collects the user's question and preferred spread |
+| `astrologyIntakeForm` | `astrology-intake` | Collects birth date, time, and location |
+| `readingFeedbackForm` | `reading-feedback` | Captures user reflection after each revealed element |
 
 ## REST API Routes
 
-The plugin registers HTTP routes on the agent's API server:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/readings/tarot` | Start a tarot reading |
-| `POST` | `/api/readings/iching` | Start an I Ching reading |
-| `POST` | `/api/readings/astrology` | Start an astrology reading |
-| `GET` | `/api/readings/status` | Poll reading session status |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/readings/tarot` | default | Start a tarot reading |
+| `POST` | `/api/readings/iching` | default | Start an I Ching reading |
+| `POST` | `/api/readings/astrology` | default | Start an astrology reading |
+| `GET` | `/api/readings/status` | public | Poll active session status (`entityId` + `roomId` query params) |
 
 ### Example: Start a Tarot Reading
 
@@ -97,6 +105,8 @@ curl -X POST http://localhost:3000/api/readings/tarot \
     "spreadId": "celtic_cross"
   }'
 ```
+
+Valid `spreadId` values: `three_card`, `celtic_cross`, `horseshoe`, `single_card`, `relationship`.
 
 ### Example: Start an Astrology Reading
 
@@ -119,68 +129,55 @@ curl -X POST http://localhost:3000/api/readings/astrology \
 
 ## Configuration
 
-Optional pricing parameters can be set via `agentConfig.pluginParameters` or environment variables:
+Optional pricing parameters, readable via `runtime.getSetting()` or environment variables:
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `READING_PRICE_TAROT` | Price in USDC base units for a tarot reading | `0` (free) |
-| `READING_PRICE_ICHING` | Price in USDC base units for an I Ching reading | `0` (free) |
-| `READING_PRICE_ASTROLOGY` | Price in USDC base units for an astrology reading | `0` (free) |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MYSTICISM_PRICE_TAROT` | `0.01` | Base price in USDC for a tarot reading |
+| `MYSTICISM_PRICE_ICHING` | `0.01` | Base price in USDC for an I Ching reading |
+| `MYSTICISM_PRICE_ASTROLOGY` | `0.02` | Base price in USDC for an astrology reading |
 
-When prices are set to `0`, the payment actions (`REQUEST_PAYMENT`, `CHECK_PAYMENT`) are effectively no-ops and readings proceed without a payment gate.
+These are configured suggestions — the agent decides the final amount when issuing a `PAYMENT` action with `action=request`. Invalid or negative values are logged as warnings and the default is used instead.
 
 ## Architecture
 
 ```
-plugin-mysticism/
-├── typescript/           # TypeScript implementation (published to npm)
-│   ├── src/
-│   │   ├── actions/      # Agent actions (tarot, iching, astrology, payment, followup)
-│   │   ├── engines/      # Pure divination logic, no runtime dependencies
-│   │   │   ├── tarot/    # 78-card deck, spreads, interpretation
-│   │   │   ├── iching/   # 64 hexagrams, trigrams, coin casting
-│   │   │   └── astrology/# Chart calculation, zodiac, aspects, houses
-│   │   ├── forms/        # Intake and feedback form definitions
-│   │   ├── providers/    # Context providers for the LLM
-│   │   ├── routes/       # REST API endpoints
-│   │   ├── services/     # MysticismService — session and state management
-│   │   └── types.ts      # Shared type definitions
-│   └── __tests__/        # Vitest test suite
-├── python/               # Python implementation of divination engines
-├── rust/                 # Rust implementation of divination engines
-└── package.json          # Root package (monorepo orchestration)
+src/
+  index.ts            Plugin registration + dynamic provider wrappers
+  types.ts            All shared types (ReadingSession, TarotCard, Hexagram, NatalChart, ...)
+  actions/            MYSTICISM_READING + PAYMENT action handlers
+  engines/
+    tarot/            TarotEngine — deck, spreads, interpretation
+    iching/           IChingEngine — coin casting, 64 hexagrams, changing lines
+    astrology/        AstrologyEngine — natal chart calculation, aspects, houses
+  forms/              tarotIntakeForm, astrologyIntakeForm, readingFeedbackForm
+  providers/          READING_CONTEXT, ECONOMIC_CONTEXT, MYSTICAL_KNOWLEDGE
+  routes/             REST routes via createReadingRoutes()
+  services/           MysticismService — session lifecycle, crisis detection, payments
+  utils/              Shared reading helpers
 ```
 
 ### Engine Design
 
-The engines (`TarotEngine`, `IChingEngine`, `AstrologyEngine`) are pure computational modules with no ElizaOS runtime dependency. They operate on structured data (JSON card decks, hexagram tables, zodiac definitions) and return typed results. This makes them independently testable and reusable outside the plugin context.
+The engines (`TarotEngine`, `IChingEngine`, `AstrologyEngine`) are pure TypeScript classes with no elizaOS runtime dependency. They operate on bundled static data (card decks, hexagram tables, zodiac definitions) and return typed results — independently testable in isolation.
 
 ### Service Layer
 
-`MysticismService` manages reading session lifecycle, tracks per-entity active sessions, handles progressive reveal state, records user feedback, detects crisis language (with severity tiers and appropriate referral messaging), and integrates with the payment flow.
+`MysticismService` (service type key `"MYSTICISM"`) manages reading session lifecycle per `entityId:roomId` pair, delegates computation to the engines, tracks progressive reveal state, records user feedback for emotional attunement, and handles payment status transitions.
 
-### Safety
+### Crisis Safety
 
-The service includes built-in crisis detection that scans user input for indicators of distress. When detected, the agent pauses the reading and provides appropriate mental health resource referrals rather than continuing with potentially harmful mystical interpretations.
+The service includes built-in crisis detection that scans user input for distress indicators across three severity tiers (high/medium/low). High-severity matches immediately halt the reading and provide mental health resource referrals (988 Suicide & Crisis Lifeline, Crisis Text Line) rather than continuing the divination flow.
 
 ## Development
 
 ```bash
-# Install dependencies
-bun install
-
-# Build
-bun run build
-
-# Run tests
-bun run test
-
-# Type check
-bun run typecheck
-
-# Lint & format
-bun run lint
-bun run format
+bun run --cwd plugins/plugin-mysticism build        # compile
+bun run --cwd plugins/plugin-mysticism dev          # watch build
+bun run --cwd plugins/plugin-mysticism test         # vitest
+bun run --cwd plugins/plugin-mysticism typecheck    # tsc --noEmit
+bun run --cwd plugins/plugin-mysticism lint         # biome check + fix
+bun run --cwd plugins/plugin-mysticism format       # biome format
 ```
 
 ## License
