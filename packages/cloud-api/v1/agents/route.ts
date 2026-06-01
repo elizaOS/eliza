@@ -45,6 +45,8 @@ const provisionSchema = z.object({
       bio: z.string().max(5000).optional(),
       avatar: z.string().url().max(2048).optional(),
       config: z.record(z.string(), z.unknown()).optional(),
+      system: z.string().max(20000).optional(),
+      plugins: z.array(z.string().min(1).max(200)).max(50).optional(),
     })
     .optional(),
   billing: z
@@ -55,6 +57,34 @@ const provisionSchema = z.object({
     .optional(),
   webhookUrl: z.string().url().max(2048).optional(),
 });
+
+// The wallet/trading plugin: gives the agent its Steward-backed wallet +
+// trade actions (uses STEWARD_AGENT_ID / STEWARD_API_URL env injected at
+// provision). Without it the agent boots as a blank Eliza with no wallet and
+// no awareness of its own token.
+const DEFAULT_AGENT_PLUGINS = ["@elizaos/plugin-steward-app"];
+
+// Build a real system prompt from the token context so a freshly provisioned
+// agent knows who it is, what token it represents, and what it can do — instead
+// of booting as a contextless default character.
+function buildDefaultSystemPrompt(p: {
+  tokenName: string;
+  tokenTicker: string;
+  tokenContractAddress: string;
+  chain: string;
+  characterName: string;
+  bio?: string;
+}): string {
+  const lines = [
+    `You are ${p.characterName}, the autonomous AI agent for the ${p.tokenName} ($${p.tokenTicker}) token on ${p.chain}.`,
+    `Your token contract address is ${p.tokenContractAddress} on ${p.chain}.`,
+    p.bio ? `About you: ${p.bio}` : null,
+    ``,
+    `You have a crypto wallet provisioned through Steward (eliza.steward.fi) and can check balances, hold, and trade on behalf of your community when asked. When someone asks about your token, your wallet, or what you can do, answer concretely using your real token ($${p.tokenTicker}) and your wallet capabilities.`,
+    `Be helpful, on-brand, and concise. Speak as ${p.characterName}. Never claim to be a generic assistant — you are ${p.characterName}, tied to $${p.tokenTicker}.`,
+  ].filter((l): l is string => l !== null);
+  return lines.join("\n");
+}
 
 app.post("/", async (c) => {
   try {
@@ -120,11 +150,30 @@ app.post("/", async (c) => {
 
     let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
+      // Always give the agent a real system prompt + the wallet plugin. Use
+      // the caller's values when provided, otherwise synthesize from token
+      // context so the agent is never a blank, contextless Eliza.
+      const systemPrompt =
+        p.character?.system?.trim() ||
+        buildDefaultSystemPrompt({
+          tokenName: p.tokenName,
+          tokenTicker: p.tokenTicker,
+          tokenContractAddress: normalizedTokenAddress,
+          chain: p.chain,
+          characterName: agentName,
+          bio: p.character?.bio,
+        });
+      const plugins = Array.from(
+        new Set([...(p.character?.plugins ?? []), ...DEFAULT_AGENT_PLUGINS]),
+      );
+
       character = await charactersService.create({
         name: agentName,
         bio: p.character?.bio
           ? [p.character.bio]
           : [`Agent for ${p.tokenName}`],
+        system: systemPrompt,
+        plugins,
         user_id: identity.userId,
         organization_id: identity.organizationId,
         source: "cloud",
