@@ -182,6 +182,10 @@ export default defineConfig({
         replacement: `${agentSourceRoot}/$1.ts`,
       },
       {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
         find: "@elizaos/ui",
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
