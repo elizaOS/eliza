@@ -25,10 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
-import {
-  recordBootTelemetry,
-  startMemorySampler,
-} from "./boot-telemetry.ts";
+import { recordBootTelemetry, startMemorySampler } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";

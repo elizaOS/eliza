@@ -185,7 +185,9 @@ export const webFetch: Action & Record<string, unknown> = {
     [
       {
         name: "{{user}}",
-        content: { text: "What does https://api.example.com/v1/status return?" },
+        content: {
+          text: "What does https://api.example.com/v1/status return?",
+        },
       },
       {
         name: "{{agent}}",
