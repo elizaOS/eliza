@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   DocumentRecord,
@@ -105,6 +106,50 @@ const SCOPE_FILTER_OPTIONS: ReadonlyArray<{
   },
 ];
 
+/* ── Scope Filter Chip ──────────────────────────────────────────────── */
+
+function ScopeFilterChip({
+  value,
+  label,
+  Icon,
+  active,
+  onSelect,
+}: {
+  value: DocumentScopeFilter;
+  label: string;
+  Icon: typeof Globe2;
+  active: boolean;
+  onSelect: (value: DocumentScopeFilter) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `scope-${value}`,
+    role: "tab",
+    label,
+    group: "documents-scope",
+    status: active ? "active" : "inactive",
+    description: `Filter documents to the ${label} scope`,
+    onActivate: () => onSelect(value),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      aria-pressed={active}
+      aria-current={active ? "page" : undefined}
+      onClick={() => onSelect(value)}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold transition-colors ${
+        active
+          ? "border-accent/45 bg-accent/12 text-accent-fg"
+          : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
+      }`}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {label}
+    </button>
+  );
+}
+
 /* ── Search Result Item ─────────────────────────────────────────────── */
 
 function SearchResultListItem({
@@ -117,10 +162,27 @@ function SearchResultListItem({
   onSelect: (documentId: string) => void;
 }) {
   const { t } = useApp();
+  const documentId = result.documentId || result.id;
+  const title =
+    result.documentTitle ||
+    t("documentsview.UnknownDocument", {
+      defaultValue: "Unknown Document",
+    });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `result-${result.id}`,
+    role: "list-item",
+    label: title,
+    group: "documents-results",
+    status: active ? "active" : "inactive",
+    description: `Open search result "${title}"`,
+    onActivate: () => onSelect(documentId),
+  });
 
   return (
     <button
-      onClick={() => onSelect(result.documentId || result.id)}
+      ref={ref}
+      {...agentProps}
+      onClick={() => onSelect(documentId)}
       type="button"
       aria-current={active ? "page" : undefined}
       className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
@@ -140,10 +202,7 @@ function SearchResultListItem({
         <div className="flex min-w-0 items-center gap-1.5">
           <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
           <div className="truncate text-sm font-semibold text-txt">
-            {result.documentTitle ||
-              t("documentsview.UnknownDocument", {
-                defaultValue: "Unknown Document",
-              })}
+            {title}
           </div>
         </div>
         <div className="mt-1 line-clamp-2 text-xs text-muted">
@@ -186,6 +245,15 @@ function DocumentListItem({
         : doc.scope === "agent-private"
           ? Bot
           : Globe2;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `document-${doc.id}`,
+    role: "list-item",
+    label: doc.filename,
+    group: "documents-list",
+    status: active ? "active" : "inactive",
+    description: `Open document "${doc.filename}"`,
+    onActivate: () => onSelect(doc.id),
+  });
   return (
     <div
       className={`group relative flex w-full transition-colors ${
@@ -193,6 +261,8 @@ function DocumentListItem({
       }`}
     >
       <button
+        ref={ref}
+        {...agentProps}
         type="button"
         onClick={() => onSelect(doc.id)}
         aria-label={t("documentsview.OpenDocument", {
@@ -253,6 +323,87 @@ function DocumentListItem({
         />
       </span>
     </div>
+  );
+}
+
+/* ── Compact strip chips ────────────────────────────────────────────── */
+
+function CompactSearchChip({
+  result,
+  active,
+  onSelect,
+}: {
+  result: DocumentSearchResult;
+  active: boolean;
+  onSelect: (documentId: string) => void;
+}) {
+  const { t } = useApp();
+  const id = result.documentId || result.id;
+  const title =
+    result.documentTitle ||
+    t("documentsview.UnknownDocument", {
+      defaultValue: "Unknown Document",
+    });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `result-${result.id}`,
+    role: "list-item",
+    label: title,
+    group: "documents-results",
+    status: active ? "active" : "inactive",
+    description: `Open search result "${title}"`,
+    onActivate: () => onSelect(id),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+        active
+          ? "border-accent/45 bg-accent/12 text-accent-fg"
+          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+      }`}
+    >
+      <FileSearch className="h-3.5 w-3.5" aria-hidden />
+      <span className="truncate">{title}</span>
+    </button>
+  );
+}
+
+function CompactDocChip({
+  doc,
+  active,
+  onSelect,
+}: {
+  doc: DocumentRecord;
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `document-${doc.id}`,
+    role: "list-item",
+    label: doc.filename,
+    group: "documents-list",
+    status: active ? "active" : "inactive",
+    description: `Open document "${doc.filename}"`,
+    onActivate: () => onSelect(doc.id),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onSelect(doc.id)}
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+        active
+          ? "border-accent/45 bg-accent/12 text-accent-fg"
+          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+      }`}
+    >
+      <FileText className="h-3.5 w-3.5" aria-hidden />
+      <span className="truncate">{doc.filename}</span>
+    </button>
   );
 }
 
@@ -973,33 +1124,42 @@ export function DocumentsView({
 
   const scopeFilterStrip = (
     <div className="flex flex-wrap items-center gap-1">
-      {SCOPE_FILTER_OPTIONS.map(({ value, labelKey, defaultLabel, Icon }) => {
-        const active = scopeFilter === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => setScopeFilter(value)}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold transition-colors ${
-              active
-                ? "border-accent/45 bg-accent/12 text-accent-fg"
-                : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
-            }`}
-          >
-            <Icon className="h-3 w-3" aria-hidden />
-            {t(labelKey, { defaultValue: defaultLabel })}
-          </button>
-        );
-      })}
+      {SCOPE_FILTER_OPTIONS.map(({ value, labelKey, defaultLabel, Icon }) => (
+        <ScopeFilterChip
+          key={value}
+          value={value}
+          label={t(labelKey, { defaultValue: defaultLabel })}
+          Icon={Icon}
+          active={scopeFilter === value}
+          onSelect={setScopeFilter}
+        />
+      ))}
     </div>
   );
 
   /* ── Search input ──────────────────────────────────────────────── */
 
+  const { ref: searchRef, agentProps: searchAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "documents-search",
+      role: "text-input",
+      label: t("documents.ui.searchPlaceholder"),
+      group: "documents-toolbar",
+      description: "Search documents by filename, topic, or body text",
+      getValue: () => searchQuery,
+      onFill: (value) => {
+        setSearchQuery(value);
+        if (isShowingSearchResults) {
+          setSearchResults(null);
+        }
+      },
+    });
+
   const searchInput = (
     <div className="relative">
       <input
+        ref={searchRef}
+        {...searchAgentProps}
         type="text"
         placeholder={t("documents.ui.searchPlaceholder")}
         value={searchQuery}
@@ -1191,48 +1351,22 @@ export function DocumentsView({
       <div>{scopeFilterStrip}</div>
       <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-1">
         {isShowingSearchResults
-          ? visibleSearchResults.map((result) => {
-              const id = result.documentId || result.id;
-              const active = selectedDocId === id;
-              return (
-                <button
-                  key={result.id}
-                  type="button"
-                  onClick={() => setSelectedDocId(id)}
-                  className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    active
-                      ? "border-accent/45 bg-accent/12 text-accent-fg"
-                      : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
-                  }`}
-                >
-                  <FileSearch className="h-3.5 w-3.5" aria-hidden />
-                  <span className="truncate">
-                    {result.documentTitle ||
-                      t("documentsview.UnknownDocument", {
-                        defaultValue: "Unknown Document",
-                      })}
-                  </span>
-                </button>
-              );
-            })
-          : filteredDocuments.map((doc) => {
-              const active = selectedDocId === doc.id;
-              return (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={() => setSelectedDocId(doc.id)}
-                  className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    active
-                      ? "border-accent/45 bg-accent/12 text-accent-fg"
-                      : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
-                  }`}
-                >
-                  <FileText className="h-3.5 w-3.5" aria-hidden />
-                  <span className="truncate">{doc.filename}</span>
-                </button>
-              );
-            })}
+          ? visibleSearchResults.map((result) => (
+              <CompactSearchChip
+                key={result.id}
+                result={result}
+                active={selectedDocId === (result.documentId || result.id)}
+                onSelect={setSelectedDocId}
+              />
+            ))
+          : filteredDocuments.map((doc) => (
+              <CompactDocChip
+                key={doc.id}
+                doc={doc}
+                active={selectedDocId === doc.id}
+                onSelect={setSelectedDocId}
+              />
+            ))}
       </div>
     </PagePanel>
   ) : null;

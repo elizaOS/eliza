@@ -3,7 +3,7 @@
  * Polls every 10 seconds for new items.
  */
 
-import { Button, PagePanel, Spinner } from "@elizaos/ui";
+import { Button, PagePanel, Spinner, useAgentElement } from "@elizaos/ui";
 import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";
@@ -33,6 +33,89 @@ interface ApprovalQueueProps {
 
 const POLL_INTERVAL_MS = 10_000;
 
+function PendingApprovalActions({
+  txId,
+  onApprove,
+  onReject,
+}: {
+  txId: string;
+  onApprove: (txId: string) => void;
+  onReject: (txId: string) => void;
+}) {
+  const approveElement = useAgentElement<HTMLButtonElement>({
+    id: `action-approve-${txId}`,
+    role: "button",
+    label: `Approve transaction ${txId}`,
+    group: "approval-actions",
+    description: "Approve this pending transaction",
+  });
+  const rejectElement = useAgentElement<HTMLButtonElement>({
+    id: `action-reject-${txId}`,
+    role: "button",
+    label: `Reject transaction ${txId}`,
+    group: "approval-actions",
+    description: "Reject this pending transaction",
+  });
+  return (
+    <>
+      <Button
+        ref={approveElement.ref}
+        {...approveElement.agentProps}
+        variant="default"
+        size="sm"
+        className="h-9 rounded-xl bg-ok px-4 text-xs font-semibold text-white shadow-sm hover:bg-ok"
+        onClick={() => onApprove(txId)}
+        aria-label={`Approve transaction ${txId}`}
+      >
+        <Check className="h-3.5 w-3.5" />
+        Approve
+      </Button>
+      <Button
+        ref={rejectElement.ref}
+        {...rejectElement.agentProps}
+        variant="outline"
+        size="sm"
+        className="h-9 rounded-xl border-status-danger/30 px-4 text-xs font-semibold text-status-danger hover:bg-status-danger-bg hover:text-status-danger"
+        onClick={() => onReject(txId)}
+        aria-label={`Reject transaction ${txId}`}
+      >
+        <X className="h-3.5 w-3.5" />
+        Reject
+      </Button>
+    </>
+  );
+}
+
+function RejectReasonInput({
+  txId,
+  value,
+  onChange,
+}: {
+  txId: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `input-reject-reason-${txId}`,
+    role: "text-input",
+    label: "Rejection reason",
+    group: "approval-actions",
+    description: "Optional reason for rejecting the transaction",
+  });
+  return (
+    <input
+      ref={ref}
+      {...agentProps}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="e.g., Unauthorized recipient"
+      aria-label="Rejection reason"
+      className="mt-1 h-9 w-full rounded-lg border border-border/40 bg-card/60 px-3 text-sm text-txt placeholder:text-muted/40 focus:border-accent/40 focus:outline-none"
+    />
+  );
+}
+
 export function ApprovalQueue({
   getStewardPending,
   approveStewardTx,
@@ -50,6 +133,14 @@ export function ApprovalQueue({
   const [rejectDialogTxId, setRejectDialogTxId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const prevCountRef = useRef(0);
+
+  const refreshElement = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: "Refresh approvals",
+    group: "approval-actions",
+    description: "Reload the pending approval queue",
+  });
 
   const loadData = useCallback(async () => {
     try {
@@ -216,6 +307,8 @@ export function ApprovalQueue({
             </span>
           </div>
           <Button
+            ref={refreshElement.ref}
+            {...refreshElement.agentProps}
             variant="outline"
             size="sm"
             className="h-8 rounded-xl px-3 text-xs"
@@ -224,6 +317,7 @@ export function ApprovalQueue({
               void loadData();
             }}
             disabled={loading}
+            aria-label="Refresh approvals"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -312,26 +406,11 @@ export function ApprovalQueue({
                   {isProcessing ? (
                     <Spinner className="h-5 w-5 text-muted" />
                   ) : (
-                    <>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="h-9 rounded-xl bg-ok px-4 text-xs font-semibold text-white shadow-sm hover:bg-ok"
-                        onClick={() => void handleApprove(tx.id)}
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                        Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-xl border-status-danger/30 px-4 text-xs font-semibold text-status-danger hover:bg-status-danger-bg hover:text-status-danger"
-                        onClick={() => setRejectDialogTxId(tx.id)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Reject
-                      </Button>
-                    </>
+                    <PendingApprovalActions
+                      txId={tx.id}
+                      onApprove={(id) => void handleApprove(id)}
+                      onReject={(id) => setRejectDialogTxId(id)}
+                    />
                   )}
                 </div>
               </div>
@@ -342,12 +421,10 @@ export function ApprovalQueue({
                   <div className="flex-1">
                     <label className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1">
                       Rejection reason (optional)
-                      <input
-                        type="text"
+                      <RejectReasonInput
+                        txId={tx.id}
                         value={rejectReason}
-                        onChange={(e) => setRejectReason(e.target.value)}
-                        placeholder="e.g., Unauthorized recipient"
-                        className="mt-1 h-9 w-full rounded-lg border border-border/40 bg-card/60 px-3 text-sm text-txt placeholder:text-muted/40 focus:border-accent/40 focus:outline-none"
+                        onChange={setRejectReason}
                       />
                     </label>
                   </div>

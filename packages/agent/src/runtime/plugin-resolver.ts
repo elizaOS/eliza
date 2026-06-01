@@ -1269,13 +1269,69 @@ function resolveStaticElizaPlugin(pluginName: string): unknown | null {
 }
 
 /**
+ * In-process cache for {@link discoverPluginCandidates}. `resolvePlugins` runs
+ * twice per boot (blocking phase, then deferred phase), and on a dev box the
+ * scope walk touches ~180 `node_modules/@elizaos/*` dirs plus ~185 workspace
+ * `plugins/*` package.json reads each time. The candidate set only changes when
+ * a package is added or removed on disk, which bumps the parent directory's
+ * mtime, so we key the cache on the mtimes of every scanned root and reuse the
+ * result while the signature is unchanged.
+ */
+let pluginCandidateCache: {
+  signature: string;
+  candidates: PluginManifestCandidate[];
+} | null = null;
+
+/**
+ * Cheap signature over the directories {@link discoverPluginCandidates} scans:
+ * the mtimeMs of each `node_modules/@elizaos` and `plugins` root. Adding or
+ * removing a package mutates the containing directory's mtime, invalidating the
+ * cache. Missing directories contribute a sentinel so the signature still
+ * changes when one appears.
+ */
+async function computePluginCandidateSignature(): Promise<string> {
+  const parts: string[] = [];
+  for (const root of resolveWorkspaceRoots()) {
+    for (const dir of [
+      path.join(root, "node_modules", "@elizaos"),
+      path.join(root, "plugins"),
+    ]) {
+      try {
+        const stat = await fs.stat(dir);
+        parts.push(`${dir}:${stat.mtimeMs}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          parts.push(`${dir}:absent`);
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+  return parts.join("|");
+}
+
+/**
  * Walk the @elizaos scope in node_modules + workspace `plugins/` dirs and
  * return every package that has a `package.json`. The manifest evaluator
  * filters these down to the ones that actually declare an `elizaos.plugin`
  * block — this discovery step is intentionally cheap (a single readdir + stat
- * per candidate, no module imports).
+ * per candidate, no module imports). Result is memoized for the process while
+ * the scanned directories' mtimes are unchanged (see {@link pluginCandidateCache}).
  */
 async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
+  const signature = await computePluginCandidateSignature();
+  if (pluginCandidateCache?.signature === signature) {
+    return pluginCandidateCache.candidates;
+  }
+  const candidates = await discoverPluginCandidatesUncached();
+  pluginCandidateCache = { signature, candidates };
+  return candidates;
+}
+
+async function discoverPluginCandidatesUncached(): Promise<
+  PluginManifestCandidate[]
+> {
   const seen = new Set<string>();
   const candidates: PluginManifestCandidate[] = [];
 

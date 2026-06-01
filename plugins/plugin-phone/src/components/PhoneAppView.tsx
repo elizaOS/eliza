@@ -19,7 +19,7 @@
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
+import { Button, useAgentElement } from "@elizaos/ui";
 import {
   Tabs,
   TabsContent,
@@ -174,6 +174,67 @@ async function loadContactsModule(): Promise<ContactsModule | null> {
   }
 }
 
+function PhoneTabTrigger({
+  tab,
+  label,
+  active,
+  disabled,
+}: {
+  tab: PhoneTab;
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tab-${tab}`,
+    role: "tab",
+    label,
+    group: "phone-tabs",
+    status: active ? "active" : "inactive",
+    description: `Switch to the ${label} tab`,
+  });
+  return (
+    <TabsTrigger
+      ref={ref}
+      value={tab}
+      disabled={disabled}
+      aria-current={active ? "true" : undefined}
+      {...agentProps}
+    >
+      {label}
+    </TabsTrigger>
+  );
+}
+
+function PhoneDialKey({
+  digit,
+  onPress,
+}: {
+  digit: string;
+  onPress: (digit: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `dial-key-${digit}`,
+    role: "button",
+    label: `Dial ${digit}`,
+    group: "phone-dialpad",
+    description: `Append ${digit} to the number being dialed`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
+      onClick={() => onPress(digit)}
+      aria-label={`Dial ${digit}`}
+      data-testid={`phone-dial-key-${digit}`}
+      {...agentProps}
+    >
+      {digit}
+    </button>
+  );
+}
+
 export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   const [activeTab, setActiveTab] = useState<PhoneTab>("dialer");
   const [dialed, setDialed] = useState("");
@@ -314,6 +375,52 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
 
   const dialerDisplay = useMemo(() => dialed || "", [dialed]);
 
+  const backLabel = t("nav.back", { defaultValue: "Back" });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const callLabel = t("phone.dialer.call", { defaultValue: "Call" });
+  const intlLabel = t("phone.dialer.intl", {
+    defaultValue: "Insert + for international dialing",
+  });
+  const backspaceLabel = t("phone.dialer.backspace", {
+    defaultValue: "Delete digit",
+  });
+
+  const backAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: backLabel,
+    group: "phone-nav",
+    description: "Leave the Phone app and return to the app grid",
+  });
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "phone-recent",
+    description: "Reload the recent calls list",
+  });
+  const plusAgent = useAgentElement<HTMLButtonElement>({
+    id: "dial-plus",
+    role: "button",
+    label: intlLabel,
+    group: "phone-dialer",
+    description: "Insert a leading + for international dialing",
+  });
+  const callAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-call",
+    role: "button",
+    label: callLabel,
+    group: "phone-dialer",
+    description: "Place a call to the dialed number",
+  });
+  const backspaceAgent = useAgentElement<HTMLButtonElement>({
+    id: "dial-backspace",
+    role: "button",
+    label: backspaceLabel,
+    group: "phone-dialer",
+    description: "Delete the last digit of the dialed number",
+  });
+
   return (
     <div
       data-testid="phone-shell"
@@ -323,11 +430,13 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <Button
+            ref={backAgent.ref}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-xl text-muted hover:text-txt"
             onClick={exitToApps}
-            aria-label={t("nav.back", { defaultValue: "Back" })}
+            aria-label={backLabel}
+            {...backAgent.agentProps}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -344,12 +453,14 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
         {activeTab === "recent" ? (
           <Button
+            ref={refreshAgent.ref}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-xl text-muted hover:text-txt"
             onClick={() => void refreshCalls()}
             disabled={callsLoading}
-            aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+            aria-label={refreshLabel}
+            {...refreshAgent.agentProps}
           >
             <RefreshCw
               className={`h-4 w-4 ${callsLoading ? "animate-spin" : ""}`}
@@ -366,15 +477,22 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       >
         <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
           <TabsList className="grid w-full max-w-sm grid-cols-3">
-            <TabsTrigger value="dialer">
-              {t("phone.tabs.dialer", { defaultValue: "Dialer" })}
-            </TabsTrigger>
-            <TabsTrigger value="recent">
-              {t("phone.tabs.recent", { defaultValue: "Recent" })}
-            </TabsTrigger>
-            <TabsTrigger value="contacts" disabled={!contactsAvailable}>
-              {t("phone.tabs.contacts", { defaultValue: "Contacts" })}
-            </TabsTrigger>
+            <PhoneTabTrigger
+              tab="dialer"
+              label={t("phone.tabs.dialer", { defaultValue: "Dialer" })}
+              active={activeTab === "dialer"}
+            />
+            <PhoneTabTrigger
+              tab="recent"
+              label={t("phone.tabs.recent", { defaultValue: "Recent" })}
+              active={activeTab === "recent"}
+            />
+            <PhoneTabTrigger
+              tab="contacts"
+              label={t("phone.tabs.contacts", { defaultValue: "Contacts" })}
+              active={activeTab === "contacts"}
+              disabled={!contactsAvailable}
+            />
           </TabsList>
         </div>
 
@@ -410,50 +528,43 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             {/* Number pad */}
             <div className="grid w-full max-w-sm grid-cols-3 gap-3 py-4">
               {DIAL_KEYS.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
-                  onClick={() => appendDigit(key)}
-                  aria-label={`Dial ${key}`}
-                  data-testid={`phone-dial-key-${key}`}
-                >
-                  {key}
-                </button>
+                <PhoneDialKey key={key} digit={key} onPress={appendDigit} />
               ))}
             </div>
 
             {/* Bottom row: + (long-press equivalent), call, backspace */}
             <div className="grid w-full max-w-sm grid-cols-3 items-center gap-3 pb-4">
               <button
+                ref={plusAgent.ref}
                 type="button"
                 className="h-12 rounded-full border border-border bg-bg-accent text-lg font-semibold text-txt active:scale-95"
                 onClick={appendPlus}
                 data-testid="phone-dial-plus"
-                aria-label={t("phone.dialer.intl", {
-                  defaultValue: "Insert + for international dialing",
-                })}
+                aria-label={intlLabel}
+                {...plusAgent.agentProps}
               >
                 +
               </button>
               <Button
+                ref={callAgent.ref}
                 onClick={onDialerCall}
                 disabled={calling || dialed.length === 0}
                 className="h-14 rounded-full bg-ok text-bg hover:bg-ok/90 disabled:opacity-50"
-                aria-label={t("phone.dialer.call", { defaultValue: "Call" })}
+                aria-label={callLabel}
                 data-testid="phone-dial-call"
+                {...callAgent.agentProps}
               >
                 <PhoneIcon className="h-6 w-6" aria-hidden />
               </Button>
               <button
+                ref={backspaceAgent.ref}
                 type="button"
                 className="flex h-12 items-center justify-center rounded-full border border-border bg-bg-accent text-txt active:scale-95 disabled:opacity-50"
                 onClick={backspace}
                 disabled={dialed.length === 0}
-                aria-label={t("phone.dialer.backspace", {
-                  defaultValue: "Delete digit",
-                })}
+                aria-label={backspaceLabel}
                 data-testid="phone-dial-backspace"
+                {...backspaceAgent.agentProps}
               >
                 <Delete className="h-5 w-5" aria-hidden />
               </button>

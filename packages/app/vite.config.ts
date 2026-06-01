@@ -939,10 +939,24 @@ function resolveManualChunk(id: string): string | undefined {
       return "vendor-vrm";
     }
 
-    // Collapse all three.js code into one chunk to avoid cross-chunk TDZ
-    // init ordering bugs with WebGPU/TSL enums (see fix/three-chunk-tdz).
+    // Collapse all three.js code (three.module, three.webgpu, three.tsl,
+    // three.core, three/examples, three/addons) into one shared async chunk to
+    // avoid cross-chunk TDZ init ordering bugs with WebGPU/TSL enums (see
+    // fix/three-chunk-tdz) and to keep three out of the eager entry chunk.
     if (normalizedId.includes("/three/")) {
       return "vendor-three";
+    }
+
+    // Heavy single-purpose libs that only specific surfaces use. Splitting them
+    // into their own async chunks keeps them out of the initial entry chunk.
+    if (normalizedId.includes("/phonemizer/")) {
+      return "vendor-phonemizer";
+    }
+    if (pathIncludesAny(normalizedId, ["/draco3d/", "/draco3dgltf/"])) {
+      return "vendor-draco";
+    }
+    if (normalizedId.includes("/lucide-react/")) {
+      return "vendor-lucide";
     }
   }
 
@@ -1561,6 +1575,10 @@ export default defineConfig({
         [
           "@elizaos/plugin-phone/register",
           "plugins/plugin-phone/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-task-coordinator/register",
+          "plugins/plugin-task-coordinator/src/register.ts",
         ],
         [
           "@elizaos/plugin-wifi/register",

@@ -1,5 +1,6 @@
 import { Brain, Plus, RefreshCw, Sparkles, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
@@ -15,8 +16,99 @@ import { ConfirmDelete } from "../ui/confirm-delete";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
+
+/* ── Agent-controllable child controls (hooks must stay at top level) ── */
+
+function SkillFilterTab({
+  tabKey,
+  label,
+  isActive,
+  onSelect,
+}: {
+  tabKey: string;
+  label: string;
+  isActive: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `filter-${tabKey}`,
+    role: "tab",
+    label,
+    group: "skills-filter",
+    status: isActive ? "active" : "inactive",
+    description: `Filter the skills list to ${label}`,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="sm"
+      type="button"
+      aria-current={isActive ? "true" : undefined}
+      className={`h-8 rounded-full border px-3 text-2xs font-bold tracking-[0.14em] ${
+        isActive
+          ? "border-accent/30 bg-accent/10 text-txt"
+          : "border-border/45 text-muted hover:border-border/70 hover:bg-bg/35 hover:text-txt"
+      }`}
+      onClick={onSelect}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function SkillRowButton({
+  skill,
+  active,
+  enabled,
+  icon,
+  description,
+  onLabel,
+  offLabel,
+  attentionLabel,
+  onSelect,
+}: {
+  skill: SkillInfo;
+  active: boolean;
+  enabled: boolean;
+  icon: string;
+  description: string;
+  onLabel: string;
+  offLabel: string;
+  attentionLabel?: string;
+  onSelect: () => void;
+}) {
+  const { agentProps } = useAgentElement<HTMLDivElement>({
+    id: `skill-${skill.id}`,
+    role: "button",
+    label: skill.name,
+    group: "skills-list",
+    status: active ? "active" : enabled ? "enabled" : "disabled",
+    description: `Select the ${skill.name} skill`,
+    onActivate: onSelect,
+  });
+  return (
+    <div {...agentProps}>
+      <SkillSidebarItem
+        active={active}
+        testId={`skill-row-${skill.id}`}
+        enabled={enabled}
+        icon={icon}
+        name={skill.name}
+        description={description}
+        onLabel={onLabel}
+        offLabel={offLabel}
+        onSelect={onSelect}
+        attentionLabel={attentionLabel}
+      />
+    </div>
+  );
+}
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 
@@ -139,6 +231,109 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     selectedSkill?.scanStatus === "critical" ||
     selectedSkill?.scanStatus === "blocked";
 
+  const filterSearch = useAgentElement<HTMLInputElement>({
+    id: "filter-search",
+    role: "text-input",
+    label: t("skillsview.filterSkills", { defaultValue: "Filter skills" }),
+    group: "skills-toolbar",
+    description: "Filter the skills list by name or description",
+    getValue: () => filterText,
+    onFill: (value) => setFilterText(value),
+  });
+
+  const newSkillButton = useAgentElement<HTMLButtonElement>({
+    id: "new-skill",
+    role: "button",
+    label: skillCreateFormOpen
+      ? t("common.cancel")
+      : t("skillsview.NewSkill", { defaultValue: "New Skill" }),
+    group: "skills-toolbar",
+    status: skillCreateFormOpen ? "active" : "inactive",
+    description: "Open or close the new skill builder form",
+    onActivate: () => {
+      setState("skillCreateFormOpen", !skillCreateFormOpen);
+      if (skillCreateFormOpen) handleCancelCreate();
+    },
+  });
+
+  const installButton = useAgentElement<HTMLButtonElement>({
+    id: "install-skill",
+    role: "button",
+    label: t("common.install", { defaultValue: "Install" }),
+    group: "skills-toolbar",
+    description: "Open the skill marketplace install dialog",
+    onActivate: () => setInstallModalOpen(true),
+  });
+
+  const refreshButton = useAgentElement<HTMLButtonElement>({
+    id: "refresh-skills",
+    role: "button",
+    label: t("skillsview.RefreshSkillsList", {
+      defaultValue: "Refresh Skills List",
+    }),
+    group: "skills-toolbar",
+    description: "Reload the installed skills list",
+    onActivate: () => void refreshSkills(),
+  });
+
+  const createNameInput = useAgentElement<HTMLInputElement>({
+    id: "create-skill-name",
+    role: "text-input",
+    label: t("skillsview.SkillName"),
+    group: "skills-create",
+    description: "Name for the new skill being created",
+    getValue: () => skillCreateName,
+    onFill: (value) => setState("skillCreateName", value),
+  });
+
+  const createDescriptionInput = useAgentElement<HTMLInputElement>({
+    id: "create-skill-description",
+    role: "text-input",
+    label: t("common.description"),
+    group: "skills-create",
+    description: "Description for the new skill being created",
+    getValue: () => skillCreateDescription,
+    onFill: (value) => setState("skillCreateDescription", value),
+  });
+
+  const createSubmitButton = useAgentElement<HTMLButtonElement>({
+    id: "create-skill-submit",
+    role: "button",
+    label: t("skillsview.createSkill", { defaultValue: "Create Skill" }),
+    group: "skills-create",
+    description: "Create the new skill with the entered name and description",
+    onActivate: () => {
+      if (skillCreateName.trim() && !skillCreating) handleCreateSkill();
+    },
+  });
+
+  const toggleSelectedSwitch = useAgentElement<HTMLButtonElement>({
+    id: "toggle-selected-skill",
+    role: "toggle",
+    label: selectedSkill
+      ? `${selectedSkill.name} ${selectedSkill.enabled ? t("common.on") : t("common.off")}`
+      : t("common.off"),
+    group: "skills-detail",
+    status: selectedSkill?.enabled ? "active" : "inactive",
+    description: "Enable or disable the selected skill",
+    onActivate: () => {
+      if (selectedSkill) {
+        handleSkillToggle(selectedSkill.id, !selectedSkill.enabled);
+      }
+    },
+  });
+
+  const editSourceButton = useAgentElement<HTMLButtonElement>({
+    id: "edit-skill-source",
+    role: "button",
+    label: t("skillsview.EditSource", { defaultValue: "Edit Source" }),
+    group: "skills-detail",
+    description: "Open the source editor for the selected skill",
+    onActivate: () => {
+      if (selectedSkill) setEditingSkill(selectedSkill);
+    },
+  });
+
   const skillsSidebar = (
     <AppPageSidebar
       testId="skills-sidebar"
@@ -168,11 +363,13 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     >
       <SidebarHeader
         search={{
+          ref: filterSearch.ref,
           value: filterText,
           onChange: (event) => setFilterText(event.target.value),
           placeholder: t("skillsview.filterSkills"),
           "aria-label": t("skillsview.filterSkills"),
           onClear: () => setFilterText(""),
+          ...filterSearch.agentProps,
         }}
       />
       <SidebarScrollRegion>
@@ -180,6 +377,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           <SidebarContent.Toolbar className="mb-3">
             <SidebarContent.ToolbarPrimary>
               <Button
+                ref={newSkillButton.ref}
                 variant={skillCreateFormOpen ? "outline" : "default"}
                 size="sm"
                 type="button"
@@ -194,6 +392,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                     handleCancelCreate();
                   }
                 }}
+                {...newSkillButton.agentProps}
               >
                 {skillCreateFormOpen
                   ? t("common.cancel")
@@ -202,15 +401,18 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
             </SidebarContent.ToolbarPrimary>
             <SidebarContent.ToolbarActions>
               <Button
+                ref={installButton.ref}
                 variant="outline"
                 size="sm"
                 type="button"
                 className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
                 onClick={() => setInstallModalOpen(true)}
+                {...installButton.agentProps}
               >
                 {t("common.install", { defaultValue: "Install" })}
               </Button>
               <Button
+                ref={refreshButton.ref}
                 variant="ghost"
                 size="icon"
                 type="button"
@@ -222,6 +424,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 aria-label={t("skillsview.RefreshSkillsList", {
                   defaultValue: "Refresh Skills List",
                 })}
+                {...refreshButton.agentProps}
               >
                 <RefreshCw className="h-4 w-4" />
               </Button>
@@ -230,20 +433,13 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
 
           <div className="mb-3 flex flex-wrap gap-2">
             {filterTabs.map((tab) => (
-              <Button
-                variant="ghost"
-                size="sm"
+              <SkillFilterTab
                 key={tab.key}
-                type="button"
-                className={`h-8 rounded-full border px-3 text-2xs font-bold tracking-[0.14em] ${
-                  filterTab === tab.key
-                    ? "border-accent/30 bg-accent/10 text-txt"
-                    : "border-border/45 text-muted hover:border-border/70 hover:bg-bg/35 hover:text-txt"
-                }`}
-                onClick={() => setFilterTab(tab.key)}
-              >
-                {tab.label}
-              </Button>
+                tabKey={tab.key}
+                label={tab.label}
+                isActive={filterTab === tab.key}
+                onSelect={() => setFilterTab(tab.key)}
+              />
             ))}
           </div>
 
@@ -268,13 +464,12 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 const selected = selectedSkillId === skill.id;
 
                 return (
-                  <SkillSidebarItem
+                  <SkillRowButton
                     key={skill.id}
+                    skill={skill}
                     active={selected}
-                    testId={`skill-row-${skill.id}`}
                     enabled={skill.enabled}
                     icon={skill.name.charAt(0).toUpperCase()}
-                    name={skill.name}
                     description={
                       skill.description || t("skillsview.noDescription")
                     }
@@ -302,7 +497,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
   );
 
   return (
-    <>
+    <ShellViewAgentSurface viewId="skills">
       <PageLayout
         data-testid="skills-shell"
         sidebar={skillsSidebar}
@@ -423,12 +618,14 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           <span className="text-danger">*</span>
                         </span>
                         <Input
+                          ref={createNameInput.ref}
                           className="w-full border-border/50 bg-bg/50 focus-visible:ring-accent"
                           placeholder={t("skillsview.eGMyAwesomeSkil")}
                           value={skillCreateName}
                           onChange={(event) =>
                             setState("skillCreateName", event.target.value)
                           }
+                          {...createNameInput.agentProps}
                           onKeyDown={(event) => {
                             if (
                               event.key === "Enter" &&
@@ -445,6 +642,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           {t("common.description")}
                         </span>
                         <Input
+                          ref={createDescriptionInput.ref}
                           className="w-full border-border/50 bg-bg/50 focus-visible:ring-accent"
                           placeholder={t("skillsview.BriefDescriptionOf")}
                           value={skillCreateDescription}
@@ -454,6 +652,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                               event.target.value,
                             )
                           }
+                          {...createDescriptionInput.agentProps}
                           onKeyDown={(event) => {
                             if (
                               event.key === "Enter" &&
@@ -474,10 +673,12 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           {t("common.cancel")}
                         </Button>
                         <Button
+                          ref={createSubmitButton.ref}
                           variant="default"
                           size="sm"
                           onClick={handleCreateSkill}
                           disabled={!skillCreateName.trim() || skillCreating}
+                          {...createSubmitButton.agentProps}
                         >
                           {skillCreating
                             ? t("skillsview.creating", {
@@ -567,21 +768,25 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         </Button>
                       )}
                       <Switch
+                        ref={toggleSelectedSwitch.ref}
                         checked={selectedSkill.enabled}
                         disabled={skillToggleAction === selectedSkill.id}
                         onCheckedChange={(next: boolean | "indeterminate") =>
                           handleSkillToggle(selectedSkill.id, next === true)
                         }
+                        {...toggleSelectedSwitch.agentProps}
                       />
                     </div>
                   </div>
                   <div className="bg-bg/18 px-4 py-4 sm:px-5">
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <Button
+                        ref={editSourceButton.ref}
                         variant="outline"
                         size="sm"
                         className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
                         onClick={() => setEditingSkill(selectedSkill)}
+                        {...editSourceButton.agentProps}
                       >
                         {t("skillsview.EditSource", {
                           defaultValue: "Edit Source",
@@ -743,7 +948,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           onClose={() => setInstallModalOpen(false)}
         />
       )}
-    </>
+    </ShellViewAgentSurface>
   );
 }
 

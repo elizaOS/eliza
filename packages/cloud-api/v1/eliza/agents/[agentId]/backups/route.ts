@@ -30,6 +30,8 @@ async function __hono_GET(
         data: backups.map((b) => ({
           id: b.id,
           snapshotType: b.snapshot_type,
+          backupKind: b.backup_kind,
+          parentBackupId: b.parent_backup_id,
           sizeBytes: b.size_bytes,
           createdAt: b.created_at,
         })),

@@ -1,4 +1,4 @@
-import { TerminalPluginView } from "@elizaos/ui";
+import { TerminalPluginView, useAgentElement } from "@elizaos/ui";
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FacewearDeviceType } from "../devices/registry.ts";
@@ -82,6 +82,18 @@ function DeviceCard({
       (profile.connectionType === "WebXR" && d.kind === "xr"),
   );
   const Icon = profile.icon;
+  const actionLabel = isConnected
+    ? `Manage ${profile.name}`
+    : `Connect ${profile.name}`;
+  const { ref: connectRef, agentProps: connectAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `device-${profile.type}`,
+      role: "button",
+      label: actionLabel,
+      group: "devices",
+      status: isConnected ? "active" : "inactive",
+      description: `${isConnected ? "Manage" : "Connect"} the ${profile.name} device`,
+    });
 
   return (
     <div
@@ -126,9 +138,12 @@ function DeviceCard({
           {profile.connectionType}
         </span>
         <button
+          ref={connectRef}
           type="button"
           onClick={() => onConnect(profile.type)}
+          aria-label={actionLabel}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+          {...connectAgentProps}
         >
           {isConnected ? "Manage" : "Connect"}
         </button>
@@ -186,6 +201,31 @@ export function FacewearView() {
   }
 
   const activeCount = status.devices.length;
+
+  const { ref: xrConnectRef, agentProps: xrConnectAgentProps } =
+    useAgentElement<HTMLAnchorElement>({
+      id: "link-xr-connect",
+      role: "link",
+      label: "XR Connect Page",
+      group: "quick-actions",
+      description: "Open the XR device connect page in a new tab",
+    });
+  const { ref: xrStatusRef, agentProps: xrStatusAgentProps } =
+    useAgentElement<HTMLAnchorElement>({
+      id: "link-xr-status",
+      role: "link",
+      label: "XR Status API",
+      group: "quick-actions",
+      description: "Open the XR status API in a new tab",
+    });
+  const { ref: refreshRef, agentProps: refreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "action-refresh",
+      role: "button",
+      label: "Refresh",
+      group: "quick-actions",
+      description: "Refresh the connected device status",
+    });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg text-txt">
@@ -269,26 +309,35 @@ export function FacewearView() {
               <h2 className="text-sm font-semibold">Quick Actions</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 <a
+                  ref={xrConnectRef}
                   href="/api/xr/connect"
                   target="_blank"
                   rel="noreferrer"
+                  aria-label="XR Connect Page"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  {...xrConnectAgentProps}
                 >
                   <Zap className="h-3.5 w-3.5" />
                   XR Connect Page
                 </a>
                 <a
+                  ref={xrStatusRef}
                   href="/api/xr/status"
                   target="_blank"
                   rel="noreferrer"
+                  aria-label="XR Status API"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  {...xrStatusAgentProps}
                 >
                   XR Status API
                 </a>
                 <button
+                  ref={refreshRef}
                   type="button"
                   onClick={() => void fetchStatus()}
+                  aria-label="Refresh"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  {...refreshAgentProps}
                 >
                   Refresh
                 </button>

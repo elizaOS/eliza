@@ -1,5 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
+import { useAgentElement } from "@elizaos/ui";
 import {
   ArrowLeft,
   BarChart3,
@@ -102,6 +103,22 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
   const publicReadReady = status?.publicReadReady ?? false;
   const credentialMode = status?.credentialMode ?? "none";
 
+  const backButton = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: "Back to apps",
+    group: "hyperliquid-header",
+    description: "Exit the Hyperliquid view and return to the apps overlay",
+  });
+  const refreshButton = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "hyperliquid-header",
+    description: "Reload Hyperliquid status, markets, positions, and orders",
+    status: loading ? "active" : "inactive",
+  });
+
   return (
     <div
       data-testid="hyperliquid-shell"
@@ -109,6 +126,8 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
     >
       <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <Button
+          ref={backButton.ref}
+          {...backButton.agentProps}
           variant="ghost"
           size="icon"
           className="h-9 w-9 text-muted hover:text-txt"
@@ -128,6 +147,8 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
         <div className="flex-1" />
 
         <Button
+          ref={refreshButton.ref}
+          {...refreshButton.agentProps}
           variant="ghost"
           size="icon"
           className="h-9 w-9 text-muted hover:text-txt"

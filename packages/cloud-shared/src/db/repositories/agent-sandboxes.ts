@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
+import {
+  applyBackupDelta,
+  type BackupChainNode,
+  type BackupDelta,
+  resolveBackupChain,
+  selectPrunableBackupIds,
+} from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -8,6 +15,7 @@ import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AgentBackupSnapshotType,
+  type AgentBackupStateData,
   type AgentSandbox,
   type AgentSandboxBackup,
   type AgentSandboxStatus,
@@ -666,19 +674,72 @@ export class AgentSandboxesRepository {
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
 
+  /**
+   * Chain-safe prune: keep the newest `keep` restore points plus every
+   * ancestor any retained incremental still needs, then delete the rest. This
+   * can never strand an incremental backup without the full backup it builds
+   * on. See `selectPrunableBackupIds`.
+   */
   async pruneBackups(sandboxRecordId: string, keep: number): Promise<number> {
     const all = await dbRead
-      .select({ id: agentSandboxBackups.id })
+      .select({
+        id: agentSandboxBackups.id,
+        backupKind: agentSandboxBackups.backup_kind,
+        parentBackupId: agentSandboxBackups.parent_backup_id,
+        createdAt: agentSandboxBackups.created_at,
+      })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(desc(agentSandboxBackups.created_at));
+      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId));
     if (all.length <= keep) return 0;
-    const ids = all.slice(keep).map((b) => b.id);
+    const nodes: BackupChainNode[] = all.map((b) => ({
+      id: b.id,
+      backupKind: b.backupKind,
+      parentBackupId: b.parentBackupId,
+      createdAtMs: b.createdAt.getTime(),
+    }));
+    const ids = selectPrunableBackupIds(nodes, keep);
+    if (ids.length === 0) return 0;
     const r = await dbWrite
       .delete(agentSandboxBackups)
       .where(inArray(agentSandboxBackups.id, ids))
       .returning({ id: agentSandboxBackups.id });
     return r.length;
+  }
+
+  /**
+   * Reconstruct the full agent state for a backup. For `full` backups this is
+   * the stored state verbatim; for `incremental` backups it replays the parent
+   * chain (oldest full → … → target) applying each delta. All consumers that
+   * need state to restore (provision auto-restore, `restore()`) MUST go through
+   * here so incrementals are transparently materialized.
+   */
+  async getReconstructedBackupState(backupId: string): Promise<AgentBackupStateData | undefined> {
+    const target = await this.getBackupById(backupId);
+    if (!target) return undefined;
+    if (target.backup_kind !== "incremental") {
+      return target.state_data;
+    }
+    const all = await this.listBackups(target.sandbox_record_id, 1000);
+    const nodes: BackupChainNode[] = all.map((b) => ({
+      id: b.id,
+      backupKind: b.backup_kind,
+      parentBackupId: b.parent_backup_id,
+      createdAtMs: b.created_at.getTime(),
+    }));
+    const byId = new Map(all.map((b) => [b.id, b]));
+    let state: AgentBackupStateData | undefined;
+    for (const id of resolveBackupChain(nodes, backupId)) {
+      const row = byId.get(id);
+      if (!row) throw new Error(`Backup chain row ${id} vanished mid-reconstruct`);
+      if (row.backup_kind === "full") {
+        state = row.state_data;
+      } else {
+        if (!state) throw new Error(`Incremental ${id} reached before a full backup`);
+        // Incremental rows store a BackupDelta in the state_data jsonb column.
+        state = applyBackupDelta(state, row.state_data as unknown as BackupDelta);
+      }
+    }
+    return state;
   }
 }
 

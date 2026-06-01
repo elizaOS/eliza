@@ -6,6 +6,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
@@ -30,6 +31,100 @@ import type {
 } from "../release-center/types";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+
+function CheckUpdateButton({
+  label,
+  disabled,
+  onActivate,
+}: {
+  label: string;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "check-update",
+    role: "button",
+    label,
+    group: "release-actions",
+    description: "Check for and download a desktop update",
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      className="h-9 rounded-sm px-3 text-xs font-medium"
+      disabled={disabled}
+      onClick={onActivate}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function ApplyUpdateButton({
+  label,
+  disabled,
+  onActivate,
+}: {
+  label: string;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "apply-update",
+    role: "button",
+    label,
+    group: "release-actions",
+    description: "Apply the downloaded desktop update",
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      className="h-9 rounded-sm px-3 text-xs font-medium"
+      disabled={disabled}
+      onClick={onActivate}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function DetachReleaseCenterButton({
+  label,
+  disabled,
+  onActivate,
+}: {
+  label: string;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "open-detached",
+    role: "button",
+    label,
+    group: "release-actions",
+    description: "Open the release center in a detached window",
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-9 rounded-sm px-3 text-xs font-medium"
+      disabled={disabled}
+      onClick={onActivate}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
 
 export function ReleaseCenterView() {
   const { appUrl } = useBranding();
@@ -324,6 +419,80 @@ export function ReleaseCenterView() {
       : []),
   ];
 
+  const refreshReleaseStateAction = () =>
+    void runAction(
+      "refresh",
+      refreshReleaseState,
+      t("releasecenterview.ReleaseStatusRefreshed", {
+        defaultValue: "Release status refreshed.",
+      }),
+    );
+  const openReleaseNotesAction = () =>
+    void runAction(
+      "open-release-notes",
+      openReleaseNotesWindow,
+      t("releasecenterview.ReleaseNotesOpened", {
+        defaultValue: "Release notes opened.",
+      }),
+    );
+  const resetReleaseNotesUrlAction = () =>
+    void runAction(
+      "reset-release-url",
+      async () => {
+        setReleaseNotesUrlDirty(false);
+        setReleaseNotesUrl(
+          normalizeReleaseNotesUrl(
+            nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl,
+          ),
+        );
+      },
+      t("releasecenterview.ReleaseNotesReset", {
+        defaultValue: "Release notes URL reset.",
+      }),
+    );
+  const resetUrlLabel = t("releasecenter.ResetUrl", {
+    defaultValue: "Reset URL",
+  });
+
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "refresh",
+    role: "button",
+    label: t("common.refresh"),
+    group: "release-actions",
+    description: "Refresh the release and update status",
+    onActivate: refreshReleaseStateAction,
+  });
+  const releaseNotesUrlAgent = useAgentElement<HTMLInputElement>({
+    id: "release-notes-url",
+    role: "text-input",
+    label: t("releasecenterview.ReleaseNotes", {
+      defaultValue: "Release Notes",
+    }),
+    group: "release-notes",
+    description: "The URL opened when viewing release notes",
+    getValue: () => releaseNotesUrl,
+    onFill: (value) => {
+      setReleaseNotesUrlDirty(true);
+      setReleaseNotesUrl(value);
+    },
+  });
+  const openReleaseNotesAgent = useAgentElement<HTMLButtonElement>({
+    id: "open-release-notes",
+    role: "button",
+    label: t("common.open", { defaultValue: "Open" }),
+    group: "release-notes",
+    description: "Open the release notes URL",
+    onActivate: openReleaseNotesAction,
+  });
+  const resetReleaseNotesUrlAgent = useAgentElement<HTMLButtonElement>({
+    id: "reset-release-url",
+    role: "button",
+    label: resetUrlLabel,
+    group: "release-notes",
+    description: "Reset the release notes URL to its default",
+    onActivate: resetReleaseNotesUrlAction,
+  });
+
   return (
     <div className="space-y-5">
       {actionError && (
@@ -383,16 +552,17 @@ export function ReleaseCenterView() {
 
       <div className="flex flex-wrap gap-2">
         {desktopRuntime ? (
-          <Button
-            size="sm"
-            className="h-9 rounded-sm px-3 text-xs font-medium"
+          <CheckUpdateButton
+            label={t("releasecenter.CheckDownloadUpdate", {
+              defaultValue: "Check / Download Update",
+            })}
             disabled={
               busyAction === "check-updates" ||
               updateLoading ||
               autoUpdateDisabled ||
               !canManualCheck
             }
-            onClick={() =>
+            onActivate={() =>
               void runAction(
                 "check-updates",
                 checkForDesktopUpdate,
@@ -401,18 +571,15 @@ export function ReleaseCenterView() {
                 }),
               )
             }
-          >
-            {t("releasecenter.CheckDownloadUpdate", {
-              defaultValue: "Check / Download Update",
-            })}
-          </Button>
+          />
         ) : null}
         {desktopRuntime && nativeUpdater?.updateReady && (
-          <Button
-            size="sm"
-            className="h-9 rounded-sm px-3 text-xs font-medium"
+          <ApplyUpdateButton
+            label={t("releasecenter.ApplyDownloadedUpdate", {
+              defaultValue: "Apply Downloaded Update",
+            })}
             disabled={busyAction === "apply-update" || autoUpdateDisabled}
-            onClick={() =>
+            onActivate={() =>
               void runAction(
                 "apply-update",
                 applyDesktopUpdate,
@@ -421,28 +588,18 @@ export function ReleaseCenterView() {
                 }),
               )
             }
-          >
-            {t("releasecenter.ApplyDownloadedUpdate", {
-              defaultValue: "Apply Downloaded Update",
-            })}
-          </Button>
+          />
         )}
         <Button
+          ref={refreshAgent.ref}
           size="icon"
           variant="outline"
           className="h-9 w-9 rounded-sm"
           disabled={busyAction === "refresh" || updateLoading}
           aria-label={t("common.refresh")}
           title={t("common.refresh")}
-          onClick={() =>
-            void runAction(
-              "refresh",
-              refreshReleaseState,
-              t("releasecenterview.ReleaseStatusRefreshed", {
-                defaultValue: "Release status refreshed.",
-              }),
-            )
-          }
+          onClick={refreshReleaseStateAction}
+          {...refreshAgent.agentProps}
         >
           <RefreshCw
             className={`h-4 w-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
@@ -450,12 +607,12 @@ export function ReleaseCenterView() {
           />
         </Button>
         {desktopRuntime ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 rounded-sm px-3 text-xs font-medium"
+          <DetachReleaseCenterButton
+            label={t("releasecenter.OpenDetachedReleaseCenter", {
+              defaultValue: "Open Detached Release Center",
+            })}
             disabled={busyAction === "detach-release"}
-            onClick={() =>
+            onActivate={() =>
               void runAction(
                 "detach-release",
                 detachReleaseCenter,
@@ -464,11 +621,7 @@ export function ReleaseCenterView() {
                 }),
               )
             }
-          >
-            {t("releasecenter.OpenDetachedReleaseCenter", {
-              defaultValue: "Open Detached Release Center",
-            })}
-          </Button>
+          />
         ) : null}
       </div>
 
@@ -483,6 +636,7 @@ export function ReleaseCenterView() {
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
+            ref={releaseNotesUrlAgent.ref}
             id="release-notes-url"
             type="text"
             className="h-9 flex-1 rounded-sm bg-bg text-xs"
@@ -491,52 +645,30 @@ export function ReleaseCenterView() {
               setReleaseNotesUrlDirty(true);
               setReleaseNotesUrl(e.target.value);
             }}
+            {...releaseNotesUrlAgent.agentProps}
           />
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button
+              ref={openReleaseNotesAgent.ref}
               size="sm"
               variant="outline"
               className="h-9 rounded-sm px-3 text-xs font-medium"
               disabled={busyAction === "open-release-notes"}
-              onClick={() =>
-                void runAction(
-                  "open-release-notes",
-                  openReleaseNotesWindow,
-                  t("releasecenterview.ReleaseNotesOpened", {
-                    defaultValue: "Release notes opened.",
-                  }),
-                )
-              }
+              onClick={openReleaseNotesAction}
+              {...openReleaseNotesAgent.agentProps}
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               {t("common.open", { defaultValue: "Open" })}
             </Button>
             <Button
+              ref={resetReleaseNotesUrlAgent.ref}
               size="icon"
               variant="ghost"
               className="h-9 w-9 rounded-sm text-muted-strong"
-              aria-label={t("releasecenter.ResetUrl", {
-                defaultValue: "Reset URL",
-              })}
-              title={t("releasecenter.ResetUrl", {
-                defaultValue: "Reset URL",
-              })}
-              onClick={() =>
-                void runAction(
-                  "reset-release-url",
-                  async () => {
-                    setReleaseNotesUrlDirty(false);
-                    setReleaseNotesUrl(
-                      normalizeReleaseNotesUrl(
-                        nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl,
-                      ),
-                    );
-                  },
-                  t("releasecenterview.ReleaseNotesReset", {
-                    defaultValue: "Release notes URL reset.",
-                  }),
-                )
-              }
+              aria-label={resetUrlLabel}
+              title={resetUrlLabel}
+              onClick={resetReleaseNotesUrlAction}
+              {...resetReleaseNotesUrlAgent.agentProps}
             >
               <RotateCcw className="h-4 w-4" aria-hidden />
             </Button>

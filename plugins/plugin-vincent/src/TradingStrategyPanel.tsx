@@ -2,7 +2,7 @@
  * TradingStrategyPanel — displays Vincent strategy configuration.
  */
 
-import { Button, StatusBadge } from "@elizaos/ui";
+import { Button, StatusBadge, useAgentElement } from "@elizaos/ui";
 import { Activity, ExternalLink, Settings2 } from "lucide-react";
 import type { VincentStrategy } from "./vincent-contracts";
 
@@ -21,6 +21,14 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
   const strategyName = strategy?.name ?? null;
   const params = strategy?.params ?? {};
   const paramEntries = Object.entries(params);
+
+  const openVincent = useAgentElement<HTMLAnchorElement>({
+    id: "link-open-vincent",
+    role: "link",
+    label: "Open Vincent",
+    group: "vincent-strategy",
+    description: "Open the Vincent dashboard at heyvincent.ai in a new tab",
+  });
 
   return (
     <div className="space-y-4 rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
@@ -99,7 +107,13 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
             size="sm"
             className="h-9 w-fit rounded-xl px-4 text-xs font-semibold"
           >
-            <a href="https://heyvincent.ai" target="_blank" rel="noreferrer">
+            <a
+              ref={openVincent.ref}
+              {...openVincent.agentProps}
+              href="https://heyvincent.ai"
+              target="_blank"
+              rel="noreferrer"
+            >
               Open Vincent
               <ExternalLink className="h-3.5 w-3.5" />
             </a>

@@ -26,6 +26,14 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  AgentElementOverlay,
+  AgentSurfaceProvider,
+  getViewRegistry,
+  handleAgentSurfaceCapability,
+  isAgentSurfaceCapability,
+  type ViewAgentRegistry,
+} from "../../agent-surface";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -246,18 +254,31 @@ function setNativeInputValue(
  * Called when a view module does not export an `interact` function, or when
  * the capability is a known standard one (ensuring baseline support).
  */
+function agentIdParam(
+  params: Record<string, unknown> | undefined,
+): string | null {
+  const id = params?.agentId ?? params?.id;
+  return typeof id === "string" ? id : null;
+}
+
 async function handleStandardCapability(
   capability: string,
   params: Record<string, unknown> | undefined,
   containerEl: HTMLElement | null,
   setReloadKey: (fn: (k: number) => number) => void,
   cacheKey: string,
+  registry: ViewAgentRegistry | undefined,
 ): Promise<unknown> {
   switch (capability) {
     case "get-text":
       return containerEl?.innerText ?? "";
 
     case "get-state": {
+      // Prefer the agent-surface snapshot when the view registers elements; it
+      // supersedes the legacy manual `[data-view-state]` attribute.
+      if (registry && registry.size() > 0) {
+        return registry.snapshot();
+      }
       const stateEl = containerEl?.querySelector("[data-view-state]");
       if (stateEl) {
         try {
@@ -275,6 +296,12 @@ async function handleStandardCapability(
       return { refreshed: true };
 
     case "focus-element": {
+      // Addressing by registered agent id takes precedence over raw selectors.
+      const id = agentIdParam(params);
+      if (id && registry) {
+        const result = registry.focus(id);
+        return { focused: result.ok, id, reason: result.reason };
+      }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (target) {
         target.focus();
@@ -284,6 +311,11 @@ async function handleStandardCapability(
     }
 
     case "click-element": {
+      const id = agentIdParam(params);
+      if (id && registry) {
+        const result = registry.click(id);
+        return { clicked: result.ok, id, reason: result.reason };
+      }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (target) {
         target.click();
@@ -293,13 +325,18 @@ async function handleStandardCapability(
     }
 
     case "fill-input": {
-      const { target, selector } = resolveInteractTarget(containerEl, params);
       const value = typeof params?.value === "string" ? params.value : null;
-      if (!target) {
-        return { filled: false, reason: "element not found" };
-      }
       if (value === null) {
         return { filled: false, reason: "value must be a string" };
+      }
+      const id = agentIdParam(params);
+      if (id && registry) {
+        const result = registry.fill(id, value);
+        return { filled: result.ok, id, reason: result.reason, value };
+      }
+      const { target, selector } = resolveInteractTarget(containerEl, params);
+      if (!target) {
+        return { filled: false, reason: "element not found" };
       }
       if (
         target instanceof HTMLInputElement ||
@@ -466,8 +503,19 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       viewId,
       viewType,
       async (capability, params) => {
+        const registry = getViewRegistry(viewId, viewType);
+        // Generic agent-surface capabilities (list-elements, agent-fill, …)
+        // operate on the view's element registry.
+        if (isAgentSurfaceCapability(capability)) {
+          if (!registry) {
+            throw new Error(
+              `View "${viewId}" has no agent surface registered yet`,
+            );
+          }
+          return handleAgentSurfaceCapability(registry, capability, params);
+        }
         // Standard capabilities are handled here regardless of whether the
-        // module exports interact — they operate on the container DOM.
+        // module exports interact — they operate on the registry or the DOM.
         if (STANDARD_CAPABILITIES.has(capability)) {
           return handleStandardCapability(
             capability,
@@ -475,6 +523,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             containerRef.current,
             setReloadKey,
             `${bundleUrl}::${componentExport}`,
+            registry,
           );
         }
         // Delegate to the module's interact export if present.
@@ -553,9 +602,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
   return (
     <div ref={containerRef} className="contents">
-      <ErrorBoundary fallback={() => <ViewErrorState viewId={viewId} />}>
-        <View {...viewProps} />
-      </ErrorBoundary>
+      <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
+        <ErrorBoundary fallback={() => <ViewErrorState viewId={viewId} />}>
+          <View {...viewProps} />
+        </ErrorBoundary>
+        <AgentElementOverlay />
+      </AgentSurfaceProvider>
     </div>
   );
 });

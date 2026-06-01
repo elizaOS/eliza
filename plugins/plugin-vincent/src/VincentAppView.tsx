@@ -13,7 +13,13 @@
 
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
+import {
+  Button,
+  PagePanel,
+  Spinner,
+  useAgentElement,
+  useApp,
+} from "@elizaos/ui";
 import {
   ArrowLeft,
   RefreshCw,
@@ -38,6 +44,23 @@ import { WalletStatusCard } from "./WalletStatusCard";
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
   const { setActionNotice } = useApp();
 
+  const backLabel = t("nav.back", { defaultValue: "Back" });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const back = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: backLabel,
+    group: "vincent-header",
+    description: "Exit the Vincent app and return to the apps grid",
+  });
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "vincent-header",
+    description: "Reload Vincent connection status, wallet, strategy and P&L",
+  });
+
   const {
     vincentConnected,
     walletAddresses,
@@ -58,11 +81,13 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Button
+            ref={back.ref}
+            {...back.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
             onClick={exitToApps}
-            aria-label={t("nav.back", { defaultValue: "Back" })}
+            aria-label={backLabel}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -97,12 +122,14 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
           </span>
 
           <Button
+            ref={refreshControl.ref}
+            {...refreshControl.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-xl text-muted hover:text-txt"
             onClick={refresh}
             disabled={loading}
-            aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+            aria-label={refreshLabel}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>

@@ -37,7 +37,15 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
     ALTER TABLE "agent_sandbox_backups"
       ADD COLUMN IF NOT EXISTS "state_data_storage" text NOT NULL DEFAULT 'inline',
       ADD COLUMN IF NOT EXISTS "state_data_key" text,
-      ADD COLUMN IF NOT EXISTS "size_bytes" bigint
+      ADD COLUMN IF NOT EXISTS "size_bytes" bigint,
+      ADD COLUMN IF NOT EXISTS "backup_kind" text NOT NULL DEFAULT 'full',
+      ADD COLUMN IF NOT EXISTS "parent_backup_id" uuid,
+      ADD COLUMN IF NOT EXISTS "content_hash" text
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_parent_idx"
+      ON "agent_sandbox_backups" ("parent_backup_id")
   `);
 
   await dbWrite.execute(sql`

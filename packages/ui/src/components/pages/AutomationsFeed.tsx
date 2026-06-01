@@ -30,6 +30,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
@@ -51,6 +52,7 @@ import { Button } from "../ui/button";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 import {
@@ -164,6 +166,23 @@ export function AutomationsFeed({
   const [chooser, setChooser] = useState<ChooserState>("closed");
   const { link, setLink } = useAutomationDeepLink();
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: t("automationsfeed.refresh", { defaultValue: "Refresh" }),
+    group: "automations-actions",
+    description: "Reload the list of automations",
+    onActivate: () => void refresh(),
+  });
+  const newAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-new",
+    role: "button",
+    label: t("automationsfeed.new", { defaultValue: "New" }),
+    group: "automations-actions",
+    description: "Create a new automation",
+    onActivate: () => setChooser("task"),
+  });
 
   const editor: EditorState = useMemo(() => {
     if (link.kind === "list") return { kind: "none" };
@@ -309,10 +328,11 @@ export function AutomationsFeed({
   }
 
   const feedContent = (
-    <div
-      data-testid="automations-shell"
-      className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
-    >
+    <ShellViewAgentSurface viewId="automations">
+      <div
+        data-testid="automations-shell"
+        className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
+      >
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1.5">
@@ -333,6 +353,7 @@ export function AutomationsFeed({
         </div>
         <div className="flex items-center gap-2">
           <Button
+            ref={refreshAgent.ref}
             variant="ghost"
             size="sm"
             onClick={() => void refresh()}
@@ -340,6 +361,7 @@ export function AutomationsFeed({
             aria-label={t("automationsfeed.refresh", {
               defaultValue: "Refresh",
             })}
+            {...refreshAgent.agentProps}
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -347,9 +369,11 @@ export function AutomationsFeed({
             />
           </Button>
           <Button
+            ref={newAgent.ref}
             variant="default"
             size="sm"
             onClick={() => setChooser("task")}
+            {...newAgent.agentProps}
           >
             <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t("automationsfeed.new", { defaultValue: "New" })}
@@ -360,20 +384,15 @@ export function AutomationsFeed({
       {/* Filter chips */}
       <div className="flex flex-wrap gap-1.5">
         {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
-          <button
+          <FilterChipButton
             key={key}
-            type="button"
-            onClick={() => setFilter(key)}
-            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-              filter === key
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-border/40 text-muted-strong hover:border-border"
-            }`}
-          >
-            {t(FILTER_LABELS[key].key, {
+            filter={key}
+            label={t(FILTER_LABELS[key].key, {
               defaultValue: FILTER_LABELS[key].defaultLabel,
             })}
-          </button>
+            isActive={filter === key}
+            onSelect={setFilter}
+          />
         ))}
       </div>
 
@@ -468,10 +487,49 @@ export function AutomationsFeed({
           onClose={() => setChooser("closed")}
         />
       )}
-    </div>
+      </div>
+    </ShellViewAgentSurface>
   );
 
   return feedContent;
+}
+
+function FilterChipButton({
+  filter,
+  label,
+  isActive,
+  onSelect,
+}: {
+  filter: FeedFilter;
+  label: string;
+  isActive: boolean;
+  onSelect: (filter: FeedFilter) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tab-${filter}`,
+    role: "tab",
+    label,
+    group: "automations-filters",
+    status: isActive ? "active" : "inactive",
+    description: `Filter automations to "${label}"`,
+    onActivate: () => onSelect(filter),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(filter)}
+      aria-current={isActive ? "true" : undefined}
+      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+        isActive
+          ? "border-accent bg-accent/10 text-accent"
+          : "border-border/40 text-muted-strong hover:border-border"
+      }`}
+      {...agentProps}
+    >
+      {label}
+    </button>
+  );
 }
 
 function FeedRowItem({

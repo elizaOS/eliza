@@ -13,10 +13,12 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
+import { useAgentElement } from "@elizaos/ui";
 import {
   type ButtonHTMLAttributes,
   type CSSProperties,
   type InputHTMLAttributes,
+  type Ref,
   useCallback,
   useMemo,
   useState,
@@ -25,6 +27,7 @@ import {
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "default";
   size?: "sm" | "default";
+  ref?: Ref<HTMLButtonElement>;
 };
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
@@ -36,10 +39,12 @@ function Button({
   variant,
   size,
   type = "button",
+  ref,
   ...props
 }: ButtonProps) {
   return (
     <button
+      ref={ref}
       type={type}
       className={joinClasses(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
@@ -133,7 +138,7 @@ export function TwoThousandFourScapeTuiView() {
   return (
     <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
       <div style={tuiRouteStyle}>elizaos://2004scape --type=tui</div>
-      <div style={tuiMetaStyle}>
+      <div data-status={run?.status ?? "idle"} style={tuiMetaStyle}>
         {run?.status ?? "idle"} | {formatPlayerState(player)} | autoplay{" "}
         {autoPlayEnabled ? "on" : "off"}
       </div>
@@ -274,9 +279,16 @@ export async function interact(
   throw new Error(`Unsupported 2004scape TUI capability: ${capability}`);
 }
 
-function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+function Input({
+  className,
+  ref,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & {
+  ref?: Ref<HTMLInputElement>;
+}) {
   return (
     <input
+      ref={ref}
       className={joinClasses(
         "flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50",
         className,
@@ -573,6 +585,135 @@ function summarizeInventoryAndSkills(
   return parts.length > 0
     ? parts.join(" | ")
     : "No inventory or skill data yet.";
+}
+
+function SuggestedPromptButton({
+  prompt,
+  index,
+  onSelect,
+}: {
+  prompt: string;
+  index: number;
+  onSelect: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "steering-suggestions",
+    description: `Send the suggested instruction "${prompt}" to the bot`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-10 rounded-xl px-3 shadow-sm"
+      onClick={() => onSelect(prompt)}
+      {...agentProps}
+    >
+      {prompt}
+    </Button>
+  );
+}
+
+function ControlButton({
+  action,
+  label,
+  onActivate,
+}: {
+  action: "pause" | "resume";
+  label: string;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `control-${action}`,
+    role: "button",
+    label,
+    group: "steering-controls",
+    description: `${label} the 2004scape autonomous session`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-10 rounded-xl px-3 shadow-sm"
+      onClick={onActivate}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function OperatorMessageInput({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  disabled: boolean;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "operator-message",
+    role: "text-input",
+    label: "Operator instruction",
+    group: "steering",
+    description: "Tell the bot what to train, where to go, or what to say",
+  });
+  return (
+    <Input
+      ref={ref}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="Tell the bot what to train, where to go, or what to say."
+      className="min-h-11 rounded-xl"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          onSubmit();
+        }
+      }}
+      disabled={disabled}
+      {...agentProps}
+    />
+  );
+}
+
+function SendMessageButton({
+  sending,
+  disabled,
+  onActivate,
+}: {
+  sending: boolean;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "send-message",
+    role: "button",
+    label: "Send",
+    group: "steering",
+    description: "Send the typed operator instruction to the bot",
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      className="min-h-11 rounded-xl px-4 shadow-sm"
+      onClick={onActivate}
+      disabled={disabled}
+      {...agentProps}
+    >
+      {sending ? "Sending" : "Send"}
+    </Button>
+  );
 }
 
 export function TwoThousandFourScapeOperatorSurface({
@@ -999,70 +1140,48 @@ export function TwoThousandFourScapeOperatorSurface({
         <SurfaceSection title="Steering">
           {suggestedPrompts.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {suggestedPrompts.slice(0, 4).map((prompt) => (
-                <Button
+              {suggestedPrompts.slice(0, 4).map((prompt, index) => (
+                <SuggestedPromptButton
                   key={prompt}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-10 rounded-xl px-3 shadow-sm"
-                  onClick={() => void handleSuggestedPrompt(prompt)}
-                >
-                  {prompt}
-                </Button>
+                  prompt={prompt}
+                  index={index}
+                  onSelect={(value) => void handleSuggestedPrompt(value)}
+                />
               ))}
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {session?.controls?.includes("pause") ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-10 rounded-xl px-3 shadow-sm"
-                onClick={() => void handleControl("pause")}
-              >
-                Pause session
-              </Button>
+              <ControlButton
+                action="pause"
+                label="Pause session"
+                onActivate={() => void handleControl("pause")}
+              />
             ) : null}
             {session?.controls?.includes("resume") ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-10 rounded-xl px-3 shadow-sm"
-                onClick={() => void handleControl("resume")}
-              >
-                Resume session
-              </Button>
+              <ControlButton
+                action="resume"
+                label="Resume session"
+                onActivate={() => void handleControl("resume")}
+              />
             ) : null}
           </div>
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
+            <OperatorMessageInput
               value={operatorMessage}
-              onChange={(event) => setOperatorMessage(event.target.value)}
-              placeholder="Tell the bot what to train, where to go, or what to say."
-              className="min-h-11 rounded-xl"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSendMessage();
-                }
-              }}
+              onChange={setOperatorMessage}
+              onSubmit={() => void handleSendMessage()}
               disabled={!session?.sessionId}
             />
-            <Button
-              type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendMessage()}
+            <SendMessageButton
+              sending={sending}
               disabled={
                 sending ||
                 !session?.sessionId ||
                 operatorMessage.trim().length === 0
               }
-            >
-              {sending ? "Sending" : "Send"}
-            </Button>
+              onActivate={() => void handleSendMessage()}
+            />
           </div>
         </SurfaceSection>
       ) : null}

@@ -1,5 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
+import { useAgentElement } from "@elizaos/ui";
 import { ArrowLeft, LockKeyhole, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
@@ -25,6 +26,23 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
     refresh,
   } = usePolymarketState();
 
+  const backLabel = t("nav.back", { defaultValue: "Back" });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const back = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: backLabel,
+    group: "polymarket-nav",
+    description: "Exit Polymarket and return to the apps list",
+  });
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "polymarket-nav",
+    description: "Reload Polymarket status and active markets",
+  });
+
   return (
     <div
       data-testid="polymarket-shell"
@@ -33,11 +51,13 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           <Button
+            ref={back.ref}
+            {...back.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
             onClick={exitToApps}
-            aria-label={t("nav.back", { defaultValue: "Back" })}
+            aria-label={backLabel}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -52,12 +72,14 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
 
         <Button
+          ref={refreshControl.ref}
+          {...refreshControl.agentProps}
           variant="ghost"
           size="icon"
           className="h-9 w-9 rounded-xl text-muted hover:text-txt"
           onClick={refresh}
           disabled={loading}
-          aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+          aria-label={refreshLabel}
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
@@ -119,23 +141,12 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
               ) : (
                 <div className="max-h-[55vh] divide-y divide-border/15 overflow-y-auto">
                   {markets.map((market) => (
-                    <button
+                    <MarketListItem
                       key={market.id}
-                      type="button"
-                      onClick={() => setSelectedMarket(market)}
-                      className={`block w-full px-4 py-3 text-left hover:bg-bg ${
-                        selectedMarket?.id === market.id ? "bg-bg" : ""
-                      }`}
-                    >
-                      <span className="line-clamp-2 text-sm font-medium text-txt">
-                        {market.question ?? market.slug ?? market.id}
-                      </span>
-                      <span className="mt-1 block text-xs text-muted">
-                        {market.volume24hr
-                          ? `24h volume ${market.volume24hr}`
-                          : (market.category ?? "Market")}
-                      </span>
-                    </button>
+                      market={market}
+                      active={selectedMarket?.id === market.id}
+                      onSelect={setSelectedMarket}
+                    />
                   ))}
                 </div>
               )}
@@ -202,6 +213,45 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
     </div>
+  );
+}
+
+function MarketListItem({
+  market,
+  active,
+  onSelect,
+}: {
+  market: PolymarketMarket;
+  active: boolean;
+  onSelect: (market: PolymarketMarket) => void;
+}) {
+  const label = market.question ?? market.slug ?? market.id;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `market-${market.id}`,
+    role: "list-item",
+    label,
+    group: "polymarket-markets",
+    status: active ? "active" : "inactive",
+    description: `Select the ${label} market`,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onSelect(market)}
+      aria-current={active ? "true" : undefined}
+      className={`block w-full px-4 py-3 text-left hover:bg-bg ${
+        active ? "bg-bg" : ""
+      }`}
+    >
+      <span className="line-clamp-2 text-sm font-medium text-txt">{label}</span>
+      <span className="mt-1 block text-xs text-muted">
+        {market.volume24hr
+          ? `24h volume ${market.volume24hr}`
+          : (market.category ?? "Market")}
+      </span>
+    </button>
   );
 }
 

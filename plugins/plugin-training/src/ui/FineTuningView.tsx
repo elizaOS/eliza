@@ -29,6 +29,7 @@ import {
   type TrainingStreamEvent,
   type TrainingTrajectoryDetail,
   type TrainingTrajectoryList,
+  useAgentElement,
   useApp,
   useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
@@ -449,6 +450,46 @@ function summarizeAnalysisCoverage(
     benchmarkTierCoverage: [],
     benchmarkComparisons,
   };
+}
+
+function TrainingActionButton({
+  agentId,
+  label,
+  group,
+  description,
+  disabled,
+  onClick,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group,
+    description,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className={FINE_TUNING_ACTION_CLASS}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={label}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
 }
 
 export function FineTuningView({
@@ -1874,16 +1915,17 @@ export function FineTuningView({
                 {t("finetuningview.BuildDatasetsFrom")}
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className={FINE_TUNING_ACTION_CLASS}
+            <TrainingActionButton
+              agentId="action-refresh-all"
+              label={t("finetuningview.RefreshAll")}
+              group="overview"
+              description="Refresh all training status, datasets, jobs, and models"
               onClick={() => {
                 void refreshAll();
               }}
             >
               {t("finetuningview.RefreshAll")}
-            </Button>
+            </TrainingActionButton>
           </div>
           {errorMessage && (
             <div className="mt-3 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -1986,10 +2028,11 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              <TrainingActionButton
+                agentId="action-collect-and-index"
+                label={t("finetuningview.CollectAndIndex")}
+                group="analysis"
+                description="Run the full training data collection and build the analysis index"
                 disabled={collectionRunning}
                 onClick={() => {
                   void handleRunTrainingCollection();
@@ -1998,11 +2041,12 @@ export function FineTuningView({
                 {collectionRunning
                   ? t("finetuningview.Collecting")
                   : t("finetuningview.CollectAndIndex")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              </TrainingActionButton>
+              <TrainingActionButton
+                agentId="action-collection-preflight"
+                label="Run collection preflight"
+                group="analysis"
+                description="Run a preflight check of the training data collection without writing artifacts"
                 disabled={collectionPreflightRunning}
                 onClick={() => {
                   void handleRunTrainingCollection(true);
@@ -2011,11 +2055,12 @@ export function FineTuningView({
                 {collectionPreflightRunning
                   ? "Checking"
                   : "Run collection preflight"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              </TrainingActionButton>
+              <TrainingActionButton
+                agentId="action-build-analysis-index"
+                label={t("finetuningview.BuildAnalysisIndex")}
+                group="analysis"
+                description="Build the training analysis index from collected artifacts"
                 disabled={analysisBuilding}
                 onClick={() => {
                   void handleBuildAnalysisIndex();
@@ -2024,11 +2069,12 @@ export function FineTuningView({
                 {analysisBuilding
                   ? t("finetuningview.Indexing")
                   : t("finetuningview.BuildAnalysisIndex")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              </TrainingActionButton>
+              <TrainingActionButton
+                agentId="action-build-readiness-report"
+                label={t("finetuningview.BuildReadinessReport")}
+                group="analysis"
+                description="Build the training readiness report and surface missing checks"
                 disabled={readinessBuilding}
                 onClick={() => {
                   void handleBuildReadinessReport();
@@ -2037,7 +2083,7 @@ export function FineTuningView({
                 {readinessBuilding
                   ? t("finetuningview.CheckingReadiness")
                   : t("finetuningview.BuildReadinessReport")}
-              </Button>
+              </TrainingActionButton>
             </div>
           </div>
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
@@ -3332,10 +3378,11 @@ export function FineTuningView({
                   />
                   {t("finetuningview.DryRun")}
                 </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={FINE_TUNING_ACTION_CLASS}
+                <TrainingActionButton
+                  agentId="action-ingest-hf-dataset"
+                  label={t("finetuningview.IngestHuggingFaceDataset")}
+                  group="huggingface"
+                  description="Ingest the configured HuggingFace dataset files into a training dataset"
                   disabled={hfIngestRunning}
                   onClick={() => {
                     void handleIngestHuggingFaceDataset();
@@ -3344,7 +3391,7 @@ export function FineTuningView({
                   {hfIngestRunning
                     ? t("finetuningview.Ingesting")
                     : t("finetuningview.IngestHuggingFaceDataset")}
-                </Button>
+                </TrainingActionButton>
               </div>
             </div>
             {hfIngestResult && (
@@ -3489,10 +3536,11 @@ export function FineTuningView({
                   />
                   {t("finetuningview.DryRun")}
                 </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={FINE_TUNING_ACTION_CLASS}
+                <TrainingActionButton
+                  agentId="action-generate-feed-trajectories"
+                  label={t("finetuningview.GenerateFeedTrajectories")}
+                  group="feed"
+                  description="Generate feed simulation trajectories for the configured archetypes"
                   disabled={feedGenerationRunning}
                   onClick={() => {
                     void handleRunFeedGeneration();
@@ -3501,7 +3549,7 @@ export function FineTuningView({
                   {feedGenerationRunning
                     ? t("finetuningview.Generating")
                     : t("finetuningview.GenerateFeedTrajectories")}
-                </Button>
+                </TrainingActionButton>
               </div>
             </div>
             {feedGenerationResult && (
@@ -3669,10 +3717,11 @@ export function FineTuningView({
                   />
                   {t("finetuningview.DryRun")}
                 </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={FINE_TUNING_ACTION_CLASS}
+                <TrainingActionButton
+                  agentId="action-run-scenarios"
+                  label={t("finetuningview.RunScenarios")}
+                  group="scenarios"
+                  description="Run the configured scenario suite and export native trajectories"
                   disabled={scenarioRunning}
                   onClick={() => {
                     void handleRunScenarios();
@@ -3681,7 +3730,7 @@ export function FineTuningView({
                   {scenarioRunning
                     ? t("finetuningview.RunningScenarios")
                     : t("finetuningview.RunScenarios")}
-                </Button>
+                </TrainingActionButton>
               </div>
             </div>
             {scenarioResult && (
@@ -3880,10 +3929,11 @@ export function FineTuningView({
                   />
                   {t("finetuningview.DryRun")}
                 </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={FINE_TUNING_ACTION_CLASS}
+                <TrainingActionButton
+                  agentId="action-run-eval-comparison"
+                  label={t("finetuningview.RunEvalComparison")}
+                  group="eval-comparison"
+                  description="Run a local eval comparison between the base and trained models"
                   disabled={evalComparisonRunning}
                   onClick={() => {
                     void handleRunEvalComparison();
@@ -3892,7 +3942,7 @@ export function FineTuningView({
                   {evalComparisonRunning
                     ? t("finetuningview.Evaluating")
                     : t("finetuningview.RunEvalComparison")}
-                </Button>
+                </TrainingActionButton>
               </div>
             </div>
             {evalComparisonResult && (
@@ -4101,10 +4151,11 @@ export function FineTuningView({
                 />
                 {t("finetuningview.DryRun")}
               </label>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              <TrainingActionButton
+                agentId="action-run-benchmark-vs-cerebras"
+                label={t("finetuningview.RunBenchmarkVsCerebras")}
+                group="benchmark"
+                description="Run the benchmark-vs-Cerebras suite for the configured tiers and variants"
                 disabled={benchmarkRunning}
                 onClick={() => {
                   void handleRunBenchmarkVsCerebras();
@@ -4113,7 +4164,7 @@ export function FineTuningView({
                 {benchmarkRunning
                   ? t("finetuningview.RunningBenchmark")
                   : t("finetuningview.RunBenchmarkVsCerebras")}
-              </Button>
+              </TrainingActionButton>
             </div>
           </div>
           {benchmarkResult && (
@@ -4285,10 +4336,11 @@ export function FineTuningView({
                 />
                 {t("finetuningview.Apply")}
               </label>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              <TrainingActionButton
+                agentId="action-stage-eliza1-bundle"
+                label={t("finetuningview.StageEliza1Bundle")}
+                group="bundle"
+                description="Stage the Eliza-1 model bundle for the configured repo and tier"
                 disabled={bundleStageRunning}
                 onClick={() => {
                   void handleStageEliza1Bundle();
@@ -4297,7 +4349,7 @@ export function FineTuningView({
                 {bundleStageRunning
                   ? t("finetuningview.StagingBundle")
                   : t("finetuningview.StageEliza1Bundle")}
-              </Button>
+              </TrainingActionButton>
             </div>
           </div>
           {bundleStageResult && (
@@ -4625,10 +4677,11 @@ export function FineTuningView({
                 />
                 {t("finetuningview.DryRun")}
               </label>
-              <Button
-                variant="outline"
-                size="sm"
-                className={FINE_TUNING_ACTION_CLASS}
+              <TrainingActionButton
+                agentId="action-run-action-benchmark"
+                label={t("finetuningview.RunActionBenchmark")}
+                group="action-benchmark"
+                description="Run the action-selection benchmark for the configured model and tier"
                 disabled={actionBenchmarkRunning}
                 onClick={() => {
                   void handleRunActionBenchmark();
@@ -4637,7 +4690,7 @@ export function FineTuningView({
                 {actionBenchmarkRunning
                   ? t("finetuningview.RunningBenchmark")
                   : t("finetuningview.RunActionBenchmark")}
-              </Button>
+              </TrainingActionButton>
             </div>
           </div>
           {actionBenchmarkResult && (

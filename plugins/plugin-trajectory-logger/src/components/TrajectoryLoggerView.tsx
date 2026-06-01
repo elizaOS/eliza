@@ -1,4 +1,8 @@
-import { Button, type OverlayAppContext } from "@elizaos/ui";
+import {
+  Button,
+  type OverlayAppContext,
+  useAgentElement,
+} from "@elizaos/ui";
 import { TerminalPluginView } from "@elizaos/ui/components/views/TerminalPluginView";
 import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";
@@ -9,12 +13,20 @@ import { usePollingTrajectories } from "../usePollingTrajectories";
 import { PhaseChip } from "./PhaseChip";
 import { PhaseDrilldown } from "./PhaseDrilldown";
 
-type Slot = "now" | "last";
+export type Slot = "now" | "last";
 type Selection = { slot: Slot; phase: PhaseName } | null;
 
 export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
   const state = usePollingTrajectories(true);
   const [sel, setSel] = useState<Selection>(null);
+
+  const backButton = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: "Back",
+    group: "trajectory-nav",
+    description: "Return to the apps list",
+  });
 
   const nowPhases = summarizePhases(state.activeDetail, {
     trajectoryActive: true,
@@ -33,10 +45,12 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
       <header className="flex items-center justify-between gap-2 border-b border-border/24 px-3 py-2">
         <div className="flex items-center gap-2">
           <Button
+            ref={backButton.ref}
             variant="ghost"
             size="sm"
             onClick={exitToApps}
             aria-label="Back"
+            {...backButton.agentProps}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -55,6 +69,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         <PhaseStrip
           live
+          slot="now"
           trajectory={state.active}
           phases={nowPhases}
           selectedPhase={sel?.slot === "now" ? sel.phase : null}
@@ -68,6 +83,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
         />
         <PhaseStrip
           live={false}
+          slot="last"
           trajectory={state.last}
           phases={lastPhases}
           selectedPhase={sel?.slot === "last" ? sel.phase : null}
@@ -145,12 +161,14 @@ export async function interact(
 
 function PhaseStrip({
   live,
+  slot,
   trajectory,
   phases,
   selectedPhase,
   onSelect,
 }: {
   live: boolean;
+  slot: Slot;
   trajectory: TrajectoryListItem | null;
   phases: PhaseSummary[];
   selectedPhase: PhaseName | null;
@@ -176,6 +194,7 @@ function PhaseStrip({
           {phases.map((p) => (
             <PhaseChip
               key={p.phase}
+              slot={slot}
               phase={p.phase}
               status={p.status}
               summary={p.summary}

@@ -5,6 +5,7 @@ import {
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
+  useAgentElement,
   useApp,
 } from "@elizaos/ui";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
@@ -311,6 +312,98 @@ export function ClawvilleOperatorSurface({
   );
 }
 
+function ClawvilleSuggestedPromptButton({
+  prompt,
+  index,
+  disabled,
+  onSelect,
+}: {
+  prompt: string;
+  index: number;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "clawville-suggested-prompts",
+    description: `Send the ClawVille command: ${prompt}`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(prompt)}
+      style={tuiButtonStyle}
+      {...agentProps}
+    >
+      {prompt}
+    </button>
+  );
+}
+
+function ClawvilleCommandInput({
+  draft,
+  onDraftChange,
+  onSubmit,
+}: {
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "command-input",
+    role: "text-input",
+    label: "ClawVille command",
+    group: "clawville-command",
+    description: "Type a command to send to ClawVille",
+  });
+  return (
+    <input
+      ref={ref}
+      aria-label="ClawVille command"
+      value={draft}
+      onChange={(event) => onDraftChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSubmit();
+      }}
+      placeholder="Tell ClawVille what to do..."
+      style={tuiInputStyle}
+      {...agentProps}
+    />
+  );
+}
+
+function ClawvilleSendButton({
+  disabled,
+  onSend,
+}: {
+  disabled: boolean;
+  onSend: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "send-command",
+    role: "button",
+    label: "Send command",
+    group: "clawville-command",
+    description: "Send the typed command to ClawVille",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={onSend}
+      style={tuiButtonStyle}
+      {...agentProps}
+    >
+      send command
+    </button>
+  );
+}
+
 export function ClawvilleTuiView() {
   const { appRuns, setActionNotice, setState } = useApp();
   const run = useMemo(
@@ -398,35 +491,24 @@ export function ClawvilleTuiView() {
           : PRIMARY_COMMANDS.map((item) => item.command)
         )
           .slice(0, 6)
-          .map((prompt: string) => (
-            <button
+          .map((prompt: string, index: number) => (
+            <ClawvilleSuggestedPromptButton
               key={prompt}
-              type="button"
+              prompt={prompt}
+              index={index}
               disabled={!canSend || sending}
-              onClick={() => void sendDraft(prompt)}
-              style={tuiButtonStyle}
-            >
-              {prompt}
-            </button>
+              onSelect={(value) => void sendDraft(value)}
+            />
           ))}
-        <input
-          aria-label="ClawVille command"
-          value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void sendDraft(draft);
-          }}
-          placeholder="Tell ClawVille what to do..."
-          style={tuiInputStyle}
+        <ClawvilleCommandInput
+          draft={draft}
+          onDraftChange={setDraft}
+          onSubmit={() => void sendDraft(draft)}
         />
-        <button
-          type="button"
+        <ClawvilleSendButton
           disabled={!canSend || sending || !draft.trim()}
-          onClick={() => void sendDraft(draft)}
-          style={tuiButtonStyle}
-        >
-          send command
-        </button>
+          onSend={() => void sendDraft(draft)}
+        />
       </section>
     </div>
   );

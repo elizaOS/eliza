@@ -5,6 +5,7 @@ import {
   SidebarScrollRegion,
   TooltipHint,
   TooltipProvider,
+  useAgentElement,
 } from "@elizaos/ui";
 import {
   BriefcaseBusiness,
@@ -14,8 +15,7 @@ import {
   LayoutDashboard,
   Mail,
   MessageSquare,
-  Monitor,
-  Moon,
+  MessageSquareText,
   Settings2,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -40,28 +40,22 @@ interface NavItem {
   dotColor: string;
 }
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     key: "today",
-    label: "Today",
+    label: "Assistant",
     items: [
+      {
+        id: "assistant",
+        label: "Assistant",
+        icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
+        dotColor: "bg-amber-300",
+      },
       {
         id: "overview",
         label: "Overview",
         icon: <LayoutDashboard className="h-4 w-4" aria-hidden />,
         dotColor: "bg-violet-400",
-      },
-      {
-        id: "sleep",
-        label: "Sleep",
-        icon: <Moon className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-blue-300",
-      },
-      {
-        id: "screen-time",
-        label: "Screen Time",
-        icon: <Monitor className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-amber-300",
       },
       {
         id: "messages",
@@ -117,6 +111,60 @@ const NAV_GROUPS: NavGroup[] = [
 
 const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
 
+function LifeOpsNavRailItem({
+  item,
+  isActive,
+  onNavigate,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  onNavigate: (section: LifeOpsSection) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `nav-${item.id}`,
+    role: "tab",
+    label: item.label,
+    group: "lifeops-nav",
+    status: isActive ? "active" : "inactive",
+    description: `Open the ${item.label} section`,
+  });
+  return (
+    <TooltipHint content={item.label} side="right">
+      <button
+        ref={ref}
+        type="button"
+        aria-label={item.label}
+        aria-current={isActive ? "page" : undefined}
+        onClick={() => onNavigate(item.id)}
+        data-sidebar-item
+        {...agentProps}
+        className={[
+          "group flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
+          isActive ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
+            isActive
+              ? "bg-white/8 text-txt"
+              : "bg-transparent text-muted/80 group-hover:text-txt",
+          ].join(" ")}
+        >
+          {item.icon}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium">
+          {item.label}
+        </span>
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 rounded-full ${item.dotColor} opacity-60`}
+        />
+      </button>
+    </TooltipHint>
+  );
+}
+
 export function LifeOpsNavRail({
   activeSection,
   onNavigate,
@@ -164,48 +212,14 @@ export function LifeOpsNavRail({
                   }
                 >
                   <div className="space-y-0.5 px-1">
-                    {group.items.map((item) => {
-                      const isActive = item.id === activeSection;
-                      return (
-                        <TooltipHint
-                          key={item.id}
-                          content={item.label}
-                          side="right"
-                        >
-                          <button
-                            type="button"
-                            aria-label={item.label}
-                            aria-current={isActive ? "page" : undefined}
-                            onClick={() => onNavigate(item.id)}
-                            data-sidebar-item
-                            className={[
-                              "group flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
-                              isActive
-                                ? "bg-accent/15 text-txt"
-                                : "text-txt hover:bg-bg-muted/50",
-                            ].join(" ")}
-                          >
-                            <span
-                              className={[
-                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
-                                isActive
-                                  ? "bg-white/8 text-txt"
-                                  : "bg-transparent text-muted/80 group-hover:text-txt",
-                              ].join(" ")}
-                            >
-                              {item.icon}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-xs-tight font-medium">
-                              {item.label}
-                            </span>
-                            <span
-                              aria-hidden
-                              className={`h-1.5 w-1.5 rounded-full ${item.dotColor} opacity-60`}
-                            />
-                          </button>
-                        </TooltipHint>
-                      );
-                    })}
+                    {group.items.map((item) => (
+                      <LifeOpsNavRailItem
+                        key={item.id}
+                        item={item}
+                        isActive={item.id === activeSection}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}

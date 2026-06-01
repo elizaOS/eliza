@@ -9,9 +9,11 @@ import {
   Sidebar,
   SidebarContent,
   SidebarPanel,
+  useAgentElement,
   useApp,
 } from "@elizaos/ui";
 import { FileText } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { StewardLogo } from "./StewardLogo";
@@ -24,6 +26,50 @@ import type {
 } from "./types/steward";
 
 type StewardTab = "history" | "approvals";
+
+function StewardTabItem({
+  tab,
+  label,
+  description,
+  active,
+  onSelect,
+  icon,
+}: {
+  tab: StewardTab;
+  label: string;
+  description: string;
+  active: boolean;
+  onSelect: (tab: StewardTab) => void;
+  icon: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLElement>({
+    id: `tab-${tab}`,
+    role: "tab",
+    label,
+    group: "steward-tabs",
+    status: active ? "active" : "inactive",
+    description: `Switch to the ${label} view`,
+  });
+  return (
+    <SidebarContent.Item
+      ref={ref}
+      active={active}
+      onClick={() => onSelect(tab)}
+      aria-current={active ? "true" : undefined}
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon active={active} className="relative">
+        {icon}
+      </SidebarContent.ItemIcon>
+      <SidebarContent.ItemBody>
+        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>
+          {description}
+        </SidebarContent.ItemDescription>
+      </SidebarContent.ItemBody>
+    </SidebarContent.Item>
+  );
+}
 
 export function StewardView() {
   const {
@@ -95,43 +141,34 @@ export function StewardView() {
         </div>
 
         <nav className="mt-4 space-y-1.5">
-          <SidebarContent.Item
+          <StewardTabItem
+            tab="approvals"
+            label="Approvals"
+            description={
+              pendingCount > 0 ? `${pendingCount} pending` : "None pending"
+            }
             active={activeTab === "approvals"}
-            onClick={() => setActiveTab("approvals")}
-          >
-            <SidebarContent.ItemIcon
-              active={activeTab === "approvals"}
-              className="relative"
-            >
-              <StewardLogo size={16} />
-              {pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
-                  {pendingCount > 99 ? "99+" : pendingCount}
-                </span>
-              )}
-            </SidebarContent.ItemIcon>
-            <SidebarContent.ItemBody>
-              <SidebarContent.ItemTitle>Approvals</SidebarContent.ItemTitle>
-              <SidebarContent.ItemDescription>
-                {pendingCount > 0 ? `${pendingCount} pending` : "None pending"}
-              </SidebarContent.ItemDescription>
-            </SidebarContent.ItemBody>
-          </SidebarContent.Item>
+            onSelect={setActiveTab}
+            icon={
+              <>
+                <StewardLogo size={16} />
+                {pendingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </span>
+                )}
+              </>
+            }
+          />
 
-          <SidebarContent.Item
+          <StewardTabItem
+            tab="history"
+            label="History"
+            description="All transactions"
             active={activeTab === "history"}
-            onClick={() => setActiveTab("history")}
-          >
-            <SidebarContent.ItemIcon active={activeTab === "history"}>
-              <FileText className="h-4 w-4" />
-            </SidebarContent.ItemIcon>
-            <SidebarContent.ItemBody>
-              <SidebarContent.ItemTitle>History</SidebarContent.ItemTitle>
-              <SidebarContent.ItemDescription>
-                All transactions
-              </SidebarContent.ItemDescription>
-            </SidebarContent.ItemBody>
-          </SidebarContent.Item>
+            onSelect={setActiveTab}
+            icon={<FileText className="h-4 w-4" />}
+          />
         </nav>
 
         {/* Steward status */}

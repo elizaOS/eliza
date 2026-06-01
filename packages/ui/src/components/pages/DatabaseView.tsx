@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type ColumnInfo,
   client,
@@ -44,6 +45,33 @@ const DATABASE_UNAVAILABLE_FEATURES = [
   { id: "sql", label: "SQL", icon: TerminalSquare, tone: "text-accent" },
   { id: "runtime", label: "Runtime", icon: DatabaseIcon, tone: "text-warning" },
 ] as const;
+
+// The editor-mode SegmentedControl renders its own internal buttons and does
+// not forward refs to them, so each mode registers with the agent surface
+// through a tiny ref-less child that drives selection via onActivate (mirrors
+// SettingsNavButton in SettingsView.tsx).
+function ViewModeTab({
+  mode,
+  label,
+  isActive,
+  onSelect,
+}: {
+  mode: DbView;
+  label: string;
+  isActive: boolean;
+  onSelect: (mode: DbView) => void;
+}) {
+  useAgentElement({
+    id: `editor-mode-${mode}`,
+    role: "tab",
+    label,
+    group: "database-editor-modes",
+    status: isActive ? "active" : "inactive",
+    description: `Switch to the ${label} editor`,
+    onActivate: () => onSelect(mode),
+  });
+  return null;
+}
 
 export function DatabaseView({
   leftNav,
@@ -291,19 +319,58 @@ export function DatabaseView({
     [tables, sidebarSearch],
   );
 
+  const handleRefresh = useCallback(async () => {
+    const status = await loadStatus();
+    if (status?.connected) {
+      await loadTables();
+    }
+  }, [loadStatus, loadTables]);
+
+  const refresh = useAgentElement<HTMLButtonElement>({
+    id: "refresh-database",
+    role: "button",
+    label: t("common.refresh"),
+    group: "database-actions",
+    description: "Reload the database status and table list",
+    onActivate: handleRefresh,
+  });
+
+  const filterSearch = useAgentElement<HTMLInputElement>({
+    id: "filter-tables",
+    role: "text-input",
+    label: t("databaseview.FilterTables"),
+    group: "database-actions",
+    description: "Filter the table list by name",
+    getValue: () => sidebarSearch,
+    onFill: (value) => setSidebarSearch(value),
+  });
+
+  const editorModes: Array<{ value: DbView; label: string }> = [
+    { value: "tables", label: t("databaseview.TableEditor") },
+    { value: "query", label: t("databaseview.SQLEditor") },
+  ];
+
   const viewToggle = (
-    <SegmentedControl
-      value={view}
-      onValueChange={(v) => setView(v)}
-      items={[
-        { value: "tables" as const, label: t("databaseview.TableEditor") },
-        { value: "query" as const, label: t("databaseview.SQLEditor") },
-      ]}
-      aria-label={t("databaseview.EditorModes", {
-        defaultValue: "Database editor modes",
-      })}
-      buttonClassName="h-10 flex-1"
-    />
+    <>
+      <SegmentedControl
+        value={view}
+        onValueChange={(v) => setView(v)}
+        items={editorModes}
+        aria-label={t("databaseview.EditorModes", {
+          defaultValue: "Database editor modes",
+        })}
+        buttonClassName="h-10 flex-1"
+      />
+      {editorModes.map((mode) => (
+        <ViewModeTab
+          key={mode.value}
+          mode={mode.value}
+          label={mode.label}
+          isActive={view === mode.value}
+          onSelect={setView}
+        />
+      ))}
+    </>
   );
 
   const sidebarSummary = (
@@ -336,15 +403,12 @@ export function DatabaseView({
 
   const refreshButton = (
     <Button
+      ref={refresh.ref}
+      {...refresh.agentProps}
       variant="outline"
       size="sm"
       className="h-10 w-full justify-start rounded-sm px-4 text-xs font-semibold border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-      onClick={async () => {
-        const status = await loadStatus();
-        if (status?.connected) {
-          await loadTables();
-        }
-      }}
+      onClick={handleRefresh}
     >
       {t("common.refresh")}
     </Button>
@@ -738,6 +802,8 @@ export function DatabaseView({
 
                 <div className="relative">
                   <Input
+                    ref={filterSearch.ref}
+                    {...filterSearch.agentProps}
                     type="text"
                     placeholder={t("databaseview.FilterTables")}
                     value={sidebarSearch}

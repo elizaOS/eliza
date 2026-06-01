@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../../agent-surface";
 import { client } from "../../../api/client";
 import type {
   RelationshipsGraphSnapshot,
@@ -181,6 +182,49 @@ export function RelationshipsWorkspaceView({
     void loadGraph(buildRelationshipsGraphQuery(deferredSearch, platform));
   };
 
+  const searchAgent = useAgentElement<HTMLInputElement>({
+    id: "relationships-search",
+    role: "text-input",
+    label: t("relationships.searchLabel", {
+      defaultValue: "Search people, aliases, handles",
+    }),
+    group: "relationships-toolbar",
+    description: "Search people, aliases, and handles in the relationships graph",
+    getValue: () => search,
+    onFill: (value) => setSearch(value),
+  });
+  const clearSearchAgent = useAgentElement<HTMLButtonElement>({
+    id: "relationships-clear-search",
+    role: "button",
+    label: t("relationships.clearSearch", {
+      defaultValue: "Clear relationship search",
+    }),
+    group: "relationships-toolbar",
+    onActivate: () => setSearch(""),
+  });
+  const platformAgent = useAgentElement<HTMLSelectElement>({
+    id: "relationships-platform",
+    role: "select",
+    label: t("relationships.platformFilter", {
+      defaultValue: "Platform filter",
+    }),
+    group: "relationships-toolbar",
+    description: "Filter relationships by platform",
+    options: ["all", ...platforms],
+    getValue: () => platform,
+    onFill: (value) => setPlatform(value),
+  });
+  const refreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "relationships-refresh",
+    role: "button",
+    label: t("relationships.refresh", {
+      defaultValue: "Refresh relationships",
+    }),
+    group: "relationships-toolbar",
+    status: graphLoading ? "loading" : "idle",
+    onActivate: refreshGraph,
+  });
+
   const toolbar = (
     <PagePanel variant="surface" className="px-3 py-3">
       <div className="flex flex-col gap-3">
@@ -201,6 +245,7 @@ export function RelationshipsWorkspaceView({
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
+                  ref={searchAgent.ref}
                   id="relationships-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -211,15 +256,18 @@ export function RelationshipsWorkspaceView({
                     defaultValue: "Search people, aliases, handles",
                   })}
                   className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
+                  {...searchAgent.agentProps}
                 />
                 {search ? (
                   <button
+                    ref={clearSearchAgent.ref}
                     type="button"
                     className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition hover:bg-bg-hover hover:text-txt"
                     onClick={() => setSearch("")}
                     aria-label={t("relationships.clearSearch", {
                       defaultValue: "Clear relationship search",
                     })}
+                    {...clearSearchAgent.agentProps}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -236,6 +284,7 @@ export function RelationshipsWorkspaceView({
             </label>
             <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <select
+              ref={platformAgent.ref}
               id="relationships-platform"
               value={platform}
               onChange={(event) => setPlatform(event.target.value)}
@@ -243,6 +292,7 @@ export function RelationshipsWorkspaceView({
                 defaultValue: "Platform filter",
               })}
               className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
+              {...platformAgent.agentProps}
             >
               <option value="all">
                 {t("relationships.platformAll", { defaultValue: "All" })}
@@ -256,6 +306,7 @@ export function RelationshipsWorkspaceView({
           </div>
 
           <Button
+            ref={refreshAgent.ref}
             type="button"
             size="sm"
             variant="outline"
@@ -264,6 +315,7 @@ export function RelationshipsWorkspaceView({
             aria-label={t("relationships.refresh", {
               defaultValue: "Refresh relationships",
             })}
+            {...refreshAgent.agentProps}
           >
             <RefreshCw
               className={`h-4 w-4 ${graphLoading ? "animate-spin" : ""}`}

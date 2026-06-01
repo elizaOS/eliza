@@ -14,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import type { TranslationContextValue } from "../../state/TranslationContext";
@@ -280,6 +281,96 @@ function WidgetPreview({
   );
 }
 
+function WidgetRow({
+  declaration,
+  pluginId,
+  visible,
+  expanded,
+  onTogglePreview,
+  onToggleVisible,
+  t,
+}: {
+  declaration: PluginWidgetDeclaration;
+  pluginId: string;
+  visible: boolean;
+  expanded: boolean;
+  onTogglePreview: () => void;
+  onToggleVisible: (enabled: boolean) => void;
+  t: TranslateFn;
+}): React.JSX.Element {
+  const widgetKey = widgetVisibilityKey(declaration.pluginId, declaration.id);
+  const previewButton = useAgentElement<HTMLButtonElement>({
+    id: `widget-preview-${widgetKey}`,
+    role: "button",
+    label:
+      t("appdetails.preview", { defaultValue: "Preview" }) +
+      ` — ${declaration.label}`,
+    group: "app-widgets",
+    status: expanded ? "active" : "inactive",
+    description: `Toggle preview of the ${declaration.label} widget`,
+    onActivate: onTogglePreview,
+  });
+  const showToggle = useAgentElement<HTMLInputElement>({
+    id: `widget-show-${widgetKey}`,
+    role: "toggle",
+    label:
+      t("appdetails.show", { defaultValue: "Show" }) +
+      ` — ${declaration.label}`,
+    group: "app-widgets",
+    status: visible ? "active" : "inactive",
+    description: `Show or hide the ${declaration.label} widget`,
+    getValue: () => visible,
+    onActivate: () => onToggleVisible(!visible),
+  });
+  return (
+    <li className="rounded-sm border border-border/40 bg-card/30">
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {declaration.label}
+          </div>
+          <div className="truncate text-[10px] uppercase tracking-[0.14em] text-muted">
+            {declaration.slot}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            ref={previewButton.ref}
+            type="button"
+            onClick={onTogglePreview}
+            className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
+            {...previewButton.agentProps}
+          >
+            {expanded
+              ? t("appdetails.hide", { defaultValue: "Hide" })
+              : t("appdetails.preview", {
+                  defaultValue: "Preview",
+                })}
+          </button>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              ref={showToggle.ref}
+              type="checkbox"
+              checked={visible}
+              onChange={(event) => onToggleVisible(event.currentTarget.checked)}
+              className="h-3.5 w-3.5 accent-accent"
+              {...showToggle.agentProps}
+            />
+            <span className="text-muted">
+              {t("appdetails.show", { defaultValue: "Show" })}
+            </span>
+          </label>
+        </div>
+      </div>
+      {expanded ? (
+        <div className="border-t border-border/40 p-3">
+          <WidgetPreview declaration={declaration} pluginId={pluginId} t={t} />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 export function AppDetailsView({
   slug,
   onLaunched,
@@ -507,6 +598,58 @@ export function AppDetailsView({
     t,
   ]);
 
+  const supportsInline =
+    resolved?.source === "internal-tool" || resolved?.source === "overlay";
+
+  const launchButton = useAgentElement<HTMLButtonElement>({
+    id: "launch",
+    role: "button",
+    label: t("appdetails.launch", { defaultValue: "Launch" }),
+    group: "app-launch",
+    status: launching ? "active" : "inactive",
+    description: "Launch this app",
+    onActivate: () => void handleLaunch(),
+  });
+  const launchModeWindowRadio = useAgentElement<HTMLInputElement>({
+    id: "launch-mode-window",
+    role: "toggle",
+    label: t("appdetails.dedicatedWindow", {
+      defaultValue: "Dedicated window",
+    }),
+    group: "launch-mode",
+    status: config.launchMode === "window" ? "active" : "inactive",
+    description: "Launch this app in a dedicated window",
+    getValue: () => config.launchMode === "window",
+    onActivate: () => updateConfig({ launchMode: "window" }),
+  });
+  const launchModeInlineRadio = useAgentElement<HTMLInputElement>({
+    id: "launch-mode-inline",
+    role: "toggle",
+    label: t("appdetails.mainWindow", { defaultValue: "Main window" }),
+    group: "launch-mode",
+    status: config.launchMode === "inline" ? "active" : "inactive",
+    description: "Launch this app inline in the main window",
+    getValue: () => config.launchMode === "inline",
+    onActivate: () => {
+      if (supportsInline) updateConfig({ launchMode: "inline" });
+    },
+  });
+  const alwaysOnTopToggle = useAgentElement<HTMLInputElement>({
+    id: "always-on-top",
+    role: "toggle",
+    label: t("appdetails.keepOnTop", {
+      defaultValue: "Keep this app's window on top",
+    }),
+    group: "app-launch",
+    status: config.alwaysOnTop ? "active" : "inactive",
+    description: "Keep this app's window above other windows",
+    getValue: () => config.alwaysOnTop,
+    onActivate: () => {
+      if (config.launchMode === "window")
+        updateConfig({ alwaysOnTop: !config.alwaysOnTop });
+    },
+  });
+
   if (catalogError && !resolved) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted">
@@ -623,6 +766,7 @@ export function AppDetailsView({
             </p>
           </div>
           <button
+            ref={launchButton.ref}
             type="button"
             onClick={handleLaunch}
             disabled={launching}
@@ -631,6 +775,7 @@ export function AppDetailsView({
               defaultValue: "Launch {{name}}",
             })}
             className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            {...launchButton.agentProps}
           >
             <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">
@@ -720,10 +865,12 @@ export function AppDetailsView({
           </legend>
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
+              ref={launchModeWindowRadio.ref}
               type="radio"
               checked={config.launchMode === "window"}
               onChange={() => updateConfig({ launchMode: "window" })}
               className="h-3.5 w-3.5 accent-accent"
+              {...launchModeWindowRadio.agentProps}
             />
             <span>
               {t("appdetails.dedicatedWindow", {
@@ -739,11 +886,13 @@ export function AppDetailsView({
             }`}
           >
             <input
+              ref={launchModeInlineRadio.ref}
               type="radio"
               checked={config.launchMode === "inline"}
               disabled={!supportsInlineMode}
               onChange={() => updateConfig({ launchMode: "inline" })}
               className="h-3.5 w-3.5 accent-accent"
+              {...launchModeInlineRadio.agentProps}
             />
             <span>
               {!supportsInlineMode
@@ -763,6 +912,7 @@ export function AppDetailsView({
           }`}
         >
           <input
+            ref={alwaysOnTopToggle.ref}
             type="checkbox"
             checked={config.alwaysOnTop}
             disabled={config.launchMode !== "window"}
@@ -770,6 +920,7 @@ export function AppDetailsView({
               updateConfig({ alwaysOnTop: event.currentTarget.checked })
             }
             className="h-3.5 w-3.5 accent-accent"
+            {...alwaysOnTopToggle.agentProps}
           />
           {config.alwaysOnTop ? (
             <Pin className="h-3.5 w-3.5" aria-hidden="true" />
@@ -881,58 +1032,18 @@ export function AppDetailsView({
               const widgetKey = widgetVisibilityKey(decl.pluginId, decl.id);
               const expanded = expandedWidget === widgetKey;
               return (
-                <li
+                <WidgetRow
                   key={widgetKey}
-                  className="rounded-sm border border-border/40 bg-card/30"
-                >
-                  <div className="flex items-center justify-between gap-3 px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-foreground">
-                        {decl.label}
-                      </div>
-                      <div className="truncate text-[10px] uppercase tracking-[0.14em] text-muted">
-                        {decl.slot}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedWidget(expanded ? null : widgetKey)
-                        }
-                        className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
-                      >
-                        {expanded
-                          ? t("appdetails.hide", { defaultValue: "Hide" })
-                          : t("appdetails.preview", {
-                              defaultValue: "Preview",
-                            })}
-                      </button>
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={visible}
-                          onChange={(event) =>
-                            toggleWidget(decl, event.currentTarget.checked)
-                          }
-                          className="h-3.5 w-3.5 accent-accent"
-                        />
-                        <span className="text-muted">
-                          {t("appdetails.show", { defaultValue: "Show" })}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                  {expanded ? (
-                    <div className="border-t border-border/40 p-3">
-                      <WidgetPreview
-                        declaration={decl}
-                        pluginId={resolved.pluginId}
-                        t={t}
-                      />
-                    </div>
-                  ) : null}
-                </li>
+                  declaration={decl}
+                  pluginId={resolved.pluginId}
+                  visible={visible}
+                  expanded={expanded}
+                  onTogglePreview={() =>
+                    setExpandedWidget(expanded ? null : widgetKey)
+                  }
+                  onToggleVisible={(enabled) => toggleWidget(decl, enabled)}
+                  t={t}
+                />
               );
             })}
           </ul>

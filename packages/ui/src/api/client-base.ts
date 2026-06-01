@@ -296,6 +296,9 @@ export class ElizaClient {
     (state: ConnectionStateInfo) => void
   >();
   private readonly maxReconnectAttempts = 15;
+  // Fired exactly once per successful reconnect (never on the first connect)
+  // so consumers can reconcile state that drifted during the network gap.
+  private resyncListeners = new Set<() => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -304,6 +307,18 @@ export class ElizaClient {
   /** Store the current UI language so it can be sent as a header on every request. */
   setUiLanguage(lang: string): void {
     this._uiLanguage = lang || null;
+  }
+
+  /**
+   * Stable id for a single logical client message. Used as an idempotency key
+   * so a resend after reconnect is de-dupable server-side. Falls back to a
+   * time+random token when crypto.randomUUID is unavailable.
+   */
+  private static generateMessageId(): string {
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   }
 
   private static generateClientId(): string {
@@ -784,12 +799,16 @@ export class ElizaClient {
 
       // Notify listeners when the WS reconnects (not on the first connect)
       // so they can re-hydrate state that may have been lost during the gap.
+      // Fired once per reconnect — consumers refetch on demand, never poll.
       if (this.wsHasConnectedOnce) {
         const handlers = this.wsHandlers.get("ws-reconnected");
         if (handlers) {
           for (const handler of handlers) {
             handler({ type: "ws-reconnected" });
           }
+        }
+        for (const listener of this.resyncListeners) {
+          listener();
         }
       }
       this.wsHasConnectedOnce = true;
@@ -941,6 +960,20 @@ export class ElizaClient {
     };
   }
 
+  /**
+   * Subscribe to reconnect events. The listener fires once each time the
+   * WebSocket re-establishes after a drop (never on the initial connect), so
+   * callers can reconcile state that may have drifted during the gap — e.g.
+   * refetch the active conversation's recent messages. Returns an unsubscribe
+   * function. This is edge-triggered, not a poll.
+   */
+  onReconnect(listener: () => void): () => void {
+    this.resyncListeners.add(listener);
+    return () => {
+      this.resyncListeners.delete(listener);
+    };
+  }
+
   /** Reset connection state and restart reconnection attempts. */
   resetConnection(): void {
     this.reconnectAttempt = 0;
@@ -955,16 +988,28 @@ export class ElizaClient {
     this.connectWs();
   }
 
-  /** Send an arbitrary JSON message over the WebSocket connection. */
+  /**
+   * Send an arbitrary JSON message over the WebSocket connection.
+   *
+   * Every message is stamped with a stable client-generated `msgId` (unless the
+   * caller already supplied one). The id is assigned once and travels with the
+   * payload, so a message that gets queued while offline and flushed after a
+   * reconnect carries the *same* id on the resend — letting the server dedupe
+   * `(clientId, msgId)` instead of double-processing it.
+   */
   sendWsMessage(data: Record<string, unknown>): void {
-    const payload = JSON.stringify(data);
+    const message: Record<string, unknown> =
+      typeof data.msgId === "string" && data.msgId.length > 0
+        ? data
+        : { ...data, msgId: ElizaClient.generateMessageId() };
+    const payload = JSON.stringify(message);
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(payload);
       return;
     }
 
     // Keep only the newest active-conversation update while disconnected.
-    if (data.type === "active-conversation") {
+    if (message.type === "active-conversation") {
       this.wsSendQueue = this.wsSendQueue.filter((queued) => {
         try {
           const parsed = JSON.parse(queued) as { type?: unknown };
@@ -1066,6 +1111,14 @@ export class ElizaClient {
     failureKind?: ChatFailureKind;
     localInference?: LocalInferenceChatMetadata;
   }> {
+    // Idempotency key for the chat send. The HTTP chat path (POST
+    // /api/chat[/:conversationId]/stream) lives in
+    // packages/agent/src/api/chat-routes.ts, which is owned by the chat swarm.
+    // Server-side dedupe by `clientMessageId` should hook there, where the
+    // request body is parsed before the message is persisted/generated. The id
+    // is generated here so the contract is in place regardless of when that
+    // dedupe lands.
+    const clientMessageId = ElizaClient.generateMessageId();
     const res = await this.rawRequest(path, {
       method: "POST",
       headers: {
@@ -1075,6 +1128,7 @@ export class ElizaClient {
       body: JSON.stringify({
         text,
         channelType,
+        clientMessageId,
         ...(images?.length ? { images } : {}),
         ...(metadata ? { metadata } : {}),
       }),
