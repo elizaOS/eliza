@@ -60,9 +60,14 @@ const provisionSchema = z.object({
 
 // The wallet/trading plugin: gives the agent its Steward-backed wallet +
 // trade actions (uses STEWARD_AGENT_ID / STEWARD_API_URL env injected at
-// provision). Without it the agent boots as a blank Eliza with no wallet and
-// no awareness of its own token.
-const DEFAULT_AGENT_PLUGINS = ["@elizaos/plugin-steward-app"];
+// provision). Gated behind WAIFU_DEFAULT_WALLET_PLUGIN so we don't break
+// agent boot on images that don't bundle the plugin yet; enable once the
+// agent image ships @elizaos/plugin-steward-app. The system prompt below is
+// applied unconditionally (it can't break boot).
+function getDefaultAgentPlugins(): string[] {
+  const enabled = getCloudAwareEnv().WAIFU_DEFAULT_WALLET_PLUGIN === "true";
+  return enabled ? ["@elizaos/plugin-steward-app"] : [];
+}
 
 // Build a real system prompt from the token context so a freshly provisioned
 // agent knows who it is, what token it represents, and what it can do — instead
@@ -164,7 +169,7 @@ app.post("/", async (c) => {
           bio: p.character?.bio,
         });
       const plugins = Array.from(
-        new Set([...(p.character?.plugins ?? []), ...DEFAULT_AGENT_PLUGINS]),
+        new Set([...(p.character?.plugins ?? []), ...getDefaultAgentPlugins()]),
       );
 
       character = await charactersService.create({
