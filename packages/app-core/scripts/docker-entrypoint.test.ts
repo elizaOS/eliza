@@ -8,7 +8,10 @@ const cloudAgentEntrypoint = path.resolve(
   import.meta.dirname,
   "../deploy/cloud-agent-docker-entrypoint.sh",
 );
-const dockerEntrypoint = path.resolve(import.meta.dirname, "docker-entrypoint.sh");
+const dockerEntrypoint = path.resolve(
+  import.meta.dirname,
+  "docker-entrypoint.sh",
+);
 
 function runEntrypoint(
   env: NodeJS.ProcessEnv,
@@ -143,7 +146,9 @@ printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
   });
 
   test("fails clearly when tailscale is requested but unavailable", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "docker-entrypoint-missing-tailscale-"));
+    const root = await mkdtemp(
+      path.join(tmpdir(), "docker-entrypoint-missing-tailscale-"),
+    );
     const binDir = path.join(root, "bin");
     await mkdir(binDir, { recursive: true });
 

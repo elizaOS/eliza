@@ -103,7 +103,10 @@ describe("pipeline end-to-end on toy repo", () => {
     cache.write(report);
     const back = cache.read(report.cacheKey);
     expect(back).toEqual(report);
-    const cachePath = path.join(defaultCacheDir(toy.repoRoot), `${report.cacheKey}.json`);
+    // Use cache.dir (the actual directory used) rather than re-computing
+    // defaultCacheDir, which is env-dependent and may differ if
+    // GITPATHOLOGIST_CACHE_DIR is set in the CI environment.
+    const cachePath = path.join(cache.dir, `${report.cacheKey}.json`);
     expect(existsSync(cachePath)).toBe(true);
   });
 

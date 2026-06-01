@@ -211,10 +211,28 @@ const json5EsmEntry = path.join(
 // internal modules raw in dev. Resolve its ESM entry through core's scope and
 // alias the bare specifier to it so it can be pre-bundled + deduped to one copy.
 const otelApiEntry = (() => {
-  // Search candidate roots: core's node_modules, ai package's node_modules,
-  // then the bun content-addressable store (for bun canary installs where
-  // packages are not hoisted to the workspace root).
+  // Search candidate roots in priority order:
+  // 1. workspace root node_modules (hoisted installs — npm/yarn/bun default)
+  // 2. direct require() resolution from packages/app scope
+  // 3. core's nested node_modules
+  // 4. bun content-addressable store entries for the ai package
+  // 5. bun content-addressable store entries for @opentelemetry/api directly
   const candidateRoots: string[] = [];
+
+  // 1. Workspace root — fastest probe, covers most CI environments.
+  candidateRoots.push(path.join(elizaRoot, "node_modules"));
+
+  // 2. Direct require() resolution — works when hoisted correctly.
+  try {
+    const resolved = _require.resolve("@opentelemetry/api/package.json");
+    // resolved is the package.json path; parent is the package dir,
+    // grandparent is the node_modules root we want.
+    candidateRoots.push(path.join(path.dirname(resolved), ".."));
+  } catch {
+    /* not resolvable from this scope */
+  }
+
+  // 3. core's nested node_modules.
   try {
     candidateRoots.push(
       path.join(
@@ -225,35 +243,42 @@ const otelApiEntry = (() => {
   } catch {
     /* core not resolvable */
   }
-  // ai package ships @opentelemetry/api as a peer; probe from ai's own scope.
+
+  // 4. bun content-addressable store — ai package's nested node_modules.
   try {
-    const aiBunDir = path.join(elizaRoot, "node_modules/.bun");
-    if (fs.existsSync(aiBunDir)) {
-      const aiEntry = fs
-        .readdirSync(aiBunDir)
-        .find((d) => d.startsWith("ai@"));
-      if (aiEntry) {
-        candidateRoots.push(
-          path.join(aiBunDir, aiEntry, "node_modules"),
-        );
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    if (fs.existsSync(bunDir)) {
+      // Collect ALL ai@ entries; there may be multiple hash-variants.
+      const aiEntries = fs.readdirSync(bunDir).filter((d) => d.startsWith("ai@"));
+      for (const aiEntry of aiEntries) {
+        candidateRoots.push(path.join(bunDir, aiEntry, "node_modules"));
       }
     }
   } catch {
     /* bun store not accessible */
   }
-  // Also probe the bun content-addressable store directly for @opentelemetry/api.
+
+  // 5. bun content-addressable store — @opentelemetry/api direct entries.
   try {
-    const otelBunDir = path.join(elizaRoot, "node_modules/.bun");
-    if (fs.existsSync(otelBunDir)) {
-      const otelEntry = fs
-        .readdirSync(otelBunDir)
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    if (fs.existsSync(bunDir)) {
+      const otelEntries = fs
+        .readdirSync(bunDir)
         .filter((d) => d.startsWith("@opentelemetry+api@"))
-        .sort()
-        .pop();
-      if (otelEntry) {
-        candidateRoots.push(
-          path.join(otelBunDir, otelEntry, "node_modules"),
-        );
+        .sort();
+      for (const otelEntry of otelEntries) {
+        // Entry may have a nested node_modules/@opentelemetry/api layout or
+        // place the package directly at the entry root.
+        const withNested = path.join(bunDir, otelEntry, "node_modules");
+        const asDirect = path.join(bunDir, otelEntry);
+        if (fs.existsSync(path.join(withNested, "@opentelemetry/api/package.json"))) {
+          candidateRoots.push(withNested);
+        } else if (fs.existsSync(path.join(asDirect, "package.json"))) {
+          // The package itself is at the entry root; its parent is the "root"
+          // from which `@opentelemetry/api` resolves if we treat it as `{root}/@opentelemetry/api`.
+          // Construct a synthetic path that the loop below can find.
+          candidateRoots.push(path.join(bunDir, otelEntry, ".."));
+        }
       }
     }
   } catch {
@@ -2127,8 +2152,7 @@ export const INVALID_TRACER_PROVIDER = {};
               {
                 name: "otel-api-build-stub",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api")
-                    return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
                   return null;
                 },
                 load(id: string) {
@@ -2204,6 +2228,59 @@ export const INVALID_TRACER_PROVIDER = {};
       },
       output: {
         manualChunks: resolveManualChunk,
+      },
+    },
+    // rollupOptions mirrors the otel stub from rolldownOptions above.
+    // Vite reads rolldownOptions only when using experimental Rolldown; when
+    // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
+    // rolldownOptions is silently ignored and the otel-api-build-* plugin
+    // never runs. The rollupOptions block below is the standard path and is
+    // always applied by Vite + Rollup.
+    rollupOptions: {
+      plugins: [
+        ...(otelApiEntry
+          ? [
+              {
+                name: "otel-api-build-resolver",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return otelApiEntry;
+                  return null;
+                },
+              },
+            ]
+          : [
+              {
+                name: "otel-api-build-stub",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  return null;
+                },
+                load(id: string) {
+                  if (id !== "\0otel-api-stub") return null;
+                  return `
+export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
+export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
+export const propagation = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const metrics = { getMeter: () => ({ createCounter: () => ({ add(){} }), createHistogram: () => ({ record(){} }), createGauge: () => ({ record(){} }), createObservableGauge: () => ({}) }) };
+export const diag = { setLogger: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, verbose: () => {} };
+export const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 };
+export const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 };
+export const ROOT_CONTEXT = {};
+export const createContextKey = (name) => Symbol(name);
+export const defaultTextMapPropagator = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const isSpanContextValid = () => false;
+export const INVALID_SPAN_CONTEXT = {};
+export const INVALID_TRACER_PROVIDER = {};
+`;
+                },
+              },
+            ]),
+      ],
+      onwarn(warning, warn) {
+        if (isKnownToleratedBuildWarning(warning)) {
+          return;
+        }
+        warn(warning);
       },
     },
   },
