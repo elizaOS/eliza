@@ -967,6 +967,12 @@ let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
 
+// Vite cold-start of the full raw-source module graph can exceed 60s on slow
+// shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
+// via env; dev machines keep the 60s default.
+const VITE_READY_BUDGET_MS =
+  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 60_000;
+
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
   const sig = signal === "SIGKILL" ? "SIGKILL" : "SIGTERM";
@@ -1148,7 +1154,7 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
     const listening = await isPortListening(UI_PORT);
     if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
-      if (ageMs > 60_000) {
+      if (ageMs > VITE_READY_BUDGET_MS) {
         console.log(
           `  ${green(logPrefix)} ${dim(
             `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,

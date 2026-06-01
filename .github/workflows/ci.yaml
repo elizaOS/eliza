@@ -117,6 +117,12 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts --no-frozen-lockfile
 
+      # The scenario CLI imports @elizaos/core from source, which imports the
+      # gitignored ./generated/validation-keyword-data.ts. --ignore-scripts skips
+      # postinstall, so generate it explicitly before any step resolves core.
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       - name: Scenario catalog coverage gate
         run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
 
