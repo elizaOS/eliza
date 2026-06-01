@@ -2183,13 +2183,39 @@ export function OrchestratorWorkbench() {
     });
   }, [detail, runMutation]);
 
-  // Esc interrupts the running turn from anywhere in the workbench. A ref keeps
-  // the document listener stable while always calling the latest handler.
-  const stopActiveRef = useRef(handleStopActive);
-  stopActiveRef.current = handleStopActive;
+  // Esc closes an open modal/drawer first; only when nothing is open does it
+  // interrupt the running turn. A ref keeps the document listener stable while
+  // always seeing the latest state (otherwise Esc-to-stop would trap an open
+  // dialog, blocking the whole UI).
+  const escStateRef = useRef({
+    createOpen,
+    addAgentOpen,
+    inspectorOpen,
+    stop: handleStopActive,
+  });
+  escStateRef.current = {
+    createOpen,
+    addAgentOpen,
+    inspectorOpen,
+    stop: handleStopActive,
+  };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") stopActiveRef.current();
+      if (event.key !== "Escape") return;
+      const s = escStateRef.current;
+      if (s.createOpen) {
+        setCreateOpen(false);
+        return;
+      }
+      if (s.addAgentOpen) {
+        setAddAgentOpen(false);
+        return;
+      }
+      if (s.inspectorOpen) {
+        setInspectorOpen(false);
+        return;
+      }
+      s.stop();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
