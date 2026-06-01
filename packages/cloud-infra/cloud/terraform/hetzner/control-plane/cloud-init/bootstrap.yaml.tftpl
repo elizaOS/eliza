@@ -52,6 +52,9 @@ packages:
   - postgresql-client
   - rsync
   - unzip
+  # nodejs is installed from the NodeSource apt repo in runcmd below, not from
+  # this package list — we need Node 24, and Ubuntu 24.04's default nodejs is
+  # older. See the NodeSource setup_24.x call in runcmd.
 
 write_files:
   - path: /etc/profile.d/eliza-paths.sh
@@ -65,6 +68,28 @@ runcmd:
   # Docker apt repo (GPG-verified keyring), not `curl get.docker.com | sh`.
   - systemctl enable --now docker
 
+  # Node 24 for the daemon. The systemd unit calls
+  # `node_modules/.bin/tsx --tsconfig ... daemon.ts` which spawns a Node
+  # process. Without this, the first deploy fails with
+  # `/usr/bin/env: 'node': No such file or directory`. NodeSource setup
+  # script refreshes the apt index for Node 24, then `apt-get install`
+  # pulls it. Pinned to the major version so a future Node 26 jump is
+  # explicit; the apt repo stays on the LTS line within Node 24.
+  - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  - apt-get install -y nodejs
+
+  # Swap: the staging cpx32 / cpx22 / cax11 shapes are too small to run
+  # `turbo run build --filter=@elizaos/...` (19+ packages in parallel)
+  # without OOM-killing one of the workspace builds. 8 GB swap is enough
+  # headroom that the build completes even under memory pressure; on
+  # bigger control-plane shapes (cax21 8 GB) this is unused. Persists
+  # across reboots via /etc/fstab.
+  - test -f /swapfile || fallocate -l 8G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile || true
+  - swapon /swapfile || true
+  - grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
   # Bun runtime for the deploy user. We download a pinned release tarball
   # AND its SHASUMS256 manifest from the same GitHub release, then verify
   # the binary against the published hash before extracting. This avoids
@@ -76,6 +101,12 @@ runcmd:
   - su - deploy -c 'curl -fsSL -o /tmp/bun-SHASUMS256.txt https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/SHASUMS256.txt'
   - su - deploy -c 'cd /tmp && grep "bun-linux-x64.zip" bun-SHASUMS256.txt | sha256sum -c -'
   - su - deploy -c 'cd /tmp && unzip -q bun.zip && install -m 0755 bun-linux-x64/bun /home/deploy/.bun/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /tmp/bun-SHASUMS256.txt'
+
+  # The `bunx` invocation used by some workspace build scripts is a separate
+  # binary (or symlink) alongside `bun`. Older release tarballs ship it; the
+  # canary release the deploy workflow upgrades to during first deploy does
+  # NOT, so we recreate it here as a symlink. Cheap and idempotent.
+  - su - deploy -c 'ln -sf bun /home/deploy/.bun/bin/bunx'
 
   # Repo checkout — the GitHub deploy workflow then takes over for code updates.
   - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
