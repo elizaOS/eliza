@@ -18,7 +18,8 @@ import {
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, Input, useAgentElement } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
