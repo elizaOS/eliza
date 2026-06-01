@@ -20,6 +20,27 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 const INSTALLED_SKILL_MATCH_LIMIT = 100;
 
+type UninstallSkillOptions = {
+	parameters?: {
+		slug?: unknown;
+	};
+	slug?: unknown;
+};
+
+function optionString(
+	options: UninstallSkillOptions | undefined,
+	key: "slug",
+): string | null {
+	const parameterValue = options?.parameters?.[key];
+	if (typeof parameterValue === "string" && parameterValue.trim()) {
+		return parameterValue.trim();
+	}
+	const directValue = options?.[key];
+	return typeof directValue === "string" && directValue.trim()
+		? directValue.trim()
+		: null;
+}
+
 export const uninstallSkillAction = {
 	name: "SKILL",
 	contexts: ["automation", "settings"],
@@ -53,7 +74,7 @@ export const uninstallSkillAction = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State | undefined,
-		_options: unknown,
+		options: unknown,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const service = runtime.getService<AgentSkillsService>(
@@ -66,7 +87,8 @@ export const uninstallSkillAction = {
 		}
 
 		const text = message.content.text || "";
-		const slug = extractSlugFromMessage(text);
+		const opts = options as UninstallSkillOptions | undefined;
+		const slug = optionString(opts, "slug") || extractSlugFromMessage(text);
 
 		if (!slug) {
 			const errorText =

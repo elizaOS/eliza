@@ -156,6 +156,18 @@ export const skillAction: Action = {
 			required: false,
 			schema: { type: "string", enum: [...ALL_OPS] },
 		},
+		{
+			name: "slug",
+			description: "Skill slug for details, install, toggle, or uninstall.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "enabled",
+			description: "For action=toggle: true enables; false disables.",
+			required: false,
+			schema: { type: "boolean" },
+		},
 	],
 	validate: async (runtime: IAgentRuntime) => {
 		return Boolean(runtime.getService("AGENT_SKILLS_SERVICE"));

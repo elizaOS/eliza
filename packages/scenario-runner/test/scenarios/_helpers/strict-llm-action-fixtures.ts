@@ -22,7 +22,7 @@ export type StrictActionRouteFixture = {
   messageToUser?: string;
 };
 
-function finalMessageUserText(value: string): string {
+export function finalMessageUserText(value: string): string {
   const markerIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
   const messageText =
     markerIndex === -1
@@ -45,7 +45,7 @@ function finalMessageUserText(value: string): string {
   ).trim();
 }
 
-function matchesScenarioInput(expected: string) {
+export function matchesScenarioInput(expected: string) {
   return (value: string) => finalMessageUserText(value) === expected;
 }
 

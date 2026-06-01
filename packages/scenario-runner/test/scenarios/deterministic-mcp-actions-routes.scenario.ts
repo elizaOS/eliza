@@ -19,6 +19,7 @@ import {
   type McpServer,
 } from "../../../../plugins/plugin-mcp/src/types.ts";
 import {
+  matchesScenarioInput,
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
 } from "./_helpers/strict-llm-action-fixtures";
@@ -110,8 +111,9 @@ const strictMcpRoutes = [
 ];
 
 function matchesUnsupportedMcpEvaluation(expectedInput: string) {
+  const matchesInput = matchesScenarioInput(expectedInput);
   return (value: string) =>
-    value.includes(`message:user:\n${expectedInput}`) &&
+    matchesInput(value) &&
     value.includes("event:message_handler:") &&
     value.includes(
       "Stage 1 router marked this current turn as requiring a tool",
@@ -370,7 +372,7 @@ function mcpConfig(): McpRouteConfig {
       servers: {
         [MCP_SERVER_NAME]: {
           type: "stdio",
-          command: process.execPath,
+          command: "node",
           args: [fixturePath],
           timeoutInMillis: 5_000,
         },

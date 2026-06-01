@@ -102,21 +102,21 @@ const strictAgentSkillRoutes = [
   },
   {
     actionName: "SKILL_DETAILS",
-    args: { action: "details" },
+    args: { action: "details", slug: registrySkillSlug },
     contextIds: ["knowledge"],
     input: registryDetailsText,
     messageToUser: "Registry Weather details.",
   },
   {
     actionName: "SKILL_INSTALL",
-    args: { action: "install" },
+    args: { action: "install", slug: registrySkillSlug },
     contextIds: ["settings"],
     input: registryInstallText,
     messageToUser: `Skill ${registrySkillSlug} installed successfully.`,
   },
   {
     actionName: "SKILL_TOGGLE",
-    args: { action: "toggle" },
+    args: { action: "toggle", enabled: false, slug: registrySkillSlug },
     contextIds: ["settings"],
     input: registryDisableText,
     messageToUser: `Skill ${registrySkillSlug} has been disabled.`,
@@ -137,14 +137,14 @@ const strictAgentSkillRoutes = [
   },
   {
     actionName: "SKILL_UNINSTALL",
-    args: { action: "uninstall" },
+    args: { action: "uninstall", slug: registrySkillSlug },
     contextIds: ["settings"],
     input: uninstallPromptText,
     messageToUser: `Reply "yes" to confirm uninstalling ${registrySkillSlug}.`,
   },
   {
     actionName: "SKILL_UNINSTALL",
-    args: { action: "uninstall" },
+    args: { action: "uninstall", slug: registrySkillSlug },
     contextIds: ["settings"],
     input: uninstallConfirmText,
     messageToUser: `Skill ${registrySkillSlug} has been uninstalled.`,
@@ -601,7 +601,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_DETAILS",
-          parameters: { action: "details" },
+          parameters: { action: "details", slug: registrySkillSlug },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "details",
@@ -618,7 +618,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_INSTALL",
-          parameters: { action: "install" },
+          parameters: { action: "install", slug: registrySkillSlug },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "install",
@@ -635,7 +635,11 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_TOGGLE",
-          parameters: { action: "toggle" },
+          parameters: {
+            action: "toggle",
+            enabled: false,
+            slug: registrySkillSlug,
+          },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "toggle",
@@ -688,7 +692,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_UNINSTALL",
-          parameters: { action: "uninstall" },
+          parameters: { action: "uninstall", slug: registrySkillSlug },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "uninstall",
@@ -705,7 +709,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_UNINSTALL",
-          parameters: { action: "uninstall" },
+          parameters: { action: "uninstall", slug: registrySkillSlug },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "uninstall",
