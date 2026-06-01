@@ -2071,6 +2071,11 @@ export default defineConfig({
     host: true,
     port: uiPort,
     strictPort: true,
+    // Proactively transform the boot entry's import graph at server start
+    // instead of lazily on the first browser request. On this app the eager
+    // graph is large (~1200 workspace source modules), so warming it parallelizes
+    // the transform work and shortens cold-load TTFB after a server (re)start.
+    warmup: { clientFiles: ["src/main.tsx"] },
     // Only pin the dev origin when the desktop shell explicitly asks for a
     // loopback public URL. Capacitor live reload and LAN/browser clients need
     // Vite to keep serving the current request host instead of rewriting
