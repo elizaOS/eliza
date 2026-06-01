@@ -25,7 +25,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
-import { recordBootTelemetry, startMemorySampler } from "./boot-telemetry.ts";
+import {
+  recordBootEvent,
+  recordBootTelemetry,
+  startMemorySampler,
+} from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
@@ -3183,6 +3187,10 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   const bootTimer = new BootTimer("[eliza-boot]");
+  // Record the (re)start at the START of boot so a restart storm — where boots
+  // never complete — is still countable via /api/dev/boot-history. void: never
+  // delay readiness. recordBootTelemetry below captures the completed-boot case.
+  void recordBootEvent("[eliza-boot]");
 
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS blocking map BEFORE any plugin resolution happens. See the
