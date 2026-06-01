@@ -60,9 +60,7 @@ describe("looksLikeTrainingCutoffLeak", () => {
 			expect(looksLikeTrainingCutoffLeak("")).toBe(false);
 		});
 		it("returns false for non-string (number)", () => {
-			expect(
-				looksLikeTrainingCutoffLeak(123 as unknown as string),
-			).toBe(false);
+			expect(looksLikeTrainingCutoffLeak(123 as unknown as string)).toBe(false);
 		});
 	});
 });

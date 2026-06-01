@@ -5,9 +5,9 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { parseJsonObject } from "./json-output";
 import { looksLikeTrainingCutoffLeak } from "./cutoff-leak-detector";
 import { looksLikeFabricatedModeration } from "./fabricated-moderation-detector";
+import { parseJsonObject } from "./json-output";
 import { looksLikeRefusal } from "./refusal-detector";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;

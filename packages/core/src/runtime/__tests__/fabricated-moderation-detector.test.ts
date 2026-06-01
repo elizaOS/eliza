@@ -59,9 +59,9 @@ describe("looksLikeFabricatedModeration", () => {
 			expect(looksLikeFabricatedModeration("")).toBe(false);
 		});
 		it("returns false for non-string (number)", () => {
-			expect(
-				looksLikeFabricatedModeration(123 as unknown as string),
-			).toBe(false);
+			expect(looksLikeFabricatedModeration(123 as unknown as string)).toBe(
+				false,
+			);
 		});
 	});
 });

@@ -51,6 +51,7 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
+import { looksLikeTrainingCutoffLeak } from "../runtime/cutoff-leak-detector";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -61,6 +62,7 @@ import {
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
+import { looksLikeFabricatedModeration } from "../runtime/fabricated-moderation-detector";
 import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
@@ -88,8 +90,6 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { looksLikeTrainingCutoffLeak } from "../runtime/cutoff-leak-detector";
-import { looksLikeFabricatedModeration } from "../runtime/fabricated-moderation-detector";
 import { looksLikeRefusal } from "../runtime/refusal-detector";
 import {
 	buildResponseGrammar,

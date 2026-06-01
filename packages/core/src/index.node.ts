@@ -174,7 +174,9 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -196,8 +198,6 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
-export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
-export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
