@@ -602,6 +602,19 @@ function TruncatedNote(): ReactNode {
   );
 }
 
+/** Command output's meaningful result — the error, the exit summary, the last
+ * failing line — usually lives at the END, so when it's too long keep BOTH
+ * ends and elide the middle rather than dropping the tail (a head-only clamp
+ * hides exactly the part you opened the card to read). Diffs keep the head-only
+ * clamp above; a mid-string marker there would corrupt line alignment. */
+function clampOutput(text: string): string {
+  if (text.length <= MAX_BODY_CHARS) return text;
+  const head = Math.ceil(MAX_BODY_CHARS * 0.6);
+  const tail = MAX_BODY_CHARS - head;
+  const elided = text.length - head - tail;
+  return `${text.slice(0, head).trimEnd()}\n\n… ${elided.toLocaleString()} characters elided …\n\n${text.slice(-tail).trimStart()}`;
+}
+
 /** The expandable body of a tool card: an interleaved diff for edits, the new
  * content for writes, the command + output for shells, and the raw output
  * otherwise. */
@@ -625,15 +638,13 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   // The command itself is already shown (untruncated on hover) in the card
   // header, so the body carries only its output — no redundant `$` echo.
   if (tool.output) {
-    const { body, truncated } = clamp(tool.output);
     blocks.push(
       <pre
         key="out"
         className="overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
         style={{ maxHeight: "14rem" }}
       >
-        {body}
-        {truncated ? "\n… (truncated)" : ""}
+        {clampOutput(tool.output)}
       </pre>,
     );
   }
