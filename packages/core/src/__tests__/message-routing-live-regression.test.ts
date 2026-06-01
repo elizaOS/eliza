@@ -196,8 +196,11 @@ describe("live routing regressions", () => {
 				directCandidateActions: [],
 			}),
 		).toBe(false);
-		// Even a fabricated direct WEB_FETCH cannot promote a coding-work turn:
-		// the `looksLikeCodingWorkRequest` gate fires first.
+		// Even a fabricated direct WEB_FETCH cannot promote this turn: "build a
+		// weather app …" is not a local-shell request, so
+		// shouldPreferDirectCurrentCandidateActions early-returns false at the
+		// !looksLikeLocalShellRequest guard — before the directCandidateActions
+		// WEB_FETCH check is ever consulted.
 		expect(
 			shouldPreferDirectCurrentCandidateActions({
 				candidateActions: ["WEB_FETCH", "TASKS_SPAWN_AGENT"],
