@@ -1695,7 +1695,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1786,6 +1786,74 @@ android smoke model works`,
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.contexts).toContain("general");
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["update website"],
+				replyText: "On it.",
+				candidateActionNames: ["SCHEDULED_TASKS"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS" },
+				],
+				messageText: "update the website, add some fixes",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("keeps scheduled coding-related reminders on LifeOps scheduled tasks", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["create scheduled task"],
+				replyText: "I'll schedule that.",
+				candidateActionNames: ["SCHEDULED_TASKS_CREATE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "TASKS",
+						tags: [
+							"domain:coding",
+							"resource:agent-task",
+							"capability:delegate",
+						],
+					},
+					{ name: "SCHEDULED_TASKS_CREATE" },
+				],
+				messageText: "create a scheduled task to fix the app tomorrow",
+			},
+		);
+
+		expect(routed.plan.contexts).not.toContain("code");
+		expect(routed.plan.candidateActions).toEqual(["SCHEDULED_TASKS_CREATE"]);
 	});
 
 	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {

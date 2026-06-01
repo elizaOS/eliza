@@ -1,186 +1,123 @@
 # @elizaos/plugin-roblox
 
-Roblox plugin for elizaOS v2.0.0 - Enables AI agents to communicate with Roblox games via the Open Cloud API.
+Roblox Open Cloud integration for elizaOS agents: publish messages and game-side
+action payloads to a Roblox experience, and look up Roblox players. Communication
+is outbound (agent → Roblox); Open Cloud has no external subscribe endpoint, so
+inbound player chat must be bridged from Roblox (see below).
 
-## Features
-
-- **Messaging Service**: Cross-server communication with Roblox games
-- **DataStore Operations**: Persistent data storage for agents
-- **Player Management**: Look up player information by ID or username
-- **Game Actions**: Execute custom actions in-game
-- **Experience Info**: Retrieve game metadata and statistics
-
-## Installation
-
-### TypeScript
+## Install
 
 ```bash
-npm install @elizaos/plugin-roblox
-# or
 bun add @elizaos/plugin-roblox
+# or
+npm install @elizaos/plugin-roblox
 ```
-## Quick Start
 
-### TypeScript (elizaOS)
+## Use
 
 ```typescript
 import { robloxPlugin } from "@elizaos/plugin-roblox";
 
-// Add to your agent configuration
 const agent = {
   plugins: [robloxPlugin],
-  // ... other config
+  // ...
 };
 ```
 
-### Environment Variables
+The service skips initialization unless both `ROBLOX_API_KEY` and
+`ROBLOX_UNIVERSE_ID` are set, and the `ROBLOX` action only validates when both are
+present.
 
-| Variable                 | Required | Description                              |
-| ------------------------ | -------- | ---------------------------------------- |
-| `ROBLOX_API_KEY`         | Yes      | Roblox Open Cloud API key                |
-| `ROBLOX_UNIVERSE_ID`     | Yes      | Universe ID of your experience           |
-| `ROBLOX_PLACE_ID`        | No       | Specific place ID                        |
-| `ROBLOX_WEBHOOK_SECRET`  | No       | Secret for webhook validation            |
-| `ROBLOX_MESSAGING_TOPIC` | No       | Messaging topic (default: "eliza-agent") |
-| `ROBLOX_DRY_RUN`         | No       | Enable dry run mode (default: false)     |
+### Environment variables
 
-## Action
+| Variable                 | Required | Default        | Description                          |
+| ------------------------ | -------- | -------------- | ------------------------------------ |
+| `ROBLOX_API_KEY`         | Yes      | —              | Roblox Open Cloud API key            |
+| `ROBLOX_UNIVERSE_ID`     | Yes      | —              | Universe ID of the experience        |
+| `ROBLOX_PLACE_ID`        | No       | —              | Specific place ID                    |
+| `ROBLOX_WEBHOOK_SECRET`  | No       | —              | Webhook validation secret (unused)   |
+| `ROBLOX_MESSAGING_TOPIC` | No       | `eliza-agent`  | Messaging Service topic              |
+| `ROBLOX_DRY_RUN`         | No       | `false`        | `"true"` suppresses publish calls    |
 
-### ROBLOX_ACTION
+## Plugin surface
 
-Route Roblox game integration through one compact action surface.
+- **Action `ROBLOX`** — routes three subactions:
+  - `message` — publish text to the messaging topic, optionally to specific player IDs (max 25)
+  - `execute` — publish a named game-side action (`move_npc`, `give_coins`, `teleport`, `spawn_entity`, `start_event`, …) with parameters; regex patterns infer common actions from natural language
+  - `get_player` — look up a Roblox user by numeric ID or username (display name, ban status, creation date, avatar headshot)
+- **Provider `roblox-game-state`** — injects connection state and experience metadata (universe/place ID, experience name, active players, visits, creator, messaging topic, dry-run flag) into agent context.
+- **Service `RobloxService`** — singleton holding one `RobloxAgentManager` (and `RobloxClient`) per agent UUID.
 
-Supported subactions:
-
-- `message`: send a message to all players or target player IDs
-- `execute`: publish a game-side action payload such as `spawn_entity`, `give_coins`, or `teleport`
-- `get_player`: look up Roblox player information by username or user ID
-
-**Examples:**
-
-- "Tell everyone in the game that there's a special event happening"
-- "Give player456 100 coins as a reward"
-- "Who is player 12345678?"
-
-## Providers
-
-### roblox-game-state
-
-Provides information about the connected Roblox experience to the agent's context:
-
-- Universe ID and Place ID
-- Experience name and statistics
-- Active player count
-- Creator information
-- Messaging topic configuration
-
-## Services
-
-### RobloxService
-
-Main service for managing Roblox connections and communication:
+### Direct service use
 
 ```typescript
-import { RobloxService, ROBLOX_SERVICE_NAME } from "@elizaos/plugin-roblox";
+import { RobloxService } from "@elizaos/plugin-roblox";
 
-// Get service from runtime
-const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+const service = runtime.getService<RobloxService>(RobloxService.serviceType);
 
-// Send a message to all players
-await service.sendMessage(runtime.agentId, "Hello from Eliza!");
+await service.sendMessage(runtime.agentId, "Hello from your agent!");
 
-// Execute a game action
 await service.executeAction(
   runtime.agentId,
-  "spawn_item",
-  { item: "sword", rarity: "legendary" },
-  [12345678], // Target specific player
+  "spawn_entity",
+  { entityType: "dragon", location: "arena" },
+  [12345678], // target specific players (optional)
 );
 ```
 
-## Roblox Game Integration
+## Receiving payloads in Roblox
 
-To receive messages from your Roblox game, you'll need to set up a Luau script that listens to the Messaging Service:
+The agent publishes JSON to `ROBLOX_MESSAGING_TOPIC`. Subscribe in a Roblox
+server script to react:
 
 ```lua
--- Server script in Roblox Studio
 local MessagingService = game:GetService("MessagingService")
+local HttpService = game:GetService("HttpService")
 
-local TOPIC = "eliza-agent" -- Must match ROBLOX_MESSAGING_TOPIC
+local TOPIC = "eliza-agent" -- must match ROBLOX_MESSAGING_TOPIC
 
 MessagingService:SubscribeAsync(TOPIC, function(message)
-    local data = game:GetService("HttpService"):JSONDecode(message.Data)
-
+    local data = HttpService:JSONDecode(message.Data)
     if data.type == "agent_message" then
-        -- Handle agent message
         print("Agent says:", data.content)
-        -- Broadcast to players, show in chat, etc.
     elseif data.type == "agent_action" then
-        -- Handle agent action
         print("Agent action:", data.action, data.parameters)
-        -- Execute the action in-game
     end
 end)
 ```
 
-## Limitations & recommended architecture (critical notes)
+## Limitations
 
-### Inbound messages (Roblox → agent)
+- **Inbound is not supported by Open Cloud.** There is no external subscribe API for
+  `MessagingService`, so the plugin cannot poll player chat. To send Roblox → agent,
+  run an HTTP bridge that the experience calls via `HttpService:RequestAsync(...)`.
+- **Movement / world changes** happen only if your experience subscribes to the topic
+  and interprets `agent_action` payloads (`move_npc`, `teleport`, …) using Roblox APIs.
+- **No agent voice channel.** Open Cloud has none; audio playback requires game-side
+  logic and Roblox asset constraints.
 
-Roblox Open Cloud **does not provide an external “subscribe” API** for `MessagingService`. That means:
-
-- This plugin supports **agent → Roblox** (publish) reliably.
-- It cannot, by itself, “listen to player chat” from outside Roblox by polling Open Cloud.
-
-**Recommended approach**: run a small HTTP bridge server that Roblox calls via `HttpService:RequestAsync(...)` and let the agent respond. See `examples/roblox/`.
-
-### Movement / “walking around”
-
-Agents cannot move things in Roblox via Open Cloud directly. Movement is possible only when your Roblox experience:
-
-- subscribes to the topic
-- interprets `agent_action` payloads (e.g. `move_npc`, `teleport`)
-- performs the movement using Roblox APIs (Humanoid / Pathfinding / TeleportService)
-
-### Voice
-
-Open Cloud does not provide a direct “agent voice” channel.
-
-- You can generate audio externally, but Roblox playback requires game-side logic and Roblox’s audio constraints (assets / permissions / allowed sources).
-- Most deployments start with **text** and add voice later with custom UI and an audio pipeline.
-
-## Project Structure
+## Layout
 
 ```
 plugin-roblox/
-├── typescript/          # TypeScript implementation
-│   ├── actions/         # ROBLOX_ACTION router
-│   ├── services/        # RobloxService
-│   ├── providers/       # Context providers
-│   ├── client/          # API client
-│   ├── types/           # Type definitions
-│   └── index.ts         # Plugin entry point
-├── rust/                # Rust implementation
-│   └── src/
-│       ├── client.rs    # API client
-│       ├── service.rs   # Service implementation
-│       └── lib.rs       # Crate entry point
-├── python/              # Python implementation
-│   └── elizaos_plugin_roblox/
-│       ├── client.py    # API client
-│       ├── service.py   # Service implementation
-│       └── __init__.py  # Package entry point
-└── package.json         # npm package configuration
+  index.ts            Plugin entry (robloxPlugin, RobloxService, RobloxClient, RobloxApiError)
+  actions/            ROBLOX action router
+  providers/          roblox-game-state provider
+  services/           RobloxService (singleton)
+  client/             RobloxClient (Open Cloud + roblox.com HTTP wrapper)
+  types/              Shared type definitions
+  utils/              config.ts (hasRobloxEnabled, validateRobloxConfig)
+  prompts/            Prompt fragments (evaluators, providers)
+  __tests__/          Vitest suite
 ```
 
-## Development
-
-### Building
+## Commands
 
 ```bash
-# TypeScript
-bun run build
-# TypeScript
-bun run test
-# TypeScript
-bun run lint
+bun run build       # compile (build.ts)
+bun run test        # vitest run __tests__/
+bun run typecheck   # tsgo --noEmit
+bun run lint        # biome check + fix
+```
+
+See `CLAUDE.md` for agent-facing internals and extension points.

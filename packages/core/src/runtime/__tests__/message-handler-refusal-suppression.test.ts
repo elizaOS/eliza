@@ -91,3 +91,116 @@ describe("parseMessageHandlerOutput — refusal suppression on the planning path
 		expect(result?.plan.reply).toBe("I cannot do that.");
 	});
 });
+
+describe("parseMessageHandlerOutput — training-cutoff-leak suppression on the planning path", () => {
+	it("blanks plan.reply when a cutoff leak routes to a non-simple context", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText:
+				"As of my training data, the latest release is 18.2 — let me check for newer info.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe("");
+	});
+
+	it("blanks plan.reply for a cutoff leak riding on candidateActionNames with empty contexts", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: [],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText:
+				"My knowledge cutoff is 2023, so I can't be sure that's current.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe("");
+	});
+
+	it("preserves a normal answer that merely mentions years (no model-internals leak)", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText: "Sure — pulling the latest figures for 2023 through 2026 now.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe(
+			"Sure — pulling the latest figures for 2023 through 2026 now.",
+		);
+	});
+
+	it("preserves a cutoff leak on the simple path (Stage-1 IS the reply there)", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["simple"],
+			replyText: "As of my training data, that hasn't shipped yet.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe(
+			"As of my training data, that hasn't shipped yet.",
+		);
+	});
+});
+
+describe("parseMessageHandlerOutput — fabricated-moderation suppression on the planning path", () => {
+	it("blanks plan.reply when a fabricated-moderation claim routes to a non-simple context", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText:
+				"Your request was flagged as hateful, so I'm blocked from answering.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe("");
+	});
+
+	it("blanks plan.reply for a fabricated content-policy claim with empty contexts", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: [],
+			candidateActionNames: ["TASKS_SPAWN_AGENT"],
+			replyText: "That violates our usage policies.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe("");
+	});
+
+	it("preserves a genuine runtime-error description on the planning path", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText: "The request was blocked by CORS — trying the API origin now.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe(
+			"The request was blocked by CORS — trying the API origin now.",
+		);
+	});
+
+	it("preserves a genuine runtime-error description when phrased as the user's request", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["general"],
+			candidateActionNames: ["WEB_FETCH"],
+			replyText:
+				"Your request was blocked by CORS — trying the API origin now.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe(
+			"Your request was blocked by CORS — trying the API origin now.",
+		);
+	});
+
+	it("preserves a fabricated-moderation reply on the simple path (model may decline there)", () => {
+		const wire = JSON.stringify({
+			shouldRespond: "RESPOND",
+			contexts: ["simple"],
+			replyText: "My content filter prevented this.",
+		});
+		const result = parseMessageHandlerOutput(wire);
+		expect(result?.plan.reply).toBe("My content filter prevented this.");
+	});
+});

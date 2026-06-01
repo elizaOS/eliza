@@ -1700,19 +1700,36 @@ export class DesktopLlamaAdapter {
 		// samples token 0 (held for emission on the first nextStep).
 		if (sess.mtpEngine !== 0) {
 			if (tokens.length === 0) return;
-			const owned = new Int32Array(tokens.length);
-			owned.set(tokens);
-			const firstOut = new Int32Array(1);
-			const rc = this.shim.eliza_llama_mtp_engine_prefill(
-				sess.mtpEngine,
-				this.ffi.ptr(owned),
-				owned.length,
-				this.ffi.ptr(firstOut),
-			);
-			if (rc < 0) {
-				throw new Error(`[desktop-llama] mtp engine prefill rc=${rc}`);
+			// Chunk the prefill to respect the context's `n_batch`. Passing the
+			// full prompt at once trips GGML_ASSERT(n_tokens_all <= cparams.n_batch)
+			// when the prompt exceeds n_batch (e.g. large system prompts on the
+			// 128k bundle under windows-cuda). For prompts that already fit in one
+			// batch this loop runs exactly once, identical to the prior behavior.
+			// The first sampled token is captured from the first chunk only; the
+			// engine advances its speculative state across chunks sequentially.
+			// See elizaOS/eliza#7991.
+			const nBatch = normalizeBatchSize(this.loadOpts?.nBatch);
+			for (let offset = 0; offset < tokens.length; offset += nBatch) {
+				const chunk = tokens.subarray(
+					offset,
+					Math.min(offset + nBatch, tokens.length),
+				);
+				const owned = new Int32Array(chunk.length);
+				owned.set(chunk);
+				const firstOut = new Int32Array(1);
+				const rc = this.shim.eliza_llama_mtp_engine_prefill(
+					sess.mtpEngine,
+					this.ffi.ptr(owned),
+					owned.length,
+					this.ffi.ptr(firstOut),
+				);
+				if (rc < 0) {
+					throw new Error(`[desktop-llama] mtp engine prefill rc=${rc}`);
+				}
+				if (offset === 0) {
+					sess.mtpFirstToken = firstOut[0] ?? -1;
+				}
 			}
-			sess.mtpFirstToken = firstOut[0] ?? -1;
 			this.hasDecodedFlags[sess.ctxIdx] = true;
 			return;
 		}

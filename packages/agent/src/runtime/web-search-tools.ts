@@ -1,70 +1,172 @@
 /**
- * Web search tool injection for Anthropic models (Path A).
+ * Server-side web search injection for every provider that supports it.
  *
- * Adds Anthropic's server-side `web_search` tool to all generateText and
- * streamText calls when the model is Anthropic. This is zero-cost (no
- * separate API key needed) -- Anthropic handles it server-side.
+ * Monkey-patches the Vercel AI SDK's `generateText`/`streamText` to attach a
+ * provider's native, server-executed web search tool whenever a call targets a
+ * supporting provider and carries no tools of its own. Server-side search is
+ * zero-plumbing: the provider runs the search and grounds its own answer — no
+ * Tavily/Serper key, no extra application round-trips.
  *
- * Works by monkey-patching the Vercel AI SDK's generateText/streamText
- * functions to inject the web_search tool whenever the model provider
- * is Anthropic and no tools are already present.
+ * Supported providers (matched against the AI SDK `model.provider` string):
+ *   anthropic.messages    → @ai-sdk/anthropic  webSearch_*
+ *   google.generative-ai  → @ai-sdk/google     googleSearch
+ *   openai.responses      → @ai-sdk/openai      webSearch
+ *
+ * OpenAI's Chat Completions API (`openai.chat`) silently drops provider tools,
+ * so it is intentionally not matched here — the OpenAI plugin routes text
+ * through the Responses API (`openai.responses`) when the endpoint is genuine
+ * OpenAI, which is what makes the `openai.responses` branch fire.
  *
  * Controlled by:
  *   ELIZA_WEB_SEARCH=0|false|off  — disable (default: enabled)
  */
 
 import { createRequire } from "node:module";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 const require = createRequire(import.meta.url);
 
-// ---------------------------------------------------------------------------
-// Env gate (opt-out, enabled by default)
-// ---------------------------------------------------------------------------
-
-const ELIZA_WEB_SEARCH_ENABLED = (() => {
+const ENABLED = (() => {
   const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
-  if (raw === "0" || raw === "false" || raw === "off") return false;
-  return true;
+  return !(raw === "0" || raw === "false" || raw === "off");
 })();
 
-// Prevent double-patching
-let patched = false;
-const installedRuntimes = new WeakSet<AgentRuntime>();
-
 // ---------------------------------------------------------------------------
-// Provider detection
+// Provider registry
 // ---------------------------------------------------------------------------
 
-function isAnthropicRuntime(runtime: AgentRuntime): boolean {
-  const modelsMap = runtime.models;
-  if (modelsMap) {
-    for (const key of [ModelType.TEXT_LARGE, "TEXT_LARGE"]) {
-      const handlers = modelsMap.get(key);
-      if (handlers?.[0]?.provider?.toLowerCase().includes("anthropic")) {
-        return true;
-      }
+interface ProviderWebSearch {
+  /** Stable label, also the cache key. */
+  label: string;
+  /** Key the tool is injected under in `params.tools`. */
+  toolKey: string;
+  /** True when this entry handles the given (lowercased) `model.provider`. */
+  matches: (provider: string) => boolean;
+  /** Builds the provider-defined tool, or null when its SDK/tool is absent. */
+  build: () => unknown;
+}
+
+const PROVIDERS: ProviderWebSearch[] = [
+  {
+    label: "anthropic",
+    toolKey: "web_search",
+    matches: (p) => p.startsWith("anthropic"),
+    build: () => {
+      const sdk = require("@ai-sdk/anthropic");
+      const tools = sdk.anthropicTools ?? sdk.anthropic?.tools;
+      const factory = tools?.webSearch_20260209 ?? tools?.webSearch_20250305;
+      return factory ? factory() : null;
+    },
+  },
+  {
+    label: "google",
+    toolKey: "google_search",
+    matches: (p) => p.startsWith("google"),
+    build: () => {
+      const sdk = require("@ai-sdk/google");
+      const tools = sdk.googleTools ?? sdk.google?.tools;
+      const factory = tools?.googleSearch;
+      return factory ? factory({}) : null;
+    },
+  },
+  {
+    label: "openai",
+    toolKey: "web_search",
+    // Only the Responses API executes provider tools; chat completions drops them.
+    matches: (p) => p === "openai.responses",
+    build: () => {
+      const sdk = require("@ai-sdk/openai");
+      const tools = sdk.openaiTools ?? sdk.openai?.tools;
+      const factory = tools?.webSearch ?? tools?.webSearchPreview;
+      return factory ? factory({}) : null;
+    },
+  },
+];
+
+// Built tools are memoized per provider. A cached `null` means "SDK or tool
+// unavailable" so we never re-require a missing package on every call.
+const toolCache = new Map<string, unknown>();
+
+function toolFor(entry: ProviderWebSearch): unknown {
+  if (toolCache.has(entry.label)) return toolCache.get(entry.label);
+  let tool: unknown = null;
+  try {
+    tool = entry.build();
+    if (!tool) {
+      logger.warn(
+        `[web-search] ${entry.label}: SDK present but no web search factory — upgrade @ai-sdk/${entry.label}`,
+      );
     }
+  } catch (err) {
+    logger.debug(
+      `[web-search] ${entry.label}: SDK unavailable (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
-
-  // Fallback: env + character hints
-  if (process.env.ANTHROPIC_API_KEY) {
-    const char = runtime.character as Record<string, unknown> | undefined;
-    const mp = char?.modelProvider;
-    if (typeof mp === "string" && /anthropic/i.test(mp)) return true;
-    const m = char?.model;
-    if (typeof m === "string" && /claude|anthropic/i.test(m)) return true;
-  }
-
-  return false;
+  toolCache.set(entry.label, tool);
+  return tool;
 }
 
 // ---------------------------------------------------------------------------
 // AI SDK patch
 // ---------------------------------------------------------------------------
 
-function patchAiSdk(webSearchTool: unknown): void {
+let patched = false;
+
+/**
+ * Skip injection when the caller owns the tool surface or constrains output.
+ * Structured/JSON calls are schema-bound classifications where a search
+ * round-trip fights the grammar and adds latency for no benefit.
+ */
+function shouldSkip(params: Record<string, unknown>): boolean {
+  const tools = params.tools as object | undefined;
+  if (tools && Object.keys(tools).length > 0) return true;
+  if (params.output) return true;
+  const rf = params.responseFormat as { type?: string } | undefined;
+  if (rf?.type && rf.type !== "text") return true;
+  return false;
+}
+
+function wrapFn(
+  original: (...a: unknown[]) => unknown,
+  name: string,
+): (...a: unknown[]) => unknown {
+  const wrapped = function patchedAiFn(
+    this: unknown,
+    ...args: unknown[]
+  ): unknown {
+    if (args.length > 0 && args[0] && typeof args[0] === "object") {
+      const params = args[0] as Record<string, unknown>;
+      const provider = (params.model as { provider?: string } | undefined)
+        ?.provider;
+      if (provider && !shouldSkip(params)) {
+        const entry = PROVIDERS.find((e) => e.matches(provider.toLowerCase()));
+        const tool = entry ? toolFor(entry) : null;
+        if (entry && tool) {
+          args[0] = { ...params, tools: { [entry.toolKey]: tool } };
+          logger.debug(
+            `[web-search] Injected ${entry.label} web search into ${name} (${provider})`,
+          );
+        }
+      }
+    }
+    return original.apply(this, args);
+  };
+  // Preserve static properties on the original SDK function.
+  for (const key of Object.getOwnPropertyNames(original)) {
+    if (key !== "length" && key !== "name" && key !== "prototype") {
+      try {
+        (wrapped as unknown as Record<string, unknown>)[key] = (
+          original as unknown as Record<string, unknown>
+        )[key];
+      } catch {
+        /* read-only */
+      }
+    }
+  }
+  return wrapped;
+}
+
+function patchAiSdk(): void {
   if (patched) return;
 
   let aiModule: Record<string, unknown>;
@@ -77,66 +179,17 @@ function patchAiSdk(webSearchTool: unknown): void {
 
   patched = true;
 
-  const wrapFn = (
-    original: (...a: unknown[]) => unknown,
-    name: string,
-  ): ((...a: unknown[]) => unknown) => {
-    const wrapped = function patchedAiFn(
-      this: unknown,
-      ...args: unknown[]
-    ): unknown {
-      if (args.length > 0 && args[0] && typeof args[0] === "object") {
-        const params = args[0] as Record<string, unknown>;
-        const model = params.model as { provider?: string } | undefined;
-        const provider = model?.provider ?? "";
-
-        if (
-          provider.toLowerCase().includes("anthropic") &&
-          (!params.tools || Object.keys(params.tools as object).length === 0)
-        ) {
-          args[0] = {
-            ...params,
-            tools: { web_search: webSearchTool },
-          };
-          logger.debug(
-            `[web-search] Injected web_search tool into ${name} call`,
-          );
-        }
-      }
-      return original.apply(this, args);
-    };
-    // Preserve static properties
-    for (const key of Object.getOwnPropertyNames(original)) {
-      if (key !== "length" && key !== "name" && key !== "prototype") {
-        try {
-          const wrappedWithStatics = wrapped as typeof wrapped &
-            Record<string, unknown>;
-          const originalWithStatics = original as typeof original &
-            Record<string, unknown>;
-          wrappedWithStatics[key] = originalWithStatics[key];
-        } catch {
-          /* read-only */
-        }
-      }
+  for (const name of ["generateText", "streamText"] as const) {
+    if (typeof aiModule[name] === "function") {
+      aiModule[name] = wrapFn(
+        aiModule[name] as (...a: unknown[]) => unknown,
+        name,
+      );
     }
-    return wrapped;
-  };
-
-  if (typeof aiModule.generateText === "function") {
-    aiModule.generateText = wrapFn(
-      aiModule.generateText as (...a: unknown[]) => unknown,
-      "generateText",
-    );
-  }
-  if (typeof aiModule.streamText === "function") {
-    aiModule.streamText = wrapFn(
-      aiModule.streamText as (...a: unknown[]) => unknown,
-      "streamText",
-    );
   }
 
   logger.info(
-    "[web-search] Patched ai.generateText/streamText for Anthropic web_search auto-injection",
+    "[web-search] Patched ai.generateText/streamText for server-side web search auto-injection",
   );
 }
 
@@ -145,54 +198,16 @@ function patchAiSdk(webSearchTool: unknown): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Enable Anthropic server-side web search for the given runtime.
+ * Enable server-side web search across all supported providers.
  *
- * Call after plugins are registered and prompt optimizations installed.
+ * The patch is global and idempotent — provider selection happens per call
+ * from the model's `provider` string, so a single install covers every agent
+ * and every provider on the runtime. Call after plugins are registered.
  */
-export function installAnthropicWebSearch(runtime: AgentRuntime): void {
-  if (!ELIZA_WEB_SEARCH_ENABLED) {
+export function installServerSideWebSearch(): void {
+  if (!ENABLED) {
     logger.info("[web-search] Disabled via ELIZA_WEB_SEARCH env var");
     return;
   }
-
-  if (installedRuntimes.has(runtime)) return;
-  installedRuntimes.add(runtime);
-
-  if (!isAnthropicRuntime(runtime)) {
-    logger.info(
-      "[web-search] Non-Anthropic runtime — server-side web search skipped",
-    );
-    return;
-  }
-
-  // Load the web search server tool from @ai-sdk/anthropic
-  let webSearchTool: unknown;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const sdk = require("@ai-sdk/anthropic");
-    const tools = sdk.anthropicTools ?? sdk.anthropic?.tools;
-    if (tools?.webSearch_20260209) {
-      webSearchTool = tools.webSearch_20260209();
-    } else if (tools?.webSearch_20250305) {
-      webSearchTool = tools.webSearch_20250305();
-    }
-  } catch (err) {
-    logger.warn(
-      `[web-search] @ai-sdk/anthropic not available: ${err instanceof Error ? err.message : err}`,
-    );
-    return;
-  }
-
-  if (!webSearchTool) {
-    logger.warn(
-      "[web-search] @ai-sdk/anthropic has no webSearch tool factory — upgrade @ai-sdk/anthropic",
-    );
-    return;
-  }
-
-  patchAiSdk(webSearchTool);
-
-  logger.info(
-    "[web-search] Anthropic server-side web_search enabled (zero-cost, no key required)",
-  );
+  patchAiSdk();
 }

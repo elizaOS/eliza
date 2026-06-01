@@ -22,6 +22,8 @@ test.skip(
   "SIWE flow uses local mocks; skipped in live-prod mode",
 );
 
+test.describe.configure({ timeout: 90_000 });
+
 interface VerifyCapture {
   message?: string;
   signature?: string;
@@ -92,7 +94,11 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
       // viem can't run in addInitScript (no bundler), so we use a tiny
       // implementation. The wallet-buttons code calls personal_sign with
       // the EIP-4361 message as a 0x-prefixed hex string of UTF-8 bytes.
+      const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
       const provider = {
+        chainId: "0x2105",
+        selectedAddress: addr,
+        isMetaMask: false,
         async request({
           method,
           params,
@@ -103,17 +109,31 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
           if (method === "eth_requestAccounts" || method === "eth_accounts") {
             return [addr];
           }
-          if (method === "eth_chainId") return "0x1";
+          if (method === "eth_chainId") return "0x2105";
+          if (method === "wallet_switchEthereumChain") return null;
+          if (method === "wallet_addEthereumChain") return null;
+          if (method === "wallet_requestPermissions") {
+            return [
+              {
+                parentCapability: "eth_accounts",
+                caveats: [{ type: "restrictReturnedAccounts", value: [addr] }],
+              },
+            ];
+          }
           if (method === "personal_sign") {
-            const hex = (params?.[0] as string) ?? "";
+            const payload = (params?.[0] as string) ?? "";
             // Decode the 0x-hex back to the UTF-8 message and POST it to a
             // sign-helper endpoint exposed by Playwright via window.__sign.
-            const bytes = new Uint8Array(
-              (hex.startsWith("0x") ? hex.slice(2) : hex)
-                .match(/.{2}/g)
-                ?.map((b) => parseInt(b, 16)) ?? [],
-            );
-            const message = new TextDecoder().decode(bytes);
+            const message = payload.startsWith("0x")
+              ? new TextDecoder().decode(
+                  new Uint8Array(
+                    payload
+                      .slice(2)
+                      .match(/.{2}/g)
+                      ?.map((b) => parseInt(b, 16)) ?? [],
+                  ),
+                )
+              : payload;
             const sigPromise = new Promise<string>((resolve) => {
               (
                 window as unknown as Record<
@@ -131,11 +151,39 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
           }
           throw new Error(`Unimplemented EIP-1193 method: ${method}`);
         },
-        on: () => undefined,
-        removeListener: () => undefined,
-        isMetaMask: false,
+        on: (event: string, listener: (...args: unknown[]) => void) => {
+          const eventListeners = listeners.get(event) ?? new Set();
+          eventListeners.add(listener);
+          listeners.set(event, eventListeners);
+        },
+        removeListener: (
+          event: string,
+          listener: (...args: unknown[]) => void,
+        ) => {
+          listeners.get(event)?.delete(listener);
+        },
       };
-      (window as unknown as Record<string, unknown>).ethereum = provider;
+      const win = window as unknown as Record<string, unknown>;
+      win.ethereum = provider;
+      (provider as { providers?: unknown[] }).providers = [provider];
+
+      const detail = {
+        info: {
+          uuid: "7f7b7c2d-92b0-4f84-9f25-2f1d2f0d4e8f",
+          name: "Playwright Wallet",
+          rdns: "com.playwright.wallet",
+          icon: "data:image/png;base64,iVBORw0KGgo=",
+        },
+        provider,
+      };
+      const announceProvider = () => {
+        window.dispatchEvent(
+          new CustomEvent("eip6963:announceProvider", { detail }),
+        );
+      };
+      window.addEventListener("eip6963:requestProvider", announceProvider);
+      queueMicrotask(announceProvider);
+      setTimeout(announceProvider, 0);
     },
     { pk: privateKey, addr: account.address },
   );

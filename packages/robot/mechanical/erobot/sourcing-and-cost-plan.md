@@ -16,8 +16,8 @@ Date: 2026-05-30
 | Tier | DoF | Count | Part | Peak torque | Unit mass | Unit $ (qty 1) |
 |---|---|---:|---|---:|---:|---:|
 | High | hip pitch/roll, knee | 6 | CubeMars AK80-64 | 120 N·m | 0.85 kg | $889.90 |
-| Mid | hip yaw, ankles, shoulders, elbows, waist | 15 | CubeMars AK70-10 | 24.8 N·m | 0.52 kg | $398.90 |
-| Low | wrist yaw, neck | 6 | Dynamixel XM540-W270 | 10.6 N·m | 0.165 kg | $494.39 |
+| Mid | hip yaw, ankles, shoulders, elbows, waist | 16 | CubeMars AK70-10 | 24.8 N·m | 0.52 kg | $398.90 |
+| Low | wrist yaw, neck | 2 | Dynamixel XM540-W270 | 10.6 N·m | 0.165 kg | $494.39 |
 
 Quasi-direct-drive units are chosen for backdrivability + integral encoders/bearings,
 keeping the joint count of dedicated bearings low. The mid tier at 24.8 N·m peak is
@@ -35,17 +35,17 @@ the cost/mass sweet spot but limits aggressive dynamic gait — flagged below.
 
 ## Cost model
 
-- Off-the-shelf: $16,202.74 at qty 1,
-  $10,340.00 at qty 1000
+- Off-the-shelf: $14,624.08 at qty 1,
+  $9,155.00 at qty 1000
   (5 confirmed / 7 estimated prices).
-- Custom molded: 19 unique parts / 34 pieces;
-  tooling capex $133,000.00.
-- **Whole robot: $17,627.13 at qty 1,
-  $10,860.39/unit at qty 1000.**
+- Custom molded: 17 unique parts / 30 pieces;
+  tooling capex $119,000.00.
+- **Whole robot: $15,902.38 at qty 1,
+  $9,637.30/unit at qty 1000.**
 
 ## RFQ package required before quotes
 
-- Production STEP for all 19 unique shells (convert primitives to solids).
+- Production STEP for all 17 unique shells (convert primitives to solids).
 - Per-part material + finish callouts; parting-line + draft review (2° draft baked into spec).
 - 2D tolerance drawings for actuator-mounting bosses + bearing seats.
 - Assembly BOM with fasteners, heat-set inserts, and wiring harness.

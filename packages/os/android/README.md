@@ -59,7 +59,7 @@ command is `node packages/scripts/distro-android/build-aosp.mjs
 
 > Note on orchestration: a second, divergent AOSP build/emulator stack
 > exists at `packages/app-core/scripts/aosp/` (wired into app-core's vitest
-> + agent-payload staging). It currently ships only the x86_64 `milady`
+> + agent-payload staging). It currently ships only an x86_64
 > product path, so the eliza arm64/riscv64 images come from the
 > `distro-android` stack that this Makefile drives. The two stacks share an
 > identical-purpose core of ~11 files that have drifted; collapsing them to

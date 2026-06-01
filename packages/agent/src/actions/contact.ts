@@ -55,6 +55,7 @@ import {
   logger,
   ModelType,
   parseJSONObjectFromText,
+  requireConfirmation,
   stringToUuid,
 } from "@elizaos/core";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
@@ -1196,13 +1197,45 @@ async function handleUpdateComponent(
 
 async function handleDelete(
   runtime: IAgentRuntime,
+  message: Memory,
   params: ContactParams,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const entityId = readString(params.entityId);
   const contactName = readString(params.name);
-  const confirmed =
-    readBoolean(params.confirm) ?? readBoolean(params.confirmed);
+  const deleteTarget = contactName ?? entityId ?? "contact";
+  const confirmPrompt = contactName
+    ? `Remove ${contactName} from your contacts permanently?`
+    : `Permanently delete contact ${entityId}?`;
+
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: CONTACT_ACTION,
+    pendingKey: `delete:${deleteTarget}`,
+    prompt: `${confirmPrompt} Reply yes to confirm or no to cancel.`,
+    callback,
+  });
+  if (decision.status !== "confirmed") {
+    const text =
+      decision.status === "pending"
+        ? `${confirmPrompt} Reply yes to confirm or no to cancel.`
+        : "Contact delete cancelled.";
+    if (callback) {
+      await callback({ text, action: CONTACT_ACTION });
+    }
+    return {
+      success: decision.status === "pending",
+      text,
+      data: {
+        actionName: CONTACT_ACTION,
+        op: "delete",
+        confirmationRequired: decision.status === "pending",
+        awaitingUserInput: decision.status === "pending",
+        cancelled: decision.status === "cancelled",
+      },
+    };
+  }
 
   // Path A: REMOVE_CONTACT semantics — name-based with RelationshipsService.
   if (contactName && !entityId) {
@@ -1213,21 +1246,6 @@ async function handleDelete(
         "SERVICE_NOT_FOUND",
         "delete",
       );
-    }
-    if (confirmed !== true) {
-      const text = `To remove ${contactName} from your contacts, please confirm by re-sending with confirm:true.`;
-      if (callback) {
-        await callback({ text, action: CONTACT_ACTION });
-      }
-      return {
-        success: false,
-        text,
-        data: {
-          actionName: CONTACT_ACTION,
-          op: "delete",
-          confirmationRequired: true,
-        },
-      };
     }
     const contacts = await relationships.searchContacts({
       searchTerm: contactName,
@@ -1271,13 +1289,6 @@ async function handleDelete(
     return fail(
       "CONTACT delete requires entityId (or name for legacy REMOVE_CONTACT).",
       "INVALID_PARAMETERS",
-      "delete",
-    );
-  }
-  if (confirmed !== true) {
-    return fail(
-      "Refusing to delete: pass confirm:true to acknowledge this destructive action.",
-      "CONFIRMATION_REQUIRED",
       "delete",
     );
   }
@@ -2193,7 +2204,7 @@ export const contactAction: Action = {
       case "update":
         return handleUpdate(runtime, message, state, params, callback);
       case "delete":
-        return handleDelete(runtime, params, callback);
+        return handleDelete(runtime, message, params, callback);
       case "link":
         return handleLink(runtime, message, params);
       case "merge":

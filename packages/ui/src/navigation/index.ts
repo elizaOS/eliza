@@ -7,7 +7,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
   Gamepad2,
-  Home,
   MessageSquare,
   Monitor,
   Phone,
@@ -44,7 +43,7 @@ export const COMPANION_ENABLED = viteEnvFlagEnabled(
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
-  | "home"
+  | "onboarding"
   | "chat"
   | "phone"
   | "messages"
@@ -188,12 +187,6 @@ export function getWindowNavigationPath(
 
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
-    label: "Home",
-    tabs: ["home"],
-    icon: Home,
-    description: "Your assistant's home — clouds backdrop and voice presence",
-  },
-  {
     label: "Chat",
     tabs: ["chat"],
     icon: MessageSquare,
@@ -310,7 +303,7 @@ export function getTabGroups(
 }
 
 export const TAB_PATHS: Record<BuiltinTab, string> = {
-  home: "/home",
+  onboarding: "/onboarding",
   chat: "/chat",
   phone: "/phone",
   messages: "/messages",
@@ -539,8 +532,8 @@ export function getAppSlugFromPath(
 
 export function titleForTab(tab: Tab): string {
   switch (tab) {
-    case "home":
-      return "Home";
+    case "onboarding":
+      return "Onboarding";
     case "chat":
       return "Chat";
     case "phone":

@@ -30,9 +30,7 @@ REQUIRED_COUNTER_ENVS = (
     "E1_NPU_GENERATED_BY",
     "E1_NPU_TARGET",
 )
-CLAIM_BOUNDARY = (
-    "android_e1_npu_proof_bundle_preflight_only_not_runtime_nnapi_or_release_evidence"
-)
+CLAIM_BOUNDARY = "android_e1_npu_proof_bundle_preflight_only_not_runtime_nnapi_or_release_evidence"
 FALSE_CLAIM_FLAGS = {
     "runtime_nnapi_claim_allowed": False,
     "android_boot_claim_allowed": False,
@@ -155,10 +153,20 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
             "Set AOSP_TREE to the built riscv64 AOSP checkout.",
         )
     elif not aosp_tree.is_dir():
-        block("aosp_tree_not_directory", "AOSP tree path does not exist", str(aosp_tree), "Build or mount the AOSP tree.")
+        block(
+            "aosp_tree_not_directory",
+            "AOSP tree path does not exist",
+            str(aosp_tree),
+            "Build or mount the AOSP tree.",
+        )
     else:
         if not (aosp_tree / "build/envsetup.sh").is_file():
-            block("aosp_envsetup_missing", "AOSP tree is missing build/envsetup.sh", str(aosp_tree), "Use a complete AOSP checkout.")
+            block(
+                "aosp_envsetup_missing",
+                "AOSP tree is missing build/envsetup.sh",
+                str(aosp_tree),
+                "Use a complete AOSP checkout.",
+            )
         for rel, code in (
             ("out/host/linux-x86/cts/android-cts/tools/cts-tradefed", "cts_tradefed_missing"),
             ("out/host/linux-x86/vts/android-vts/tools/vts-tradefed", "vts_tradefed_missing"),
@@ -174,11 +182,18 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
                     )
                 block(code, f"{rel} is missing or not executable", str(path), next_step)
 
-    model = Path(env.get("E1_NPU_TFLITE_MODEL", str(ROOT / "benchmarks/models/mobile_smoke.tflite")))
+    model = Path(
+        env.get("E1_NPU_TFLITE_MODEL", str(ROOT / "benchmarks/models/mobile_smoke.tflite"))
+    )
     if not model.is_absolute():
         model = ROOT / model
     if not model.is_file() or model.stat().st_size == 0:
-        block("mobile_smoke_model_missing", "mobile_smoke.tflite is missing or empty", str(model), "Generate or restore the pinned TFLite smoke model.")
+        block(
+            "mobile_smoke_model_missing",
+            "mobile_smoke.tflite is missing or empty",
+            str(model),
+            "Generate or restore the pinned TFLite smoke model.",
+        )
 
     adb = adb_state(env, probe=not args.no_adb_probe)
     if adb.get("status") != "ready" and not args.no_adb_probe:
@@ -201,7 +216,9 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
                     "Export measured target counters before running the bundle.",
                 )
     else:
-        warnings.append("E1_NPU_WRITE_PROOF_JSON is not 1; NNAPI capability proof JSON will not be emitted")
+        warnings.append(
+            "E1_NPU_WRITE_PROOF_JSON is not 1; NNAPI capability proof JSON will not be emitted"
+        )
 
     report = {
         "schema": "eliza.e1_npu_android_proof_bundle_preflight.v1",

@@ -11,20 +11,8 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
 import type { InventoryChainFilters } from "@elizaos/ui";
-import {
-  type ActivityEvent,
-  AppPageSidebar,
-  Button,
-  client,
-  cn,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useActivityEvents,
-  useAgentElement,
-  useApp,
-} from "@elizaos/ui";
+import { type ActivityEvent, AppPageSidebar, Button, client, cn, PageLayout, SidebarContent, SidebarPanel, SidebarScrollRegion, useActivityEvents, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
   ArrowDownLeft,

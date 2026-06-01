@@ -2,6 +2,7 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetResourceCache } from "./resource-cache";
 import { useAvailableViews, type ViewRegistryEntry } from "./useAvailableViews";
 
 const { fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
@@ -43,6 +44,7 @@ function view(
 
 describe("useAvailableViews", () => {
   beforeEach(() => {
+    __resetResourceCache();
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");

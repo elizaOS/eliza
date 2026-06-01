@@ -18,6 +18,7 @@ import {
 import { type RefObject, useCallback } from "react";
 import type { StylePreset, VoiceConfig } from "../api";
 import { ElizaClient } from "../api/client-base";
+import { resolveCloudAgentApiBase } from "../api/client-cloud";
 
 type FirstRunClient = Pick<
   ElizaClient,
@@ -427,7 +428,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         options?.launchCompanionOverlay === true &&
         COMPANION_ENABLED &&
         APPS_ENABLED;
-      if (launchCompanionOverlay && landingTab !== "home") {
+      if (launchCompanionOverlay && landingTab !== "chat") {
         setActiveOverlayApp("@elizaos/plugin-companion");
         replaceNavigationPathForCompanionLaunch();
         setTab("apps");
@@ -593,7 +594,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           }
           await ensureFirstRunAgentRunning(client);
 
-          completeFirstRun("home", { launchCompanionOverlay: true });
+          completeFirstRun("chat", { launchCompanionOverlay: true });
           return;
         }
 
@@ -637,13 +638,25 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             onProgress: () => {},
           });
 
-          client.setBaseUrl(provisionedAgent.bridgeUrl);
+          // Use a server-provided reachable web UI URL when present, else the
+          // raw bridgeUrl. NOTE: a cloud-provisioned agent currently has no
+          // browser-reachable URL — the cloud returns only an internal
+          // `bridgeUrl` (firewalled + CSP-blocked) and the per-agent gateway
+          // isn't deployed — so this typically resolves to bridgeUrl, the
+          // connect fails, and the startup fallback recovers to localhost on
+          // reload. Reaching cloud agents from a browser is blocked on cloud
+          // infra (the per-agent HTTPS gateway); see resolveCloudAgentApiBase.
+          const cloudAgentApiBase = resolveCloudAgentApiBase({
+            bridgeUrl: provisionedAgent.bridgeUrl,
+            webUiUrl: provisionedAgent.webUiUrl,
+          });
+          client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
-              apiBase: provisionedAgent.bridgeUrl,
+              apiBase: cloudAgentApiBase,
               accessToken: authToken,
             }),
           );
@@ -749,7 +762,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         }
         await ensureFirstRunAgentRunning(client);
 
-        completeFirstRun("home", { launchCompanionOverlay: true });
+        completeFirstRun("chat", { launchCompanionOverlay: true });
       } catch (err) {
         const message =
           err instanceof Error && err.message.trim()

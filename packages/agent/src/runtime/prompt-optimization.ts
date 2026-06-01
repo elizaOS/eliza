@@ -43,7 +43,6 @@ import {
   compactCodingExamplesForIntent,
   compactConversationHistory,
   compactModelPrompt,
-  validateIntentActionMap,
 } from "./prompt-compaction.ts";
 import {
   enrichTrajectoryLlmCall,
@@ -54,12 +53,6 @@ import {
   toOptionalNumber,
   toText,
 } from "./trajectory-internals.ts";
-import {
-  applyActiveViewAwareness,
-  getActiveViewContext,
-  validateViewActionMap,
-  viewScopedActionNames,
-} from "./view-action-affinity.ts";
 
 export {
   buildFullParamActionSet,
@@ -1247,10 +1240,7 @@ export function fitPromptToTokenBudget(
     };
   }
 
-  let nextPrompt = compactActionsForIntent(
-    prompt,
-    viewScopedActionNames(getActiveViewContext()?.viewId),
-  );
+  let nextPrompt = compactActionsForIntent(prompt);
   nextPrompt = compactCodingExamplesForIntent(nextPrompt);
   nextPrompt = compactConversationHistory(nextPrompt);
   nextPrompt = compactModelPrompt(nextPrompt);
@@ -1332,13 +1322,6 @@ export function installPromptOptimizations(
   ensureModelUsageEventCapture(runtime);
   if (installedRuntimes.has(runtime)) return;
   installedRuntimes.add(runtime);
-
-  // Validate intent-action and view-action maps against registered actions
-  const actionNames = runtime.actions.map((a) => a.name);
-  if (actionNames.length > 0) {
-    validateIntentActionMap(actionNames, runtime.logger);
-    validateViewActionMap(actionNames, runtime.logger);
-  }
 
   const originalUseModel = runtime.useModel.bind(runtime);
   installMessageHistoryCompactionHook(runtime, { originalUseModel });
@@ -1438,27 +1421,10 @@ export function installPromptOptimizations(
       // --- Context-aware action compaction (when enabled) ---
       // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
-      // Actions scoped to the active view are kept full so the planner can act
-      // on whatever the user is currently looking at.
-      let workingPrompt = compactActionsForIntent(
-        originalPrompt,
-        viewScopedActionNames(getActiveViewContext()?.viewId),
-      );
+      let workingPrompt = compactActionsForIntent(originalPrompt);
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(
           `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
-        );
-      }
-
-      // Tell the planner which view the user is looking at and how to drive it.
-      const beforeViewAwareness = workingPrompt;
-      workingPrompt = applyActiveViewAwareness(
-        workingPrompt,
-        getActiveViewContext(),
-      );
-      if (workingPrompt !== beforeViewAwareness) {
-        promptOptimizationTelemetry.transformations.push(
-          `active-view-awareness:${beforeViewAwareness.length}->${workingPrompt.length}`,
         );
       }
 

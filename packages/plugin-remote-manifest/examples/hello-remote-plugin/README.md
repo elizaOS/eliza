@@ -22,7 +22,7 @@ manager.installFromDirectory({
 manager.startWorker("hello-remote-plugin");
 ```
 
-After install, the store layout under `<MILADY_REMOTE_PLUGIN_STORE_DIR>/hello-remote-plugin/` looks like:
+After install, the store layout under `<remote-plugin-store-dir>/hello-remote-plugin/` (resolved by `getRemotePluginStorePaths`) looks like:
 
 ```
 current/

@@ -145,3 +145,25 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// three.js subpath exports ship without type declarations in v0.184+.
+// Re-export from the main "three" package so code using three/webgpu and
+// three/tsl resolves to the same types as the main entry point.
+declare module "three/webgpu" {
+  export * from "three";
+}
+
+declare module "three/tsl" {
+  export * from "three";
+  // TSL-specific exports not in the main three types — declare as any
+  // to avoid "does not exist" errors while keeping the rest strongly typed.
+  export const Fn: (...args: unknown[]) => unknown;
+  export const Loop: (...args: unknown[]) => unknown;
+  export const Break: (...args: unknown[]) => unknown;
+  export const If: (...args: unknown[]) => unknown;
+  export const screenUV: unknown;
+  export const positionLocal: unknown;
+  export const normalLocal: unknown;
+  export const normalView: unknown;
+  export const positionViewDirection: unknown;
+}

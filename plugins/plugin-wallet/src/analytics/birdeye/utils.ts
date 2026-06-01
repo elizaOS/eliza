@@ -1,4 +1,5 @@
 import { logger } from "@elizaos/core";
+import { sanitizeWalletDisplayLabel } from "../../security/wallet-context-safety.js";
 import type { BirdeyeApiParams } from "./types/api/common";
 import type {
   TokenMarketSearchResponse,
@@ -509,8 +510,11 @@ export const formatTokenInfo = (
     ? `${Math.floor((Date.now() - new Date(token.creation_time).getTime()) / (1000 * 60 * 60 * 24))}d`
     : "N/A";
 
+  const safeName = sanitizeWalletDisplayLabel(token.name || "unknown");
+  const safeSymbol = sanitizeWalletDisplayLabel(token.symbol || "unknown");
+
   let output =
-    `🪙 ${token.name} @ ${token.symbol}\n` +
+    `🪙 ${safeName} @ ${safeSymbol}\n` +
     `💰 USD: $${priceFormatted} (${priceChange})\n` +
     `💎 FDV: ${fdv}\n` +
     `💦 MCap: ${token.market_cap ? `$${(token.market_cap / 1_000_000).toFixed(2)}M` : "N/A"}\n` +

@@ -421,12 +421,16 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(await service.postUserMessage("missing", "x")).toBeNull();
   });
 
-  it("records a posted message with no forwarding when no session is live", async () => {
+  it("auto-spawns a coding agent when a message is posted with no session live", async () => {
     const acp = new FakeAcp();
     const service = makeService(acp);
     const { id } = await service.createTask(createInput());
     const result = must(await service.postUserMessage(id, "hello"), "post");
-    expect(result.forwardedTo).toEqual([]);
+    // Parity: messaging a task with no live agent "just works" — it spawns one
+    // (the default vendored opencode backend) to act on the message, rather than
+    // silently recording it with nowhere to go.
+    expect(result.forwardedTo).toEqual(["auto-spawned"]);
+    expect(acp.spawnArgs).toHaveLength(1);
     expect(acp.sent).toHaveLength(0);
   });
 
@@ -672,7 +676,9 @@ describe("OrchestratorTaskService — usage telemetry", () => {
       cacheTokens: 0,
     });
     const usage = must(await service.getUsage(taskId), "usage");
-    expect(must(usage.byProvider[0], "provider").provider).toBe("codex");
+    // The default spawn framework is the vendored opencode backend, so a
+    // usage frame that omits its provider is attributed to that session.
+    expect(must(usage.byProvider[0], "provider").provider).toBe("opencode");
   });
 
   it("ignores empty usage frames", async () => {

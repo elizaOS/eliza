@@ -41,6 +41,14 @@ type WorkerAgentSandboxesRepository =
 type WorkerJobsRepository =
   typeof import("@elizaos/cloud-shared/db/repositories/jobs").jobsRepository;
 
+interface PreflightKmsClient {
+  getOrCreateKey(keyId: string): Promise<unknown>;
+}
+
+type PreflightCreateKmsClient = (opts: {
+  env: NodeJS.ProcessEnv;
+}) => PreflightKmsClient;
+
 interface WorkerDeps {
   logger: WorkerLogger;
   provisioningJobService: WorkerService;
@@ -165,6 +173,32 @@ function resultContext(result: ProcessingResult): Record<string, unknown> {
     failed: result.failed,
     errors: result.errors,
   };
+}
+
+export async function assertProvisioningWorkerPreflight(
+  opts: {
+    env?: NodeJS.ProcessEnv;
+    createKmsClient?: PreflightCreateKmsClient;
+  } = {},
+): Promise<void> {
+  const env = opts.env ?? process.env;
+  const createKmsClient =
+    opts.createKmsClient ??
+    (await import("@elizaos/security/kms")).createKmsClient;
+
+  try {
+    const kms = createKmsClient({ env });
+    await kms.getOrCreateKey("system:provisioning-worker-preflight");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      "Provisioning worker preflight failed: KMS is not usable. " +
+        "Refusing to publish a healthy heartbeat or claim provisioning jobs. " +
+        "Configure ELIZA_KMS_BACKEND=local with a persistent ELIZA_LOCAL_ROOT_KEY, " +
+        "or wire a working Steward KMS client. " +
+        `Cause: ${message}`,
+    );
+  }
 }
 
 async function processProvisioningWorkerCycle(
@@ -456,6 +490,7 @@ async function pollCycle(
   logger: WorkerLogger,
   config: ProvisioningWorkerConfig,
 ): Promise<void> {
+  await assertProvisioningWorkerPreflight();
   await publishHeartbeat(logger);
   try {
     const result = await processProvisioningWorkerCycle(config.batchSize);
@@ -606,6 +641,9 @@ async function main(): Promise<void> {
     runOnce: config.runOnce,
     nodeHealthIntervalMs: config.nodeHealthIntervalMs,
   });
+
+  await assertProvisioningWorkerPreflight();
+  logger.info("[provisioning-worker] startup preflight passed");
 
   if (config.runOnce) {
     await pollCycle(logger, config);

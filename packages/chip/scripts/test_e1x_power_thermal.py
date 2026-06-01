@@ -29,4 +29,8 @@ def test_e1x_power_thermal_gate_passes() -> None:
     assert report["summary"]["peak_package_power_w"] < report["summary"]["cooling_envelope_w"]
     assert report["summary"]["peak_power_density_w_per_mm2"] < 0.5
     assert 0.0 < report["summary"]["schedule_energy_j"] < 1.0
-    assert 0.0 < report["summary"]["schedule_average_power_w"] < report["summary"]["peak_package_power_w"]
+    assert (
+        0.0
+        < report["summary"]["schedule_average_power_w"]
+        < report["summary"]["peak_package_power_w"]
+    )

@@ -141,6 +141,25 @@ function findLeadingJsonObjectEnd(text: string): number {
 	return -1;
 }
 
+// A skill-stdout command envelope is `{"cmd": "..."}` / `{"command": [...]}`
+// where the value is a non-empty string or an array of strings. Requiring the
+// value shape (not just key presence) avoids stripping arbitrary JSON that
+// merely happens to carry a `cmd`/`command` key.
+function isCommandEnvelope(record: Record<string, unknown>): boolean {
+	for (const key of ["cmd", "command"] as const) {
+		const value = record[key];
+		if (typeof value === "string" && value.length > 0) return true;
+		if (
+			Array.isArray(value) &&
+			value.length > 0 &&
+			value.every((entry) => typeof entry === "string")
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function unwrapSkillStdoutEnvelope(stdout: string): string | undefined {
 	const trimmed = stdout.trim();
 	if (!trimmed) return undefined;
@@ -161,8 +180,7 @@ function unwrapSkillStdoutEnvelope(stdout: string): string | undefined {
 	}
 
 	const record = parsed as Record<string, unknown>;
-	const hasCommandEnvelope = "cmd" in record || "command" in record;
-	if (!hasCommandEnvelope) return undefined;
+	if (!isCommandEnvelope(record)) return undefined;
 
 	for (const key of ["output", "stdout", "result"] as const) {
 		if (key in record) {

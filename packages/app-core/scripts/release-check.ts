@@ -87,7 +87,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "canary"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -157,24 +157,24 @@ const requiredWorkflowSnippets = [
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\e"',
   "Verify Windows public installer looks complete",
-  'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
+  'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "*-Setup-*.exe"',
   "$minimumBytes = 50MB",
   "packages/app-core/platforms/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
   "needs.prepare.outputs.env == 'canary'",
   '$publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"',
-  '$canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe"',
+  '$canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "*-Setup-*.exe"',
   "Copy-Item $canonicalInstaller.FullName -Destination $publicCanaryDir -Force",
-  '$canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe.zip"',
+  '$canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "*-Setup-*.exe.zip"',
   "No canonical Windows installer (or zip fallback) found for canary artifact publishing.",
   "Expand-Archive -Path $canonicalInstallerZip.FullName -DestinationPath $publicCanaryDir -Force",
   "Prepared public canary installer artifact:",
   "name: Upload public canary installer artifact",
   "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
-  "path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
+  "path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/*-Setup-*.exe",
   "name: Collect public release files",
-  '-name "ElizaOSApp-Setup-*.exe" -o \\',
-  '-name "ElizaOSApp-Setup-*.exe.zip" -o \\',
+  '-name "*-Setup-*.exe" -o \\',
+  '-name "*-Setup-*.exe.zip" -o \\',
   '-name "*Setup*.tar.gz" -o \\',
   "name: Collect update channel files",
   "pattern: browser-bridge-*",
@@ -216,7 +216,7 @@ const requiredWorkflowSnippets = [
   "bun run test:desktop:playwright",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
-  "https://github.com/blackboardsh/electrobun.git",
+  "https://github.com/elizaOS/electrobun.git",
   '"sparse-checkout", "set", "package"',
   'writeGitHubEnv("ELECTROBUN_RCEDIT_PACKAGE_JSON", resolvedRceditPackageJson);',
   'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
@@ -273,7 +273,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "canary"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
   'run-postinstall: "true"',
@@ -1176,7 +1176,7 @@ function assertWindowsInstallerProofScript() {
   );
 
   const requiredSnippets = [
-    "Eliza-Setup-*.exe",
+    '"*-Setup-*.exe"',
     "smoke-test-windows.ps1",
     "ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER",
     "Start Menu",

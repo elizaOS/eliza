@@ -31,10 +31,6 @@ seam at boot.
 Both seams are runtime feature-detected — neither package depends on
 the other.
 
-See **[`docs/inference/vision-cua-boundary.md`](../../docs/inference/vision-cua-boundary.md)**
-for the full ownership map, public types, wiring contract, and the list
-of anti-patterns to avoid.
-
 ## Enabling
 
 - Config: `features.computeruse: true`

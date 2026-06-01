@@ -9,12 +9,12 @@ contexts, and the service agrees with the Linux driver ABI.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree

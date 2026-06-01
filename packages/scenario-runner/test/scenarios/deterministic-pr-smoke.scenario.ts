@@ -10,6 +10,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpStub,
 } from "./_helpers/app-control-http-stub";
+import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
 type RuntimeWithScenarioLlmFixtures = {
   scenarioLlmFixtures?: {
@@ -102,7 +103,7 @@ export default scenario({
           name: "pr-smoke-deterministic-reply",
           match: {
             modelType: ModelType.TEXT_SMALL,
-            input: "hello deterministic proxy",
+            input: matchesScenarioInput("hello deterministic proxy"),
           },
           response: "deterministic-test-response: hello deterministic proxy",
           times: 1,

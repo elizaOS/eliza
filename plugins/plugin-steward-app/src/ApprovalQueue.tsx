@@ -3,7 +3,8 @@
  * Polls every 10 seconds for new items.
  */
 
-import { Button, PagePanel, Spinner, useAgentElement } from "@elizaos/ui";
+import { Button, PagePanel, Spinner } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";

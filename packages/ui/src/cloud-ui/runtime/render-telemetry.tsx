@@ -15,8 +15,14 @@ import {
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 
-const INFO_THRESHOLD = 2;
-const ERROR_THRESHOLD = 3;
+// Thresholds describe a *runaway render loop*, not ordinary churn. Normal
+// behaviour (startup settling, typing, dragging, token streaming) and React
+// StrictMode's dev mount double-invoke easily exceed the previous 2/3, firing
+// on healthy components. Only a sustained rate well above one commit per frame
+// indicates a real loop. Kept in lock-step with
+// eliza/packages/ui/src/hooks/useRenderGuard.ts.
+const INFO_THRESHOLD = 60;
+const ERROR_THRESHOLD = 120;
 const WINDOW_MS = 1000;
 
 type ImportMetaWithEnv = ImportMeta & {
@@ -66,8 +72,16 @@ type RenderTelemetrySink = (event: AnyRenderTelemetryEvent) => void;
 let renderTelemetrySink: RenderTelemetrySink | null = null;
 let renderTelemetrySequence = 0;
 
+type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
+};
+
 function readEnvValue(key: string): boolean | string | undefined {
   const meta = import.meta as ImportMetaWithEnv;
+  if (key === "VITE_ELIZA_RENDER_TELEMETRY") {
+    const explicit = meta.env?.VITE_ELIZA_RENDER_TELEMETRY;
+    if (explicit !== undefined) return explicit;
+  }
   const viteValue = meta.env?.[key];
   if (viteValue !== undefined) return viteValue;
   if (typeof process !== "undefined") {
@@ -77,6 +91,13 @@ function readEnvValue(key: string): boolean | string | undefined {
 }
 
 function isRenderTelemetryEnabled(): boolean {
+  if (
+    (globalThis as RenderTelemetryGlobal)
+      .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
+  ) {
+    return false;
+  }
+
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
   if (explicit === false || explicit === "0" || explicit === "false") {
     return false;

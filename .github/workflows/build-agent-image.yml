@@ -20,6 +20,7 @@ on:
       - "packages/core/**"
       - "packages/app/**"
       - "packages/app-core/**"
+      - "packages/cloud-sdk/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
   release:
@@ -231,6 +232,14 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
             env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
 
+      # github.repository preserves the org's casing (elizaOS/eliza), but Docker
+      # tags must be all-lowercase. metadata-action lowercases for the push tags,
+      # but the raw :ci-boot-verify tag below needs an explicit lowercased image
+      # name or `docker build`/`docker push` fails with "repository name must be
+      # lowercase".
+      - id: image
+        run: echo "name=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
         with:
@@ -248,22 +257,80 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
-      - id: push
+      # Build the image into the local Docker daemon first (load, do NOT push).
+      # The boot-verification step below runs the REAL agent entrypoint against
+      # this exact image, and the push step ships these same loaded bytes by
+      # retagging the local image. This is the gate that stops a container which
+      # crashes on startup (missing runtime deps, broken entrypoint) from
+      # reaching ghcr. `provenance: false` keeps the loaded image a single-
+      # platform image so the retag-and-push below publishes the same content
+      # that was verified (no second build, no "latest yt-dlp" drift between the
+      # verified and published image).
+      - id: build-local
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
           file: packages/app-core/deploy/Dockerfile.ci
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ steps.image.outputs.name }}:ci-boot-verify
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify image boots (real agent entrypoint)
+        # Runs the production entrypoint (node --import
+        # /opt/tsx/node_modules/tsx/dist/loader.mjs packages/agent/dist/bin.js
+        # start) inside the just-built image and fails RED if the agent crashes
+        # on startup, exits non-zero, logs a known crash signature (Cannot find
+        # package/module, Failed to start, crashed during init, ...), never
+        # serves /api/health within the timeout, or crashes during the
+        # post-health stability window. A failure here blocks the push below, so
+        # a non-bootable image is never published.
+        env:
+          DOCKER_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
+          BOOT_VERIFY_ONLY: "true"
+          SMOKE_TIMEOUT_SEC: "180"
+          BOOT_STABLE_WINDOW_SEC: "15"
+          SMOKE_PORT: "32138"
+          CONTAINER_PORT: "42138"
+        run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
+
+      # Push the EXACT verified image. This runs only if the boot verification
+      # above succeeded (steps run in order; a failed step fails the job). We
+      # retag the locally-loaded :ci-boot-verify image to each computed tag and
+      # `docker push` it, so the published bytes are byte-for-byte the image
+      # that just booted cleanly. No rebuild means no chance of shipping a
+      # different image than the one that was verified.
+      - id: push
+        env:
+          LOCAL_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          first_tag=""
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            [ -z "$first_tag" ] && first_tag="$tag"
+            echo "Tagging $LOCAL_IMAGE as $tag and pushing"
+            docker tag "$LOCAL_IMAGE" "$tag"
+            docker push "$tag"
+          done <<< "$TAGS"
+          # Resolve the published digest from a pushed tag (its RepoDigests is
+          # populated by the push above) for the attestation step.
+          digest=""
+          if [ -n "$first_tag" ]; then
+            digest="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$first_tag" 2>/dev/null | sed 's/.*@//' || true)"
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Generate artifact attestation
+        if: ${{ steps.push.outputs.digest != '' }}
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 

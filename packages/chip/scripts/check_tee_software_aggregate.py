@@ -180,7 +180,10 @@ def build_report() -> dict[str, Any]:
     failed = [check for check in checks if check["status"] != "pass"]
     return {
         "schema": "eliza.tee_software_aggregate.v1",
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "status": "tee_software_floor_only_release_blocked",
         "claim_boundary": (
             "Pure-software TEE models, contracts, and checkers only; not secure "

@@ -64,9 +64,7 @@ EXCLUDED_SUFFIXES = (
     ".schema.json",
     ".example.json",
 )
-EXCLUDED_PATH_PARTS = (
-    ("firmware", "usr", "share", "qemu", "firmware"),
-)
+EXCLUDED_PATH_PARTS = (("firmware", "usr", "share", "qemu", "firmware"),)
 LINE_MARKER_EXCLUDED_FILENAMES = {
     "chip-os-boot-gap-inventory.json",
     "chip-os-bring-up-status.json",
@@ -450,8 +448,7 @@ def line_findings(
 
 def is_kernel_build_placeholder_output(line: str) -> bool:
     return bool(
-        KERNEL_BUILD_OUTPUT_RE.search(line)
-        and KERNEL_BUILD_PLACEHOLDER_PATH_RE.search(line)
+        KERNEL_BUILD_OUTPUT_RE.search(line) and KERNEL_BUILD_PLACEHOLDER_PATH_RE.search(line)
     )
 
 

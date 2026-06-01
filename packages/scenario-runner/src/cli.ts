@@ -331,7 +331,17 @@ async function main(): Promise<number> {
     // into canonical eliza_native_v1 model-boundary rows for the eliza-1
     // training corpus (see packages/training/docs/dataset/CANONICAL_RECORD.md).
     // The training prep script runs the mandatory privacy filter on every row.
-    exportScenarioNativeJsonl(effectiveRunDir, parsed.exportNativePath);
+    // Thread each scenario's assertion outcome so failed/regressed trajectories
+    // are stamped status="failed" and routed to rating="repair"/weight=0 instead
+    // of being exported as gold-weight training data.
+    const scenarioOutcomes = new Map(
+      reports.map((report) => [report.id, report.status] as const),
+    );
+    exportScenarioNativeJsonl(
+      effectiveRunDir,
+      parsed.exportNativePath,
+      scenarioOutcomes,
+    );
   }
   if (effectiveRunDir) {
     const viewerIndex = path.join(effectiveRunDir, "viewer", "index.html");

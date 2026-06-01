@@ -73,31 +73,39 @@ def main() -> int:
 
     payload_bytes = max(1, int(pressure.get("fabric_payload_bits", 0)) // 8)
     by_color: dict[int, dict[str, int]] = {
-        color: {"layer_count": 0, "activation_wavelets": 0, "reduction_wavelets": 0, "total_wavelets": 0}
+        color: {
+            "layer_count": 0,
+            "activation_wavelets": 0,
+            "reduction_wavelets": 0,
+            "total_wavelets": 0,
+        }
         for color in range(int(pressure.get("routing_color_capacity", 0)))
     }
     sampled_layers: list[dict[str, int | str]] = []
     for layer in schedule.get("layers", []):
         color = int(layer["routing_color"])
-        activation_wavelets = ceil(int(layer["cols"]) / payload_bytes) * int(layer["assigned_cores"])
+        activation_wavelets = ceil(int(layer["cols"]) / payload_bytes) * int(
+            layer["assigned_cores"]
+        )
         reduction_wavelets = ceil(int(layer["rows"]) * 4 / payload_bytes)
         by_color[color]["layer_count"] += 1
         by_color[color]["activation_wavelets"] += activation_wavelets
         by_color[color]["reduction_wavelets"] += reduction_wavelets
         by_color[color]["total_wavelets"] += activation_wavelets + reduction_wavelets
         if len(sampled_layers) < 6:
-            sampled_layers.append({
-                "layer_index": int(layer["layer_index"]),
-                "layer_name": str(layer["layer_name"]),
-                "routing_color": color,
-                "activation_wavelets": activation_wavelets,
-                "reduction_wavelets": reduction_wavelets,
-                "assigned_cores": int(layer["assigned_cores"]),
-            })
+            sampled_layers.append(
+                {
+                    "layer_index": int(layer["layer_index"]),
+                    "layer_name": str(layer["layer_name"]),
+                    "routing_color": color,
+                    "activation_wavelets": activation_wavelets,
+                    "reduction_wavelets": reduction_wavelets,
+                    "assigned_cores": int(layer["assigned_cores"]),
+                }
+            )
 
     pressure_by_color = {
-        int(record["routing_color"]): record
-        for record in pressure.get("color_records", [])
+        int(record["routing_color"]): record for record in pressure.get("color_records", [])
     }
     mismatched_colors = []
     for color, expected in by_color.items():
@@ -120,9 +128,13 @@ def main() -> int:
         f"recomputed {total_reduction} reduction wavelets and {total_activation} activation wavelets",
         "color pressure mismatch: " + ", ".join(mismatched_colors[:8]),
     )
-    checks.append({"id": "e1x_fabric_reduction_recomputes_color_pressure", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_fabric_reduction_recomputes_color_pressure", "status": status, "detail": detail}
+    )
 
-    timing_by_color = {int(record["routing_color"]): record for record in timing.get("color_timings", [])}
+    timing_by_color = {
+        int(record["routing_color"]): record for record in timing.get("color_timings", [])
+    }
     timing_mismatches = []
     for color, expected in by_color.items():
         actual = timing_by_color.get(color, {})
@@ -139,7 +151,9 @@ def main() -> int:
         "per-color reduction/activation wavelets match fabric timing records and schedule bound",
         "timing color mismatch: " + ", ".join(timing_mismatches[:8]),
     )
-    checks.append({"id": "e1x_fabric_reduction_timing_links_pressure", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_fabric_reduction_timing_links_pressure", "status": status, "detail": detail}
+    )
 
     mesh_ok = (
         mesh_liveness.get("status") == "PASS"
@@ -152,7 +166,13 @@ def main() -> int:
         "mesh fabric/liveness evidence is present for multi-hop XY delivery of reduction wavelets",
         "mesh fabric/liveness evidence missing",
     )
-    checks.append({"id": "e1x_fabric_reduction_mesh_delivery_evidence_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_fabric_reduction_mesh_delivery_evidence_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     reduction_merge_ok = (
         reduction_merge.get("status") == "PASS"
@@ -164,9 +184,17 @@ def main() -> int:
         "bounded RTL reduction-merge primitive is covered by cocotb",
         "bounded RTL reduction-merge primitive evidence missing",
     )
-    checks.append({"id": "e1x_fabric_reduction_rtl_merge_primitive_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_fabric_reduction_rtl_merge_primitive_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
-    peak_color = max(by_color.items(), key=lambda item: item[1]["total_wavelets"])[0] if by_color else -1
+    peak_color = (
+        max(by_color.items(), key=lambda item: item[1]["total_wavelets"])[0] if by_color else -1
+    )
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
         "check_count": len(checks),

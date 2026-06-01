@@ -720,9 +720,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             "0x0000000080b00000",
         )
         self.assertIs(
-            contract["opensbi_fdt_handoff_audit"][
-                "domain0_next_arg1_clear_of_kernel_low_window"
-            ],
+            contract["opensbi_fdt_handoff_audit"]["domain0_next_arg1_clear_of_kernel_low_window"],
             False,
         )
         self.assertIn("diagnostic", contract["claim_boundary"])

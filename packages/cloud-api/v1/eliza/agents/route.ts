@@ -28,11 +28,19 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+const dockerImageSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(512)
+  .regex(/^[A-Za-z0-9._/:@-]+$/, "Invalid Docker image reference");
+
 const createAgentSchema = z.object({
   agentName: z.string().min(1).max(100),
   characterId: z.string().uuid().optional(),
   agentConfig: z.record(z.string(), z.unknown()).optional(),
   environmentVars: z.record(z.string(), z.string()).optional(),
+  dockerImage: dockerImageSchema.optional(),
 });
 
 type Agent = Awaited<ReturnType<typeof elizaSandboxService.listAgents>>[number];
@@ -83,6 +91,7 @@ function toAgentListItemDto(
     token_ticker:
       character?.token_ticker ??
       stringConfigValue(agent.agent_config, "tokenTicker"),
+    dockerImage: agent.docker_image,
   };
 }
 
@@ -167,6 +176,7 @@ app.post("/", async (c) => {
     userId: user.id,
     agentName: parsed.data.agentName,
     characterId: parsed.data.characterId,
+    dockerImage: parsed.data.dockerImage,
     agentConfig: parsed.data.characterId
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig,

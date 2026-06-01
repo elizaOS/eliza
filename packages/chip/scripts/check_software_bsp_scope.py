@@ -539,7 +539,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("findings must list structured software BSP blockers")
     commands = data.get("next_command_plan")
     if not isinstance(commands, list) or not commands:
-        errors.append("next_command_plan must list capture commands for blocked software BSP evidence")
+        errors.append(
+            "next_command_plan must list capture commands for blocked software BSP evidence"
+        )
     else:
         for command_batch in commands:
             if not isinstance(command_batch, dict):

@@ -119,25 +119,6 @@ export interface FineTuningViewProps {
   contentHeader?: ReactNode;
 }
 
-export interface VincentStateHookArgs {
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-  ) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-}
-
-export interface VincentStateHookResult {
-  vincentConnected: boolean;
-  vincentLoginBusy: boolean;
-  vincentLoginError: string | null;
-  vincentConnectedAt: number | null;
-  handleVincentLogin: () => Promise<void>;
-  handleVincentDisconnect: () => Promise<void>;
-  pollVincentStatus: () => Promise<boolean>;
-}
-
 export interface StewardLogoProps {
   size?: number;
   className?: string;
@@ -271,8 +252,6 @@ export interface AppBootConfig {
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
   /** Fine-tuning view provided by the host app. */
   fineTuningView?: ComponentType<FineTuningViewProps>;
-  /** Vincent UI state hook provided by the host app. */
-  useVincentState?: (args: VincentStateHookArgs) => VincentStateHookResult;
   /** LifeOps page implementation provided by the host app. */
   lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */

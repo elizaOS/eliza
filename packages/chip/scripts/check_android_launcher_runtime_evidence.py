@@ -36,12 +36,16 @@ FALSE_CLAIM_FLAGS = {
     "production_readiness_claim_allowed": False,
 }
 RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_launcher_runtime_evidence.py"
-DEFAULT_CAPTURE_EVIDENCE = "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
+DEFAULT_CAPTURE_EVIDENCE = (
+    "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
+)
 DEFAULT_CAPTURE_LOGCAT = "packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt"
 DEFAULT_CAPTURE_TRANSCRIPT = (
     "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
 )
-RECHECK_COMMAND = "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
+RECHECK_COMMAND = (
+    "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
+)
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 ANDROID_TARGET_PREFIXES = (
     "/system/",
@@ -125,7 +129,11 @@ def provenance_safe_value(value: object) -> object:
     if isinstance(value, dict):
         sanitized: dict[str, object] = {}
         for key, item in value.items():
-            if key in {"path", "product_out"} and isinstance(item, str) and HOST_LOCAL_PATH.match(item):
+            if (
+                key in {"path", "product_out"}
+                and isinstance(item, str)
+                and HOST_LOCAL_PATH.match(item)
+            ):
                 sanitized[key] = Path(item).name
             else:
                 sanitized[key] = provenance_safe_value(item)

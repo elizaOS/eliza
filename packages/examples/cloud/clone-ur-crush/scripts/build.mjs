@@ -13,6 +13,17 @@ const packageRoot = path.resolve(
 const finalDistDir = path.join(packageRoot, ".next");
 const tempDistDirName = ".next-build";
 const tempDistDir = path.join(packageRoot, tempDistDirName);
+const appRouteFiles = [
+  "api/analyze-photo/route",
+  "api/create-character/route",
+  "api/generate-field/route",
+  "api/generate-photo/route",
+  "api/generate-scene/route",
+  "cloning/page",
+  "layout",
+  "page",
+];
+const pagesRouteFiles = ["_app", "_document", "_error"];
 
 const compatibilityFiles = [
   {
@@ -71,6 +82,24 @@ const compatibilityFiles = [
     ),
     content: '{"version":1,"files":[]}\n',
   },
+  ...appRouteFiles.map((relativeFile) => ({
+    file: path.join(
+      tempDistDir,
+      "server",
+      "app",
+      `${relativeFile}.js.nft.json`,
+    ),
+    content: '{"version":1,"files":[]}\n',
+  })),
+  ...pagesRouteFiles.map((relativeFile) => ({
+    file: path.join(
+      tempDistDir,
+      "server",
+      "pages",
+      `${relativeFile}.js.nft.json`,
+    ),
+    content: '{"version":1,"files":[]}\n',
+  })),
   ...[
     "api/analyze-photo/route.ts",
     "api/create-character/route.ts",
@@ -87,17 +116,28 @@ const compatibilityFiles = [
 ];
 
 async function writeIfMissing(file, content) {
-  const existing = await readFile(file, "utf8").catch((error) => {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  });
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await readFile(file, "utf8").catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
 
-  if (existing !== null) return;
+    if (existing !== null) return;
 
-  await mkdir(path.dirname(file), { recursive: true });
-  const tempFile = `${file}.${process.pid}.tmp`;
-  await writeFile(tempFile, content);
-  await rename(tempFile, file);
+    try {
+      await mkdir(path.dirname(file), { recursive: true });
+      const tempFile = `${file}.${process.pid}.${attempt}.tmp`;
+      await writeFile(tempFile, content);
+      await rename(tempFile, file);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw lastError;
 }
 
 async function writeCompatibilityFiles() {

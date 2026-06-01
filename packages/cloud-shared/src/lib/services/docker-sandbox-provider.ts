@@ -151,6 +151,64 @@ function resolveStewardRefreshServiceToken(): string {
   return "";
 }
 
+/**
+ * Strip secret-bearing fields from a persisted character before it is injected
+ * into the container as ELIZA_AGENT_CHARACTER_JSON. The container receives the
+ * actual connector tokens / API keys via dedicated env vars; embedding them in
+ * the character JSON would expose them via /proc/<pid>/environ and crash
+ * diagnostics for no benefit. Redacts:
+ *   - top-level `secrets`
+ *   - `settings.secrets`
+ *   - per-connector `token` / `botToken` / `apiToken` under `connectors.*`
+ * Persona + connector POLICY fields (dmPolicy, messagePrefix, enabled, etc.)
+ * are preserved so the runtime still loads the right character + behaviour.
+ */
+function redactCharacterSecrets(character: Record<string, unknown>): Record<string, unknown> {
+  // Deep clone so we never mutate the caller's DB-derived object.
+  const clone = JSON.parse(JSON.stringify(character)) as Record<string, unknown>;
+  delete clone.secrets;
+  if (clone.settings && typeof clone.settings === "object") {
+    delete (clone.settings as Record<string, unknown>).secrets;
+  }
+  const connectors = clone.connectors;
+  if (connectors && typeof connectors === "object") {
+    for (const value of Object.values(connectors as Record<string, unknown>)) {
+      if (value && typeof value === "object") {
+        const c = value as Record<string, unknown>;
+        delete c.token;
+        delete c.botToken;
+        delete c.apiToken;
+      }
+    }
+  }
+  return clone;
+}
+
+/**
+ * Resolve the AGENT_SERVER_SHARED_SECRET to inject into a provisioned
+ * container so it can validate the X-Server-Token the cloud gateways attach to
+ * forwarded platform messages. Precedence:
+ *   1. An explicit per-deployment value in the sandbox's environment_vars.
+ *   2. The daemon's own AGENT_SERVER_SHARED_SECRET (the same value the
+ *      gateways read), so both ends share one secret with no extra config.
+ * Returns an empty object when neither is set, leaving the container's
+ * X-Server-Token path disabled (no regression).
+ */
+function resolveServerSharedSecretEnv(
+  environmentVars: Record<string, string>,
+): Record<string, string> {
+  const explicit = environmentVars.AGENT_SERVER_SHARED_SECRET;
+  if (typeof explicit === "string" && explicit.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: explicit.trim() };
+  }
+  const env = getCloudAwareEnv();
+  const daemonSecret = env.AGENT_SERVER_SHARED_SECRET;
+  if (typeof daemonSecret === "string" && daemonSecret.trim()) {
+    return { AGENT_SERVER_SHARED_SECRET: daemonSecret.trim() };
+  }
+  return {};
+}
+
 function resolveStewardElizaPluginPackage(): string {
   const env = getCloudAwareEnv();
   return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
@@ -168,6 +226,20 @@ function shouldInstallStewardPlugin(
     agentId.toLowerCase() === "sol" ||
     environmentVars.STEWARD_ENABLE_TRADE_PLUGIN === "true" ||
     env.STEWARD_ENABLE_TRADE_PLUGIN === "true"
+  );
+}
+
+export function requiresHeadscaleRoute(
+  env: Partial<Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>> = {
+    HEADSCALE_API_KEY: getCloudAwareEnv().HEADSCALE_API_KEY,
+    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
+      getCloudAwareEnv().AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+  },
+): boolean {
+  if (!env.HEADSCALE_API_KEY?.trim()) return false;
+  return !(
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
   );
 }
 
@@ -452,7 +524,8 @@ export class DockerSandboxProvider implements SandboxProvider {
    * method wraps this in a retry loop to handle port collisions automatically.
    */
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
-    const { agentId, agentName, environmentVars, organizationId } = config;
+    const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
+      config;
 
     // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -570,12 +643,57 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
     const stewardContainerUrl = resolveStewardContainerEnvUrl();
     const proxyEnv = buildStewardProxyEnv();
+
+    // Propagate the orchestrator's KMS configuration into the container so
+    // field-level encryption (per-agent Neon DB) uses the same backend + root
+    // key on both ends. Without this the container's resolveKmsBackend() falls
+    // through to the `steward` default and crashes at boot when no steward
+    // config is present:
+    //   "ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}"
+    // which times out the sandbox health check and fails provisioning. The
+    // daemon already requires a usable KMS, so inheriting its backend + root
+    // key keeps the fleet consistent. Spread before `...environmentVars` so an
+    // explicit per-agent override still wins. See elizaOS/eliza#8062.
+    const kmsEnv: Record<string, string> = {};
+    {
+      const isKmsBackend = (v: string | undefined): v is string =>
+        v === "memory" || v === "local" || v === "steward";
+      const declared = environmentVars.ELIZA_KMS_BACKEND?.trim();
+      const inherited = process.env.ELIZA_KMS_BACKEND?.trim();
+      const backend = isKmsBackend(declared)
+        ? declared
+        : isKmsBackend(inherited)
+          ? inherited
+          : "local";
+      kmsEnv.ELIZA_KMS_BACKEND = backend;
+      if (backend === "local") {
+        const rootKey =
+          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() || process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
+        if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
+      }
+    }
+
     const baseEnv: Record<string, string> = {
+      ...kmsEnv,
       ...environmentVars,
       ...vpnEnvVars,
       ...proxyEnv,
       AGENT_NAME: agentName,
       ELIZA_CLOUD_PROVISIONED: "1",
+      // Path A: inject the character so the container boots AS this agent
+      // (e.g. "Nyx") instead of the bundled default "Eliza" preset. Consumed
+      // by packages/agent/src/runtime/sandbox-character.ts. Secret-bearing
+      // fields (connector tokens, secrets, settings.secrets) are redacted
+      // first — the runtime receives connector tokens via dedicated env vars
+      // (DISCORD_API_TOKEN, TELEGRAM_BOT_TOKEN) and never needs them embedded
+      // in the character JSON, which would otherwise be visible via
+      // /proc/<pid>/environ and crash diagnostics. Omitted when the caller has
+      // no agent_config (the runtime keeps its default-character behaviour).
+      ...(agentConfig && typeof agentConfig === "object"
+        ? {
+            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
+          }
+        : {}),
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
       // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
@@ -589,6 +707,17 @@ export class DockerSandboxProvider implements SandboxProvider {
       JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
       // Allow the agent subdomain origin so the browser can call the API.
       ELIZA_ALLOWED_ORIGINS: `https://${agentId}.${getAgentBaseDomain()}`,
+      // Shared service-to-service secret the cloud gateways attach as the
+      // X-Server-Token header when they forward inbound platform messages to
+      // this container's /agents/:id/message endpoint. The container's auth
+      // path (packages/agent server-helpers-auth isAuthorized) accepts this
+      // header when it matches, so a gateway can route a message without
+      // knowing the per-agent inbound API token. Sourced from the daemon's own
+      // AGENT_SERVER_SHARED_SECRET (the same value the gateways read); both
+      // ends must share it. An explicit per-deployment value in
+      // environmentVars wins. Omitted entirely when neither is set, which
+      // simply leaves the X-Server-Token path disabled in the container.
+      ...resolveServerSharedSecretEnv(environmentVars),
     };
 
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
@@ -694,6 +823,10 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
               SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
               SANDBOX_AGENT_ID: agentId,
+              // The gateways route by the platform character_id, so the
+              // container must register under (and answer as) that id, not
+              // the sandbox id. Injected only when the caller provides it.
+              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
               SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
@@ -840,6 +973,19 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    const meta: ContainerMeta = {
+      nodeId,
+      hostname,
+      containerName,
+      bridgePort,
+      webUiPort,
+      agentId,
+      sshPort,
+      sshUser,
+      hostKeyFingerprint,
+    };
+    this.containers.set(containerName, meta);
+
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
@@ -860,19 +1006,40 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // 9. Store metadata in in-memory cache (includes SSH details for stop/runCommand)
-    const meta: ContainerMeta = {
-      nodeId,
-      hostname,
-      containerName,
-      bridgePort,
-      webUiPort,
-      agentId,
-      sshPort,
-      sshUser,
-      hostKeyFingerprint,
-    };
-    this.containers.set(containerName, meta);
+    if (requiresHeadscaleRoute() && !headscaleIp) {
+      const errorMessage =
+        "Headscale VPN is configured, but the sandbox did not register a headscale_ip. " +
+        "Refusing to mark the agent running without a routable internal ingress; " +
+        "set AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1 only for legacy public-host routing.";
+      logger.error(`[docker-sandbox] ${errorMessage}`, {
+        agentId,
+        containerName,
+        nodeId,
+      });
+      await ssh
+        .exec(
+          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          DOCKER_CMD_TIMEOUT_MS,
+        )
+        .then(() => {
+          logger.info(
+            `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
+          );
+        })
+        .catch((cleanupErr) => {
+          logger.warn(
+            `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        });
+      await this.stop(containerName).catch((cleanupErr) => {
+        const cleanupMessage =
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        logger.warn(
+          `[docker-sandbox] Cleanup after missing Headscale registration failed for ${containerName}: ${cleanupMessage}`,
+        );
+      });
+      throw new Error(errorMessage);
+    }
 
     // 10. Return handle with strongly-typed metadata
     const targetHost = headscaleIp || hostname;
@@ -1000,12 +1167,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.host_key_fingerprint ?? undefined,
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
+    let stopErr: unknown;
+    let rmErr: unknown;
     try {
       await ssh.exec(
         `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (err) {
+      stopErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       if (!isAlreadyGoneMessage(msg)) {
         logger.warn(
@@ -1016,6 +1186,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
     } catch (err) {
+      rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       if (!isAlreadyGoneMessage(msg)) {
         logger.warn(
@@ -1023,6 +1194,25 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
+
+    // Only decrement allocated_count when we have evidence the container is
+    // actually gone: at least one call landed, or one reported "already gone".
+    // If BOTH calls failed for a non-already-gone reason (SSH down, daemon
+    // hung), the container may still be running on the node — decrementing
+    // would under-count and let the scheduler over-place onto this node.
+    // Mirrors the escalation guard in stop(), but stays best-effort (no throw)
+    // because traffic has already been redirected to the new container.
+    if (stopErr && rmErr) {
+      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
+      if (!isAlreadyGoneMessage(stopMsg) && !isAlreadyGoneMessage(rmMsg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: both stop and rm failed for ${containerName} on ${node.node_id}; leaving allocated_count intact (possible zombie) — stop -> ${stopMsg}; rm -> ${rmMsg}`,
+        );
+        return;
+      }
+    }
+
     await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
       logger.warn(
         `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,

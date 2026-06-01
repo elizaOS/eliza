@@ -36,7 +36,9 @@ def test_valid_report_passes() -> None:
         raise AssertionError(errors)
     targets = {target.get("target") for target in report["targets"]}
     if "u-boot" in targets:
-        raise AssertionError(f"selected software BSP scope must not require alternate U-Boot target: {targets}")
+        raise AssertionError(
+            f"selected software BSP scope must not require alternate U-Boot target: {targets}"
+        )
     assert_false_claim_flags(report)
     print("PASS valid software BSP scope report")
 
@@ -122,10 +124,7 @@ def test_next_command_plan_covers_blocked_aosp_evidence() -> None:
     )
     if not aosp_batch:
         raise AssertionError(f"missing AOSP command batch: {commands}")
-    if (
-        aosp_batch.get("claim_boundary")
-        != "operator_commands_only_not_software_bsp_evidence"
-    ):
+    if aosp_batch.get("claim_boundary") != "operator_commands_only_not_software_bsp_evidence":
         raise AssertionError(aosp_batch)
     joined = "\n".join(aosp_batch.get("commands", []))
     for token in (

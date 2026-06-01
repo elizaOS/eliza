@@ -96,6 +96,7 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/orchestrator/tasks/:taskId/messages" },
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/events" },
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/usage" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId/stream" },
   { type: "POST", path: "/api/orchestrator/tasks/:taskId/agents" },
   {
     type: "POST",

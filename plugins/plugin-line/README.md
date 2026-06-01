@@ -1,6 +1,6 @@
 # @elizaos/plugin-line
 
-LINE Messaging API plugin for ElizaOS agents. Enables chatbot integration with LINE, a popular messaging platform in Japan, Taiwan, and Thailand.
+LINE Messaging API plugin for elizaOS agents. Enables chatbot integration with LINE, a popular messaging platform in Japan, Taiwan, and Thailand.
 
 ## Features
 
@@ -154,13 +154,13 @@ const flexMessage = {
 ### Building
 
 ```bash
-cd typescript && npm run build
+bun run --cwd plugins/plugin-line build
 ```
 
 ### Testing
 
 ```bash
-npm test
+bun run --cwd plugins/plugin-line test
 ```
 
 ## API Reference

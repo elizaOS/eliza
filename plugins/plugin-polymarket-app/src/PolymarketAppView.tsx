@@ -1,13 +1,7 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
-import { useAgentElement } from "@elizaos/ui";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  LockKeyhole,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { ArrowLeft, LockKeyhole, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
 import type { PolymarketClient } from "./client";
@@ -71,10 +65,9 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
             <h1 className="truncate text-base font-semibold text-txt">
               Polymarket
             </h1>
-            <div className="mt-1 flex gap-1.5">
-              <MiniBadge label="Markets" />
-              <MiniBadge label="CLOB gate" />
-            </div>
+            <p className="truncate text-xs-tight text-muted">
+              Native market discovery and trading readiness
+            </p>
           </div>
         </div>
 
@@ -105,6 +98,9 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                   <h2 className="text-sm font-semibold text-txt">
                     Read access
                   </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                    Gamma and Data API reads are public.
+                  </p>
                 </div>
                 <StatusPill ready={status?.publicReads.ready ?? false} />
               </div>
@@ -116,6 +112,10 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                   <h2 className="text-sm font-semibold text-txt">
                     Trading readiness
                   </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                    Orders stay disabled until signed CLOB calls are
+                    implemented.
+                  </p>
                 </div>
                 <StatusPill ready={status?.trading.ready ?? false} />
               </div>
@@ -258,27 +258,16 @@ function MarketListItem({
 function StatusPill({ ready }: { ready: boolean }) {
   return (
     <span
-      title={ready ? "Ready" : "Disabled"}
       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
         ready
           ? "border-ok/35 bg-ok/12 text-ok"
           : "border-border bg-bg text-muted"
       }`}
     >
-      {ready ? (
-        <CheckCircle2 className="h-3.5 w-3.5" />
-      ) : (
-        <XCircle className="h-3.5 w-3.5" />
-      )}
-      <span className="sr-only">{ready ? "Ready" : "Disabled"}</span>
-    </span>
-  );
-}
-
-function MiniBadge({ label }: { label: string }) {
-  return (
-    <span className="rounded-md border border-border/40 bg-bg-accent px-1.5 py-0.5 text-2xs font-medium text-muted">
-      {label}
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-ok" : "bg-muted"}`}
+      />
+      {ready ? "Ready" : "Disabled"}
     </span>
   );
 }

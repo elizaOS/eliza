@@ -97,7 +97,13 @@ def main() -> int:
         "vector-kernel window executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_vector_kernel_window_executor_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_kernel_window_executor_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     workplan = load_json(WORKPLAN) if WORKPLAN.is_file() else {}
@@ -109,7 +115,8 @@ def main() -> int:
         and workplan.get("status") == "PASS"
         and int(workplan.get("summary", {}).get("workplan_layer_count", 0)) == 283
         and per_layer_codegen.get("status") == "PASS"
-        and per_layer_codegen.get("summary", {}).get("per_layer_codegen_sha256") == EXPECTED_CODEGEN_SHA256
+        and per_layer_codegen.get("summary", {}).get("per_layer_codegen_sha256")
+        == EXPECTED_CODEGEN_SHA256
         and sampled_vector.get("status") == "PASS"
         and int(sampled_vector.get("summary", {}).get("executed_vector_word_op_count", 0)) == 3_556
     )
@@ -118,7 +125,13 @@ def main() -> int:
         "proof, full-output workplan, per-layer codegen, and sampled vector executor reports are linked and PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_vector_kernel_window_executor_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_kernel_window_executor_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     window_records: list[dict[str, int | str]] = []
     checksum = FNV64_OFFSET
@@ -147,27 +160,31 @@ def main() -> int:
             checksum = mix64(checksum, int(row["requantized_s8"]) & 0xFF)
             layer_acc_checksum = mix64(layer_acc_checksum, int(row["accumulator"]))
         if len(window_records) < 8:
-            window_records.append({
-                "layer_index": layer_index,
-                "layer_name": str(record.get("layer_name", "")),
-                "kind": str(record.get("kind", "")),
-                "window_rows": layer_rows,
-                "window_vector_word_ops": layer_vector_ops,
-                "window_lane_macs": layer_lane_macs,
-                "window_accumulator_checksum": int(layer_acc_checksum),
-            })
+            window_records.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(record.get("layer_name", "")),
+                    "kind": str(record.get("kind", "")),
+                    "window_rows": layer_rows,
+                    "window_vector_word_ops": layer_vector_ops,
+                    "window_lane_macs": layer_lane_macs,
+                    "window_accumulator_checksum": int(layer_acc_checksum),
+                }
+            )
 
     window_record_sha256 = canonical_sha256(window_records)
     full_rows = int(workplan.get("summary", {}).get("full_output_row_count", 0))
     full_vector_ops = int(workplan.get("summary", {}).get("vector_word_op_count", 0))
     coverage_ok = (
         len(proof.get("records", [])) == 283
-        and executed_rows == sum(
+        and executed_rows
+        == sum(
             min(ROWS_PER_LAYER, int(record.get("rows", 0)))
             for record in proof.get("records", [])
             if isinstance(record, dict)
         )
-        and vector_word_ops > int(sampled_vector.get("summary", {}).get("executed_vector_word_op_count", 0))
+        and vector_word_ops
+        > int(sampled_vector.get("summary", {}).get("executed_vector_word_op_count", 0))
         and lane_macs > int(sampled_vector.get("summary", {}).get("executed_lane_mac_count", 0))
         and full_rows == 2_608_640
         and full_vector_ops == 1_627_345_920
@@ -177,21 +194,31 @@ def main() -> int:
         f"vector-kernel window executor ran {executed_rows} rows and {vector_word_ops} packed vector-word ops",
         "vector-kernel window coverage mismatch",
     )
-    checks.append({"id": "e1x_vector_kernel_window_executor_covers_window", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_kernel_window_executor_covers_window",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
         "window_rows_per_layer": ROWS_PER_LAYER,
-        "proof_layer_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
+        "proof_layer_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
         "executed_row_count": executed_rows,
         "executed_vector_word_op_count": vector_word_ops,
         "executed_lane_mac_count": lane_macs,
         "full_output_row_count": full_rows,
         "full_output_vector_word_op_count": full_vector_ops,
         "window_row_coverage_fraction": executed_rows / full_rows if full_rows else 0.0,
-        "window_vector_word_op_coverage_fraction": vector_word_ops / full_vector_ops if full_vector_ops else 0.0,
+        "window_vector_word_op_coverage_fraction": vector_word_ops / full_vector_ops
+        if full_vector_ops
+        else 0.0,
         "window_output_checksum": int(checksum),
         "window_record_sha256": window_record_sha256,
         "sampled_vector_trace_sha256": str(
@@ -231,7 +258,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X vector-kernel window executor failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X vector-kernel window executor failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X vector-kernel window executor; report {REPORT.relative_to(ROOT)}")
     return 0

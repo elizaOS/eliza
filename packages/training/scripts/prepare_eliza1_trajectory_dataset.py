@@ -630,8 +630,14 @@ def native_success_and_score(row: dict[str, Any]) -> tuple[bool, float, list[str
     if status in {"error", "timeout", "failed", "failure"}:
         reasons.append(f"native_status={status}")
         return False, 0.0, reasons
-    reward = row.get("reward")
     metadata = _as_record(row.get("metadata")) or {}
+    scenario_status = str(
+        row.get("scenarioStatus") or metadata.get("scenario_status") or ""
+    ).strip().lower()
+    if scenario_status in {"failed", "failure", "skipped"}:
+        reasons.append(f"scenario_status={scenario_status}")
+        return False, 0.0, reasons
+    reward = row.get("reward")
     if reward is None:
         reward = metadata.get("reward")
     if isinstance(reward, (int, float)):

@@ -18,6 +18,10 @@ export const Switch = NullComponent;
 export const Textarea = NullComponent;
 export const TooltipHint = NullComponent;
 
+export function useAgentElement(): Record<string, unknown> {
+  return { ref: { current: null }, agentProps: {} };
+}
+
 export function useApp(): Record<string, unknown> {
   return {};
 }

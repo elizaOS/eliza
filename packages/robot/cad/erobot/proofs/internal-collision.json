@@ -1,11 +1,11 @@
 {
   "schema": "erobot-internal-collision-v1",
   "ok": true,
-  "components": 41,
+  "components": 38,
   "fit_failures": [],
   "min_contained_fraction": 1.0,
   "internal_collisions": [],
-  "pairs_checked": 11,
+  "pairs_checked": 14,
   "fit": [
     {
       "component": "left_hip_pitch_motor",
@@ -162,6 +162,13 @@
       "fit_ok": true
     },
     {
+      "component": "spine_motor",
+      "body": "spine",
+      "kind": "motor",
+      "contained_fraction": 1.0,
+      "fit_ok": true
+    },
+    {
       "component": "torso_motor",
       "body": "torso",
       "kind": "motor",
@@ -197,6 +204,13 @@
       "fit_ok": true
     },
     {
+      "component": "torso_camera",
+      "body": "torso",
+      "kind": "camera",
+      "contained_fraction": 1.0,
+      "fit_ok": true
+    },
+    {
       "component": "left_shoulder_pitch_motor",
       "body": "left_shoulder_pitch",
       "kind": "motor",
@@ -220,13 +234,6 @@
     {
       "component": "left_elbow_motor",
       "body": "left_elbow",
-      "kind": "motor",
-      "contained_fraction": 1.0,
-      "fit_ok": true
-    },
-    {
-      "component": "left_wrist_yaw_motor",
-      "body": "left_wrist_yaw",
       "kind": "motor",
       "contained_fraction": 1.0,
       "fit_ok": true
@@ -256,34 +263,6 @@
       "component": "right_elbow_motor",
       "body": "right_elbow",
       "kind": "motor",
-      "contained_fraction": 1.0,
-      "fit_ok": true
-    },
-    {
-      "component": "right_wrist_yaw_motor",
-      "body": "right_wrist_yaw",
-      "kind": "motor",
-      "contained_fraction": 1.0,
-      "fit_ok": true
-    },
-    {
-      "component": "neck_motor",
-      "body": "neck",
-      "kind": "motor",
-      "contained_fraction": 1.0,
-      "fit_ok": true
-    },
-    {
-      "component": "head_motor",
-      "body": "head",
-      "kind": "motor",
-      "contained_fraction": 1.0,
-      "fit_ok": true
-    },
-    {
-      "component": "head_camera",
-      "body": "head",
-      "kind": "camera",
       "contained_fraction": 1.0,
       "fit_ok": true
     },

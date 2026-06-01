@@ -517,7 +517,10 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   const HUNG_RUNTIME_THRESHOLD_MS = 10 * 60_000;
 
   const healthServer = http.createServer((req, res) => {
-    if (req.method === "GET" && req.url === "/health") {
+    if (
+      req.method === "GET" &&
+      (req.url === "/health" || req.url === "/api/health")
+    ) {
       const lastActivityAge =
         Date.now() - new Date(state.lastActivityAt).getTime();
       const possiblyHung =

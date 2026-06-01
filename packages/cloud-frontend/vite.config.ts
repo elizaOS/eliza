@@ -82,6 +82,20 @@ const PUBLIC_ENV_KEYS = [
 // so `loadEnv` finds it regardless of where `bun run build` was invoked from.
 const ENV_DIR = fileURLToPath(new URL("../../", import.meta.url));
 
+const ES_TOOLKIT_COMPAT_DEFAULTS = {
+  get: "get",
+  isPlainObject: "isPlainObject",
+  last: "last",
+  maxBy: "maxBy",
+  minBy: "minBy",
+  omit: "omit",
+  range: "range",
+  sortBy: "sortBy",
+  sumBy: "sumBy",
+  throttle: "throttle",
+  uniqBy: "uniqBy",
+} as const;
+
 export default defineConfig(({ mode }) => {
   // `loadEnv` reads `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`
   // from ENV_DIR. Process env (e.g. CI/Pages build env) overrides.
@@ -246,6 +260,10 @@ export default defineConfig(({ mode }) => {
         "@tanstack/react-query",
       ],
       alias: [
+        ...Object.keys(ES_TOOLKIT_COMPAT_DEFAULTS).map((name) => ({
+          find: new RegExp(`^es-toolkit/compat/${name}$`),
+          replacement: r(`./src/shims/es-toolkit-compat/${name}.mjs`),
+        })),
         // The upstream `inherits` package's main entry tries
         // `require('util').inherits` first and falls back to
         // `inherits_browser.js` inside a try/catch. Vite aliases `util`

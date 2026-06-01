@@ -48,8 +48,11 @@ describe("ChatSurface", () => {
   it("disables send when input is empty", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
     expect(
-      (screen.getByRole("button", { name: /send/i }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Send message",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -91,8 +94,7 @@ describe("ChatSurface", () => {
       name: /voice input/i,
     }) as HTMLButtonElement;
     expect(voiceToggle.disabled).toBe(true);
-    expect(voiceToggle.textContent).toBe("Not listening");
-    expect(voiceToggle.querySelector("svg")).toBeNull();
+    expect(voiceToggle.querySelector("svg")).not.toBeNull();
   });
 
   it("enables the voice toggle and toggles voice capture when wired", () => {
@@ -109,11 +111,11 @@ describe("ChatSurface", () => {
       name: /start voice input/i,
     }) as HTMLButtonElement;
     expect(voiceToggle.disabled).toBe(false);
-    expect(voiceToggle.textContent).toBe("Not listening");
-    expect(voiceToggle.querySelector("svg")).toBeNull();
+    expect(voiceToggle.querySelector("svg")).not.toBeNull();
     const input = screen.getByLabelText("Message Eliza");
+    // The mic is a trailing control: it follows the text input in the composer.
     expect(
-      voiceToggle.compareDocumentPosition(input) &
+      input.compareDocumentPosition(voiceToggle) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     fireEvent.click(voiceToggle);

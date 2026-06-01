@@ -43,14 +43,18 @@ bun run build
 
 ## Usage
 
+Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:
+
 ```typescript
-import { REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE } from "@elizaos/prompts";
+import { REPLY_TEMPLATE, composePrompt } from "@elizaos/core";
 
 const prompt = composePrompt({
   state: { agentName: "Alice" },
   template: REPLY_TEMPLATE,
 });
 ```
+
+Import directly from `@elizaos/prompts` only inside this package's tooling and tests.
 
 ## Adding New Prompts
 

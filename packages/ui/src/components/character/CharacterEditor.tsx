@@ -17,6 +17,7 @@ import {
   sanitizeApiKey,
 } from "../../voice/types";
 import { DocumentsView } from "../pages/DocumentsView";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -35,7 +36,6 @@ import {
   getFirstRunPresetStyles,
   shouldApplyPresetDefaults,
 } from "./character-editor-helpers";
-import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { resolveCharacterGreetingAnimation } from "./character-greeting";
 import {
   buildVoiceConfigForCharacterEntry,
@@ -1222,409 +1222,413 @@ export function CharacterEditor({
   /* ── Render ─────────────────────────────────────────────────────── */
   return (
     <ShellViewAgentSurface viewId="character">
-    <div
-      className={
-        sceneOverlay
-          ? "absolute inset-0 z-10 flex flex-col pointer-events-none pt-[4.5rem] px-6 pb-3 max-md:px-3 max-md:pb-2 max-md:pt-[4.5rem] [&>*]:pointer-events-auto"
-          : "flex flex-col w-full flex-1 min-h-0 gap-4"
-      }
-      data-no-camera-zoom={sceneOverlay ? "true" : undefined}
-      data-no-camera-drag={sceneOverlay ? "true" : undefined}
-      data-testid={sceneOverlay ? "companion-character-editor" : undefined}
-      onWheel={sceneOverlay ? (e) => e.stopPropagation() : undefined}
-    >
       <div
         className={
           sceneOverlay
-            ? `relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible [&_input]:select-text [&_textarea]:select-text [&_*:focus-visible:not(input):not(textarea)]:outline-none [&_*:focus-visible:not(input):not(textarea)]:shadow-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:shadow-none${customizing ? " md:w-[40%] md:ml-auto" : ""}`
-            : "relative flex min-h-0 w-full flex-1 flex-col select-none [&_input]:select-text [&_textarea]:select-text"
+            ? "absolute inset-0 z-10 flex flex-col pointer-events-none pt-[4.5rem] px-6 pb-3 max-md:px-3 max-md:pb-2 max-md:pt-[4.5rem] [&>*]:pointer-events-auto"
+            : "flex flex-col w-full flex-1 min-h-0 gap-4"
         }
+        data-no-camera-zoom={sceneOverlay ? "true" : undefined}
+        data-no-camera-drag={sceneOverlay ? "true" : undefined}
+        data-testid={sceneOverlay ? "companion-character-editor" : undefined}
+        onWheel={sceneOverlay ? (e) => e.stopPropagation() : undefined}
       >
-        {/* ── Companion overlay: Character Roster ────────────────────── */}
-        {sceneOverlay && !customizing && (
-          <div className="shrink min-h-0 overflow-hidden flex flex-col items-center justify-end w-full relative max-[600px]:!overflow-visible pointer-events-auto">
-            <CharacterRoster
-              entries={characterRoster}
-              selectedId={
-                selectedCharacterId ?? activeCharacterRosterEntry?.id ?? null
-              }
-              onSelect={handleSelectCharacter}
-            />
-          </div>
-        )}
-
-        {/* ── Companion overlay: tabbed editor (identity | style | examples) */}
-        {sceneOverlay && customizing && (
-          <section
-            className="flex flex-col flex-1 min-h-0 gap-2 overflow-hidden"
-            aria-label={t("charactereditor.TabbedEditorGroupLabel", {
-              defaultValue: "Character editor — tabbed sections",
-            })}
-          >
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              <div
-                className="flex shrink-0 items-center gap-1 rounded-sm border border-border bg-elevated p-1"
-                style={{ boxShadow: pageTabsBoxShadow }}
-                role="tablist"
-                aria-label={t("charactereditor.TabbedEditorGroupLabel", {
-                  defaultValue: "Character editor sections",
-                })}
-              >
-                {CHARACTER_EDITOR_PAGES.map((page) => {
-                  const pageLabel =
-                    page === "personality"
-                      ? t("charactereditor.TabPersonality", {
-                          defaultValue: "Personality",
-                        })
-                      : page === "style"
-                        ? t("charactereditor.TabStyles", {
-                            defaultValue: "Styles",
-                          })
-                        : page === "examples"
-                          ? t("charactereditor.TabExamples", {
-                              defaultValue: "Examples",
-                            })
-                          : t("nav.documents", {
-                              defaultValue: "Knowledge",
-                            });
-                  return (
-                    <CharacterPageTabButton
-                      key={page}
-                      page={page}
-                      label={pageLabel}
-                      agentLabel={pageLabel}
-                      isActive={activePage === page}
-                      onSelect={requestPageChange}
-                      className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
-                      style={
-                        activePage === page ? accentGradientStyle : undefined
-                      }
-                      onKeyDown={(event) => {
-                        if (
-                          event.key !== "ArrowRight" &&
-                          event.key !== "ArrowLeft" &&
-                          event.key !== "Home" &&
-                          event.key !== "End"
-                        ) {
-                          return;
-                        }
-                        event.preventDefault();
-                        const currentIndex =
-                          CHARACTER_EDITOR_PAGES.indexOf(activePage);
-                        const nextIndex =
-                          event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? CHARACTER_EDITOR_PAGES.length - 1
-                              : event.key === "ArrowRight"
-                                ? (currentIndex + 1) %
-                                  CHARACTER_EDITOR_PAGES.length
-                                : (currentIndex -
-                                    1 +
-                                    CHARACTER_EDITOR_PAGES.length) %
-                                  CHARACTER_EDITOR_PAGES.length;
-                        const nextPage = CHARACTER_EDITOR_PAGES[nextIndex];
-                        requestPageChange(nextPage);
-                        requestAnimationFrame(() => {
-                          globalThis.document
-                            ?.getElementById(`character-editor-tab-${nextPage}`)
-                            ?.focus();
-                        });
-                      }}
-                    >
-                      {pageLabel}
-                    </CharacterPageTabButton>
-                  );
-                })}
-              </div>
-              {activePage !== "documents" && (
-                <div className="ml-auto">
-                  {renderContentActionButtons("ce-vrm-upload")}
-                </div>
-              )}
+        <div
+          className={
+            sceneOverlay
+              ? `relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible [&_input]:select-text [&_textarea]:select-text [&_*:focus-visible:not(input):not(textarea)]:outline-none [&_*:focus-visible:not(input):not(textarea)]:shadow-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:shadow-none${customizing ? " md:w-[40%] md:ml-auto" : ""}`
+              : "relative flex min-h-0 w-full flex-1 flex-col select-none [&_input]:select-text [&_textarea]:select-text"
+          }
+        >
+          {/* ── Companion overlay: Character Roster ────────────────────── */}
+          {sceneOverlay && !customizing && (
+            <div className="shrink min-h-0 overflow-hidden flex flex-col items-center justify-end w-full relative max-[600px]:!overflow-visible pointer-events-auto">
+              <CharacterRoster
+                entries={characterRoster}
+                selectedId={
+                  selectedCharacterId ?? activeCharacterRosterEntry?.id ?? null
+                }
+                onSelect={handleSelectCharacter}
+              />
             </div>
+          )}
 
-            <div
-              id={`character-editor-panel-${activePage}`}
-              role="tabpanel"
-              aria-labelledby={`character-editor-tab-${activePage}`}
-              className="flex flex-col flex-1 min-h-0 overflow-hidden"
+          {/* ── Companion overlay: tabbed editor (identity | style | examples) */}
+          {sceneOverlay && customizing && (
+            <section
+              className="flex flex-col flex-1 min-h-0 gap-2 overflow-hidden"
+              aria-label={t("charactereditor.TabbedEditorGroupLabel", {
+                defaultValue: "Character editor — tabbed sections",
+              })}
             >
-              <div
-                className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "personality" ? " hidden" : ""}`}
-              >
-                <CharacterIdentityPanel
-                  bioText={bioText}
-                  handleFieldEdit={handleFieldEdit}
-                  t={t}
-                />
-              </div>
-              <div
-                className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "style" && activePage !== "examples" ? " hidden" : ""}`}
-              >
+              <div className="flex flex-wrap items-center gap-3 shrink-0">
                 <div
-                  style={{ display: rightTab === "style" ? undefined : "none" }}
+                  className="flex shrink-0 items-center gap-1 rounded-sm border border-border bg-elevated p-1"
+                  style={{ boxShadow: pageTabsBoxShadow }}
+                  role="tablist"
+                  aria-label={t("charactereditor.TabbedEditorGroupLabel", {
+                    defaultValue: "Character editor sections",
+                  })}
                 >
-                  <CharacterStylePanel
-                    d={d}
-                    pendingStyleEntries={pendingStyleEntries}
-                    styleEntryDrafts={styleEntryDrafts}
-                    handlePendingStyleEntryChange={
-                      handlePendingStyleEntryChange
-                    }
-                    handleAddStyleEntry={handleAddStyleEntry}
-                    handleRemoveStyleEntry={handleRemoveStyleEntry}
-                    handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-                    handleCommitStyleEntry={handleCommitStyleEntry}
-                    handleReorderStyleEntries={handleReorderStyleEntries}
-                    t={t}
-                  />
+                  {CHARACTER_EDITOR_PAGES.map((page) => {
+                    const pageLabel =
+                      page === "personality"
+                        ? t("charactereditor.TabPersonality", {
+                            defaultValue: "Personality",
+                          })
+                        : page === "style"
+                          ? t("charactereditor.TabStyles", {
+                              defaultValue: "Styles",
+                            })
+                          : page === "examples"
+                            ? t("charactereditor.TabExamples", {
+                                defaultValue: "Examples",
+                              })
+                            : t("nav.documents", {
+                                defaultValue: "Knowledge",
+                              });
+                    return (
+                      <CharacterPageTabButton
+                        key={page}
+                        page={page}
+                        label={pageLabel}
+                        agentLabel={pageLabel}
+                        isActive={activePage === page}
+                        onSelect={requestPageChange}
+                        className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
+                        style={
+                          activePage === page ? accentGradientStyle : undefined
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key !== "ArrowRight" &&
+                            event.key !== "ArrowLeft" &&
+                            event.key !== "Home" &&
+                            event.key !== "End"
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          const currentIndex =
+                            CHARACTER_EDITOR_PAGES.indexOf(activePage);
+                          const nextIndex =
+                            event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? CHARACTER_EDITOR_PAGES.length - 1
+                                : event.key === "ArrowRight"
+                                  ? (currentIndex + 1) %
+                                    CHARACTER_EDITOR_PAGES.length
+                                  : (currentIndex -
+                                      1 +
+                                      CHARACTER_EDITOR_PAGES.length) %
+                                    CHARACTER_EDITOR_PAGES.length;
+                          const nextPage = CHARACTER_EDITOR_PAGES[nextIndex];
+                          requestPageChange(nextPage);
+                          requestAnimationFrame(() => {
+                            globalThis.document
+                              ?.getElementById(
+                                `character-editor-tab-${nextPage}`,
+                              )
+                              ?.focus();
+                          });
+                        }}
+                      >
+                        {pageLabel}
+                      </CharacterPageTabButton>
+                    );
+                  })}
                 </div>
+                {activePage !== "documents" && (
+                  <div className="ml-auto">
+                    {renderContentActionButtons("ce-vrm-upload")}
+                  </div>
+                )}
+              </div>
+
+              <div
+                id={`character-editor-panel-${activePage}`}
+                role="tabpanel"
+                aria-labelledby={`character-editor-tab-${activePage}`}
+                className="flex flex-col flex-1 min-h-0 overflow-hidden"
+              >
                 <div
-                  style={{
-                    display: rightTab === "examples" ? undefined : "none",
-                  }}
+                  className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "personality" ? " hidden" : ""}`}
                 >
-                  <CharacterExamplesPanel
-                    d={d}
-                    normalizedMessageExamples={normalizedMessageExamples}
+                  <CharacterIdentityPanel
+                    bioText={bioText}
                     handleFieldEdit={handleFieldEdit}
                     t={t}
                   />
                 </div>
+                <div
+                  className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "style" && activePage !== "examples" ? " hidden" : ""}`}
+                >
+                  <div
+                    style={{
+                      display: rightTab === "style" ? undefined : "none",
+                    }}
+                  >
+                    <CharacterStylePanel
+                      d={d}
+                      pendingStyleEntries={pendingStyleEntries}
+                      styleEntryDrafts={styleEntryDrafts}
+                      handlePendingStyleEntryChange={
+                        handlePendingStyleEntryChange
+                      }
+                      handleAddStyleEntry={handleAddStyleEntry}
+                      handleRemoveStyleEntry={handleRemoveStyleEntry}
+                      handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                      handleCommitStyleEntry={handleCommitStyleEntry}
+                      handleReorderStyleEntries={handleReorderStyleEntries}
+                      t={t}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: rightTab === "examples" ? undefined : "none",
+                    }}
+                  >
+                    <CharacterExamplesPanel
+                      d={d}
+                      normalizedMessageExamples={normalizedMessageExamples}
+                      handleFieldEdit={handleFieldEdit}
+                      t={t}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={`flex flex-col flex-1 min-h-0 overflow-hidden${activePage !== "documents" ? " hidden" : ""}`}
+                >
+                  <DocumentsView inModal />
+                </div>
               </div>
-              <div
-                className={`flex flex-col flex-1 min-h-0 overflow-hidden${activePage !== "documents" ? " hidden" : ""}`}
-              >
-                <DocumentsView inModal />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ── Standalone page: character hub */}
-        {!sceneOverlay && (
-          <CharacterHubView
-            d={d}
-            bioText={bioText}
-            normalizedMessageExamples={normalizedMessageExamples}
-            pendingStyleEntries={pendingStyleEntries}
-            styleEntryDrafts={styleEntryDrafts}
-            handleFieldEdit={handleFieldEdit}
-            applyFieldEdit={(field, value) => {
-              handleCharacterFieldInput(
-                field as keyof CharacterData,
-                value as CharacterData[keyof CharacterData],
-              );
-            }}
-            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-            applyStyleEdit={handleCharacterStyleInput}
-            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-            characterSaving={characterSaving}
-            characterSaveSuccess={characterSaveSuccess}
-            characterSaveError={characterSaveError}
-            hasPendingChanges={hasPendingChanges}
-            onSave={handleSaveCharacter}
-          />
-        )}
-      </div>
-
-      {/* ── Footer (companion overlay only) ────────────────────────── */}
-      {sceneOverlay && (
-        <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
-          {(characterSaveSuccess || combinedSaveError) && (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {characterSaveSuccess && (
-                <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
-                  {characterSaveSuccess}
-                </span>
-              )}
-              {combinedSaveError && (
-                <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                  {combinedSaveError}
-                </span>
-              )}
-            </div>
+            </section>
           )}
 
-          <div className="flex min-h-9 items-center justify-end">
-            <input
-              type="file"
-              id="ce-vrm-upload"
-              accept=".vrm"
-              className="hidden"
-              style={{ display: "none" }}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setState("selectedVrmIndex", 0);
-                }
-                e.target.value = "";
+          {/* ── Standalone page: character hub */}
+          {!sceneOverlay && (
+            <CharacterHubView
+              d={d}
+              bioText={bioText}
+              normalizedMessageExamples={normalizedMessageExamples}
+              pendingStyleEntries={pendingStyleEntries}
+              styleEntryDrafts={styleEntryDrafts}
+              handleFieldEdit={handleFieldEdit}
+              applyFieldEdit={(field, value) => {
+                handleCharacterFieldInput(
+                  field as keyof CharacterData,
+                  value as CharacterData[keyof CharacterData],
+                );
               }}
+              handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+              applyStyleEdit={handleCharacterStyleInput}
+              handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+              characterSaving={characterSaving}
+              characterSaveSuccess={characterSaveSuccess}
+              characterSaveError={characterSaveError}
+              hasPendingChanges={hasPendingChanges}
+              onSave={handleSaveCharacter}
             />
-            <CharacterAgentButton
-              agentId="action-toggle-customize"
-              agentLabel={
-                customizing
+          )}
+        </div>
+
+        {/* ── Footer (companion overlay only) ────────────────────────── */}
+        {sceneOverlay && (
+          <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
+            {(characterSaveSuccess || combinedSaveError) && (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {characterSaveSuccess && (
+                  <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
+                    {characterSaveSuccess}
+                  </span>
+                )}
+                {combinedSaveError && (
+                  <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
+                    {combinedSaveError}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="flex min-h-9 items-center justify-end">
+              <input
+                type="file"
+                id="ce-vrm-upload"
+                accept=".vrm"
+                className="hidden"
+                style={{ display: "none" }}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setState("selectedVrmIndex", 0);
+                  }
+                  e.target.value = "";
+                }}
+              />
+              <CharacterAgentButton
+                agentId="action-toggle-customize"
+                agentLabel={
+                  customizing
+                    ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
+                    : t("charactereditor.CustomizeBtn", {
+                        defaultValue: "Customize",
+                      })
+                }
+                agentGroup="character-actions"
+                agentDescription="Toggle between the character roster and the customize editor"
+                agentStatus={customizing ? "active" : "inactive"}
+                type="button"
+                variant="default"
+                size="sm"
+                className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+                style={accentGradientStyle}
+                onActivate={() => {
+                  if (customizing) {
+                    setCustomizing(false);
+                    setTab("character-select");
+                  } else {
+                    setCustomizing(true);
+                    setTab("character");
+                  }
+                }}
+                onClick={() => {
+                  if (customizing) {
+                    setCustomizing(false);
+                    setTab("character-select");
+                  } else {
+                    setCustomizing(true);
+                    setTab("character");
+                  }
+                }}
+              >
+                {customizing
                   ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
                   : t("charactereditor.CustomizeBtn", {
                       defaultValue: "Customize",
-                    })
-              }
-              agentGroup="character-actions"
-              agentDescription="Toggle between the character roster and the customize editor"
-              agentStatus={customizing ? "active" : "inactive"}
-              type="button"
-              variant="default"
-              size="sm"
-              className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
-              style={accentGradientStyle}
-              onActivate={() => {
-                if (customizing) {
-                  setCustomizing(false);
-                  setTab("character-select");
-                } else {
-                  setCustomizing(true);
-                  setTab("character");
-                }
-              }}
-              onClick={() => {
-                if (customizing) {
-                  setCustomizing(false);
-                  setTab("character-select");
-                } else {
-                  setCustomizing(true);
-                  setTab("character");
-                }
-              }}
-            >
-              {customizing
-                ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
-                : t("charactereditor.CustomizeBtn", {
-                    defaultValue: "Customize",
-                  })}
-            </CharacterAgentButton>
+                    })}
+              </CharacterAgentButton>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <Dialog
-        open={pendingNavigation !== null}
-        onOpenChange={(open: boolean) => {
-          if (!open) setPendingNavigation(null);
-        }}
-      >
-        <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
-          <DialogHeader className="gap-3">
-            <DialogTitle>
-              {t("charactereditor.UnsavedChangesTitle", {
-                defaultValue: "Unsaved changes",
-              })}
-            </DialogTitle>
-            <DialogDescription className="whitespace-pre-line text-muted-strong">
-              {t("charactereditor.UnsavedChangesBody", {
-                defaultValue:
-                  "You have unsaved changes. Save before switching?",
-              })}
-              {pendingNavigation?.kind === "character"
-                ? `\n${t("charactereditor.SwitchCharacterPrompt", {
-                    defaultValue: "Switch to {{name}}?",
-                    name: pendingNavigation.entry.name,
-                  })}`
-                : pendingNavigation?.kind === "page"
-                  ? `\n${t("charactereditor.SwitchSectionPrompt", {
+        <Dialog
+          open={pendingNavigation !== null}
+          onOpenChange={(open: boolean) => {
+            if (!open) setPendingNavigation(null);
+          }}
+        >
+          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
+            <DialogHeader className="gap-3">
+              <DialogTitle>
+                {t("charactereditor.UnsavedChangesTitle", {
+                  defaultValue: "Unsaved changes",
+                })}
+              </DialogTitle>
+              <DialogDescription className="whitespace-pre-line text-muted-strong">
+                {t("charactereditor.UnsavedChangesBody", {
+                  defaultValue:
+                    "You have unsaved changes. Save before switching?",
+                })}
+                {pendingNavigation?.kind === "character"
+                  ? `\n${t("charactereditor.SwitchCharacterPrompt", {
                       defaultValue: "Switch to {{name}}?",
-                      name:
-                        pendingNavigation.page === "personality"
-                          ? t("charactereditor.TabPersonality", {
-                              defaultValue: "Personality",
-                            })
-                          : pendingNavigation.page === "style"
-                            ? t("charactereditor.TabStyles", {
-                                defaultValue: "Style",
-                              })
-                            : pendingNavigation.page === "examples"
-                              ? t("charactereditor.TabExamples", {
-                                  defaultValue: "Examples",
-                                })
-                              : t("nav.documents", {
-                                  defaultValue: "Knowledge",
-                                }),
+                      name: pendingNavigation.entry.name,
                     })}`
-                  : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              type="button"
-              className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
-              onClick={() => void resolvePendingNavigation(true)}
-              disabled={characterSaving || voiceSaving}
-            >
-              {t("common.save", { defaultValue: "Save" })}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void resolvePendingNavigation(false)}
-            >
-              {t("charactereditor.DontSave", {
-                defaultValue: "Don't save",
-              })}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPendingNavigation(null)}
-            >
-              {t("common.cancel")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  : pendingNavigation?.kind === "page"
+                    ? `\n${t("charactereditor.SwitchSectionPrompt", {
+                        defaultValue: "Switch to {{name}}?",
+                        name:
+                          pendingNavigation.page === "personality"
+                            ? t("charactereditor.TabPersonality", {
+                                defaultValue: "Personality",
+                              })
+                            : pendingNavigation.page === "style"
+                              ? t("charactereditor.TabStyles", {
+                                  defaultValue: "Style",
+                                })
+                              : pendingNavigation.page === "examples"
+                                ? t("charactereditor.TabExamples", {
+                                    defaultValue: "Examples",
+                                  })
+                                : t("nav.documents", {
+                                    defaultValue: "Knowledge",
+                                  }),
+                      })}`
+                    : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
+                onClick={() => void resolvePendingNavigation(true)}
+                disabled={characterSaving || voiceSaving}
+              >
+                {t("common.save", { defaultValue: "Save" })}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void resolvePendingNavigation(false)}
+              >
+                {t("charactereditor.DontSave", {
+                  defaultValue: "Don't save",
+                })}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPendingNavigation(null)}
+              >
+                {t("common.cancel")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      <Dialog
-        open={resetConfirmOpen}
-        onOpenChange={(open: boolean) => {
-          if (!open) setResetConfirmOpen(false);
-        }}
-      >
-        <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
-          <DialogHeader className="gap-3">
-            <DialogTitle>
-              {t("charactereditor.ResetToDefaults", {
-                defaultValue: "Reset to defaults?",
-              })}
-            </DialogTitle>
-            <DialogDescription className="text-muted-strong">
-              {t("charactereditor.ResetConfirmBody", {
-                defaultValue:
-                  "This will discard all unsaved changes and restore this character to its default values.",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => {
-                handleResetToDefaults();
-                setResetConfirmOpen(false);
-              }}
-            >
-              {t("common.reset", { defaultValue: "Reset" })}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setResetConfirmOpen(false)}
-            >
-              {t("common.cancel")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog
+          open={resetConfirmOpen}
+          onOpenChange={(open: boolean) => {
+            if (!open) setResetConfirmOpen(false);
+          }}
+        >
+          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
+            <DialogHeader className="gap-3">
+              <DialogTitle>
+                {t("charactereditor.ResetToDefaults", {
+                  defaultValue: "Reset to defaults?",
+                })}
+              </DialogTitle>
+              <DialogDescription className="text-muted-strong">
+                {t("charactereditor.ResetConfirmBody", {
+                  defaultValue:
+                    "This will discard all unsaved changes and restore this character to its default values.",
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  handleResetToDefaults();
+                  setResetConfirmOpen(false);
+                }}
+              >
+                {t("common.reset", { defaultValue: "Reset" })}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setResetConfirmOpen(false)}
+              >
+                {t("common.cancel")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </ShellViewAgentSurface>
   );
 }

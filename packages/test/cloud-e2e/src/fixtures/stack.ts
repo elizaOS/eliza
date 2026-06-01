@@ -5,7 +5,7 @@
  *   1. PGlite TCP bridge (via packages/scripts/cloud/admin/dev/pglite-server.ts)
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
- *   4. cloud-api worker subprocess (cloud-api-dev.mjs → wrangler dev)
+ *   4. cloud-api worker subprocess (cloud-api-e2e-server.mjs)
  *   5. cloud-frontend Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
@@ -154,6 +154,29 @@ function spawnLogged(
   return { child, log, name };
 }
 
+async function runLoggedStep(
+  name: string,
+  command: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv; cwd: string; logFile: string },
+): Promise<void> {
+  const proc = spawnLogged(name, command, args, options);
+  const result = await new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolve, reject) => {
+    proc.child.once("error", reject);
+    proc.child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  await new Promise<void>((resolve) => proc.log.end(() => resolve()));
+  if (result.code !== 0) {
+    const suffix = result.signal
+      ? `signal ${result.signal}`
+      : `code ${result.code}`;
+    throw new Error(`[stack] ${name} exited with ${suffix}`);
+  }
+}
+
 async function killProc(proc: SpawnedProc): Promise<void> {
   if (proc.child.exitCode !== null || proc.child.signalCode !== null) return;
   proc.child.kill("SIGTERM");
@@ -232,10 +255,6 @@ export async function startCloudStack(
 
   const procs: SpawnedProc[] = [];
 
-  // 2. PGlite TCP bridge. We start it directly (rather than letting
-  //    cloud-api-dev.mjs manage it) because cloud-api-dev only spawns PGlite
-  //    when DATABASE_URL is empty or `pglite://...`, and we set it to a
-  //    real postgres URL pointing at this very bridge.
   const pgliteEnv = {
     ...sharedEnv,
     PGLITE_HOST: "127.0.0.1",
@@ -260,20 +279,37 @@ export async function startCloudStack(
     label: "pglite",
   });
 
-  // 3. cloud-api worker subprocess. cloud-api-dev.mjs will see DATABASE_URL is
-  //    a real postgres URL, skip its own PGlite, run migrations, and exec
-  //    wrangler dev on `apiPort`.
-  const apiEnv = {
+  const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
+  const stackEnv = {
     ...sharedEnv,
-    DEV_CLOUD_SKIP_MIGRATE: opts.skipMigrate ? "1" : "0",
+    DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
   };
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  process.env.TEST_DATABASE_URL = databaseUrl;
+
+  if (!opts.skipMigrate) {
+    await runLoggedStep(
+      "cloud-migrate",
+      "bun",
+      ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
+      {
+        env: stackEnv,
+        cwd: REPO_ROOT,
+        logFile: join(LOG_DIR, "cloud-migrate.log"),
+      },
+    );
+  }
+
   procs.push(
     spawnLogged(
       "cloud-api",
       "node",
-      ["packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
+      ["packages/scripts/cloud/admin/dev/cloud-api-e2e-server.mjs"],
       {
-        env: apiEnv,
+        env: stackEnv,
         cwd: REPO_ROOT,
         logFile: join(LOG_DIR, "cloud-api.log"),
       },
@@ -281,21 +317,17 @@ export async function startCloudStack(
   );
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
-  const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
-  const previousDatabaseUrl = process.env.DATABASE_URL;
-  const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
   await waitForHttpOk(`${apiUrl}/api/health`, {
     timeoutMs: 180_000,
     label: "cloud-api",
   });
-  process.env.DATABASE_URL = databaseUrl;
-  process.env.TEST_DATABASE_URL = databaseUrl;
 
   // 3. cloud-frontend Vite dev
   const frontendEnv = {
-    ...sharedEnv,
+    ...stackEnv,
     PORT: String(frontendPort),
     VITE_API_BASE_URL: apiUrl,
+    VITE_API_PROXY_TARGET: apiUrl,
     NEXT_PUBLIC_API_BASE_URL: apiUrl,
   };
   procs.push(

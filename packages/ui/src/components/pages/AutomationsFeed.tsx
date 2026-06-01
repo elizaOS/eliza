@@ -37,6 +37,7 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
 import { useTranslation } from "../../state/TranslationContext";
@@ -48,6 +49,7 @@ import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -151,8 +153,14 @@ export function AutomationsFeed({
   connectedCredTypes,
 }: AutomationsFeedProps = {}) {
   const { t } = useTranslation();
-  const [data, setData] = useState<AutomationListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the shared cache so a revisit paints the last-known automations
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedAutomations =
+    getCached<AutomationListResponse>("automations:list");
+  const [data, setData] = useState<AutomationListResponse | null>(
+    cachedAutomations?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [chooser, setChooser] = useState<ChooserState>("closed");
@@ -206,27 +214,32 @@ export function AutomationsFeed({
     [setLink],
   );
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await client.listAutomations();
-      setData(res);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : t("automationsfeed.loadError", {
-              defaultValue: "Failed to load automations.",
-            }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      try {
+        const res = await client.listAutomations();
+        setData(res);
+        setCached("automations:list", res);
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : t("automationsfeed.loadError", {
+                defaultValue: "Failed to load automations.",
+              }),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
-    void refresh();
+    // Revalidate silently when cached automations are already on screen.
+    void refresh({ silent: getCached("automations:list") != null });
   }, [refresh]);
 
   const automations = useMemo(
@@ -320,162 +333,161 @@ export function AutomationsFeed({
         data-testid="automations-shell"
         className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
       >
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1.5">
-          <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-            {t("automationsfeed.title", { defaultValue: "Automations" })}
-          </h1>
-          <p className="text-sm text-muted-strong">
-            {t("automationsfeed.taskCount", {
-              count: tasksCount,
-              defaultValue: "{{count}} task",
-            })}{" "}
-            ·{" "}
-            {t("automationsfeed.workflowCount", {
-              count: workflowsCount,
-              defaultValue: "{{count}} workflow",
-            })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            ref={refreshAgent.ref}
-            variant="ghost"
-            size="sm"
-            onClick={() => void refresh()}
-            disabled={loading}
-            aria-label={t("automationsfeed.refresh", {
-              defaultValue: "Refresh",
-            })}
-            {...refreshAgent.agentProps}
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-              aria-hidden
-            />
-          </Button>
-          <Button
-            ref={newAgent.ref}
-            variant="default"
-            size="sm"
-            onClick={() => setChooser("task")}
-            {...newAgent.agentProps}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-            {t("automationsfeed.new", { defaultValue: "New" })}
-          </Button>
-        </div>
-      </div>
-
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
-          <FilterChipButton
-            key={key}
-            filter={key}
-            label={t(FILTER_LABELS[key].key, {
-              defaultValue: FILTER_LABELS[key].defaultLabel,
-            })}
-            isActive={filter === key}
-            onSelect={setFilter}
-          />
-        ))}
-      </div>
-
-      {error && (
-        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
-
-      {/* Feed */}
-      <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
-        {loading && !data ? (
-          <div className="flex items-center justify-center p-8">
-            <Spinner className="h-5 w-5" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
-            <ListChecks className="h-6 w-6" aria-hidden />
-            <div>
-              {t("automationsfeed.empty", {
-                defaultValue: "No automations yet.",
+        {/* Header */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1.5">
+            <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
+              {t("automationsfeed.title", { defaultValue: "Automations" })}
+            </h1>
+            <p className="text-sm text-muted-strong">
+              {t("automationsfeed.taskCount", {
+                count: tasksCount,
+                defaultValue: "{{count}} task",
+              })}{" "}
+              ·{" "}
+              {t("automationsfeed.workflowCount", {
+                count: workflowsCount,
+                defaultValue: "{{count}} workflow",
               })}
-            </div>
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <Button
+              ref={refreshAgent.ref}
+              variant="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+              disabled={loading}
+              aria-label={t("automationsfeed.refresh", {
+                defaultValue: "Refresh",
+              })}
+              {...refreshAgent.agentProps}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                aria-hidden
+              />
+            </Button>
+            <Button
+              ref={newAgent.ref}
               variant="default"
               size="sm"
               onClick={() => setChooser("task")}
+              {...newAgent.agentProps}
             >
               <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-              {t("automationsfeed.createFirst", {
-                defaultValue: "Create your first automation",
-              })}
+              {t("automationsfeed.new", { defaultValue: "New" })}
             </Button>
           </div>
-        ) : (
-          <ul className="divide-y divide-border/40">
-            {rows.map((row) => (
-              <FeedRowItem
-                key={row.key}
-                row={row}
-                connectedCredTypes={connectedCredTypes}
-                registerRef={(el) => {
-                  const id = row.source.workflowId ?? row.source.id;
-                  if (el) rowRefs.current.set(id, el);
-                  else rowRefs.current.delete(id);
-                }}
-                onOpen={() => {
-                  if (row.kind === "task") {
-                    setEditor({
-                      kind: "task",
-                      taskId: row.source.task?.id ?? null,
-                    });
-                  } else {
-                    setEditor({
-                      kind: "workflow",
-                      workflowId: row.source.workflowId ?? null,
-                    });
-                  }
-                }}
-                onRunNow={async () => {
-                  if (row.kind !== "workflow" || !row.source.workflowId) return;
-                  try {
-                    await client.activateWorkflowDefinition(
-                      row.source.workflowId,
-                    );
-                    await refresh();
-                  } catch (e) {
-                    setError(
-                      e instanceof Error
-                        ? e.message
-                        : t("automationsfeed.runError", {
-                            defaultValue: "Failed to run automation.",
-                          }),
-                    );
-                  }
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </PagePanel>
+        </div>
 
-      {/* Chooser */}
-      {chooser !== "closed" && (
-        <ChooserSheet
-          onChooseTask={() => {
-            setChooser("closed");
-            setEditor({ kind: "task", taskId: null });
-          }}
-          onChooseWorkflow={() => {
-            setChooser("closed");
-            setEditor({ kind: "workflow", workflowId: null });
-          }}
-          onClose={() => setChooser("closed")}
-        />
-      )}
+        {/* Filter chips */}
+        <div className="flex flex-wrap gap-1.5">
+          {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
+            <FilterChipButton
+              key={key}
+              filter={key}
+              label={t(FILTER_LABELS[key].key, {
+                defaultValue: FILTER_LABELS[key].defaultLabel,
+              })}
+              isActive={filter === key}
+              onSelect={setFilter}
+            />
+          ))}
+        </div>
+
+        {error && (
+          <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+            {error}
+          </div>
+        )}
+
+        {/* Feed */}
+        <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
+          {loading && !data ? (
+            <ListSkeleton rows={6} className="p-3" />
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
+              <ListChecks className="h-6 w-6" aria-hidden />
+              <div>
+                {t("automationsfeed.empty", {
+                  defaultValue: "No automations yet.",
+                })}
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setChooser("task")}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
+                {t("automationsfeed.createFirst", {
+                  defaultValue: "Create your first automation",
+                })}
+              </Button>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border/40">
+              {rows.map((row) => (
+                <FeedRowItem
+                  key={row.key}
+                  row={row}
+                  connectedCredTypes={connectedCredTypes}
+                  registerRef={(el) => {
+                    const id = row.source.workflowId ?? row.source.id;
+                    if (el) rowRefs.current.set(id, el);
+                    else rowRefs.current.delete(id);
+                  }}
+                  onOpen={() => {
+                    if (row.kind === "task") {
+                      setEditor({
+                        kind: "task",
+                        taskId: row.source.task?.id ?? null,
+                      });
+                    } else {
+                      setEditor({
+                        kind: "workflow",
+                        workflowId: row.source.workflowId ?? null,
+                      });
+                    }
+                  }}
+                  onRunNow={async () => {
+                    if (row.kind !== "workflow" || !row.source.workflowId)
+                      return;
+                    try {
+                      await client.activateWorkflowDefinition(
+                        row.source.workflowId,
+                      );
+                      await refresh();
+                    } catch (e) {
+                      setError(
+                        e instanceof Error
+                          ? e.message
+                          : t("automationsfeed.runError", {
+                              defaultValue: "Failed to run automation.",
+                            }),
+                      );
+                    }
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </PagePanel>
+
+        {/* Chooser */}
+        {chooser !== "closed" && (
+          <ChooserSheet
+            onChooseTask={() => {
+              setChooser("closed");
+              setEditor({ kind: "task", taskId: null });
+            }}
+            onChooseWorkflow={() => {
+              setChooser("closed");
+              setEditor({ kind: "workflow", workflowId: null });
+            }}
+            onClose={() => setChooser("closed")}
+          />
+        )}
       </div>
     </ShellViewAgentSurface>
   );

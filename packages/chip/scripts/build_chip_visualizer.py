@@ -21,33 +21,46 @@ DEFAULT_OUT = ROOT / "build" / "chip-visualizer"
 VIEWER_HTML = ROOT / "docs" / "pd" / "chip-viewer" / "index.html"
 KLAYOUT = ROOT / "external" / "deb-tools" / "klayout-0.30.8" / "usr" / "bin" / "klayout"
 KLAYOUT_LIB = ROOT / "external" / "deb-tools" / "klayout-0.30.8" / "usr" / "lib" / "klayout"
-KLAYOUT_DEPS = ROOT / "external" / "deb-tools" / "klayout-0.30.8" / "usr" / "lib" / "x86_64-linux-gnu"
+KLAYOUT_DEPS = (
+    ROOT / "external" / "deb-tools" / "klayout-0.30.8" / "usr" / "lib" / "x86_64-linux-gnu"
+)
 GDS_RENDER_SCRIPT = ROOT / "scripts" / "render_gds_preview.py"
-KLAYOUT_STREAM_OUT = ROOT / "external" / "openlane2" / "openlane" / "scripts" / "klayout" / "stream_out.py"
+KLAYOUT_STREAM_OUT = (
+    ROOT / "external" / "openlane2" / "openlane" / "scripts" / "klayout" / "stream_out.py"
+)
 OPENLANE_PYTHON = ROOT / "external" / "openlane2" / ".venv" / "bin" / "python"
 VOLARE_SKY130 = ROOT / "external" / "pdks" / "volare" / "sky130" / "versions"
 SKY130_STD_VERSION = VOLARE_SKY130 / "0fe599b2afb6708d281543108caf8310912f54af" / "sky130A"
 SKY130_SRAM_VERSION = VOLARE_SKY130 / "c6d73a35f524070e85faff4a6a9eef49553ebc2b" / "sky130A"
-SKY130_LYP = (
-    SKY130_STD_VERSION / "libs.tech" / "klayout" / "tech" / "sky130A.lyp"
-)
+SKY130_LYP = SKY130_STD_VERSION / "libs.tech" / "klayout" / "tech" / "sky130A.lyp"
 SKY130_LYT = SKY130_STD_VERSION / "libs.tech" / "klayout" / "tech" / "sky130A.lyt"
 SKY130_LYM = SKY130_STD_VERSION / "libs.tech" / "klayout" / "tech" / "sky130A.map"
 STREAMOUT_LEFS = [
     SKY130_STD_VERSION / "libs.ref" / "sky130_fd_sc_hd" / "techlef" / "sky130_fd_sc_hd__nom.tlef",
     SKY130_STD_VERSION / "libs.ref" / "sky130_fd_sc_hd" / "lef" / "sky130_ef_sc_hd.lef",
     SKY130_STD_VERSION / "libs.ref" / "sky130_fd_sc_hd" / "lef" / "sky130_fd_sc_hd.lef",
-    SKY130_SRAM_VERSION / "libs.ref" / "sky130_sram_macros" / "lef" / "sky130_sram_2kbyte_1rw1r_32x512_8.lef",
+    SKY130_SRAM_VERSION
+    / "libs.ref"
+    / "sky130_sram_macros"
+    / "lef"
+    / "sky130_sram_2kbyte_1rw1r_32x512_8.lef",
 ]
 STREAMOUT_GDS_FILES = [
     SKY130_STD_VERSION / "libs.ref" / "sky130_fd_sc_hd" / "gds" / "sky130_fd_sc_hd.gds",
-    SKY130_SRAM_VERSION / "libs.ref" / "sky130_sram_macros" / "gds" / "sky130_sram_2kbyte_1rw1r_32x512_8.gds",
+    SKY130_SRAM_VERSION
+    / "libs.ref"
+    / "sky130_sram_macros"
+    / "gds"
+    / "sky130_sram_2kbyte_1rw1r_32x512_8.gds",
 ]
 
 ANALYSIS_REPORTS = [
     ("pd_signoff", ROOT / "build" / "reports" / "pd_signoff.json"),
     ("pd_release_evidence", ROOT / "build" / "reports" / "pd_release_evidence.json"),
-    ("openlane_pd_blocker_summary", ROOT / "build" / "reports" / "openlane_pd_blocker_summary.json"),
+    (
+        "openlane_pd_blocker_summary",
+        ROOT / "build" / "reports" / "openlane_pd_blocker_summary.json",
+    ),
     ("pdn_workload_signoff", ROOT / "build" / "reports" / "pdn_workload_signoff.json"),
 ]
 
@@ -133,7 +146,9 @@ def choose_def() -> DefSource:
         for path in runs.glob(pattern):
             candidates.append((path.stat().st_mtime, priority, path, role))
     if candidates:
-        _mtime, _priority, path, role = max(candidates, key=lambda item: (item[0], item[1], str(item[2])))
+        _mtime, _priority, path, role = max(
+            candidates, key=lambda item: (item[0], item[1], str(item[2]))
+        )
         return DefSource(path, role)
     raise FileNotFoundError(f"no DEF files found under {runs}")
 
@@ -232,7 +247,9 @@ def classify_component(name: str, master: str) -> str:
     return "logic"
 
 
-def parse_components(lines: list[str], section: tuple[int, int] | None, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def parse_components(
+    lines: list[str], section: tuple[int, int] | None, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     if section is None:
         return []
     site_step = min((row["step_x"] for row in rows if row["step_x"] > 0), default=460)
@@ -285,7 +302,9 @@ def parse_pins(lines: list[str], section: tuple[int, int] | None) -> list[dict[s
 def parse_pin_block(block: str) -> dict[str, Any]:
     name_match = re.match(r"-\s+(\S+)", block)
     place_match = re.search(r"\+\s+(?:PLACED|FIXED)\s+\(\s*(-?\d+)\s+(-?\d+)\s*\)\s+(\S+)", block)
-    layer_match = re.search(r"\+\s+LAYER\s+(\S+)\s+\(\s*(-?\d+)\s+(-?\d+)\s*\)\s+\(\s*(-?\d+)\s+(-?\d+)\s*\)", block)
+    layer_match = re.search(
+        r"\+\s+LAYER\s+(\S+)\s+\(\s*(-?\d+)\s+(-?\d+)\s*\)\s+\(\s*(-?\d+)\s+(-?\d+)\s*\)", block
+    )
     if not name_match or not place_match:
         return {}
     pin: dict[str, Any] = {
@@ -307,7 +326,9 @@ def parse_pin_block(block: str) -> dict[str, Any]:
 def route_width(layer: str, special: bool) -> int:
     if special:
         return {"met1": 480, "met2": 480, "met3": 640, "met4": 800, "met5": 1600}.get(layer, 420)
-    return {"li1": 170, "met1": 140, "met2": 140, "met3": 300, "met4": 300, "met5": 1600}.get(layer, 160)
+    return {"li1": 170, "met1": 140, "met2": 140, "met3": 300, "met4": 300, "met5": 1600}.get(
+        layer, 160
+    )
 
 
 def iter_net_blocks(lines: list[str], section: tuple[int, int] | None) -> list[str]:
@@ -335,7 +356,9 @@ def point_value(value: str, previous: int | None) -> int:
     return int(value)
 
 
-def parse_routes(lines: list[str], section: tuple[int, int] | None, special: bool) -> list[dict[str, Any]]:
+def parse_routes(
+    lines: list[str], section: tuple[int, int] | None, special: bool
+) -> list[dict[str, Any]]:
     routes: list[dict[str, Any]] = []
     for block in iter_net_blocks(lines, section):
         name_match = re.match(r"-\s+(\S+)", block)
@@ -348,7 +371,9 @@ def parse_routes(lines: list[str], section: tuple[int, int] | None, special: boo
             x2 = point_value(match.group("x2"), x1) if match.group("x2") is not None else x1
             y2 = point_value(match.group("y2"), y1) if match.group("y2") is not None else y1
             previous = (x2, y2)
-            width = int(match.group("width")) if match.group("width") else route_width(layer, special)
+            width = (
+                int(match.group("width")) if match.group("width") else route_width(layer, special)
+            )
             if x1 == x2 and y1 == y2:
                 width = max(width, 420)
             routes.append(
@@ -383,14 +408,20 @@ def parse_routes(lines: list[str], section: tuple[int, int] | None, special: boo
     return routes
 
 
-def make_tiles(items: list[dict[str, Any]], diearea: list[int], tile_count: int = 32) -> list[dict[str, Any]]:
+def make_tiles(
+    items: list[dict[str, Any]], diearea: list[int], tile_count: int = 32
+) -> list[dict[str, Any]]:
     x0, y0, x1, y1 = diearea
     width = max(1, x1 - x0)
     height = max(1, y1 - y0)
     buckets: dict[tuple[int, int], dict[str, Any]] = {}
     for item in items:
-        cx = (item.get("x", item.get("x1", 0)) + item.get("x2", item.get("x", item.get("x1", 0)))) / 2
-        cy = (item.get("y", item.get("y1", 0)) + item.get("y2", item.get("y", item.get("y1", 0)))) / 2
+        cx = (
+            item.get("x", item.get("x1", 0)) + item.get("x2", item.get("x", item.get("x1", 0)))
+        ) / 2
+        cy = (
+            item.get("y", item.get("y1", 0)) + item.get("y2", item.get("y", item.get("y1", 0)))
+        ) / 2
         tx = min(tile_count - 1, max(0, math.floor((cx - x0) / width * tile_count)))
         ty = min(tile_count - 1, max(0, math.floor((cy - y0) / height * tile_count)))
         bucket = buckets.setdefault((tx, ty), {"x": tx, "y": ty, "components": 0, "routes": 0})
@@ -520,7 +551,12 @@ def write_search_index(
         + "\n",
         encoding="utf-8",
     )
-    return {"path": path.name, "component_count": len(components), "pin_count": len(pins), "net_count": len(nets)}
+    return {
+        "path": path.name,
+        "component_count": len(components),
+        "pin_count": len(pins),
+        "net_count": len(nets),
+    }
 
 
 def run_dir_for(path: Path) -> Path | None:
@@ -569,9 +605,11 @@ def choose_metrics(def_path: Path, design: str) -> tuple[dict[str, Any], list[st
         if payload is None:
             continue
         design_count = payload.get("design__instance__count")
-        if design == "e1_chip_top" and isinstance(design_count, (int, float)):
-            candidates.append(path)
-        elif design != "e1_chip_top":
+        if (
+            design == "e1_chip_top"
+            and isinstance(design_count, (int, float))
+            or design != "e1_chip_top"
+        ):
             candidates.append(path)
     if not candidates:
         return {}, []
@@ -581,7 +619,10 @@ def choose_metrics(def_path: Path, design: str) -> tuple[dict[str, Any], list[st
 
 def summarize_metrics(metrics: dict[str, Any], sources: list[str]) -> dict[str, Any]:
     if not metrics:
-        return {"available": False, "reason": "no matching OpenLane metrics found for the selected DEF run"}
+        return {
+            "available": False,
+            "reason": "no matching OpenLane metrics found for the selected DEF run",
+        }
     selected = [
         {"key": key, "label": label, "value": metrics[key]}
         for key, label in METRIC_KEYS.items()
@@ -617,7 +658,9 @@ def summarize_report(name: str, path: Path) -> dict[str, Any] | None:
         "source": rel(path),
         "status": data.get("status"),
         "claim_boundary": data.get("claim_boundary"),
-        "release_credit": data.get("release_credit", summary.get("release_credit") if isinstance(summary, dict) else None),
+        "release_credit": data.get(
+            "release_credit", summary.get("release_credit") if isinstance(summary, dict) else None
+        ),
         "finding_count": len(findings) if isinstance(findings, list) else 0,
         "findings": [
             {
@@ -733,7 +776,15 @@ def collect_ir_drop_bins(
                     overall_worst = max(overall_worst, drop)
                     bucket = bins.setdefault(
                         (tx, ty),
-                        {"x": tx, "y": ty, "count": 0, "drop_sum": 0.0, "drop_max": 0.0, "voltage_min": voltage, "voltage_max": voltage},
+                        {
+                            "x": tx,
+                            "y": ty,
+                            "count": 0,
+                            "drop_sum": 0.0,
+                            "drop_max": 0.0,
+                            "voltage_min": voltage,
+                            "voltage_max": voltage,
+                        },
                     )
                     bucket["count"] += 1
                     bucket["drop_sum"] += drop
@@ -763,7 +814,11 @@ def collect_ir_drop_bins(
         }
     if not nets:
         return None
-    return {"schema": "eliza.chip_visualizer.measurements.ir_drop.v1", "worst_drop": overall_worst, "nets": nets}
+    return {
+        "schema": "eliza.chip_visualizer.measurements.ir_drop.v1",
+        "worst_drop": overall_worst,
+        "nets": nets,
+    }
 
 
 def collect_measurements(
@@ -796,14 +851,31 @@ def choose_gds(def_path: Path, explicit_gds: Path | None = None) -> Path | None:
     if run is None:
         return None
     design = def_path.stem
-    matches = sorted(run.glob(f"**/{design}*.gds"), key=lambda path: (".klayout." not in path.name, path.stat().st_mtime))
+    matches = sorted(
+        run.glob(f"**/{design}*.gds"),
+        key=lambda path: (".klayout." not in path.name, path.stat().st_mtime),
+    )
     return matches[-1] if matches else None
 
 
 def export_gds_from_def(def_path: Path, out_dir: Path, design_name: str) -> Path:
-    missing = [path for path in [OPENLANE_PYTHON, KLAYOUT_STREAM_OUT, SKY130_LYP, SKY130_LYT, SKY130_LYM, *STREAMOUT_LEFS, *STREAMOUT_GDS_FILES] if not path.exists()]
+    missing = [
+        path
+        for path in [
+            OPENLANE_PYTHON,
+            KLAYOUT_STREAM_OUT,
+            SKY130_LYP,
+            SKY130_LYT,
+            SKY130_LYM,
+            *STREAMOUT_LEFS,
+            *STREAMOUT_GDS_FILES,
+        ]
+        if not path.exists()
+    ]
     if missing:
-        raise FileNotFoundError("missing streamout inputs: " + ", ".join(rel(path) for path in missing))
+        raise FileNotFoundError(
+            "missing streamout inputs: " + ", ".join(rel(path) for path in missing)
+        )
 
     export_dir = out_dir / "exported-gds"
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -827,7 +899,9 @@ def export_gds_from_def(def_path: Path, out_dir: Path, design_name: str) -> Path
         command.extend(["--input-lef", str(lef)])
     for gds in STREAMOUT_GDS_FILES:
         command.extend(["--with-gds-file", str(gds)])
-    subprocess.run(command, check=True, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    subprocess.run(
+        command, check=True, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
     return output
 
 
@@ -854,7 +928,9 @@ def make_tile_pyramid(image_path: Path, out_dir: Path, tile_size: int) -> dict[s
             for tx in range(cols):
                 x0 = tx * tile_size
                 y0 = ty * tile_size
-                tile = current.crop((x0, y0, min(width, x0 + tile_size), min(height, y0 + tile_size)))
+                tile = current.crop(
+                    (x0, y0, min(width, x0 + tile_size), min(height, y0 + tile_size))
+                )
                 tile.save(level_dir / f"{tx}_{ty}.png")
         levels.append(
             {
@@ -899,7 +975,9 @@ def make_silicon_image_metadata(
         "bounds": None,
     }
     if not render_gds:
-        metadata["reason"] = "GDS source found; pass --render-gds to render a silicon raster background"
+        metadata["reason"] = (
+            "GDS source found; pass --render-gds to render a silicon raster background"
+        )
         return metadata
 
     if not KLAYOUT.exists() or not SKY130_LYP.exists():
@@ -921,7 +999,15 @@ def make_silicon_image_metadata(
     )
     command = ["xvfb-run", "-a", str(KLAYOUT), "-zz", "-r", str(GDS_RENDER_SCRIPT)]
     try:
-        subprocess.run(command, check=True, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        subprocess.run(
+            command,
+            check=True,
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
         metadata["reason"] = f"GDS render failed: {exc}"
         return metadata
@@ -986,11 +1072,16 @@ def build_payload(
             header["units_per_micron"],
             metrics,
         ),
-        "silicon_image": make_silicon_image_metadata(def_path, gds_path, out_dir, render_gds, gds_size, tile_gds, tile_size),
+        "silicon_image": make_silicon_image_metadata(
+            def_path, gds_path, out_dir, render_gds, gds_size, tile_gds, tile_size
+        ),
         "design": header["design"] or def_path.stem,
         "units_per_micron": header["units_per_micron"],
         "diearea": header["diearea"],
-        "layers": [{"name": name, "color": LAYER_COLORS.get(name, "#d9d9d9")} for name in sorted(layer_counts)],
+        "layers": [
+            {"name": name, "color": LAYER_COLORS.get(name, "#d9d9d9")}
+            for name in sorted(layer_counts)
+        ],
         "rows": rows,
         "components": [] if tile_overlays else components,
         "pins": pins,
@@ -1018,14 +1109,36 @@ def write_viewer(out_dir: Path, payload: dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--def", dest="def_file", type=Path, help="DEF file to visualize")
-    parser.add_argument("--gds", dest="gds_file", type=Path, help="matching GDS file to render as a silicon image")
-    parser.add_argument("--export-gds", action="store_true", help="export a matching GDS from the selected DEF before rendering")
-    parser.add_argument("--render-gds", action="store_true", help="render a GDS PNG background with KLayout")
-    parser.add_argument("--gds-size", type=int, default=4096, help="GDS render width and height in pixels")
-    parser.add_argument("--tile-gds", action="store_true", help="split the rendered GDS image into a zoomable tile pyramid")
-    parser.add_argument("--tile-size", type=int, default=512, help="GDS tile width and height in pixels")
-    parser.add_argument("--tile-overlays", action="store_true", help="split DEF instances and routes into lazy viewport tiles")
-    parser.add_argument("--overlay-tile-count", type=int, default=64, help="DEF overlay tile grid width and height")
+    parser.add_argument(
+        "--gds", dest="gds_file", type=Path, help="matching GDS file to render as a silicon image"
+    )
+    parser.add_argument(
+        "--export-gds",
+        action="store_true",
+        help="export a matching GDS from the selected DEF before rendering",
+    )
+    parser.add_argument(
+        "--render-gds", action="store_true", help="render a GDS PNG background with KLayout"
+    )
+    parser.add_argument(
+        "--gds-size", type=int, default=4096, help="GDS render width and height in pixels"
+    )
+    parser.add_argument(
+        "--tile-gds",
+        action="store_true",
+        help="split the rendered GDS image into a zoomable tile pyramid",
+    )
+    parser.add_argument(
+        "--tile-size", type=int, default=512, help="GDS tile width and height in pixels"
+    )
+    parser.add_argument(
+        "--tile-overlays",
+        action="store_true",
+        help="split DEF instances and routes into lazy viewport tiles",
+    )
+    parser.add_argument(
+        "--overlay-tile-count", type=int, default=64, help="DEF overlay tile grid width and height"
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
     return parser.parse_args()
 

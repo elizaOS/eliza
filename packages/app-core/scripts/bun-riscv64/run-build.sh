@@ -106,33 +106,15 @@ fi
 
 # ─── Run the cross-compile ─────────────────────────────────────────────────
 mkdir -p "$HERE/dist"
+mkdir -p "$HERE/dist/src-cache"
 
 # Patch series: Zig fallback uses bun-patches/; --rust-core uses rust-core/
 # (0001 build-system + C_LOOP port, 0002 second-wave source gaps).
-#
-# Src cache: the Zig fallback and the Rust-core port pin DIFFERENT WebKit + bun
-# commits (5488984d / bun-v1.3.14 vs 963f8758 / 9d000561). build.sh re-fetches
-# bun unconditionally but only fetches WebKit when its dir is absent, then does
-# `git reset --hard $WEBKIT_COMMIT` — so sharing one /work/src across the two
-# pins would fail the reset to an uncached WebKit SHA. Give each build its own
-# cache dir to keep both incremental and the validated Zig cache intact.
-#
-# WebKit patches are also per-build: the two builds pin different WebKit commits
-# (5488984d vs 963f8758), so 0007 (the JSCJSValue.h-refactor include/fwd-decl
-# fixes) differs between them — the Zig commit needs 4 hunks, the Rust-core
-# commit only the JSModuleLoader one. webkit-patches/ holds the Zig set;
-# rust-core/webkit-patches/ holds the Rust-core set (0003-0006 are shared C_LOOP
-# guards, copied; 0007 is the rebased single hunk).
 PATCH_MOUNT="$HERE/bun-patches"
-WEBKIT_PATCH_MOUNT="$HERE/webkit-patches"
-SRC_CACHE="$HERE/dist/src-cache"
 if [ "$RUST_CORE" = "1" ]; then
     PATCH_MOUNT="$HERE/rust-core"
-    WEBKIT_PATCH_MOUNT="$HERE/rust-core/webkit-patches"
-    SRC_CACHE="$HERE/dist/src-cache-rustcore"
     echo "[run-build] --rust-core: building Rust-core bun (rust_core_port) from rust-core/ patches"
 fi
-mkdir -p "$SRC_CACHE"
 
 DOCKER_RUN_ARGS=(
     --rm
@@ -140,9 +122,9 @@ DOCKER_RUN_ARGS=(
     -v "$HERE/build.sh:/opt/build.sh:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
     -v "$PATCH_MOUNT:/opt/bun-patches:ro"
-    -v "$WEBKIT_PATCH_MOUNT:/opt/webkit-patches:ro"
+    -v "$HERE/webkit-patches:/opt/webkit-patches:ro"
     -v "$HERE/dist:/artifact"
-    -v "$SRC_CACHE:/work/src"
+    -v "$HERE/dist/src-cache:/work/src"
 )
 
 if [ -n "$JOBS" ]; then

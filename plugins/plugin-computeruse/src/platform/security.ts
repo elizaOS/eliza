@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { lstat, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -235,6 +236,96 @@ export function validateFilePath(
   }
 
   return { allowed: true };
+}
+
+export type SafeFileTargetResult = PathValidationResult & {
+  resolvedPath?: string;
+};
+
+function errnoCode(error: unknown): string {
+  return error && typeof error === "object" && "code" in error
+    ? String((error as NodeJS.ErrnoException).code)
+    : "";
+}
+
+/**
+ * Resolve and re-validate file paths after lstat/realpath to reduce TOCTOU /
+ * symlink escapes (GHSA-qmf5-p9x5-9xr5).
+ */
+export async function resolveSafeFileTarget(
+  filePath: string,
+  operation: "read" | "write" | "delete",
+): Promise<SafeFileTargetResult> {
+  const check = validateFilePath(filePath, operation);
+  if (!check.allowed) {
+    return check;
+  }
+
+  const resolved = path.resolve(filePath);
+
+  try {
+    const stat = await lstat(resolved);
+    if (stat.isSymbolicLink()) {
+      return {
+        allowed: false,
+        reason: "Symbolic links are not allowed for file operations.",
+      };
+    }
+    const canonical = await realpath(resolved);
+    const recheck = validateFilePath(canonical, operation);
+    if (!recheck.allowed) {
+      return recheck;
+    }
+    return { allowed: true, resolvedPath: canonical };
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT" && operation === "read") {
+      const fallback = validateFilePath(resolved, operation);
+      if (!fallback.allowed) {
+        return fallback;
+      }
+      return { allowed: true, resolvedPath: resolved };
+    }
+
+    if (errnoCode(error) === "ENOENT" && operation === "write") {
+      const parent = path.dirname(resolved);
+      try {
+        const parentStat = await lstat(parent);
+        if (parentStat.isSymbolicLink()) {
+          return {
+            allowed: false,
+            reason: "Parent path is a symbolic link.",
+          };
+        }
+        const parentReal = await realpath(parent);
+        const target = path.join(parentReal, path.basename(resolved));
+        const parentCheck = validateFilePath(target, operation);
+        if (!parentCheck.allowed) {
+          return parentCheck;
+        }
+        return { allowed: true, resolvedPath: target };
+      } catch (parentError) {
+        if (errnoCode(parentError) === "ENOENT") {
+          const fallback = validateFilePath(resolved, operation);
+          if (!fallback.allowed) {
+            return fallback;
+          }
+          return { allowed: true, resolvedPath: resolved };
+        }
+        return {
+          allowed: false,
+          reason:
+            parentError instanceof Error
+              ? parentError.message
+              : String(parentError),
+        };
+      }
+    }
+
+    return {
+      allowed: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export function sanitizeChildEnv(): Record<string, string | undefined> {

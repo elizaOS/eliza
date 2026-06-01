@@ -17,7 +17,9 @@ def test_e1x_sampled_vector_kernel_executor_gate_passes() -> None:
         stdout=subprocess.PIPE,
     )
     assert "PASS: E1X sampled vector-kernel executor" in result.stdout
-    report = json.loads((ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json").read_text())
+    report = json.loads(
+        (ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json").read_text()
+    )
     assert report["status"] == "PASS"
     summary = report["summary"]
     assert summary["failing_check_count"] == 0

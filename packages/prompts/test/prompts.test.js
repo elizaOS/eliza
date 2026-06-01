@@ -139,7 +139,7 @@ describe("prompt templates (src/index.ts)", () => {
     //   - Probes 20/21 ("what directory are you running in" / "how many cpu
     //     cores"): bot replied with bare "On it." (iters=0 tools=0) — user
     //     saw a fake acknowledgement, no follow-up.
-    //   - Probe 22 ("list the top-level dirs in /home/milady"): Stage 1
+    //   - Probe 22 ("list the top-level dirs in /home/user"): Stage 1
     //     produced reply:"" (empty string) on simple-path — bot posted
     //     literally nothing to Discord. trajectory tj-f61e23c88bdcbc.json.
     //   - Probe 50 ("make me a pdf with 3 pages about elizaOS history"):
@@ -458,7 +458,7 @@ describe("prompt templates (src/index.ts)", () => {
   });
 
   it("messageHandlerTemplate forbids fabricating a content-moderation system to explain a refusal", () => {
-    // Live regression on 2026-05-27 (milady channel, tj-66ed640acc957d):
+    // Live regression on 2026-05-27 (chat channel, tj-66ed640acc957d):
     // user replied "What's the actual error?" to the bot's own prior
     // "I'm sorry, but I can't help with that." Stage 1 confabulated:
     // "Your previous request contained hateful language, which violates our

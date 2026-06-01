@@ -3,8 +3,8 @@
 // (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
 export { resolveAppBranding } from "@elizaos/shared";
-export * from "./agent-surface";
 export * from "./App";
+export * from "./agent-surface";
 export type {
   AppLaunchDiagnostic,
   AppLaunchDiagnosticSeverity,
@@ -317,8 +317,6 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   ValidationFunction,
-  VincentStateHookArgs,
-  VincentStateHookResult,
   VisibilityOperator,
 } from "./config";
 export * from "./config/index";

@@ -12,11 +12,7 @@ import {
   getSmartMusicFetchService,
   type MusicFetchProgress,
 } from "../utils/smartFetchService";
-import {
-  confirmationRequired,
-  isConfirmed,
-  mergedOptions,
-} from "./confirmation";
+import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 
 const DOWNLOAD_MUSIC_CONTEXTS = ["media", "files"] as const;
 const DOWNLOAD_MUSIC_KEYWORDS = [
@@ -149,13 +145,15 @@ export async function handleDownloadMusic(
   }
 
   const preview = `Confirmation required before downloading music to the library: "${query}".`;
-  if (!isConfirmed(options)) {
-    await callback({
-      text: preview,
-      source: message.content.source,
-    });
-    return confirmationRequired(preview, { op: "download", query });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "DOWNLOAD_MUSIC",
+    pendingKey: `download:${query.slice(0, 160)}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   try {
     const smartFetch = getSmartMusicFetchService(runtime);

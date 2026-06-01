@@ -1,4 +1,4 @@
-import { useAgentElement } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, CheckSquare, Inbox, Zap } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PhaseName, PhaseStatus } from "../phases";

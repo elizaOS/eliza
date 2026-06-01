@@ -201,9 +201,14 @@ function sortTargetsByLocalDependencies(targets, workspacePackages) {
       return;
     }
     if (visiting.has(target.label)) {
-      throw new Error(
-        `[pack-upstreams] Circular workspace package dependency involving ${target.label}`,
+      // Mutual workspace dependency (e.g. @elizaos/agent ↔ @elizaos/plugin-mcp).
+      // These are architecturally valid — agent loads plugins at runtime and some
+      // plugins import agent utilities. Break the cycle by skipping the back-edge;
+      // the sort will still produce a valid pack order.
+      console.warn(
+        `[pack-upstreams] Warning: cycle broken at ${target.label} (mutually-dependent workspace packages)`,
       );
+      return;
     }
 
     visiting.add(target.label);

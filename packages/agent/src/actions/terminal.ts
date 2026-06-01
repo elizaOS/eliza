@@ -29,6 +29,7 @@ import {
 } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.ts";
+import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
@@ -113,8 +114,9 @@ function getCommand(options?: HandlerOptions): string | undefined {
 }
 
 function resolveTerminalInput(options?: HandlerOptions): TerminalActionInput {
+  const command = getCommand(options);
   return {
-    command: getCommand(options),
+    command: command ? normalizeTerminalCommand(command) : undefined,
   };
 }
 
@@ -359,9 +361,25 @@ export const terminalAction: Action = {
         capturedRun,
       );
 
+      // When the command succeeded cleanly (exit 0, no timeout, no
+      // truncation, empty stderr) the stdout *is* the answer. Mark it
+      // `verifiedUserFacing` so the planner echoes it verbatim instead of
+      // letting the evaluator meta-narrate ("Listed files as returned by
+      // grep") and drop the actual output. See elizaOS/eliza#7960.
+      const cleanStdout =
+        capturedRun.exitCode === 0 &&
+        !capturedRun.timedOut &&
+        !capturedRun.truncated &&
+        capturedRun.stderr.trim().length === 0
+          ? capturedRun.stdout.trim()
+          : "";
+
       return {
         text: buildCapturedResponseText(capturedRun, outputAttachment),
         success: true,
+        ...(cleanStdout
+          ? { userFacingText: cleanStdout, verifiedUserFacing: true }
+          : {}),
         data: {
           actionName: TERMINAL_ACTION_NAME,
           ...boundedRun,

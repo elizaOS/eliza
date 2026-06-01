@@ -189,7 +189,8 @@ export function RelationshipsWorkspaceView({
       defaultValue: "Search people, aliases, handles",
     }),
     group: "relationships-toolbar",
-    description: "Search people, aliases, and handles in the relationships graph",
+    description:
+      "Search people, aliases, and handles in the relationships graph",
     getValue: () => search,
     onFill: (value) => setSearch(value),
   });

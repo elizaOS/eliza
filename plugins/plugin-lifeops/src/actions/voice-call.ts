@@ -5,6 +5,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  requireConfirmation,
 } from "@elizaos/core";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
@@ -383,7 +384,8 @@ function invalidPhoneResult(
 }
 
 async function dialE164(
-  _runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
+  message: Memory,
   params: VoiceCallParams,
 ): Promise<ActionResult> {
   const credentials = readTwilioCredentialsFromEnv();
@@ -442,14 +444,28 @@ async function dialE164(
     };
   }
 
-  if (params.confirmed !== true) {
+  const callPrompt = `Place voice call to ${to} with message: "${messageBody}"?`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: ACTION_NAME,
+    pendingKey: `e164:${to}`,
+    prompt: callPrompt,
+  });
+  if (decision.status !== "confirmed") {
     return {
-      text: `Draft voice call to ${to}:\n\n"${messageBody}"\n\nSay "confirm" or re-issue with confirmed: true to place the call.`,
+      text:
+        decision.status === "pending"
+          ? `${callPrompt} Reply yes to confirm or no to cancel.`
+          : "Voice call cancelled.",
       success: false,
       values: {
         success: false,
-        error: "DRAFT_REQUIRES_CONFIRMATION",
-        draft: true,
+        error:
+          decision.status === "pending"
+            ? "DRAFT_REQUIRES_CONFIRMATION"
+            : "CANCELLED",
+        draft: decision.status === "pending",
         to,
         message: messageBody,
       },
@@ -458,9 +474,10 @@ async function dialE164(
         action: "dial",
         subaction: "dial",
         recipientKind: "e164",
-        draft: true,
+        draft: decision.status === "pending",
         to,
         message: messageBody,
+        awaitingUserInput: decision.status === "pending",
       },
     };
   }
@@ -549,43 +566,6 @@ async function dialOwner(
     };
   }
 
-  if (params.confirmed !== true) {
-    logger.info(
-      { action: ACTION_NAME, recipientKind: "owner" },
-      `[${ACTION_NAME}] confirmation required for owner dial`,
-    );
-    const spokenMessage =
-      params.bodyText?.trim() ||
-      pendingDraft?.message?.trim() ||
-      "Your agent is calling you.";
-    const approvalTaskId = await enqueueCallApprovalRequest({
-      runtime,
-      message,
-      actionName: "CALL_USER",
-      body: spokenMessage,
-    });
-    await writePendingCallDraft(runtime, message.roomId, {
-      actionName: "CALL_USER",
-      to: readOwnerNumber(runtime),
-      message: spokenMessage,
-      approvalTaskId,
-      createdAt: new Date().toISOString(),
-    });
-    return {
-      text: "Please confirm before I place the call.",
-      success: false,
-      values: { success: false, requiresConfirmation: true },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "owner",
-        requiresConfirmation: true,
-        approvalTaskId,
-      },
-    };
-  }
-
   const to = readOwnerNumber(runtime);
   if (!to) {
     logger.warn(
@@ -636,6 +616,32 @@ async function dialOwner(
     params.bodyText?.trim() ||
     pendingDraft?.message?.trim() ||
     "Your agent is calling you.";
+  const ownerPrompt = `Place voice call to owner ${to} with message: "${spokenMessage}"?`;
+  const ownerDecision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "VOICE_CALL_OWNER",
+    pendingKey: `owner:${to}`,
+    prompt: ownerPrompt,
+  });
+  if (ownerDecision.status !== "confirmed") {
+    return {
+      text:
+        ownerDecision.status === "pending"
+          ? `${ownerPrompt} Reply yes to confirm or no to cancel.`
+          : "Voice call cancelled.",
+      success: false,
+      values: { success: false, requiresConfirmation: ownerDecision.status === "pending" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "owner",
+        requiresConfirmation: ownerDecision.status === "pending",
+        awaitingUserInput: ownerDecision.status === "pending",
+      },
+    };
+  }
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
@@ -706,42 +712,39 @@ async function dialExternal(
     );
   }
 
-  if (params.confirmed !== true) {
-    logger.info(
-      { action: ACTION_NAME, recipientKind: "external", to },
-      `[${ACTION_NAME}] confirmation required for external dial`,
-    );
-    const spokenMessage =
-      params.bodyText?.trim() ||
-      pendingDraft?.message?.trim() ||
-      "This is a call from an automated assistant.";
-    const approvalTaskId = await enqueueCallApprovalRequest({
-      runtime,
-      message,
-      actionName: "CALL_EXTERNAL",
-      to,
-      body: spokenMessage,
-    });
-    await writePendingCallDraft(runtime, message.roomId, {
-      actionName: "CALL_EXTERNAL",
-      to,
-      message: spokenMessage,
-      approvalTaskId,
-      createdAt: new Date().toISOString(),
-    });
+  const spokenMessage =
+    params.bodyText?.trim() ||
+    pendingDraft?.message?.trim() ||
+    "This is a call from an automated assistant.";
+  const externalPrompt = `Place voice call to ${to} with message: "${spokenMessage}"?`;
+  const externalDecision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "VOICE_CALL_EXTERNAL",
+    pendingKey: `external:${to}`,
+    prompt: externalPrompt,
+  });
+  if (externalDecision.status !== "confirmed") {
     return {
-      text: `Please confirm before I call ${to}.`,
+      text:
+        externalDecision.status === "pending"
+          ? `${externalPrompt} Reply yes to confirm or no to cancel.`
+          : "Voice call cancelled.",
       success: false,
-      values: { success: false, requiresConfirmation: true, to },
+      values: {
+        success: false,
+        requiresConfirmation: externalDecision.status === "pending",
+        to,
+      },
       data: {
         actionName: ACTION_NAME,
         action: "dial",
         subaction: "dial",
         recipientKind: "external",
-        requiresConfirmation: true,
+        requiresConfirmation: externalDecision.status === "pending",
+        awaitingUserInput: externalDecision.status === "pending",
         to,
         matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
-        approvalTaskId,
       },
     };
   }
@@ -788,10 +791,6 @@ async function dialExternal(
     };
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "This is a call from an automated assistant.";
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
@@ -944,7 +943,7 @@ export const voiceCallAction: Action & {
 
     switch (recipientKind) {
       case "e164":
-        return dialE164(runtime, params);
+        return dialE164(runtime, message, params);
       case "owner":
         return dialOwner(runtime, message, params);
       case "external":

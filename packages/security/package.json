@@ -73,6 +73,26 @@
       "import": "./dist/audit/index.js",
       "default": "./dist/audit/index.js"
     },
+    "./mcp-server-config": {
+      "types": "./dist/mcp-server-config.d.ts",
+      "bun": {
+        "types": "./src/mcp-server-config.ts",
+        "import": "./src/mcp-server-config.ts",
+        "default": "./src/mcp-server-config.ts"
+      },
+      "import": "./dist/mcp-server-config.js",
+      "default": "./dist/mcp-server-config.js"
+    },
+    "./network-policy": {
+      "types": "./dist/network-policy.d.ts",
+      "bun": {
+        "types": "./src/network-policy.ts",
+        "import": "./src/network-policy.ts",
+        "default": "./src/network-policy.ts"
+      },
+      "import": "./dist/network-policy.js",
+      "default": "./dist/network-policy.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "bun": {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { resolveSandboxRouting } from "./agent-router";
+import {
+  isBridgeHostFallbackEnabled,
+  resolveSandboxRouting,
+} from "./agent-router";
 
 describe("resolveSandboxRouting", () => {
   it("prefers headscale IP for the target when bridge metadata is available", () => {
@@ -18,7 +21,7 @@ describe("resolveSandboxRouting", () => {
     });
   });
 
-  it("falls back to bridge URL host for legacy sandboxes without headscale IP", () => {
+  it("does not route running sandboxes without a persisted headscale IP by default", () => {
     expect(
       resolveSandboxRouting({
         status: "running",
@@ -26,6 +29,20 @@ describe("resolveSandboxRouting", () => {
         headscale_ip: null,
         web_ui_port: 20001,
       }),
+    ).toBeNull();
+  });
+
+  it("can opt into bridge URL host fallback for legacy sandboxes", () => {
+    expect(
+      resolveSandboxRouting(
+        {
+          status: "running",
+          bridge_url: "http://172.18.0.10:18791",
+          headscale_ip: null,
+          web_ui_port: 20001,
+        },
+        { allowBridgeHostFallback: true },
+      ),
     ).toMatchObject({
       headscaleIp: "172.18.0.10",
       target: "172.18.0.10:20001",
@@ -46,5 +63,24 @@ describe("resolveSandboxRouting", () => {
       webUiPort: 20001,
       target: "100.64.0.21:20001",
     });
+  });
+
+  it("only enables bridge-host fallback through the explicit env flag", () => {
+    expect(isBridgeHostFallbackEnabled({} as NodeJS.ProcessEnv)).toBe(false);
+    expect(
+      isBridgeHostFallbackEnabled({
+        AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "false",
+      } as NodeJS.ProcessEnv),
+    ).toBe(false);
+    expect(
+      isBridgeHostFallbackEnabled({
+        AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "true",
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
+    expect(
+      isBridgeHostFallbackEnabled({
+        AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
   });
 });

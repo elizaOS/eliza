@@ -1,0 +1,264 @@
+{
+  "schema": "erobot-transmission-v1",
+  "ok": true,
+  "summary": "shank winch -> ankle pulley -> toe: 18.6\u00b0 travel, 27.0 mm tip motion, lever 21.2 mm, hysteresis 0.0\u00b0; cable SF 2.7; knee moves foot 0.673 m",
+  "toe_position_control": {
+    "side": "left",
+    "command_is_tendon_length_m": [
+      0.5825,
+      0.5926
+    ],
+    "samples": [
+      {
+        "cmd_len_m": 0.5825,
+        "toe_deg": 0.0,
+        "tendon_len_m": 0.5825,
+        "toe_tip_world_m": [
+          0.17,
+          0.105,
+          0.4305
+        ]
+      },
+      {
+        "cmd_len_m": 0.5837,
+        "toe_deg": -1.12,
+        "tendon_len_m": 0.583,
+        "toe_tip_world_m": [
+          0.17,
+          0.105,
+          0.4324
+        ]
+      },
+      {
+        "cmd_len_m": 0.585,
+        "toe_deg": -3.54,
+        "tendon_len_m": 0.584,
+        "toe_tip_world_m": [
+          0.1699,
+          0.105,
+          0.4358
+        ]
+      },
+      {
+        "cmd_len_m": 0.5863,
+        "toe_deg": -6.1,
+        "tendon_len_m": 0.585,
+        "toe_tip_world_m": [
+          0.1696,
+          0.105,
+          0.4395
+        ]
+      },
+      {
+        "cmd_len_m": 0.5875,
+        "toe_deg": -8.67,
+        "tendon_len_m": 0.586,
+        "toe_tip_world_m": [
+          0.1691,
+          0.105,
+          0.4431
+        ]
+      },
+      {
+        "cmd_len_m": 0.5888,
+        "toe_deg": -11.23,
+        "tendon_len_m": 0.5869,
+        "toe_tip_world_m": [
+          0.1685,
+          0.105,
+          0.4468
+        ]
+      },
+      {
+        "cmd_len_m": 0.5901,
+        "toe_deg": -13.75,
+        "tendon_len_m": 0.5878,
+        "toe_tip_world_m": [
+          0.1677,
+          0.105,
+          0.4503
+        ]
+      },
+      {
+        "cmd_len_m": 0.5913,
+        "toe_deg": -16.2,
+        "tendon_len_m": 0.5886,
+        "toe_tip_world_m": [
+          0.1668,
+          0.105,
+          0.4538
+        ]
+      },
+      {
+        "cmd_len_m": 0.5926,
+        "toe_deg": -18.61,
+        "tendon_len_m": 0.5894,
+        "toe_tip_world_m": [
+          0.1658,
+          0.105,
+          0.4572
+        ]
+      }
+    ],
+    "monotonic": true,
+    "repeatable_hysteresis_deg": 0.0,
+    "toe_travel_deg": 18.6,
+    "toe_tip_travel_mm": 27.0,
+    "effective_lever_radius_mm": 21.2,
+    "winch_radius_mm": 15.0,
+    "motor_angle_to_toe_angle_ratio": 0.708,
+    "ok": true
+  },
+  "pulley_belt_mechanics": {
+    "side": "left",
+    "drive_type": "positive anchored cable over an idler pulley (zero slip, zero backlash)",
+    "pulley_radius_mm": 12.0,
+    "cable_wrap_angle_deg": 82.2,
+    "capstan_holding_ratio_if_friction_belt": 1.33,
+    "winch_motor_torque_nm": 10.0,
+    "max_cable_tension_n": 666.7,
+    "cable_breaking_n": 1800.0,
+    "cable_safety_factor": 2.7,
+    "effective_lever_radius_mm": 21.2,
+    "max_toe_torque_nm": 14.13,
+    "backlash_deg": 0.0,
+    "ok": true
+  },
+  "foot_position_by_leg_motors": {
+    "side": "left",
+    "knee_sweep": [
+      {
+        "cmd_rad": 0.0,
+        "achieved_rad": 0.0,
+        "foot_xpos_m": [
+          0.0,
+          0.105,
+          0.478
+        ]
+      },
+      {
+        "cmd_rad": 0.383,
+        "achieved_rad": 0.386,
+        "foot_xpos_m": [
+          -0.1018,
+          0.1162,
+          0.5012
+        ]
+      },
+      {
+        "cmd_rad": 0.767,
+        "achieved_rad": 0.767,
+        "foot_xpos_m": [
+          -0.2073,
+          0.1219,
+          0.5662
+        ]
+      },
+      {
+        "cmd_rad": 1.15,
+        "achieved_rad": 1.113,
+        "foot_xpos_m": [
+          -0.254,
+          0.1227,
+          0.6453
+        ]
+      },
+      {
+        "cmd_rad": 1.533,
+        "achieved_rad": 1.463,
+        "foot_xpos_m": [
+          -0.2519,
+          0.1254,
+          0.7477
+        ]
+      },
+      {
+        "cmd_rad": 1.917,
+        "achieved_rad": 1.902,
+        "foot_xpos_m": [
+          -0.2665,
+          0.0859,
+          0.9231
+        ]
+      },
+      {
+        "cmd_rad": 2.3,
+        "achieved_rad": 2.305,
+        "foot_xpos_m": [
+          -0.2629,
+          0.1088,
+          1.151
+        ]
+      }
+    ],
+    "ankle_pitch_sweep": [
+      {
+        "cmd_rad": -0.9,
+        "achieved_rad": -0.892,
+        "foot_xpos_m": [
+          -0.0034,
+          0.1044,
+          0.4765
+        ]
+      },
+      {
+        "cmd_rad": -0.667,
+        "achieved_rad": -0.649,
+        "foot_xpos_m": [
+          -0.0032,
+          0.1046,
+          0.4769
+        ]
+      },
+      {
+        "cmd_rad": -0.433,
+        "achieved_rad": -0.414,
+        "foot_xpos_m": [
+          -0.0022,
+          0.1047,
+          0.4774
+        ]
+      },
+      {
+        "cmd_rad": -0.2,
+        "achieved_rad": -0.191,
+        "foot_xpos_m": [
+          -0.001,
+          0.1049,
+          0.4777
+        ]
+      },
+      {
+        "cmd_rad": 0.033,
+        "achieved_rad": 0.031,
+        "foot_xpos_m": [
+          0.0002,
+          0.105,
+          0.478
+        ]
+      },
+      {
+        "cmd_rad": 0.267,
+        "achieved_rad": 0.251,
+        "foot_xpos_m": [
+          0.0017,
+          0.1051,
+          0.4782
+        ]
+      },
+      {
+        "cmd_rad": 0.5,
+        "achieved_rad": 0.446,
+        "foot_xpos_m": [
+          0.0039,
+          0.1052,
+          0.4784
+        ]
+      }
+    ],
+    "knee_tracking_err_rad": 0.07,
+    "ankle_tracking_err_rad": 0.054,
+    "knee_moves_foot_height_m": 0.673,
+    "ok": true
+  }
+}

@@ -1,0 +1,86 @@
+# @elizaos/capacitor-wifi
+
+Android Wi-Fi (WifiManager) bridge for elizaOS — a Capacitor plugin.
+
+## Purpose / role
+
+This is a Capacitor plugin (not an elizaOS runtime plugin). It exposes Android `WifiManager` / `ConnectivityManager` APIs to a Capacitor-hosted elizaOS app running on Android. It is NOT a runtime action/provider/service registered with `AgentRuntime`; it is a native bridge consumed by JavaScript code in the host app. On web/desktop it loads a safe no-op fallback (`WiFiWeb`) that resolves with empty data and logs one warning.
+
+Package: `@elizaos/capacitor-wifi`. Must be explicitly installed and integrated into a Capacitor Android project. Not auto-enabled.
+
+## Plugin surface
+
+This is a Capacitor plugin, not an elizaOS runtime plugin. It does not register actions, providers, services, or evaluators. It exposes one Capacitor plugin object:
+
+| Export | Description |
+|--------|-------------|
+| `WiFi` | Capacitor plugin instance registered as `"ElizaWiFi"`. Call its methods from JS. |
+| `WiFiPlugin` | TypeScript interface declaring all five methods. |
+| `WiFiNetwork`, `ConnectedNetworkResult`, `WifiStateResult`, `ListNetworksResult`, `ConnectResult`, `ListNetworksOptions`, `ConnectOptions` | All DTO types. |
+
+### `WiFiPlugin` methods
+
+| Method | Returns | Notes |
+|--------|---------|-------|
+| `getWifiState()` | `WifiStateResult` | Radio enabled, connected bool, active RSSI (dBm or null). |
+| `getConnectedNetwork()` | `ConnectedNetworkResult` | Active connection details or null. Requires `ACCESS_WIFI_STATE`. |
+| `listAvailableNetworks(opts?)` | `ListNetworksResult` | Triggers or reuses a scan; de-duplicates by SSID; sorted by signal strength. Requires `ACCESS_WIFI_STATE` + `ACCESS_FINE_LOCATION` on API 26+. |
+| `connectToNetwork(opts)` | `ConnectResult` | Uses `WifiNetworkSuggestion` on API 29+; `WifiConfiguration` (deprecated) on API 23–28. |
+| `disconnectFromNetwork()` | `ConnectResult` | Calls `WifiManager.disconnect()`. Requires `CHANGE_WIFI_STATE`. |
+
+## Layout
+
+```
+plugins/plugin-native-wifi/
+  src/
+    definitions.ts          All TypeScript interfaces and DTO types (WiFiPlugin, WiFiNetwork, …)
+    index.ts                registerPlugin("ElizaWiFi") + re-exports definitions
+    web.ts                  WiFiWeb: no-op WebPlugin fallback used in browser/Node environments
+  android/
+    src/main/
+      AndroidManifest.xml   Declares required permissions (ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, ACCESS_FINE_LOCATION, …)
+      java/ai/eliza/plugins/wifi/
+        WiFiPlugin.kt       Kotlin implementation; all five @PluginMethod handlers + helpers
+    build.gradle            Android library config (namespace ai.eliza.plugins.wifi, minSdk 23, compileSdk 34)
+  rollup.config.mjs         Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js
+  tsconfig.json             TypeScript config for the TS→ESM step
+```
+
+## Commands
+
+Only scripts defined in this package's `package.json`:
+
+```bash
+bun run --cwd plugins/plugin-native-wifi build          # tsc + rollup → dist/
+bun run --cwd plugins/plugin-native-wifi clean          # delete dist/
+bun run --cwd plugins/plugin-native-wifi prepublishOnly # clean + build (runs automatically before npm publish)
+```
+
+## Config / env vars
+
+None. This plugin reads no environment variables and has no elizaOS config keys. Android permissions are declared in `AndroidManifest.xml` and must be granted at runtime by the host app.
+
+Required Android permissions (runtime-requested by the host app):
+- `ACCESS_WIFI_STATE` — required by `getConnectedNetwork` and `listAvailableNetworks`.
+- `CHANGE_WIFI_STATE` — required by `connectToNetwork` and `disconnectFromNetwork`.
+- `ACCESS_FINE_LOCATION` — required for `WifiManager.scanResults` on API 26+ (Android 8+); without it the plugin rejects `listAvailableNetworks` with an error (does NOT silently return an empty list).
+- `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` — used by the `ConnectivityManager.requestNetwork` path on API 29+.
+
+## How to extend
+
+To add a new method to this Capacitor plugin:
+
+1. **Define the TypeScript signature** in `src/definitions.ts` — add the method to `WiFiPlugin` and any new DTOs.
+2. **Add the web stub** in `src/web.ts` inside `WiFiWeb`. It must satisfy the new interface and should resolve with empty/false data and call `warnOnce()`.
+3. **Implement in Kotlin** in `android/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt` — annotate the method with `@PluginMethod`. Reject with a clear string on missing permissions rather than letting the platform silently return empty data.
+4. Add any new Android permissions to `android/src/main/AndroidManifest.xml` with a comment explaining why they are needed.
+5. Rebuild: `bun run --cwd plugins/plugin-native-wifi build`.
+
+## Conventions / gotchas
+
+- **Android-only native functionality.** The web fallback is intentionally a no-op; do not make it throw. Consumers on non-Android platforms receive empty results, not errors.
+- **Scan rate-limiting.** `WifiManager.startScan()` is throttled by Android (typically 4 scans per 2 minutes in foreground). The `maxAge` option lets callers reuse a recent scan result. `startScan()` returning `false` is expected on modern Android — use the returned `scanResults` regardless.
+- **API level branching in `connectToNetwork`.** API 29+ uses `WifiNetworkSuggestion` (the system controls the actual connection; success means the suggestion was accepted, not that the device is connected). API 23–28 uses the deprecated `WifiConfiguration` path, which only works for privileged system apps. Poll `getConnectedNetwork()` to observe actual connection state after calling `connectToNetwork`.
+- **`ACCESS_FINE_LOCATION` is required for scans.** The plugin rejects `listAvailableNetworks` with an explicit error on API 26+ if the permission is not granted, instead of silently returning an empty list. The host app must prompt the user and retry.
+- **Build requires Android SDK.** The Kotlin plugin only compiles as part of an Android Gradle project; running `bun run build` builds only the TypeScript/JS artifacts. The Kotlin source is compiled by Gradle when the Capacitor plugin is synced into an Android project.
+- **Capacitor peer dep.** `@capacitor/core ^8.3.1` must be present in the host app. This package declares it as both a `peerDependency` and a `devDependency`.

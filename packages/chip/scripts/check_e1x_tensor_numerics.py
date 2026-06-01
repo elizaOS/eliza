@@ -125,15 +125,21 @@ def validate_microkernel_records(proof: dict) -> tuple[bool, str, dict[str, int 
         return False, "aggregate checksum mismatch", {}
     if checked_macs != int(proof.get("sample_mac_count", -1)):
         return False, "sample MAC count mismatch", {}
-    return True, f"{checked_layers} layer records and {checked_macs} sampled MACs recomputed", {
-        "checked_layer_count": checked_layers,
-        "checked_row_count": checked_rows,
-        "checked_mac_count": checked_macs,
-        "max_abs_accumulator": max_abs_accumulator,
-    }
+    return (
+        True,
+        f"{checked_layers} layer records and {checked_macs} sampled MACs recomputed",
+        {
+            "checked_layer_count": checked_layers,
+            "checked_row_count": checked_rows,
+            "checked_mac_count": checked_macs,
+            "max_abs_accumulator": max_abs_accumulator,
+        },
+    )
 
 
-def validate_schedule_alignment(proof: dict, schedule: dict, placement: dict) -> tuple[bool, str, dict]:
+def validate_schedule_alignment(
+    proof: dict, schedule: dict, placement: dict
+) -> tuple[bool, str, dict]:
     proof_records = proof.get("records")
     schedule_layers = schedule.get("layers")
     placement_layers = placement.get("layers")
@@ -141,7 +147,9 @@ def validate_schedule_alignment(proof: dict, schedule: dict, placement: dict) ->
         return False, "missing proof or schedule layers", {}
     if not isinstance(placement_layers, list):
         return False, "missing placement layers", {}
-    if len(proof_records) != len(schedule_layers) or len(proof_records) != int(placement["layer_count"]):
+    if len(proof_records) != len(schedule_layers) or len(proof_records) != int(
+        placement["layer_count"]
+    ):
         return False, "proof, schedule, and placement layer counts differ", {}
 
     placement_by_index = {int(layer["index"]): layer for layer in placement_layers}
@@ -169,18 +177,24 @@ def validate_schedule_alignment(proof: dict, schedule: dict, placement: dict) ->
             return False, f"SRAM overflow at layer {layer_index}", {}
         total_rows += int(schedule_record["row_coverage"])
         total_assigned_cores += int(schedule_record["assigned_cores"])
-        max_core_shard_bytes = max(max_core_shard_bytes, int(schedule_record["max_core_shard_bytes"]))
+        max_core_shard_bytes = max(
+            max_core_shard_bytes, int(schedule_record["max_core_shard_bytes"])
+        )
         kind_counts[str(proof_record["kind"])] += 1
 
     missing_kinds = sorted(EXPECTED_KINDS - set(kind_counts))
     if missing_kinds:
         return False, "missing layer kinds: " + ", ".join(missing_kinds), {}
-    return True, f"{len(proof_records)} proof records align with tensor schedule and placement", {
-        "total_rows_covered": total_rows,
-        "total_assigned_cores": total_assigned_cores,
-        "max_core_shard_bytes": max_core_shard_bytes,
-        "kind_counts": dict(sorted(kind_counts.items())),
-    }
+    return (
+        True,
+        f"{len(proof_records)} proof records align with tensor schedule and placement",
+        {
+            "total_rows_covered": total_rows,
+            "total_assigned_cores": total_assigned_cores,
+            "max_core_shard_bytes": max_core_shard_bytes,
+            "kind_counts": dict(sorted(kind_counts.items())),
+        },
+    )
 
 
 def main() -> int:
@@ -222,17 +236,21 @@ def main() -> int:
     checks.append({"id": "e1x_tensor_numerics_artifact_links", "status": status, "detail": detail})
 
     numeric_ok, numeric_detail, numeric_summary = validate_microkernel_records(proof)
-    checks.append({
-        "id": "e1x_tensor_numerics_w4a8_reference_recompute",
-        "status": "pass" if numeric_ok else "fail",
-        "detail": numeric_detail,
-    })
+    checks.append(
+        {
+            "id": "e1x_tensor_numerics_w4a8_reference_recompute",
+            "status": "pass" if numeric_ok else "fail",
+            "detail": numeric_detail,
+        }
+    )
     align_ok, align_detail, align_summary = validate_schedule_alignment(proof, schedule, placement)
-    checks.append({
-        "id": "e1x_tensor_numerics_schedule_alignment",
-        "status": "pass" if align_ok else "fail",
-        "detail": align_detail,
-    })
+    checks.append(
+        {
+            "id": "e1x_tensor_numerics_schedule_alignment",
+            "status": "pass" if align_ok else "fail",
+            "detail": align_detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

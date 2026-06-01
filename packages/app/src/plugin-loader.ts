@@ -20,8 +20,6 @@ import type {
   StewardApprovalQueueProps,
   StewardLogoProps,
   StewardTransactionHistoryProps,
-  VincentStateHookArgs,
-  VincentStateHookResult,
 } from "@elizaos/ui/config";
 import { type AppBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { type ComponentType, lazy } from "react";
@@ -159,20 +157,7 @@ export { LifeOpsActivitySignalsEffect, PhoneCompanionApp };
 // route to the resolved hook or a safe default.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_LAZY_VINCENT_STATE: VincentStateHookResult = {
-  vincentConnected: false,
-  vincentLoginBusy: false,
-  vincentLoginError: null,
-  vincentConnectedAt: null,
-  handleVincentLogin: async () => {},
-  handleVincentDisconnect: async () => {},
-  pollVincentStatus: async () => false,
-};
-
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let loadedVincentStateHook:
-  | ((args: VincentStateHookArgs) => VincentStateHookResult)
-  | null = null;
 let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 export function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
@@ -182,12 +167,6 @@ export function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
       teleportKey: "",
     }
   );
-}
-
-export function useLoadedVincentState(
-  args: VincentStateHookArgs,
-): VincentStateHookResult {
-  return loadedVincentStateHook?.(args) ?? DEFAULT_LAZY_VINCENT_STATE;
 }
 
 export function dispatchLifeOpsGithubCallbackIfReady(url: string): void {
@@ -221,9 +200,10 @@ export function initializeAppPlugins(
     // app-core must resolve first; it owns the shared boot config singleton.
     await loadPlugin("@elizaos/app-core");
 
-    const [companionModule, lifeOpsModule, vincentModule] = await Promise.all([
+    const [companionModule, lifeOpsModule] = await Promise.all([
       loadPlugin("@elizaos/app-companion"),
       loadPlugin("@elizaos/app-lifeops"),
+      // Loaded for its self-registration side effect (Vincent overlay app).
       loadPlugin("@elizaos/app-vincent"),
       loadPlugin("@elizaos/app-task-coordinator"),
       loadPlugin("@elizaos/app-phone"),
@@ -249,7 +229,6 @@ export function initializeAppPlugins(
 
     companionModule.registerCompanionApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    loadedVincentStateHook = vincentModule.useVincentState;
     dispatchQueuedLifeOpsGithubCallback =
       lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 
@@ -280,7 +259,6 @@ export function initializeAppPlugins(
       codingAgentSettingsSection: CodingAgentSettingsSection,
       codingAgentControlChip: CodingAgentControlChip,
       fineTuningView: FineTuningView,
-      useVincentState: useLoadedVincentState,
       stewardLogo: StewardLogo,
       stewardApprovalQueue: ApprovalQueue,
       stewardTransactionHistory: TransactionHistory,

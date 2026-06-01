@@ -10,7 +10,6 @@ import {
   type CodingAgentTaskThreadDetail,
   type CodingAgentTaskUsageSummary,
   client,
-  EmptyWidgetState,
   useApp,
 } from "@elizaos/ui";
 import {
@@ -34,7 +33,6 @@ import {
   Gauge,
   GitFork,
   Layers,
-  ListTodo,
   type LucideIcon,
   OctagonX,
   PanelRightOpen,
@@ -51,6 +49,7 @@ import {
 import {
   type CSSProperties,
   type ReactNode,
+  type UIEvent,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -59,12 +58,14 @@ import {
   useState,
 } from "react";
 import {
-  formatClockTime,
+  buildConversation,
+  ConversationBlockView,
+} from "./orchestrator-stream";
+import {
   formatCompactNumber,
   formatIsoRelative,
   formatRelativeTime,
   formatUsd,
-  stripAnsi,
 } from "./view-format";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -78,6 +79,9 @@ const fallbackTranslate: Translate = (key, vars) =>
 const TASK_LIST_LIMIT = 100;
 const TIMELINE_PAGE_LIMIT = 50;
 const POLL_INTERVAL_MS = 5_000;
+/** While a task has a working agent, poll its room fast so the conversation,
+ * tool calls, and tokens stream in near-live instead of lurching every 5s. */
+const ACTIVE_POLL_INTERVAL_MS = 1_500;
 
 const STATUS_ICON: Record<TaskStatus, LucideIcon> = {
   open: Circle,
@@ -325,13 +329,19 @@ function VerificationGlyph({
       aria-label={label}
       role="img"
     >
-      <Icon className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`} aria-hidden />
+      <Icon
+        className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`}
+        aria-hidden
+      />
     </span>
   );
 }
 
 function PlanStepGlyph({ status, t }: { status: string; t: Translate }) {
-  const key = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const key = status
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   const Icon = PLAN_STEP_ICON[key] ?? Circle;
   const tone = PLAN_STEP_TONE[key] ?? "text-muted";
   const label = t(`orchestrator.planStatus.${key}`, {
@@ -668,38 +678,32 @@ function renderCost(
     : value;
 }
 
-function StatChip({
-  label,
+/** A vertical hairline divider between header summary segments (the token kit
+ * has no Separator export, so this is a thin local primitive). */
+function HeaderDivider() {
+  return <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />;
+}
+
+/** One labeled count in the header summary — a baseline-aligned number + tiny
+ * uppercase label, no pill/border (replaces the old cryptic icon chips). */
+function HeaderStat({
   value,
-  tone = "neutral",
-  icon,
+  label,
+  toneClass = "text-txt-strong",
 }: {
-  label: string;
   value: string;
-  tone?: "neutral" | "ok" | "warn" | "danger" | "accent";
-  icon?: ReactNode;
+  label: string;
+  toneClass?: string;
 }) {
-  const toneClass =
-    tone === "ok"
-      ? "text-ok"
-      : tone === "warn"
-        ? "text-warn"
-        : tone === "danger"
-          ? "text-danger"
-          : tone === "accent"
-            ? "text-accent"
-            : "text-txt";
   return (
-    <div
-      className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1"
-      title={label}
-      aria-label={label}
-    >
-      {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
-      <span className={`text-xs font-semibold tabular-nums ${toneClass}`}>
+    <span className="inline-flex shrink-0 items-baseline gap-1" title={label}>
+      <span className={`text-sm font-semibold tabular-nums ${toneClass}`}>
         {value}
       </span>
-    </div>
+      <span className="text-2xs uppercase tracking-[0.08em] text-muted">
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -747,63 +751,71 @@ function WorkbenchHeader({
   const title = (
     <div className="flex shrink-0 items-center gap-2">
       <Layers className="h-4 w-4 text-accent" />
-      <span className="text-sm font-semibold text-txt">
+      <span className="text-sm font-semibold tracking-tight text-txt-strong">
         {t("orchestrator.title", { defaultValue: "Orchestrator" })}
       </span>
     </div>
   );
-  const chips = (
+  // Calm labeled summary: total tasks always, then only the non-zero semantic
+  // counts — reads "12 tasks · 1 active · 3 done", not a six-pill debug strip.
+  const summary = (
     <div
-      className="flex items-center gap-1.5"
-      style={
-        isMobile
-          ? { overflowX: "auto" }
-          : { flex: "1 1 0%", flexWrap: "wrap" }
-      }
+      className="flex min-w-0 items-center gap-2.5 overflow-x-auto"
+      style={isMobile ? undefined : { flex: "1 1 0%" }}
     >
-      <StatChip
-        label={t("orchestrator.stat.tasks", { defaultValue: "Tasks" })}
-        value={String(status?.taskCount ?? 0)}
-        icon={<ListTodo className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.active", { defaultValue: "Active" })}
-        value={String(status?.activeTaskCount ?? 0)}
-        tone="ok"
-        icon={<CirclePlay className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.blocked", { defaultValue: "Blocked" })}
-        value={String(status?.blockedTaskCount ?? 0)}
-        tone="warn"
-        icon={<OctagonX className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.validating", {
-          defaultValue: "Validating",
-        })}
-        value={String(status?.validatingTaskCount ?? 0)}
-        tone="accent"
-        icon={<CircleDashed className="h-3 w-3" />}
-      />
-      <StatChip
-        label={t("orchestrator.stat.agents", { defaultValue: "Agents" })}
-        value={`${status?.activeSessionCount ?? 0}/${status?.sessionCount ?? 0}`}
-        icon={<Bot className="h-3 w-3" />}
-      />
-      {status ? (
-        <StatChip
-          label={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
-          value={
-            isMobile
-              ? renderTokens(status.usage, t, locale)
-              : `${renderTokens(status.usage, t, locale)} · ${renderCost(status.usage, t, locale)}`
-          }
-          icon={<Gauge className="h-3 w-3" />}
-        />
+      <HeaderStat value={String(status?.taskCount ?? 0)} label="tasks" />
+      {status?.activeTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.activeTaskCount)}
+            label="active"
+            toneClass="text-ok"
+          />
+        </>
+      ) : null}
+      {status?.blockedTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.blockedTaskCount)}
+            label="blocked"
+            toneClass="text-warn"
+          />
+        </>
+      ) : null}
+      {status?.validatingTaskCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={String(status.validatingTaskCount)}
+            label="validating"
+            toneClass="text-accent"
+          />
+        </>
+      ) : null}
+      {status?.activeSessionCount ? (
+        <>
+          <HeaderDivider />
+          <HeaderStat
+            value={`${status.activeSessionCount}/${status.sessionCount}`}
+            label="agents"
+          />
+        </>
       ) : null}
     </div>
   );
+  const usageReadout = status ? (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted"
+      title={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
+    >
+      <Gauge className="h-3 w-3 text-muted/70" />
+      {renderTokens(status.usage, t, locale)}
+      <span className="text-muted/50">·</span>
+      {renderCost(status.usage, t, locale)}
+    </span>
+  ) : null;
   const pauseAllLabel = t("orchestrator.action.pauseAll", {
     defaultValue: "Pause all",
   });
@@ -843,32 +855,37 @@ function WorkbenchHeader({
         size="sm"
         disabled={busy}
         onClick={onNewTask}
-        className="h-7 w-7 p-0"
+        className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
         aria-label={newTaskLabel}
         title={newTaskLabel}
         data-testid="orchestrator-new-task"
       >
         <Plus className="h-3.5 w-3.5" />
+        {newTaskLabel}
       </Button>
     </div>
   );
 
   if (isMobile) {
     return (
-      <header className="flex flex-col gap-2 border-b border-border/60 bg-bg px-3 py-2">
+      <header className="flex flex-col gap-2 border-b border-border/50 bg-bg px-4 py-2.5">
         <div className="flex items-center gap-2">
           {title}
           {actions}
         </div>
-        {chips}
+        <div className="flex items-center justify-between gap-2">
+          {summary}
+          {usageReadout}
+        </div>
       </header>
     );
   }
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-bg px-3 py-2">
+    <header className="flex items-center gap-3 border-b border-border/50 bg-bg px-4 py-2.5">
       {title}
-      {chips}
+      {summary}
+      {usageReadout}
       {actions}
     </header>
   );
@@ -936,23 +953,37 @@ function TaskRailItem({
           locale,
           t("orchestrator.unknown", { defaultValue: "—" }),
         );
+  // A left accent bar surfaces in-progress/selected at a glance without parsing
+  // the small status glyph. Idle rows are borderless (hover-fill only) so the
+  // rail reads as a list, not a stack of boxes.
+  const barTone = selected
+    ? "before:bg-accent"
+    : thread.status === "active"
+      ? "before:bg-ok"
+      : thread.status === "validating"
+        ? "before:bg-accent"
+        : thread.status === "blocked" || thread.status === "waiting_on_user"
+          ? "before:bg-warn"
+          : "before:bg-transparent";
   return (
     <div
-      className={`rounded-lg border transition-colors ${
-        selected
-          ? "border-accent/50 bg-bg-hover/70"
-          : "border-border/50 bg-bg-accent/30 hover:bg-bg-hover/40"
+      className={`relative rounded-sm transition-colors before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:content-[''] ${barTone} ${
+        selected ? "bg-accent-subtle" : "hover:bg-surface"
       }`}
       data-testid="orchestrator-task-item"
     >
       <button
         type="button"
         onClick={() => onSelect(thread.id)}
-        className="flex w-full flex-col gap-1 p-2.5 text-left"
+        className="flex w-full flex-col gap-0.5 px-2.5 py-2 pl-3 text-left"
       >
         <div className="flex items-center gap-1.5">
           <StatusGlyph status={thread.status} paused={thread.paused} t={t} />
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
+          <span
+            className={`min-w-0 flex-1 truncate text-xs-tight font-medium ${
+              selected ? "text-txt-strong" : "text-txt"
+            }`}
+          >
             {thread.title}
           </span>
           {thread.paused ? (
@@ -960,94 +991,14 @@ function TaskRailItem({
           ) : null}
           <PriorityGlyph priority={thread.priority} t={t} />
         </div>
-        <div className="flex items-center gap-2.5 text-2xs text-muted">
+        <div className="flex items-center gap-2 text-2xs text-muted">
           <span className="flex items-center gap-0.5">
             <Bot className="h-3 w-3" />
             {thread.activeSessionCount}/{thread.sessionCount}
           </span>
-          <span className="tabular-nums">
-            {renderTokens(thread.usage, t, locale)}
-          </span>
           <span className="ml-auto truncate">{lastActivity}</span>
         </div>
       </button>
-    </div>
-  );
-}
-
-function MessageEntry({
-  message,
-  senderName,
-  locale,
-}: {
-  message: CodingAgentTaskMessageRecord;
-  senderName: string;
-  locale?: string;
-}) {
-  const text = stripAnsi(message.content);
-  if (!text) return null;
-  const isUser = message.senderKind === "user";
-  // Your own messages read as "yours" by color + right-alignment, so the
-  // explicit "You" label is redundant; everyone else keeps their name.
-  const tone = isUser
-    ? "bg-accent/20"
-    : message.senderKind === "orchestrator"
-      ? "bg-bg-accent/60"
-      : "bg-bg-hover/60";
-  return (
-    <div
-      className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
-      data-testid="orchestrator-message"
-    >
-      <div
-        className={`rounded-lg px-2.5 py-1.5 ${tone}`}
-        style={{ maxWidth: "88%" }}
-      >
-        <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-          {isUser ? null : (
-            <span className="font-semibold tracking-tight text-txt/90">
-              {senderName}
-            </span>
-          )}
-          <span className="tabular-nums">
-            {formatClockTime(message.timestamp, locale)}
-          </span>
-        </div>
-        <pre className="whitespace-pre-wrap break-words font-sans text-xs text-txt">
-          {text}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function EventEntry({
-  event,
-  locale,
-}: {
-  event: CodingAgentTaskEventRecord;
-  locale?: string;
-}) {
-  // Show the specific summary as the single line; the event type (e.g.
-  // "agent spawned") only restates what the summary already says ("token-
-  // exchange spawned"), so it's dropped unless there is no summary.
-  const text = event.summary?.trim() || event.eventType.replace(/_/g, " ");
-  return (
-    <div
-      className="flex items-center gap-2 px-1 text-2xs text-muted"
-      data-testid="orchestrator-event"
-    >
-      <span className="h-px flex-1 bg-border/40" />
-      <span
-        className="min-w-0 shrink truncate font-medium"
-        style={{ maxWidth: "72%" }}
-      >
-        {text}
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {formatClockTime(event.timestamp, locale)}
-      </span>
-      <span className="h-px flex-1 bg-border/40" />
     </div>
   );
 }
@@ -1103,12 +1054,7 @@ function SubAgentCard({
           <span className="truncate text-warn">{session.activeTool}</span>
         ) : null}
         <span className="ml-auto tabular-nums">
-          {formatTokenCount(
-            session.usageState,
-            session.totalTokens,
-            t,
-            locale,
-          )}
+          {formatTokenCount(session.usageState, session.totalTokens, t, locale)}
         </span>
       </div>
       <div className="mt-0.5 truncate text-2xs text-muted/80">{workspace}</div>
@@ -1196,10 +1142,7 @@ function ArtifactSection({
               <span className="min-w-0 flex-1 truncate font-medium text-txt">
                 {artifact.title}
               </span>
-              <VerificationGlyph
-                status={artifact.verificationStatus}
-                t={t}
-              />
+              <VerificationGlyph status={artifact.verificationStatus} t={t} />
             </div>
             <div className="truncate text-muted">
               {artifact.artifactType}
@@ -1270,7 +1213,7 @@ function UsageSection({
 }
 
 const FIELD_CLASS =
-  "w-full rounded-md border border-border/50 bg-bg px-2 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50";
+  "w-full rounded-sm border border-border bg-bg px-2.5 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent/30";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -2023,6 +1966,17 @@ export function OrchestratorWorkbench() {
   const selectedIdRef = useRef<string | null>(selectedId);
   selectedIdRef.current = selectedId;
 
+  // The conversation sticks to the newest entry, but only while the reader is
+  // already near the bottom — scrolling up to read history is never yanked by
+  // a streaming update.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+  const handleListScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
   const fetchTasksAndStatus = useCallback(
     async (silent: boolean) => {
       if (!silent) setLoading(true);
@@ -2064,7 +2018,10 @@ export function OrchestratorWorkbench() {
       client.listOrchestratorTaskMessages(id, { limit: TIMELINE_PAGE_LIMIT }),
       client.listOrchestratorTaskEvents(id, { limit: TIMELINE_PAGE_LIMIT }),
     ]);
-    if (token !== detailReqRef.current) return;
+    // Discard if a newer fetch superseded this one, or if the selection moved on
+    // while in flight — otherwise a non-reset poll/refresh could merge one task's
+    // transcript into another task's room (cross-task contamination).
+    if (token !== detailReqRef.current || id !== selectedIdRef.current) return;
     setDetail(nextDetail);
     if (reset) {
       setMessages(mergeById([], messagePage.items));
@@ -2085,11 +2042,21 @@ export function OrchestratorWorkbench() {
     return () => window.clearInterval(timer);
   }, [fetchTasksAndStatus]);
 
+  const detailPollMs =
+    detail !== null &&
+    (detail.activeSessionCount > 0 ||
+      detail.status === "active" ||
+      detail.status === "validating")
+      ? ACTIVE_POLL_INTERVAL_MS
+      : POLL_INTERVAL_MS;
+
   useEffect(() => {
     // Reset transient per-task UI (mobile inspector drawer, add-agent form)
-    // whenever the selection changes so a freshly opened task starts clean.
+    // and load the room whenever the selection changes, so a freshly opened
+    // task starts clean and scrolled to its latest activity.
     setInspectorOpen(false);
     setAddAgentOpen(false);
+    stickToBottomRef.current = true;
     if (!selectedId) {
       setDetail(null);
       setMessages([]);
@@ -2098,12 +2065,48 @@ export function OrchestratorWorkbench() {
       return;
     }
     void fetchDetail(selectedId, true).catch(() => {});
+  }, [selectedId, fetchDetail]);
+
+  useEffect(() => {
+    // Reconcile poll — the safety net. The SSE stream below drives near-live
+    // updates; this only covers a dropped/absent stream (reconnect fallback).
+    if (!selectedId) return;
     const timer = window.setInterval(
       () => void fetchDetail(selectedId, false).catch(() => {}),
-      POLL_INTERVAL_MS,
+      detailPollMs,
     );
     return () => window.clearInterval(timer);
-  }, [selectedId, fetchDetail]);
+  }, [selectedId, detailPollMs, fetchDetail]);
+
+  // Coalesce a burst of change pings into one tail refetch per ~150ms window,
+  // so live token streaming doesn't trigger a fetch storm.
+  const refetchTimerRef = useRef<number | null>(null);
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimerRef.current != null) return;
+    refetchTimerRef.current = window.setTimeout(() => {
+      refetchTimerRef.current = null;
+      const current = selectedIdRef.current;
+      if (current) void fetchDetail(current, false).catch(() => {});
+    }, 150);
+  }, [fetchDetail]);
+
+  useEffect(() => {
+    // Live push: subscribe to the task's SSE stream; each "change" ping
+    // schedules a debounced tail refetch, so messages/tool-calls/status appear
+    // ~instantly instead of on the poll boundary.
+    if (!selectedId) return;
+    const unsubscribe = client.streamOrchestratorTask(
+      selectedId,
+      scheduleRefetch,
+    );
+    return () => {
+      unsubscribe();
+      if (refetchTimerRef.current != null) {
+        window.clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
+    };
+  }, [selectedId, scheduleRefetch]);
 
   const runMutation = useCallback(
     async (fn: () => Promise<unknown>) => {
@@ -2151,13 +2154,72 @@ export function OrchestratorWorkbench() {
       if (!delivered) {
         throw new Error(
           t("orchestrator.messageDeliveryFailed", {
-            defaultValue: "Message was recorded, but no active agent accepted it.",
+            defaultValue:
+              "Message was recorded, but no active agent accepted it.",
           }),
         );
       }
       setComposer("");
     });
   }, [composer, runMutation, t]);
+
+  // Stop every still-running coding agent on the open task — the prominent
+  // in-conversation interrupt (parity with Claude Code / Codex / opencode),
+  // also bound to Esc below.
+  const handleStopActive = useCallback(() => {
+    const current = detail;
+    if (!current) return;
+    const targets = current.sessions.filter(
+      (session) =>
+        session.sessionId &&
+        session.stoppedAt == null &&
+        session.status !== "completed",
+    );
+    if (targets.length === 0) return;
+    void runMutation(async () => {
+      for (const session of targets) {
+        await client.stopOrchestratorAgent(current.id, session.sessionId);
+      }
+    });
+  }, [detail, runMutation]);
+
+  // Esc closes an open modal/drawer first; only when nothing is open does it
+  // interrupt the running turn. A ref keeps the document listener stable while
+  // always seeing the latest state (otherwise Esc-to-stop would trap an open
+  // dialog, blocking the whole UI).
+  const escStateRef = useRef({
+    createOpen,
+    addAgentOpen,
+    inspectorOpen,
+    stop: handleStopActive,
+  });
+  escStateRef.current = {
+    createOpen,
+    addAgentOpen,
+    inspectorOpen,
+    stop: handleStopActive,
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const s = escStateRef.current;
+      if (s.createOpen) {
+        setCreateOpen(false);
+        return;
+      }
+      if (s.addAgentOpen) {
+        setAddAgentOpen(false);
+        return;
+      }
+      if (s.inspectorOpen) {
+        setInspectorOpen(false);
+        return;
+      }
+      s.stop();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleCreate = useCallback(
     (input: {
@@ -2182,20 +2244,6 @@ export function OrchestratorWorkbench() {
     void copyToClipboard(url);
   }, [copyToClipboard]);
 
-  const timeline = useMemo(() => {
-    const items: Array<
-      | { kind: "message"; at: number; message: CodingAgentTaskMessageRecord }
-      | { kind: "event"; at: number; event: CodingAgentTaskEventRecord }
-    > = [];
-    for (const message of messages) {
-      items.push({ kind: "message", at: message.timestamp, message });
-    }
-    for (const event of events) {
-      items.push({ kind: "event", at: event.timestamp, event });
-    }
-    return items.sort((a, b) => a.at - b.at);
-  }, [messages, events]);
-
   const sessionLabelById = useMemo(() => {
     const map = new Map<string, string>();
     for (const session of detail?.sessions ?? []) {
@@ -2204,6 +2252,39 @@ export function OrchestratorWorkbench() {
     }
     return map;
   }, [detail?.sessions]);
+
+  const finishedSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const session of detail?.sessions ?? []) {
+      if (
+        session.sessionId &&
+        (session.stoppedAt != null || session.status === "completed")
+      ) {
+        ids.add(session.sessionId);
+      }
+    }
+    return ids;
+  }, [detail?.sessions]);
+
+  const conversation = useMemo(
+    () =>
+      buildConversation(
+        messages,
+        events,
+        (message) =>
+          resolveSenderName(message, sessionLabelById, mainAgentName, t),
+        finishedSessionIds,
+      ),
+    [messages, events, sessionLabelById, mainAgentName, finishedSessionIds, t],
+  );
+
+  // Re-pin to the newest entry whenever the conversation grows (subject to the
+  // near-bottom guard); `conversation` is the change trigger, not read here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only dep
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [conversation]);
 
   const viewState = JSON.stringify({
     selectedId,
@@ -2291,12 +2372,24 @@ export function OrchestratorWorkbench() {
                   })}
                 </p>
               ) : (
-                <EmptyWidgetState
-                  icon={<Activity className="h-8 w-8" />}
-                  title={t("orchestrator.empty.title", {
-                    defaultValue: "No tasks yet",
-                  })}
-                />
+                <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+                  <Activity className="h-7 w-7 text-muted/50" />
+                  <p className="text-xs text-muted">
+                    {t("orchestrator.empty.title", {
+                      defaultValue: "No tasks yet",
+                    })}
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("orchestrator.action.newTask", {
+                      defaultValue: "New task",
+                    })}
+                  </Button>
+                </div>
               )
             ) : (
               tasks.map((thread) => (
@@ -2332,7 +2425,9 @@ export function OrchestratorWorkbench() {
                 t={t}
               />
               <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
+                ref={listRef}
+                onScroll={handleListScroll}
+                className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
                 data-testid="orchestrator-message-list"
               >
                 {messageCursor ? (
@@ -2350,37 +2445,49 @@ export function OrchestratorWorkbench() {
                     </button>
                   </div>
                 ) : null}
-                {timeline.length === 0 ? (
+                {conversation.length === 0 ? (
                   <p className="p-4 text-center text-xs text-muted">
                     {t("orchestrator.noMessages", {
                       defaultValue: "No messages yet.",
                     })}
                   </p>
                 ) : (
-                  timeline.map((item) =>
-                    item.kind === "message" ? (
-                      <MessageEntry
-                        key={item.message.id}
-                        message={item.message}
-                        senderName={resolveSenderName(
-                          item.message,
-                          sessionLabelById,
-                          mainAgentName,
-                          t,
-                        )}
-                        locale={locale}
-                      />
-                    ) : (
-                      <EventEntry
-                        key={item.event.id}
-                        event={item.event}
-                        locale={locale}
-                      />
-                    ),
-                  )
+                  conversation.map((block) => (
+                    <ConversationBlockView
+                      key={block.key}
+                      block={block}
+                      locale={locale}
+                    />
+                  ))
                 )}
               </div>
-              <div className="border-t border-border/50 p-2.5">
+              {detail.activeSessionCount > 0 ? (
+                <div
+                  className="flex items-center justify-between gap-2 border-t border-border/50 bg-warn/5 px-3 py-1.5"
+                  data-testid="orchestrator-running-bar"
+                >
+                  <span className="flex items-center gap-1.5 text-2xs font-medium text-warn">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
+                    {t("orchestrator.agentsWorking", {
+                      defaultValue: "Agent working…",
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleStopActive}
+                    disabled={mutating}
+                    className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                    data-testid="orchestrator-stop-active"
+                  >
+                    <CircleStop className="h-3 w-3" />
+                    {t("orchestrator.action.stop", { defaultValue: "Stop" })}
+                    <kbd className="ml-0.5 rounded bg-bg-hover/60 px-1 text-[0.9em] text-muted">
+                      Esc
+                    </kbd>
+                  </button>
+                </div>
+              ) : null}
+              <div className="border-t border-border/50 bg-bg px-4 py-3">
                 <div className="flex items-end gap-2">
                   <textarea
                     value={composer}
@@ -2447,13 +2554,31 @@ export function OrchestratorWorkbench() {
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <EmptyWidgetState
-                icon={<Layers className="h-8 w-8" />}
-                title={t("orchestrator.noSelection", {
-                  defaultValue: "Select a task to inspect its room",
-                })}
-              />
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent-subtle">
+                <Layers className="h-6 w-6 text-accent" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-txt-strong">
+                  {t("orchestrator.noSelection.title", {
+                    defaultValue: "No task open",
+                  })}
+                </p>
+                <p className="max-w-xs text-xs leading-relaxed text-muted">
+                  {t("orchestrator.noSelection.hint", {
+                    defaultValue:
+                      "Pick a task from the list to inspect its room — or start a new coding task.",
+                  })}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setCreateOpen(true)}
+                className="h-8 gap-1.5 px-3 text-xs-tight font-semibold"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("orchestrator.action.newTask", { defaultValue: "New task" })}
+              </Button>
             </div>
           )}
         </main>

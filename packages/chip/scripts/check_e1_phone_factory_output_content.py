@@ -25,9 +25,7 @@ FIRST_ARTICLE_MATRIX = (
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_production_factory_required_output_presence_inventory.v1"
-CLAIM_BOUNDARY = (
-    "factory_output_content_validation_only_not_factory_or_production_release_evidence"
-)
+CLAIM_BOUNDARY = "factory_output_content_validation_only_not_factory_or_production_release_evidence"
 FALSE_CLAIM_FLAGS = {
     "release_claim_allowed": False,
     "factory_release_claim_allowed": False,

@@ -1,17 +1,5 @@
-import {
-  AppWorkspaceChrome,
-  Button,
-  type CloudOAuthConnection,
-  client,
-  isAppWindowRoute,
-  isWebPlatform,
-  openExternalUrl,
-  PagePanel,
-  PageScopedChatPane,
-  useAgentElement,
-  useApp,
-  useMediaQuery,
-} from "@elizaos/ui";
+import { AppWorkspaceChrome, Button, type CloudOAuthConnection, client, isAppWindowRoute, isWebPlatform, openExternalUrl, PagePanel, PageScopedChatPane, useApp, useMediaQuery } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

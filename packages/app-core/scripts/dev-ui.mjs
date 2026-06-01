@@ -18,7 +18,7 @@ console.log(
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -216,9 +216,9 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
-// Keep `bun --watch` opt-in for the API server. Concurrent package builds,
+// Keep `node --watch` opt-in for the API server. Concurrent package builds,
 // native plugin builds, and staged plugin copies rewrite workspace `dist/`
-// files; Bun follows imports into those files and can hot-reload while the
+// files; Node follows imports into those files and can hot-reload while the
 // runtime is still bootstrapping, leaving PGlite locked by the previous
 // process. The supervisor still restarts the API on explicit restart exits.
 const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
@@ -641,13 +641,66 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
-// Concurrent build detection — bun --watch follows imports into workspace
-// `dist/` files. If a turbo/tsup/tsc build is rewriting those files, --watch
-// hot-reloads on every write and prevents the agent from finishing
-// initialization. We detect that case here and auto-disable --watch.
+// Concurrent build detection — node --watch follows imports into workspace
+// `dist/` files. If a build is rewriting those files (worse: its `clean` step
+// deletes `dist/` out from under the running server), --watch hot-reloads on
+// every write and prevents the agent from finishing initialization. We detect
+// that case here and auto-disable --watch.
+//
+// Primary signal: live `<package>/.build-lock/metadata.json` dirs written by
+// scripts/with-package-build-lock.mjs. Each carries the builder's PID, so a
+// lock whose PID is still alive is an unambiguous "build in progress" — far
+// more reliable than pattern-matching `ps` command lines (which misses bare
+// `build:dist:unlocked` and other non-turbo/tsup invocations).
 // ---------------------------------------------------------------------------
 
-function detectConcurrentBuilds() {
+function isPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // ESRCH = no such process; EPERM = alive but not ours (still alive).
+    return error?.code === "EPERM";
+  }
+}
+
+// Scan `<root>/{packages,plugins}/*/.build-lock/metadata.json` for a lock whose
+// builder PID is still running. Returns that PID, or null if none are live.
+function detectLiveBuildLock(scanRoots) {
+  for (const root of scanRoots) {
+    for (const group of ["packages", "plugins"]) {
+      const groupDir = path.join(root, group);
+      let entries;
+      try {
+        entries = readdirSync(groupDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const metaPath = path.join(
+          groupDir,
+          entry.name,
+          ".build-lock",
+          "metadata.json",
+        );
+        if (!existsSync(metaPath)) continue;
+        try {
+          const pid = Number(JSON.parse(readFileSync(metaPath, "utf8"))?.pid);
+          if (isPidAlive(pid)) return pid;
+        } catch {
+          // Unreadable/partial lock — ignore; the build-lock helper self-heals.
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function detectConcurrentBuilds(scanRoots = []) {
+  const lockPid = detectLiveBuildLock(scanRoots);
+  if (lockPid) return lockPid;
   if (process.platform === "win32") return null;
   let psOut;
   try {
@@ -663,7 +716,14 @@ function detectConcurrentBuilds() {
     /\bturbo\s+run\s+build\b/i,
     /\bbun\s+run\s+build\b/i,
     /\btsup\b.*\bbuild\b/i,
-    /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i,
+    // No \b before --noEmit / tsconfig.build: a hyphen and a dot are non-word
+    // chars, so \b never matches at that boundary — the prior
+    // /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i was dead code that matched
+    // neither `tsc --noEmit` nor `vite build`, the exact commands that drive
+    // the node --watch hot-reload loop. Match them loosely instead.
+    /\btsc\b.*--noEmit/i,
+    /\btsc\b.*tsconfig\.build/i,
+    /\bvite\b.*\bbuild\b/i,
   ];
   for (const line of psOut.split("\n")) {
     const trimmed = line.trim();
@@ -769,7 +829,7 @@ function isPortListening(port) {
 // ---------------------------------------------------------------------------
 // Wait for the agent runtime to be ready (not just the TCP port).
 // Polls GET /api/health and resolves when { ready: true }.
-// Handles bun --watch restarts gracefully (connection resets → retry).
+// Handles node --watch restarts gracefully (connection resets → retry).
 // ---------------------------------------------------------------------------
 
 async function waitForAgentReady(
@@ -906,6 +966,12 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
+
+// Vite cold-start of the full raw-source module graph can exceed 60s on slow
+// shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
+// via env; dev machines keep the 60s default.
+const VITE_READY_BUDGET_MS =
+  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 60_000;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -1088,7 +1154,7 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
     const listening = await isPortListening(UI_PORT);
     if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
-      if (ageMs > 60_000) {
+      if (ageMs > VITE_READY_BUDGET_MS) {
         console.log(
           `  ${green(logPrefix)} ${dim(
             `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,
@@ -1157,7 +1223,14 @@ if (uiOnly) {
 
   let useWatch = !skipBunWatch;
   if (useWatch) {
-    const buildPid = detectConcurrentBuilds();
+    const elizaSubmodule = path.join(cwd, "eliza");
+    const buildScanRoots = [
+      cwd,
+      ...(existsSync(path.join(elizaSubmodule, "package.json"))
+        ? [elizaSubmodule]
+        : []),
+    ];
+    const buildPid = detectConcurrentBuilds(buildScanRoots);
     if (buildPid) {
       console.log(
         `  ${green(logPrefix)} ${dim(
@@ -1204,10 +1277,18 @@ if (uiOnly) {
       ...childEnv,
       NODE_ENV: "development",
       NODE_COMPILE_CACHE: apiCompileCacheDir,
-      NODE_OPTIONS: appendNodeOption(
-        childEnv.NODE_OPTIONS,
+      NODE_OPTIONS: [
         "--disable-warning=ExperimentalWarning",
-      ),
+        // Bound the dev API child's V8 old-space so a runaway JS module/state
+        // graph fails fast (the api-supervisor restarts it) instead of slowly
+        // swap-dying. Healthy boots sit ~230-440MB; only a stuck/looping child
+        // exceeds this. Most of a stuck child's RSS is native/WASM (PGlite,
+        // llama) living OUTSIDE old-space, so this is a backstop, not the
+        // primary bound. Override with MILADY_DEV_API_MAX_OLD_SPACE_MB.
+        `--max-old-space-size=${process.env.MILADY_DEV_API_MAX_OLD_SPACE_MB?.trim() || "4096"}`,
+        // Let the dev heap-report timer force a GC for an accurate heapUsed.
+        "--expose-gc",
+      ].reduce(appendNodeOption, childEnv.NODE_OPTIONS),
       ELIZA_NAMESPACE: cliName,
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_UI_PORT: String(UI_PORT),

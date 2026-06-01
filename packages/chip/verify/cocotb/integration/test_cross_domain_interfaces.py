@@ -678,15 +678,13 @@ async def bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path(dut):
     for _ in range(160):
         await RisingEdge(dut.clk)
         saw_demands |= (
-            int(dut.l1i_demand_valid_o.value) == 1
-            and int(dut.l1i_demand_valid_lane1_o.value) == 1
+            int(dut.l1i_demand_valid_o.value) == 1 and int(dut.l1i_demand_valid_lane1_o.value) == 1
         )
         saw_l1i_miss |= int(dut.l1i_cache_miss_valid_o.value) == 1
         saw_l1i_lane1_miss |= int(dut.l1i_cache_miss_valid_lane1_o.value) == 1
         saw_l1i_l2_acq |= int(dut.l1i_l2_acq_valid_o.value) == 1
         saw_lane1_l2_acq |= (
-            int(dut.l1i_l2_acq_valid_o.value) == 1
-            and int(dut.l1i_l2_active_lane1_o.value) == 1
+            int(dut.l1i_l2_acq_valid_o.value) == 1 and int(dut.l1i_l2_active_lane1_o.value) == 1
         )
         saw_l2_l3_acq |= int(dut.l2_l3_acq_valid_o.value) == 1
         saw_l2_l3_grant |= int(dut.l2_l3_grant_valid_o.value) == 1

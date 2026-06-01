@@ -233,9 +233,7 @@ def main(argv: list[str]) -> int:
     report = collect()
     output_report = provenance_safe_value(report)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(
-        json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    REPORT.write_text(json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(output_report, indent=2, sort_keys=True))
     else:

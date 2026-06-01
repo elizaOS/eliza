@@ -1,21 +1,3 @@
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
-import { client } from "../../api/client";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
-import { useApp } from "../../state/useApp";
-import { getVrmPreviewUrl } from "../../state/vrm";
-import { ChatAttachmentStrip } from "@elizaos/ui/components/composites/chat/chat-attachment-strip";
-import { ChatComposer } from "@elizaos/ui/components/composites/chat/chat-composer";
-import { ChatComposerShell } from "@elizaos/ui/components/composites/chat/chat-composer-shell";
-import { ChatSourceIcon } from "@elizaos/ui/components/composites/chat/chat-source";
-import { ChatThreadLayout } from "@elizaos/ui/components/composites/chat/chat-thread-layout";
-import { ChatTranscript } from "@elizaos/ui/components/composites/chat/chat-transcript";
-import { TypingIndicator } from "@elizaos/ui/components/composites/chat/chat-typing-indicator";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -27,12 +9,52 @@ import {
   useRef,
   useState,
 } from "react";
-import { AgentActivityBox } from "../chat/AgentActivityBox";
-import { MessageContent } from "../chat/MessageContent";
+import { type CodingAgentSession, client } from "../../api/client";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import { fetchWithCsrf } from "../../api/csrf-client";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
-} from "../../slots/task-coordinator-slots";
+} from "../../slots/task-coordinator-slots.js";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
+import type { TranslateFn } from "../../types";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
+import { AccountRequiredCard } from "../chat/AccountRequiredCard";
+import { AgentActivityBox } from "../chat/AgentActivityBox";
+import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
+import {
+  connectorAccountDisplayName,
+  connectorWriteConfirmationKey,
+  isLikelyAccountRequiredError,
+  mergeConnectorSendAsMetadata,
+} from "../chat/connector-send-as";
+import { MessageContent } from "../chat/MessageContent";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
+import { ChatComposer } from "../composites/chat/chat-composer";
+import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
+import { ChatEmptyState } from "../composites/chat/chat-empty-state";
+import { ChatSourceIcon } from "../composites/chat/chat-source";
+import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
+import { ChatTranscript } from "../composites/chat/chat-transcript";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -42,6 +64,9 @@ export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
+const fallbackTranslate: TranslateFn = (key, options) =>
+  typeof options?.defaultValue === "string" ? options.defaultValue : key;
+
 type ChatViewVariant = "default" | "game-modal";
 type InboxChatSelection = {
   avatarUrl?: string;
@@ -103,16 +128,14 @@ export function ChatView({
   variant = "default",
   onPtySessionClick,
 }: ChatViewProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  if (!app) {
-    return null;
-  }
+  const app = useApp();
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
     agentStatus,
     activeConversationId,
     activeInboxChat,
+    activeTerminalSessionId,
     characterData,
     chatFirstTokenReceived,
     companionMessageCutoffTs,
@@ -126,6 +149,7 @@ export function ChatView({
     setState,
     copyToClipboard,
     droppedFiles: rawDroppedFiles,
+    analysisMode,
     shareIngestNotice: rawShareIngestNotice,
     chatAgentVoiceMuted: agentVoiceMuted,
     selectedVrmIndex,
@@ -138,6 +162,7 @@ export function ChatView({
     chatInput: rawChatInput,
     chatSending,
     chatPendingImages: rawChatPendingImages,
+    setChatInput,
     setChatPendingImages,
   } = useChatComposer();
   const droppedFiles = Array.isArray(rawDroppedFiles) ? rawDroppedFiles : [];
@@ -175,27 +200,90 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
-  const [ptyDrawerSessionId, setPtyDrawerSessionId] = useState<string | null>(
-    null,
+  const [continuousChatMode, setContinuousChatMode] =
+    useState<VoiceContinuousMode>(loadContinuousChatMode);
+  const handleContinuousChatModeChange = useCallback(
+    (next: VoiceContinuousMode) => {
+      setContinuousChatMode(next);
+      saveContinuousChatMode(next);
+    },
+    [],
   );
 
+  useEffect(() => {
+    if (isGameModal || typeof window === "undefined") return;
+
+    const consumeLaunchPayload = () => {
+      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+        onSendFailure: (payload) => {
+          setChatInput(payload.text);
+        },
+        sendText: sendChatText,
+      });
+    };
+
+    consumeLaunchPayload();
+    window.addEventListener("hashchange", consumeLaunchPayload);
+    return () => {
+      window.removeEventListener("hashchange", consumeLaunchPayload);
+    };
+  }, [isGameModal, sendChatText, setChatInput]);
+
+  const focusTerminalSession = useCallback(
+    (sessionId: string) => {
+      setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", sessionId);
+    },
+    [setState],
+  );
+
+  // Route a problem session into the Terminal channel so the user sees it.
+  useEffect(() => {
+    if (activeTerminalSessionId) return;
+    const problemSession = ptySessions.find(
+      (s) => s.status === "error" || s.status === "blocked",
+    );
+    if (problemSession) {
+      focusTerminalSession(problemSession.sessionId);
+    }
+  }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
+
   // ── Coding agent preflight ──────────────────────────────────────
+  // Only fire once the agent runtime is confirmed running so we don't hit the
+  // orchestrator/ACP routes during the brief post-boot window when services are
+  // still completing their async init (they return 503 until ready, and the
+  // browser logs those as red console errors even when the JS .catch swallows them).
+  const agentRunning = agentStatus?.state === "running";
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
   useEffect(() => {
+    if (!agentRunning) return;
     const controller = new AbortController();
-    fetch("/api/coding-agents/preflight", { signal: controller.signal })
+    fetchWithCsrf("/api/coding-agents/preflight", { signal: controller.signal })
       .then((r) => r.json())
-      .then((data: { installed?: unknown[]; available?: boolean }) => {
+      .then((data: unknown) => {
+        if (Array.isArray(data)) {
+          setCodingAgentsAvailable(
+            data.some(
+              (item) =>
+                typeof item === "object" &&
+                item !== null &&
+                (item as { installed?: unknown }).installed === true,
+            ),
+          );
+          return;
+        }
+        const status = data as { installed?: unknown[]; available?: boolean };
         setCodingAgentsAvailable(
-          (Array.isArray(data.installed) && data.installed.length > 0) ||
-            data.available === true,
+          (Array.isArray(status.installed) && status.installed.length > 0) ||
+            status.available === true,
         );
       })
       .catch(() => {
         /* preflight unavailable or aborted — hide code button */
       });
     return () => controller.abort();
-  }, []);
+  }, [agentRunning]);
 
   const handleCreateTask = useCallback(
     (description: string, agentType: string) => {
@@ -211,20 +299,39 @@ export function ChatView({
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
   const hasCompletedLifecycleActivity =
     !chatSending &&
+    Array.isArray(conversationMessages) &&
     conversationMessages.some(
       (message) =>
         message.role === "user" ||
         (message.role === "assistant" && message.text.trim().length > 0),
     );
-  const isComposerLocked = isAgentStarting && !hasCompletedLifecycleActivity;
+  // The agent is up but has no inference model wired — no point letting the
+  // user hit send. Surfaced as a composer lock + a pointer to Settings.
+  const agentModel =
+    typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  const isMobileLocalRuntime = readPersistedMobileRuntimeMode() === "local";
+  const isMissingInferenceProvider =
+    agentStatus?.state === "running" &&
+    agentModel.length === 0 &&
+    !isMobileLocalRuntime;
+  const isComposerLocked =
+    (isAgentStarting && !hasCompletedLifecycleActivity) ||
+    isMissingInferenceProvider;
+  const composerPlaceholderOverride = isMissingInferenceProvider
+    ? t("chat.setupProviderToChat", {
+        defaultValue: "Set up an LLM provider in Settings to start chatting",
+      })
+    : undefined;
   const {
     beginVoiceCapture,
     endVoiceCapture,
+    continuous,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
+    voiceSpeaker,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,
@@ -241,6 +348,7 @@ export function ChatView({
     isGameModal,
     setState,
     uiLanguage,
+    continuousMode: continuousChatMode,
   });
   // Stop any in-flight voice playback when the user switches conversations.
   // useLayoutEffect (not useEffect): must run *before* useChatVoiceController's
@@ -260,8 +368,11 @@ export function ChatView({
     [setState],
   );
 
-  const agentName = characterData?.name || agentStatus?.agentName || "Agent";
-  const msgs = conversationMessages;
+  const agentName =
+    characterData?.name ||
+    agentStatus?.agentName ||
+    t("common.agent", { defaultValue: "Agent" });
+  const msgs = Array.isArray(conversationMessages) ? conversationMessages : [];
   const visibleMsgs = useMemo(
     () =>
       msgs
@@ -298,7 +409,6 @@ export function ChatView({
   useChatAvatarVoiceBridge({
     mouthOpen: voice.mouthOpen,
     isSpeaking: voice.isSpeaking,
-    usingAudioAnalysis: voice.usingAudioAnalysis,
     onSpeakingChange: handleChatAvatarSpeakingChange,
   });
 
@@ -336,6 +446,7 @@ export function ChatView({
 
   // Auto-resize textarea
   useEffect(() => {
+    if (!isGameModal) return;
     const ta = textareaRef.current;
     if (!ta) return;
 
@@ -352,7 +463,7 @@ export function ChatView({
     ta.style.height = `${h}px`;
     ta.style.overflowY =
       ta.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, [chatInput]);
+  }, [chatInput, isGameModal]);
 
   // Track composer height so the message layer bottom adjusts dynamically
   useEffect(() => {
@@ -407,11 +518,19 @@ export function ChatView({
             return combined.slice(0, 4);
           });
         })
-        .catch((err) => {
-          console.warn("Failed to load image attachments:", err);
+        .catch((err: unknown) => {
+          // A failed image read leaves nothing attached; tell the user rather
+          // than silently dropping their image.
+          app.setActionNotice?.(
+            app.t("chatview.ImageReadFailed", {
+              message: err instanceof Error ? err.message : "unknown error",
+              defaultValue: "Couldn't read image: {{message}}",
+            }),
+            "error",
+          );
         });
     },
-    [setChatPendingImages],
+    [app, setChatPendingImages],
   );
 
   const handleImageDrop = useCallback(
@@ -451,13 +570,19 @@ export function ChatView({
     saveAndResend: t("chatmessage.SaveAndResend", {
       defaultValue: "Save and resend",
     }),
-    saving: t("chatmessage.Saving", {
+    saving: t("common.saving", {
       defaultValue: "Saving...",
     }),
   };
 
   const messagesContent =
-    visibleMsgs.length === 0 && !chatSending ? null : (
+    visibleMsgs.length === 0 && !chatSending ? (
+      <ChatEmptyState
+        agentName={agentName}
+        variant={variant}
+        onSuggestionClick={(suggestion) => setChatInput(suggestion)}
+      />
+    ) : (
       <ChatTranscript
         variant={variant}
         agentName={agentName}
@@ -471,7 +596,10 @@ export function ChatView({
           void copyToClipboard(text);
         }}
         renderMessageContent={(message) => (
-          <MessageContent message={message as ConversationMessage} />
+          <MessageContent
+            message={message as ConversationMessage}
+            analysisMode={analysisMode}
+          />
         )}
         typingIndicator={
           chatSending && !chatFirstTokenReceived ? (
@@ -488,36 +616,29 @@ export function ChatView({
       />
     );
 
-  const activityNode = isGameModal ? (
-    <div className="pointer-events-auto">
-      <AgentActivityBox
-        sessions={ptySessions}
-        onSessionClick={(id) =>
-          setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-        }
-      />
-    </div>
-  ) : (
-    <AgentActivityBox
-      sessions={ptySessions}
-      onSessionClick={(id) =>
-        setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-      }
-    />
-  );
-
-  const drawerNode =
-    ptyDrawerSessionId && ptySessions.length > 0 ? (
-      <PtyConsoleBase
-        activeSessionId={ptyDrawerSessionId}
-        sessions={ptySessions}
-        onClose={() => setPtyDrawerSessionId(null)}
-        variant="drawer"
-      />
-    ) : null;
+  const voiceStatusBarVisible =
+    voice.supported &&
+    (continuousChatMode !== "off" ||
+      voice.isListening ||
+      voice.isSpeaking ||
+      Boolean(voiceSpeaker) ||
+      Boolean(continuous.interimTranscript));
+  const continuousChatToggleVisible =
+    voice.supported && continuousChatMode !== "off";
 
   const auxiliaryNode = (
     <>
+      {voiceStatusBarVisible ? (
+        <ChatVoiceStatusBar
+          status={continuous.status}
+          interimTranscript={continuous.interimTranscript}
+          speaker={voiceSpeaker}
+          latency={continuous.latency}
+          visible
+          className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
+          data-testid="chat-view-voice-status-bar"
+        />
+      ) : null}
       {shareIngestNotice ? (
         <div
           className={`text-xs text-ok py-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
@@ -544,7 +665,12 @@ export function ChatView({
           name: img.name,
           src: `data:${img.mimeType};base64,${img.data}`,
         }))}
-        removeLabel={(item) => `Remove image ${item.name}`}
+        removeLabel={(item) =>
+          t("chat.removeImage", {
+            defaultValue: "Remove image {{name}}",
+            name: item.name,
+          })
+        }
         onRemove={(id) => removeImage(Number(id))}
       />
       {voiceLatency ? (
@@ -560,8 +686,8 @@ export function ChatView({
           {voiceLatency.firstSegmentCached == null
             ? "—"
             : voiceLatency.firstSegmentCached
-              ? "cached"
-              : "uncached"}
+              ? t("chat.cached", { defaultValue: "cached" })
+              : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
       <input
@@ -575,6 +701,14 @@ export function ChatView({
     </>
   );
 
+  const defaultComposerLaneClassName =
+    "mx-auto w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 xl:px-10";
+  const defaultComposerShellClassName = `${defaultComposerLaneClassName} pt-1.5`;
+  const defaultComposerShellStyle = {
+    paddingBottom:
+      "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
+  } as const;
+
   const composerNode = isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -582,13 +716,20 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
+          {continuousChatToggleVisible ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle-game-modal"
+              />
+            </div>
+          ) : null}
           <AgentActivityBox
             sessions={ptySessions}
-            onSessionClick={
-              onPtySessionClick ??
-              ((id) =>
-                setPtyDrawerSessionId((prev) => (prev === id ? null : id)))
-            }
+            onSessionClick={onPtySessionClick ?? focusTerminalSession}
           />
         </>
       }
@@ -600,6 +741,7 @@ export function ChatView({
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
@@ -629,14 +771,36 @@ export function ChatView({
       />
     </ChatComposerShell>
   ) : (
-    <ChatComposerShell variant="default" before={<CodingAgentControlChip />}>
+    <ChatComposerShell
+      variant="default"
+      className={defaultComposerShellClassName}
+      style={defaultComposerShellStyle}
+      before={
+        <>
+          <CodingAgentControlChip />
+          {continuousChatToggleVisible ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle"
+              />
+            </div>
+          ) : null}
+        </>
+      }
+    >
       <ChatComposer
         variant="default"
+        layout="inline"
         textareaRef={textareaRef}
         chatInput={chatInput}
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
@@ -667,6 +831,20 @@ export function ChatView({
     </ChatComposerShell>
   );
 
+  // ── Terminal-channel branch ──────────────────────────────────────
+  if (activeTerminalSessionId) {
+    return (
+      <TerminalChannelPanel
+        activeSessionId={activeTerminalSessionId}
+        sessions={ptySessions}
+        onClose={() => setState("activeTerminalSessionId", null)}
+        loadingLabel={t("terminal.starting", {
+          defaultValue: "Starting terminal\u2026",
+        })}
+      />
+    );
+  }
+
   // ── Inbox-chat branch ────────────────────────────────────────────
   if (inboxChat) {
     return (
@@ -686,11 +864,7 @@ export function ChatView({
       imageDragOver={imageDragOver}
       messagesRef={messagesRef}
       footerStack={
-        <>
-          {activityNode}
-          {drawerNode}
-          {auxiliaryNode}
-        </>
+        <div className={defaultComposerLaneClassName}>{auxiliaryNode}</div>
       }
       composer={composerNode}
       onDragOver={(event) => {
@@ -706,7 +880,56 @@ export function ChatView({
 }
 
 /**
- * Connector chat panel shown when the unified messages sidebar has a
+ * Full-window terminal view rendered when the Terminal channel is
+ * active. Keeps every PTY session pane mounted under the hood so
+ * tabbing between sessions preserves their buffers/state. Spawning is
+ * owned by the sidebar — this component only displays what the
+ * orchestrator has already registered, and waits for the live session
+ * list to catch up when activeSessionId is set but not yet present.
+ */
+export function TerminalChannelPanel({
+  activeSessionId,
+  sessions,
+  onClose,
+  loadingLabel,
+}: {
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  loadingLabel: string;
+}) {
+  const hasActiveSession = sessions.some(
+    (s) => s.sessionId === activeSessionId,
+  );
+
+  if (!hasActiveSession) {
+    return (
+      <div
+        data-testid="terminal-channel-loading"
+        className="flex flex-1 items-center justify-center text-xs text-muted"
+      >
+        {loadingLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="terminal-channel-panel"
+      className="flex flex-1 min-h-0 min-w-0 flex-col"
+    >
+      <PtyConsoleBase
+        activeSessionId={activeSessionId}
+        sessions={sessions}
+        onClose={onClose}
+        variant="full"
+      />
+    </div>
+  );
+}
+
+/**
+ * Connector chat panel shown when the messages sidebar has a
  * room selected. Polls `/api/inbox/messages?roomId=...`, renders the
  * transcript through the same ChatTranscript component the dashboard
  * uses, and routes outbound replies back through the runtime's
@@ -729,46 +952,62 @@ function InboxChatPanel({
   variant: ChatViewVariant;
 }) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? ((key: string) => key);
+  const t = app?.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inboxTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastRenderedMessageKeyRef = useRef<string | null>(null);
   const transportSource =
     activeInboxChat.transportSource ?? activeInboxChat.source;
 
+  const loadInboxMessages = useCallback(async () => {
+    try {
+      const response = await client.getInboxMessages({
+        limit: 200,
+        roomId: activeInboxChat.id,
+        roomSource: transportSource,
+      });
+      // Server returns newest first; ChatTranscript expects
+      // oldest→newest (conversation layout) so reverse.
+      const next = [...response.messages]
+        .reverse()
+        .map((m): ConversationMessage => m);
+      setMessages(next);
+      setLoadError(null);
+    } catch (err) {
+      // A failed poll keeps the last snapshot (next tick retries), but a
+      // failure with nothing on screen would otherwise look like an empty
+      // inbox — surface it so the user knows the load failed.
+      setMessages((prev) => {
+        if (prev.length === 0) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+        return prev;
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [activeInboxChat.id, transportSource]);
+
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await client.getInboxMessages({
-          limit: 200,
-          roomId: activeInboxChat.id,
-          roomSource: transportSource,
-        });
-        if (cancelled) return;
-        // Server returns newest first; ChatTranscript expects
-        // oldest→newest (conversation layout) so reverse.
-        const next = [...response.messages]
-          .reverse()
-          .map((m) => m as unknown as ConversationMessage);
-        setMessages(next);
-      } catch {
-        // Transient errors keep the last snapshot; next poll retries.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, 5_000);
+    (async () => {
+      await loadInboxMessages();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [activeInboxChat.id, transportSource]);
+  }, [loadInboxMessages]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadInboxMessages();
+  }, 15_000);
 
   useLayoutEffect(() => {
     if (messages.length === 0) return;
@@ -796,11 +1035,126 @@ function InboxChatPanel({
   const sourceLabel = activeInboxChat.source
     ? activeInboxChat.source.charAt(0).toUpperCase() +
       activeInboxChat.source.slice(1)
-    : "Channel";
+    : t("common.channel", { defaultValue: "Channel" });
+  const sendAsContext = useMemo(
+    () =>
+      activeInboxChat.canSend === false
+        ? null
+        : {
+            provider: transportSource,
+            connectorId: transportSource,
+            source: transportSource,
+            channel: activeInboxChat.id,
+            channelLabel: activeInboxChat.title,
+            writeCapable: true,
+          },
+    [
+      activeInboxChat.canSend,
+      activeInboxChat.id,
+      activeInboxChat.title,
+      transportSource,
+    ],
+  );
+  const connectorSendAs = useConnectorSendAsAccount(sendAsContext, {
+    setActionNotice: app?.setActionNotice,
+  });
+  const {
+    accountRequired,
+    accountRequiredReason: connectorAccountRequiredReason,
+    accounts: sendAsAccounts,
+    connectAccount,
+    context: normalizedSendAsContext,
+    loading: sendAsLoading,
+    reconnectAccount,
+    saving: sendAsSaving,
+    selectAccount,
+    selectedAccount: sendAsSelectedAccount,
+    sendAsMetadata,
+    showPicker: showSendAsPicker,
+  } = connectorSendAs;
+  const [accountRequiredReason, setAccountRequiredReason] = useState<
+    string | null
+  >(null);
+  const [pendingWriteConfirmationKey, setPendingWriteConfirmationKey] =
+    useState<string | null>(null);
+  const [confirmedWriteAccountKeys, setConfirmedWriteAccountKeys] = useState<
+    Set<string>
+  >(() => new Set());
+
+  const currentWriteConfirmationKey = connectorWriteConfirmationKey(
+    sendAsContext,
+    sendAsSelectedAccount,
+  );
+  const showWriteConfirmation =
+    Boolean(pendingWriteConfirmationKey) &&
+    pendingWriteConfirmationKey === currentWriteConfirmationKey;
+  const sendAsConnectBusy = normalizedSendAsContext
+    ? sendAsSaving.has(
+        `add:${normalizedSendAsContext.provider}:${normalizedSendAsContext.connectorId}`,
+      )
+    : false;
+  const blockingAccountReason =
+    accountRequiredReason ??
+    (accountRequired ? connectorAccountRequiredReason : null);
+
+  const handleSelectSendAsAccount = useCallback(
+    (accountId: string) => {
+      const account = sendAsAccounts.find((item) => item.id === accountId);
+      selectAccount(accountId);
+      setAccountRequiredReason(null);
+      const key = connectorWriteConfirmationKey(sendAsContext, account);
+      if (key && !confirmedWriteAccountKeys.has(key)) {
+        setPendingWriteConfirmationKey(key);
+      }
+    },
+    [confirmedWriteAccountKeys, selectAccount, sendAsAccounts, sendAsContext],
+  );
+
+  const handleConfirmWriteAccount = useCallback(() => {
+    if (!currentWriteConfirmationKey) return;
+    setConfirmedWriteAccountKeys((prev) => {
+      const next = new Set(prev);
+      next.add(currentWriteConfirmationKey);
+      return next;
+    });
+    setPendingWriteConfirmationKey(null);
+    setReplyError(null);
+  }, [currentWriteConfirmationKey]);
+
+  const handleConnectSendAsAccount = useCallback(() => {
+    setAccountRequiredReason(null);
+    void connectAccount().catch((error) => {
+      setReplyError(
+        error instanceof Error ? error.message : "Failed to connect account.",
+      );
+    });
+  }, [connectAccount]);
+
+  const handleReconnectSendAsAccount = useCallback(
+    (accountId: string) => {
+      setAccountRequiredReason(null);
+      void reconnectAccount(accountId).catch((error) => {
+        setReplyError(
+          error instanceof Error
+            ? error.message
+            : "Failed to reconnect account.",
+        );
+      });
+    },
+    [reconnectAccount],
+  );
 
   const handleReplySend = useCallback(async () => {
     const text = replyText.trim();
     if (!text || sending || activeInboxChat.canSend === false) {
+      return;
+    }
+    if (blockingAccountReason) {
+      setReplyError(blockingAccountReason);
+      return;
+    }
+    if (showWriteConfirmation) {
+      setReplyError("Confirm the send-as account before sending.");
       return;
     }
 
@@ -808,6 +1162,11 @@ function InboxChatPanel({
     setReplyError(null);
     try {
       const response = await client.sendInboxMessage({
+        ...(sendAsSelectedAccount?.id
+          ? { accountId: sendAsSelectedAccount.id }
+          : {}),
+        channel: activeInboxChat.id,
+        metadata: mergeConnectorSendAsMetadata(undefined, sendAsMetadata),
         roomId: activeInboxChat.id,
         source: transportSource,
         text,
@@ -816,12 +1175,20 @@ function InboxChatPanel({
       if (response.message) {
         setMessages((current) => [
           ...current,
-          response.message as unknown as ConversationMessage,
+          response.message as ConversationMessage,
         ]);
       }
 
       setReplyText("");
+      setAccountRequiredReason(null);
     } catch (error) {
+      if (isLikelyAccountRequiredError(error)) {
+        setAccountRequiredReason(
+          error instanceof Error
+            ? error.message
+            : "Choose a connector account before sending.",
+        );
+      }
       setReplyError(
         error instanceof Error
           ? error.message
@@ -835,8 +1202,12 @@ function InboxChatPanel({
   }, [
     activeInboxChat.canSend,
     activeInboxChat.id,
+    blockingAccountReason,
     replyText,
+    sendAsMetadata,
+    sendAsSelectedAccount,
     sending,
+    showWriteConfirmation,
     t,
     transportSource,
   ]);
@@ -853,11 +1224,8 @@ function InboxChatPanel({
   );
 
   return (
-    <div
-      className="flex flex-1 min-h-0 min-w-0 flex-col"
-      aria-label={t("inboxview.Title", { defaultValue: "Inbox" })}
-    >
-      <div className="flex items-center justify-between border-b border-border/40 px-5 py-3">
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+      <div className="flex items-center justify-between px-5 py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-txt truncate">
             {activeInboxChat.title}
@@ -875,8 +1243,11 @@ function InboxChatPanel({
         ) : activeInboxChat.avatarUrl ? (
           <img
             src={activeInboxChat.avatarUrl}
-            alt={`${activeInboxChat.title} avatar`}
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
+            alt={t("inboxview.avatarAlt", {
+              defaultValue: "{{title}} avatar",
+              title: activeInboxChat.title,
+            })}
+            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover "
           />
         ) : null}
       </div>
@@ -891,9 +1262,14 @@ function InboxChatPanel({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-muted">
-            {t("inboxview.EmptyRoom", {
-              defaultValue: "No messages in this chat yet.",
-            })}
+            {loadError
+              ? t("inboxview.LoadFailed", {
+                  message: loadError,
+                  defaultValue: "Couldn't load messages: {{message}}",
+                })
+              : t("inboxview.EmptyRoom", {
+                  defaultValue: "No messages in this chat yet.",
+                })}
           </div>
         ) : (
           <ChatTranscript
@@ -906,53 +1282,106 @@ function InboxChatPanel({
           />
         )}
       </div>
-      <div className="border-t border-border/40 bg-bg-hover/40 px-5 py-3">
-        {activeInboxChat.canSend === false ? (
-          <div className="text-xs-tight leading-5 text-muted">
-            {t("inboxview.ReadOnlyReplyHint", {
+      {activeInboxChat.canSend === false ? (
+        <div className="bg-bg-hover/40 px-5 py-3 text-xs-tight leading-5 text-muted">
+          {t("inboxview.ReadOnlyReplyHint", {
+            defaultValue:
+              "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+            source: sourceLabel,
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          <ConnectorAccountPicker
+            accounts={sendAsAccounts}
+            connectBusy={sendAsConnectBusy}
+            loading={sendAsLoading}
+            selectedAccount={sendAsSelectedAccount}
+            sourceLabel={sourceLabel}
+            show={showSendAsPicker}
+            onConnectAccount={handleConnectSendAsAccount}
+            onReconnectAccount={handleReconnectSendAsAccount}
+            onSelectAccount={handleSelectSendAsAccount}
+          />
+          {blockingAccountReason ? (
+            <AccountRequiredCard
+              accounts={sendAsAccounts}
+              connectBusy={sendAsConnectBusy}
+              description={blockingAccountReason}
+              loading={sendAsLoading}
+              selectedAccount={sendAsSelectedAccount}
+              sourceLabel={sourceLabel}
+              onConnectAccount={handleConnectSendAsAccount}
+              onReconnectAccount={handleReconnectSendAsAccount}
+              onSelectAccount={handleSelectSendAsAccount}
+            />
+          ) : showWriteConfirmation ? (
+            <AccountRequiredCard
+              accounts={sendAsAccounts}
+              connectBusy={sendAsConnectBusy}
+              confirmLabel="Confirm send-as"
+              description={`First send with ${sendAsSelectedAccount ? connectorAccountDisplayName(sendAsSelectedAccount) : "this account"} in ${sourceLabel}. Confirm before Eliza writes through it.`}
+              loading={sendAsLoading}
+              selectedAccount={sendAsSelectedAccount}
+              sourceLabel={sourceLabel}
+              title="Confirm send-as account"
+              onConfirm={handleConfirmWriteAccount}
+              onConnectAccount={handleConnectSendAsAccount}
+              onReconnectAccount={handleReconnectSendAsAccount}
+              onSelectAccount={handleSelectSendAsAccount}
+            />
+          ) : null}
+          <div className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
+            {t("inboxview.AgentSendWarning", {
               defaultValue:
-                "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+                "This message will be sent as your agent in {{source}}.",
               source: sourceLabel,
             })}
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <textarea
-              value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
-              onKeyDown={handleReplyKeyDown}
+          <ChatComposerShell variant="default">
+            <ChatComposer
+              variant="default"
+              textareaRef={inboxTextareaRef}
+              chatInput={replyText}
+              chatPendingImagesCount={0}
+              isComposerLocked={sending}
+              isAgentStarting={false}
+              chatSending={sending}
+              voice={inertVoiceState}
+              agentVoiceEnabled={false}
+              showAgentVoiceToggle={false}
+              t={t}
+              hideAttachButton
               placeholder={t("inboxview.ReplyPlaceholder", {
                 defaultValue: "Reply in {{source}}",
                 source: sourceLabel,
               })}
-              disabled={sending}
-              rows={2}
-              className="min-h-[72px] w-full resize-y rounded-xl border border-border/50 bg-bg px-3 py-2 text-sm text-txt outline-none transition focus:border-accent/55"
+              onAttachImage={() => {}}
+              onChatInputChange={setReplyText}
+              onKeyDown={handleReplyKeyDown}
+              onSend={() => void handleReplySend()}
+              onStop={() => {}}
+              onStopSpeaking={() => {}}
+              onToggleAgentVoice={() => {}}
             />
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs-tight text-muted">
-                {replyError
-                  ? replyError
-                  : t("inboxview.ReplyHint", {
-                      defaultValue:
-                        "Sent through the connected {{source}} account on this Mac.",
-                      source: sourceLabel,
-                    })}
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleReplySend()}
-                disabled={sending || replyText.trim().length === 0}
-                className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {sending
-                  ? t("inboxview.Sending", { defaultValue: "Sending…" })
-                  : t("inboxview.Send", { defaultValue: "Send" })}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          </ChatComposerShell>
+          {replyError ? (
+            <div className="px-1 text-xs-tight text-danger">{replyError}</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
+
+const inertVoiceState = {
+  assistantTtsQuality: undefined,
+  captureMode: "idle" as const,
+  interimTranscript: "",
+  isListening: false,
+  isSpeaking: false,
+  startListening: () => {},
+  stopListening: () => {},
+  supported: false,
+  toggleListening: () => {},
+};

@@ -1,5 +1,6 @@
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { startFreshFirstRunReload } from "../../platform";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import {
@@ -194,20 +195,36 @@ export function PairingView() {
                 </ol>
               </div>
 
-              <Button
-                asChild
-                variant="outline"
-                size="lg"
-                className="w-full sm:w-auto sm:min-w-[12rem]"
-              >
-                <a
-                  href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
-                  target="_blank"
-                  rel="noreferrer"
+              {/* In-app escape: pairing is disabled with no token field, so
+                  this screen is otherwise a dead end. Let the user abandon the
+                  stale server and start over on a local agent. */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="lg"
+                  className="w-full sm:w-auto sm:min-w-[12rem]"
+                  onClick={() => startFreshFirstRunReload()}
                 >
-                  {t("pairingview.PairingSetupDocs")}
-                </a>
-              </Button>
+                  {t("pairingview.UseLocalInstead", {
+                    defaultValue: "Use a local agent instead",
+                  })}
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="w-full sm:w-auto sm:min-w-[12rem]"
+                >
+                  <a
+                    href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("pairingview.PairingSetupDocs")}
+                  </a>
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

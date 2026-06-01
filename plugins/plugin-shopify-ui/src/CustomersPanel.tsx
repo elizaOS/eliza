@@ -1,9 +1,5 @@
-import {
-  formatShortDate,
-  Input,
-  Skeleton,
-  useAgentElement,
-} from "@elizaos/ui";
+import { formatShortDate, Input, Skeleton } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   CalendarDays,
   CircleDollarSign,

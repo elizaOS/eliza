@@ -743,19 +743,25 @@ npx tsx test/chat-simple.ts
 
 ```bash
 # Install dependencies (from monorepo root)
-npm install
+bun install
 
-# Run type checking
-npm run check
+# Build
+bun run --cwd packages/tui build
+
+# Run tests
+bun run --cwd packages/tui test
+
+# Watch mode
+bun run --cwd packages/tui dev
 
 # Run the demo
-npx tsx test/chat-simple.ts
+bun run test/chat-simple.ts
 ```
 
 ### Debug logging
 
-Set `PI_TUI_WRITE_LOG` to capture the raw ANSI stream written to stdout.
+Set `TUI_WRITE_LOG` to capture the raw ANSI stream written to stdout.
 
 ```bash
-PI_TUI_WRITE_LOG=/tmp/tui-ansi.log npx tsx test/chat-simple.ts
+TUI_WRITE_LOG=/tmp/tui-ansi.log bun run test/chat-simple.ts
 ```

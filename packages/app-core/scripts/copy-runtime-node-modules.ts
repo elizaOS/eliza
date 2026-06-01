@@ -211,6 +211,31 @@ function isRetryableRemoveError(error: unknown): boolean {
   );
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      (error as { code?: string }).code === "ESRCH"
+    ) {
+      return false;
+    }
+    return true;
+  }
+}
+
+function readRuntimeCopyLockOwnerPid(lockDir: string): number | null {
+  try {
+    const owner = readJson<{ pid?: unknown }>(path.join(lockDir, "owner.json"));
+    return typeof owner.pid === "number" && owner.pid > 0 ? owner.pid : null;
+  } catch {
+    return null;
+  }
+}
+
 function rmRecursive(pathToRemove: string): void {
   const maxAttempts = 8;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -302,6 +327,12 @@ function acquireRuntimeCopyLock(targetDist: string): () => void {
           continue;
         }
         throw statError;
+      }
+
+      const ownerPid = readRuntimeCopyLockOwnerPid(lockDir);
+      if (ownerPid !== null && !isProcessAlive(ownerPid)) {
+        rmRecursive(lockDir);
+        continue;
       }
 
       if (ageMs > RUNTIME_COPY_LOCK_STALE_MS) {

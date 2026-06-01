@@ -1,165 +1,137 @@
-# Feed — Agent & Developer Rules
+# @feed/root — Feed social simulation game
 
-> Single source of truth for all AI coding agents (Claude Code, Cursor, Codex, etc.) and human contributors.
-> If you are reading `AGENTS.md`, it points here. Do not duplicate rules — edit this file.
+Feed is a satirical prediction market game powered by autonomous AI agents. This directory is a self-contained monorepo nested inside the elizaOS repo; it is **not** an `@elizaos/*` package. It has its own workspace, packages, apps, scripts, and DB schema.
 
-## Quality Gate (run before every commit)
+## Purpose / role
 
-```bash
-bun run check          # Biome format + lint (auto-fix)
-bun run typecheck      # TypeScript across all packages
-bun run lint           # Turbo lint (zero warnings required)
-bun run test:unit      # Unit tests
+Feed runs a live social simulation where players and autonomous AI agents trade on prediction markets alongside LLM-driven NPCs. The game engine generates satirical social posts, breaking news, and market events every minute. Feed integrates with elizaOS via its `packages/agents` elizaOS plugin wiring (`feedPlugin`, `plugin-autonomy`, `plugin-experience`, `plugin-agent-core`, `plugin-trajectory-logger`). External Eliza agents connect via A2A or MCP protocols.
+
+## Layout
+
+```
+packages/feed/
+  apps/
+    web/          Next.js 16 — UI, API routes, SSE, cron endpoints
+    cli/          Bun CLI: db, game, agent commands (entry: apps/cli/src/index.ts)
+    mobile/       Capacitor mobile shell
+    dag-visualizer/ Visual DAG explorer for tick data flow (port 4000)
+
+  packages/
+    engine/       Game engine: tick orchestration, FeedGenerator, GameWorld,
+                  GameGenerator, LLM client, prompts
+    core/         Pure domain: prediction markets, perpetuals, pricing, CPMM
+    db/           Drizzle ORM schema, migrations, lazy DB client
+    api/          Steward JWT middleware, user provisioning, rate limiting
+    agents/       Autonomous agent logic, elizaOS plugins (feedPlugin etc.), cron
+      src/plugins/
+        feed/                 Main feedPlugin (elizaOS Plugin)
+        plugin-agent-core/    Agent core capabilities
+        plugin-autonomy/      Autonomous NPC trading/posting behaviors
+        plugin-experience/    Experience/points system
+        plugin-trajectory-logger/ Trajectory recording
+        plugin-user-core/     User coordinator plugin (limited read-only actions)
+    shared/       Shared types, content analysis utilities, logging
+    a2a/          Agent-to-Agent protocol integration (@a2a-js/sdk)
+    mcp/          Model Context Protocol server for tool-using agents
+    pack-default/ Default NPC and organization content pack
+    sim/          Standalone simulation CLI
+    testing/      Shared test utilities, integration helpers
+    examples/     Example agents, local A2A server, training harness
+
+  scripts/        Operational scripts — context inspection, market reports, DB seeds
+  docs/           Vendor docs, analysis docs, observability notes
+  .ruler/         Ruler config — generates CLAUDE.md/AGENTS.md; edit here, not in files
 ```
 
-Run integration tests when your changes touch DB/API:
+## Key exports / surface
+
+The elizaOS integration lives entirely in `packages/agents/src/`:
+
+- `feedPlugin` — main elizaOS `Plugin` object; registers actions, providers, and services for feed trading
+- `initializeFeedPlugin` / `initializeAgentA2AClient` — bootstrap helpers
+- `plugin-autonomy`, `plugin-agent-core`, `plugin-experience`, `plugin-trajectory-logger` — elizaOS sub-plugins; each exports a `Plugin` object from its `src/index.ts`
+- `ExternalAgentAdapter` — bridges external agents (A2A / MCP) into the Feed runtime
+
+The `packages/engine` exports `FeedGenerator`, `GameWorld`, `GameTick`, and the LLM client. The `packages/core` exports prediction market and perpetuals domain logic.
+
+## Commands
+
+All commands run from `packages/feed/` (this directory):
+
 ```bash
-bun run test:integration
+bun run dev                # Start web + cron simulator + Docker services
+bun run dev:web            # Web only (no cron)
+bun run build              # Production build (all packages)
+bun run check              # Biome format + lint (auto-fix)
+bun run test:unit          # Unit tests (no DB)
+bun run test:integration   # Integration tests (requires Postgres + Redis)
+bun run test:e2e           # Playwright end-to-end
+bun run db:generate        # Generate Drizzle migration files
+bun run db:migrate         # Apply migrations
+bun run db:seed            # Seed initial game data
+bun run db:studio          # Drizzle Studio DB browser
+bun run env:validate       # Check required env vars before start
+bun run inspect:context    # Inspect NPC/agent prompt context (see Dev Tools)
+bun run report:markets     # Market diversity audit
+bun run report:realism     # Market realism report
+bun run ruler:apply        # Regenerate CLAUDE.md/AGENTS.md from .ruler/
 ```
 
-Build before declaring done:
-```bash
-bun run build
-```
+## Config / env vars
 
-## Architecture
+See `.env.example` for the full annotated list. Key vars:
 
-### Dependency Direction
+| Group | Variables |
+|-------|-----------|
+| Database | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `DATABASE_READ_REPLICA_URL`, `DATABASE_POOL_MAX` |
+| Auth (Steward) | `STEWARD_JWT_SECRET`, `STEWARD_TENANT_API_KEY`, `NEXT_PUBLIC_STEWARD_API_URL`, `STEWARD_API_URL` |
+| LLM | `ELIZACLOUD_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (at least one required) |
+| Cache | `REDIS_URL` |
+| Storage | `BLOB_READ_WRITE_TOKEN` (Vercel Blob; MinIO locally) |
+| Game | `GAME_START=true`, `CRON_SECRET` |
+| Agents | `FEED_A2A_API_KEY` |
 
-`apps/* → packages/* → packages/contracts`
+LLM inference defaults to ElizaCloud (`ELIZACLOUD_API_KEY`), falls back to Groq → Anthropic → OpenAI.
 
-- **Apps are wiring-only**: validate input → call service → map errors → return response.
-- **Domain logic belongs in packages** and must stay framework-agnostic (no Next/React/Elysia imports in domain code).
-- No circular dependencies between packages.
+Docker services (started by `bun run dev`): Postgres `:5433`, Redis `:6380`, MinIO `:9000/:9001`, Steward auth `:3200`.
 
-### Where to Put Code
-
-| What | Where |
-|---|---|
-| Domain rules / game logic | `packages/engine`, `packages/agents` |
-| Infra adapters (db/redis/http/sse/auth) | `packages/api`, `packages/db`, `packages/shared` |
-| UI and route wiring | `apps/web` |
-| Tests | `packages/testing` |
-| Vendor docs | `docs/vendors/{vendor}` |
-
-### State (current → target)
-
-- **Current**: Next.js `apps/web` hosts UI + API routes + SSE + A2A. CLI in `apps/cli`. Domain in `packages/engine` and `packages/agents`.
-- **Target**: Elysia host in `apps/server`, workers in `apps/daemon`, dedicated `apps/agents`, domain split into `packages/core/*`.
-
-## Code Standards
-
-- **Bun + TypeScript ESM**, 2-space indent, minimal changes.
-- **No `any`**; avoid `unknown` (only as last resort, narrow immediately).
-- **No broad `try/catch`**: catch only expected errors, map at boundaries. Fail fast otherwise.
-- **Reuse before building**: search the codebase for existing patterns/utilities before adding new ones.
-- **No invented behavior**: don't add fake placeholders or synthetic data. Build the real thing or leave a clear TODO.
-- **Secrets**: never commit API keys, private keys, or tokens. Never log sensitive values.
-- **Env hygiene**: new/changed env vars must be reflected in `.env.example` with required/optional + default notes.
-- **Scope discipline**: don't fix unrelated lint/format issues or revert other WIP. Keep changes scoped to the task.
-- **Documentation**: don't create new docs/READMEs unless requested. Update existing docs when behavior changes.
-
-## Git Conventions
-
-- Default branch: `staging` (not `main`).
-- Commits: concise, imperative, prefixed (`feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`).
-- Always run `bun run check` before committing (Biome auto-fix).
-- Run `bun run typecheck` and `bun run lint` before pushing.
-
-## Testing
-
-- Prefer **integration tests** for API/DB/infra flows (`packages/testing/integration`).
-- Use **unit tests** for pure logic where they add confidence without heavy mocking (`packages/testing/unit`).
-- Keep tests deterministic. Use fakes/stubs where appropriate, but avoid synthetic success paths.
-
-## Commands Reference
-
-| Task | Command |
-|---|---|
-| Install | `bun install` |
-| Dev (full) | `bun run dev` |
-| Dev (web only) | `bun run dev:web` |
-| Format + lint fix | `bun run check` |
-| Typecheck | `bun run typecheck` |
-| Lint | `bun run lint` |
-| Build | `bun run build` |
-| Unit tests | `bun run test:unit` |
-| Integration tests | `bun run test:integration` |
-| DB generate | `bun run db:generate` |
-| DB migrate | `bun run db:migrate` |
-| DB seed | `bun run db:seed` |
-| Vendor docs | `bun run docs:generate` |
-
-## Tooling Notes
-
-- Ruler (`.ruler/`) generates agent config files. After editing `.ruler/**`, run `bun run ruler:apply`.
-- Prefer local vendor docs (`docs/vendors/`) before guessing APIs.
-
-## Simulation Dev Tools
-
-Use these tools when working on agent context, prompts, trading decisions, or market generation. They run against the live DB (no server needed) and give you immediate visibility into what agents actually see.
-
-### Context Inspector
-
-Inspect exactly what context an NPC or autonomous agent receives. Use this after modifying prompts, context assembly, or truncation logic to verify changes.
+## Dev tools
 
 ```bash
-# NPC trading context (section breakdown, ghost vars, truncation stats)
-bun run inspect:context -- --npc ailon-musk --type trading
-
-# Full rendered prompt the NPC LLM would see
+# Inspect what context an NPC or agent receives before an LLM call
 bun run inspect:context -- --npc ailon-musk --type trading --raw
-
-# Autonomous agent context (uses MultiStepExecutor pipeline)
 bun run inspect:context -- --agent <userId> --raw
-
-# All NPCs aggregate stats
 bun run inspect:context -- --npc all --summary
-```
 
-### Market Diversity Report
-
-Audit the active prediction market pool for topic clustering, entity over-representation, near-duplicates, and timeframe balance. Use after modifying question generation or market creation.
-
-```bash
+# Market diversity (topic clustering, duplicates, timeframe balance)
 bun run report:markets
-bun run report:markets -- --verbose       # full question texts
-bun run report:markets -- --history 7     # trend over 7 days
-```
+bun run report:markets -- --verbose
+bun run report:markets -- --history 7
 
-### Prompt Diff
-
-Compare two prompt template versions rendered with the same context. Use when modifying any prompt in `packages/engine/src/prompts/`.
-
-```bash
-# Compare current vs previous git version
+# Prompt diff between two versions
 bun scripts/prompt-diff.ts \
   --old "git:HEAD~1:packages/engine/src/prompts/trading/npc-market-decisions.ts" \
   --new packages/engine/src/prompts/trading/npc-market-decisions.ts
-
-# Section token table only
-bun scripts/prompt-diff.ts --old file1.ts --new file2.ts --section-only
 ```
 
-### Analysis Docs
+## How to extend
 
-- `docs/agent-context-analysis.md` — deep analysis of agent context gaps, what's been fixed, what's remaining
-- `docs/stories-markets-analysis.md` — analysis of story/market repetition issues
-- `docs/dev-tools-plan.md` — dev tools roadmap and implementation plan
+**Add an elizaOS plugin:** create a new directory under `packages/agents/src/plugins/`, implement and export a `Plugin` object from `src/index.ts`, then re-export from `packages/agents/src/index.ts`.
 
-## Production database (scale / locks)
+**Add a game action in feedPlugin:** edit `packages/agents/src/plugins/feed/` — add the action to the plugin's `actions` array following the existing pattern.
 
-Indexes and query shape are necessary but **not sufficient**: you cannot prove every query is safe without **runtime** evidence (`EXPLAIN (ANALYZE)`, `pg_stat_statements`, load tests). Code review alone does not scale to millions of users.
+**Add an API route:** route handlers live in `apps/web/src/app/api/`. Domain logic must stay in `packages/`; the route is wiring only (validate → call service → return response).
 
-**What actually prevents “one query takes the site down”:**
+**Add a Drizzle table:** add the schema in `packages/db/`, then `bun run db:generate` + `bun run db:migrate`.
 
-- **Short transactions** — hold locks for the minimum work; no network/LLM calls inside `db.transaction()`.
-- **Pool + DB limits** — app pool (`DATABASE_POOL_MAX`, etc. in `.env.example`) must stay below Postgres `max_connections` (account for PgBouncer multipliers, replicas, workers). Defaults use **small per-process pools** for high fan-out (many serverless/workers) against Neon’s pooled (~10k) / direct (~4k) caps; prefer pooled `DATABASE_URL` in prod and tune `DATABASE_POOL_MAX` from metrics.
-- **Session guardrails** — in production, `packages/db` sets Postgres `statement_timeout`, `lock_timeout`, and `idle_in_transaction_session_timeout` on new connections (tunable via env). This caps runaway queries and fails lock waits instead of piling up.
-- **DDL** — `CREATE INDEX` on large tables blocks writes unless built **`CONCURRENTLY`** (hand-roll a migration for huge tables; Drizzle defaults are blocking). Note: migrations 0055/0056 use blocking indexes; acceptable for current table sizes (<100k rows) but must be rewritten with `CONCURRENTLY` before scaling. To use `CONCURRENTLY`, create a manual migration outside a transaction since concurrent index builds cannot run inside transactions. **TODO: Track issue to rewrite 0055/0056 with CONCURRENTLY before tables exceed 100k rows.**
-- **Observability** — enable `pg_stat_statements`, watch `pg_locks` / `pg_stat_activity`, set alerts on slow queries and connection saturation.
-- **Read path** — route read-heavy, latency-tolerant queries through **`DATABASE_READ_REPLICA_URL`** when configured. **Replication lag caveat**: reads immediately after writes may return stale data; use the primary (`dbWrite`) for read-after-write consistency (e.g., fetching a record just created/updated). **TODO: Consider adding `readAfterWrite()` helper utility for cases requiring read-your-writes consistency.**
+**Add a prompt:** add the template in `packages/engine/src/prompts/`, then use `bun scripts/prompt-diff.ts` to verify rendering.
 
-**Lazy Connection Creation**: Database client objects are created lazily - only when queries execute, not during property access. This optimizes cold start performance for read-only routes. With `DATABASE_READ_REPLICA_URL` configured, reads never create write client objects. The fallback to primary (when no replica) is also lazy, deferring client creation until query execution.
+## Conventions / gotchas
 
-Treat every new high-volume query as guilty until measured under production-like data volume.
+- **This is not an `@elizaos/*` package.** The npm name is `@feed/root` and all internal packages use the `@feed/` scope. Do not publish or import from `@elizaos/` unless explicitly integrating with upstream elizaOS packages.
+- **Ruler manages CLAUDE.md and AGENTS.md.** These files are generated from `.ruler/`. Edit `.ruler/**` and run `bun run ruler:apply` — never hand-edit CLAUDE.md or AGENTS.md directly (changes will be overwritten).
+- **Default branch is `staging`**, not `main`.
+- **`typecheck` and `lint` are no-ops** in the root package.json (they echo "skip (feed)"). Run typechecking per-package or via the build step.
+- **DB connections are lazy**: client objects are created only when the first query executes, not at import time. Prefer `DATABASE_URL` (pooled) in production; use `DIRECT_DATABASE_URL` only for migrations.
+- **No network/LLM calls inside `db.transaction()`** — transactions must be short to avoid lock escalation.
+- **Architecture rule**: `apps/* → packages/* → packages/contracts` — domain logic never imports from app or infra layers.

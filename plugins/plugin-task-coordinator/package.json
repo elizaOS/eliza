@@ -7,12 +7,22 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -42,6 +52,7 @@
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts",
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
   },
   "files": [
@@ -49,7 +60,6 @@
   ],
   "devDependencies": {
     "tsup": "^8.5.1",
-    "vite": "^8.0.0",
-    "vitest": "^4.0.18"
+    "vite": "^8.0.0"
   }
 }

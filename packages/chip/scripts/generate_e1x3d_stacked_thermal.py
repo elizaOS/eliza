@@ -259,12 +259,12 @@ def _solve_fixed_point(
             for i in range(n)
         ]
         target_power = [
-            _leakage_power_w(p_dynamic, p_leak0, new_temps[i]) if stack[i]["kind"] == "logic" else 0.0
+            _leakage_power_w(p_dynamic, p_leak0, new_temps[i])
+            if stack[i]["kind"] == "logic"
+            else 0.0
             for i in range(n)
         ]
-        new_power = [
-            power[i] + LEAKAGE_RELAXATION * (target_power[i] - power[i]) for i in range(n)
-        ]
+        new_power = [power[i] + LEAKAGE_RELAXATION * (target_power[i] - power[i]) for i in range(n)]
         delta = max(abs(new_temps[i] - temps[i]) for i in range(n))
         temps, power = new_temps, new_power
         trace.append(
@@ -447,9 +447,7 @@ def main(argv: list[str]) -> int:
     config = scaled_e1x3d_config() if args.scaled else E1X3DConfig()
     artifact = stacked_coanalyze(config)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(artifact, indent=2, sort_keys=True))
     return 0
 

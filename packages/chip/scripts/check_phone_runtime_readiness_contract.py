@@ -474,14 +474,14 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                 adb_prefix,
                 (
                     "mkdir -p packages/chip/docs/evidence/android/security && "
-                    "state=$(adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop "
+                    'state=$(adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop '
                     "ro.boot.verifiedbootstate | tr -d '\\r') && "
-                    "if [ \"$state\" = green ]; then result=0; verdict=pass; "
+                    'if [ "$state" = green ]; then result=0; verdict=pass; '
                     "else result=1; verdict=fail; fi; "
                     "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
-                    "\"$verdict\" \"$state\" \"$result\" | tee "
+                    '"$verdict" "$state" "$result" | tee '
                     "packages/chip/docs/evidence/android/security/verified_boot_acceptance.log; "
-                    "test \"$result\" = 0"
+                    'test "$result" = 0'
                 ),
             ],
         },
@@ -1186,9 +1186,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
                 next_capture_action.get("capture_area") if next_capture_action else None
             ),
             "next_runtime_capture_blocked_file_count": (
-                next_capture_action.get("blocked_evidence_file_count")
-                if next_capture_action
-                else 0
+                next_capture_action.get("blocked_evidence_file_count") if next_capture_action else 0
             ),
         },
         "findings": [asdict(finding) for finding in findings],

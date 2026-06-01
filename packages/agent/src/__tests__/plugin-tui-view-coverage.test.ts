@@ -144,7 +144,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "open-live-dashboard",
     "send-team-message",
   ],
-  "plugins/plugin-app-control/src/views/ViewManagerView.tsx": [
+  "plugins/plugin-app-control/src/views/viewManagerData.ts": [
     "terminal-list-views",
     "terminal-open-view",
   ],

@@ -953,13 +953,6 @@
       "when": 1779408400000,
       "tag": "0135_agent_sandboxes_image_digest",
       "breakpoints": true
-    },
-    {
-      "idx": 136,
-      "version": "7",
-      "when": 1779408500000,
-      "tag": "0136_agent_backup_incremental",
-      "breakpoints": true
     }
   ]
 }

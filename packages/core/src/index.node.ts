@@ -174,7 +174,9 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -318,11 +320,14 @@ export * from "./utils/channel-utils";
 export type {
 	ConfirmationDecision,
 	ConfirmationStatus,
+	DestructiveConfirmationGateResult,
 	RequireConfirmationArgs,
 } from "./utils/confirmation";
 // Unified two-phase confirmation helper for destructive actions.
 export {
 	clearPendingConfirmation,
+	gateDestructiveConfirmation,
+	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)

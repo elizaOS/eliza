@@ -1,6 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
-import { useAgentElement } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowLeft,
   BarChart3,

@@ -434,7 +434,19 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   // ── ownerName hydration ─────────────────────────────────────────────
 
+  // Owner name lives in agent config, so it can only be read once the agent API
+  // is reachable. Gating on agent readiness (rather than firing on mount) avoids
+  // issuing the request during first-run / early startup, where it would block
+  // until the 10s client timeout, and naturally re-hydrates if the agent
+  // reconnects. The boolean keeps the effect from re-running on every status
+  // poll, which only changes the AgentStatus object reference.
+  const agentReachable = agentStatus !== null;
+
   useEffect(() => {
+    if (!agentReachable) {
+      return;
+    }
+
     let cancelled = false;
     void client
       .getConfig()
@@ -449,13 +461,16 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
       })
       .catch((error: unknown) => {
-        logger.warn({ error }, "[useDataLoaders] owner-name hydration failed");
+        if (cancelled) {
+          return;
+        }
+        logger.debug({ error }, "[useDataLoaders] owner-name hydration failed");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [setOwnerNameState]);
+  }, [agentReachable, setOwnerNameState]);
 
   // ── Character language sync ─────────────────────────────────────────
 

@@ -23,6 +23,18 @@ import { I18nProvider, resolveInitialLang } from "./providers/I18nProvider";
 installApiFetchBridge();
 
 const initialLang = resolveInitialLang();
+const _rte = import.meta.env.VITE_ELIZA_RENDER_TELEMETRY;
+const renderTelemetryEnabled =
+  _rte !== "false" && _rte !== "0" && _rte !== false;
+
+type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
+};
+
+if (!renderTelemetryEnabled) {
+  (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY_DISABLED__ =
+    true;
+}
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Root element #root not found in index.html");
@@ -33,9 +45,13 @@ const tree = (
       <HelmetProvider>
         <BrowserRouter>
           <I18nProvider initialLang={initialLang}>
-            <RenderTelemetryProfiler id="CloudFrontendRoot">
+            {renderTelemetryEnabled ? (
+              <RenderTelemetryProfiler id="CloudFrontendRoot">
+                <App />
+              </RenderTelemetryProfiler>
+            ) : (
               <App />
-            </RenderTelemetryProfiler>
+            )}
           </I18nProvider>
         </BrowserRouter>
       </HelmetProvider>

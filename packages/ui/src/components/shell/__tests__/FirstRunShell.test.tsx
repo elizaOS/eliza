@@ -37,6 +37,13 @@ function props(
       transcript: "",
       error: null,
     },
+    microphone: {
+      status: "granted",
+      canRequest: true,
+      requesting: false,
+      request: vi.fn(async () => {}),
+      openSettings: vi.fn(async () => {}),
+    },
     primaryLabel: "Continue",
     canBack: false,
     updateDraft: vi.fn(),
@@ -231,5 +238,66 @@ describe("FirstRunShell", () => {
     expect(voiceToggle.getAttribute("aria-pressed")).toBe("true");
     expect(voiceToggle.querySelector("svg")).toBeNull();
     expect(voiceToggle.className).toContain("bg-transparent");
+  });
+
+  it("requests microphone access when permission is not yet determined", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(async () => {});
+    render(
+      <FirstRunShell
+        {...props({
+          microphone: {
+            status: "not-determined",
+            canRequest: true,
+            requesting: false,
+            request,
+            openSettings: vi.fn(async () => {}),
+          },
+        })}
+      />,
+    );
+    await revealPrompt();
+
+    const enable = screen.getByTestId("first-run-microphone-request");
+    expect(enable.textContent).toContain("Enable microphone");
+    fireEvent.click(enable);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Open Settings when microphone access is denied", async () => {
+    vi.useFakeTimers();
+    const openSettings = vi.fn(async () => {});
+    render(
+      <FirstRunShell
+        {...props({
+          microphone: {
+            status: "denied",
+            canRequest: false,
+            requesting: false,
+            request: vi.fn(async () => {}),
+            openSettings,
+          },
+        })}
+      />,
+    );
+    await revealPrompt();
+
+    expect(screen.queryByTestId("first-run-microphone-request")).toBeNull();
+    const settings = screen.getByTestId("first-run-microphone-open-settings");
+    expect(settings.textContent).toContain("Open Settings");
+    fireEvent.click(settings);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a ready badge and no buttons once microphone is granted", async () => {
+    vi.useFakeTimers();
+    render(<FirstRunShell {...props()} />);
+    await revealPrompt();
+
+    expect(screen.getByText("Microphone ready")).toBeTruthy();
+    expect(screen.queryByTestId("first-run-microphone-request")).toBeNull();
+    expect(
+      screen.queryByTestId("first-run-microphone-open-settings"),
+    ).toBeNull();
   });
 });

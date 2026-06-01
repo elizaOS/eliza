@@ -36,7 +36,7 @@
   --warn-muted: rgba(240, 185, 11, 0.7);
   --warn-subtle: rgba(240, 185, 11, 0.14);
   --focus: rgba(240, 185, 11, 0.18);
-  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.34);
+  --focus-ring: none;
   --link-color: var(--classic-gold);
   --link-hover-color: var(--highlight-gold);
 }

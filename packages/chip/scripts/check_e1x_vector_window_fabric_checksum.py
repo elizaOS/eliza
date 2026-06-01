@@ -76,7 +76,9 @@ def unpack_signed_w4_word(word: int) -> list[int]:
     return values
 
 
-def execute_window_row(layer_index: int, output_row: int, activations: list[int]) -> tuple[int, int, int, int]:
+def execute_window_row(
+    layer_index: int, output_row: int, activations: list[int]
+) -> tuple[int, int, int, int]:
     acc = 0
     vector_ops = 0
     lane_macs = 0
@@ -111,7 +113,13 @@ def main() -> int:
         "vector-window fabric-checksum inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_vector_window_fabric_checksum_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_window_fabric_checksum_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     schedule = load_json(SCHEDULE) if SCHEDULE.is_file() else {}
@@ -135,7 +143,13 @@ def main() -> int:
         "proof, schedule, vector-window executor, fabric reduction, and RTL merge evidence are linked and PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_vector_window_fabric_checksum_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_window_fabric_checksum_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     schedule_by_index = {
         int(layer["layer_index"]): layer
@@ -178,9 +192,7 @@ def main() -> int:
             layer_vector_ops += row_vector_ops
             layer_sum += acc
             value = (
-                (output_row & 0xFFFF)
-                | ((requantized & 0xFF) << 16)
-                | ((acc & 0xFFFF_FFFF) << 24)
+                (output_row & 0xFFFF) | ((requantized & 0xFF) << 16) | ((acc & 0xFFFF_FFFF) << 24)
             )
             layer_checksum = mix64(layer_checksum, value)
             color_checksums[routing_color] = mix64(color_checksums[routing_color], value)
@@ -191,17 +203,19 @@ def main() -> int:
         routed_checksum = mix64(routed_checksum, saturated)
         routed_checksum = mix64(routed_checksum, layer_checksum)
         if len(layer_records) < 8:
-            layer_records.append({
-                "layer_index": layer_index,
-                "layer_name": str(record.get("layer_name", "")),
-                "routing_color": routing_color,
-                "window_rows": layer_rows,
-                "window_vector_word_ops": layer_vector_ops,
-                "merged_accumulator_sum": int(layer_sum),
-                "saturated_i32": int(saturated),
-                "overflow": bool(overflow),
-                "layer_window_checksum": int(layer_checksum),
-            })
+            layer_records.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(record.get("layer_name", "")),
+                    "routing_color": routing_color,
+                    "window_rows": layer_rows,
+                    "window_vector_word_ops": layer_vector_ops,
+                    "merged_accumulator_sum": int(layer_sum),
+                    "saturated_i32": int(saturated),
+                    "overflow": bool(overflow),
+                    "layer_window_checksum": int(layer_checksum),
+                }
+            )
 
     color_records = [
         {"routing_color": color, "window_color_checksum": int(color_checksums[color])}
@@ -212,7 +226,8 @@ def main() -> int:
         not mismatches
         and len(proof.get("records", [])) == 283
         and executed_rows == int(vector_window.get("summary", {}).get("executed_row_count", -1))
-        and vector_word_ops == int(vector_window.get("summary", {}).get("executed_vector_word_op_count", -1))
+        and vector_word_ops
+        == int(vector_window.get("summary", {}).get("executed_vector_word_op_count", -1))
         and lane_macs == int(vector_window.get("summary", {}).get("executed_lane_mac_count", -1))
         and merge_cycles == executed_rows + len(proof.get("records", []))
         and len(color_records) == 24
@@ -222,7 +237,13 @@ def main() -> int:
         f"routed vector-window checksum covers {executed_rows} rows, {vector_word_ops} vector ops, and 24 colors",
         "vector-window routed checksum mismatch: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_vector_window_fabric_checksum_covers_window", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vector_window_fabric_checksum_covers_window",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     full_rows = int(vector_window.get("summary", {}).get("full_output_row_count", 0))
@@ -230,11 +251,15 @@ def main() -> int:
         "check_count": len(checks),
         "failing_check_count": len(failures),
         "window_rows_per_layer": ROWS_PER_LAYER,
-        "proof_layer_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
+        "proof_layer_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
         "executed_row_count": executed_rows,
         "executed_vector_word_op_count": vector_word_ops,
         "executed_lane_mac_count": lane_macs,
-        "merged_group_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
+        "merged_group_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
         "window_merge_cycle_count": merge_cycles,
         "overflow_group_count": overflow_groups,
         "routing_color_count": len(color_records),
@@ -242,8 +267,12 @@ def main() -> int:
         "window_row_coverage_fraction": executed_rows / full_rows if full_rows else 0.0,
         "routed_window_checksum": int(routed_checksum),
         "color_record_sha256": color_record_sha256,
-        "vector_window_checksum": int(vector_window.get("summary", {}).get("window_output_checksum", 0)),
-        "reduction_merge_cocotb_testcases": int(reduction_merge.get("summary", {}).get("testcases", 0)),
+        "vector_window_checksum": int(
+            vector_window.get("summary", {}).get("window_output_checksum", 0)
+        ),
+        "reduction_merge_cocotb_testcases": int(
+            reduction_merge.get("summary", {}).get("testcases", 0)
+        ),
         "fabric_reduction_total_reduction_wavelets": int(
             fabric_reduction.get("summary", {}).get("total_reduction_wavelets", 0)
         ),
@@ -280,7 +309,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X vector-window fabric checksum failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X vector-window fabric checksum failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X vector-window fabric checksum; report {REPORT.relative_to(ROOT)}")
     return 0

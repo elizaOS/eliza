@@ -11,8 +11,6 @@ import type {
   StewardApprovalQueueProps,
   StewardLogoProps,
   StewardTransactionHistoryProps,
-  VincentStateHookArgs,
-  VincentStateHookResult,
 } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 
@@ -159,9 +157,8 @@ declare module "@elizaos/plugin-training" {
 }
 
 declare module "@elizaos/app-vincent" {
-  export function useVincentState(
-    args: VincentStateHookArgs,
-  ): VincentStateHookResult;
+  // Imported only for its self-registration side effect.
+  export {};
 }
 
 declare module "@elizaos/plugin-vincent" {

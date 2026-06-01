@@ -410,6 +410,46 @@ describe("view management actions", () => {
 		);
 	});
 
+	it('routes "open <name> view" to show/navigate, not the current-view query', async () => {
+		// Regression: CURRENT_VIEW_VERBS once included "open", so "open wallet
+		// view" matched current before show and reported the active view instead
+		// of navigating. inferMode must resolve this to a show/navigate.
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const getCurrentView = vi.fn(async () => null);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view({ id: "wallet", label: "Wallet" })]),
+				getCurrentView,
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			text: async () => "",
+		} as Response);
+
+		// No explicit action option — this exercises inferMode on the raw text.
+		const result = await action.handler(
+			runtime as never,
+			message("open the wallet view") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({ mode: "show", viewId: "wallet" });
+		// A current-view query would have hit getCurrentView instead of navigate.
+		expect(getCurrentView).not.toHaveBeenCalled();
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/wallet/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
 	it("owner-gates mutating view management modes but allows window navigation validation", async () => {
 		const { runtime } = createRuntime();
 		const ownerCheck = vi.fn(async () => false);

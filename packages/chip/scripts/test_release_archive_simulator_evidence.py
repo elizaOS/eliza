@@ -53,7 +53,9 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
             members.append(f"eliza-release/{suffix}")
 
         checksums = root / "SHA256SUMS"
-        checksums.write_text("".join(f"0  {member}\n" for member in members if member != "SHA256SUMS"))
+        checksums.write_text(
+            "".join(f"0  {member}\n" for member in members if member != "SHA256SUMS")
+        )
 
         with tarfile.open(archive, "w:gz") as tar:
             for path in sorted(root.rglob("*")):

@@ -11,11 +11,11 @@ to produce on the current product.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -453,9 +453,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     "adb devices",
                     (
                         f"{CAPTURE_SCRIPT} "
-                        + " ".join(
-                            f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES
-                        )
+                        + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
                         + " "
                         + " ".join(components)
                     ),

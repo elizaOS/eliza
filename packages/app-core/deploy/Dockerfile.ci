@@ -19,6 +19,7 @@ ARG OCI_LICENSES="MIT"
 ARG VERSION=""
 ARG VERSION_CLEAN=""
 ARG REVISION=""
+ARG TAILSCALE_VERSION=1.90.8
 
 FROM node:${NODE_VERSION}-slim AS pruner
 WORKDIR /app
@@ -30,38 +31,47 @@ ARG APP_DIR
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
 
-# Some relinked local packages expect selected runtime dependencies to be
-# resolvable from root node_modules. Host node_modules is excluded from the
-# Docker context, so install only this small runtime set in-image.
+# Some relinked local packages expect their third-party (non-@elizaos) runtime
+# dependencies to be resolvable from /app/node_modules. Host node_modules is
+# excluded from the Docker context (see .dockerignore: **/node_modules), so
+# install that runtime set in-image.
+#
+# The set is DERIVED, not hand-maintained: collect-docker-runtime-deps.mjs
+# reads the declared `dependencies` of every workspace package that gets
+# linked into the image (see link-docker-local-app-packages.mjs +
+# relink-workspace-packages-to-dist.mjs), drops the @elizaos/* workspace
+# entries (those are linked, not installed), and emits the union pinned to
+# the versions the workspace lockfile resolves. `npm install` then pulls the
+# full transitive closure automatically.
+#
+# This replaces the previous hand-maintained allowlist, which had to be
+# extended by hand every time a newly-linked package introduced a new
+# third-party dependency. Each omission was a hard boot crash of the form
+# "Cannot find package '<dep>' imported from /app/packages/<pkg>/dist/..."
+# (zod, then @elizaos/core, then chalk, ...). Deriving the closure removes
+# that whole class of build/test loops: every dependency a linked package
+# declares is present, so the image boots and any character config can load
+# any bundled plugin without a missing-module crash.
+#
+# Pure browser/UI packages (notably @elizaos/ui and its radix/three/recharts
+# tree) are excluded inside the script: they are linked for resolution
+# integrity but never imported by the headless server runtime, so installing
+# their frontend deps would only bloat the image.
 RUN mkdir -p /tmp/docker-runtime-deps \
   && cd /tmp/docker-runtime-deps \
   && npm init -y >/dev/null \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" \
+       > /tmp/docker-runtime-deps/deps.txt \
+  && echo "Installing $(wc -l < /tmp/docker-runtime-deps/deps.txt) derived runtime deps" \
   && npm install --omit=dev --ignore-scripts --no-package-lock \
+    --legacy-peer-deps \
     --fetch-retries=5 \
     --fetch-retry-mintimeout=20000 \
     --fetch-retry-maxtimeout=120000 \
-    @electric-sql/pglite@0.4.5 \
-    @neondatabase/serverless@1.1.0 \
-    @node-rs/argon2@2.0.2 \
-    dotenv@17.2.3 \
-    drizzle-orm@0.45.2 \
-    jose@6.2.2 \
-    pg@8.20.0 \
-    uuid@14.0.0 \
-    ws@8.20.0 \
-    yaml@2.8.2 \
+    $(cat /tmp/docker-runtime-deps/deps.txt) \
   && mkdir -p /app/node_modules \
-  && rm -rf \
-    /app/node_modules/@electric-sql/pglite \
-    /app/node_modules/@neondatabase/serverless \
-    /app/node_modules/@node-rs/argon2 \
-    /app/node_modules/dotenv \
-    /app/node_modules/drizzle-orm \
-    /app/node_modules/jose \
-    /app/node_modules/pg \
-    /app/node_modules/uuid \
-    /app/node_modules/ws \
-    /app/node_modules/yaml \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" --names \
+     | while IFS= read -r dep; do [ -n "$dep" ] && rm -rf "/app/node_modules/$dep"; done \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 
@@ -114,8 +124,8 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
   true
 
 # Standalone tsx install — the runtime entrypoint is
-# `node --import tsx packages/agent/dist/...`, which requires `tsx` resolvable
-# from /app/. bun's workspace install on GHA can drop tsx from the build
+# the absolute tsx loader plus `packages/agent/dist/...`, which avoids requiring
+# `tsx` to be resolvable from /app. bun's workspace install on GHA can drop tsx from the build
 # context (it lives under `node_modules/.bun/tsx@<v>/` but isn't always
 # materialized at `node_modules/tsx/`, and dockerignore prunes per-package
 # trees). Mirror Dockerfile.cloud's pattern: install tsx in a dedicated stage
@@ -139,6 +149,7 @@ ARG OCI_LICENSES
 ARG VERSION
 ARG VERSION_CLEAN
 ARG REVISION
+ARG TAILSCALE_VERSION
 LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.description="${OCI_DESCRIPTION}" \
       org.opencontainers.image.source="${OCI_SOURCE}" \
@@ -148,6 +159,25 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
   && rm -rf /var/lib/apt/lists/*
+
+# Install tailscale so Cloud-managed agent sandboxes can join Headscale/Tailscale
+# when TS_AUTHKEY is injected at runtime (see scripts/docker-entrypoint.sh). The
+# download is integrity-checked against the upstream-published .sha256 sidecar.
+RUN set -eux; \
+  case "$(dpkg --print-architecture)" in \
+    amd64) TAILSCALE_ARCH=amd64 ;; \
+    arm64) TAILSCALE_ARCH=arm64 ;; \
+    *) echo "Unsupported architecture for tailscale: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz" \
+    -o /tmp/tailscale.tgz; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz.sha256" \
+    -o /tmp/tailscale.tgz.sha256; \
+  echo "$(cat /tmp/tailscale.tgz.sha256)  /tmp/tailscale.tgz" | sha256sum -c -; \
+  tar -xzf /tmp/tailscale.tgz -C /tmp; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscale" /usr/local/bin/tailscale; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
+  rm -rf /tmp/tailscale.tgz /tmp/tailscale.tgz.sha256 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
 
 # Install yt-dlp from upstream GitHub release. See Dockerfile.cloud for rationale.
 RUN ARCH="$(dpkg --print-architecture)" \
@@ -164,7 +194,7 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 WORKDIR /app
 COPY --from=pruner /app /app
-# tsx is required by APP_CMD_START (`node --import tsx ...`). Bring it in
+# tsx is required by APP_CMD_START. Bring it in
 # from its own stage so it's self-contained (with esbuild + get-tsconfig
 # deps) at /opt/tsx, independent of bun's workspace install. Mirrors
 # Dockerfile.cloud's pattern.

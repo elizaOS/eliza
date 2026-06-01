@@ -80,6 +80,8 @@ export interface DispatchRouteArgs {
   query?: Record<string, string | string[]>;
   /** Raw body: string, Buffer, or already-parsed JSON object/array. */
   body?: unknown;
+  /** Preserved raw UTF-8 body for webhook HMAC verification (when JSON was parsed). */
+  rawBody?: string;
   /** true when invoked in-process via IPC; false when invoked over HTTP. */
   inProcess: boolean;
   isAuthorized: () => boolean;
@@ -151,6 +153,7 @@ function buildLegacyShim(args: {
   query: Record<string, string | string[]>;
   params: Record<string, string>;
   body: unknown;
+  rawBody?: string;
 }): { req: IncomingMessage; res: ServerResponse; captured: CapturedResponse } {
   const incomingHeaders = toIncomingHttpHeaders(args.headers);
   // Provide a readable stream body so handlers that call req.on('data') still work.
@@ -176,6 +179,7 @@ function buildLegacyShim(args: {
     url: string;
     headers: IncomingHttpHeaders;
     body?: unknown;
+    rawBody?: string;
     get: (name: string) => string | undefined;
   };
   req.headers = incomingHeaders;
@@ -185,7 +189,17 @@ function buildLegacyShim(args: {
   req.protocol = "http";
   req.query = args.query;
   req.params = args.params;
-  req.body = parseBodyAsJson(args.body);
+  if (typeof args.body === "string") {
+    req.rawBody = args.rawBody ?? args.body;
+    req.body = parseBodyAsJson(args.body);
+  } else if (Buffer.isBuffer(args.body)) {
+    const text = args.body.toString("utf8");
+    req.rawBody = args.rawBody ?? text;
+    req.body = parseBodyAsJson(text);
+  } else {
+    req.rawBody = args.rawBody;
+    req.body = parseBodyAsJson(args.body);
+  }
   req.get = (name: string) => {
     const v = incomingHeaders[name.toLowerCase()];
     return Array.isArray(v) ? v[0] : v;
@@ -365,6 +379,7 @@ export async function dispatchRoute(
       if (route.routeHandler) {
         const ctx: RouteHandlerContext = {
           body: parseBodyAsJson(args.body),
+          rawBody: args.rawBody,
           params,
           query,
           headers,
@@ -398,6 +413,7 @@ export async function dispatchRoute(
         query,
         params,
         body: args.body,
+        rawBody: args.rawBody,
       });
 
       try {

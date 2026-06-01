@@ -1504,6 +1504,9 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
+  // Webhook exemptions: handlers MUST authenticate callers (see plugin handlers).
+  // WhatsApp: X-Hub-Signature-256 HMAC (WHATSAPP_APP_SECRET).
+  // BlueBubbles: X-BlueBubbles-Webhook-Secret (BLUEBUBBLES_WEBHOOK_SECRET).
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
   let blueBubblesWebhookPath =
     pathname === "/webhooks/bluebubbles" ? "/webhooks/bluebubbles" : null;
@@ -2667,12 +2670,21 @@ async function handleRequest(
 
   // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
-  // plugin via the runtime route registry. Pre-runtime 503 responses for
-  // those paths are still emitted below.
+  // plugin via the runtime route registry. Most of those paths genuinely need
+  // the runtime, so a pre-runtime 503 is correct. The GET capability probes
+  // below are the exception: they have graceful builtin stubs
+  // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
+  // dashboard polls /preflight the instant agentStatus flips to "running", which
+  // can race ahead of state.runtime being assigned during a restart; serve those
+  // from the stub instead of a 503 the browser logs as a red console error.
+  const isCodingAgentBuiltinProbe =
+    pathname === "/api/coding-agents/preflight" ||
+    pathname === "/api/coding-agents/coordinator/status";
   if (
     !state.runtime &&
     method === "GET" &&
-    pathname.startsWith("/api/coding-agents")
+    pathname.startsWith("/api/coding-agents") &&
+    !isCodingAgentBuiltinProbe
   ) {
     error(res, "Coding agent runtime unavailable", 503);
     return;

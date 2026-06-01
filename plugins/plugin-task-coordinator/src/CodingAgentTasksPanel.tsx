@@ -1,16 +1,5 @@
-import {
-  Badge,
-  Button,
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  client,
-  EmptyWidgetState,
-  TerminalPluginView,
-  useAgentElement,
-  useApp,
-  WidgetSection,
-} from "@elizaos/ui";
+import { Badge, Button, type CodingAgentSession, type CodingAgentTaskThread, type CodingAgentTaskThreadDetail, client, EmptyWidgetState, TerminalPluginView, useApp, WidgetSection } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
   type ReactNode,

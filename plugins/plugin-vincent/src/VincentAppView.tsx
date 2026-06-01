@@ -13,13 +13,8 @@
 
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
-import {
-  Button,
-  PagePanel,
-  Spinner,
-  useAgentElement,
-  useApp,
-} from "@elizaos/ui";
+import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowLeft,
   RefreshCw,

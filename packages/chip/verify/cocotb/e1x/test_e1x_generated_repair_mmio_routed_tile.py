@@ -145,7 +145,11 @@ async def load_generated_rom_via_mmio(dut) -> tuple[dict, dict]:
     manifest_path = required_env_path("E1X_REPAIR_MANIFEST_JSON")
     rom = json.loads(rom_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    words = [int(line.strip(), 16) for line in hex_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    words = [
+        int(line.strip(), 16)
+        for line in hex_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert words == [int(word, 16) for word in rom["words"]]
     for word in words:
         await push_word(dut, word)
@@ -167,8 +171,10 @@ async def generated_high_failure_repair_rom_programs_tile_reroute_via_mmio(dut):
     assert int(dut.repair_programmer_error.value) == 0
     assert int(dut.repair_programmer_words_pushed.value) == len(rom["words"])
     assert await mmio_read(dut, ADDR_COUNT) == len(rom["words"])
-    assert int(dut.repair_route_count.value) == int(rom["route_sample_word_count"]) == len(
-        manifest["sampled_routes"]
+    assert (
+        int(dut.repair_route_count.value)
+        == int(rom["route_sample_word_count"])
+        == len(manifest["sampled_routes"])
     )
 
     logical_cols = int(manifest["logical_cols"])

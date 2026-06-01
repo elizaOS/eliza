@@ -363,7 +363,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     >
       <SidebarHeader
         search={{
-          ref: filterSearch.ref,
           value: filterText,
           onChange: (event) => setFilterText(event.target.value),
           placeholder: t("skillsview.filterSkills"),

@@ -37,9 +37,8 @@ the request asks for streaming.
 Refresh and verify route coverage after adding or changing API routes:
 
 ```bash
-bun run generate:routes
-bun run check:routes
-bun run audit:routes
+node packages/cloud-sdk/scripts/generate-public-routes.mjs
+node packages/cloud-sdk/scripts/audit-api-routes.mjs
 ```
 
 Run live e2e tests against the real API with:

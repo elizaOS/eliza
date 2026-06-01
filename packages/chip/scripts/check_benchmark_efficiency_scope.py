@@ -76,8 +76,7 @@ REQUIRED_CAPTURE_COMMANDS = {
         "--artifact-root ."
     ),
     "npu_nnapi_proof": (
-        "E1_NPU_WRITE_PROOF_JSON=1 "
-        "scripts/android/capture_e1_npu_nnapi_evidence.sh"
+        "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh"
     ),
     "launcher_agent_runtime": "scripts/android/capture_eliza_launcher_runtime_evidence.sh",
 }

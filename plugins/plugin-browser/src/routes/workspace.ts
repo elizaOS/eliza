@@ -8,6 +8,7 @@
 
 import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
+import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
 import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
@@ -339,6 +340,7 @@ export async function handleBrowserWorkspaceRoutes(
         body,
         "evaluate browser workspace tab",
       );
+      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       json(res, {
         result: await evaluateBrowserWorkspaceTab({
           id: tabId,

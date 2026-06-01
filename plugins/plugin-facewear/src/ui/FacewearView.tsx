@@ -1,4 +1,5 @@
-import { TerminalPluginView, useAgentElement } from "@elizaos/ui";
+import { TerminalPluginView } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FacewearDeviceType } from "../devices/registry.ts";

@@ -14,7 +14,8 @@ RUNS = {
     "mesh_fabric_4x4": {
         "top": "e1x_mesh_fabric_4x4_tb",
         "module": "test_e1x_mesh_fabric_4x4",
-        "result": ROOT / "verify/cocotb/results/e1x_mesh_fabric_4x4_tb_test_e1x_mesh_fabric_4x4.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_mesh_fabric_4x4_tb_test_e1x_mesh_fabric_4x4.xml",
         "expected": {
             "real_pe_core_emits_wavelet_routed_across_mesh",
             "multi_hop_corner_to_corner_lossless",

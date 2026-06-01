@@ -53,8 +53,16 @@ CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("battery_lead_flex", "battery_pouch", "main_pcb"),
     ("usb_c_escape_tail", "usb_c_receptacle", "main_pcb"),
     ("usb_c_to_pd_controller_escape", "usb_c_receptacle", "usb_pd_controller_package_marker"),
-    ("pd_controller_to_charger_control", "usb_pd_controller_package_marker", "charger_package_marker"),
-    ("charger_to_battery_power_sense", "charger_package_marker", "battery_connector_package_marker"),
+    (
+        "pd_controller_to_charger_control",
+        "usb_pd_controller_package_marker",
+        "charger_package_marker",
+    ),
+    (
+        "charger_to_battery_power_sense",
+        "charger_package_marker",
+        "battery_connector_package_marker",
+    ),
     ("display_bias_power_flex", "backlight_bias_package_marker", "display_fpc_connector"),
     ("rear_camera_power_flex", "main_pcb", "rear_camera_module"),
     ("front_camera_power_flex", "main_pcb", "front_camera_module"),
@@ -2591,9 +2599,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
 
     coverage_path = REVIEW_DIR / "cad-connection-coverage.json"
     existing = (
-        json.loads(coverage_path.read_text())
-        if coverage_path.is_file()
-        else {"connections": []}
+        json.loads(coverage_path.read_text()) if coverage_path.is_file() else {"connections": []}
     )
     existing_connections = {
         str(row.get("id")): row
@@ -2763,7 +2769,9 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         if route_net:
             routed_route_records_by_net.setdefault(route_net, []).append(route)
 
-    endpoint_order = [connection_id for connection_id, _from, _to in CAD_CONNECTION_TERMINAL_ENDPOINTS]
+    endpoint_order = [
+        connection_id for connection_id, _from, _to in CAD_CONNECTION_TERMINAL_ENDPOINTS
+    ]
     contracts = [
         existing_connections[connection_id]
         for connection_id in endpoint_order
@@ -2833,8 +2841,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             or not route.get("route_classes")
         )
         all_represented_routes_have_layer_source_and_class = (
-            represented_route_record_count > 0
-            and represented_route_classification_gap_count == 0
+            represented_route_record_count > 0 and represented_route_classification_gap_count == 0
         )
         from_center = bbox_center(part_rows_by_name.get(str(contract["from"]), {}))
         to_center = bbox_center(part_rows_by_name.get(str(contract["to"]), {}))
@@ -2896,7 +2903,9 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
                 3,
             ),
             "represented_controlled_impedance_route_count": sum(
-                1 for route in represented_route_records if route.get("controlled_impedance_targets_ohm")
+                1
+                for route in represented_route_records
+                if route.get("controlled_impedance_targets_ohm")
             ),
             "all_represented_nets_have_route_trace": all(
                 bool(routed_route_records_by_net.get(net)) for net in represented_nets
@@ -2913,14 +2922,17 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             ),
             "terminal_step_bytes_total": terminal_step_bytes_total,
             "solid_step_part_names": connection_step_part_names,
-            "solid_step_parts_present": all(name in solid_names for name in connection_step_part_names),
+            "solid_step_parts_present": all(
+                name in solid_names for name in connection_step_part_names
+            ),
             "solid_step_part_count": len(connection_step_part_names),
             "solid_step_part_bytes_total": int(part.get("bytes", 0) or 0)
             + terminal_step_bytes_total,
             "from_endpoint_center_mm": from_center,
             "to_endpoint_center_mm": to_center,
             "endpoint_center_distance_mm": endpoint_center_distance_mm,
-            "endpoints_present": str(contract["from"]) in solid_names and str(contract["to"]) in solid_names,
+            "endpoints_present": str(contract["from"]) in solid_names
+            and str(contract["to"]) in solid_names,
             "routed_net_presence": routed_net_presence,
             "all_nets_in_routed_development_board": all(routed_net_presence.values()),
             "controlled_impedance_requirement_defined": (
@@ -2994,8 +3006,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             for row in connection_rows
         ),
         "represented_route_records_with_route_class_count_total": sum(
-            int(row["represented_route_records_with_route_class_count"])
-            for row in connection_rows
+            int(row["represented_route_records_with_route_class_count"]) for row in connection_rows
         ),
         "represented_route_classification_gap_count": sum(
             int(row["represented_route_classification_gap_count"]) for row in connection_rows
@@ -3088,10 +3099,10 @@ def write_solid_cad_handoff_artifacts(
         try:
             from OCP.BRep import BRep_Builder
             from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+            from OCP.gp import gp_Pnt
             from OCP.IFSelect import IFSelect_RetDone
             from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
             from OCP.TopoDS import TopoDS_Compound
-            from OCP.gp import gp_Pnt
 
             def fallback_artifact_path(path: Path) -> str:
                 try:
@@ -3139,7 +3150,10 @@ def write_solid_cad_handoff_artifacts(
                         if y1 - y0 <= min_span_mm:
                             continue
                         cy = (y0 + y1) / 2.0
-                        if any(xmin <= cx <= xmax and ymin <= cy <= ymax for xmin, xmax, ymin, ymax in clipped):
+                        if any(
+                            xmin <= cx <= xmax and ymin <= cy <= ymax
+                            for xmin, xmax, ymin, ymax in clipped
+                        ):
                             continue
                         cells.append((x0, x1, y0, y1))
                 return cells
@@ -3154,12 +3168,18 @@ def write_solid_cad_handoff_artifacts(
                     boxes.append(
                         (
                             [round(x1 - x0, 6), round(y1 - y0, 6), round(z_max - z_min, 6)],
-                            [round((x0 + x1) / 2.0, 6), round((y0 + y1) / 2.0, 6), round((z_min + z_max) / 2.0, 6)],
+                            [
+                                round((x0 + x1) / 2.0, 6),
+                                round((y0 + y1) / 2.0, 6),
+                                round((z_min + z_max) / 2.0, 6),
+                            ],
                         )
                     )
                 return boxes
 
-            def rect_from_center_size(center: list[float] | tuple[float, float], size: list[float]) -> tuple[float, float, float, float]:
+            def rect_from_center_size(
+                center: list[float] | tuple[float, float], size: list[float]
+            ) -> tuple[float, float, float, float]:
                 return (
                     float(center[0]) - float(size[0]) / 2.0,
                     float(center[0]) + float(size[0]) / 2.0,
@@ -3207,7 +3227,9 @@ def write_solid_cad_handoff_artifacts(
                     )
 
                 if part.name == "screen_cover_glass":
-                    glass_w, glass_h, glass_t = [float(v) for v in params["display"]["cover_glass_mm"]]
+                    glass_w, glass_h, glass_t = [
+                        float(v) for v in params["display"]["cover_glass_mm"]
+                    ]
                     center_z = depth / 2.0 - 0.35
                     z_min = center_z - glass_t / 2.0
                     z_max = center_z + glass_t / 2.0
@@ -3236,7 +3258,7 @@ def write_solid_cad_handoff_artifacts(
                 ]
 
             def fallback_compound_from_boxes(
-                boxes: list[tuple[list[float], list[float]]]
+                boxes: list[tuple[list[float], list[float]]],
             ) -> tuple[Any, np.ndarray, np.ndarray]:
                 compound = TopoDS_Compound()
                 builder.MakeCompound(compound)
@@ -3348,9 +3370,7 @@ def write_solid_cad_handoff_artifacts(
                     "Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture.",
                 ],
             }
-            (REVIEW_DIR / "solid-cad-handoff.json").write_text(
-                json.dumps(report, indent=2) + "\n"
-            )
+            (REVIEW_DIR / "solid-cad-handoff.json").write_text(json.dumps(report, indent=2) + "\n")
             lines = [
                 "# E1 Phone Solid CAD Handoff",
                 "",
@@ -6004,8 +6024,7 @@ def write_solid_cad_handoff_artifacts(
             or not route.get("route_classes")
         )
         all_represented_routes_have_layer_source_and_class = (
-            represented_route_record_count > 0
-            and represented_route_classification_gap_count == 0
+            represented_route_record_count > 0 and represented_route_classification_gap_count == 0
         )
         represented_controlled_impedance_route_count = sum(
             1
@@ -6158,8 +6177,7 @@ def write_solid_cad_handoff_artifacts(
             for row in connection_rows
         ),
         "represented_route_records_with_route_class_count_total": sum(
-            int(row["represented_route_records_with_route_class_count"])
-            for row in connection_rows
+            int(row["represented_route_records_with_route_class_count"]) for row in connection_rows
         ),
         "represented_route_classification_gap_count": sum(
             int(row["represented_route_classification_gap_count"]) for row in connection_rows
@@ -15953,7 +15971,9 @@ def write_board_step_readiness_artifacts(
     if not isinstance(component_models_for_intake, list):
         component_models_for_intake = []
     bundled_kicad_cli = ROOT / "tools/bin/kicad-cli"
-    kicad_cli_path = str(bundled_kicad_cli) if bundled_kicad_cli.is_file() else shutil.which("kicad-cli")
+    kicad_cli_path = (
+        str(bundled_kicad_cli) if bundled_kicad_cli.is_file() else shutil.which("kicad-cli")
+    )
     kicad_cli_runner = ROOT / "scripts/kicad_run.sh"
     kicad_cli_available = bool(kicad_cli_path) or kicad_cli_runner.is_file()
 
@@ -16084,9 +16104,7 @@ def write_board_step_readiness_artifacts(
         "controlled_impedance_segment_visual_count": str(
             int(routed_step_visual_detail.get("controlled_impedance_segment_visual_count") or 0)
         ),
-        "via_net_name_count": str(
-            int(routed_step_visual_detail.get("via_net_name_count") or 0)
-        ),
+        "via_net_name_count": str(int(routed_step_visual_detail.get("via_net_name_count") or 0)),
         "cad_connection_count": str(
             int(cad_connection_coverage.get("passing_connection_count") or 0)
         ),
@@ -16406,9 +16424,7 @@ def write_board_step_readiness_artifacts(
         or 0
     )
     expected_routed_development_via_count = int(
-        development_step_intake.get("via_visual_count")
-        or development_board_state["via_count"]
-        or 0
+        development_step_intake.get("via_visual_count") or development_board_state["via_count"] or 0
     )
     development_step_local_review_ready = (
         development_board_state["exists"]
@@ -16479,9 +16495,7 @@ def write_board_step_readiness_artifacts(
             ),
             "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
             "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
-            "all_pad_visuals_have_contract": (
-                record.get("all_pad_visuals_have_contract") is True
-            ),
+            "all_pad_visuals_have_contract": (record.get("all_pad_visuals_have_contract") is True),
             "local_step_status": record.get("local_discrete_step_status"),
             "local_step_file": record.get("local_discrete_step_file"),
             "local_step_sha256": record.get("local_discrete_step_sha256"),
@@ -16624,8 +16638,7 @@ def write_board_step_readiness_artifacts(
             if isinstance(record, dict)
         ),
         "all_connection_records_have_cad_step": all(
-            record.get("cad_part")
-            and int(record.get("cad_step_bytes") or 0) > 0
+            record.get("cad_part") and int(record.get("cad_step_bytes") or 0) > 0
             for record in cad_connection_records
             if isinstance(record, dict)
         ),
@@ -16675,9 +16688,7 @@ def write_board_step_readiness_artifacts(
         "kicad_cli_available": bool(kicad_cli_preflight["available"]),
         "drc_status": str(kicad_cli_preflight["drc_status"]),
         "erc_status": str(kicad_cli_preflight["erc_status"]),
-        "route_visual_record_count": detailed_routed_step_candidate[
-            "route_visual_record_count"
-        ],
+        "route_visual_record_count": detailed_routed_step_candidate["route_visual_record_count"],
         "route_visual_records": detailed_routed_step_candidate["route_visual_records"],
         "via_visual_record_count": detailed_routed_step_candidate["via_visual_record_count"],
         "via_visual_records": detailed_routed_step_candidate["via_visual_records"],
@@ -16687,9 +16698,7 @@ def write_board_step_readiness_artifacts(
         "filled_copper_zone_filled_polygon_count": detailed_routed_step_candidate[
             "filled_copper_zone_filled_polygon_count"
         ],
-        "filled_copper_zone_records": detailed_routed_step_candidate[
-            "filled_copper_zone_records"
-        ],
+        "filled_copper_zone_records": detailed_routed_step_candidate["filled_copper_zone_records"],
         "component_model_record_count": detailed_routed_step_candidate[
             "component_model_record_count"
         ],

@@ -109,9 +109,7 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     required_statuses: dict[str, str] = {}
     for status_name, artifact_names in STATUS_ARTIFACTS.items():
         required_statuses[status_name] = (
-            "blocked"
-            if any(name in blocked_artifacts for name in artifact_names)
-            else "passed"
+            "blocked" if any(name in blocked_artifacts for name in artifact_names) else "passed"
         )
 
     manifest_status = "blocked" if blocked_artifacts else "passed"
@@ -159,7 +157,9 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             "artifacts": len(states),
             "blocked_artifacts": len(blocked_artifacts),
             "passed_statuses": sum(1 for value in required_statuses.values() if value == "passed"),
-            "blocked_statuses": sum(1 for value in required_statuses.values() if value == "blocked"),
+            "blocked_statuses": sum(
+                1 for value in required_statuses.values() if value == "blocked"
+            ),
         },
         "findings": findings,
         "artifact_states": states,

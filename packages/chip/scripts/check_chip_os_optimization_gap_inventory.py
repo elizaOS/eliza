@@ -9,10 +9,10 @@ Linux/AOSP merely boot or actually run the launcher and agent without issues.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -293,6 +293,7 @@ def status_value(data: object) -> str | None:
 
 def bool_false_fields(data: object) -> list[str]:
     fields: list[str] = []
+
     def walk(value: object, prefix: str) -> None:
         if isinstance(value, dict):
             for key, child in value.items():

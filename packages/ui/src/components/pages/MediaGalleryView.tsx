@@ -314,18 +314,23 @@ export function MediaGalleryView({
           : tables.map((t) => t.name);
       const scanLimit = mediaTableNames.length > 0 ? 500 : 100;
 
-      for (const tableName of tablesToScan.slice(0, 10)) {
-        try {
-          const result: QueryResult = await client.executeDatabaseQuery(
-            `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
-          );
-          const rows = Array.isArray(result.rows) ? result.rows : [];
-          const items = extractMediaFromRows(rows, tableName);
-          allMedia.push(...items);
-        } catch {
-          // skip tables that fail
-        }
-      }
+      // Scan the candidate tables concurrently — they are independent queries,
+      // and the sequential loop made the gallery wait on up to 10 round-trips.
+      const scanResults = await Promise.all(
+        tablesToScan.slice(0, 10).map(async (tableName) => {
+          try {
+            const result: QueryResult = await client.executeDatabaseQuery(
+              `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
+            );
+            const rows = Array.isArray(result.rows) ? result.rows : [];
+            return extractMediaFromRows(rows, tableName);
+          } catch {
+            // skip tables that fail
+            return [] as MediaItem[];
+          }
+        }),
+      );
+      for (const items of scanResults) allMedia.push(...items);
 
       // Sort by date descending
       allMedia.sort((a, b) => {

@@ -26,11 +26,10 @@ export interface MainTabApp {
 /**
  * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
  *
- * The shell lands on the "home" assistant view (clouds backdrop + voice
- * waveform + bottom-center assistant pill) by default. Chat stays reachable
- * as a non-default tab.
+ * The shell lands on chat by default. (Onboarding is shown first when first-run
+ * is incomplete; once complete, the landing surface is chat.)
  */
-export const MAIN_TAB_FALLBACK = "home" as const;
+export const MAIN_TAB_FALLBACK = "chat" as const;
 
 /** Read the `mainTab` flag, ignoring non-boolean values defensively. */
 function declaresMainTab(app: RegistryAppInfo): boolean {
@@ -66,7 +65,7 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
  * Reads the cached apps catalog (`readAppsCache()`) synchronously and
  * runs `getMainTabApp()` against it. Used at boot before the apps API
  * call has resolved, so the shell can pick a landing tab without
- * waiting on the network. Falls back to `MAIN_TAB_FALLBACK` ("home")
+ * waiting on the network. Falls back to `MAIN_TAB_FALLBACK` ("chat")
  * when:
  *   - the cache is empty (first run), or
  *   - no app declares `mainTab: true`.

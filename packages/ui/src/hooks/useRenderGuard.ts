@@ -7,8 +7,15 @@ import { useEffect, useRef } from "react";
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 
-const INFO_THRESHOLD = 2;
-const ERROR_THRESHOLD = 3;
+// Thresholds describe a *runaway render loop*, not ordinary churn. Normal
+// behaviour — startup data settling, typing, dragging, token streaming — easily
+// produces a handful of commits per second, and React StrictMode double-invokes
+// the mount effect in dev, so the previous 2/3 thresholds fired constantly on
+// healthy components (e.g. FirstRunScreen during first-run). A real loop renders
+// continuously, far faster than any interaction sustains, so only a rate well
+// above one commit per frame is flagged.
+const INFO_THRESHOLD = 60;
+const ERROR_THRESHOLD = 120;
 const WINDOW_MS = 1000;
 
 type ImportMetaWithEnv = ImportMeta & {
@@ -32,8 +39,16 @@ type RenderTelemetrySink = (event: RenderTelemetryEvent) => void;
 
 let renderTelemetrySink: RenderTelemetrySink | null = null;
 
+type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
+};
+
 function readEnvValue(key: string): boolean | string | undefined {
   const meta = import.meta as ImportMetaWithEnv;
+  if (key === "VITE_ELIZA_RENDER_TELEMETRY") {
+    const explicit = meta.env?.VITE_ELIZA_RENDER_TELEMETRY;
+    if (explicit !== undefined) return explicit;
+  }
   const viteValue = meta.env?.[key];
   if (viteValue !== undefined) return viteValue;
   if (typeof process !== "undefined") {
@@ -43,6 +58,13 @@ function readEnvValue(key: string): boolean | string | undefined {
 }
 
 function isRenderTelemetryEnabled(): boolean {
+  if (
+    (globalThis as RenderTelemetryGlobal)
+      .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
+  ) {
+    return false;
+  }
+
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
   if (explicit === false || explicit === "0" || explicit === "false") {
     return false;
@@ -102,12 +124,14 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
 }
 
 /**
- * Development/test-only render-rate guard.
+ * Development/test-only guard for runaway render loops.
  *
- * Tracks render timestamps for the named component. It emits structured
- * telemetry and logs once when a component renders twice within the telemetry
- * window, then escalates to `console.error` if it reaches three renders within
- * that same window. Production builds skip all work.
+ * Tracks commit timestamps for the named component within a 1s sliding window
+ * and emits structured telemetry only when the rate is high enough to indicate
+ * a loop rather than ordinary churn: an `info` heads-up at `INFO_THRESHOLD`
+ * commits/window, escalating to a single `console.error` at `ERROR_THRESHOLD`.
+ * Thresholds sit well above normal startup churn, typing, dragging, and token
+ * streaming to avoid false positives. Production builds skip all work.
  */
 export function useRenderGuard(name: string): void {
   const timestamps = useRef<number[]>([]);

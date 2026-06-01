@@ -29,6 +29,7 @@ const lifeOpsClient = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   client: lifeOpsClient,
   AppWorkspaceChrome: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", props),

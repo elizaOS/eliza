@@ -268,7 +268,7 @@ function inferApprovalRequest(
   };
 }
 
-function captureConnectorDispatchesFromAction(
+export function captureConnectorDispatchesFromAction(
   connectorDispatches: CapturedConnectorDispatch[],
   actionName: string,
   parameters: unknown,
@@ -278,8 +278,12 @@ function captureConnectorDispatchesFromAction(
   const params = toRecord(paramsRecord?.parameters) ?? paramsRecord;
   const resultRecord = toRecord(result);
   const resultData = toRecord(resultRecord?.data);
+  // Only record a dispatch as delivered when the action explicitly reports
+  // success. Defaulting to `true` would let a "messageDelivered" final check
+  // pass on a handler that returned no boolean `success` — inconsistent with the
+  // safe default used for the captured action result below (undefined, not true).
   const delivered =
-    typeof resultRecord?.success === "boolean" ? resultRecord.success : true;
+    typeof resultRecord?.success === "boolean" ? resultRecord.success : false;
   const blob = [
     JSON.stringify(params ?? {}),
     JSON.stringify(resultData ?? {}),

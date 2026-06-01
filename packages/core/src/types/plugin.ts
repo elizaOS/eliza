@@ -43,6 +43,8 @@ export type RouteBodyValue = JsonValue;
  */
 export interface RouteRequest {
 	body?: Record<string, RouteBodyValue>;
+	/** Raw UTF-8 body bytes (required for webhook HMAC verification). */
+	rawBody?: string;
 	params?: Record<string, string>;
 	query?: Record<string, string | string[]>;
 	headers?: Record<string, string | string[] | undefined>;
@@ -76,6 +78,8 @@ export interface RouteResponse {
  */
 export interface RouteHandlerContext {
 	body: unknown;
+	/** Raw UTF-8 body when the transport preserved it (webhook signature verification). */
+	rawBody?: string;
 	params: Record<string, string>;
 	query: Record<string, string | string[]>;
 	headers: Record<string, string>;

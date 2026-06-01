@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { openExternalUrl } from "@elizaos/ui";
 import {
   cleanup,
   fireEvent,
@@ -10,14 +9,19 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { openExternalUrl } from "@elizaos/ui";
 
-vi.mock(
-  "react",
-  async () =>
-    await import(
-      "../../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"
-    ),
-);
+// Resolve the actual react entry the runtime uses so the mock deduplicates the
+// React instance regardless of the installed version (the bun store layout and
+// version are not stable enough to hardcode a path).
+const { reactEntry } = vi.hoisted(() => {
+  const { createRequire } = require("node:module") as typeof import("node:module");
+  const { fileURLToPath } = require("node:url") as typeof import("node:url");
+  const requireFromHere = createRequire(fileURLToPath(import.meta.url));
+  return { reactEntry: requireFromHere.resolve("react") };
+});
+
+vi.mock("react", async () => await import(reactEntry));
 
 const trainingClient = vi.hoisted(() => ({
   getTrainingStatus: vi.fn(),
@@ -54,11 +58,12 @@ const uiExtensionMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", { type: "button", ...props }, children),
+    React.createElement("button", props, children),
   ContentLayout: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   client: trainingClient,
@@ -67,10 +72,6 @@ vi.mock("@elizaos/ui", () => ({
   parsePositiveFloat: (value: string) => Number.parseFloat(value),
   parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
   registerDetailExtension: uiExtensionMocks.registerDetailExtension,
-  useAgentElement: () => ({
-    ref: vi.fn(),
-    agentProps: {},
-  }),
   useApp: () => ({
     handleRestart: vi.fn(),
     setActionNotice: vi.fn(),
@@ -95,15 +96,15 @@ vi.mock("./fine-tuning-panels.js", () => ({
   TrajectoriesSection: () => React.createElement("section", {}, "trajectories"),
 }));
 
-import { DEFAULT_ELIZA1_HF_DATASET_FILES } from "../core/huggingface-dataset-ingest.js";
-import type { TrainingAnalysisIndex } from "../core/training-analysis-index.js";
-import { buildTrainingReadinessReportPayload } from "../core/training-readiness-report.js";
 import {
   FineTuningDetailExtension,
   FineTuningTuiView,
   FineTuningView,
   interact,
 } from "./FineTuningView";
+import type { TrainingAnalysisIndex } from "../core/training-analysis-index.js";
+import { buildTrainingReadinessReportPayload } from "../core/training-readiness-report.js";
+import { DEFAULT_ELIZA1_HF_DATASET_FILES } from "../core/huggingface-dataset-ingest.js";
 
 const sampleStatus = {
   runningJobs: 1,
@@ -1397,14 +1398,10 @@ describe("FineTuningTuiView", () => {
 
     render(React.createElement(FineTuningView));
 
-    fireEvent.click(
-      await screen.findByText("finetuningview.StageEliza1Bundle"),
-    );
+    fireEvent.click(await screen.findByText("finetuningview.StageEliza1Bundle"));
 
     expect(
-      await screen.findByText(
-        "/tmp/eliza-stage/eliza1-bundle-stage-manifest.json",
-      ),
+      await screen.findByText("/tmp/eliza-stage/eliza1-bundle-stage-manifest.json"),
     ).toBeTruthy();
     expect(
       await screen.findByText("/tmp/eliza-1-bundles/eliza-1-0_8b.bundle"),
@@ -1717,9 +1714,7 @@ describe("FineTuningTuiView", () => {
       /feed:feed-history-traj task:market_tick input:feed history input output:feed history output/,
     );
     await screen.findByText("feed:feed-history");
-    fireEvent.click(
-      await screen.findByText("training_jsonl:feed-history-trajectories.jsonl"),
-    );
+    fireEvent.click(await screen.findByText("training_jsonl:feed-history-trajectories.jsonl"));
     expect(openExternalUrl).toHaveBeenCalledWith(
       "file:///tmp/training-collection/feed/feed-history-trajectories.jsonl",
     );
@@ -1760,9 +1755,9 @@ describe("FineTuningTuiView", () => {
         /live:yes app_core_action_benchmark:ok->\/workspace\/eliza\/packages\/app-core\/test\/benchmarks\/action-selection\.real\.test\.ts \| action_benchmark_provider:warning \| cerebras_api_key:missing/,
       ),
     ).toHaveLength(2);
-    expect(
-      await screen.findAllByText(/action_benchmark_endpoint:ok/),
-    ).toHaveLength(2);
+    expect(await screen.findAllByText(/action_benchmark_endpoint:ok/)).toHaveLength(
+      2,
+    );
     await screen.findByText("Analysis benchmark improvement");
     await screen.findByText("Feed generation evidence");
     await screen.findByText("Step artifact outputs");

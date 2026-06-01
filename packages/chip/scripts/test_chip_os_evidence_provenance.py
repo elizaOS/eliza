@@ -188,9 +188,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 data = provenance.build_report(["packages/chip/docs/evidence"])
 
         host_findings = [
-            finding
-            for finding in data["findings"]
-            if finding["category"] == "host_local_path"
+            finding for finding in data["findings"] if finding["category"] == "host_local_path"
         ]
         self.assertEqual(len(host_findings), 1)
         self.assertEqual(host_findings[0]["path"], "packages/chip/docs/evidence/qemu-raw.log")
@@ -504,9 +502,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                                 },
                             }
                         },
-                        "benchmark_stdout": (
-                            "measured silicon power stays BLOCKED until lab run"
-                        ),
+                        "benchmark_stdout": ("measured silicon power stays BLOCKED until lab run"),
                     }
                 )
                 + "\n",

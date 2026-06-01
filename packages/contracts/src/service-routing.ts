@@ -49,6 +49,7 @@ export const LINKED_ACCOUNT_PROVIDER_IDS = [
 	'deepseek-api',
 	'zai-api',
 	'moonshot-api',
+	'cerebras-api',
 ] as const;
 
 export type LinkedAccountProviderId = (typeof LINKED_ACCOUNT_PROVIDER_IDS)[number];

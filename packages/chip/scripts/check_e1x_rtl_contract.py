@@ -448,7 +448,9 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_repair_aware_router_terms),
         }
     )
-    repair_routed_router = (ROOT / "rtl/e1x/e1x_repair_routed_router.sv").read_text(encoding="utf-8")
+    repair_routed_router = (ROOT / "rtl/e1x/e1x_repair_routed_router.sv").read_text(
+        encoding="utf-8"
+    )
     repair_routed_router_terms = (
         "e1x_repair_route_table",
         "e1x_repair_aware_router",
@@ -539,9 +541,7 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_repair_mmio_routed_tile_terms),
         }
     )
-    repair_fuse_reader = (ROOT / "rtl/e1x/e1x_repair_fuse_reader.sv").read_text(
-        encoding="utf-8"
-    )
+    repair_fuse_reader = (ROOT / "rtl/e1x/e1x_repair_fuse_reader.sv").read_text(encoding="utf-8")
     repair_fuse_reader_terms = (
         "e1x_repair_fuse_reader",
         "otp_read_valid_o",
@@ -729,21 +729,26 @@ def verilator_pe_tile_check() -> dict[str, str]:
 
 
 def main() -> int:
-    checks = structural_checks() + model_checks() + [
-        verilator_check(),
-        verilator_pe_tile_check(),
-        verilator_mesh_fabric_check(),
-        verilator_reduction_merge_check(),
-    ]
+    checks = (
+        structural_checks()
+        + model_checks()
+        + [
+            verilator_check(),
+            verilator_pe_tile_check(),
+            verilator_mesh_fabric_check(),
+            verilator_reduction_merge_check(),
+        ]
+    )
     failures = [check for check in checks if check["status"] == "fail"]
     report = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-rtl-contract-check",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "subsystem": "e1x",
         **FALSE_CLAIM_FLAGS,
         "claim_boundary": "E1X RTL contract and architecture-model consistency only; RV64IM_Zicsr_Zifencei PE core is present but this is not full RISC-V compliance, wafer-scale RTL, PD, DFT, package, or silicon evidence.",

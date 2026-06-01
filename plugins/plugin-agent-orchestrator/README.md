@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for elizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
@@ -58,17 +58,24 @@ export default {
 
 ## Action surface
 
-| Action | Purpose |
-| --- | --- |
-| `ACPX_CREATE_TASK` (`CREATE_TASK`) | One-shot: spawn + prompt + return. Captures origin metadata for routing. |
-| `SPAWN_AGENT` | Start a long-lived ACP coding-agent session. Returns `data.agents[]`. |
-| `SEND_TO_AGENT` | Send a follow-up prompt to a running session. The main agent uses this to push a sub-agent further when its proof is unsatisfying. |
-| `STOP_AGENT` | Cooperatively cancel + close a session. |
-| `LIST_AGENTS` | List active and persisted sessions. |
-| `CANCEL_TASK` | Cancel an in-flight task while preserving history. |
-| `TASK_HISTORY` / `TASK_CONTROL` / `TASK_SHARE` | ACP session lifecycle and sharing helpers. |
-| `PROVISION_WORKSPACE` / `FINALIZE_WORKSPACE` | Git workspace setup, commit, push, PR open. |
-| `MANAGE_ISSUES` | GitHub issue create/list/update/close. |
+All actions are virtual sub-operations of the single `TASKS` parent action, promoted via `promoteSubactionsToActions` with the `TASKS_` prefix.
+
+| Promoted action | Sub-operation | Purpose |
+| --- | --- | --- |
+| `TASKS_CREATE` | `create` | One-shot: spawn + prompt + return. Captures origin metadata for routing. |
+| `TASKS_SPAWN_AGENT` | `spawn_agent` | Start a long-lived ACP coding-agent session. Returns active session info. |
+| `TASKS_SEND` | `send` | Send a follow-up prompt to a running session (`SEND_TO_AGENT` simile). |
+| `TASKS_STOP_AGENT` | `stop_agent` | Cooperatively cancel + close a session. |
+| `TASKS_LIST_AGENTS` | `list_agents` | List active and persisted sessions. |
+| `TASKS_CANCEL` | `cancel` | Cancel an in-flight task while preserving history. |
+| `TASKS_HISTORY` | `history` | Retrieve past task sessions. |
+| `TASKS_CONTROL` | `control` | Lifecycle control: pause/resume/stop/continue/archive/reopen. |
+| `TASKS_SHARE` | `share` | Share a task session. |
+| `TASKS_PROVISION_WORKSPACE` | `provision_workspace` | Clone repo, create git worktree for a task. |
+| `TASKS_SUBMIT_WORKSPACE` | `submit_workspace` | Commit, push, open PR for a workspace. |
+| `TASKS_MANAGE_ISSUES` | `manage_issues` | GitHub issue create/list/get/update/comment/close/reopen/add_labels. |
+| `TASKS_ARCHIVE` | `archive` | Archive a completed coding task. |
+| `TASKS_REOPEN` | `reopen` | Reopen an archived task. |
 
 ## Providers
 
@@ -76,12 +83,14 @@ export default {
 - `ACTIVE_SUB_AGENTS` — cache-stable view of currently-routed sub-agent sessions; sorted by sessionId, structural fields only (no timestamps, no message excerpts), so the planner-visible block stays cached across status flips.
 - `ACTIVE_WORKSPACE_CONTEXT` — live workspace/session state.
 - `CODING_AGENT_EXAMPLES` — structured action call examples.
+- `CODING_SESSION_CHANGES` — real git changeset for "show me the diff" queries.
 
 ## Services
 
 - `AcpService` — ACP subprocess lifecycle, session state, event emission, and transport selection. Registers under `ACP_SUBPROCESS_SERVICE`.
-- `SubAgentRouter` (canonical) — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
-- `CodingWorkspaceService` — git workspace lifecycle helpers.
+- `OrchestratorTaskService` — durable task store, sub-agent lifecycle API, event bridge from ACP to task records. Registers under `ORCHESTRATOR_TASK_SERVICE`.
+- `SubAgentRouter` — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Registers under `ACPX_SUB_AGENT_ROUTER`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
+- `CodingWorkspaceService` — git workspace lifecycle helpers. Registers under `CODING_WORKSPACE_SERVICE`.
 
 ```ts
 import { AcpService, SubAgentRouter } from "@elizaos/plugin-agent-orchestrator";
@@ -132,7 +141,7 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native`
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
-| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native ElizaOS ACP command. |
+| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
@@ -177,7 +186,7 @@ node tests/e2e/acp-codex-smoke.mjs
 RUN_LIVE_ACPX=1 bun run test
 
 # Native ACP adapter smoke (gated, no-op unless enabled):
-RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
+RUN_LIVE_NATIVE_ACP=1 node tests/e2e/live-native-acp-smoke.mjs
 ```
 
 `acp-codex-smoke.mjs` exercises the legacy `acpx` path by spawning a real codex session, sending "what is 7 + 8?", and verifying `task_complete` fires with response `"15"`. The vitest live test (`__tests__/live/sub-agent-router.live.test.ts`) verifies the synthetic Memory routes back from a real subprocess into a test `messageService.handleMessage` with all routing keys intact. Both no-op (skip) when `acpx` isn't installed.
@@ -185,8 +194,8 @@ RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
 `live-native-acp-smoke.mjs` sets `ELIZA_ACP_TRANSPORT=native`, starts a native ACP adapter over stdio, sends a tiny math prompt, and verifies the prompt response ended with `stopReason: "end_turn"` and final text containing `15`. Optional providers require explicit commands:
 
 ```bash
-RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" bun run test:e2e:native
-RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" bun run test:e2e:native
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" node tests/e2e/live-native-acp-smoke.mjs
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" node tests/e2e/live-native-acp-smoke.mjs
 ```
 
 The native smoke skips successfully when `RUN_LIVE_NATIVE_ACP` is unset, when an optional provider command is not configured, or when the adapter reports missing authentication/credentials. Use `RUN_LIVE_NATIVE_ACP=1 bun run test -- __tests__/live/native-acp-smoke.live.test.ts` to run the same smoke through Vitest.
@@ -203,7 +212,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run test` | Run the plugin vitest suite. |
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |
-| `bun run test:e2e:native` | Run the gated native ACP adapter smoke when `RUN_LIVE_NATIVE_ACP=1`. |
+| `bun run test:watch` | Run the vitest suite in watch mode. |
 | `bun run lint:check` | Run Biome checks without writing changes. |
 | `bun run lint` | Run Biome checks with write/unsafe fixes. |
 | `bun run format:check` | Check formatting. |
@@ -212,7 +221,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 
 ## Status
 
-`2.0.0-beta.2` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is available behind `ELIZA_ACP_TRANSPORT=native`.
+`2.0.3-beta.0` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is the default (`ELIZA_ACP_TRANSPORT=native`).
 
 ## Contributing
 

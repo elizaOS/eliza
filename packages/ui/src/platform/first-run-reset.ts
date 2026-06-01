@@ -55,6 +55,22 @@ export function enableForceFreshFirstRun(storage?: StorageLike | null): void {
   }
 }
 
+/**
+ * Escape hatch for stranded startup screens (pairing-disabled dead-end,
+ * unreachable saved backend, bootstrap with no valid token). Forces a fresh
+ * first-run on the next boot, then reloads. Unlike merely dropping the saved
+ * server, `enableForceFreshFirstRun` makes the restore phase clear the saved
+ * server AND the first-run-complete flag deterministically (no reliance on
+ * probing for a local agent), so a returning user always lands on onboarding
+ * instead of the "previously configured backend is unreachable" error.
+ */
+export function startFreshFirstRunReload(storage?: StorageLike | null): void {
+  enableForceFreshFirstRun(storage);
+  if (typeof window !== "undefined") {
+    window.location.reload();
+  }
+}
+
 export function clearForceFreshFirstRun(storage?: StorageLike | null): void {
   const resolvedStorage = getStorage(storage);
   if (!resolvedStorage) {

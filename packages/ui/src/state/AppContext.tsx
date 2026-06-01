@@ -78,7 +78,6 @@ import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
-import { useVincentState } from "./useVincentState";
 import { useWalletState } from "./useWalletState";
 
 /**
@@ -174,9 +173,7 @@ export { AGENT_READY_TIMEOUT_MS } from "./types";
  * main-tab app; callers can open the companion overlay separately.
  *
  * Resolved synchronously from the cached apps catalog at module load.
- * Falls back to "home" when no installed app declares
- * `elizaos.app.mainTab=true`, keeping the clouds/avatar assistant surface as
- * the default shell landing page.
+ * Falls back to chat when no installed app declares `elizaos.app.mainTab=true`.
  */
 const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
 
@@ -1112,15 +1109,6 @@ function AppProviderInner({
     disconnectLocked: brandingOverride?.cloudOnly === true,
   });
 
-  // ── Vincent state (extracted to useVincentState) ──────────────────
-  const vincentHook = useVincentState({ setActionNotice, t });
-  const {
-    vincentConnected,
-    vincentLoginBusy,
-    vincentLoginError,
-    handleVincentLogin,
-    handleVincentDisconnect,
-  } = vincentHook;
   const {
     elizaCloudEnabled,
     setElizaCloudEnabled,
@@ -1696,6 +1684,11 @@ function AppProviderInner({
   // calls when no sessions are active.
   const hasPtySessionsRef = useRef(ptySessions.length > 0);
   hasPtySessionsRef.current = ptySessions.length > 0;
+  // Lets the startup coordinator's PTY hydration gate the orchestrator/coding-agent
+  // routes until the agent runtime is running, avoiding the 404/503 console burst
+  // during the post-(re)start window before those services finish starting.
+  const agentRunningRef = useRef(agentStatus?.state === "running");
+  agentRunningRef.current = agentStatus?.state === "running";
 
   // ── StartupCoordinator (sole startup authority) ──────────────────────
   // Called after all dependency hooks so every setter/callback is available.
@@ -1751,6 +1744,7 @@ function AppProviderInner({
     setWalletAddresses,
     setPtySessions,
     hasPtySessionsRef,
+    agentRunningRef,
     setTab,
     setTabRaw,
     setConversationMessages,
@@ -2335,11 +2329,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2746,11 +2735,6 @@ function AppProviderInner({
       handleCloudDisconnect,
       switchAgentProfile,
       handleCloudFirstRunFinish,
-      vincentConnected,
-      vincentLoginBusy,
-      vincentLoginError,
-      handleVincentLogin,
-      handleVincentDisconnect,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,

@@ -79,6 +79,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/shared": () => import("@elizaos/shared"),
   "@elizaos/ui": () => import("@elizaos/ui"),
   "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
+  "@elizaos/ui/agent-surface": () => import("../../agent-surface/index.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>

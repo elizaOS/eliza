@@ -53,8 +53,14 @@ def test_e1x_small_grid_has_deterministic_defects_in_bounds() -> None:
 
     assert all(core.row < config.physical_rows for core in blocked_cores)
     assert all(core.col < config.physical_cols for core in blocked_cores)
-    assert all(link.a.row < config.physical_rows and link.b.row < config.physical_rows for link in blocked_links)
-    assert all(link.a.col < config.physical_cols and link.b.col < config.physical_cols for link in blocked_links)
+    assert all(
+        link.a.row < config.physical_rows and link.b.row < config.physical_rows
+        for link in blocked_links
+    )
+    assert all(
+        link.a.col < config.physical_cols and link.b.col < config.physical_cols
+        for link in blocked_links
+    )
 
 
 def test_e1x_evidence_generator_emits_json(tmp_path: Path) -> None:
@@ -104,7 +110,9 @@ def test_scaled_8gb_profile_loads_quantized_model_under_high_defects() -> None:
     assert report["high_failure_execution_trace_sha256"]
     high = report["defect_testing"]["scenarios"][1]
     assert high["scenario"] == "high_failure_rate_repair_stress"
-    assert high["blocked_core_count"] > report["defect_testing"]["scenarios"][0]["blocked_core_count"]
+    assert (
+        high["blocked_core_count"] > report["defect_testing"]["scenarios"][0]["blocked_core_count"]
+    )
     assert high["route_check_mode"] == "sampled"
     assert high["logical_neighbor_paths_checked"] >= 4096
 
@@ -130,7 +138,10 @@ def test_scaled_8gb_defect_map_and_repair_manifest_handoff() -> None:
     assert repair_rom["word_bits"] == 64
     assert repair_rom["remap_word_count"] == repair_manifest["remapped_core_count"]
     assert repair_rom["route_sample_word_count"] == len(repair_manifest["sampled_routes"])
-    assert repair_rom["total_word_count"] == 8 + repair_rom["remap_word_count"] + repair_rom["route_sample_word_count"]
+    assert (
+        repair_rom["total_word_count"]
+        == 8 + repair_rom["remap_word_count"] + repair_rom["route_sample_word_count"]
+    )
 
 
 def test_scaled_execution_trace_links_repair_and_model_shard() -> None:

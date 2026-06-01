@@ -51,7 +51,10 @@ import {
   type UsageState,
 } from "./orchestrator-task-types.js";
 import type { ApprovalPreset } from "./types.js";
-import { resolveAllowedWorkdir } from "./workdir-validation.js";
+import {
+  ensureTaskWorkdir,
+  resolveAllowedWorkdir,
+} from "./workdir-validation.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -268,13 +271,45 @@ export class OrchestratorTaskService extends Service {
     this.started = true;
     const acp = this.acp();
     if (acp) {
-      this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
-        void this.onSessionEvent(sessionId, event, data);
-      });
-    } else {
+      this.subscribeToAcp(acp);
+      return;
+    }
+    // ACP may not be registered yet — service start order during boot isn't
+    // guaranteed. Wait for it to load so session events are still recorded once
+    // it comes online, instead of giving up after the first miss.
+    void this.bindToAcpWhenReady();
+  }
+
+  private subscribeToAcp(acp: AcpService): void {
+    this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
+      void this.onSessionEvent(sessionId, event, data);
+    });
+  }
+
+  private async bindToAcpWhenReady(): Promise<void> {
+    const getLoadPromise = this.runtime.getServiceLoadPromise;
+    if (typeof getLoadPromise !== "function") {
       this.log(
         "warn",
         "ACP service unavailable at start; session events will not be recorded",
+      );
+      return;
+    }
+    try {
+      const acp = (await getLoadPromise.call(
+        this.runtime,
+        AcpService.serviceType,
+      )) as AcpService;
+      if (this.started && !this.unsubscribe) {
+        this.subscribeToAcp(acp);
+      }
+    } catch (error) {
+      this.log(
+        "warn",
+        "ACP service did not become available; session events will not be recorded",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
       );
     }
   }
@@ -283,6 +318,43 @@ export class OrchestratorTaskService extends Service {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.started = false;
+  }
+
+  // ---- live change bus ---------------------------------------------------
+  // A lightweight per-task pub/sub so the SSE stream route can push the
+  // workbench a "something changed" ping the instant a message/event/usage/
+  // status is written — replacing poll latency with near-live updates. The
+  // payload is intentionally coarse (just a ping); the client refetches the
+  // room tail, which keeps this decoupled from the record shapes.
+  private readonly changeListeners = new Map<string, Set<() => void>>();
+
+  /** Subscribe to change pings for a task. Returns an unsubscribe function. */
+  subscribeTaskChanges(taskId: string, listener: () => void): () => void {
+    let listeners = this.changeListeners.get(taskId);
+    if (!listeners) {
+      listeners = new Set();
+      this.changeListeners.set(taskId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      const set = this.changeListeners.get(taskId);
+      if (!set) return;
+      set.delete(listener);
+      if (set.size === 0) this.changeListeners.delete(taskId);
+    };
+  }
+
+  private emitChange(taskId: string): void {
+    const listeners = this.changeListeners.get(taskId);
+    if (!listeners) return;
+    for (const listener of listeners) {
+      // A broken subscriber must never break a write path.
+      try {
+        listener();
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // ---- event bridge ------------------------------------------------------
@@ -306,6 +378,7 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.applySessionEvent(taskId, sessionId, event, data);
+      this.emitChange(taskId);
     } catch (err) {
       this.log("warn", "failed to record session event", {
         sessionId,
@@ -476,6 +549,7 @@ export class OrchestratorTaskService extends Service {
       metadata: input.metadata ?? {},
       createdAt: nowIso(),
     });
+    this.emitChange(taskId);
   }
 
   private async resolveTaskId(sessionId: string): Promise<string | undefined> {
@@ -723,6 +797,21 @@ export class OrchestratorTaskService extends Service {
           });
         }
       }
+    } else if (acp) {
+      // No active coding agent — auto-spawn one to work on the message so
+      // messaging the orchestrator "just works" (parity with claude/codex):
+      // the default framework (opencode + Cerebras) into a per-task workdir.
+      try {
+        await this.spawnAgentForTask(taskId, {
+          task: content,
+          workdir: await ensureTaskWorkdir(taskId),
+        });
+        forwardedTo.push("auto-spawned");
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        failedTo.push({ sessionId: "(auto-spawn)", error });
+        this.log("warn", "auto-spawn on user message failed", { error });
+      }
     }
     return { recorded: true, forwardedTo, failedTo };
   }
@@ -785,7 +874,10 @@ export class OrchestratorTaskService extends Service {
     });
 
     const result = await acp.spawnSession({
-      agentType: opts.framework ?? policy.preferredFramework,
+      // Default the orchestrator's coding agent to the vendored opencode
+      // backend (auto-detects the user's Cerebras key) rather than the
+      // unimplemented "elizaos" native default, which has no ACP command.
+      agentType: opts.framework ?? policy.preferredFramework ?? "opencode",
       workdir,
       initialTask: goalPrompt,
       model: opts.model ?? policy.model,

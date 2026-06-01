@@ -15,7 +15,9 @@ PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 SCHEDULE = ROOT / "benchmarks/results/e1x-real-graph-tensor-tile-schedule.json"
 CORE_COCOTB_REPORT = ROOT / "build/reports/e1x_core_cocotb.json"
 LOADER_RTL = ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv"
-GENERATED_SHARD_SAMPLE = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
+GENERATED_SHARD_SAMPLE = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
+)
 
 WORD_BYTES = 4
 
@@ -76,7 +78,9 @@ def main() -> int:
         "model-load stream inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_model_load_stream_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_load_stream_inputs_present", "status": status, "detail": detail}
+    )
 
     model_load = load_json(MODEL_LOAD) if MODEL_LOAD.is_file() else {}
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
@@ -103,7 +107,9 @@ def main() -> int:
         "tensor schedule links to placement and reports all shards fit SRAM",
         "schedule does not link to placement or reports shard fit failure",
     )
-    checks.append({"id": "e1x_model_load_stream_schedule_links_placement", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_load_stream_schedule_links_placement", "status": status, "detail": detail}
+    )
 
     scenario_loads = model_load.get("model_load_by_scenario", {})
     scenarios_ok = (
@@ -116,7 +122,13 @@ def main() -> int:
         "normal and high-failure scenarios both report resident model load success",
         "normal/high scenario model load success missing",
     )
-    checks.append({"id": "e1x_model_load_stream_normal_high_scenarios_loaded", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_load_stream_normal_high_scenarios_loaded",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     loader_terms = (
         "module e1x_local_sram_shard_loader",
@@ -134,7 +146,9 @@ def main() -> int:
         "local SRAM shard-loader RTL exposes load/readback/checksum contract",
         "missing loader terms: " + ", ".join(missing_loader_terms),
     )
-    checks.append({"id": "e1x_model_load_stream_loader_rtl_contract", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_load_stream_loader_rtl_contract", "status": status, "detail": detail}
+    )
 
     core_summary = core_cocotb.get("summary", {})
     sample_ok = (
@@ -148,7 +162,13 @@ def main() -> int:
         "core cocotb includes generated model-shard load/readback sample",
         "generated model-shard loader cocotb evidence missing",
     )
-    checks.append({"id": "e1x_model_load_stream_generated_shard_loader_cocotb", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_load_stream_generated_shard_loader_cocotb",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = placement.get("layers", [])
     usable_bytes = int(placement.get("usable_bytes_per_core", 0))
@@ -179,14 +199,16 @@ def main() -> int:
                 core_indices.add(int(record["logical_core_index"]))
             if len(sampled_records) < 6 and records:
                 first = records[0]
-                sampled_records.append({
-                    "layer_index": int(layer["index"]),
-                    "layer_name": str(layer["name"]),
-                    "logical_core_index": int(first["logical_core_index"]),
-                    "bytes_per_row": bytes_per_row,
-                    "row_count": int(first["row_count"]),
-                    "loader_words": int(first["loader_words"]),
-                })
+                sampled_records.append(
+                    {
+                        "layer_index": int(layer["index"]),
+                        "layer_name": str(layer["name"]),
+                        "logical_core_index": int(first["logical_core_index"]),
+                        "bytes_per_row": bytes_per_row,
+                        "row_count": int(first["row_count"]),
+                        "loader_words": int(first["loader_words"]),
+                    }
+                )
 
     layer_count = int(placement.get("layer_count", 0))
     expected_weight_bytes = int(placement.get("total_weight_bytes", 0))
@@ -204,7 +226,9 @@ def main() -> int:
         f"full load stream covers {layer_count} layers and {programmed_cores} unique logical cores",
         "coverage failures layers=" + ",".join(row_coverage_failures[:8]),
     )
-    checks.append({"id": "e1x_model_load_stream_full_layer_core_coverage", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_load_stream_full_layer_core_coverage", "status": status, "detail": detail}
+    )
 
     fit_ok = not fit_failures and max_shard_bytes <= usable_bytes <= 48 * 1024
     status, detail = pass_fail(
@@ -212,13 +236,20 @@ def main() -> int:
         f"all programmed shards fit placement SRAM budget; max shard {max_shard_bytes} B",
         "shards exceed placement SRAM budget in layers: " + ",".join(fit_failures[:8]),
     )
-    checks.append({"id": "e1x_model_load_stream_all_shards_fit_loader_capacity", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_load_stream_all_shards_fit_loader_capacity",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     byte_accounting_ok = (
         total_stream_bytes >= expected_weight_bytes
         and stream_padding_bytes >= 0
         and stream_padding_bytes / max(1, expected_weight_bytes) < 0.001
-        and total_loader_words >= int(model_load.get("model_load", {}).get("fabric_load_wavelets", 0))
+        and total_loader_words
+        >= int(model_load.get("model_load", {}).get("fabric_load_wavelets", 0))
     )
     status, detail = pass_fail(
         byte_accounting_ok,
@@ -228,9 +259,13 @@ def main() -> int:
         ),
         "loader stream byte accounting mismatch",
     )
-    checks.append({"id": "e1x_model_load_stream_byte_accounting", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_load_stream_byte_accounting", "status": status, "detail": detail}
+    )
 
-    reserve_mismatch_bytes = usable_bytes - int(model_load.get("model_load", {}).get("per_core_model_capacity_bytes", 0))
+    reserve_mismatch_bytes = usable_bytes - int(
+        model_load.get("model_load", {}).get("per_core_model_capacity_bytes", 0)
+    )
     residual_blocker = (
         "cycle_accurate_full_tensor_executor_missing"
         if reserve_mismatch_bytes == 0
@@ -248,7 +283,9 @@ def main() -> int:
         "total_stream_bytes": total_stream_bytes,
         "stream_padding_bytes": stream_padding_bytes,
         "stream_loader_word_transactions": total_loader_words,
-        "fabric_load_wavelets": int(model_load.get("model_load", {}).get("fabric_load_wavelets", 0)),
+        "fabric_load_wavelets": int(
+            model_load.get("model_load", {}).get("fabric_load_wavelets", 0)
+        ),
         "max_shard_bytes": max_shard_bytes,
         "placement_usable_bytes_per_core": usable_bytes,
         "scenario_per_core_model_capacity_bytes": int(

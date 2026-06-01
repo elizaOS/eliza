@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import hashlib
 import importlib.util
 import json
 import sys
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,9 +21,7 @@ DEFAULT_COCOTB_RESULTS = ROOT / "verify/cocotb/results/e1_npu_test_e1_npu.xml"
 DEFAULT_OUT = ROOT / "build/reports/npu_coverage_summary.json"
 
 REQUIRED_DIRECTED_TESTS: dict[str, tuple[str, ...]] = {
-    "opcode_runtime_contract": (
-        "npu_runtime_abi_sequence_matches_rtl_and_writes_coverage",
-    ),
+    "opcode_runtime_contract": ("npu_runtime_abi_sequence_matches_rtl_and_writes_coverage",),
     "invalid_programming": (
         "npu_gemm_invalid_config_reports_error_without_touching_scratch",
         "npu_descriptor_timeout_engine_faults_stalled_memory_fetch",
@@ -148,9 +146,7 @@ def fallback_test_sources() -> dict[str, bool]:
     return sources
 
 
-def build_summary(
-    cocotb_path: Path, results_path: Path = DEFAULT_COCOTB_RESULTS
-) -> dict[str, Any]:
+def build_summary(cocotb_path: Path, results_path: Path = DEFAULT_COCOTB_RESULTS) -> dict[str, Any]:
     runtime_cls = load_runtime_class()
     contract = load_json(CONTRACT)
     cocotb = load_json(cocotb_path)
@@ -194,9 +190,7 @@ def build_summary(
         },
         "precision_modes": runtime.precision_matrix(),
         "descriptor_fail_closed_paths": cocotb.get("descriptor_queue", {}),
-        "raw_cocotb_claim_flags": {
-            claim: cocotb.get(claim) for claim in RAW_FALSE_CLAIM_FLAGS
-        },
+        "raw_cocotb_claim_flags": {claim: cocotb.get(claim) for claim in RAW_FALSE_CLAIM_FLAGS},
         "counters": {
             "required": [
                 "unsupported_ops",

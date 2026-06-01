@@ -26,7 +26,7 @@ function toAgentRow(a: AgentListItem): ElizaAgentRow {
     bridge_port: null,
     web_ui_port: null,
     headscale_ip: null,
-    docker_image: null,
+    docker_image: a.dockerImage,
     sandbox_id: null,
     bridge_url: null,
     error_message: a.errorMessage,

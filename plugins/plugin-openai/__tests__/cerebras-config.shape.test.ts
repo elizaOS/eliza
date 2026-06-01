@@ -110,6 +110,20 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
   });
 
+  it("works with the exact env the Cerebras provider switch writes (key + model only)", () => {
+    // Mirrors provider-switch-config: CEREBRAS_API_KEY (envKey) +
+    // CEREBRAS_MODEL (PROVIDER_DEFAULT_MODELS) and nothing else. This is the
+    // real onboarding output, so it must resolve to a usable Cerebras client.
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
+  });
+
   it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {
     const runtime = buildRuntime({
       ELIZA_PROVIDER: "cerebras",

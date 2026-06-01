@@ -1,5 +1,6 @@
 import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import * as React from "react";
+import type * as ThreeNS from "three";
 
 import { cn } from "../../lib/utils";
 
@@ -201,8 +202,14 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
   return { analyser, stop };
 }
 
-type WebGPUModule = Record<string, any>;
+// three/webgpu re-exports everything from three plus WebGPURenderer and node
+// materials. We use the main "three" package types here to stay compatible with
+// tsc's moduleResolution:bundler resolution of untyped subpath exports, while
+// tsgo (used by packages/ui) handles the subpath exports directly.
+// biome-ignore lint/suspicious/noExplicitAny: three/webgpu & three/tsl are dynamically-typed GPU shader builder APIs with no .d.ts in the three package's build directory; these types are only used internally in mountOrb and are correct at runtime.
+type WebGPUModule = typeof ThreeNS & Record<string, any>;
 type TSLModule = Record<string, any>;
+type WebGPUTexture = ThreeNS.Texture;
 
 // Camera framing. The orb sits at the origin; these constants let the orb be
 // scaled to a stable on-screen pixel diameter regardless of viewport size.
@@ -220,7 +227,7 @@ function worldPerPixel(heightPx: number): number {
  * warm bloom) so the glass has a reflective rim and surface sheen. Without an
  * environment the glass reads as matte jelly rather than a refractive orb.
  */
-function makeStudioEnv(THREE: WebGPUModule): any {
+function makeStudioEnv(THREE: WebGPUModule): WebGPUTexture {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 256;
@@ -596,7 +603,15 @@ export function VoiceWaveform({
           import("three/tsl"),
         ]);
         if (disposed || !canvas) return;
-        const orb = await mountOrb(three, tsl, canvas, width, height);
+        // Cast to WebGPUModule: three/webgpu re-exports everything from three
+        // plus WebGPURenderer and node materials; the cast is safe at runtime.
+        const orb = await mountOrb(
+          three as unknown as WebGPUModule,
+          tsl as unknown as TSLModule,
+          canvas,
+          width,
+          height,
+        );
         if (disposed) {
           orb.dispose();
           return;

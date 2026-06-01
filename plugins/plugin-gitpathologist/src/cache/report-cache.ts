@@ -35,7 +35,7 @@ export function defaultCacheDir(repoRoot: string): string {
   if (override) {
     return path.isAbsolute(override) ? override : path.join(repoRoot, override);
   }
-  return path.join(repoRoot, ".milady", "gitpathology");
+  return path.join(repoRoot, ".eliza", "gitpathology");
 }
 
 export function ensureCacheDir(cacheDir: string): void {

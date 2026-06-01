@@ -248,7 +248,7 @@ function ViewSection({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {views.map((view) => (
           <ViewCard
-            key={view.id}
+            key={`${view.viewType ?? "gui"}:${view.id}`}
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}
@@ -282,7 +282,7 @@ function TopViewsSection({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {views.map((view) => (
           <ViewCard
-            key={view.id}
+            key={`${view.viewType ?? "gui"}:${view.id}`}
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}

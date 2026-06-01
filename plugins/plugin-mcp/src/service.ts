@@ -1,4 +1,5 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -126,11 +127,30 @@ export class McpService extends Service {
     return undefined;
   }
 
+  private async filterValidatedServerConfigs(
+    serverConfigs: Readonly<Record<string, McpServerConfig>>
+  ): Promise<Record<string, McpServerConfig>> {
+    const validated: Record<string, McpServerConfig> = {};
+    for (const [name, config] of Object.entries(serverConfigs)) {
+      const rejection = await validateMcpServerConfig(config as unknown as Record<string, unknown>);
+      if (rejection) {
+        logger.error(
+          { server: name, rejection },
+          "Skipping MCP server with invalid or unsafe config"
+        );
+        continue;
+      }
+      validated[name] = config;
+    }
+    return validated;
+  }
+
   private async updateServerConnections(
     serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<void> {
+    const safeConfigs = await this.filterValidatedServerConfigs(serverConfigs);
     const currentNames = new Set(this.connections.keys());
-    const newNames = new Set(Object.keys(serverConfigs));
+    const newNames = new Set(Object.keys(safeConfigs));
 
     for (const name of currentNames) {
       if (!newNames.has(name)) {
@@ -138,7 +158,7 @@ export class McpService extends Service {
       }
     }
 
-    const connectionPromises = Object.entries(serverConfigs).map(async ([name, config]) => {
+    const connectionPromises = Object.entries(safeConfigs).map(async ([name, config]) => {
       const currentConnection = this.connections.get(name);
       if (!currentConnection) {
         await this.initializeConnection(name, config);
@@ -346,6 +366,18 @@ export class McpService extends Service {
       throw new Error(`Missing command for stdio MCP server ${name}`);
     }
 
+    const rejection = await validateMcpServerConfig({
+      type: "stdio",
+      command: config.command,
+      args: config.args,
+      env: config.env,
+      cwd: config.cwd,
+      timeoutInMillis: config.timeoutInMillis,
+    });
+    if (rejection) {
+      throw new Error(`MCP stdio server "${name}" rejected at spawn: ${rejection}`);
+    }
+
     return new StdioClientTransport({
       command: config.command,
       args: config.args ? [...config.args] : undefined,
@@ -364,6 +396,14 @@ export class McpService extends Service {
   ): Promise<SSEClientTransport> {
     if (!config.url) {
       throw new Error(`Missing URL for HTTP MCP server ${name}`);
+    }
+
+    const rejection = await validateMcpServerConfig({
+      type: config.type,
+      url: config.url,
+    });
+    if (rejection) {
+      throw new Error(`MCP remote server "${name}" rejected at connect: ${rejection}`);
     }
 
     return new SSEClientTransport(new URL(config.url));

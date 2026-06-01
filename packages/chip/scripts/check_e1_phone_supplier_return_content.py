@@ -802,8 +802,7 @@ def main() -> int:
                     "live_device_validation": 0,
                     "actionable_external_dependency": max(
                         0,
-                        len(blocked)
-                        - categories["true_missing_supplier_return_artifacts"],
+                        len(blocked) - categories["true_missing_supplier_return_artifacts"],
                     ),
                 },
                 "next_command_by_dependency": {

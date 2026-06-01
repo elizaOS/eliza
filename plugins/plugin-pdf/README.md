@@ -1,26 +1,28 @@
 # @elizaos/plugin-pdf
 
-PDF text extraction plugin for ElizaOS.
+PDF text extraction plugin for elizaOS.
+
+Adds `PdfService` to an Eliza agent runtime so that PDF buffers can be parsed and their text content extracted. The service is available to any action, provider, or agent code via `runtime.getService(ServiceType.PDF)`.
 
 ## Installation
-
-To add this plugin to your Eliza OS project, run the following command:
 
 ```bash
 elizaos plugins add @elizaos/plugin-pdf
 ```
 
-```
+or with bun directly:
+
+```bash
 bun add @elizaos/plugin-pdf
 ```
 
 ## Configuration
 
-No configuration required. Uses `pdfjs-dist` for local PDF processing.
+No environment variables or configuration required. Uses [`unpdf`](https://github.com/unjs/unpdf) for local, self-contained PDF processing.
 
-## Usage
+## Enabling the Plugin
 
-To use this plugin, add its name to the `plugins` array within your character configuration object. Eliza OS will then load and initialize the plugin automatically.
+Add the package name to the `plugins` array in your character file:
 
 ```typescript
 const character: Partial<Character> = {
@@ -29,54 +31,66 @@ const character: Partial<Character> = {
 };
 ```
 
-## Usage
+## PdfService API
 
-### `PdfService`
+Retrieve the service instance from the runtime:
 
-Extracts text from PDF files.
+```typescript
+import { ServiceType } from "@elizaos/core";
+import type { PdfService } from "@elizaos/plugin-pdf";
 
-**Methods:**
+const pdfService = runtime.getService<PdfService>(ServiceType.PDF);
+```
 
-- `convertPdfToText(pdfBuffer: Buffer): Promise<string>` - Convert PDF buffer to text
-- `convertPdfToTextWithOptions(pdfBuffer: Buffer, options): Promise<PdfConversionResult>` - Convert with options
-- `getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo>` - Get full document information
+### Methods
 
-**Example:**
+**`convertPdfToText(pdfBuffer: Buffer): Promise<string>`**
+
+Extracts all text from every page as a single cleaned string.
 
 ```typescript
 import * as fs from "node:fs/promises";
-import { ServiceType, type IPdfService } from "@elizaos/core"; // Assuming ServiceType and IPdfService are available
 
-async function extractTextFromPdf(runtime: IAgentRuntime, filePath: string) {
-  try {
-    // Obtain the PdfService instance from the runtime
-    const pdfService = runtime.getService<IPdfService>(ServiceType.PDF);
-
-    if (!pdfService) {
-      console.error("PdfService not found. Ensure the plugin is registered.");
-      return;
-    }
-
-    // Read the PDF file into a buffer
-    const pdfBuffer = await fs.readFile(filePath);
-
-    // Convert the PDF buffer to text
-    const textContent = await pdfService.convertPdfToText(pdfBuffer);
-    console.log("Extracted Text:", textContent);
-    return textContent;
-  } catch (error) {
-    console.error("Error extracting text from PDF:", error);
-  }
-}
-
-// Assuming 'agentRuntime' is your initialized IAgentRuntime instance
-// extractTextFromPdf(agentRuntime, 'path/to/your/document.pdf');
+const buffer = await fs.readFile("document.pdf");
+const text = await pdfService.convertPdfToText(buffer);
 ```
+
+**`convertPdfToTextWithOptions(pdfBuffer: Buffer, options?: PdfExtractionOptions): Promise<PdfConversionResult>`**
+
+Extracts text with control over page range, whitespace, and cleanup. Returns a result object with `success`, `text`, `pageCount`, and `error` fields.
+
+```typescript
+const result = await pdfService.convertPdfToTextWithOptions(buffer, {
+  startPage: 1,
+  endPage: 5,
+  preserveWhitespace: false,
+  cleanContent: true,
+});
+
+if (result.success) {
+  console.log(result.text);
+}
+```
+
+**`getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo>`**
+
+Returns full document information: page count, per-page dimensions + text, and metadata (title, author, subject, keywords, creator, producer, creation/modification dates).
+
+## Exported Types
+
+```typescript
+PdfConversionResult   // { success, text?, pageCount?, error? }
+PdfExtractionOptions  // { startPage?, endPage?, preserveWhitespace?, cleanContent? }
+PdfPageInfo           // { pageNumber, width, height, text }
+PdfMetadata           // { title?, author?, subject?, keywords?, creator?, producer?, creationDate?, modificationDate? }
+PdfDocumentInfo       // { pageCount, metadata, text, pages }
+```
+
+## Platform Support
+
+Builds for both Node.js and browser environments. The `exports` field in `package.json` selects the correct entry point automatically.
 
 ## Dependencies
 
-- `pdfjs-dist` - PDF parsing and rendering
+- [`unpdf`](https://github.com/unjs/unpdf) — PDF parsing (wraps PDF.js for Node + browser)
 
-## License
-
-MIT

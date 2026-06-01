@@ -1,176 +1,98 @@
-# Marketplace of Trust Plugin
+# @elizaos/plugin-social-alpha
 
-A sophisticated trust scoring system for ElizaOS that analyzes trading calls and calculates user trust scores based on performance metrics.
+An elizaOS plugin that tracks cryptocurrency token recommendations made by users in chat, evaluates their accuracy against real price outcomes, and builds trust scores for each recommender.
 
-## Overview
+## What it does
 
-The Marketplace of Trust plugin provides:
-- **Trust Score Calculation**: Advanced algorithm that evaluates users based on profit, win rate, Sharpe ratio, and call quality
-- **Trading Call Analysis**: Process Discord messages to extract and analyze trading calls
-- **Price Data Enrichment**: Integrate with Birdeye and DexScreener APIs for historical price data
-- **Algorithm Optimization**: Machine learning-based parameter tuning for optimal trust score accuracy
-- **Leaderboard System**: Real-time trust score rankings with beautiful UI
+- **Recommendation capture.** Every incoming message is analyzed with a single LLM call to detect buy/sell calls ("shills" and "FUD"). Detected calls are stored against the sender's trust profile as an elizaOS Component.
+- **Trust scoring.** Scores are calculated using a multi-factor algorithm: profit percentage, win rate, Sharpe ratio, alpha vs market, consistency, and a scam/rug penalty.
+- **Leaderboard.** Ranked leaderboard of all tracked recommenders is available as a JSON API and as a built-in React UI panel.
+- **Agent context injection.** The `socialAlpha` provider injects the current speaker's trust stats and the top/bottom leaderboard into the agent's context automatically, so the agent can factor reputation into its responses.
 
-## Architecture
+## Capabilities added to an Eliza agent
 
-```
-src/
-├── services/              # Core business logic
-│   ├── SimulationService.ts      # Consolidated simulation functionality
-│   ├── PriceDataService.ts       # Price data fetching and enrichment
-│   ├── TrustScoreService.ts      # Trust score calculation and optimization
-│   └── balancedTrustScoreCalculator.ts  # Core scoring algorithm
-├── frontend/              # React UI components
-│   └── LeaderboardTable.tsx      # Trust score leaderboard
-└── __tests__/            # Comprehensive test suite
-```
+| Capability | Description |
+|-----------|-------------|
+| `socialAlpha` provider | Injects trust scores, win rate, avg P&L, and leaderboard into agent context |
+| `MESSAGE_RECEIVED` event handler | Extracts buy/sell signals from messages in real time |
+| `CommunityInvestorService` | Manages all trust score and recommendation data |
+| `GET /leaderboard` route | Returns `LeaderboardEntry[]` JSON |
+| `GET /display` route | Serves the leaderboard React SPA |
+| Agent panel | "Social Alpha" UI panel (public, `display` path, `LeaderboardPanelPage` component) |
 
-## Installation
+No actions are added — recommendation capture is event-driven, not agent-initiated.
 
-```bash
-npm install @elizaos/plugin-marketplace-of-trust
-```
+## How to enable
 
-## Configuration
-
-Add to your `.env` file:
-
-```env
-# API Keys (at least one required)
-BIRDEYE_API_KEY=your_birdeye_api_key
-DEXSCREENER_API_KEY=your_dexscreener_api_key
-
-# Optional: Helius for token metadata
-HELIUS_API_KEY=your_helius_api_key
-```
-
-## Trust Score Algorithm
-
-The balanced trust score algorithm considers multiple factors:
+Add the plugin to your agent's character definition:
 
 ```typescript
-score = profitComponent * profitWeight +
-        winRateComponent * winRateWeight +
-        sharpeComponent * sharpeWeight +
-        alphaComponent * alphaWeight +
-        consistencyComponent * consistencyWeight +
-        qualityComponent * qualityWeight
-```
+import { socialAlphaPlugin } from "@elizaos/plugin-social-alpha";
 
-### Components:
-- **Profit**: Average profit percentage across all calls
-- **Win Rate**: Percentage of profitable calls
-- **Sharpe Ratio**: Risk-adjusted returns
-- **Alpha**: Excess returns vs market
-- **Consistency**: Stability of returns
-- **Quality**: Penalty for rug pull promotions
-
-### Default Weights:
-- Profit: 25%
-- Win Rate: 25%
-- Sharpe: 15%
-- Alpha: 10%
-- Consistency: 10%
-- Quality: 15%
-
-## API Integration
-
-### Using in Your Plugin
-
-```typescript
-import { MarketplaceOfTrustService } from '@elizaos/plugin-marketplace-of-trust';
-
-// In your plugin definition
-export const myPlugin: Plugin = {
-  name: 'my-plugin',
-  services: [MarketplaceOfTrustService],
-  // ... other plugin config
+export const character = {
+  name: "MyAgent",
+  plugins: [socialAlphaPlugin],
+  // ...
 };
 ```
 
-### Accessing Trust Scores
+## Required configuration
 
-```typescript
-// Get user trust score
-const trustProfile = await runtime.getComponent(
-  userId,
-  'trust_profile',
-  worldId
-);
+Set these in your agent's environment or character config:
 
-console.log(`Trust Score: ${trustProfile.data.trustScore}`);
-console.log(`Total Calls: ${trustProfile.data.totalCalls}`);
-console.log(`Win Rate: ${trustProfile.data.winRate}%`);
+```env
+BIRDEYE_API_KEY=        # Token price, security, and trade data (Solana)
+DEXSCREENER_API_KEY=    # DEX pair data and ticker resolution
+HELIUS_API_KEY=         # Solana holder list data (optional — service degrades gracefully without it)
 ```
 
-## Testing
+The following are declared as required in `agentConfig` but are not actively used in current code paths:
 
-Run the comprehensive test suite:
+```env
+JUPITER_API_KEY=
+COINGECKO_API_KEY=
+MORALIS_API_KEY=
+```
+
+### Optional tuning
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `PROCESS_TRADE_DECISION_INTERVAL_HOURS` | `1` | How often queued trade decisions are evaluated |
+| `METRIC_REFRESH_INTERVAL_HOURS` | `24` | How often recommender metrics are refreshed |
+| `USER_TRADE_COOLDOWN_HOURS` | `12` | Minimum hours between decisions per user |
+| `SCAM_PENALTY` | `-100` | Trust score penalty for promoting a rug/scam |
+| `SCAM_CORRECT_CALL_BONUS` | `100` | Bonus for correctly calling out a scam |
+| `MAX_RECOMMENDATIONS_IN_PROFILE` | `50` | Rolling window of recommendations kept per user |
+
+## Trust score algorithm
+
+The balanced trust score uses:
+
+- **Profit** — average percentage gain across evaluated calls
+- **Win rate** — proportion of calls that were profitable
+- **Sharpe ratio** — risk-adjusted returns
+- **Alpha** — excess returns vs market
+- **Consistency** — stability of returns over time
+- **Quality** — scam/rug penalty applied when a promoted token turns out fraudulent; bonus for correctly calling out scams before they dump
+
+Weights are tunable via `src/services/trustScoreOptimizer.ts`.
+
+## Building the frontend
+
+The leaderboard UI (`/display` route) is a Vite/React SPA. It must be built before the route serves real HTML:
 
 ```bash
-# Unit tests
-npm test
-
-# E2E tests
-npm run test:e2e
-
-# Test coverage
-npm run test:coverage
+bun run --cwd plugins/plugin-social-alpha build
 ```
 
-## Development
-
-### Building
+## Running tests
 
 ```bash
-npm run build
+bun run --cwd plugins/plugin-social-alpha test
 ```
 
-### Development Server
+## Supported chains
 
-```bash
-npm run dev
-```
+Primary support is Solana. Ethereum and Base are partially supported for ticker resolution via DexScreener.
 
-### Code Quality
-
-```bash
-npm run lint
-npm run format
-npm run typecheck
-```
-
-## Performance Considerations
-
-- **Caching**: The system caches simulation results and API responses to minimize redundant calls
-- **Rate Limiting**: Built-in rate limiting for API calls (100ms delay between requests)
-- **Batch Processing**: Processes data in configurable batches to manage memory usage
-- **Resume Support**: Price enrichment can be resumed if interrupted
-
-## Troubleshooting
-
-### Common Issues
-
-1. **No API Keys**: Ensure at least one price data API key is configured
-2. **Rate Limits**: If hitting API rate limits, reduce batch size or add delays
-3. **Memory Issues**: For large datasets, reduce batch size or process in chunks
-4. **TypeScript Errors**: Run `npm run typecheck` to identify type issues
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
-
-## License
-
-MIT
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [elizaos/elizaos](https://github.com/elizaos/elizaos/issues)
-- Discord: [ElizaOS Community](https://discord.gg/elizaos)

@@ -72,8 +72,9 @@ Skills are loaded from multiple locations in precedence order (later overrides e
 
 1. **Bundled skills** - Included in this package (`skills/`)
 2. **Managed skills** - User-installed skills (`<stateDir>/skills/`)
-3. **Project skills** - Project-local skills (`<cwd>/.elizaos/skills/`)
-4. **Explicit paths** - Via `skillPaths` option
+3. **Curated/active** - Human- or agent-promoted skills (`<stateDir>/skills/curated/active/`)
+4. **Project skills** - Project-local skills (`<cwd>/.elizaos/skills/`)
+5. **Explicit paths** - Via `skillPaths` option
 
 ## Skill Format
 
@@ -98,7 +99,7 @@ Detailed instructions for the AI agent...
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Skill name (should match directory name) |
+| `name` | string | Skill name (must match directory name) |
 | `description` | string | Human-readable description (required) |
 | `disable-model-invocation` | boolean | If true, skill won't appear in prompts |
 | `user-invocable` | boolean | If false, can't be invoked via commands |
@@ -106,6 +107,8 @@ Detailed instructions for the AI agent...
 | `required-os` | string[] | Required operating systems |
 | `required-bins` | string[] | Required binaries in PATH |
 | `required-env` | string[] | Required environment variables |
+| `command-dispatch` | string | Set to `tool` to enable tool-dispatch in `buildSkillCommandSpecs` |
+| `command-tool` | string | Tool name used when `command-dispatch: tool` |
 
 ## API Reference
 
@@ -114,17 +117,39 @@ Detailed instructions for the AI agent...
 - `Skill` - Loaded skill with metadata
 - `SkillFrontmatter` - Parsed frontmatter
 - `SkillEntry` - Full skill entry with all metadata
+- `SkillMetadata` - Resolved metadata (env, bins, os)
+- `SkillInvocationPolicy` - Resolved invocation flags
+- `SkillCommandSpec` - Command spec for chat interfaces
+- `SkillProvenance` - Provenance tracking for the learning loop
 - `LoadSkillsResult` - Result from loading skills
 
-### Functions
+### Discovery / Resolution
 
 - `getSkillsDir()` - Get bundled skills path
+- `clearSkillsDirCache()` - Reset bundled-dir resolution cache
+- `getCuratedActiveDir()` - `<stateDir>/skills/curated/active/`
+- `getProposedSkillsDir()` - `<stateDir>/skills/curated/proposed/`
+- `promoteSkill(name)` - Move a proposed skill to active atomically
+
+### Loading
+
 - `loadSkills(options?)` - Load from all locations
 - `loadSkillsFromDir(options)` - Load from single directory
-- `loadSkillEntries(options?)` - Load with full metadata
-- `formatSkillsForPrompt(skills)` - Format for LLM prompt
-- `buildSkillCommandSpecs(entries)` - Build command specs
+- `loadSkillEntries(options?)` - Load with full metadata parsed into `SkillEntry[]`
 
-## License
+### Formatting
 
-MIT
+- `formatSkillsForPrompt(skills)` - Format `Skill[]` for system prompt
+- `formatSkillEntriesForPrompt(entries)` - Same but from `SkillEntry[]` (respects invocation policy)
+- `formatSkillSummary(skill)` - Single `"name: description"` string
+- `formatSkillsList(skills)` - Newline-joined list
+- `buildSkillCommandSpecs(entries, reservedNames?)` - Build command specs
+
+### Frontmatter
+
+- `parseFrontmatter(content)` - Parse YAML frontmatter from markdown string
+- `stripFrontmatter(content)` - Return body without frontmatter
+- `serializeSkillFile(frontmatter, body)` - Re-serialize frontmatter + body (learning loop)
+- `resolveSkillMetadata(frontmatter)` - Resolve `SkillMetadata` from frontmatter
+- `resolveSkillInvocationPolicy(frontmatter)` - Resolve `SkillInvocationPolicy`
+- `resolveSkillProvenance(frontmatter)` - Resolve `SkillProvenance` (returns `undefined` if missing/malformed)

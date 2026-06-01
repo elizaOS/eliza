@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   MemoryBrowseItem,
@@ -23,6 +22,7 @@ import type {
   MemoryStatsResponse,
 } from "../../api/client-types-chat";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import {
@@ -39,6 +39,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
+import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -221,18 +222,25 @@ function MemoryCard({
 
 function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   const { t } = useTranslation();
-  const [loading, setLoading] = useState(true);
-  const [feed, setFeed] = useState<MemoryBrowseItem[]>([]);
-  const [hasMore, setHasMore] = useState(false);
+  // Seed the first page from the shared cache so a revisit paints the
+  // last-known feed instantly and revalidates silently. Pagination appends
+  // (`before`) stay uncached — only the base page is the instant-revisit win.
+  const feedCacheKey = `memory:feed:${typeFilter ?? "all"}`;
+  const cachedFeed = getCached<MemoryFeedResponse>(feedCacheKey);
+  const [loading, setLoading] = useState(!cachedFeed);
+  const [feed, setFeed] = useState<MemoryBrowseItem[]>(
+    cachedFeed?.data.memories ?? [],
+  );
+  const [hasMore, setHasMore] = useState(cachedFeed?.data.hasMore ?? false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const loadingMore = useRef(false);
 
   const loadFeed = useCallback(
-    async (before?: number) => {
+    async (before?: number, options?: { silent?: boolean }) => {
       if (loadingMore.current && before) return;
       if (before) loadingMore.current = true;
-      else setLoading(true);
+      else if (!options?.silent) setLoading(true);
       setError(null);
 
       try {
@@ -250,6 +258,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           );
         } else {
           setFeed(result.memories);
+          setCached(feedCacheKey, result);
         }
         setHasMore(result.hasMore);
       } catch (err) {
@@ -265,12 +274,15 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
         loadingMore.current = false;
       }
     },
-    [typeFilter, t],
+    [typeFilter, t, feedCacheKey],
   );
 
   useEffect(() => {
-    void loadFeed();
-  }, [loadFeed]);
+    // Revalidate silently when a cached page is already on screen.
+    void loadFeed(undefined, {
+      silent: getCached<MemoryFeedResponse>(feedCacheKey) != null,
+    });
+  }, [loadFeed, feedCacheKey]);
 
   const loadMore = () => {
     const last = feed[feed.length - 1];
@@ -278,13 +290,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   };
 
   if (loading && feed.length === 0) {
-    return (
-      <PagePanel.Loading
-        heading={t("memoryviewer.loadingFeed", {
-          defaultValue: "Loading memory feed…",
-        })}
-      />
-    );
+    return <ListSkeleton rows={6} />;
   }
 
   if (error) {
@@ -374,15 +380,24 @@ function MemoryBrowserPanel({
   const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
-  const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState<MemoryBrowseResponse | null>(null);
+  // Cache key spans every fetch parameter so each filter/search/page combo
+  // revisits instantly without colliding. Offset is appended per-call below.
+  const browseKeyBase = entityId
+    ? `memory:browse:entity:${entityId}:${(entityIds ?? []).join(",")}:${typeFilter ?? "all"}`
+    : `memory:browse:all:${typeFilter ?? "all"}:${deferredSearch.trim()}`;
+  const cachedBrowse = getCached<MemoryBrowseResponse>(`${browseKeyBase}:0`);
+  const [loading, setLoading] = useState(!cachedBrowse);
+  const [result, setResult] = useState<MemoryBrowseResponse | null>(
+    cachedBrowse?.data ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
 
   const loadMemories = useCallback(
-    async (pageOffset: number) => {
-      setLoading(true);
+    async (pageOffset: number, options?: { silent?: boolean }) => {
+      const cacheKey = `${browseKeyBase}:${pageOffset}`;
+      if (!options?.silent) setLoading(true);
       setError(null);
       try {
         const resp: MemoryBrowseResponse = entityId
@@ -399,6 +414,7 @@ function MemoryBrowserPanel({
               offset: pageOffset,
             });
         setResult(resp);
+        setCached(cacheKey, resp);
       } catch (err) {
         setError(
           err instanceof Error
@@ -411,13 +427,16 @@ function MemoryBrowserPanel({
         setLoading(false);
       }
     },
-    [typeFilter, entityId, entityIds, deferredSearch, t],
+    [typeFilter, entityId, entityIds, deferredSearch, t, browseKeyBase],
   );
 
   useEffect(() => {
     setOffset(0);
-    void loadMemories(0);
-  }, [loadMemories]);
+    // Revalidate silently when the first page is already cached on screen.
+    void loadMemories(0, {
+      silent: getCached<MemoryBrowseResponse>(`${browseKeyBase}:0`) != null,
+    });
+  }, [loadMemories, browseKeyBase]);
 
   const handlePage = (direction: "prev" | "next") => {
     const newOffset =
@@ -447,11 +466,7 @@ function MemoryBrowserPanel({
       ) : null}
 
       {loading && !result ? (
-        <PagePanel.Loading
-          heading={t("memoryviewer.loadingMemories", {
-            defaultValue: "Loading memories…",
-          })}
-        />
+        <ListSkeleton rows={6} />
       ) : error ? (
         <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
@@ -525,29 +540,6 @@ function MemoryBrowserPanel({
 
 // ── Main View ────────────────────────────────────────────────────────────
 
-function ViewModeAgentTab({
-  mode,
-  label,
-  isActive,
-  onSelect,
-}: {
-  mode: ViewMode;
-  label: string;
-  isActive: boolean;
-  onSelect: (mode: ViewMode) => void;
-}) {
-  useAgentElement({
-    id: `tab-${mode}`,
-    role: "tab",
-    label,
-    group: "memory-view-mode",
-    status: isActive ? "active" : "inactive",
-    description: `Switch the memory viewer to the ${label} view`,
-    onActivate: () => onSelect(mode),
-  });
-  return null;
-}
-
 export function MemoryViewerView({
   contentHeader,
 }: {
@@ -608,15 +600,6 @@ export function MemoryViewerView({
   const handleClearPerson = () => {
     setSelectedPersonId(null);
   };
-
-  const clearPersonAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-clear-person",
-    role: "button",
-    label: t("memoryviewer.clear", { defaultValue: "Clear" }),
-    group: "memory-view-mode",
-    description: "Clear the selected person filter",
-    onActivate: handleClearPerson,
-  });
 
   const viewModeItems = [
     {
@@ -824,15 +807,6 @@ export function MemoryViewerView({
         contentHeader={contentHeader}
         data-testid="memory-viewer-view"
       >
-        {viewModeItems.map((item) => (
-          <ViewModeAgentTab
-            key={item.value}
-            mode={item.value}
-            label={item.label}
-            isActive={viewMode === item.value}
-            onSelect={setViewMode}
-          />
-        ))}
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {/* View mode toggle + person context */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -847,13 +821,11 @@ export function MemoryViewerView({
                 {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}
                 <MetaPill compact>{selectedPerson.displayName}</MetaPill>
                 <Button
-                  ref={clearPersonAgent.ref}
                   type="button"
                   size="sm"
                   variant="ghost"
                   className="h-6 px-2 text-xs-tight"
                   onClick={handleClearPerson}
-                  {...clearPersonAgent.agentProps}
                 >
                   {t("memoryviewer.clear", { defaultValue: "Clear" })}
                 </Button>

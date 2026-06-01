@@ -1,38 +1,5 @@
-import {
-  type AppDetailExtensionProps,
-  Button,
-  ContentLayout,
-  client,
-  confirmDesktopAction,
-  type HuggingFaceDatasetIngestResponse,
-  type ListTrainingCollectionsResponse,
-  openExternalUrl,
-  parsePositiveFloat,
-  parsePositiveInteger,
-  type RunActionBenchmarkResponse,
-  type RunBenchmarkVsCerebrasResponse,
-  type RunFeedGenerationResponse,
-  type RunLocalEvalComparisonResponse,
-  type RunScenarioResponse,
-  type RunTrainingCollectionResponse,
-  registerDetailExtension,
-  type StageEliza1BundleResponse,
-  type StartTrainingOptions,
-  type StreamEventEnvelope,
-  type TrainingAnalysisIndexResponse,
-  type TrainingCollectionPreflightSummary,
-  type TrainingDatasetRecord,
-  type TrainingJobRecord,
-  type TrainingModelRecord,
-  type TrainingReadinessReportResponse,
-  type TrainingStatus,
-  type TrainingStreamEvent,
-  type TrainingTrajectoryDetail,
-  type TrainingTrajectoryList,
-  useAgentElement,
-  useApp,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
+import { Button, ContentLayout, client, confirmDesktopAction, openExternalUrl, parsePositiveFloat, parsePositiveInteger, registerDetailExtension, type AppDetailExtensionProps, type HuggingFaceDatasetIngestResponse, type ListTrainingCollectionsResponse, type RunActionBenchmarkResponse, type RunBenchmarkVsCerebrasResponse, type RunFeedGenerationResponse, type RunLocalEvalComparisonResponse, type RunScenarioResponse, type StageEliza1BundleResponse, type TrainingCollectionPreflightSummary, type RunTrainingCollectionResponse, type StartTrainingOptions, type StreamEventEnvelope, type TrainingAnalysisIndexResponse, type TrainingDatasetRecord, type TrainingJobRecord, type TrainingModelRecord, type TrainingReadinessReportResponse, type TrainingStatus, type TrainingStreamEvent, type TrainingTrajectoryDetail, type TrainingTrajectoryList, useApp, useIntervalWhenDocumentVisible } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type ReactNode,
   useCallback,
@@ -41,8 +8,8 @@ import {
   useState,
 } from "react";
 import {
-  ELIZA_ONE_BENCHMARK_TIER_LIST,
   ELIZA_ONE_BENCHMARK_TIERS,
+  ELIZA_ONE_BENCHMARK_TIER_LIST,
   elizaOneActionBenchmarkPairs,
   parseElizaOneBenchmarkTiers,
 } from "../core/eliza1-benchmark-recipe.js";
@@ -167,9 +134,7 @@ function formatModelInventorySummary(
         .filter((tier): tier is string => Boolean(tier)),
     ),
   ];
-  const base = modelInventory.filter(
-    (model) => model.variant === "base",
-  ).length;
+  const base = modelInventory.filter((model) => model.variant === "base").length;
   const trained = modelInventory.filter(
     (model) => model.variant === "trained",
   ).length;
@@ -312,7 +277,8 @@ function summarizeAnalysisCoverage(
   const sourceLabelOf = (artifact: (typeof artifacts)[number]) => {
     const source = summaryFor(artifact).source;
     return (
-      stringSummaryValue(source) ?? stringSummaryValue(recordValue(source).kind)
+      stringSummaryValue(source) ??
+      stringSummaryValue(recordValue(source).kind)
     );
   };
   const isNaturalTrajectoryBundle = (artifact: (typeof artifacts)[number]) =>
@@ -1021,278 +987,272 @@ export function FineTuningView({
     [loadCollectionHistory, setActionNotice, t],
   );
 
-  const handleRunTrainingCollection = useCallback(
-    async (preflightOnly = false) => {
-      if (preflightOnly) {
-        setCollectionPreflightRunning(true);
-      } else {
-        setCollectionRunning(true);
-      }
-      try {
-        const hfFilesList = hfFiles
-          .split(/\r?\n|,/)
-          .map((file) => file.trim())
-          .filter(Boolean);
-        const actionBenchmarkTiers = parseCollectionTierList(
-          actionBenchmarkPairTiers,
-        );
-        const actionBenchmarkTierForSinglePair =
-          actionBenchmarkTier.trim() || undefined;
-        const useDerivedActionBenchmarkPairs =
-          actionBenchmarkPairEnabled &&
-          actionBenchmarkTiers.length > 0 &&
-          (actionBenchmarkTiers.length > 1 ||
-            actionBenchmarkTiers[0] !== actionBenchmarkTierForSinglePair);
-        const naturalTaskList = naturalTasks
-          .split(",")
-          .map((task) => task.trim())
-          .filter(Boolean);
-        const naturalTrajectoryOptions =
-          naturalSanitizedJsonlPath.trim() ||
-          naturalRawJsonlPath.trim() ||
-          naturalRunId.trim() ||
-          naturalTaskList.length > 0 ||
-          naturalIncludeRaw
+  const handleRunTrainingCollection = useCallback(async (preflightOnly = false) => {
+    if (preflightOnly) {
+      setCollectionPreflightRunning(true);
+    } else {
+      setCollectionRunning(true);
+    }
+    try {
+      const hfFilesList = hfFiles
+        .split(/\r?\n|,/)
+        .map((file) => file.trim())
+        .filter(Boolean);
+      const actionBenchmarkTiers = parseCollectionTierList(
+        actionBenchmarkPairTiers,
+      );
+      const actionBenchmarkTierForSinglePair =
+        actionBenchmarkTier.trim() || undefined;
+      const useDerivedActionBenchmarkPairs =
+        actionBenchmarkPairEnabled &&
+        actionBenchmarkTiers.length > 0 &&
+        (actionBenchmarkTiers.length > 1 ||
+          actionBenchmarkTiers[0] !== actionBenchmarkTierForSinglePair);
+      const naturalTaskList = naturalTasks
+        .split(",")
+        .map((task) => task.trim())
+        .filter(Boolean);
+      const naturalTrajectoryOptions =
+        naturalSanitizedJsonlPath.trim() ||
+        naturalRawJsonlPath.trim() ||
+        naturalRunId.trim() ||
+        naturalTaskList.length > 0 ||
+        naturalIncludeRaw
+          ? {
+              sanitizedJsonlPath:
+                naturalSanitizedJsonlPath.trim() || undefined,
+              rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
+              includeRawJsonl:
+                naturalIncludeRaw || !!naturalRawJsonlPath.trim(),
+              tasks: naturalTaskList.length > 0 ? naturalTaskList : undefined,
+              source: {
+                kind: "training_collection_natural_trajectories",
+                runId: naturalRunId.trim() || undefined,
+                metadata: {
+                  ui: true,
+                  sanitizedJsonlPath:
+                    naturalSanitizedJsonlPath.trim() || undefined,
+                  rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
+                },
+              },
+            }
+          : undefined;
+      const result = await client.runTrainingCollection({
+        preflightOnly,
+        preflightProbe: collectionPreflightProbe,
+        includeHuggingFace: true,
+        includeFeed: true,
+        includeNaturalTrajectories: true,
+        includeTestTrajectories: true,
+        includeScenarios: true,
+        includeEvalComparison: evalComparisonEnabled,
+        includeActionBenchmark: true,
+        includeBenchmarkVsCerebras: true,
+        includeEliza1ModelRegistry: true,
+        includeEliza1BundleStage: true,
+        includeBenchmarkMatrix: true,
+        huggingFace: {
+          repoId: hfRepoId.trim() || undefined,
+          revision: hfRevision.trim() || undefined,
+          files: hfFilesList.length > 0 ? hfFilesList : undefined,
+          dryRun: hfDryRun,
+          outputDir: hfOutputDir.trim() || undefined,
+        },
+        feed: {
+          archetypes: feedArchetypes.trim() || undefined,
+          numAgents: parsePositiveInteger(feedNumAgents),
+          ticks: parsePositiveInteger(feedTicks),
+          parallel: parsePositiveInteger(feedParallel),
+          cleanup: feedCleanup,
+          dryRun: feedDryRun,
+          outputDir: feedOutputDir.trim() || undefined,
+        },
+        naturalTrajectories: naturalTrajectoryOptions,
+        scenarios: {
+          dryRun: scenarioDryRun,
+          scenario: scenarioFilter.trim() || undefined,
+          outputDir: scenarioOutputDir.trim() || undefined,
+          exportNative: scenarioExportNative,
+          useDeterministicProxy: scenarioDeterministicProxy,
+        },
+        evalComparison: {
+          manifestPath: evalComparisonManifestPath.trim() || undefined,
+          model: evalComparisonManifestPath.trim()
+            ? undefined
+            : evalComparisonBaseModel.trim() || undefined,
+          trainedModelPath: evalComparisonManifestPath.trim()
+            ? undefined
+            : evalComparisonTrainedModelPath.trim() || undefined,
+          backend: evalComparisonManifestPath.trim()
+            ? undefined
+            : evalComparisonBackend,
+          outputDir: evalComparisonOutputDir.trim() || undefined,
+          dryRun: evalComparisonDryRun,
+        },
+        actionBenchmark: {
+          filter: actionBenchmarkFilter.trim() || undefined,
+          runsPerCase: parsePositiveInteger(actionBenchmarkRunsPerCase),
+          outputDir: actionBenchmarkOutputDir.trim() || undefined,
+          provider: actionBenchmarkProvider.trim() || undefined,
+          modelId: actionBenchmarkModelId.trim() || undefined,
+          runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
+          baseUrl: actionBenchmarkBaseUrl.trim() || undefined,
+          variant: actionBenchmarkVariant,
+          tier: actionBenchmarkTier.trim() || undefined,
+          benchmark: actionBenchmarkMatrixBenchmark.trim() || undefined,
+          datasetVersion: actionBenchmarkDatasetVersion.trim() || undefined,
+          useMocks: actionBenchmarkUseMocks,
+          forceTrajectoryCapture: actionBenchmarkCapture,
+          dryRun: actionBenchmarkDryRun,
+        },
+        actionBenchmarkPair: actionBenchmarkPairEnabled
+          ? !useDerivedActionBenchmarkPairs
             ? {
-                sanitizedJsonlPath:
-                  naturalSanitizedJsonlPath.trim() || undefined,
-                rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
-                includeRawJsonl:
-                  naturalIncludeRaw || !!naturalRawJsonlPath.trim(),
-                tasks: naturalTaskList.length > 0 ? naturalTaskList : undefined,
-                source: {
-                  kind: "training_collection_natural_trajectories",
-                  runId: naturalRunId.trim() || undefined,
-                  metadata: {
-                    ui: true,
-                    sanitizedJsonlPath:
-                      naturalSanitizedJsonlPath.trim() || undefined,
-                    rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
-                  },
+                tier: actionBenchmarkTierForSinglePair,
+                base: {
+                  modelId: actionBenchmarkBaseModelId.trim() || undefined,
+                  runtimeModel:
+                    actionBenchmarkBaseRuntimeModel.trim() || undefined,
+                  variant: "base",
+                },
+                trained: {
+                  modelId: actionBenchmarkModelId.trim() || undefined,
+                  runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
+                  variant: "trained",
                 },
               }
-            : undefined;
-        const result = await client.runTrainingCollection({
-          preflightOnly,
-          preflightProbe: collectionPreflightProbe,
-          includeHuggingFace: true,
-          includeFeed: true,
-          includeNaturalTrajectories: true,
-          includeTestTrajectories: true,
-          includeScenarios: true,
-          includeEvalComparison: evalComparisonEnabled,
-          includeActionBenchmark: true,
-          includeBenchmarkVsCerebras: true,
-          includeEliza1ModelRegistry: true,
-          includeEliza1BundleStage: true,
-          includeBenchmarkMatrix: true,
-          huggingFace: {
-            repoId: hfRepoId.trim() || undefined,
-            revision: hfRevision.trim() || undefined,
-            files: hfFilesList.length > 0 ? hfFilesList : undefined,
-            dryRun: hfDryRun,
-            outputDir: hfOutputDir.trim() || undefined,
-          },
-          feed: {
-            archetypes: feedArchetypes.trim() || undefined,
-            numAgents: parsePositiveInteger(feedNumAgents),
-            ticks: parsePositiveInteger(feedTicks),
-            parallel: parsePositiveInteger(feedParallel),
-            cleanup: feedCleanup,
-            dryRun: feedDryRun,
-            outputDir: feedOutputDir.trim() || undefined,
-          },
-          naturalTrajectories: naturalTrajectoryOptions,
-          scenarios: {
-            dryRun: scenarioDryRun,
-            scenario: scenarioFilter.trim() || undefined,
-            outputDir: scenarioOutputDir.trim() || undefined,
-            exportNative: scenarioExportNative,
-            useDeterministicProxy: scenarioDeterministicProxy,
-          },
-          evalComparison: {
-            manifestPath: evalComparisonManifestPath.trim() || undefined,
-            model: evalComparisonManifestPath.trim()
-              ? undefined
-              : evalComparisonBaseModel.trim() || undefined,
-            trainedModelPath: evalComparisonManifestPath.trim()
-              ? undefined
-              : evalComparisonTrainedModelPath.trim() || undefined,
-            backend: evalComparisonManifestPath.trim()
-              ? undefined
-              : evalComparisonBackend,
-            outputDir: evalComparisonOutputDir.trim() || undefined,
-            dryRun: evalComparisonDryRun,
-          },
-          actionBenchmark: {
-            filter: actionBenchmarkFilter.trim() || undefined,
-            runsPerCase: parsePositiveInteger(actionBenchmarkRunsPerCase),
-            outputDir: actionBenchmarkOutputDir.trim() || undefined,
-            provider: actionBenchmarkProvider.trim() || undefined,
-            modelId: actionBenchmarkModelId.trim() || undefined,
-            runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
-            baseUrl: actionBenchmarkBaseUrl.trim() || undefined,
-            variant: actionBenchmarkVariant,
-            tier: actionBenchmarkTier.trim() || undefined,
-            benchmark: actionBenchmarkMatrixBenchmark.trim() || undefined,
-            datasetVersion: actionBenchmarkDatasetVersion.trim() || undefined,
-            useMocks: actionBenchmarkUseMocks,
-            forceTrajectoryCapture: actionBenchmarkCapture,
-            dryRun: actionBenchmarkDryRun,
-          },
-          actionBenchmarkPair: actionBenchmarkPairEnabled
-            ? !useDerivedActionBenchmarkPairs
-              ? {
-                  tier: actionBenchmarkTierForSinglePair,
-                  base: {
-                    modelId: actionBenchmarkBaseModelId.trim() || undefined,
-                    runtimeModel:
-                      actionBenchmarkBaseRuntimeModel.trim() || undefined,
-                    variant: "base",
-                  },
-                  trained: {
-                    modelId: actionBenchmarkModelId.trim() || undefined,
-                    runtimeModel:
-                      actionBenchmarkRuntimeModel.trim() || undefined,
-                    variant: "trained",
-                  },
-                }
-              : undefined
-            : undefined,
-          actionBenchmarkPairs: useDerivedActionBenchmarkPairs
-            ? actionBenchmarkTiers.map((tier) => ({
-                tier,
-                base: { variant: "base" },
-                trained: { variant: "trained" },
-              }))
-            : undefined,
-          benchmarkVsCerebras: {
-            tiers: benchmarkTiers.trim() || undefined,
-            benchmark: benchmarkKind,
-            variants: benchmarkVariants,
-            maxSamples: parsePositiveInteger(benchmarkMaxSamples),
-            dryRun: benchmarkDryRun,
-            resultsDb: benchmarkResultsDb.trim() || undefined,
-            trainedModelPath: benchmarkTrainedModelPath.trim() || undefined,
-            matrixOutputDir: benchmarkMatrixOutputDir.trim() || undefined,
-          },
-          eliza1BundleStage: {
-            repoId: bundleStageRepoId.trim() || undefined,
-            tier: bundleStageTier.trim() || undefined,
-            localDir: bundleStageLocalDir.trim() || undefined,
-            outputDir: bundleStageOutputDir.trim() || undefined,
-            maxBytes: parsePositiveInteger(bundleStageMaxBytes),
-            apply: bundleStageApply,
-          },
-        });
-        if ("preflight" in result) {
-          setCollectionPreflightResult(result.preflight);
-          setActionNotice(
-            t("finetuningview.CollectionPreflightCompleted", {
-              defaultValue: "Collection preflight completed",
-            }),
-            "success",
-            5200,
-          );
-          return;
-        }
-        setCollectionResult(result);
-        setCollectionPreflightResult(
-          result.manifest.evidence.preflight ?? null,
-        );
-        setAnalysisIndex(result.analysis);
-        await loadCollectionHistory();
+            : undefined
+          : undefined,
+        actionBenchmarkPairs: useDerivedActionBenchmarkPairs
+          ? actionBenchmarkTiers.map((tier) => ({
+              tier,
+              base: { variant: "base" },
+              trained: { variant: "trained" },
+            }))
+          : undefined,
+        benchmarkVsCerebras: {
+          tiers: benchmarkTiers.trim() || undefined,
+          benchmark: benchmarkKind,
+          variants: benchmarkVariants,
+          maxSamples: parsePositiveInteger(benchmarkMaxSamples),
+          dryRun: benchmarkDryRun,
+          resultsDb: benchmarkResultsDb.trim() || undefined,
+          trainedModelPath: benchmarkTrainedModelPath.trim() || undefined,
+          matrixOutputDir: benchmarkMatrixOutputDir.trim() || undefined,
+        },
+        eliza1BundleStage: {
+          repoId: bundleStageRepoId.trim() || undefined,
+          tier: bundleStageTier.trim() || undefined,
+          localDir: bundleStageLocalDir.trim() || undefined,
+          outputDir: bundleStageOutputDir.trim() || undefined,
+          maxBytes: parsePositiveInteger(bundleStageMaxBytes),
+          apply: bundleStageApply,
+        },
+      });
+      if ("preflight" in result) {
+        setCollectionPreflightResult(result.preflight);
         setActionNotice(
-          t("finetuningview.TrainingCollectionCompleted", {
-            count: result.analysis.manifest.artifacts.length,
+          t("finetuningview.CollectionPreflightCompleted", {
+            defaultValue: "Collection preflight completed",
           }),
           "success",
           5200,
         );
-      } catch (err) {
-        setActionNotice(
-          err instanceof Error
-            ? err.message
-            : t("finetuningview.FailedToRunTrainingCollection"),
-          "error",
-          5200,
-        );
-      } finally {
-        if (preflightOnly) {
-          setCollectionPreflightRunning(false);
-        } else {
-          setCollectionRunning(false);
-        }
+        return;
       }
-    },
-    [
-      actionBenchmarkCapture,
-      actionBenchmarkDryRun,
-      actionBenchmarkFilter,
-      actionBenchmarkBaseModelId,
-      actionBenchmarkBaseRuntimeModel,
-      actionBenchmarkDatasetVersion,
-      actionBenchmarkMatrixBenchmark,
-      actionBenchmarkModelId,
-      actionBenchmarkBaseUrl,
-      actionBenchmarkOutputDir,
-      actionBenchmarkPairEnabled,
-      actionBenchmarkPairTiers,
-      actionBenchmarkProvider,
-      actionBenchmarkRunsPerCase,
-      actionBenchmarkRuntimeModel,
-      actionBenchmarkTier,
-      actionBenchmarkUseMocks,
-      actionBenchmarkVariant,
-      benchmarkDryRun,
-      benchmarkKind,
-      benchmarkMatrixOutputDir,
-      benchmarkMaxSamples,
-      benchmarkResultsDb,
-      benchmarkTiers,
-      benchmarkTrainedModelPath,
-      benchmarkVariants,
-      bundleStageApply,
-      bundleStageLocalDir,
-      bundleStageMaxBytes,
-      bundleStageOutputDir,
-      bundleStageRepoId,
-      bundleStageTier,
-      collectionPreflightProbe,
-      evalComparisonBackend,
-      evalComparisonBaseModel,
-      evalComparisonDryRun,
-      evalComparisonEnabled,
-      evalComparisonManifestPath,
-      evalComparisonOutputDir,
-      evalComparisonTrainedModelPath,
-      feedArchetypes,
-      feedCleanup,
-      feedDryRun,
-      feedNumAgents,
-      feedOutputDir,
-      feedParallel,
-      feedTicks,
-      hfDryRun,
-      hfFiles,
-      hfOutputDir,
-      hfRepoId,
-      hfRevision,
-      loadCollectionHistory,
-      naturalIncludeRaw,
-      naturalRawJsonlPath,
-      naturalRunId,
-      naturalSanitizedJsonlPath,
-      naturalTasks,
-      scenarioDeterministicProxy,
-      scenarioDryRun,
-      scenarioExportNative,
-      scenarioFilter,
-      scenarioOutputDir,
-      setActionNotice,
-      t,
-    ],
-  );
+      setCollectionResult(result);
+      setCollectionPreflightResult(result.manifest.evidence.preflight ?? null);
+      setAnalysisIndex(result.analysis);
+      await loadCollectionHistory();
+      setActionNotice(
+        t("finetuningview.TrainingCollectionCompleted", {
+          count: result.analysis.manifest.artifacts.length,
+        }),
+        "success",
+        5200,
+      );
+    } catch (err) {
+      setActionNotice(
+        err instanceof Error
+          ? err.message
+          : t("finetuningview.FailedToRunTrainingCollection"),
+        "error",
+        5200,
+      );
+    } finally {
+      if (preflightOnly) {
+        setCollectionPreflightRunning(false);
+      } else {
+        setCollectionRunning(false);
+      }
+    }
+  }, [
+    actionBenchmarkCapture,
+    actionBenchmarkDryRun,
+    actionBenchmarkFilter,
+    actionBenchmarkBaseModelId,
+    actionBenchmarkBaseRuntimeModel,
+    actionBenchmarkDatasetVersion,
+    actionBenchmarkMatrixBenchmark,
+    actionBenchmarkModelId,
+    actionBenchmarkBaseUrl,
+    actionBenchmarkOutputDir,
+    actionBenchmarkPairEnabled,
+    actionBenchmarkPairTiers,
+    actionBenchmarkProvider,
+    actionBenchmarkRunsPerCase,
+    actionBenchmarkRuntimeModel,
+    actionBenchmarkTier,
+    actionBenchmarkUseMocks,
+    actionBenchmarkVariant,
+    benchmarkDryRun,
+    benchmarkKind,
+    benchmarkMatrixOutputDir,
+    benchmarkMaxSamples,
+    benchmarkResultsDb,
+    benchmarkTiers,
+    benchmarkTrainedModelPath,
+    benchmarkVariants,
+    bundleStageApply,
+    bundleStageLocalDir,
+    bundleStageMaxBytes,
+    bundleStageOutputDir,
+    bundleStageRepoId,
+    bundleStageTier,
+    collectionPreflightProbe,
+    evalComparisonBackend,
+    evalComparisonBaseModel,
+    evalComparisonDryRun,
+    evalComparisonEnabled,
+    evalComparisonManifestPath,
+    evalComparisonOutputDir,
+    evalComparisonTrainedModelPath,
+    feedArchetypes,
+    feedCleanup,
+    feedDryRun,
+    feedNumAgents,
+    feedOutputDir,
+    feedParallel,
+    feedTicks,
+    hfDryRun,
+    hfFiles,
+    hfOutputDir,
+    hfRepoId,
+    hfRevision,
+    loadCollectionHistory,
+    naturalIncludeRaw,
+    naturalRawJsonlPath,
+    naturalRunId,
+    naturalSanitizedJsonlPath,
+    naturalTasks,
+    scenarioDeterministicProxy,
+    scenarioDryRun,
+    scenarioExportNative,
+    scenarioFilter,
+    scenarioOutputDir,
+    setActionNotice,
+    t,
+  ]);
 
   const handleRunEvalComparison = useCallback(async () => {
     setEvalComparisonRunning(true);
@@ -1913,7 +1873,7 @@ export function FineTuningView({
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
             <div className="space-y-2">
               <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.Overview")}
+                {t("finetuningview.FineTuning")}
               </div>
               <h2 className="text-xl font-semibold text-txt">
                 {t("finetuningview.FineTuning")}
@@ -2481,9 +2441,13 @@ export function FineTuningView({
                   </div>
                   <div className="mt-1 font-mono text-xs text-txt">
                     evals:
-                    {collectionResult.manifest.evidence.evals.evalArtifacts}{" "}
+                    {
+                      collectionResult.manifest.evidence.evals.evalArtifacts
+                    }{" "}
                     matrices:
-                    {collectionResult.manifest.evidence.evals.benchmarkMatrices}{" "}
+                    {
+                      collectionResult.manifest.evidence.evals.benchmarkMatrices
+                    }{" "}
                     models:{collectionResult.manifest.evidence.training.models}
                     {formatModelInventorySummary(
                       collectionResult.manifest.evidence.training
@@ -2552,9 +2516,11 @@ export function FineTuningView({
                         .allEliza1TierImprovements
                     }{" "}
                     samples:
-                    {collectionResult.manifest.evidence.readinessGaps.find(
-                      (gap) => gap.id === "readable_source_samples",
-                    )?.status ?? "ready"}
+                    {
+                      collectionResult.manifest.evidence.readinessGaps.find(
+                        (gap) => gap.id === "readable_source_samples",
+                      )?.status ?? "ready"
+                    }
                   </div>
                 </div>
                 {collectionResult.manifest.evidence.preflight ? (
@@ -2602,18 +2568,16 @@ export function FineTuningView({
                     <div className="mt-1 break-all font-mono text-xs text-txt">
                       {collectionResult.manifest.evidence.stepArtifacts
                         .flatMap((step) =>
-                          step.paths
-                            .slice(0, 3)
-                            .map(
-                              (path) =>
-                                `${step.stepId}:${path.label}->${path.path}${
-                                  step.command?.length
-                                    ? ` cmd:${step.command.join(" ")}`
-                                    : ""
-                                }${
-                                  step.stdout ? ` stdout:${step.stdout}` : ""
-                                }${step.stderr ? ` stderr:${step.stderr}` : ""}`,
-                            ),
+                          step.paths.slice(0, 3).map(
+                            (path) =>
+                              `${step.stepId}:${path.label}->${path.path}${
+                                step.command?.length
+                                  ? ` cmd:${step.command.join(" ")}`
+                                  : ""
+                              }${
+                                step.stdout ? ` stdout:${step.stdout}` : ""
+                              }${step.stderr ? ` stderr:${step.stderr}` : ""}`,
+                          ),
                         )
                         .slice(0, 8)
                         .join(" | ")}
@@ -2666,9 +2630,8 @@ export function FineTuningView({
                   </div>
                 ) : null}
                 {collectionResult.manifest.evidence.sourceSamples &&
-                Object.values(
-                  collectionResult.manifest.evidence.sourceSamples,
-                ).flat().length > 0 ? (
+                Object.values(collectionResult.manifest.evidence.sourceSamples)
+                  .flat().length > 0 ? (
                   <div className="md:col-span-2 xl:col-span-4">
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                       Collection source samples
@@ -2746,9 +2709,7 @@ export function FineTuningView({
                             } improvement:${
                               comparison.improvementPercent ?? "n/a"
                             }% evidence:${
-                              comparison.modelBacked
-                                ? "model-backed"
-                                : "partial"
+                              comparison.modelBacked ? "model-backed" : "partial"
                             }`,
                         )
                         .join(" | ")}
@@ -2769,8 +2730,8 @@ export function FineTuningView({
                       ",",
                     ) || "none"}{" "}
                     next:
-                    {collectionResult.manifest.evidence.benchmarks
-                      .baselineProgress.nextTier ?? "none"}{" "}
+                    {collectionResult.manifest.evidence.benchmarks.baselineProgress
+                      .nextTier ?? "none"}{" "}
                     remaining:
                     {collectionResult.manifest.evidence.benchmarks.baselineProgress.remainingTiers.join(
                       ",",
@@ -2921,9 +2882,8 @@ export function FineTuningView({
                                         }`,
                                     )
                                     .join(" ")}`
-                                : ""}{" "}
-                              evals:{run.evals?.evalArtifacts ?? 0}{" "}
-                              eval-comparisons:
+                                : ""}
+                              {" "}evals:{run.evals?.evalArtifacts ?? 0} eval-comparisons:
                               {run.evals?.evalComparisons ?? 0}
                               {run.evals?.comparisonInventory?.length
                                 ? ` ${run.evals.comparisonInventory
@@ -2978,7 +2938,7 @@ export function FineTuningView({
                                           }%`,
                                       )
                                       .join(" ")}`
-                                  : ""}
+                                : ""}
                               </div>
                             ) : null}
                             {run.readinessGaps?.length ? (
@@ -3002,9 +2962,7 @@ export function FineTuningView({
                                 ) ? (
                                   <div className="mt-2 flex flex-wrap gap-1">
                                     {run.readinessGaps
-                                      .filter(
-                                        (gap) => gap.recommendedCapability,
-                                      )
+                                      .filter((gap) => gap.recommendedCapability)
                                       .slice(0, 4)
                                       .map((gap) => (
                                         <Button
@@ -3045,8 +3003,7 @@ export function FineTuningView({
                                 {run.coverage.dataSources.natural} scenarios:
                                 {run.coverage.dataSources.scenarios} tests:
                                 {run.coverage.dataSources.tests} jsonl:
-                                {run.coverage.dataSources.trainingJsonl}{" "}
-                                scored-evals:
+                                {run.coverage.dataSources.trainingJsonl} scored-evals:
                                 {run.coverage.evals.scoredComparisons}/
                                 {run.coverage.evals.comparisons} scored-bench:
                                 {run.coverage.benchmarks.scoredComparisons}/
@@ -3075,9 +3032,7 @@ export function FineTuningView({
                                         sample.scenarioId ??
                                         sample.title
                                       } task:${
-                                        sample.task ??
-                                        sample.sourceKind ??
-                                        "n/a"
+                                        sample.task ?? sample.sourceKind ?? "n/a"
                                       } input:${input || "n/a"} output:${
                                         output || "n/a"
                                       }`;
@@ -3272,7 +3227,7 @@ export function FineTuningView({
                         {analysisCoverage.benchmarkModelStats
                           .bestAverageScore !== null
                           ? ` avg:${analysisCoverage.benchmarkModelStats.bestAverageScore}`
-                          : ""}
+                        : ""}
                       </div>
                     </div>
                     <div>
@@ -3290,7 +3245,9 @@ export function FineTuningView({
                                 tier.hasBase ? "base" : "-"
                               }/${tier.hasTrained ? "trained" : "-"}/${
                                 tier.hasReference ? "ref" : "-"
-                              }/${tier.hasImprovement ? "improvement" : "-"}`,
+                              }/${
+                                tier.hasImprovement ? "improvement" : "-"
+                              }`,
                           )
                           .join(" ")}
                       </div>
@@ -5723,9 +5680,12 @@ function FineTuningDetailMetric({
   );
 }
 
-export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
-  const [history, setHistory] =
-    useState<ListTrainingCollectionsResponse | null>(null);
+export function FineTuningDetailExtension({
+  app,
+}: AppDetailExtensionProps) {
+  const [history, setHistory] = useState<ListTrainingCollectionsResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [runningGapId, setRunningGapId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -5926,9 +5886,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
               variant="outline"
               size="sm"
               onClick={() =>
-                void openExternalUrl(
-                  localViewerUrl(latest.analysisIndexHtmlPath),
-                )
+                void openExternalUrl(localViewerUrl(latest.analysisIndexHtmlPath))
               }
             >
               Open analysis
@@ -5937,9 +5895,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                void openExternalUrl(localViewerUrl(latest.readmePath))
-              }
+              onClick={() => void openExternalUrl(localViewerUrl(latest.readmePath))}
             >
               Open README
             </Button>
@@ -5972,4 +5928,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
   );
 }
 
-registerDetailExtension(FINE_TUNING_DETAIL_PANEL_ID, FineTuningDetailExtension);
+registerDetailExtension(
+  FINE_TUNING_DETAIL_PANEL_ID,
+  FineTuningDetailExtension,
+);

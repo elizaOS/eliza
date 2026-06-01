@@ -17,12 +17,13 @@
  * provider) the hook is an inert no-op that still returns valid props.
  */
 
+import type { RefObject } from "react";
 import { useEffect, useRef } from "react";
 import { useAgentSurface } from "./AgentSurfaceContext";
 import type { AgentElementDescriptor } from "./types";
 
 export interface AgentElementHandle<T extends HTMLElement> {
-  ref: React.RefObject<T | null>;
+  ref: RefObject<T | null>;
   agentProps: {
     "data-agent-id": string;
     "data-agent-role": string;

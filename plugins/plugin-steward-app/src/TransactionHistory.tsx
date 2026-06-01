@@ -2,15 +2,8 @@
  * Transaction history table — lists all transactions for the agent from Steward vault.
  */
 
-import {
-  Button,
-  PagePanel,
-  Spinner,
-  StatusBadge,
-  statusLabelForState,
-  statusToneForState,
-  useAgentElement,
-} from "@elizaos/ui";
+import { Button, PagePanel, Spinner, StatusBadge, statusLabelForState, statusToneForState } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

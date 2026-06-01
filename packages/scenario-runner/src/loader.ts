@@ -171,6 +171,14 @@ function toPosixPath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
+export function scenarioFileGlobAlternatives(normalizedGlob: string): string[] {
+  const alternatives = [normalizedGlob];
+  if (normalizedGlob.includes("/**/")) {
+    alternatives.push(normalizedGlob.replace(/\/\*\*\//g, "/"));
+  }
+  return [...new Set(alternatives)];
+}
+
 function matchesScenarioFileGlobs(
   file: string,
   fileGlobs: readonly string[],
@@ -185,10 +193,15 @@ function matchesScenarioFileGlobs(
     const normalizedGlob = toPosixPath(
       path.isAbsolute(fileGlob) ? path.resolve(fileGlob) : fileGlob,
     );
+    const candidateGlobs = scenarioFileGlobAlternatives(normalizedGlob);
     if (path.posix.isAbsolute(normalizedGlob)) {
-      return path.posix.matchesGlob(absoluteFile, normalizedGlob);
+      return candidateGlobs.some((candidateGlob) =>
+        path.posix.matchesGlob(absoluteFile, candidateGlob),
+      );
     }
-    return path.posix.matchesGlob(cwdRelativeFile, normalizedGlob);
+    return candidateGlobs.some((candidateGlob) =>
+      path.posix.matchesGlob(cwdRelativeFile, candidateGlob),
+    );
   });
 }
 

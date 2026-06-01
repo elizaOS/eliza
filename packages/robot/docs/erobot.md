@@ -105,12 +105,13 @@ the battery, Jetson, power-distribution board, and wiring harness stacked clear
 of one another; the head carries the depth camera behind the face; the pelvis
 carries the IMU at the tracked body origin.
 
-The **toes are not motor-driven**. Each foot's toe is a sprung hinge pulled by a
-cable that runs from a shank-mounted winch, **wraps an ankle pulley** (a MuJoCo
-spatial tendon wrapping a cylinder geom), and anchors below the toe hinge. A
-tension-only actuator drives the cable; the return spring extends the toe. The
-`tendon-actuation` proof commands the cable and confirms ~15° of controllable
-toe travel that springs back to flat.
+The **toes are not motor-driven at the joint**. Each foot's toe is a sprung hinge
+pulled by a cable from a **shank-mounted position-controlled winch** that **wraps
+an ankle pulley** (a MuJoCo spatial tendon wrapping a cylinder geom) and anchors
+on the toe. Commanding the winch's spool length sets the toe position; the
+`transmission` proof shows this is a monotonic, zero-hysteresis (zero-backlash)
+command→position map — i.e. a motor in the leg controls the foot through the
+pulley. See the transmission section below.
 
 ## Materials and mass
 
@@ -138,7 +139,7 @@ stock 48 V LiFePO4 pack is 5.1 kg and blows the budget, so erobot specs a custom
 ## Verification matrix
 
 ```bash
-JAX_PLATFORMS=cpu uv run python -m eliza_robot.erobot.build --check    # all 10 proofs
+JAX_PLATFORMS=cpu uv run python -m eliza_robot.erobot.build --check    # all 12 proofs
 ```
 
 Mathematical + geometric proofs (trimesh / FCL / closed-form mechanics):
@@ -155,9 +156,11 @@ Physical proofs (MuJoCo):
 | Proof | What it checks | Result |
 |---|---|---|
 | `mujoco-load` | model compiles, resets to home, steps without NaN, stands under gravity 3 s | PASS — pelvis holds ~0.92 m |
-| `tendon-actuation` | each toe cable+pulley drive articulates the toe and springs back | PASS — ~15° controllable travel |
+| `transmission` | shank winch → ankle pulley → toe is a monotonic, zero-backlash position map; leg motors place the foot in 3D | PASS — 18.6° toe travel, 0° hysteresis, cable SF 2.7 |
+| `tendon-actuation` | the cable/pulley toe drive articulates and springs back | PASS |
 | `joint-sweep` | home pose interference-free; legs clear through the operating envelope | PASS |
 | `range-of-motion` | per joint, collision-free fraction of the full commanded range | PASS — min 0.54 (shoulder roll into torso) |
+| `rom-requirements` | each joint's achieved range meets its anthropomorphic target | PASS — knee 132°, hip pitch 153°, toe 19° |
 | `mass-reconciliation` | compiled MJCF mass == analytic model; BOM ≥ model | PASS — delta 0.0 kg |
 | `structural-sanity` | limb-tube stress vs allowable at peak torque + 2.5× dynamic weight | PASS — worst SF 7.4× |
 
@@ -167,15 +170,48 @@ near (concentric gimbals, chain neighbors) and are excluded from clearance.
 Arm-into-torso overlap at extreme single-joint poses is reported as advisory —
 it is a real workspace constraint enforced by the controller, not a geometry bug.
 
+## Transmission: a leg motor controls the foot through the pulley
+
+The `transmission` proof (`eliza_robot/erobot/transmission.py`) characterizes the
+remote drive of the foot in MuJoCo:
+
+- **Position control through the cable + pulley.** Sweeping the shank winch's
+  spool length moves the toe through a **monotonic** command→angle→Cartesian map
+  with **0° hysteresis** (a positive anchored cable has zero slip and zero
+  backlash): 18.6° of toe travel, 27 mm of toe-tip motion, ~21 mm effective lever.
+- **Pulley / belt mechanics.** 12 mm pulley, ~82° cable wrap, winch torque
+  (10 N·m) over a 15 mm spool gives ~667 N of cable tension (cable SF 2.7 on
+  1.5 mm Dyneema) and ~14 N·m of toe torque; the capstan number is reported for
+  the friction-belt alternative.
+- **The leg motors place the foot in 3D.** Sweeping knee + ankle pitch positions
+  the foot tip across 0.58 m with <0.08 rad joint tracking error.
+
+The plot `cad/erobot/visual/transmission.png` shows the command→toe-angle curve
+and the knee-command→foot-height curve.
+
+## Range of motion
+
+The `rom-requirements` proof drives every joint to both limits (gravity off, foot
+lifted, others held) and checks the achieved range against an anthropomorphic
+target. All pass, e.g. hip pitch 153° (req 100), hip roll 38° (30), hip yaw 92°
+(50), **knee 132° (115)**, ankle pitch 77° (40), toe 19° via the cable (15).
+
 ## Visual proofs
 
 `cad/erobot/visual/` (regenerate with `python -m eliza_robot.erobot.render`):
 
+- `erobot_views.png` — front / three-quarter / side studio views (tapered limbs,
+  rounded shells, molded-plastic finish).
+- `transmission.png` — winch→toe and knee→foot position-control curves.
 - `parts_grid.png` — every structural shell rendered individually.
 - `exploded.png` — assembled vs. radially-exploded shell set.
 - `internals.png` — torso + leg + head cutaways showing motors, bearings,
   electronics, and the ankle pulley inside the shells.
 - `rom_filmstrip.png` — MuJoCo poses: home, deep squat, arms raised, toe flex.
+
+Limbs are rendered from tapered revolved meshes and the shells from
+smoothed solids (MuJoCo visual geoms); collision + all proofs still run on the
+exact primitive envelopes, so the prettier visuals never change the physics.
 
 ## Reference robots studied
 

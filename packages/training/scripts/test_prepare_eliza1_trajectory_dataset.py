@@ -64,6 +64,18 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
                 "response": {"text": "failed"},
                 "metadata": {"source_dataset": "unit_native"},
             },
+            {
+                "format": "eliza_native_v1",
+                "boundary": "vercel_ai_sdk.generateText",
+                "scenarioStatus": "skipped",
+                "trajectoryId": "traj-skipped",
+                "request": {"prompt": "hello"},
+                "response": {"text": "skipped scenario output"},
+                "metadata": {
+                    "source_dataset": "unit_native",
+                    "scenario_status": "skipped",
+                },
+            },
         ],
     )
     out_dir = tmp_path / "out"
@@ -88,7 +100,7 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
 
     assert len(train) == 1
-    assert len(repair) == 1
+    assert len(repair) == 2
     assert train[0]["format"] == "eliza_native_v1"
     assert train[0]["response"]["toolCalls"][0]["toolName"] == "SHELL"
     assert format_record(train[0]) is not None
@@ -97,6 +109,8 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
     assert formatted["messages"][-1]["tool_calls"][0]["function"]["name"] == "SHELL"
     assert train[0]["metadata"]["quality"]["success"] is True
     assert repair[0]["metadata"]["quality"]["success"] is False
+    assert repair[1]["metadata"]["quality"]["success"] is False
+    assert "scenario_status=skipped" in repair[1]["metadata"]["quality"]["reasons"]
     assert repair[0]["metadata"]["split"] == "repair_eval"
     assert trajectory_train[0]["actions"] == [
         {"name": "SHELL", "originalName": "SHELL_COMMAND", "arguments": {"command": "pwd"}}
@@ -112,7 +126,7 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
         "val": "val.jsonl",
     }
     assert manifest["trajectoryFiles"]["train"] == "trajectory_records/train.jsonl"
-    assert manifest["counts"] == {"repair_eval": 1, "test": 0, "train": 1, "val": 0}
+    assert manifest["counts"] == {"repair_eval": 2, "test": 0, "train": 1, "val": 0}
     assert manifest["privacy"]["redactions"] == 1
 
 

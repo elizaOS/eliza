@@ -274,7 +274,10 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "claim_boundary": CLAIM_BOUNDARY,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,

@@ -18,8 +18,10 @@ CASES = {
         "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
     },
     "high_failure": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "defect": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
     },
 }
 
@@ -79,7 +81,9 @@ def touched_window_coords(placement: dict) -> set[tuple[int, int]]:
     return {(core // logical_cols, core % logical_cols) for core in touched}
 
 
-def touched_neighbor_edges(touched: set[tuple[int, int]]) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+def touched_neighbor_edges(
+    touched: set[tuple[int, int]],
+) -> list[tuple[tuple[int, int], tuple[int, int]]]:
     edges = []
     for row, col in sorted(touched):
         for peer in ((row + 1, col), (row, col + 1)):
@@ -88,13 +92,13 @@ def touched_neighbor_edges(touched: set[tuple[int, int]]) -> list[tuple[tuple[in
     return edges
 
 
-def neighbors(coord: tuple[int, int], physical_rows: int, physical_cols: int) -> list[tuple[int, int]]:
+def neighbors(
+    coord: tuple[int, int], physical_rows: int, physical_cols: int
+) -> list[tuple[int, int]]:
     row, col = coord
     candidates = ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1))
     return [
-        nxt
-        for nxt in candidates
-        if 0 <= nxt[0] < physical_rows and 0 <= nxt[1] < physical_cols
+        nxt for nxt in candidates if 0 <= nxt[0] < physical_rows and 0 <= nxt[1] < physical_cols
     ]
 
 
@@ -140,7 +144,9 @@ def route(
     return list(reversed(path))
 
 
-def validate_case(case: str, placement: dict, edges: list[tuple[tuple[int, int], tuple[int, int]]], paths: dict) -> tuple[list[str], dict]:
+def validate_case(
+    case: str, placement: dict, edges: list[tuple[tuple[int, int], tuple[int, int]]], paths: dict
+) -> tuple[list[str], dict]:
     defect = load_json(paths["defect"])
     repair = load_json(paths["repair"])
     physical_rows = int(repair.get("physical_rows", 0))
@@ -165,7 +171,14 @@ def validate_case(case: str, placement: dict, edges: list[tuple[tuple[int, int],
         physical_from = remap.get(logical_from, logical_from)
         physical_to = remap.get(logical_to, logical_to)
         try:
-            path = route(physical_from, physical_to, blocked_cores, blocked_links, physical_rows, physical_cols)
+            path = route(
+                physical_from,
+                physical_to,
+                blocked_cores,
+                blocked_links,
+                physical_rows,
+                physical_cols,
+            )
         except ValueError as exc:
             route_errors.append(f"{logical_from}->{logical_to}:{exc}")
             continue
@@ -178,17 +191,19 @@ def validate_case(case: str, placement: dict, edges: list[tuple[tuple[int, int],
         for value in (logical_from[0], logical_from[1], logical_to[0], logical_to[1], hops):
             route_checksum = mix64(route_checksum, value)
         if len(sampled_routes) < 8 and remapped:
-            sampled_routes.append({
-                "logical_from_row": logical_from[0],
-                "logical_from_col": logical_from[1],
-                "logical_to_row": logical_to[0],
-                "logical_to_col": logical_to[1],
-                "physical_from_row": physical_from[0],
-                "physical_from_col": physical_from[1],
-                "physical_to_row": physical_to[0],
-                "physical_to_col": physical_to[1],
-                "hops": hops,
-            })
+            sampled_routes.append(
+                {
+                    "logical_from_row": logical_from[0],
+                    "logical_from_col": logical_from[1],
+                    "logical_to_row": logical_to[0],
+                    "logical_to_col": logical_to[1],
+                    "physical_from_row": physical_from[0],
+                    "physical_from_col": physical_from[1],
+                    "physical_to_row": physical_to[0],
+                    "physical_to_col": physical_to[1],
+                    "hops": hops,
+                }
+            )
     summary = {
         "case": case,
         "window_neighbor_route_count": route_count,
@@ -213,7 +228,9 @@ def main() -> int:
         "window route-validation inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_window_route_validation_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_route_validation_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     window_repair = load_json(WINDOW_REPAIR) if WINDOW_REPAIR.is_file() else {}
@@ -227,7 +244,9 @@ def main() -> int:
         "placement and window-repair linkage reports are linked and PASS",
         "window route-validation dependency missing, stale, or failing",
     )
-    checks.append({"id": "e1x_window_route_validation_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_route_validation_dependencies_pass", "status": status, "detail": detail}
+    )
 
     touched = touched_window_coords(placement)
     edges = touched_neighbor_edges(touched)
@@ -240,7 +259,9 @@ def main() -> int:
         "window touched-core neighbor edge set is deterministic",
         "window touched-core neighbor edge count mismatch",
     )
-    checks.append({"id": "e1x_window_route_validation_edge_set", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_route_validation_edge_set", "status": status, "detail": detail}
+    )
 
     case_summaries: dict[str, dict] = {}
     all_errors: list[str] = []
@@ -260,7 +281,9 @@ def main() -> int:
             f"{case} window neighbor routes avoid blocked cores/links after repair",
             f"{case} window route metrics mismatch",
         )
-        checks.append({"id": f"e1x_window_route_validation_{case}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_window_route_validation_{case}", "status": status, "detail": detail}
+        )
 
     route_ok = not all_errors
     status, detail = pass_fail(
@@ -268,7 +291,9 @@ def main() -> int:
         "normal and high-failure route checks cover every window neighbor edge",
         "window route errors: " + ", ".join(all_errors[:8]),
     )
-    checks.append({"id": "e1x_window_route_validation_all_routes", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_route_validation_all_routes", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     normal = case_summaries.get("normal", {})
@@ -280,10 +305,18 @@ def main() -> int:
         "window_neighbor_edge_count": len(edges),
         "normal_window_extra_repair_hops": int(normal.get("window_extra_repair_hops", 0)),
         "high_failure_window_extra_repair_hops": int(high.get("window_extra_repair_hops", 0)),
-        "normal_window_max_repaired_neighbor_hops": int(normal.get("window_max_repaired_neighbor_hops", 0)),
-        "high_failure_window_max_repaired_neighbor_hops": int(high.get("window_max_repaired_neighbor_hops", 0)),
-        "normal_window_remapped_neighbor_edges": int(normal.get("window_remapped_neighbor_edge_count", 0)),
-        "high_failure_window_remapped_neighbor_edges": int(high.get("window_remapped_neighbor_edge_count", 0)),
+        "normal_window_max_repaired_neighbor_hops": int(
+            normal.get("window_max_repaired_neighbor_hops", 0)
+        ),
+        "high_failure_window_max_repaired_neighbor_hops": int(
+            high.get("window_max_repaired_neighbor_hops", 0)
+        ),
+        "normal_window_remapped_neighbor_edges": int(
+            normal.get("window_remapped_neighbor_edge_count", 0)
+        ),
+        "high_failure_window_remapped_neighbor_edges": int(
+            high.get("window_remapped_neighbor_edge_count", 0)
+        ),
         "normal_window_route_checksum": int(normal.get("window_route_checksum", 0)),
         "high_failure_window_route_checksum": int(high.get("window_route_checksum", 0)),
         "high_vs_normal_window_extra_hop_ratio": (
@@ -322,7 +355,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X window route validation failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X window route validation failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X window route validation; report {REPORT.relative_to(ROOT)}")
     return 0

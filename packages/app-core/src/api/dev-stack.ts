@@ -90,6 +90,7 @@ export function resolveDevStackFromEnv(
       "Full-screen PNG for agents: with desktop dev (screenshot server on by default), GET /api/dev/cursor-screenshot on the API (loopback). Capture uses OS screen APIs, not webview-only pixels.",
       "Aggregated vite/api/electrobun lines: GET /api/dev/console-log?maxLines=400&maxBytes=256000 (loopback) or read desktopDevLog.filePath.",
       "Voice-loop latency traces + per-stage p50/p90/p99 histograms: GET /api/dev/voice-latency?limit=50 (loopback), or `bun run voice:latency-report` for a printed table.",
+      "Boot phase timings, memory growth, and the exact error for any plugin that failed to load: GET /api/dev/boot-history (alias /api/dev/health, loopback). latestBoot:null = boot has not completed since process start (restart storm/crash); watch:true = API under node --watch.",
     ],
   };
 }

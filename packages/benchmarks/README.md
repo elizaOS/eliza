@@ -1,40 +1,80 @@
 # `packages/benchmarks`
 
-The elizaOS evaluation suite. 70+ benchmark harnesses spanning agent autonomy, tool-call correctness, long-horizon reasoning, voice/vision multimodal, embodied control, and adversarial robustness.
+The elizaOS evaluation suite — 40+ integrated benchmark harnesses spanning agent
+autonomy, tool-call correctness, long-horizon reasoning, voice/vision multimodal,
+embodied control, onchain trading, and adversarial robustness.
 
-Python-based. Lives outside the TypeScript workspace; not an npm package.
+Primarily Python, with several TypeScript/Bun and Rust harnesses. Lives outside
+the TypeScript workspace; not an npm package. Each benchmark is self-contained in
+its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 
-## Categories
+## How it fits together
 
-| Subdir                           | What it evaluates                                                              |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `eliza-1/`                       | Native tool-calling and agentic loop quality on Eliza-1 models.                |
-| `swe-bench/`, `agentbench/`      | Software engineering tasks.                                                    |
-| `lifeops-bench/`                 | Long-running personal-assistant scenarios.                                     |
-| `orchestrator/`                  | Multi-agent coordination harness.                                              |
-| `HyperliquidBench/`              | Onchain trading agent evaluation.                                              |
-| `OSWorld/`                       | Desktop OS automation tasks.                                                   |
-| `vision-language/`               | Multimodal grounding.                                                          |
-| `voice-emotion/`                 | Speech recognition + affect under noise.                                       |
-| `clawbench/`, `claw-eval/`       | Claude-specific evaluations.                                                   |
-| `compactbench/`                  | Context compaction quality.                                                    |
-| `configbench/`, `context-bench/` | Runtime config and context handling.                                           |
-| `adhdbench/`                     | Long-horizon focus / distraction resilience.                                   |
-| `abliteration-robustness/`       | Behavioral robustness post-abliteration.                                       |
-| `app-eval/`                      | End-to-end app interaction.                                                    |
+| Piece | Role |
+| --- | --- |
+| `registry/` | Source of truth. `get_benchmark_registry()` defines every benchmark: id, run command, requirements, result locator, scorer. |
+| `orchestrator/` | Runs benchmarks from the registry, normalizes results into SQLite/JSON, computes calibration/readiness/leaderboards, serves the viewer. |
+| `<benchmark>/` | One directory per benchmark — harness code, data, tests, and docs. |
+| `*-adapter/` | Harness bridges (`eliza`, `hermes`, `openclaw`, `smithers`) that let one benchmark run against different agent backends. |
+| `*_matrix/`, `app_eval/` | Per-benchmark code-agent comparison adapters, driven dynamically by `orchestrator/code_agent_matrix.py`. |
+| `framework/`, `lib/`, `standard/` | Shared harness framework, helpers, and the standard academic adapters (MMLU, HumanEval, GSM8K, MT-Bench, dispatched by `run.py`). |
+| `viewer/` | Static browser UI for inspecting normalized results. |
+| `tests/` | Suite-level tests (registry scores, runner normalization, acceptance gate, …). |
 
 ## Running
 
-The orchestrator at `orchestrator/` accepts a config and runs the named harness, collecting traces and metrics. See `ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md` for full runbook including remote GPU usage.
+List everything the registry knows about and verify adapter coverage:
 
 ```bash
-cd packages/benchmarks
-python3 -m orchestrator.runner --config <path>
+python -m benchmarks.orchestrator list-benchmarks
 ```
 
-## Reports
+Run one benchmark (idempotent — successful signatures are skipped):
 
-Reference runs are checked into `benchmark_results/`. Reports include calibration data, scorecards, and per-task traces.
+```bash
+python -m benchmarks.orchestrator run --benchmarks <id> --provider <p> --model <m>
+```
+
+Run the whole suite:
+
+```bash
+python -m benchmarks.orchestrator run --all --provider groq --model openai/gpt-oss-120b
+```
+
+Each benchmark can also be run directly from its own directory — see that
+benchmark's `AGENTS.md` for the exact command and a no-key smoke path.
+
+Use your workspace Python so dependency versions stay consistent across
+benchmark subprocesses. Full operator runbook (remote GPU, sub-agent matrix,
+calibration gates): [`ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md)
+and [`orchestrator/README.md`](orchestrator/README.md).
+
+## Testing the harnesses
+
+```bash
+# Suite-level tests (registry, scoring, normalization, acceptance gate)
+pytest tests/ -v
+
+# A single benchmark's tests — see its AGENTS.md for the exact path, e.g.
+pytest rlm-bench/elizaos_rlm_bench/tests/ -v
+```
+
+## Results
+
+Run output (per-task traces, scorecards, the orchestrator SQLite DB, and viewer
+data) lands under `benchmark_results/` and is **gitignored** — it is generated,
+never committed. Inspect history with:
+
+```bash
+python -m benchmarks.orchestrator serve-viewer
+```
+
+## Adding a benchmark
+
+1. Create `<your-benchmark>/` with the harness, tests, and the three docs.
+2. Register it in `registry/commands.py` (id, `build_command`, `locate_result`,
+   `requirements`) and add a scorer in `registry/scores.py`.
+3. Confirm it appears in `python -m benchmarks.orchestrator list-benchmarks`.
 
 ## Docs
 

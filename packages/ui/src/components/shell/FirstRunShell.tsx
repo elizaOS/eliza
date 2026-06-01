@@ -4,8 +4,10 @@ import {
   Cloud,
   HardDrive,
   Loader2,
+  Mic,
   MicOff,
   Network,
+  Settings2,
   Volume2,
 } from "lucide-react";
 import * as React from "react";
@@ -16,6 +18,7 @@ import {
   type FirstRunStep,
   normalizeFirstRunName,
 } from "../../first-run/first-run";
+import type { MicrophonePermissionController } from "../../first-run/use-microphone-permission";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -46,6 +49,7 @@ export interface FirstRunShellProps {
     transcript: string;
     error: string | null;
   };
+  microphone: MicrophonePermissionController;
   primaryLabel: string;
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
@@ -76,7 +80,7 @@ function RuntimeCard(props: {
       className={[
         "w-full rounded-md border text-left transition",
         props.active
-          ? "border-accent bg-[var(--first-run-card-bg-hover)]"
+          ? "border-[#0B35F1] bg-[var(--first-run-card-bg-hover)]"
           : GLASS_INTERACTIVE,
       ].join(" ")}
     >
@@ -94,7 +98,7 @@ function RuntimeCard(props: {
           className={[
             "mt-0.5 shrink-0",
             muted ? "h-4 w-4 text-[var(--first-run-text-muted)]" : "h-5 w-5",
-            props.active ? "text-accent" : "",
+            props.active ? "text-[#0B35F1]" : "",
           ].join(" ")}
         />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -124,7 +128,7 @@ function RuntimeCard(props: {
                     variant="muted"
                     className={
                       props.emphasis === "primary"
-                        ? "border-accent/40 bg-accent/10 text-accent"
+                        ? "border-[#0B35F1]/40 bg-[#0B35F1]/10 text-[#0B35F1]"
                         : undefined
                     }
                   />
@@ -193,7 +197,7 @@ function LocalInferenceChoice(props: {
             className={[
               "flex cursor-pointer flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
               active
-                ? "border-accent bg-accent/10"
+                ? "border-[#0B35F1] bg-[#0B35F1]/10"
                 : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
             ].join(" ")}
           >
@@ -234,7 +238,7 @@ function GlassButton(props: {
       className={[
         "inline-flex min-h-[3rem] min-w-[7rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-45",
         props.variant === "primary"
-          ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
+          ? "border-[#0B35F1] bg-[#0B35F1] text-white hover:bg-[#082ed6]"
           : GLASS_INTERACTIVE,
       ].join(" ")}
     >
@@ -276,7 +280,7 @@ function BareInput(props: {
       }}
       placeholder={props.placeholder}
       className={[
-        "w-full border-0 border-b-2 border-border bg-transparent px-2 pb-3 text-center font-medium text-txt outline-none placeholder:text-muted focus:border-accent",
+        "w-full border-0 border-b-2 border-border bg-transparent px-2 pb-3 text-center font-medium text-txt outline-none placeholder:text-muted focus:border-[#0B35F1]",
         props.compact ? "text-2xl" : "text-4xl",
       ].join(" ")}
     />
@@ -319,23 +323,38 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const characters = Array.from(text);
-    let index = 0;
     setRendered("");
     setComplete(false);
 
+    // Drive the reveal off elapsed wall-clock time rather than counting one
+    // character per timer tick. Under main-thread contention (the onboarding
+    // orb/cloud animations plus this hook re-rendering the whole shell on every
+    // character) the chained timers fire hundreds of ms apart instead of ~20ms,
+    // which previously stretched a ~0.6s animation to ~18s and left the heading
+    // mid-word for seconds. Catching up to the time-derived index keeps the
+    // total reveal bounded by REVEAL_DURATION_MS no matter how starved the
+    // event loop is, so the completed prompt is always available promptly.
+    const REVEAL_DURATION_MS = 600;
+    const STEP_MS = 22;
+    const startedAt =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+
     const reveal = () => {
       if (cancelled) return;
-      index += 1;
-      setRendered(characters.slice(0, index).join(""));
-      if (index >= characters.length) {
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      const progress = Math.min(1, (now - startedAt) / REVEAL_DURATION_MS);
+      const index = Math.max(1, Math.ceil(progress * characters.length));
+      if (progress >= 1 || index >= characters.length) {
+        setRendered(text);
         setComplete(true);
         return;
       }
-      const previous = characters[index - 1];
-      timeout = setTimeout(reveal, previous === " " ? 12 : 22);
+      setRendered(characters.slice(0, index).join(""));
+      timeout = setTimeout(reveal, STEP_MS);
     };
 
-    timeout = setTimeout(reveal, 40);
+    timeout = setTimeout(reveal, STEP_MS);
     return () => {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
@@ -366,6 +385,84 @@ function FirstRunStatus(props: {
     <p className="max-w-[40rem] rounded-sm border border-destructive/40 bg-destructive-subtle px-4 py-2 text-center text-sm text-destructive">
       {message}
     </p>
+  );
+}
+
+function FirstRunMicrophonePermission(props: {
+  microphone: MicrophonePermissionController;
+  t: TranslateFn;
+}) {
+  const { microphone, t } = props;
+  const { status, canRequest, requesting } = microphone;
+
+  if (status === "granted") {
+    return (
+      <div className="flex min-h-[2.75rem] items-center justify-center">
+        <StatusBadge
+          label={t("firstrunshell.micGranted", {
+            defaultValue: "Microphone ready",
+          })}
+          variant="success"
+          icon={<Mic />}
+          withDot
+        />
+      </div>
+    );
+  }
+
+  // `not-applicable` means the renderer has no microphone API at all (e.g. a
+  // headless surface) — there is nothing actionable to show.
+  if (status === "not-applicable") {
+    return null;
+  }
+
+  const denied =
+    status === "denied" || status === "restricted" || canRequest === false;
+
+  return (
+    <div className="flex min-h-[2.75rem] w-full flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          void (denied ? microphone.openSettings() : microphone.request());
+        }}
+        disabled={requesting}
+        data-testid={
+          denied
+            ? "first-run-microphone-open-settings"
+            : "first-run-microphone-request"
+        }
+        className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-45 ${GLASS_INTERACTIVE}`}
+      >
+        {requesting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : denied ? (
+          <Settings2 className="h-4 w-4" />
+        ) : (
+          <Mic className="h-4 w-4" />
+        )}
+        {requesting
+          ? t("firstrunshell.micRequesting", { defaultValue: "Requesting…" })
+          : denied
+            ? t("firstrunshell.micOpenSettings", {
+                defaultValue: "Open Settings",
+              })
+            : t("firstrunshell.micEnable", {
+                defaultValue: "Enable microphone",
+              })}
+      </button>
+      <p className="max-w-[24rem] text-center text-xs text-[var(--first-run-text-muted)]">
+        {denied
+          ? t("firstrunshell.micDeniedHelp", {
+              defaultValue:
+                "Microphone access is blocked. Grant it in settings to talk to your assistant.",
+            })
+          : t("firstrunshell.micHelp", {
+              defaultValue:
+                "Your assistant is voice-first. Enable the microphone to talk to it.",
+            })}
+      </p>
+    </div>
   );
 }
 
@@ -407,17 +504,14 @@ function FirstRunVoiceControl(props: {
                 defaultValue: "Start voice input",
               })
         }
-        className="inline-flex min-h-11 items-center justify-center rounded-full bg-transparent px-1 py-2 transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="inline-flex min-h-11 items-center justify-center rounded-full bg-transparent px-1 py-2 transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B35F1]"
       >
         <StatusBadge
           label={label}
           variant={state === "listening" ? "success" : "muted"}
-          // App surface is orange-accent only (no blue). Render the transient
-          // "speaking" state in the brand accent rather than the shared "info"
-          // (blue) variant so it stays distinct from listening/idle.
           className={
             state === "speaking"
-              ? "border-accent/35 bg-accent/12 text-accent"
+              ? "border-[#0B35F1]/35 bg-[#0B35F1]/10 text-[#0B35F1]"
               : undefined
           }
           pulse={state === "listening"}
@@ -588,6 +682,7 @@ export function FirstRunShell({
   error,
   cloudError,
   voice,
+  microphone,
   primaryLabel,
   canBack,
   updateDraft,
@@ -617,7 +712,7 @@ export function FirstRunShell({
   return (
     <div
       data-testid="first-run-shell"
-      className="first-run-screen relative flex min-h-[100dvh] w-full overflow-hidden bg-bg text-txt"
+      className="first-run-screen relative flex min-h-[100dvh] w-full overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
     >
       <div className="relative z-10 flex min-h-[100dvh] w-full flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="flex h-12 items-center">
@@ -662,6 +757,9 @@ export function FirstRunShell({
                 finishRuntime={finishRuntime}
                 t={t}
               />
+            ) : null}
+            {promptComplete && step === "runtime" ? (
+              <FirstRunMicrophonePermission microphone={microphone} t={t} />
             ) : null}
             {promptComplete ? (
               <FirstRunVoiceControl

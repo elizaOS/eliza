@@ -1,247 +1,116 @@
 # @elizaos/plugin-web-search
 
-A plugin for powerful web search capabilities, providing efficient search query handling and result processing through a customizable API interface.
+Adds live web search to an Eliza agent via the [Tavily](https://tavily.com/) API.
 
-## Overview
+## What it does
 
-This plugin provides functionality to:
+Installing this plugin registers a `WebSearchService` (`ServiceType.WEB_SEARCH`) that any other plugin or action can call to search the web. It also registers the `"web"` search category so the elizaOS core search-dispatch layer routes web queries to this service automatically.
 
-- Execute web search queries with customizable parameters
-- Process and format search results
-- Handle search API authentication
-- Manage token limits and response sizes
-- Optimize query performance
+Capabilities exposed through the service:
+
+- **General web search** — ranked results with optional AI-generated answer.
+- **News search** — topic-filtered results with freshness control (day / week / month).
+- **Image search** — includes image URLs in results.
+- **Video search** — delegates to general search (Tavily has no separate video endpoint).
+- **Page info** — fetches a URL and extracts title, description, and raw HTML content.
+
+No actions are registered by the plugin itself. Other plugins that rely on web search call `runtime.getService(ServiceType.WEB_SEARCH)` and invoke the service directly.
 
 ## Installation
 
+Add the package to your agent:
+
 ```bash
-bun install @elizaos/plugin-web-search
+bun add @elizaos/plugin-web-search
 ```
 
-## Configuration
-
-The plugin requires the following environment variables:
-
-```env
-TAVILY_API_KEY=your_api_key    # Required: API key for search service
-```
-
-## Usage
-
-Import and register the plugin in your Eliza configuration.
+Then include it in your character config:
 
 ```typescript
 import { webSearchPlugin } from "@elizaos/plugin-web-search";
 
 export default {
     plugins: [webSearchPlugin],
-    // ... other configuration
+    // ...
 };
 ```
 
-**Custom Usage**
-If you want custom usage, for example, a social media client to search the web before posting, you can also import the webSearchService and use it directly. Here's how you can do it:
+## Configuration
 
-```typescript
-// Example usage in a social media client
-const webSearchService = new WebSearchService();
-await webSearchService.initialize(runtime);
-const latestNews = await webSearchService.search(
-    "latest news on AI Agents",
-    // searchOptions
-);
+| Environment variable | Required | Description |
+|---------------------|----------|-------------|
+| `TAVILY_API_KEY` | Yes | API key from [app.tavily.com](https://app.tavily.com). Without it the service starts in a degraded (inert) state and throws a descriptive error on first use. |
 
-const state = await this.runtime.composeState(
-    {  } // memory,
-    { // additional keys
-        latestNews: latestNews,
-    }
-);
+Set the key in your environment or agent settings:
 
-// Then modify the post template to include the {{latestNews}} and however you need
+```env
+TAVILY_API_KEY=tvly-...
 ```
 
-## Features
-
-### Web Search
-
-The plugin provides comprehensive web search capabilities:
+## Calling the service from another plugin
 
 ```typescript
-import { webSearch } from "@elizaos/plugin-web-search";
+import { ServiceType } from "@elizaos/core";
+import type { IWebSearchService } from "@elizaos/core";
 
-// Execute a search query
-const result = await webSearch.handler(
-    runtime,
-    {
-        content: { text: "What is the latest news about AI?" },
-    },
-    state,
-    {},
-    callback
-);
+const svc = runtime.getService<IWebSearchService>(ServiceType.WEB_SEARCH);
+
+// General search
+const result = await svc.search("latest developments in open-source LLMs", {
+    limit: 5,
+    searchDepth: "advanced",
+    includeAnswer: true,
+});
+
+// News search
+const news = await svc.searchNews("AI regulation", { freshness: "week" });
+
+// Image search (always returns image results; no flag needed)
+const images = await svc.searchImages("northern lights", { limit: 10 });
 ```
 
-### Token Management
+`SearchResponse` shape:
 
 ```typescript
-// The plugin automatically handles token limits
-const DEFAULT_MAX_WEB_SEARCH_TOKENS = 4000;
-
-// Example of token-limited response
-const response = MaxTokens(searchResult, DEFAULT_MAX_WEB_SEARCH_TOKENS);
+{
+    query: string;
+    answer?: string;         // AI-generated summary (when includeAnswer is true)
+    responseTime?: number;
+    results: Array<{
+        title: string;
+        url: string;
+        description: string;
+        content: string;
+        rawContent?: string;
+        score: number;
+        publishedDate?: Date;
+    }>;
+    images: Array<{ url: string; description?: string }>;
+}
 ```
+
+## Search options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `limit` | number | 3 | Maximum number of results |
+| `topic` / `type` | `"general"` \| `"news"` | `"general"` | Tavily topic filter |
+| `searchDepth` | `"basic"` \| `"advanced"` | `"basic"` | Tavily crawl depth |
+| `includeAnswer` | boolean | true | Request an AI-generated answer |
+| `includeImages` | boolean | false | Include image results |
+| `days` | number | 3 | Freshness window in days (news searches) |
 
 ## Development
 
-### Building
-
 ```bash
-bun run build
-```
-
-### Testing
-
-```bash
-bun run test
-```
-
-### Development Mode
-
-```bash
-bun run dev
+bun run --cwd plugins/plugin-web-search build      # compile
+bun run --cwd plugins/plugin-web-search dev        # watch mode
+bun run --cwd plugins/plugin-web-search lint       # biome check
+bun run --cwd plugins/plugin-web-search typecheck  # type-check only
 ```
 
 ## Dependencies
 
-- `@elizaos/core`: Core Eliza functionality
-- `js-tiktoken`: Token counting and management
-- `tsup`: Build tool
-- Other standard dependencies listed in package.json
+- [`@elizaos/core`](https://github.com/elizaOS/eliza) — elizaOS runtime interfaces
+- [`@tavily/core`](https://www.npmjs.com/package/@tavily/core) — Tavily search client
 
-## API Reference
-
-### Core Interfaces
-
-```typescript
-interface Action {
-    name: "WEB_SEARCH";
-    similes: string[];
-    description: string;
-    validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
-    handler: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback: HandlerCallback
-    ) => Promise<void>;
-    examples: Array<Array<any>>;
-}
-
-interface SearchResult {
-    title: string;
-    url: string;
-    answer?: string;
-    results?: Array<{
-        title: string;
-        url: string;
-    }>;
-}
-```
-
-### Plugin Methods
-
-- `webSearch.handler`: Main method for executing searches
-- `generateWebSearch`: Core search generation function
-- `MaxTokens`: Token limit management function
-- `getTotalTokensFromString`: Token counting utility
-
-## Common Issues/Troubleshooting
-
-### Issue: API Authentication Failures
-
-- **Cause**: Invalid or missing Tavily API key
-- **Solution**: Verify TAVILY_API_KEY environment variable
-
-### Issue: Token Limit Exceeded
-
-- **Cause**: Search results exceeding maximum token limit
-- **Solution**: Results are automatically truncated to fit within limits
-
-### Issue: Search Rate Limiting
-
-- **Cause**: Too many requests in short time
-- **Solution**: Implement proper request throttling
-
-## Security Best Practices
-
-- Store API keys securely using environment variables
-- Validate all search inputs
-- Implement proper error handling
-- Keep dependencies updated
-- Monitor API usage and rate limits
-- Use HTTPS for API communication
-
-## Example Usage
-
-```typescript
-// Basic search
-const searchQuery = "Latest developments in quantum computing";
-const results = await generateWebSearch(searchQuery, runtime);
-
-// With formatted response
-if (results && results.results.length) {
-    const formattedResponse = `${results.answer}\n\nFor more details, check out:\n${results.results
-        .map(
-            (result, index) => `${index + 1}. [${result.title}](${result.url})`
-        )
-        .join("\n")}`;
-}
-```
-
-## Configuration Options
-
-### Token Management
-
-```typescript
-const DEFAULT_MODEL_ENCODING = "gpt-3.5-turbo";
-const DEFAULT_MAX_WEB_SEARCH_TOKENS = 4000;
-```
-
-### Search Actions
-
-The plugin includes multiple search action similes:
-
-- SEARCH_WEB
-- INTERNET_SEARCH
-- LOOKUP
-- QUERY_WEB
-- FIND_ONLINE
-- And more...
-
-## Contributing
-
-Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information.
-
-## Credits
-
-This plugin integrates with and builds upon several key technologies:
-
-- [Tavily API](https://tavily.com/): Advanced search and content analysis API
-- [js-tiktoken](https://github.com/dqbd/tiktoken): Token counting for API responses
-- [Zod](https://github.com/colinhacks/zod): TypeScript-first schema validation
-
-Special thanks to:
-
-- The Eliza community for their contributions and feedback
-
-For more information about the search capabilities and tools:
-
-- [Tavily API Documentation](https://docs.tavily.com/)
-- [Token Management Guide](https://github.com/dqbd/tiktoken#readme)
-- [Search API Best Practices](https://docs.tavily.com/docs/guides/best-practices)
-
-## License
-
-This plugin is part of the Eliza project. See the main project repository for license information.

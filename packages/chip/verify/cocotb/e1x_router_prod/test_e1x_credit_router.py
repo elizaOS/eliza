@@ -291,5 +291,3 @@ async def explicit_drop_route_is_reported(dut):
             saw_drop = True
         assert int(dut.out_valid.value) == 0
     assert saw_drop
-
-

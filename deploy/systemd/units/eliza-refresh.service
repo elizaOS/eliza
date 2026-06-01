@@ -1,0 +1,9 @@
+[Unit]
+Description=Eliza — roll the Claude OAuth refresh token
+Documentation=https://github.com/elizaOS/eliza
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/eliza/env
+ExecStart=%h/bin/eliza-refresh-oauth.sh
+SyslogIdentifier=eliza-refresh

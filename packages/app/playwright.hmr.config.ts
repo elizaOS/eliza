@@ -48,6 +48,10 @@ export default defineConfig({
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",
+      // Vite cold-start of the full raw-source module graph exceeds dev-ui's
+      // default 60s health-check window on shared CI runners; widen it so the
+      // watchdog doesn't SIGTERM Vite before it can serve the HMR client.
+      ELIZA_DEV_VITE_READY_BUDGET_MS: "120000",
       FORCE_COLOR: "0",
       NODE_NO_WARNINGS: "1",
     },

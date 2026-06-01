@@ -114,10 +114,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["full_output_checksum_manifest_rows"] == 2_608_640
     assert report["summary"]["full_output_checksum_manifest_macs"] == 13_015_864_320
     assert report["summary"]["full_output_checksum_manifest_probe_count"] == 849
-    assert (
-        report["summary"]["full_output_checksum_manifest_checksum"]
-        == 5_613_227_195_448_189_553
-    )
+    assert report["summary"]["full_output_checksum_manifest_checksum"] == 5_613_227_195_448_189_553
     assert (
         report["summary"]["full_output_checksum_manifest_layer_sha256"]
         == "58e4218553aae175a065025d4faa702f7da4e7721a798d88d6e5e7852ec154b5"
@@ -145,10 +142,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["expanded_real_weight_rows"] == 849
     assert report["summary"]["expanded_real_weight_macs"] == 4_147_443
     assert report["summary"]["expanded_real_weight_mac_gain"] > 158.0
-    assert (
-        report["summary"]["expanded_real_weight_checksum"]
-        == 11_081_612_788_320_878_322
-    )
+    assert report["summary"]["expanded_real_weight_checksum"] == 11_081_612_788_320_878_322
     assert (
         report["summary"]["expanded_real_weight_result_sha256"]
         == "2abc4cb9334b939b0b230cca5d4ad605ea35aba13a5940948601e52dd25ed117"
@@ -161,10 +155,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["full_norm_real_weight_rows"] == 414_720
     assert report["summary"]["full_norm_real_weight_macs"] == 414_720
     assert 0.15 < report["summary"]["full_norm_real_weight_row_fraction"] < 0.17
-    assert (
-        report["summary"]["full_norm_real_weight_checksum"]
-        == 1_566_824_365_644_515_702
-    )
+    assert report["summary"]["full_norm_real_weight_checksum"] == 1_566_824_365_644_515_702
     assert (
         report["summary"]["full_norm_real_weight_result_sha256"]
         == "e83b0a710f70a39f82b10ff34593f0b0dc2ca95fd095e2b7ee76a5946bc9b488"
@@ -179,10 +170,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["vocab_sampled_k_macs"] == 8_192_000
     assert report["summary"]["vocab_sampled_k_represented_full_k_macs"] == 327_680_000
     assert 0.02 < report["summary"]["vocab_sampled_k_row_fraction"] < 0.03
-    assert (
-        report["summary"]["vocab_sampled_k_checksum"]
-        == 2_937_447_206_589_032_094
-    )
+    assert report["summary"]["vocab_sampled_k_checksum"] == 2_937_447_206_589_032_094
     assert (
         report["summary"]["vocab_sampled_k_result_sha256"]
         == "eefae909eba8d90f14e4b04daee33f994e791f8be981fd2dcfa1fe3fdc5bf084"
@@ -194,13 +182,9 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["repaired_real_weight_rows"] == 478_720
     assert report["summary"]["repaired_real_weight_macs"] == 8_606_720
     assert report["summary"]["repaired_real_weight_touched_cores"] == 3_847
+    assert report["summary"]["repaired_real_weight_output_checksum"] == 1_513_790_197_994_659_005
     assert (
-        report["summary"]["repaired_real_weight_output_checksum"]
-        == 1_513_790_197_994_659_005
-    )
-    assert (
-        report["summary"]["repaired_real_weight_normal_route_checksum"]
-        == 5_656_197_490_747_142_705
+        report["summary"]["repaired_real_weight_normal_route_checksum"] == 5_656_197_490_747_142_705
     )
     assert (
         report["summary"]["repaired_real_weight_high_failure_route_checksum"]
@@ -218,10 +202,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["attn_out_sampled_k_macs"] == 13_107_200
     assert report["summary"]["attn_out_sampled_k_represented_full_k_macs"] == 1_048_576_000
     assert 0.07 < report["summary"]["attn_out_sampled_k_row_fraction"] < 0.09
-    assert (
-        report["summary"]["attn_out_sampled_k_checksum"]
-        == 6_608_415_098_217_527_669
-    )
+    assert report["summary"]["attn_out_sampled_k_checksum"] == 6_608_415_098_217_527_669
     assert (
         report["summary"]["attn_out_sampled_k_result_sha256"]
         == "eb125c171f915724c435bb531c3e46399daeef673edb4e2c571b93b1fd0487aa"
@@ -236,10 +217,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["attn_qkv_sampled_k_macs"] == 19_660_800
     assert report["summary"]["attn_qkv_sampled_k_represented_full_k_macs"] == 3_145_728_000
     assert 0.23 < report["summary"]["attn_qkv_sampled_k_row_fraction"] < 0.24
-    assert (
-        report["summary"]["attn_qkv_sampled_k_checksum"]
-        == 16_749_998_878_173_451_739
-    )
+    assert report["summary"]["attn_qkv_sampled_k_checksum"] == 16_749_998_878_173_451_739
     assert (
         report["summary"]["attn_qkv_sampled_k_result_sha256"]
         == "7774d62c42840b0bf66082fa7e072df8f4ee9067f659451e7195488f57f74940"
@@ -254,10 +232,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["mlp_gate_sampled_k_macs"] == 17_694_720
     assert report["summary"]["mlp_gate_sampled_k_represented_full_k_macs"] == 2_831_155_200
     assert 0.21 < report["summary"]["mlp_gate_sampled_k_row_fraction"] < 0.22
-    assert (
-        report["summary"]["mlp_gate_sampled_k_checksum"]
-        == 644_049_328_919_108_482
-    )
+    assert report["summary"]["mlp_gate_sampled_k_checksum"] == 644_049_328_919_108_482
     assert (
         report["summary"]["mlp_gate_sampled_k_result_sha256"]
         == "042143af521f945995b1862636d90a6668be8a9fc68d776ff800251ffc4e3fc4"
@@ -272,10 +247,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["mlp_up_sampled_k_macs"] == 17_694_720
     assert report["summary"]["mlp_up_sampled_k_represented_full_k_macs"] == 2_831_155_200
     assert 0.21 < report["summary"]["mlp_up_sampled_k_row_fraction"] < 0.22
-    assert (
-        report["summary"]["mlp_up_sampled_k_checksum"]
-        == 5_263_540_896_081_439_006
-    )
+    assert report["summary"]["mlp_up_sampled_k_checksum"] == 5_263_540_896_081_439_006
     assert (
         report["summary"]["mlp_up_sampled_k_result_sha256"]
         == "9886ad2306ea36a3d73135fea7ea73fad37f07ec6c891b5d5b10a94d4fac74c2"
@@ -290,10 +262,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["mlp_down_sampled_k_macs"] == 6_553_600
     assert report["summary"]["mlp_down_sampled_k_represented_full_k_macs"] == 2_831_155_200
     assert 0.07 < report["summary"]["mlp_down_sampled_k_row_fraction"] < 0.08
-    assert (
-        report["summary"]["mlp_down_sampled_k_checksum"]
-        == 3_360_713_502_265_478_628
-    )
+    assert report["summary"]["mlp_down_sampled_k_checksum"] == 3_360_713_502_265_478_628
     assert (
         report["summary"]["mlp_down_sampled_k_result_sha256"]
         == "a3d640fdc0ae8a55cacdaa0e61bfbfdade39cf9b30d14c291656d579a6b26495"
@@ -320,7 +289,9 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
         == "per_layer_looped_vector_kernel_codegen_execution_missing"
     )
     assert report["summary"]["per_layer_vector_codegen_layer_count"] == 283
-    assert report["summary"]["per_layer_vector_codegen_total_instruction_estimate"] == 94_393_889_280
+    assert (
+        report["summary"]["per_layer_vector_codegen_total_instruction_estimate"] == 94_393_889_280
+    )
     assert (
         report["summary"]["per_layer_vector_codegen_sha256"]
         == "3815c04bfb38c664d3215e0b268e6ed8d801a7a075a1dab6ab1174d4e4635956"
@@ -406,7 +377,10 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["window_execution_trace_normal_cycles"] == 47_501_642_583
     assert report["summary"]["window_execution_trace_high_failure_cycles"] == 63_132_355_414
     assert report["summary"]["window_execution_trace_cycle_ratio"] > 1.3
-    assert report["summary"]["window_execution_trace_high_failure_checksum"] == 3_419_781_716_949_080_192
+    assert (
+        report["summary"]["window_execution_trace_high_failure_checksum"]
+        == 3_419_781_716_949_080_192
+    )
     assert (
         report["summary"]["window_execution_trace_residual_blocker"]
         == "full_output_vectorized_tensor_fabric_executor_missing"
@@ -434,10 +408,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["model_shard_sample_executor_words"] == 9_282
     assert report["summary"]["model_shard_sample_executor_shard_words"] == 9_281
     assert report["summary"]["model_shard_sample_executor_lane_macs"] == 74_256
-    assert (
-        report["summary"]["model_shard_sample_executor_checksum"]
-        == 6_658_997_565_743_609_885
-    )
+    assert report["summary"]["model_shard_sample_executor_checksum"] == 6_658_997_565_743_609_885
     assert (
         report["summary"]["model_shard_sample_executor_payload_sha256"]
         == "f8fde8061d500fbef0cb3c6a4225e42abb11aba38da814b1c00a830c7dbf6910"
@@ -452,10 +423,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["layer_shard_sweep_executor_records"] == 687
     assert report["summary"]["layer_shard_sweep_executor_words"] == 5_064_960
     assert report["summary"]["layer_shard_sweep_executor_lane_macs"] == 40_519_680
-    assert (
-        report["summary"]["layer_shard_sweep_executor_checksum"]
-        == 7_249_510_583_533_139_077
-    )
+    assert report["summary"]["layer_shard_sweep_executor_checksum"] == 7_249_510_583_533_139_077
     assert 0.001 < report["summary"]["layer_shard_sweep_executor_coverage_fraction"] < 0.01
     assert (
         report["summary"]["layer_shard_sweep_executor_result_sha256"]
@@ -471,10 +439,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["full_payload_manifest_stream_bytes"] == 6_508_139_520
     assert report["summary"]["full_payload_manifest_probe_words"] == 454_101
     assert 0.0 < report["summary"]["full_payload_manifest_probe_fraction"] < 0.001
-    assert (
-        report["summary"]["full_payload_manifest_checksum"]
-        == 15_384_439_414_980_776_514
-    )
+    assert report["summary"]["full_payload_manifest_checksum"] == 15_384_439_414_980_776_514
     assert (
         report["summary"]["full_payload_manifest_layer_sha256"]
         == "be765abe713d8def565e0b95518738c2666c1b5a2707d5b11dd53ac64e5f9763"
@@ -531,8 +496,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
         == 6_557_843_250_509_347_312
     )
     assert (
-        report["summary"]["full_payload_repair_rom_combined_checksum"]
-        == 14_301_024_026_748_848_141
+        report["summary"]["full_payload_repair_rom_combined_checksum"] == 14_301_024_026_748_848_141
     )
     assert (
         report["summary"]["full_payload_repair_rom_case_sha256"]
@@ -574,5 +538,8 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["credit_router_cocotb_testcases"] >= 8
     assert report["summary"]["mesh_fabric_cocotb_testcases"] >= 4
     assert report["summary"]["mesh_liveness_formal_check_count"] >= 8
-    assert report["summary"]["mesh_liveness_residual_blocker"] == "full_formal_network_liveness_proof_missing"
+    assert (
+        report["summary"]["mesh_liveness_residual_blocker"]
+        == "full_formal_network_liveness_proof_missing"
+    )
     assert report["summary"]["graph_mapper_passing_check_count"] >= 8

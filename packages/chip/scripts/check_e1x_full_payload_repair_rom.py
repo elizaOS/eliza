@@ -24,7 +24,8 @@ CASES = {
         "expected_payload_remap_words": 279,
     },
     "high_failure": {
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
         "rom": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json",
         "expected_rom_sha256": "9f2710a5266260fe9885f22954d14f3e6787840d5c6b0bf36781a051e42e29da",
         "expected_payload_remap_words": 3_012,
@@ -129,7 +130,9 @@ def case_payload_remap_words(
         physical = remap.get(logical)
         if physical is None:
             continue
-        word = u64_hex((coord_index(logical, logical_cols) << 32) | coord_index(physical, physical_cols))
+        word = u64_hex(
+            (coord_index(logical, logical_cols) << 32) | coord_index(physical, physical_cols)
+        )
         expected_words.append(word)
         for value in (
             int(record["layer_index"]),
@@ -168,7 +171,13 @@ def case_payload_remap_words(
 
 def main() -> int:
     checks: list[dict[str, str]] = []
-    input_paths = [PLACEMENT, FULL_PAYLOAD_REPAIR, WINDOW_REPAIR_ROM, REPAIR_ROM_COCOTB, BOOT_REPAIR_FW]
+    input_paths = [
+        PLACEMENT,
+        FULL_PAYLOAD_REPAIR,
+        WINDOW_REPAIR_ROM,
+        REPAIR_ROM_COCOTB,
+        BOOT_REPAIR_FW,
+    ]
     for paths in CASES.values():
         input_paths.extend([paths["repair"], paths["rom"]])
     missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
@@ -177,7 +186,9 @@ def main() -> int:
         "full-payload repair-ROM inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_payload_repair_rom_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repair_rom_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     full_payload_repair = load_json(FULL_PAYLOAD_REPAIR) if FULL_PAYLOAD_REPAIR.is_file() else {}
@@ -188,7 +199,8 @@ def main() -> int:
     deps_ok = (
         placement.get("schema") == "eliza.e1x.graph_mesh_placement.v1"
         and full_payload_repair.get("status") == "PASS"
-        and int(full_payload_repair.get("summary", {}).get("payload_shard_record_count", 0)) == 151_367
+        and int(full_payload_repair.get("summary", {}).get("payload_shard_record_count", 0))
+        == 151_367
         and window_repair_rom.get("status") == "PASS"
         and int(window_repair_rom.get("summary", {}).get("window_touched_core_count", 0)) == 151_367
         and repair_rom_cocotb.get("status") == "PASS"
@@ -201,7 +213,9 @@ def main() -> int:
         "full-payload repair mapping, window repair-ROM linkage, RTL cocotb, and boot firmware are PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_full_payload_repair_rom_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repair_rom_dependencies_pass", "status": status, "detail": detail}
+    )
 
     records = placement_records(placement)
     records_ok = (
@@ -214,7 +228,13 @@ def main() -> int:
         "full-payload repair-ROM gate reconstructs every resident shard record",
         "full-payload shard record reconstruction mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repair_rom_records_reconstructed", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_repair_rom_records_reconstructed",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     case_summaries: dict[str, dict[str, object]] = {}
     all_missing_words: list[str] = []
@@ -225,7 +245,8 @@ def main() -> int:
         case_ok = (
             not missing_words
             and summary["rom_sha256"] == paths["expected_rom_sha256"]
-            and int(summary["payload_remap_word_count"]) == int(paths["expected_payload_remap_words"])
+            and int(summary["payload_remap_word_count"])
+            == int(paths["expected_payload_remap_words"])
             and int(summary["rom_route_sample_word_count"]) == 64
             and int(summary["payload_remap_program_checksum"]) > 0
         )
@@ -234,7 +255,9 @@ def main() -> int:
             f"{case} repair ROM contains every full-payload remap word needed by resident shards",
             f"{case} full-payload repair-ROM remap coverage mismatch",
         )
-        checks.append({"id": f"e1x_full_payload_repair_rom_{case}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_full_payload_repair_rom_{case}", "status": status, "detail": detail}
+        )
 
     rtl_boot_ok = (
         int(repair_rom_cocotb.get("summary", {}).get("testcases", 0)) >= 16
@@ -246,7 +269,9 @@ def main() -> int:
         "full-payload repair ROMs are linked to RTL ROM-loader cocotb and boot repair firmware evidence",
         "full-payload repair ROM RTL/boot linkage mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repair_rom_rtl_boot_linked", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repair_rom_rtl_boot_linked", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     normal = case_summaries.get("normal", {})
@@ -269,14 +294,22 @@ def main() -> int:
         "high_failure_payload_remap_word_count": int(high.get("payload_remap_word_count", 0)),
         "normal_payload_remap_words_sha256": str(normal.get("payload_remap_words_sha256", "")),
         "high_failure_payload_remap_words_sha256": str(high.get("payload_remap_words_sha256", "")),
-        "normal_payload_remap_program_checksum": int(normal.get("payload_remap_program_checksum", 0)),
-        "high_failure_payload_remap_program_checksum": int(high.get("payload_remap_program_checksum", 0)),
+        "normal_payload_remap_program_checksum": int(
+            normal.get("payload_remap_program_checksum", 0)
+        ),
+        "high_failure_payload_remap_program_checksum": int(
+            high.get("payload_remap_program_checksum", 0)
+        ),
         "normal_repair_rom_sha256": str(normal.get("rom_sha256", "")),
         "high_failure_repair_rom_sha256": str(high.get("rom_sha256", "")),
         "normal_rom_total_word_count": int(normal.get("rom_total_word_count", 0)),
         "high_failure_rom_total_word_count": int(high.get("rom_total_word_count", 0)),
-        "repair_rom_cocotb_testcases": int(repair_rom_cocotb.get("summary", {}).get("testcases", 0)),
-        "boot_verified_rom_case_count": int(boot_fw.get("summary", {}).get("verified_rom_case_count", 0)),
+        "repair_rom_cocotb_testcases": int(
+            repair_rom_cocotb.get("summary", {}).get("testcases", 0)
+        ),
+        "boot_verified_rom_case_count": int(
+            boot_fw.get("summary", {}).get("verified_rom_case_count", 0)
+        ),
         "combined_payload_repair_rom_checksum": combined_checksum,
         "case_summary_sha256": canonical_sha256(case_summaries),
         "case_summaries": case_summaries,
@@ -313,7 +346,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X full-payload repair ROM failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X full-payload repair ROM failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X full-payload repair ROM; report {REPORT.relative_to(ROOT)}")
     return 0

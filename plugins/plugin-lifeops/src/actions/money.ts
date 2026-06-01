@@ -33,6 +33,9 @@ const SUBSCRIPTION_PREFIX = "subscription_";
  * Public similes for the OWNER_FINANCES umbrella.
  */
 export const OWNER_FINANCE_SIMILES: readonly string[] = [
+  "MONEY",
+  "PAYMENTS",
+  "SUBSCRIPTIONS",
   "SPENDING",
   "ROCKET_MONEY",
   "BANK_TRANSACTIONS",

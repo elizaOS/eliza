@@ -7353,7 +7353,7 @@ export const allActionsSpec = {
 		{
 			name: "SCHEDULED_TASKS",
 			description:
-				"Owner ScheduledTask spine. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+				"Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
 			parameters: [
 				{
 					name: "action",
@@ -7670,7 +7670,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"ScheduledTask list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+				"LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
 			exampleCalls: [
 				{
 					user: "Use SCHEDULED_TASKS with the provided parameters.",
@@ -7909,6 +7909,26 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 				},
+				{
+					name: "slug",
+					description: "Skill slug for details, install, toggle, or uninstall.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Skill slug for details, install, toggle, or uninstall.",
+				},
+				{
+					name: "enabled",
+					description: "For action=toggle: true enables; false disables.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=toggle: true enables. false disables.",
+				},
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
@@ -7932,6 +7952,8 @@ export const allActionsSpec = {
 					params: {
 						SKILL: {
 							action: "search",
+							slug: "example",
+							enabled: false,
 						},
 					},
 				},

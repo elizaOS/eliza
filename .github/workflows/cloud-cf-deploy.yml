@@ -13,20 +13,22 @@ name: Cloud CF Deploy
 
 on:
   push:
-    branches: [main, develop, develop-cf]
+    branches: [main, develop]
     paths:
       - "packages/cloud-api/**"
       - "packages/cloud-frontend/**"
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
+      - "packages/cloud-sdk/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
-    branches: [main, develop, develop-cf]
+    branches: [main, develop]
     paths:
       - "packages/cloud-api/**"
       - "packages/cloud-frontend/**"
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
+      - "packages/cloud-sdk/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
     inputs:

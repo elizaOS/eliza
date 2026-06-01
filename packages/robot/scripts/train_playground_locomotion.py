@@ -39,9 +39,9 @@ def _force_cpu_jax_impl() -> None:
     import os
 
     # Force CPU only when no GPU is requested. When the caller sets
-    # MILADY_ROBOT_USE_GPU=1 we leave JAX_PLATFORMS unset so jax can pick up
+    # ELIZA_ROBOT_USE_GPU=1 we leave JAX_PLATFORMS unset so jax can pick up
     # the 5090 via the CUDA PJRT plugin.
-    if os.environ.get("MILADY_ROBOT_USE_GPU") != "1":
+    if os.environ.get("ELIZA_ROBOT_USE_GPU", os.environ.get("MILADY_ROBOT_USE_GPU")) != "1":
         os.environ.setdefault("JAX_PLATFORMS", "cpu")
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
     # Offscreen GL for headless video rendering.

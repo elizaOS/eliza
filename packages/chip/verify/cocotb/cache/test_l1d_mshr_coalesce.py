@@ -153,8 +153,7 @@ async def test_l1d_secondary_misses_coalesce(dut):
                 saw_b_acquire = True
     assert saw_b_acquire, "miss to distinct line B did not issue its own acquire"
     assert len(acquire_lines) == 2, (
-        "expected exactly two distinct acquires (A and B); "
-        f"got {[hex(a) for a in acquire_lines]}"
+        f"expected exactly two distinct acquires (A and B); got {[hex(a) for a in acquire_lines]}"
     )
 
     # ---- 4) Grant the fill for line A. The coalesced secondaries drain. ----

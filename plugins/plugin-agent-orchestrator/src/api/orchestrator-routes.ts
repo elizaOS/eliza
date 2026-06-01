@@ -19,7 +19,12 @@ import type {
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
 import type { RouteContext } from "./route-utils.js";
-import { parseBody, sendError, sendJson } from "./route-utils.js";
+import {
+  parseBody,
+  sendError,
+  sendJson,
+  sendServiceUnavailable,
+} from "./route-utils.js";
 
 const PREFIX = "/api/orchestrator";
 
@@ -105,7 +110,33 @@ async function resolveService(
  * Handle `/api/orchestrator/*` routes. Returns true when the path was matched
  * (whether it succeeded or errored), false to let the dispatcher continue.
  */
+/**
+ * Single error boundary for every orchestrator endpoint. A thrown service call
+ * (DB / file / session failure) becomes a 500 instead of an unhandled promise
+ * rejection that leaves the request hanging forever. Paths outside the
+ * orchestrator prefix return false (not handled) untouched.
+ */
 export async function handleOrchestratorRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  ctx: RouteContext,
+): Promise<boolean> {
+  try {
+    return await dispatchOrchestratorRoutes(req, res, pathname, ctx);
+  } catch (error) {
+    if (!res.headersSent) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Orchestrator request failed",
+        500,
+      );
+    }
+    return true;
+  }
+}
+
+async function dispatchOrchestratorRoutes(
   req: IncomingMessage,
   res: ServerResponse,
   pathname: string,
@@ -121,7 +152,10 @@ export async function handleOrchestratorRoutes(
 
   const service = await resolveService(ctx);
   if (!service) {
-    sendError(res, "Orchestrator task service not available", 503);
+    // Lazy service registration: the route is mounted before
+    // OrchestratorTaskService finishes start(). Honest 503 + backoff hint so
+    // polling clients (dashboard status/tasks) quiet down during the window.
+    sendServiceUnavailable(res, "Orchestrator task service not available");
     return true;
   }
 
@@ -207,6 +241,44 @@ export async function handleOrchestratorRoutes(
         return true;
       }
       sendJson(res, task);
+      return true;
+    }
+
+    // GET /tasks/:taskId/stream — Server-Sent Events. Pushes a lightweight
+    // "change" ping whenever the task's room mutates (a message, tool event,
+    // status, or usage write), so the workbench refreshes live instead of
+    // polling. The client refetches the room tail on each ping.
+    if (method === "GET" && sub === "stream" && segments.length === 2) {
+      const task = await service.getTask(taskId);
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      const send = (payload: Record<string, unknown>) => {
+        if (!res.writableEnded)
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      };
+      send({ type: "ready", at: Date.now() });
+      const unsubscribe = service.subscribeTaskChanges(taskId, () =>
+        send({ type: "change", at: Date.now() }),
+      );
+      // Comment heartbeat keeps the connection alive through proxies/idle.
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(": ping\n\n");
+      }, 20_000);
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+        if (!res.writableEnded) res.end();
+      };
+      req.on("close", cleanup);
+      req.on("error", cleanup);
       return true;
     }
 

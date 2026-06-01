@@ -1,22 +1,42 @@
 # `@elizaos/app-core`
 
-Shared React state, first-run setup, API client, and shell helpers used by all Eliza app shells (desktop, mobile, web).
+Shared application core for elizaOS agent app shells (desktop, mobile, web). It bundles the pieces every shell needs: the CLI bootstrap, the dashboard HTTP API, the Eliza runtime loader, the static app/plugin/connector registry, auth/secrets/vault services, and per-platform bootstrap.
 
 ## What's in here
 
-| Subdir                              | Contains                                                                       |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
-| `src/api/`                          | API client, auth bootstrap, first-run routes, pairing routes.                  |
-| `src/first-run/`                    | First-run config and runtime-target resolution shared across shells.           |
-| `src/platform/`                     | Per-platform bootstrap (Capacitor for mobile, browser for web).                |
-| `src/components/`                   | Shared React components used by app shells.                                    |
-| `src/config/branding.ts`            | `DEFAULT_APP_DISPLAY_NAME`, branding interpolation vars for `{{appName}}` in locale JSON. White-label shells override `BrandingContext`; copy must not hardcode "Eliza." |
-| `src/runtime/`                      | Runtime entry points exported to consumers.                                    |
+| Subdir          | Contains                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `src/entry.ts`  | CLI process bootstrap (built to `dist/entry.js`, imported by the generated app launcher).      |
+| `src/cli/`      | Commander CLI: `start`, `setup`, `doctor`, `db`, `config`, `dashboard`, `update`, `auth`, …  |
+| `src/api/`      | Dashboard HTTP API: server, auth/pairing routes, dev-stack discovery, secrets/wallet routes. |
+| `src/runtime/`  | Eliza agent loader (`eliza.ts`), dev server, runtime-mode (local/remote), Electrobun desktop runtimes. |
+| `src/registry/` | Static app/plugin/connector registry — JSON entries in `entries/`, validated by `schema.ts`. |
+| `src/security/` | Agent vault id + platform secure stores + wallet key hydration.                              |
+| `src/services/` | Auth store, steward credentials/sidecar, vault mirror/bootstrap, account pool, and more.     |
+| `src/platform/` | Per-platform bootstrap (Capacitor for mobile, browser stubs, native plugin entrypoints).     |
+| `src/config/`   | `AppConfig` types and `DEFAULT_APP_CONFIG` (re-exported from `@elizaos/shared`).              |
 
-## Desktop-only behavior
+## Usage
 
-Native menus and IPC are not in this package; the Electrobun app forwards certain actions (e.g. **Reset Eliza…**) to the renderer so `handleReset` stays the single source of truth.
+```ts
+// Node/runtime barrel
+import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 
-## End-user docs
+// Targeted subpaths (see package.json exports for the full list)
+import { loadRegistry } from "@elizaos/app-core/registry";
+import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
+import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
+```
 
-The end-user first-run flow is documented at `packages/docs/guides/first-run-flow.md`. The agent-app track in the docs site covers shipping app shells: [`/tracks/agent-app/overview`](../docs/tracks/agent-app/overview.mdx).
+The full subpath list lives in the `exports` map of `package.json`.
+
+## Build & test
+
+```bash
+bun run --cwd packages/app-core build       # tsc → flatten → copy assets → rewrite dist ESM imports
+bun run --cwd packages/app-core typecheck   # tsgo --noEmit
+bun run --cwd packages/app-core test         # vitest
+bun run --cwd packages/app-core lint         # Biome
+```
+
+This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.

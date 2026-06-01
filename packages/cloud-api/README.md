@@ -1,41 +1,52 @@
-# `@elizaos/cloud-api`
+# @elizaos/cloud-api
 
-The Eliza Cloud HTTP API. Runs on Cloudflare Workers with Hono routing. Backs everything the [Cloud track](../docs/tracks/cloud/overview.mdx) describes: auth, app registration, inference routing, container deploys, billing, domains, MCP, A2A.
+The Eliza Cloud HTTP API. It runs as a Cloudflare Worker with [Hono](https://hono.dev) routing and backs the managed services behind Eliza Cloud: authentication, app and agent registration, inference routing, billing, MCP and A2A endpoints, custom domains, and container deploys.
+
+It is deployed standalone (`wrangler deploy`) rather than imported by other packages. Most shared logic — the database client, auth, AI-provider routing, billing, and cron — lives in `@elizaos/cloud-shared`; this package owns the Worker entrypoint, the route tree, and the codegen that mounts it.
+
+## How routing works
+
+Endpoints are file-based, mirroring the Next.js App Router, but each leaf is a small Hono app. A `route.ts` at `v1/models/route.ts` is served at `/api/v1/models`. Dynamic segments use `[id]` directories and grouping uses `(group)` directories.
+
+A codegen step (`src/_generate-router.mjs`) walks the package, finds every `route.ts` / `route.tsx`, and writes `src/_router.generated.ts`, which exports `mountRoutes(app)`. Only Hono-shaped leaves are mounted — those that import from `hono`, or import the shared `createMcpsTransportApp` factory (the `mcps/*/[transport]` routes). Run `bun run codegen` after adding or removing a route.
+
+The Worker entrypoint (`src/index.ts`) answers `/api/health` directly and lazy-loads the full Hono stack (`src/bootstrap-app.ts`) on the first request, keeping cold-start work under Cloudflare's startup CPU budget.
 
 ## Layout
 
 ```
-agents/        Agent CRUD + lifecycle
-apps/          App registration (appId), versioning
-auth/          OAuth (Google, Discord, X), API keys
-billing/       Credits, Stripe, auto-renewal
-containers/    Hosted container deploys
-domains/       Custom domains, TLS
-inference/     Routed model calls
-llm/           Provider routing policy
-mcp/           Hosted MCP endpoints
-a2a/           Agent-to-agent protocol
-analytics/     Usage, cost, error breakdowns
-admin/         Internal admin ops
-src/lib/       Database, MCP bridge, cron fanout
-src/middleware/ Auth, rate limit, observability
-src/steward/   Internal JWT provisioning
+src/index.ts          Worker entrypoint ({ fetch, scheduled })
+src/bootstrap-app.ts  Builds the full Hono app + global middleware
+src/_router.generated.ts  Generated route mount table (do not hand-edit)
+src/middleware/       Auth gate, API-key permissions, org membership
+src/services/         Audit-event dispatcher
+src/queue/            Cloudflare Queue consumers (Stripe events)
+src/steward/          Embedded Steward auth handler
+src/stubs/            workerd stand-ins for node-only deps
+<resource>/route.ts   Handlers: v1/, auth/, agents/, billing/, stripe/,
+                      mcp/, mcps/, a2a/, analytics/, admin/, training/, …
+wrangler.toml         Worker config (bindings, routes, queues, cron)
 ```
 
-## Entry
-
-`wrangler.toml` at the package root pins the Worker config. Routes mount under `/v1/<resource>/`. See per-resource subdirectories for handlers.
-
-## Local dev
+## Local development
 
 ```bash
 cd packages/cloud-api
 bun install
-bun run dev          # wrangler dev
+bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
 ```
 
-Requires Cloudflare account binding + secrets to talk to live services.
+`.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Neon, R2, Stripe, providers) requires the corresponding bindings/secrets.
 
-## Docs
+## Scripts
 
-User-facing API documentation lives at the [Cloud track](../docs/tracks/cloud/overview.mdx) and its sub-pages (`auth`, `apps`, `inference`, `containers`, `billing`, `domains`).
+- `bun run dev` — local Worker via wrangler
+- `bun run codegen` — regenerate `src/_router.generated.ts`
+- `bun run build` / `bun run typecheck` — type-only checks
+- `bun run lint` / `bun run lint:fix` — Biome
+- `bun run test` / `bun run test:e2e` — unit and e2e suites
+- `bun run deploy` — `wrangler deploy --env production`
+
+## Agent docs
+
+`CLAUDE.md` / `AGENTS.md` in this directory describe the package for AI coding agents (where code lives, how to extend it).

@@ -23,6 +23,7 @@ const appMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   client: walletClient,
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", props),

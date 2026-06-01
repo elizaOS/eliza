@@ -5,9 +5,9 @@ import {
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-  useAgentElement,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 type RunEventSummary = {

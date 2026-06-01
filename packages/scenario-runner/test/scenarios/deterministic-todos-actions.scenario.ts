@@ -1,15 +1,16 @@
 import { ModelType, stringToUuid, type UUID } from "@elizaos/core";
-import todosPlugin, {
-  currentTodosProvider,
-  TodosService,
-  todosTable,
-} from "../../../../plugins/plugin-todos/src/index.ts";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import todosPlugin, {
+  currentTodosProvider,
+  TodosService,
+  todosTable,
+} from "../../../../plugins/plugin-todos/src/index.ts";
+import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
 const SCENARIO_ID = "deterministic-todos-actions";
 const ENTITY_ID = stringToUuid(`scenario-account:${SCENARIO_ID}:main`);
@@ -72,7 +73,10 @@ function resultData(execution: ScenarioTurnExecution): JsonRecord | null {
 
 function expectTodoTurn(
   op: string,
-  check?: (data: JsonRecord, execution: ScenarioTurnExecution) => string | undefined,
+  check?: (
+    data: JsonRecord,
+    execution: ScenarioTurnExecution,
+  ) => string | undefined,
 ): (execution: ScenarioTurnExecution) => string | undefined {
   return (execution) => {
     const result = actionResult(execution);
@@ -92,13 +96,6 @@ function expectTodoTurn(
 function findTodo(data: JsonRecord, id: string): JsonRecord | null {
   const todos = records(data.todos);
   return todos.find((todo) => todo.id === id) ?? null;
-}
-
-function matchesScenarioInput(expected: string) {
-  return (value: string) =>
-    value === expected ||
-    value.endsWith(`message:user:\n${expected}`) ||
-    value.includes(`\nmessage:user:\n${expected}`);
 }
 
 function handleResponseFixture(input: string) {
@@ -183,79 +180,84 @@ async function seedTodos(ctx: ScenarioContext): Promise<string | undefined> {
     await service.clear({ entityId: ENTITY_ID, agentId: scenarioAgentId });
     if (!runtime.db) return "runtime.db was not available";
     const now = new Date("2026-05-29T12:00:00.000Z");
-    await runtime.db.insert(todosTable).values([
-      {
-        id: UPDATE_ID as UUID,
-        entityId: ENTITY_ID as UUID,
-        agentId: scenarioAgentId as UUID,
-        roomId: null,
-        worldId: WORLD_ID as UUID,
-        content: "Draft TODO scenario",
-        activeForm: "Drafting TODO scenario",
-        status: "pending",
-        parentTodoId: null,
-        parentTrajectoryStepId: null,
-        metadata: { scenario: SCENARIO_ID, fixture: "update" },
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      },
-      {
-        id: COMPLETE_ID as UUID,
-        entityId: ENTITY_ID as UUID,
-        agentId: scenarioAgentId as UUID,
-        roomId: null,
-        worldId: WORLD_ID as UUID,
-        content: "Complete TODO scenario",
-        activeForm: "Completing TODO scenario",
-        status: "in_progress",
-        parentTodoId: null,
-        parentTrajectoryStepId: null,
-        metadata: { scenario: SCENARIO_ID, fixture: "complete" },
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      },
-      {
-        id: CANCEL_ID as UUID,
-        entityId: ENTITY_ID as UUID,
-        agentId: scenarioAgentId as UUID,
-        roomId: null,
-        worldId: WORLD_ID as UUID,
-        content: "Cancel TODO scenario",
-        activeForm: "Cancelling TODO scenario",
-        status: "pending",
-        parentTodoId: null,
-        parentTrajectoryStepId: null,
-        metadata: { scenario: SCENARIO_ID, fixture: "cancel" },
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      },
-      {
-        id: DELETE_ID as UUID,
-        entityId: ENTITY_ID as UUID,
-        agentId: scenarioAgentId as UUID,
-        roomId: null,
-        worldId: WORLD_ID as UUID,
-        content: "Delete TODO scenario",
-        activeForm: "Deleting TODO scenario",
-        status: "pending",
-        parentTodoId: null,
-        parentTrajectoryStepId: null,
-        metadata: { scenario: SCENARIO_ID, fixture: "delete" },
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      },
-    ]).returning();
+    await runtime.db
+      .insert(todosTable)
+      .values([
+        {
+          id: UPDATE_ID as UUID,
+          entityId: ENTITY_ID as UUID,
+          agentId: scenarioAgentId as UUID,
+          roomId: null,
+          worldId: WORLD_ID as UUID,
+          content: "Draft TODO scenario",
+          activeForm: "Drafting TODO scenario",
+          status: "pending",
+          parentTodoId: null,
+          parentTrajectoryStepId: null,
+          metadata: { scenario: SCENARIO_ID, fixture: "update" },
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        },
+        {
+          id: COMPLETE_ID as UUID,
+          entityId: ENTITY_ID as UUID,
+          agentId: scenarioAgentId as UUID,
+          roomId: null,
+          worldId: WORLD_ID as UUID,
+          content: "Complete TODO scenario",
+          activeForm: "Completing TODO scenario",
+          status: "in_progress",
+          parentTodoId: null,
+          parentTrajectoryStepId: null,
+          metadata: { scenario: SCENARIO_ID, fixture: "complete" },
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        },
+        {
+          id: CANCEL_ID as UUID,
+          entityId: ENTITY_ID as UUID,
+          agentId: scenarioAgentId as UUID,
+          roomId: null,
+          worldId: WORLD_ID as UUID,
+          content: "Cancel TODO scenario",
+          activeForm: "Cancelling TODO scenario",
+          status: "pending",
+          parentTodoId: null,
+          parentTrajectoryStepId: null,
+          metadata: { scenario: SCENARIO_ID, fixture: "cancel" },
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        },
+        {
+          id: DELETE_ID as UUID,
+          entityId: ENTITY_ID as UUID,
+          agentId: scenarioAgentId as UUID,
+          roomId: null,
+          worldId: WORLD_ID as UUID,
+          content: "Delete TODO scenario",
+          activeForm: "Deleting TODO scenario",
+          status: "pending",
+          parentTodoId: null,
+          parentTrajectoryStepId: null,
+          metadata: { scenario: SCENARIO_ID, fixture: "delete" },
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        },
+      ])
+      .returning();
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
 }
 
-async function finalTodosCheck(ctx: ScenarioContext): Promise<string | undefined> {
+async function finalTodosCheck(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
   const runtime =
     (ctx.runtime as RuntimeWithPlugins | undefined) ?? scenarioRuntime;
   if (!runtime) return "scenario runtime was not available";
@@ -465,7 +467,8 @@ export default scenario({
       options: { parameters: { action: "list", includeCompleted: true } },
       assertTurn: expectTodoTurn("list", (data) => {
         if (!findTodo(data, UPDATE_ID)) return "list omitted updated fixture";
-        if (!findTodo(data, COMPLETE_ID)) return "list omitted completed fixture";
+        if (!findTodo(data, COMPLETE_ID))
+          return "list omitted completed fixture";
         if (!findTodo(data, CANCEL_ID)) return "list omitted cancelled fixture";
         if (findTodo(data, DELETE_ID)) return "list included deleted fixture";
         return undefined;

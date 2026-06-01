@@ -111,7 +111,9 @@ def routed_candidate_source_binding(candidate_board: Path) -> dict[str, Any]:
     candidate = board_text_counts(candidate_board)
     return {
         "source_board": chip_rel(SOURCE_BOARD),
-        "candidate_board": chip_rel(candidate_board) if candidate_board.is_file() else str(candidate_board),
+        "candidate_board": chip_rel(candidate_board)
+        if candidate_board.is_file()
+        else str(candidate_board),
         "source_board_sha256": source["sha256"],
         "candidate_board_sha256": candidate["sha256"],
         "candidate_matches_source_board": bool(
@@ -159,9 +161,7 @@ def routed_visual_detail() -> dict[str, Any]:
             "end_mm": segment.get("end_mm", {}),
             "route_classes": segment.get("route_classes", []),
             "source_domains": segment.get("source_domains", []),
-            "controlled_impedance_targets_ohm": segment.get(
-                "controlled_impedance_targets_ohm", []
-            ),
+            "controlled_impedance_targets_ohm": segment.get("controlled_impedance_targets_ohm", []),
         }
         for index, segment in enumerate(step_intake.get("segments", []), start=1)
         if isinstance(segment, dict)
@@ -215,7 +215,9 @@ def routed_visual_detail() -> dict[str, Any]:
         "footprint_envelope_count": int(step_intake.get("footprint_envelope_count", 0) or 0),
         "pad_contact_visual_count": int(step_intake.get("pad_contact_visual_count", 0) or 0),
         "route_segment_visual_count": int(step_intake.get("route_segment_visual_count", 0) or 0),
-        "route_segment_net_name_count": int(step_intake.get("route_segment_net_name_count", 0) or 0),
+        "route_segment_net_name_count": int(
+            step_intake.get("route_segment_net_name_count", 0) or 0
+        ),
         "route_segment_trace_bound_count": int(
             step_intake.get("route_segment_trace_bound_count", 0) or 0
         ),
@@ -251,7 +253,9 @@ def routed_visual_detail() -> dict[str, Any]:
         and all(bool(record.get("source_domains")) for record in route_records),
         "route_visual_records": route_records,
         "via_visual_record_count": len(via_records),
-        "via_visual_net_name_count": len({record["net"] for record in via_records if record["net"]}),
+        "via_visual_net_name_count": len(
+            {record["net"] for record in via_records if record["net"]}
+        ),
         "via_visual_all_records_have_net": bool(via_records)
         and all(record["net"] for record in via_records),
         "via_visual_all_records_have_layers": bool(via_records)
@@ -471,8 +475,7 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
             summary.get("cad_connection_represented_route_record_count_total", 0) or 0
         ),
         "cad_connection_represented_route_records_with_layer_count_total": int(
-            summary.get("cad_connection_represented_route_records_with_layer_count_total", 0)
-            or 0
+            summary.get("cad_connection_represented_route_records_with_layer_count_total", 0) or 0
         ),
         "cad_connection_represented_route_records_with_source_domain_count_total": int(
             summary.get(
@@ -628,8 +631,7 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
             "public_cad_step_overlay_release_credit": False,
         }
     step_path = (
-        ROOT
-        / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
+        ROOT / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
         "hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp"
     )
     if not step_path.is_file():
@@ -681,7 +683,7 @@ def write_local_supplier_lane_surrogate_steps(models: list[dict[str, Any]]) -> d
             max_depth = max(max_depth, depth)
             max_height = max(max_height, height)
             area_sum += width * depth
-        surrogate_width = max(max_width, area_sum ** 0.5)
+        surrogate_width = max(max_width, area_sum**0.5)
         surrogate_depth = max(max_depth, area_sum / surrogate_width)
         surrogate_model = {
             "reference": f"{lane}_LOCAL_SURROGATE_NOT_SUPPLIER_APPROVED",
@@ -759,7 +761,9 @@ def blocked_metadata(artifact_id: str, source_requirement_id: str, path: Path) -
     }
 
 
-def directory_child_inventory(path: Path, manifest_path: Path, artifact_paths: set[str]) -> dict[str, Any]:
+def directory_child_inventory(
+    path: Path, manifest_path: Path, artifact_paths: set[str]
+) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     for child in sorted(path.rglob("*")):
         if not child.is_file() or child == manifest_path:
@@ -934,7 +938,7 @@ def extract_kicad_blocks(text: str, head: str) -> list[str]:
 def parse_zone_records(board_text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for index, block in enumerate(extract_kicad_blocks(board_text, "(zone "), start=1):
-        layers_match = re.search(r'\(layers\s+([^)]+)\)', block)
+        layers_match = re.search(r"\(layers\s+([^)]+)\)", block)
         layers = re.findall(r'"([^"]+)"', layers_match.group(1)) if layers_match else []
         points = [
             {"x": round(float(x), 3), "y": round(float(y), 3)}
@@ -1094,9 +1098,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
             str(pin) for pin in pad_record.get("local_terminal_contract", []) if pin is not None
         ]
         non_signal_pad_contract = [
-            str(pin)
-            for pin in pad_record.get("non_signal_pad_contract", [])
-            if pin is not None
+            str(pin) for pin in pad_record.get("non_signal_pad_contract", []) if pin is not None
         ]
         npth_feature_count = int(pad_record.get("npth_mechanical_feature_count", 0) or 0)
         npth_feature_contract = [
@@ -1108,9 +1110,8 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         for pad_name in pad_names:
             if pad_name in terminal_contract:
                 contract_kind = "electrical_terminal"
-                contract_source = (
-                    pad_record.get("pinout_file")
-                    or pad_record.get("local_terminal_contract_source", "")
+                contract_source = pad_record.get("pinout_file") or pad_record.get(
+                    "local_terminal_contract_source", ""
                 )
                 covered = True
             elif pad_name in non_signal_pad_contract:
@@ -1378,9 +1379,9 @@ def write_local_envelope_step(path: Path, model: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.gp import gp_Pnt
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
-        from OCP.gp import gp_Pnt
 
         shape = BRepPrimAPI_MakeBox(
             gp_Pnt(-width / 2.0, -depth / 2.0, -height / 2.0),
@@ -1619,9 +1620,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "local_discrete_step_sha256": local_step_sha256,
             "local_discrete_step_bytes": local_step_bytes,
             "local_discrete_step_status": "local_development_envelope_not_supplier_model",
-            "local_discrete_step_import_status": local_step_validation.get(
-                "import_status", ""
-            ),
+            "local_discrete_step_import_status": local_step_validation.get("import_status", ""),
             "local_discrete_step_solid_type": local_step_validation.get("solid_type", ""),
             "local_discrete_step_imported_as_solid": local_discrete_step_imported_as_solid,
             "local_discrete_step_bbox_mm": local_step_validation.get("bbox_mm", {}),
@@ -1669,9 +1668,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "pad_contract_records": model.get("pad_contract_records", []),
             "pad_contract_covered_count": model.get("pad_contract_covered_count", 0),
             "uncovered_pad_visuals": model.get("uncovered_pad_visuals", []),
-            "all_pad_visuals_have_contract": model.get(
-                "all_pad_visuals_have_contract", False
-            ),
+            "all_pad_visuals_have_contract": model.get("all_pad_visuals_have_contract", False),
             "pinout_file": model.get("pinout_file", ""),
             "coverage": model.get("coverage", ""),
             "visual_package_class": model.get("visual_package_class", ""),
@@ -1711,9 +1708,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "local_discrete_step_sha256": record["local_discrete_step_sha256"],
                 "local_discrete_step_bytes": record["local_discrete_step_bytes"],
                 "local_discrete_step_status": record["local_discrete_step_status"],
-                "local_discrete_step_import_status": record[
-                    "local_discrete_step_import_status"
-                ],
+                "local_discrete_step_import_status": record["local_discrete_step_import_status"],
                 "local_discrete_step_solid_type": record["local_discrete_step_solid_type"],
                 "local_discrete_step_imported_as_solid": record[
                     "local_discrete_step_imported_as_solid"
@@ -1737,13 +1732,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 ],
                 "supplier_step_intake_sha256": record["supplier_step_intake_sha256"],
                 "supplier_step_intake_bytes": record["supplier_step_intake_bytes"],
-                "public_cad_step_overlay_status": record[
-                    "public_cad_step_overlay_status"
-                ],
+                "public_cad_step_overlay_status": record["public_cad_step_overlay_status"],
                 "public_cad_step_overlay_file": record["public_cad_step_overlay_file"],
-                "public_cad_step_overlay_sha256": record[
-                    "public_cad_step_overlay_sha256"
-                ],
+                "public_cad_step_overlay_sha256": record["public_cad_step_overlay_sha256"],
                 "public_cad_step_overlay_bytes": record["public_cad_step_overlay_bytes"],
                 "public_cad_source_record": record["public_cad_source_record"],
                 "public_cad_step_overlay_release_credit": record[
@@ -1754,9 +1745,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                     model.get("support_pattern_has_explicit_provenance", False)
                 ),
                 "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
-                "pad_contract_covered_count": int(
-                    model.get("pad_contract_covered_count", 0) or 0
-                ),
+                "pad_contract_covered_count": int(model.get("pad_contract_covered_count", 0) or 0),
                 "all_pad_visuals_have_contract": bool(
                     model.get("all_pad_visuals_have_contract", False)
                 ),
@@ -1808,9 +1797,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         model["local_discrete_step_sha256"] = record["local_discrete_step_sha256"]
         model["local_discrete_step_bytes"] = record["local_discrete_step_bytes"]
         model["local_discrete_step_status"] = record["local_discrete_step_status"]
-        model["local_discrete_step_import_status"] = record[
-            "local_discrete_step_import_status"
-        ]
+        model["local_discrete_step_import_status"] = record["local_discrete_step_import_status"]
         model["local_discrete_step_solid_type"] = record["local_discrete_step_solid_type"]
         model["local_discrete_step_imported_as_solid"] = record[
             "local_discrete_step_imported_as_solid"
@@ -1890,8 +1877,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             for item in model_records
         ),
         "all_local_discrete_step_bboxes_match_envelopes": all(
-            item.get("local_discrete_step_bbox_matches_envelope") is True
-            for item in model_records
+            item.get("local_discrete_step_bbox_matches_envelope") is True for item in model_records
         ),
         "release_credit": False,
     }
@@ -2111,8 +2097,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                             if item.get("supplier_sourcing_lane") == lane
                         )
                         for lane in {
-                            str(item.get("supplier_sourcing_lane", ""))
-                            for item in model_records
+                            str(item.get("supplier_sourcing_lane", "")) for item in model_records
                         }
                     }.items()
                 )
@@ -2184,9 +2169,7 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
                 "supplier_step_intake_bytes": str(
                     int(item.get("supplier_step_intake_bytes", 0) or 0)
                 ),
-                "public_cad_step_overlay_file": str(
-                    item.get("public_cad_step_overlay_file") or ""
-                ),
+                "public_cad_step_overlay_file": str(item.get("public_cad_step_overlay_file") or ""),
                 "public_cad_step_overlay_status": str(
                     item.get("public_cad_step_overlay_status") or ""
                 ),
@@ -2212,11 +2195,15 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
         )
 
     COMPONENT_3D_BINDING_MATRIX.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = list(rows[0]) if rows else [
-        "reference",
-        "footprint",
-        "supplier_sourcing_lane",
-    ]
+    fieldnames = (
+        list(rows[0])
+        if rows
+        else [
+            "reference",
+            "footprint",
+            "supplier_sourcing_lane",
+        ]
+    )
     with COMPONENT_3D_BINDING_MATRIX.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -2372,8 +2359,8 @@ def generate() -> dict[str, Any]:
     routed_board_metadata = blocked_metadata(
         "routed_kicad_pcb_candidate", "routed_kicad_pcb", routed_board
     )
-    routed_board_metadata["routed_candidate_source_binding"] = (
-        routed_candidate_source_binding(routed_board)
+    routed_board_metadata["routed_candidate_source_binding"] = routed_candidate_source_binding(
+        routed_board
     )
     write_yaml(
         routed_board.with_suffix(routed_board.suffix + ".metadata.yaml"),

@@ -775,6 +775,19 @@ export class ElizaSandboxService {
             ...((rec.environment_vars as Record<string, string>) ?? {}),
             DATABASE_URL: dbUri,
           },
+          // Path A: pass the persisted character so the container boots AS
+          // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
+          // injection + packages/agent/src/runtime/sandbox-character.ts).
+          agentConfig:
+            rec.agent_config &&
+            typeof rec.agent_config === "object" &&
+            !Array.isArray(rec.agent_config)
+              ? (rec.agent_config as Record<string, unknown>)
+              : undefined,
+          // Path A: the gateways route by character_id, so the container must
+          // register under, and answer as, that id (see
+          // SANDBOX_ROUTE_AGENT_ID injection).
+          routeAgentId: rec.character_id ?? undefined,
           snapshotId: rec.snapshot_id ?? undefined,
           dockerImage: rec.docker_image ?? undefined,
         });
@@ -815,7 +828,14 @@ export class ElizaSandboxService {
           const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
             backup.id,
           );
-          if (restoreState) await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+          if (restoreState) {
+            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+          } else {
+            logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
+              agentId: rec.id,
+              backupId: backup.id,
+            });
+          }
         }
 
         // 5. Mark running + persist provider-specific metadata
@@ -2965,12 +2985,10 @@ export class ElizaSandboxService {
           config: (rec.agent_config as Record<string, unknown> | null) ?? {},
           workspaceFiles: {},
         };
-        const backup = await agentSandboxesRepository.createBackup({
-          sandbox_record_id: rec.id,
-          snapshot_type: "pre-shutdown",
-          state_data: fallback,
-          size_bytes: Buffer.byteLength(JSON.stringify(fallback), "utf-8"),
-        });
+        const sizeBytes = Buffer.byteLength(JSON.stringify(fallback), "utf-8");
+        const backup = await agentSandboxesRepository.createBackup(
+          await this.buildBackupInput(rec.id, "pre-shutdown", fallback, sizeBytes),
+        );
         backupId = backup.id;
       }
     }

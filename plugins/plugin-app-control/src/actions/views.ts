@@ -73,8 +73,11 @@ const MODES: readonly ViewsMode[] = [
 // Intent regexes — order matters: more specific first.
 const LIST_VERBS =
 	/\b(list|show all|what views|all views|available views|which views)\b/i;
+// NB: "open" is deliberately excluded here — "open <name> view" is a navigate
+// (show) intent, not a "report the currently-open view" query. Phrasings like
+// "which view is currently open" still match via the "current" keyword.
 const CURRENT_VIEW_VERBS =
-	/\b(current|active|selected|open)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
+	/\b(current|active|selected)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
 const WHAT_VIEWS_VERB = /what.{0,20}views?\b/i;
 const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
 const MANAGER_VERBS =
@@ -276,16 +279,16 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"UNINSTALL_VIEW",
 		],
 		description:
-			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
+			"Manage and navigate UI views. List available views, report the current view, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
 		descriptionCompressed:
-			"views list|show|open|search|manager|broadcast|interact|create|edit|delete; navigate UI views; push events; click/read/focus elements; scaffold new plugins; edit or remove view plugins",
+			"views list|current|show|open|search|manager|broadcast|interact|pin|window|create|edit|delete; navigate UI views; report current view; push events; click/read/focus elements; pin tabs; open windows; scaffold new plugins; edit or remove view plugins",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "action",
 				description:
-					"Operation: list | current | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
+					"Operation: list | current | show | open | search | manager | broadcast | interact | pin | window | create | edit | delete | remove.",
 				required: true,
 				schema: {
 					type: "string",

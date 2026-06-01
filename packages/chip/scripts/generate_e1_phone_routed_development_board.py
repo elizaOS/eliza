@@ -292,15 +292,13 @@ def canonical_net(name: str) -> str:
 
 def polyline_length(points: list[tuple[float, float]]) -> float:
     return sum(
-        math.hypot(b[0] - a[0], b[1] - a[1])
-        for a, b in zip(points, points[1:], strict=False)
+        math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:], strict=False)
     )
 
 
 def manhattan_length(points: list[tuple[float, float]]) -> float:
     return sum(
-        abs(b[0] - a[0]) + abs(b[1] - a[1])
-        for a, b in zip(points, points[1:], strict=False)
+        abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in zip(points, points[1:], strict=False)
     )
 
 
@@ -554,8 +552,8 @@ def copper_zone(
     return "\n".join(
         [
             (
-                f"  (zone (net {net_id}) (net_name \"{net_name}\") "
-                f"(layers {layer_text}) (tstamp \"{stable_uuid('zone', zone_id, net_name)}\")"
+                f'  (zone (net {net_id}) (net_name "{net_name}") '
+                f'(layers {layer_text}) (tstamp "{stable_uuid("zone", zone_id, net_name)}")'
             ),
             f'    (name "{zone_id}")',
             "    (hatch edge 0.500)",
@@ -699,7 +697,11 @@ def main() -> int:
     domain_summary: dict[str, dict[str, object]] = {}
     route_classification_gaps: list[dict[str, object]] = []
     for route in route_records:
-        if not route["route_classes"] or not route["source_domains"] or not route["source_net_groups"]:
+        if (
+            not route["route_classes"]
+            or not route["source_domains"]
+            or not route["source_net_groups"]
+        ):
             route_classification_gaps.append(
                 {
                     "id": route["id"],

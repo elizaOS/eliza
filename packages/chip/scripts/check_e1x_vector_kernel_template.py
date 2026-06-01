@@ -144,12 +144,14 @@ def vector_word_template() -> list[int]:
         words.append(rv_srai(X13, X13, 60))
         words.append(rv_mul(X14, X11, X13))
         words.append(rv_add(X10, X10, X14))
-    words.extend([
-        rv_srai(X15, X10, 7),  # sampled Q8.8 requant step before final clamp/merge
-        rv_sw(X15, X3, 0),  # store local partial output
-        rv_sw(X15, X3, 0x10),  # WAVELET_TX_DATA when x3 is MMIO base
-        ECALL,
-    ])
+    words.extend(
+        [
+            rv_srai(X15, X10, 7),  # sampled Q8.8 requant step before final clamp/merge
+            rv_sw(X15, X3, 0),  # store local partial output
+            rv_sw(X15, X3, 0x10),  # WAVELET_TX_DATA when x3 is MMIO base
+            ECALL,
+        ]
+    )
     return words
 
 
@@ -170,7 +172,9 @@ def main() -> int:
         "vector-kernel template inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_vector_kernel_template_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_vector_kernel_template_inputs_present", "status": status, "detail": detail}
+    )
 
     workplan = load_json(WORKPLAN) if WORKPLAN.is_file() else {}
     pe_rtl = PE_RTL.read_text(encoding="utf-8") if PE_RTL.is_file() else ""
@@ -191,14 +195,18 @@ def main() -> int:
         "rv_ecall",
     )
     missing_markers = [
-        marker for marker in support_markers if marker not in pe_rtl and marker not in kernel_codegen
+        marker
+        for marker in support_markers
+        if marker not in pe_rtl and marker not in kernel_codegen
     ]
     status, detail = pass_fail(
         not missing_markers,
         "PE RTL and codegen helpers expose the template instruction classes",
         "missing instruction support markers: " + ", ".join(missing_markers),
     )
-    checks.append({"id": "e1x_vector_kernel_template_instruction_support", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_vector_kernel_template_instruction_support", "status": status, "detail": detail}
+    )
 
     template_ok = (
         len(template_words) == 54
@@ -213,7 +221,9 @@ def main() -> int:
         f"generated {len(template_words)} RV64IM words for one packed W4A8 vector word",
         "unexpected vector template opcode mix",
     )
-    checks.append({"id": "e1x_vector_kernel_template_opcode_mix", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_vector_kernel_template_opcode_mix", "status": status, "detail": detail}
+    )
 
     workplan_summary = workplan.get("summary", {})
     vector_word_ops = int(workplan_summary.get("vector_word_op_count", 0))
@@ -230,7 +240,9 @@ def main() -> int:
         f"template scales across {vector_word_ops} packed vector-word operations",
         "full-output workplan scale inputs mismatch",
     )
-    checks.append({"id": "e1x_vector_kernel_template_scales_to_workplan", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_vector_kernel_template_scales_to_workplan", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

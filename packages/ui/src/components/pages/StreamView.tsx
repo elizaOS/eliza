@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state/useApp";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
 import { StatusBar } from "../stream/StatusBar";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+
+type StreamStatus = Awaited<ReturnType<typeof client.streamStatus>>;
+
+const STREAM_STATUS_CACHE_KEY = "stream:status";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const { agentStatus, t } = useApp();
@@ -18,14 +23,23 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const agentName = agentStatus?.agentName ?? branding.appName ?? "Eliza";
   const isElectrobun = isElectrobunRuntime();
 
-  const [streamLive, setStreamLive] = useState(false);
+  // Seed from the shared cache so a revisit paints the last-known status
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedStatus = getCached<StreamStatus>(STREAM_STATUS_CACHE_KEY);
+  const [streamLive, setStreamLive] = useState(
+    cachedStatus
+      ? cachedStatus.data.running && cachedStatus.data.ffmpegAlive
+      : false,
+  );
   const [streamLoading, setStreamLoading] = useState(false);
   const loadingRef = useRef(false);
   const [streamAvailable, setStreamAvailable] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!cachedStatus);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [uptime, setUptime] = useState(0);
-  const [frameCount, setFrameCount] = useState(0);
+  const [uptime, setUptime] = useState(cachedStatus?.data.uptime ?? 0);
+  const [frameCount, setFrameCount] = useState(
+    cachedStatus?.data.frameCount ?? 0,
+  );
 
   const pollStatus = useCallback(async () => {
     if (loadingRef.current || !streamAvailable) return;
@@ -36,6 +50,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       setUptime(status.uptime);
       setFrameCount(status.frameCount);
       setStatusError(null);
+      setCached(STREAM_STATUS_CACHE_KEY, status);
     } catch (err: unknown) {
       // A 404 means the streaming plugin isn't installed — switch to the
       // "unavailable" panel. Any other error is surfaced so a broken status
@@ -90,21 +105,6 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     }
   }, [isElectrobun, streamLive]);
 
-  useAgentElement<HTMLButtonElement>({
-    id: "stream-toggle",
-    role: "button",
-    label: streamLive ? "Stop Stream" : "Go Live",
-    group: "stream",
-    description: streamAvailable
-      ? "Start or stop the agent live stream"
-      : "Streaming plugin unavailable",
-    status: streamAvailable ? (streamLive ? "active" : "inactive") : "disabled",
-    onActivate: () => {
-      if (!streamAvailable || streamLoading) return;
-      void toggleStream();
-    },
-  });
-
   return (
     <ShellViewAgentSurface viewId="stream">
       <div
@@ -125,13 +125,8 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
 
         <div className="flex flex-1 min-h-0 items-center justify-center">
           {initialLoading && streamAvailable && !statusError ? (
-            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
-              <div className="mx-auto mb-4 h-3 w-3 animate-pulse rounded-full bg-muted" />
-              <h2 className="text-lg font-semibold text-txt">
-                {t("streamview.LoadingStatus", {
-                  defaultValue: "Checking stream status…",
-                })}
-              </h2>
+            <div className="w-full max-w-md rounded-sm border border-border/60 bg-card/94 p-6 backdrop-blur-xl">
+              <DetailSkeleton />
             </div>
           ) : statusError && streamAvailable ? (
             <div

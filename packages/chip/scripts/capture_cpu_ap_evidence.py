@@ -190,8 +190,7 @@ def write_linux_doc_mirror(
     missing = [marker for marker in extra_required if marker not in raw_text]
     if missing:
         problems.append(
-            f"{rel(destination)} would be missing Linux evidence markers: "
-            + ", ".join(missing)
+            f"{rel(destination)} would be missing Linux evidence markers: " + ", ".join(missing)
         )
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -205,7 +204,7 @@ def write_linux_doc_mirror(
                 f"eliza-evidence: source={source}",
                 f"eliza-evidence: command={command}",
                 f"eliza-evidence: started_utc={mirror_utc}",
-                f"eliza-evidence: mirrored_from=accepted_cpu_ap_transcript",
+                "eliza-evidence: mirrored_from=accepted_cpu_ap_transcript",
                 f"eliza-evidence: mirror_utc={mirror_utc}",
                 f"EXTERNAL_TREE={ROOT}",
                 f"COMMAND={command}",

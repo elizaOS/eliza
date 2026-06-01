@@ -12,7 +12,7 @@ import {
   type RuntimeOrderItem,
   type RuntimeServiceOrderItem,
 } from "../../api";
-import { useAgentElement } from "../../agent-surface";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
@@ -25,6 +25,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type RuntimeSectionKey =
@@ -372,58 +373,29 @@ function RuntimeSummaryCard(props: {
   );
 }
 
-function RuntimeSectionNavButton(props: {
-  sectionKey: RuntimeSectionKey;
-  label: string;
-  icon: string;
-  meta: string;
-  count: string | null;
-  active: boolean;
-  onSelect: (key: RuntimeSectionKey) => void;
-}) {
-  const { sectionKey, label, icon, meta, count, active, onSelect } = props;
-  const { agentProps } = useAgentElement({
-    id: `section-${sectionKey}`,
-    role: "tab",
-    label,
-    group: "runtime-sections",
-    status: active ? "active" : "inactive",
-    description: `Open the ${label} runtime section`,
-    onActivate: () => onSelect(sectionKey),
-  });
-  return (
-    <SidebarContent.Item
-      active={active}
-      onClick={() => onSelect(sectionKey)}
-      aria-current={active ? "page" : undefined}
-      {...agentProps}
-    >
-      <SidebarContent.ItemIcon active={active}>{icon}</SidebarContent.ItemIcon>
-      <span className="min-w-0 flex-1 text-left">
-        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
-        <SidebarContent.ItemDescription>{meta}</SidebarContent.ItemDescription>
-      </span>
-      {count ? <MetaPill compact>{count}</MetaPill> : null}
-    </SidebarContent.Item>
-  );
-}
-
 export function RuntimeView({
   contentHeader,
 }: {
   contentHeader?: ReactNode;
 } = {}) {
   const { t } = useApp();
-  const [snapshot, setSnapshot] = useState<RuntimeDebugSnapshot | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [depth, setDepth] = useState(10);
+  const [maxArrayLength, setMaxArrayLength] = useState(1000);
+  const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
+  // Seed from the shared cache so a revisit paints the last-known snapshot
+  // instantly and revalidates silently, instead of flashing a spinner. The key
+  // carries every fetch parameter so distinct depth/cap combos don't collide.
+  const snapshotCacheKey = `runtime-snapshot:${depth}:${maxArrayLength}:${maxObjectEntries}`;
+  const cachedSnapshot = getCached<RuntimeDebugSnapshot>(snapshotCacheKey);
+  const [snapshot, setSnapshot] = useState<RuntimeDebugSnapshot | null>(
+    cachedSnapshot?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] =
     useState<RuntimeSectionKey>("summary");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [depth, setDepth] = useState(10);
-  const [maxArrayLength, setMaxArrayLength] = useState(1000);
-  const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
   const snapshotRequestIdRef = useRef(0);
   const depthInputId = useId();
   const arrayCapInputId = useId();
@@ -436,34 +408,43 @@ export function RuntimeView({
   const rootPath =
     activeSection === "summary" ? "$runtime" : `$${activeSection}`;
 
-  const loadSnapshot = useCallback(async () => {
-    const requestId = snapshotRequestIdRef.current + 1;
-    snapshotRequestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await client.getRuntimeSnapshot({
-        depth,
-        maxArrayLength,
-        maxObjectEntries,
-      });
-      if (snapshotRequestIdRef.current !== requestId) return;
-      setSnapshot(next);
-    } catch (err) {
-      if (snapshotRequestIdRef.current !== requestId) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to load runtime snapshot",
-      );
-    } finally {
-      if (snapshotRequestIdRef.current === requestId) {
-        setLoading(false);
+  const loadSnapshot = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const requestId = snapshotRequestIdRef.current + 1;
+      snapshotRequestIdRef.current = requestId;
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      try {
+        const next = await client.getRuntimeSnapshot({
+          depth,
+          maxArrayLength,
+          maxObjectEntries,
+        });
+        if (snapshotRequestIdRef.current !== requestId) return;
+        setSnapshot(next);
+        setCached(snapshotCacheKey, next);
+      } catch (err) {
+        if (snapshotRequestIdRef.current !== requestId) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load runtime snapshot",
+        );
+      } finally {
+        if (snapshotRequestIdRef.current === requestId) {
+          setLoading(false);
+        }
       }
-    }
-  }, [depth, maxArrayLength, maxObjectEntries]);
+    },
+    [depth, maxArrayLength, maxObjectEntries, snapshotCacheKey],
+  );
 
   useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot]);
+    // Revalidate silently when this snapshot is already cached on screen.
+    void loadSnapshot({
+      silent: getCached<RuntimeDebugSnapshot>(snapshotCacheKey) != null,
+    });
+  }, [loadSnapshot, snapshotCacheKey]);
 
   useEffect(() => {
     setExpandedPaths(buildInitialExpanded(rootPath, sectionData));
@@ -477,71 +458,6 @@ export function RuntimeView({
       return next;
     });
   }, []);
-
-  const depthAgent = useAgentElement<HTMLInputElement>({
-    id: "depth-input",
-    role: "number-input",
-    label: t("runtimeview.depth"),
-    group: "runtime-snapshot-controls",
-    description: "Maximum tree depth for the runtime snapshot",
-    getValue: () => depth,
-    onFill: (value) => setDepth(Math.max(1, Math.min(24, Number(value) || 1))),
-  });
-  const arrayCapAgent = useAgentElement<HTMLInputElement>({
-    id: "array-cap-input",
-    role: "number-input",
-    label: t("runtimeview.arrayCap"),
-    group: "runtime-snapshot-controls",
-    description: "Maximum array length captured in the runtime snapshot",
-    getValue: () => maxArrayLength,
-    onFill: (value) =>
-      setMaxArrayLength(Math.max(1, Math.min(5000, Number(value) || 1))),
-  });
-  const objectCapAgent = useAgentElement<HTMLInputElement>({
-    id: "object-cap-input",
-    role: "number-input",
-    label: t("runtimeview.objectCap"),
-    group: "runtime-snapshot-controls",
-    description: "Maximum object entries captured in the runtime snapshot",
-    getValue: () => maxObjectEntries,
-    onFill: (value) =>
-      setMaxObjectEntries(Math.max(1, Math.min(5000, Number(value) || 1))),
-  });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "refresh-snapshot",
-    role: "button",
-    label: t("common.refresh"),
-    group: "runtime-snapshot-controls",
-    description: "Reload the runtime snapshot",
-    status: loading ? "active" : "inactive",
-    onActivate: () => void loadSnapshot(),
-  });
-  const expandTopSidebarAgent = useAgentElement<HTMLButtonElement>({
-    id: "expand-top-sidebar",
-    role: "button",
-    label: t("runtimeview.ExpandTop"),
-    group: "runtime-snapshot-controls",
-    description: "Expand the top level of the active section tree",
-    onActivate: () =>
-      setExpandedPaths(buildInitialExpanded(rootPath, sectionData)),
-  });
-  const collapseTreeAgent = useAgentElement<HTMLButtonElement>({
-    id: "collapse-tree",
-    role: "button",
-    label: t("common.collapse"),
-    group: "runtime-tree-controls",
-    description: "Collapse the active section tree to its root",
-    onActivate: () => setExpandedPaths(new Set([rootPath])),
-  });
-  const expandTopTreeAgent = useAgentElement<HTMLButtonElement>({
-    id: "expand-top-tree",
-    role: "button",
-    label: t("runtimeview.ExpandTop"),
-    group: "runtime-tree-controls",
-    description: "Expand the top level of the active section tree",
-    onActivate: () =>
-      setExpandedPaths(buildInitialExpanded(rootPath, sectionData)),
-  });
 
   const sectionMeta: Record<RuntimeSectionKey, string> = {
     summary: snapshot
@@ -610,8 +526,6 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.depth")}</span>
             <Input
-              ref={depthAgent.ref}
-              {...depthAgent.agentProps}
               id={depthInputId}
               type="number"
               min={1}
@@ -632,8 +546,6 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.arrayCap")}</span>
             <Input
-              ref={arrayCapAgent.ref}
-              {...arrayCapAgent.agentProps}
               id={arrayCapInputId}
               type="number"
               min={1}
@@ -654,8 +566,6 @@ export function RuntimeView({
           >
             <span>{t("runtimeview.objectCap")}</span>
             <Input
-              ref={objectCapAgent.ref}
-              {...objectCapAgent.agentProps}
               id={objectCapInputId}
               type="number"
               min={1}
@@ -672,8 +582,6 @@ export function RuntimeView({
 
           <div className="grid grid-cols-2 gap-1.5 pt-0.5">
             <Button
-              ref={refreshAgent.ref}
-              {...refreshAgent.agentProps}
               variant="outline"
               size="sm"
               type="button"
@@ -688,8 +596,6 @@ export function RuntimeView({
               {loading ? t("common.refreshing") : t("common.refresh")}
             </Button>
             <Button
-              ref={expandTopSidebarAgent.ref}
-              {...expandTopSidebarAgent.agentProps}
               variant="outline"
               size="sm"
               type="button"
@@ -709,22 +615,34 @@ export function RuntimeView({
         </SidebarContent.SectionLabel>
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1.5">
-            {filteredSections.map((section) => (
-              <RuntimeSectionNavButton
-                key={section.key}
-                sectionKey={section.key}
-                label={t(section.i18nKey)}
-                icon={
-                  section.key === "summary"
-                    ? "Σ"
-                    : t(section.i18nKey).charAt(0).toUpperCase()
-                }
-                meta={sectionMeta[section.key]}
-                count={getSectionCount(section.key)}
-                active={section.key === activeSection}
-                onSelect={setActiveSection}
-              />
-            ))}
+            {filteredSections.map((section) => {
+              const active = section.key === activeSection;
+              return (
+                <SidebarContent.Item
+                  key={section.key}
+                  active={active}
+                  onClick={() => setActiveSection(section.key)}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <SidebarContent.ItemIcon active={active}>
+                    {section.key === "summary"
+                      ? "Σ"
+                      : t(section.i18nKey).charAt(0).toUpperCase()}
+                  </SidebarContent.ItemIcon>
+                  <span className="min-w-0 flex-1 text-left">
+                    <SidebarContent.ItemTitle>
+                      {t(section.i18nKey)}
+                    </SidebarContent.ItemTitle>
+                    <SidebarContent.ItemDescription>
+                      {sectionMeta[section.key]}
+                    </SidebarContent.ItemDescription>
+                  </span>
+                  {getSectionCount(section.key) ? (
+                    <MetaPill compact>{getSectionCount(section.key)}</MetaPill>
+                  ) : null}
+                </SidebarContent.Item>
+              );
+            })}
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
@@ -738,163 +656,157 @@ export function RuntimeView({
         contentHeader={contentHeader}
         data-testid="runtime-view"
       >
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        {error ? (
-          <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
-        ) : null}
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          {error ? (
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : null}
 
-        {!snapshot ? (
-          <PagePanel.Empty
-            variant="panel"
-            className="min-h-[24rem]"
-            description={t("runtimeview.loadingDescription")}
-            title={
-              loading
-                ? t("runtimeview.loadingSnapshot")
-                : t("runtimeview.noSnapshotAvailable")
-            }
-          />
-        ) : !snapshot.runtimeAvailable ? (
-          <PagePanel.Empty
-            variant="panel"
-            className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
-            description={t("runtimeview.runtimePendingDescription")}
-            title={t("runtimeview.AgentRuntimeIsNot")}
-          />
-        ) : activeSection === "summary" ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <OrderCard
-              title={t("common.plugins")}
-              entries={snapshot.order.plugins}
+          {loading && !snapshot ? (
+            <DetailSkeleton className="min-h-[24rem]" />
+          ) : !snapshot ? (
+            <PagePanel.Empty
+              variant="panel"
+              className="min-h-[24rem]"
+              description={t("runtimeview.loadingDescription")}
+              title={t("runtimeview.noSnapshotAvailable")}
             />
-            <OrderCard
-              title={t("common.actions")}
-              entries={snapshot.order.actions}
+          ) : !snapshot.runtimeAvailable ? (
+            <PagePanel.Empty
+              variant="panel"
+              className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
+              description={t("runtimeview.runtimePendingDescription")}
+              title={t("runtimeview.AgentRuntimeIsNot")}
             />
-            <OrderCard
-              title={t("common.providers")}
-              entries={snapshot.order.providers}
-            />
-            <OrderCard
-              title={t("common.evaluators")}
-              entries={snapshot.order.evaluators}
-            />
-            <ServicesOrderCard entries={snapshot.order.services} />
-            <RuntimeSummaryCard snapshot={snapshot} t={t} />
-          </div>
-        ) : (
-          <>
-            <PagePanel variant="padded">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                    {t("runtimeview.sectionLabel")}
+          ) : activeSection === "summary" ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <OrderCard
+                title={t("common.plugins")}
+                entries={snapshot.order.plugins}
+              />
+              <OrderCard
+                title={t("common.actions")}
+                entries={snapshot.order.actions}
+              />
+              <OrderCard
+                title={t("common.providers")}
+                entries={snapshot.order.providers}
+              />
+              <OrderCard
+                title={t("common.evaluators")}
+                entries={snapshot.order.evaluators}
+              />
+              <ServicesOrderCard entries={snapshot.order.services} />
+              <RuntimeSummaryCard snapshot={snapshot} t={t} />
+            </div>
+          ) : (
+            <>
+              <PagePanel variant="padded">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+                      {t("runtimeview.sectionLabel")}
+                    </div>
+                    <div className="mt-2 text-[2rem] font-semibold leading-tight text-txt">
+                      {t(
+                        SECTION_TAB_KEYS.find(
+                          (section) => section.key === activeSection,
+                        )?.i18nKey ?? "runtimeview.runtime",
+                      )}
+                    </div>
+                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+                      {t(SECTION_DESCRIPTION_KEYS[activeSection])}
+                    </p>
                   </div>
-                  <div className="mt-2 text-[2rem] font-semibold leading-tight text-txt">
-                    {t(
-                      SECTION_TAB_KEYS.find(
-                        (section) => section.key === activeSection,
-                      )?.i18nKey ?? "runtimeview.runtime",
-                    )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => setExpandedPaths(new Set([rootPath]))}
+                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                    >
+                      {t("common.collapse")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() =>
+                        setExpandedPaths(
+                          buildInitialExpanded(rootPath, sectionData),
+                        )
+                      }
+                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                    >
+                      {t("runtimeview.ExpandTop")}
+                    </Button>
                   </div>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-                    {t(SECTION_DESCRIPTION_KEYS[activeSection])}
-                  </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    ref={collapseTreeAgent.ref}
-                    {...collapseTreeAgent.agentProps}
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => setExpandedPaths(new Set([rootPath]))}
-                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-                  >
-                    {t("common.collapse")}
-                  </Button>
-                  <Button
-                    ref={expandTopTreeAgent.ref}
-                    {...expandTopTreeAgent.agentProps}
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() =>
-                      setExpandedPaths(
-                        buildInitialExpanded(rootPath, sectionData),
-                      )
-                    }
-                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-                  >
-                    {t("runtimeview.ExpandTop")}
-                  </Button>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.path")}
+                    </div>
+                    <div className="mt-2 font-mono text-sm text-txt">
+                      {rootPath}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.lastUpdated")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {formatDateTime(snapshot.generatedAt, {
+                        fallback: "n/a",
+                      })}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.depth")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {depth}
+                    </div>
+                  </PagePanel>
+                  <PagePanel variant="inset" className="px-4 py-4">
+                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                      {t("runtimeview.objectCap")}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-txt">
+                      {maxObjectEntries}
+                    </div>
+                  </PagePanel>
                 </div>
-              </div>
+              </PagePanel>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.path")}
-                  </div>
-                  <div className="mt-2 font-mono text-sm text-txt">
-                    {rootPath}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.lastUpdated")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {formatDateTime(snapshot.generatedAt, {
-                      fallback: "n/a",
-                    })}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.depth")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {depth}
-                  </div>
-                </PagePanel>
-                <PagePanel variant="inset" className="px-4 py-4">
-                  <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                    {t("runtimeview.objectCap")}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-txt">
-                    {maxObjectEntries}
-                  </div>
-                </PagePanel>
-              </div>
-            </PagePanel>
-
-            <PagePanel
-              variant="surface"
-              className="min-h-[24rem] flex-1 overflow-auto p-4"
-            >
-              {sectionData == null ? (
-                <PagePanel.Empty
-                  variant="inset"
-                  description={t("runtimeview.noSectionData")}
-                  title={t("runtimeview.sectionUnavailable")}
-                />
-              ) : (
-                <TreeNode
-                  label={activeSection}
-                  value={sectionData}
-                  path={rootPath}
-                  depth={0}
-                  expanded={expandedPaths}
-                  onToggle={handleTogglePath}
-                />
-              )}
-            </PagePanel>
-          </>
-        )}
-      </div>
+              <PagePanel
+                variant="surface"
+                className="min-h-[24rem] flex-1 overflow-auto p-4"
+              >
+                {sectionData == null ? (
+                  <PagePanel.Empty
+                    variant="inset"
+                    description={t("runtimeview.noSectionData")}
+                    title={t("runtimeview.sectionUnavailable")}
+                  />
+                ) : (
+                  <TreeNode
+                    label={activeSection}
+                    value={sectionData}
+                    path={rootPath}
+                    depth={0}
+                    expanded={expandedPaths}
+                    onToggle={handleTogglePath}
+                  />
+                )}
+              </PagePanel>
+            </>
+          )}
+        </div>
       </PageLayout>
     </ShellViewAgentSurface>
   );

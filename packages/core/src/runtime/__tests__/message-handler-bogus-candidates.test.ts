@@ -142,6 +142,62 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.contexts).toEqual(["general"]);
 	});
 
+	it("answers a complete substantive reply directly even when a coding-class candidate is force-injected", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText:
+					"Your app-build routing maps each request path to a static file under data/apps/<name>/index.html.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"what are your app-build routing rules? answer in one sentence, do not build anything",
+			},
+		);
+
+		// "app build" trips the coding-work keyword heuristic, which force-injects
+		// a TASKS candidate. But the model returned a finished one-sentence answer
+		// with a simple context, so the complete direct reply must win — no
+		// redundant sub-agent spawn. Keyed on reply shape, not the user's text.
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.candidateActions ?? []).toEqual([]);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+	});
+
+	it("still force-plans a genuine build ask when the model only acked", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText: "build me an app that flips a coin",
+			},
+		);
+
+		// An ack-only reply is not a finished answer, so it fails
+		// looksLikeCompleteDirectReply and the inference backstop still routes the
+		// real build request to planning. This is the structural discriminator:
+		// reply shape, not a scan of the user's intent.
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+	});
+
 	it("treats canonical control names (REPLY / IGNORE / STOP) as valid even though they aren't in runtime.actions", () => {
 		// REPLY is the planner's terminal fallback; it resolves via
 		// `canonicalPlannerControlActionName`, not the action registry.
@@ -617,6 +673,58 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.requiresTool).toBe(true);
 		expect(handler.plan.contexts).toEqual(["general"]);
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
+	it("does not treat scheduled-item actions as coding delegation tasks", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					makeAction("SCHEDULED_TASKS", ["SCHEDULED_TASK", "REMINDER_TASK"]),
+				],
+				messageText: "spawn a task agent to fix the bug in this repo",
+			},
+		);
+
+		expect(handler.plan.candidateActions).toBeUndefined();
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.simple).toBe(true);
+	});
+
+	it("prefers tagged coding delegation actions over legacy TASKS names", () => {
+		const codingDelegate = {
+			...makeAction("ORCHESTRATE_CODE"),
+			tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+		};
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [codingDelegate],
+				messageText: "spawn a coding agent to implement the feature",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.candidateActions).toEqual(["ORCHESTRATE_CODE"]);
 	});
 
 	it("does not add shell as a lookup action when Stage 1 emits only a synthetic current-price candidate", () => {

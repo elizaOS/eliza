@@ -117,8 +117,6 @@ async def avfs_lowers_code_on_healthy_margin(dut):
         if code < init_code:
             lowered = True
             break
-    assert lowered, (
-        f"AVFS target_code stayed at {init_code:#x} -> avfs_ctrl not adjusting"
-    )
+    assert lowered, f"AVFS target_code stayed at {init_code:#x} -> avfs_ctrl not adjusting"
     lower_count = rail_field(dut.avfs_lower_count_o.value, 0, 32)
     assert lower_count > 0, f"avfs_lower_count[0]={lower_count}, expected > 0"

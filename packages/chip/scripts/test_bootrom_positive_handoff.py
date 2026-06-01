@@ -78,7 +78,9 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             failed,
             {"handoff_target_loaded_from_manifest", "opensbi_entry_reached"},
         )
-        self.assertEqual(report["evidence_paths"], [gate.TRANSCRIPT.relative_to(gate.CHIP_ROOT).as_posix()])
+        self.assertEqual(
+            report["evidence_paths"], [gate.TRANSCRIPT.relative_to(gate.CHIP_ROOT).as_posix()]
+        )
 
     def test_complete_transcript_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
@@ -131,7 +133,9 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn("STATUS: BLOCKED bootrom.positive_handoff_capture_preflight", result.stdout)
+            self.assertIn(
+                "STATUS: BLOCKED bootrom.positive_handoff_capture_preflight", result.stdout
+            )
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "BLOCKED")
             self.assertEqual(payload["evidence_paths"], [])

@@ -267,7 +267,7 @@ path.
 ### Train (refined omnidirectional, stand-capable policy)
 
 ```bash
-MILADY_ROBOT_USE_GPU=1 uv run python scripts/train_omni_h1.py \
+ELIZA_ROBOT_USE_GPU=1 uv run python scripts/train_omni_h1.py \
     --num-timesteps 150000000 --num-envs 8192 \
     --stand-prob 0.15 --tracking-ang-vel 2.0 \
     --out /tmp/robotwalk/h1_omni
@@ -275,7 +275,7 @@ MILADY_ROBOT_USE_GPU=1 uv run python scripts/train_omni_h1.py \
 
 Defaults already encode the recipe: `--num-timesteps 150000000`,
 `--num-envs 8192`, `--stand-prob 0.15`, `--tracking-ang-vel 2.0`. Set
-`MILADY_ROBOT_USE_GPU=1` to use the GPU (otherwise JAX falls back to CPU).
+`ELIZA_ROBOT_USE_GPU=1` to use the GPU (otherwise JAX falls back to CPU).
 Checkpoints land at `<out>/final_params`.
 
 ### Prove single-direction walking (honest gate)

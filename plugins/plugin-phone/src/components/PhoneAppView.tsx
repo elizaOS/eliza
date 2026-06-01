@@ -19,7 +19,8 @@
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, useAgentElement } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Tabs,
   TabsContent,

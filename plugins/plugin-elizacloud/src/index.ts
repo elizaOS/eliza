@@ -31,6 +31,7 @@ import { CloudCredentialProvider } from "./services/cloud-credential-provider";
 import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gateway-relay";
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
 import { createCloudApiClient } from "./utils/sdk-client";
+import { createWaifuMeteringHandler } from "./utils/waifu-metering";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
@@ -128,6 +129,14 @@ export const elizaOSCloudPlugin: Plugin = {
   async init(config, runtime) {
     // Initialize inference (OpenAI-compatible client)
     initializeOpenAI(config, runtime);
+  },
+
+  // ─── Runtime Event Handlers ──────────────────────────────────────────
+  // Forwards per-inference token + USD spend to waifu's burn meter when the
+  // container is provisioned as a hosted waifu agent (no-op otherwise). See
+  // utils/waifu-metering.ts for the honest-meter rationale.
+  events: {
+    MODEL_USED: [createWaifuMeteringHandler()],
   },
 
   // ─── Cloud Services ──────────────────────────────────────────────────

@@ -30,6 +30,7 @@ class FormalManifestGateTests(unittest.TestCase):
         report.mkdir(parents=True)
         log = report / "formal.log"
         log.write_text("fallback completed\n", encoding="utf-8")
+
         def entry_for(target: str) -> dict:
             entry = {
                 "status": "fallback_pass" if evidence_class.startswith("fallback") else "pass",

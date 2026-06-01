@@ -10,8 +10,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   exportScenarioNativeJsonl,
-  SCENARIO_NATIVE_EXPORT_SCHEMA,
   recordedTrajectoryToNativeRows,
+  SCENARIO_NATIVE_EXPORT_SCHEMA,
 } from "./native-export.ts";
 
 // Synthetic `RecordedTrajectory` shaped like what
@@ -114,6 +114,40 @@ function syntheticTrajectory() {
     },
   };
 }
+
+describe("recordedTrajectoryToNativeRows scenario outcome", () => {
+  it("omits scenario outcome fields when no outcome is supplied", () => {
+    const rows = recordedTrajectoryToNativeRows(syntheticTrajectory() as never);
+    expect(rows[0]!.status).toBeUndefined();
+    expect(rows[0]!.scenarioStatus).toBeUndefined();
+    expect(rows[0]!.metadata.scenario_status).toBeUndefined();
+  });
+
+  it("stamps a passing scenario outcome on each row", () => {
+    const rows = recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+      "passed",
+    );
+    expect(rows[0]!.status).toBeUndefined();
+    expect(rows[0]!.scenarioStatus).toBe("passed");
+    expect(rows[0]!.metadata.scenario_status).toBe("passed");
+  });
+
+  it("stamps scenarioStatus='failed' so a failed scenario row is not scored gold", () => {
+    const rows = recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+      "failed",
+    );
+    // The downstream scorer (native_success_and_score) treats scenarioStatus or
+    // metadata.scenario_status in {failed,skipped} as success=False/score=0 →
+    // rating="repair"/weight=0. Top-level status remains reserved for the
+    // canonical native lifecycle contract.
+    expect(rows[0]!.status).toBeUndefined();
+    expect(rows[0]!.scenarioStatus).toBe("failed");
+    expect(rows[0]!.metadata.trajectory_status).toBe("finished");
+    expect(rows[0]!.metadata.scenario_status).toBe("failed");
+  });
+});
 
 describe("recordedTrajectoryToNativeRows", () => {
   it("emits one eliza_native_v1 boundary row per model-call stage", () => {
@@ -251,6 +285,43 @@ describe("exportScenarioNativeJsonl", () => {
         runIds: ["run-1"],
         scenarioIds: ["todos.create-basic"],
         agentIds: ["agent-test"],
+      });
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("threads scenario outcomes so failed trajectories carry scenarioStatus='failed'", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-outcome-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+      const outPath = path.join(runDir, "native.jsonl");
+      // The scenario mechanically finished (recorder status "finished") but
+      // failed its assertions.
+      const outcomes = new Map<string, "passed" | "failed" | "skipped">([
+        ["todos.create-basic", "failed"],
+      ]);
+      const count = exportScenarioNativeJsonl(runDir, outPath, outcomes);
+      expect(count).toBe(1);
+      const parsed = JSON.parse(readFileSync(outPath, "utf-8").trim());
+      expect(parsed.status).toBeUndefined();
+      expect(parsed.scenarioStatus).toBe("failed");
+      expect(parsed.metadata.scenario_status).toBe("failed");
+      expect(parsed.metadata.trajectory_status).toBe("finished");
+      const manifest = JSON.parse(
+        readFileSync(path.join(runDir, "native.manifest.json"), "utf-8"),
+      );
+      expect(manifest.counts).toMatchObject({
+        rows: 1,
+        passedRows: 0,
+        failedRows: 1,
+        unknownOutcomeRows: 0,
       });
     } finally {
       rmSync(runDir, { recursive: true, force: true });

@@ -221,9 +221,7 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
         self.assertIn("ELIZA_OPENSBI_HANDOFF_CMD", placeholder["next_command"])
         self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 1)
         self.assertEqual(report["summary"]["next_command_batch_count"], 4)
-        commands = {
-            batch["id"]: batch for batch in report["next_command_plan"]
-        }
+        commands = {batch["id"]: batch for batch in report["next_command_plan"]}
         handoff_batch = commands["resolve_opensbi_handoff_command_placeholder"]
         self.assertEqual(
             handoff_batch["claim_boundary"],

@@ -78,7 +78,7 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   width: auto;
   height: min(220px, calc(100% - 20px));
   transform: none;
-  border-radius: 18px;
+  border-radius: var(--radius-xs);
 }
 
 body.native {
@@ -287,16 +287,18 @@ kbd {
   background-color: hsl(240 4.8% 10%);
 }
 
-/*
- * Baseline focus indicator for bare focusables (links, non-primitive elements).
- * UI primitives override this with `focus-visible:outline-none` + a Tailwind
- * `ring-2 ring-ring ring-offset-2`, so each element shows exactly one indicator:
- * primitives → ring, everything else → this outline. No stacked box-shadow.
- */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+/* Product policy: focus rings are intentionally disabled globally. */
+/* biome-ignore-start lint/complexity/noImportantStyles: focus rings are banned globally and component-level focus utilities must not win. */
+:where(:focus, :focus-visible, :focus-within) {
+  outline: none !important;
+  box-shadow: none !important;
 }
+
+:where(:focus, :focus-visible) :where(*) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
 
 /*
  * Brief accent flash on a connector panel deep-link target. Triggered by

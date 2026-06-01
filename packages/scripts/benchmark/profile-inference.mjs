@@ -20,6 +20,8 @@
  *     [--non-streaming] \
  *     [--load-timeout-ms 120000] \
  *     [--request-timeout-ms 180000] \
+ *     [--ensure-models] \
+ *     [--download-timeout-ms 1800000] \
  *     [--label <run-label>]
  *
  * Exit codes:
@@ -39,6 +41,12 @@
  *                                                                -> SSE: token / done
  *   DELETE /api/conversations/:id
  *   GET    /api/health
+ *
+ * When --ensure-models is set, the harness also uses:
+ *
+ *   GET    /api/local-inference/installed
+ *   POST   /api/local-inference/downloads { modelId }
+ *   GET    /api/local-inference/hub       (optional failure-state polling)
  *
  * Per-call cache type / drafter pairing override:
  *   The current /api/local-inference/active endpoint reads cacheTypeK,
@@ -68,6 +76,8 @@ function parseArgs(argv) {
     streaming: true,
     loadTimeoutMs: 120_000,
     requestTimeoutMs: 180_000,
+    ensureModels: false,
+    downloadTimeoutMs: 1_800_000,
     label: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -101,6 +111,12 @@ function parseArgs(argv) {
         break;
       case "--request-timeout-ms":
         out.requestTimeoutMs = Number(next());
+        break;
+      case "--ensure-models":
+        out.ensureModels = true;
+        break;
+      case "--download-timeout-ms":
+        out.downloadTimeoutMs = Number(next());
         break;
       case "--label":
         out.label = next();
@@ -141,6 +157,9 @@ Options:
   --non-streaming           Skip SSE first-token timing; use sync endpoint only
   --load-timeout-ms <n>     Per-load timeout (default 120000)
   --request-timeout-ms <n>  Per-message timeout (default 180000)
+  --ensure-models           Download configured models before the matrix if
+                            they are not installed yet
+  --download-timeout-ms <n> Per-model ensure timeout (default 1800000)
   --label <str>             Optional run label embedded in the report
 `,
   );
@@ -426,6 +445,81 @@ function estimateTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function uniqueConfiguredModels(config) {
+  return Array.from(new Set(config.models));
+}
+
+async function installedModelIds(client) {
+  const body = await client.json("GET", "/api/local-inference/installed");
+  const models = Array.isArray(body?.models) ? body.models : [];
+  return new Set(
+    models
+      .map((model) => (typeof model?.id === "string" ? model.id : null))
+      .filter(Boolean),
+  );
+}
+
+async function downloadJobForModel(client, modelId) {
+  try {
+    const body = await client.json("GET", "/api/local-inference/hub");
+    const downloads = Array.isArray(body?.downloads) ? body.downloads : [];
+    return downloads.find((job) => job && job.modelId === modelId) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureModelInstalled(client, modelId, { downloadTimeoutMs }) {
+  if ((await installedModelIds(client)).has(modelId)) {
+    process.stdout.write(
+      `[profile-inference] model ${modelId} already installed\n`,
+    );
+    return;
+  }
+
+  process.stdout.write(
+    `[profile-inference] model ${modelId} missing; starting download\n`,
+  );
+  await client.json(
+    "POST",
+    "/api/local-inference/downloads",
+    { modelId },
+    { timeoutMs: 30_000 },
+  );
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < downloadTimeoutMs) {
+    if ((await installedModelIds(client)).has(modelId)) {
+      process.stdout.write(`[profile-inference] model ${modelId} installed\n`);
+      return;
+    }
+    const job = await downloadJobForModel(client, modelId);
+    if (job?.state === "failed" || job?.state === "cancelled") {
+      const reason = job.error ? `: ${job.error}` : "";
+      throw new Error(
+        `Download for ${modelId} ended with state ${job.state}${reason}`,
+      );
+    }
+    await sleep(5_000);
+  }
+
+  throw new Error(
+    `Timed out waiting ${downloadTimeoutMs}ms for ${modelId} to install`,
+  );
+}
+
+async function ensureConfiguredModelsInstalled(client, config, args) {
+  for (const modelId of uniqueConfiguredModels(config)) {
+    await ensureModelInstalled(client, modelId, {
+      downloadTimeoutMs: args.downloadTimeoutMs,
+    });
+  }
+}
+
 // ─── core run loop ──────────────────────────────────────────────────
 
 async function loadModel(client, modelId, { loadTimeoutMs }) {
@@ -550,6 +644,7 @@ async function runOneCombination({
     iterations: [],
     summary: null,
     error: null,
+    skipped: null,
   };
 
   // Document the config gap up front: the load endpoint can't currently
@@ -623,11 +718,20 @@ async function runOneCombination({
       estimatedTokens: summarize(tokenCounts),
     };
   } catch (err) {
-    record.error = {
-      message: err.message,
-      stack: err.stack ?? null,
-      loadResult: err.loadResult ?? null,
-    };
+    // "Model not installed" is an environment gap (the model isn't staged on
+    // the target agent), not a harness or inference failure. Classify it as a
+    // skip so the nightly report distinguishes a missing model from a real
+    // regression. Re-run with --ensure-models (or pre-stage the model) to
+    // profile it. See elizaOS/eliza#8063.
+    if (/Model not installed/i.test(err.message ?? "")) {
+      record.skipped = { reason: "model-not-installed", message: err.message };
+    } else {
+      record.error = {
+        message: err.message,
+        stack: err.stack ?? null,
+        loadResult: err.loadResult ?? null,
+      };
+    }
   } finally {
     if (conversation) await deleteConversation(client, conversation.id);
     await unloadModel(client, { loadTimeoutMs });
@@ -658,6 +762,7 @@ function buildMarkdownReport({
   lines.push(`- **Started:** ${startedAt}`);
   lines.push(`- **Target:** \`${target}\``);
   lines.push(`- **Streaming mode:** ${args.streaming ? "yes" : "no"}`);
+  lines.push(`- **Model ensure:** ${args.ensureModels ? "yes" : "no"}`);
   if (args.label) lines.push(`- **Label:** ${args.label}`);
   lines.push(`- **Config:** \`${args.config}\``);
   lines.push(
@@ -677,6 +782,7 @@ function buildMarkdownReport({
   for (const run of runs) {
     const s = run.summary;
     const notes = [];
+    if (run.skipped) notes.push(`skipped: ${run.skipped.reason}`);
     if (run.error) notes.push(`error: ${run.error.message}`);
     if (run.configGaps.length > 0) {
       notes.push(`gaps: ${run.configGaps.map((g) => g.kind).join(", ")}`);
@@ -711,6 +817,21 @@ function buildMarkdownReport({
       lines.push(
         `- **${kind}**: ${keys.length} runs affected. Workaround documented in profile.json.`,
       );
+    }
+  }
+  lines.push("");
+  lines.push("## Skipped");
+  lines.push("");
+  const skipped = runs.filter((r) => r.skipped);
+  if (skipped.length === 0) {
+    lines.push("No combination was skipped.");
+  } else {
+    lines.push(
+      "These combinations did not run because the model was not installed " +
+        "on the target. Re-run with `--ensure-models` or pre-stage the model.",
+    );
+    for (const run of skipped) {
+      lines.push(`- \`${run.key}\`: ${run.skipped.message}`);
     }
   }
   lines.push("");
@@ -757,6 +878,10 @@ async function main() {
     process.exit(1);
   }
 
+  if (args.ensureModels) {
+    await ensureConfiguredModelsInstalled(client, config, args);
+  }
+
   const combinations = [];
   for (const model of config.models) {
     for (const kvCache of config.kvCacheConfigs) {
@@ -797,6 +922,8 @@ async function main() {
     target: args.target,
     label: args.label,
     streaming: args.streaming,
+    ensureModels: args.ensureModels,
+    downloadTimeoutMs: args.downloadTimeoutMs,
     configPath: args.config,
     startedAt,
     finishedAt,

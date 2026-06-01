@@ -409,12 +409,17 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   if (pkg === "@elizaos/plugin-app-control") {
     const mod = (await import(
       "../../../plugins/plugin-app-control/src/index.ts"
-    )) as { appAction?: Action; viewsAction?: Action };
-    if (!mod.appAction || !mod.viewsAction) return null;
+    )) as {
+      appAction?: Action;
+      homescreenAction?: Action;
+      viewsAction?: Action;
+    };
+    if (!mod.appAction || !mod.homescreenAction || !mod.viewsAction)
+      return null;
     return {
       name: "app-control",
       description: "App control deterministic scenario actions",
-      actions: [mod.appAction, mod.viewsAction],
+      actions: [mod.appAction, mod.homescreenAction, mod.viewsAction],
     };
   }
 
@@ -1818,7 +1823,11 @@ export async function runScenario(
           actionName: "REPLY",
           parameters: undefined,
           result: {
-            success: true,
+            // Do NOT claim success: this entry is fabricated because the LLM
+            // failed to select an action, so it must not satisfy a
+            // status:"success" actionCalled assertion. The `source` marker lets
+            // final-checks (and the native export) tell it apart from a real
+            // LLM-selected REPLY so it cannot mask a genuine selection failure.
             text: execution.responseText,
             data: { source: "synthesized-reply" },
           },

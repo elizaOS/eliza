@@ -15,11 +15,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, requireConfirmation } from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
-  isConfirmed,
   optionalStringArray,
   type ResolvedClient,
   requireNumber,
@@ -88,7 +87,9 @@ export type GitHubIssueOpResult =
   | { op: "close"; number: number; title: string }
   | { op: "reopen"; number: number; title: string }
   | { op: "comment"; number: number; commentId: number; url: string }
-  | { op: "label"; number: number; labels: string[] };
+  | { op: "label"; number: number; labels: string[] }
+  | { requiresConfirmation: true; preview: string; awaitingUserInput: true }
+  | { cancelled: true };
 
 async function runCreate(
   resolved: ResolvedClient,
@@ -389,7 +390,7 @@ export const issueOpAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
@@ -416,15 +417,31 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    if (!isConfirmed(options)) {
-      const preview = buildPreview(
-        op,
-        repo,
-        describeSelection(selection),
-        options,
-      );
-      await callback?.({ text: preview });
-      return { success: false, requiresConfirmation: true, preview };
+    const preview = buildPreview(
+      op,
+      repo,
+      describeSelection(selection),
+      options,
+    );
+    const decision = await requireConfirmation({
+      runtime,
+      message,
+      actionName: "GITHUB_ISSUE_OP",
+      pendingKey: `${op}:${repo}`,
+      prompt: `${preview} Reply yes to confirm or no to cancel.`,
+      callback,
+    });
+    if (decision.status === "pending") {
+      return {
+        success: false,
+        requiresConfirmation: true,
+        preview,
+      };
+    }
+    if (decision.status === "cancelled") {
+      const cancelMessage = "GitHub issue operation cancelled.";
+      await callback?.({ text: cancelMessage });
+      return { success: false, error: cancelMessage };
     }
 
     const resolved = buildResolvedClient(runtime, selection);

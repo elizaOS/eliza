@@ -29,6 +29,8 @@ import {
 } from "./browser-workspace-forms.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
+  createBrowserWorkspaceJsdomScriptExecutionError,
+  assertBrowserWorkspaceJsdomScriptNotRequested,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_TIMEOUT_MS,
@@ -171,79 +173,9 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         if (!command.script?.trim()) {
           throw new Error("Eliza browser workspace eval requires script.");
         }
-        try {
-          let value: unknown;
-          try {
-            value = new Function(
-              "document",
-              "fetch",
-              "alert",
-              "confirm",
-              "prompt",
-              "window",
-              "location",
-              "navigator",
-              "localStorage",
-              "sessionStorage",
-              "console",
-              `return (${command.script});`,
-            )(
-              document,
-              dom.window.fetch.bind(dom.window),
-              dom.window.alert.bind(dom.window),
-              dom.window.confirm.bind(dom.window),
-              dom.window.prompt.bind(dom.window),
-              dom.window,
-              dom.window.location,
-              dom.window.navigator,
-              dom.window.localStorage,
-              dom.window.sessionStorage,
-              dom.window.console,
-            );
-          } catch {
-            value = new Function(
-              "document",
-              "fetch",
-              "alert",
-              "confirm",
-              "prompt",
-              "window",
-              "location",
-              "navigator",
-              "localStorage",
-              "sessionStorage",
-              "console",
-              command.script,
-            )(
-              document,
-              dom.window.fetch.bind(dom.window),
-              dom.window.alert.bind(dom.window),
-              dom.window.confirm.bind(dom.window),
-              dom.window.prompt.bind(dom.window),
-              dom.window,
-              dom.window.location,
-              dom.window.navigator,
-              dom.window.localStorage,
-              dom.window.sessionStorage,
-              dom.window.console,
-            );
-          }
-          if (
-            value &&
-            typeof value === "object" &&
-            typeof (value as Promise<unknown>).then === "function"
-          ) {
-            value = await (value as Promise<unknown>);
-          }
-          return { mode: "web", subaction: command.subaction, value };
-        } catch (error) {
-          runtime.errors.push({
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? (error.stack ?? null) : null,
-            timestamp: getBrowserWorkspaceTimestamp(),
-          });
-          throw error;
-        }
+        // GHSA-mhhr-9ph9-64j7 / GHSA-vhvq-g4mq-vq62: never run user script in
+        // Node JSDOM — `new Function()` / eval reach process and full DOM forgery.
+        throw createBrowserWorkspaceJsdomScriptExecutionError("eval");
       }
       case "screenshot": {
         const data = createBrowserWorkspaceSyntheticScreenshotData(
@@ -1457,6 +1389,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         };
       }
       case "wait": {
+        assertBrowserWorkspaceJsdomScriptNotRequested(command.script, "wait");
         if (
           !command.selector &&
           !command.findBy &&
@@ -1517,32 +1450,16 @@ export async function executeWebBrowserWorkspaceDomCommand(
           const matchesUrl = command.url?.trim()
             ? tab.url.includes(command.url.trim())
             : false;
-          const matchesScript = command.script?.trim()
-            ? Boolean(
-                new Function(
-                  "document",
-                  "window",
-                  "location",
-                  `return (${command.script});`,
-                )(
-                  currentDocument,
-                  currentDom.window,
-                  currentDom.window.location,
-                ),
-              )
-            : false;
 
           if (
             matchesSelector ||
             matchesFind ||
             matchesText ||
             matchesUrl ||
-            matchesScript ||
             (!command.selector &&
               !command.findBy &&
               !command.text &&
-              !command.url &&
-              !command.script)
+              !command.url)
           ) {
             return {
               mode: "web",

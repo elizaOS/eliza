@@ -43,7 +43,9 @@ def mix64(checksum: int, value: int) -> int:
     return ((checksum ^ (value & MASK64)) * FNV64_PRIME) & MASK64
 
 
-def packed_w4_layer_word(model: str, layer_index: int, logical_core_index: int, word_addr: int) -> int:
+def packed_w4_layer_word(
+    model: str, layer_index: int, logical_core_index: int, word_addr: int
+) -> int:
     seed = f"{model}|layer={layer_index}|core={logical_core_index}|w4|{word_addr}"
     value = int.from_bytes(blake2s(seed.encode(), digest_size=4).digest(), "big")
     word = 0
@@ -96,7 +98,9 @@ def main() -> int:
         "full-payload manifest inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_payload_manifest_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_manifest_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     model_load = load_json(MODEL_LOAD_STREAM) if MODEL_LOAD_STREAM.is_file() else {}
@@ -106,7 +110,8 @@ def main() -> int:
     deps_ok = (
         placement.get("schema") == "eliza.e1x.graph_mesh_placement.v1"
         and model_load.get("status") == "PASS"
-        and int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0)) == 1_627_034_880
+        and int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+        == 1_627_034_880
         and sweep.get("status") == "PASS"
         and int(sweep.get("summary", {}).get("covered_layer_count", 0)) == 283
         and window_shard.get("status") == "PASS"
@@ -117,7 +122,9 @@ def main() -> int:
         "placement, model-load stream, layer sweep, and window-shard linkage are PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_full_payload_manifest_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_manifest_dependencies_pass", "status": status, "detail": detail}
+    )
 
     layers = placement.get("layers", [])
     model_name = str(placement.get("model", "e1x_llm_13b_w4a8_static_graph"))
@@ -202,7 +209,9 @@ def main() -> int:
                 }
             )
 
-    expected_stream_words = int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+    expected_stream_words = int(
+        model_load.get("summary", {}).get("stream_loader_word_transactions", 0)
+    )
     expected_stream_bytes = int(model_load.get("summary", {}).get("total_stream_bytes", 0))
     coverage_ok = (
         layer_count == 283
@@ -219,7 +228,13 @@ def main() -> int:
         f"full payload manifest enumerates {total_records} shard records and {total_loader_words} loader words",
         "full payload manifest coverage/accounting mismatch",
     )
-    checks.append({"id": "e1x_full_payload_manifest_enumerates_all_shards", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_manifest_enumerates_all_shards",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     commitment_ok = (
         committed_probe_words == 454_101
@@ -232,18 +247,28 @@ def main() -> int:
         f"payload manifest commits {committed_probe_words} deterministic first/mid/last W4 probe words",
         "payload manifest deterministic probe-word commitment mismatch",
     )
-    checks.append({"id": "e1x_full_payload_manifest_commits_probe_words", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_manifest_commits_probe_words", "status": status, "detail": detail}
+    )
 
     residual_ok = (
-        sweep.get("summary", {}).get("residual_blocker") == "full_quantized_weight_payload_executor_missing"
-        and model_load.get("summary", {}).get("residual_blocker") == "cycle_accurate_full_tensor_executor_missing"
+        sweep.get("summary", {}).get("residual_blocker")
+        == "full_quantized_weight_payload_executor_missing"
+        and model_load.get("summary", {}).get("residual_blocker")
+        == "cycle_accurate_full_tensor_executor_missing"
     )
     status, detail = pass_fail(
         residual_ok,
         "manifest commits every shard identity while preserving full payload execution blocker",
         "full-payload manifest residual boundary mismatch",
     )
-    checks.append({"id": "e1x_full_payload_manifest_preserves_execution_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_manifest_preserves_execution_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -256,7 +281,9 @@ def main() -> int:
         "committed_loader_word_count": total_loader_words,
         "committed_stream_bytes": total_stream_bytes,
         "committed_probe_word_count": committed_probe_words,
-        "probe_word_fraction_of_loader_stream": committed_probe_words / total_loader_words if total_loader_words else 0.0,
+        "probe_word_fraction_of_loader_stream": committed_probe_words / total_loader_words
+        if total_loader_words
+        else 0.0,
         "max_loader_words_per_shard": max_loader_words,
         "kind_counts": dict(sorted(kind_counts.items())),
         "payload_manifest_checksum": payload_checksum,

@@ -27,7 +27,12 @@ import {
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
 import type { RouteContext } from "./route-utils.js";
-import { parseBody, sendError, sendJson } from "./route-utils.js";
+import {
+  parseBody,
+  sendError,
+  sendJson,
+  sendServiceUnavailable,
+} from "./route-utils.js";
 
 const execFileAsync = promisify(execFile);
 const PREFLIGHT_DONE = new Set<string>();
@@ -247,7 +252,7 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/preflight
   if (method === "GET" && pathname === "/api/coding-agents/preflight") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -271,7 +276,7 @@ export async function handleAgentRoutes(
   const authMatch = pathname.match(/^\/api\/coding-agents\/auth\/(\w+)$/);
   if (method === "POST" && authMatch) {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
     const rawAgentType = authMatch[1];
@@ -295,9 +300,14 @@ export async function handleAgentRoutes(
   }
 
   // GET /api/coding-agents/metrics
+  // Intentionally empty: there is no per-ACP-session metrics source. The real
+  // usage/cost/status rollup lives in OrchestratorTaskService.getStatus()/
+  // getUsage() and is served at GET /api/orchestrator/status and
+  // GET /api/orchestrator/tasks/:id/usage, which the UI consumes. No client
+  // calls this route; it is retained only as a 200-stub for legacy probes.
   if (method === "GET" && pathname === "/api/coding-agents/metrics") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
     try {
@@ -384,7 +394,7 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/workspace-files?agentType=claude
   if (method === "GET" && pathname === "/api/coding-agents/workspace-files") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -400,6 +410,11 @@ export async function handleAgentRoutes(
         return true;
       }
 
+      // No backing source: this route keys off agentType, not a session or
+      // workdir, and CodingWorkspaceService exposes no file-listing method.
+      // Returns an empty manifest by contract. Unconsumed by the current UI; do
+      // not add filesystem traversal here without a real session-scoped workdir
+      // input (and path-escape hardening).
       sendJson(res, {
         agentType,
         memoryFilePath: null,
@@ -437,7 +452,7 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/settings
   if (method === "GET" && pathname === "/api/coding-agents/settings") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
     const frameworkState = await getTaskAgentFrameworkState(
@@ -460,7 +475,7 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/approval-config?agentType=claude&preset=autonomous
   if (method === "GET" && pathname === "/api/coding-agents/approval-config") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -488,7 +503,7 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents
   if (method === "GET" && pathname === "/api/coding-agents") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -509,7 +524,7 @@ export async function handleAgentRoutes(
   // POST /api/coding-agents/spawn
   if (method === "POST" && pathname === "/api/coding-agents/spawn") {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -661,7 +676,7 @@ export async function handleAgentRoutes(
   const agentMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)$/);
   if (method === "GET" && agentMatch) {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -682,7 +697,7 @@ export async function handleAgentRoutes(
   const sendMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/send$/);
   if (method === "POST" && sendMatch) {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -742,7 +757,7 @@ export async function handleAgentRoutes(
   const stopMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/stop$/);
   if (method === "POST" && stopMatch) {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 
@@ -765,7 +780,7 @@ export async function handleAgentRoutes(
   const outputMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/output$/);
   if (method === "GET" && outputMatch) {
     if (!ctx.acpService) {
-      sendError(res, "ACP service not available", 503);
+      sendServiceUnavailable(res, "ACP service not available");
       return true;
     }
 

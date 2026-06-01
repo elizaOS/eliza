@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
 import tempfile
 from pathlib import Path
-import json
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_RENODE = ROOT / "scripts/run_renode.sh"

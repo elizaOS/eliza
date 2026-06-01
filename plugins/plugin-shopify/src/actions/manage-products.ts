@@ -13,9 +13,8 @@ import {
 } from "../services/ShopifyService.js";
 import type { Product } from "../types.js";
 import {
-  confirmationRequired,
   getActionOptions,
-  isConfirmed,
+  requireShopifyConfirmation,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
 
@@ -177,10 +176,15 @@ export async function manageProductsHandler(
       ]
         .filter((line): line is string => line !== null)
         .join("\n");
-      if (!isConfirmed(options)) {
-        await callback?.({ text: preview });
-        return confirmationRequired(preview, { intent });
-      }
+      const confirmBlock = await requireShopifyConfirmation({
+        runtime,
+        message,
+        actionName: "SHOPIFY_CREATE_PRODUCT",
+        pendingKey: `create:${intent.title}`,
+        preview,
+        callback,
+      });
+      if (confirmBlock) return confirmBlock;
       const product = await svc.createProduct({
         title: intent.title,
         descriptionHtml: intent.description ?? undefined,
@@ -221,13 +225,15 @@ export async function manageProductsHandler(
         `Product: ${target.title}`,
         ...changeLines,
       ].join("\n");
-      if (!isConfirmed(options)) {
-        await callback?.({ text: preview });
-        return confirmationRequired(preview, {
-          intent,
-          productId: target.id,
-        });
-      }
+      const confirmBlock = await requireShopifyConfirmation({
+        runtime,
+        message,
+        actionName: "SHOPIFY_UPDATE_PRODUCT",
+        pendingKey: `update:${target.id}`,
+        preview,
+        callback,
+      });
+      if (confirmBlock) return confirmBlock;
 
       const updated = await svc.updateProduct(target.id, updateInput);
       await callback?.({

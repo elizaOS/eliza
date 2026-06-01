@@ -1,5 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
-import { TerminalPluginView, useAgentElement } from "@elizaos/ui";
+import { TerminalPluginView } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {

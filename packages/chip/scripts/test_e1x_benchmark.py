@@ -22,7 +22,9 @@ def test_e1x_benchmark_gate_passes() -> None:
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["claim_level"] == "L2_ARCH_SIM"
     assert report["summary"]["scaled_local_sram_mib"] >= 8192
-    assert report["summary"]["scaled_model_required_mib"] < report["summary"]["scaled_local_sram_mib"]
+    assert (
+        report["summary"]["scaled_model_required_mib"] < report["summary"]["scaled_local_sram_mib"]
+    )
     assert report["summary"]["high_failure_prefill_ms"] > 0
     assert report["summary"]["high_failure_decode_tokens_per_second"] > 0
     assert report["summary"]["high_failure_output_checksum"] > 0
@@ -65,7 +67,10 @@ def test_e1x_benchmark_gate_passes() -> None:
     assert report["summary"]["real_graph_high_failure_trace_sampled_layers"] > 0
     assert report["summary"]["real_graph_normal_trace_sampled_layers"] > 0
     assert report["summary"]["real_graph_high_vs_normal_trace_cycle_ratio"] >= 1.0
-    assert report["summary"]["real_graph_kernel_dispatch_layers"] == report["summary"]["real_graph_layers"]
+    assert (
+        report["summary"]["real_graph_kernel_dispatch_layers"]
+        == report["summary"]["real_graph_layers"]
+    )
     assert report["summary"]["real_graph_kernel_dispatch_words"] > 0
     assert report["summary"]["real_graph_microkernel_sample_macs"] > 0
     assert report["summary"]["real_graph_microkernel_checksum"] > 0

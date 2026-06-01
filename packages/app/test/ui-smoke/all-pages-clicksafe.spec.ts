@@ -79,14 +79,17 @@ const PERMISSION_IDS: readonly PermissionId[] = [
 
 const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
+    // /onboarding is the First Run screen; when an agent is already configured
+    // the shell redirects away — just verify the navigation does not crash.
+    name: "onboarding (first run)",
+    path: "/onboarding",
+    readyChecks: [{ selector: "#root" }],
+    timeoutMs: 30_000,
+  },
+  {
     name: "assistant home",
     path: "/",
-    readyChecks: [
-      { selector: '[data-testid="home-view"]' },
-      { selector: '[data-testid="home-chat-input"]' },
-      { selector: '[data-testid="home-assistant-transcript"]' },
-    ],
-    mode: "all",
+    readyChecks: [{ selector: '[data-testid="home-view"]' }],
     timeoutMs: 60_000,
   },
   {

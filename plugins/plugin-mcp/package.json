@@ -15,6 +15,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "node": {
         "types": "./dist/node/index.d.ts",
         "import": "./dist/node/index.js",
@@ -52,6 +57,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/security": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
     "json5": "^2.2.3"

@@ -18,6 +18,33 @@ import type { AgentSkillsService } from "../services/skills";
 import { detectEnableIntent, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
+type ToggleSkillOptions = {
+	parameters?: {
+		enabled?: unknown;
+		slug?: unknown;
+	};
+	enabled?: unknown;
+	slug?: unknown;
+};
+
+function optionString(options: ToggleSkillOptions | undefined, key: "slug"): string | null {
+	const parameterValue = options?.parameters?.[key];
+	if (typeof parameterValue === "string" && parameterValue.trim()) {
+		return parameterValue.trim();
+	}
+	const directValue = options?.[key];
+	return typeof directValue === "string" && directValue.trim()
+		? directValue.trim()
+		: null;
+}
+
+function optionBoolean(options: ToggleSkillOptions | undefined, key: "enabled"): boolean | null {
+	const parameterValue = options?.parameters?.[key];
+	if (typeof parameterValue === "boolean") return parameterValue;
+	const directValue = options?.[key];
+	return typeof directValue === "boolean" ? directValue : null;
+}
+
 export const toggleSkillAction = {
 	name: "SKILL",
 	contexts: ["automation", "settings"],
@@ -64,7 +91,7 @@ export const toggleSkillAction = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State | undefined,
-		_options: unknown,
+		options: unknown,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const service = runtime.getService<AgentSkillsService>(
@@ -77,8 +104,12 @@ export const toggleSkillAction = {
 		}
 
 		const text = message.content.text || "";
-		const slug = extractSlugFromMessage(text);
-		const enable = detectEnableIntent(text);
+		const opts = options as ToggleSkillOptions | undefined;
+		const explicitSlug = optionString(opts, "slug");
+		const explicitEnable = optionBoolean(opts, "enabled");
+		const slug = explicitSlug || extractSlugFromMessage(text);
+		const enable =
+			explicitEnable === null ? detectEnableIntent(text) : explicitEnable;
 
 		if (!slug) {
 			const errorText =

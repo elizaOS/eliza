@@ -91,7 +91,9 @@ def main() -> int:
         "tensor fabric-executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_tensor_fabric_executor_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_fabric_executor_inputs_present", "status": status, "detail": detail}
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     schedule = load_json(SCHEDULE) if SCHEDULE.is_file() else {}
@@ -109,7 +111,9 @@ def main() -> int:
         "microkernel proof and tensor schedule schemas/placement links match",
         "proof/schedule schema or placement-link mismatch",
     )
-    checks.append({"id": "e1x_tensor_fabric_executor_artifact_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_fabric_executor_artifact_links", "status": status, "detail": detail}
+    )
 
     evidence_ok = (
         tensor_cycle.get("status") == "PASS"
@@ -124,7 +128,9 @@ def main() -> int:
         "scalar row executor, RTL merge primitive, and full fabric-reduction accounting are PASS",
         "missing PASS dependency report for scalar rows, RTL merge, or fabric reduction",
     )
-    checks.append({"id": "e1x_tensor_fabric_executor_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_fabric_executor_dependencies_pass", "status": status, "detail": detail}
+    )
 
     schedule_by_index = {
         int(layer["layer_index"]): layer
@@ -165,15 +171,17 @@ def main() -> int:
         merge_cycles += int(merged["merge_cycles"])
         overflow_count += 1 if bool(merged["overflow"]) else 0
         if len(groups) < 8:
-            groups.append({
-                "layer_index": layer_index,
-                "layer_name": layer_name,
-                "routing_color": int(schedule_layer.get("routing_color", -1)),
-                "input_count": int(merged["input_count"]),
-                "accumulator_sum": int(merged["accumulator_sum"]),
-                "saturated_i32": int(merged["saturated_i32"]),
-                "overflow": bool(merged["overflow"]),
-            })
+            groups.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": layer_name,
+                    "routing_color": int(schedule_layer.get("routing_color", -1)),
+                    "input_count": int(merged["input_count"]),
+                    "accumulator_sum": int(merged["accumulator_sum"]),
+                    "saturated_i32": int(merged["saturated_i32"]),
+                    "overflow": bool(merged["overflow"]),
+                }
+            )
 
     expected_cycles = int(tensor_cycle.get("summary", {}).get("scalar_cycle_count", -1))
     execution_ok = (
@@ -189,9 +197,13 @@ def main() -> int:
         f"sampled tensor fabric executor merged {total_rows} scalar row partials across {len(proof.get('records', []))} groups",
         "tensor fabric executor mismatches: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_tensor_fabric_executor_merges_sampled_rows", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_fabric_executor_merges_sampled_rows", "status": status, "detail": detail}
+    )
 
-    color_count = len({int(group["routing_color"]) for group in groups if int(group["routing_color"]) >= 0})
+    color_count = len(
+        {int(group["routing_color"]) for group in groups if int(group["routing_color"]) >= 0}
+    )
     full_color_count = int(fabric_reduction.get("summary", {}).get("used_routing_color_count", 0))
     color_ok = full_color_count == 24 and int(schedule.get("scheduled_layer_count", 0)) >= 283
     status, detail = pass_fail(
@@ -199,21 +211,33 @@ def main() -> int:
         "sampled merge groups are tied to the 24-color full tensor schedule",
         f"fabric color schedule incomplete; sampled_prefix_colors={color_count}, full_colors={full_color_count}",
     )
-    checks.append({"id": "e1x_tensor_fabric_executor_links_routing_colors", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_tensor_fabric_executor_links_routing_colors",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
-        "proof_layer_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
-        "merged_group_count": len(proof.get("records", [])) if isinstance(proof.get("records"), list) else 0,
+        "proof_layer_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
+        "merged_group_count": len(proof.get("records", []))
+        if isinstance(proof.get("records"), list)
+        else 0,
         "merged_partial_count": total_rows,
         "executed_mac_count": total_macs,
         "scalar_cycle_count": scalar_cycles,
         "merge_cycle_count": merge_cycles,
         "total_sampled_fabric_executor_cycles": scalar_cycles + merge_cycles,
         "overflow_group_count": overflow_count,
-        "reduction_merge_cocotb_testcases": int(reduction_merge.get("summary", {}).get("testcases", 0)),
+        "reduction_merge_cocotb_testcases": int(
+            reduction_merge.get("summary", {}).get("testcases", 0)
+        ),
         "fabric_reduction_total_reduction_wavelets": int(
             fabric_reduction.get("summary", {}).get("total_reduction_wavelets", 0)
         ),

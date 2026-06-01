@@ -10,12 +10,12 @@ blocked entries instead of placeholder logs.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 

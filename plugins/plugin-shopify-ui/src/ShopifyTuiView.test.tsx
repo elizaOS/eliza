@@ -5,6 +5,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Badge: ({ children }: { children: React.ReactNode }) =>
     React.createElement("span", {}, children),
   Button: ({

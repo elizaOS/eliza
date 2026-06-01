@@ -39,6 +39,121 @@ const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
+
+// Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
+// ESM barrel so there is zero name-guessing. Used to rewrite the app's
+// `import { X } from "lucide-react"` into per-icon deep imports so only the
+// ~130 icons actually used ship instead of the full ~1500-icon set (the barrel
+// is not tree-shaken under the directory alias).
+let lucideIconFileMap: Map<string, string> | null = null;
+function getLucideIconFileMap(): Map<string, string> {
+  if (lucideIconFileMap) return lucideIconFileMap;
+  const map = new Map<string, string>();
+  try {
+    const barrelPath = path.resolve(
+      elizaRoot,
+      "packages/ui/node_modules/lucide-react/dist/esm/lucide-react.mjs",
+    );
+    const src = fs.readFileSync(barrelPath, "utf8");
+    const lineRe =
+      /export\s*\{([^}]*)\}\s*from\s*['"]\.\/icons\/([\w-]+)\.mjs['"]/g;
+    let m: RegExpExecArray | null = lineRe.exec(src);
+    while (m !== null) {
+      const file = m[2];
+      for (const part of m[1].split(",")) {
+        const named = part.trim().match(/default as (\w+)/);
+        if (named) map.set(named[1], file);
+      }
+      m = lineRe.exec(src);
+    }
+  } catch {
+    // Barrel not found / unreadable — leave the map empty so the transform
+    // no-ops and imports fall back to the (untransformed) barrel.
+  }
+  lucideIconFileMap = map;
+  return map;
+}
+
+// Virtual module id served in place of the bare `lucide-react` barrel for the
+// one remaining barrel consumer: the runtime module registry in
+// `packages/ui/src/components/views/DynamicViewLoader.tsx`, which does
+// `() => import("lucide-react")`. That dynamic import is invisible to the
+// static per-icon rewrite, so without this it pulls lucide's full
+// `icons/index.mjs` (~1500 icons → ~600KB). The virtual barrel re-exports only
+// the icons the app statically imports, so the dynamic chunk shares the same
+// curated icon set instead of the whole library.
+const LUCIDE_USED_BARREL_ID = "virtual:lucide-react-used";
+const LUCIDE_USED_BARREL_RESOLVED = `\0${LUCIDE_USED_BARREL_ID}`;
+
+// The lucide per-icon rewrite is build-only (see the plugin's configResolved).
+// In dev the barrel import is kept and pre-bundled, so we skip the rewrite.
+let lucideRewriteEnabled = true;
+
+let lucideUsedBarrelSource: string | null = null;
+function buildLucideUsedBarrelSource(): string {
+  if (lucideUsedBarrelSource !== null) return lucideUsedBarrelSource;
+  const map = getLucideIconFileMap();
+  // name → file for every icon statically imported anywhere in app source.
+  const used = new Map<string, string>();
+  const importRe = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/g;
+  const exts = new Set([".ts", ".tsx", ".js", ".jsx"]);
+  const roots = ["packages", "plugins", "apps"].map((d) =>
+    path.join(elizaRoot, d),
+  );
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (
+        entry.name === "node_modules" ||
+        entry.name === "dist" ||
+        entry.name === ".git" ||
+        entry.name === "benchmarks"
+      ) {
+        continue;
+      }
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!exts.has(path.extname(entry.name))) continue;
+      let code: string;
+      try {
+        code = fs.readFileSync(full, "utf8");
+      } catch {
+        continue;
+      }
+      if (!code.includes("lucide-react")) continue;
+      let m: RegExpExecArray | null = importRe.exec(code);
+      while (m !== null) {
+        for (const rawSpec of m[1].split(",")) {
+          const spec = rawSpec.trim();
+          if (!spec || spec.startsWith("type ")) continue;
+          const asMatch = spec.match(/^(\w+)\s+as\s+\w+$/);
+          const name = asMatch ? asMatch[1] : spec;
+          const file = map.get(name);
+          if (file) used.set(name, file);
+        }
+        m = importRe.exec(code);
+      }
+    }
+  };
+  for (const root of roots) walk(root);
+  const lines = [...used.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([name, file]) =>
+        `export { default as ${name} } from "lucide-react/dist/esm/icons/${file}.mjs";`,
+    );
+  lucideUsedBarrelSource = `${lines.join("\n")}\n`;
+  return lucideUsedBarrelSource;
+}
+
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const pluginBrowserBridgeSrcRoot = path.join(
@@ -90,6 +205,113 @@ const json5EsmEntry = path.join(
   path.dirname(_require.resolve("json5/package.json")),
   "dist/index.mjs",
 );
+// @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
+// bundle (StackContextManager / streaming-context tracing) but is not hoisted
+// where packages/app can resolve the bare specifier, so Vite served its ~46
+// internal modules raw in dev. Resolve its ESM entry through core's scope and
+// alias the bare specifier to it so it can be pre-bundled + deduped to one copy.
+const otelApiEntry = (() => {
+  // Search candidate roots in priority order:
+  // 1. workspace root node_modules (hoisted installs — npm/yarn/bun default)
+  // 2. direct require() resolution from packages/app scope
+  // 3. core's nested node_modules
+  // 4. bun content-addressable store entries for the ai package
+  // 5. bun content-addressable store entries for @opentelemetry/api directly
+  const candidateRoots: string[] = [];
+
+  // 1. Workspace root — fastest probe, covers most CI environments.
+  candidateRoots.push(path.join(elizaRoot, "node_modules"));
+
+  // 2. Direct require() resolution — works when hoisted correctly.
+  try {
+    const resolved = _require.resolve("@opentelemetry/api/package.json");
+    // resolved is the package.json path; parent is the package dir,
+    // grandparent is the node_modules root we want.
+    candidateRoots.push(path.join(path.dirname(resolved), ".."));
+  } catch {
+    /* not resolvable from this scope */
+  }
+
+  // 3. core's nested node_modules.
+  try {
+    candidateRoots.push(
+      path.join(
+        path.dirname(_require.resolve("@elizaos/core/package.json")),
+        "node_modules",
+      ),
+    );
+  } catch {
+    /* core not resolvable */
+  }
+
+  // 4. bun content-addressable store — ai package's nested node_modules.
+  try {
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    if (fs.existsSync(bunDir)) {
+      // Collect ALL ai@ entries; there may be multiple hash-variants.
+      const aiEntries = fs
+        .readdirSync(bunDir)
+        .filter((d) => d.startsWith("ai@"));
+      for (const aiEntry of aiEntries) {
+        candidateRoots.push(path.join(bunDir, aiEntry, "node_modules"));
+      }
+    }
+  } catch {
+    /* bun store not accessible */
+  }
+
+  // 5. bun content-addressable store — @opentelemetry/api direct entries.
+  try {
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    if (fs.existsSync(bunDir)) {
+      const otelEntries = fs
+        .readdirSync(bunDir)
+        .filter((d) => d.startsWith("@opentelemetry+api@"))
+        .sort();
+      for (const otelEntry of otelEntries) {
+        // Entry may have a nested node_modules/@opentelemetry/api layout or
+        // place the package directly at the entry root.
+        const withNested = path.join(bunDir, otelEntry, "node_modules");
+        const asDirect = path.join(bunDir, otelEntry);
+        if (
+          fs.existsSync(
+            path.join(withNested, "@opentelemetry/api/package.json"),
+          )
+        ) {
+          candidateRoots.push(withNested);
+        } else if (fs.existsSync(path.join(asDirect, "package.json"))) {
+          // The package itself is at the entry root; its parent is the "root"
+          // from which `@opentelemetry/api` resolves if we treat it as `{root}/@opentelemetry/api`.
+          // Construct a synthetic path that the loop below can find.
+          candidateRoots.push(path.join(bunDir, otelEntry, ".."));
+        }
+      }
+    }
+  } catch {
+    /* bun store not accessible */
+  }
+
+  for (const root of candidateRoots) {
+    const pkgJsonPath = path.join(root, "@opentelemetry/api/package.json");
+    if (!fs.existsSync(pkgJsonPath)) continue;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
+        module?: unknown;
+        main?: unknown;
+      };
+      const entry =
+        typeof pkg.module === "string"
+          ? pkg.module
+          : typeof pkg.main === "string"
+            ? pkg.main
+            : undefined;
+      if (entry) return path.join(path.dirname(pkgJsonPath), entry);
+    } catch {
+      /* bad package.json */
+    }
+  }
+  return undefined;
+})();
 
 function isExpectedWsProxySocketError(
   message: unknown,
@@ -108,6 +330,27 @@ function isExpectedWsProxySocketError(
     errorLike?.code === "ECONNRESET" ||
     String(errorLike?.message ?? "").includes("read ECONNRESET")
   );
+}
+
+/**
+ * The /api proxy fires ECONNREFUSED on every request until the API server
+ * finishes booting (~30s in dev). Those errors are transient startup noise —
+ * when the API is genuinely down the UI surfaces its own connection errors —
+ * so drop them rather than spamming the dev log.
+ */
+function isExpectedApiProxyConnectError(
+  message: unknown,
+  error: unknown,
+): boolean {
+  const text = typeof message === "string" ? message : String(message ?? "");
+  if (!text.includes("http proxy error")) {
+    return false;
+  }
+  const code =
+    error && typeof error === "object"
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
 }
 
 function stringifyBuildLogMessage(message: unknown): string {
@@ -131,6 +374,14 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     text.includes("Use of direct eval") &&
     text.includes("@electric-sql/pglite")
   ) {
+    return true;
+  }
+  // @elizaos/core's importAiProvider lazy-loads AI SDK providers by string
+  // specifier; its /* @vite-ignore */ is stripped by Bun.build's minifier from
+  // dist/browser/index.browser.js, so vite:import-analysis re-warns in local
+  // mode (the symlinked core realpath has no node_modules segment). Intentional
+  // and resolves correctly at runtime.
+  if (text.includes("dynamic import cannot be analyzed by Vite")) {
     return true;
   }
   if (!text.includes("INEFFECTIVE_DYNAMIC_IMPORT")) {
@@ -174,7 +425,10 @@ const viteLoggerError = viteLogger.error;
 const viteLoggerWarn = viteLogger.warn;
 const viteLoggerWarnOnce = viteLogger.warnOnce;
 viteLogger.error = (message, options) => {
-  if (isExpectedWsProxySocketError(message, options?.error)) {
+  if (
+    isExpectedWsProxySocketError(message, options?.error) ||
+    isExpectedApiProxyConnectError(message, options?.error)
+  ) {
     return;
   }
   viteLoggerError(message, options);
@@ -646,15 +900,21 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
 
 /**
  * Resolved file path for bundling `@elizaos/core` in the renderer.
- * Linked eliza checkouts sometimes omit `dist/` until `bun run build`;
- * prefer the local browser source entry in dev so Vite does not need to parse
- * the huge bundled browser artifact during startup. Built artifacts remain as
- * fallbacks for published/cached installs.
+ *
+ * Prefer the pre-built `dist/browser/index.browser.js` BUNDLE: one browser-safe
+ * artifact (single request, single parse, node: builtins already stripped). The
+ * browser SOURCE entry (`src/index.browser.ts`) is the fallback ONLY when no
+ * build exists yet (a fresh linked checkout before `bun run build`).
+ *
+ * Why this order matters: the source entry transitively pulls 400+ individual
+ * core source modules, so the renderer paid 400+ HTTP round-trips + on-demand
+ * TS transforms AND tried to evaluate core's node:async_hooks / node:fs imports
+ * in the browser — minute-long cold loads that frequently never mounted.
+ * Serving the one pre-built bundle avoids all of that. The bundle is rebuilt by
+ * `bun run build` (and the desktop build watch), so the only thing traded is
+ * HMR on the runtime, which the renderer almost never edits.
  */
 function resolveElizaCoreBundlePath(): string {
-  const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
-  if (sourceBrowserEntry) return sourceBrowserEntry;
-
   const pkgDir = tryResolveElizaCorePkgDir();
   if (pkgDir) {
     const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");
@@ -696,6 +956,18 @@ function resolveElizaCoreBundlePath(): string {
       `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
     );
     return bunNode;
+  }
+  // Last resort: no built artifact anywhere. Fall back to the browser SOURCE
+  // entry so a fresh linked checkout (before `bun run build`) still boots,
+  // accepting the slow source-graph load until a build exists.
+  const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
+  if (sourceBrowserEntry) {
+    console.warn(
+      "[eliza][vite] @elizaos/core has no built dist/; falling back to the browser SOURCE entry " +
+        "(src/index.browser.ts). This pulls the full core source graph and is slow — run `bun run build` " +
+        "in your eliza checkout to serve the pre-built browser bundle instead.",
+    );
+    return sourceBrowserEntry;
   }
   throw new Error(
     `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from packages/app)"} and none in node_modules/.bun. ` +
@@ -770,6 +1042,22 @@ function pathIncludesAny(id: string, markers: string[]): boolean {
 
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+
+  // The lucide-per-icon-imports plugin rewrites every `import { X } from
+  // "lucide-react"` to a deep `lucide-react/dist/esm/icons/<file>.mjs` import,
+  // and redirects the runtime registry's dynamic `import("lucide-react")` to a
+  // virtual barrel that re-exports only the used icons. Each icon module is its
+  // own ES module, so without a grouping rule Rolldown emits one tiny chunk per
+  // icon. Collapse the used icons + their shared `createLucideIcon` helper + the
+  // virtual barrel's re-export entry into a single chunk; the full barrel is
+  // never imported, so the unused icons never enter the graph.
+  if (
+    normalizedId.includes("/lucide-react/dist/esm/icons/") ||
+    normalizedId.includes("/lucide-react/dist/esm/createLucideIcon.mjs") ||
+    normalizedId.includes(LUCIDE_USED_BARREL_ID)
+  ) {
+    return "vendor-lucide";
+  }
 
   if (normalizedId.includes("/node_modules/")) {
     if (
@@ -1138,7 +1426,11 @@ export default defineConfig({
   base: "./",
   // Keep pre-bundle cache under the app dir (not node_modules/.vite) so Bun
   // installs don't fight Vite, and `bun run clean` / docs can target one path.
-  cacheDir: path.resolve(here, ".vite"),
+  // ELIZA_VITE_CACHE_DIR lets a parallel dev/measurement server use an isolated
+  // dep-optimize cache so it never invalidates the primary server's cache.
+  cacheDir: process.env.ELIZA_VITE_CACHE_DIR
+    ? path.resolve(process.env.ELIZA_VITE_CACHE_DIR)
+    : path.resolve(here, ".vite"),
   publicDir: path.resolve(here, "public"),
   define: {
     global: "globalThis",
@@ -1165,6 +1457,101 @@ export default defineConfig({
     ),
   },
   plugins: [
+    {
+      // lucide-react ships ~1500 icons but the app uses ~130. The barrel is not
+      // tree-shaken (the directory alias hides the package's sideEffects:false,
+      // so Rolldown keeps every ./icons/*.mjs), shipping a ~600KB chunk. Rewrite
+      // each `import { X } from "lucide-react"` in source to a per-icon deep
+      // import so only the used icons survive. The name→file map is parsed from
+      // lucide's own barrel, so resolution is authoritative; any name not in the
+      // map (e.g. a type-only import) leaves that statement untouched.
+      //
+      // The one consumer the static rewrite cannot reach is the runtime module
+      // registry's dynamic `() => import("lucide-react")`
+      // (packages/ui/.../DynamicViewLoader.tsx). A dynamic import pulls the full
+      // barrel → icons/index.mjs → all ~1500 icons. Redirect that (and any
+      // surviving static bare-barrel import) to a virtual module that re-exports
+      // only the statically-used icons, so the dynamic chunk shares the same
+      // curated set instead of the whole library.
+      name: "lucide-per-icon-imports",
+      enforce: "pre" as const,
+      // The per-icon rewrite trades one barrel import for ~250 deep per-icon
+      // imports. That is correct for the production bundle (tree-shaking) but in
+      // dev it explodes into ~250 separate raw module round-trips on every cold
+      // load. In dev we instead leave the barrel import intact and pre-bundle
+      // `lucide-react` once via optimizeDeps.include (bundle size is irrelevant
+      // for the dev server), so the rewrite is build-only.
+      configResolved(resolved: { command: string }) {
+        lucideRewriteEnabled = resolved.command === "build";
+      },
+      resolveId(source: string) {
+        if (source === LUCIDE_USED_BARREL_ID)
+          return LUCIDE_USED_BARREL_RESOLVED;
+        return null;
+      },
+      load(id: string) {
+        if (id === LUCIDE_USED_BARREL_RESOLVED) {
+          return buildLucideUsedBarrelSource();
+        }
+        return null;
+      },
+      transform(code: string, id: string) {
+        if (!lucideRewriteEnabled) return null;
+        if (id.includes("/node_modules/")) return null;
+        if (!code.includes("lucide-react")) return null;
+        const map = getLucideIconFileMap();
+        if (map.size === 0) return null;
+        let changed = false;
+        let out = code.replace(
+          /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"];?/g,
+          (full: string, inner: string) => {
+            const specs = inner
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const valueLines: string[] = [];
+            const typeSpecs: string[] = [];
+            for (const spec of specs) {
+              // `type X` specs are erased at build — keep them as a type-only
+              // import so they never pull the runtime barrel.
+              if (spec.startsWith("type ")) {
+                typeSpecs.push(spec.slice(5).trim());
+                continue;
+              }
+              const asMatch = spec.match(/^(\w+)\s+as\s+(\w+)$/);
+              const name = asMatch ? asMatch[1] : spec;
+              const local = asMatch ? asMatch[2] : spec;
+              const file = map.get(name);
+              // A non-type value that isn't an icon (e.g. createLucideIcon) →
+              // leave the whole statement untouched so nothing breaks.
+              if (!file) return full;
+              valueLines.push(
+                `import ${local} from "lucide-react/dist/esm/icons/${file}.mjs";`,
+              );
+            }
+            changed = true;
+            if (typeSpecs.length > 0) {
+              valueLines.push(
+                `import type { ${typeSpecs.join(", ")} } from "lucide-react";`,
+              );
+            }
+            return valueLines.join("\n");
+          },
+        );
+        // Redirect dynamic `import("lucide-react")` to the curated virtual
+        // barrel — that dynamic import is the registry fallback the static
+        // rewrite can't see, and it otherwise pulls the full icon set. Type-only
+        // imports (`import type { … } from "lucide-react"`) are left on the real
+        // package because they are erased before bundling and never contribute
+        // runtime code. Deep `lucide-react/…` specifiers keep a `/` after the
+        // package name, so the exact-match below skips them.
+        out = out.replace(/\bimport\s*\(\s*(['"])lucide-react\1\s*\)/g, () => {
+          changed = true;
+          return `import("${LUCIDE_USED_BARREL_ID}")`;
+        });
+        return changed ? { code: out, map: null } : null;
+      },
+    },
     appShellMetadataPlugin(),
     appDevWsBasePlugin(),
     companionAssetsPlugin(),
@@ -1174,6 +1561,46 @@ export default defineConfig({
       requireModule: _require,
     }),
     asyncLocalStoragePatchPlugin(),
+    // @opentelemetry/api is imported by `ai@6+` but is not hoisted to the
+    // workspace root under Bun canary's content-addressable store layout.
+    // resolve.alias covers it when otelApiEntry is found at config time, but
+    // when the store layout differs (e.g. CI Docker smoke) the alias is absent
+    // and Vite emits a hard "Rollup failed to resolve" error for node_modules
+    // imports before the rolldownOptions plugin layer can intercept them.
+    // This top-level Vite plugin intercepts the specifier unconditionally so
+    // the alias (when present) or the no-op stub (when absent) always wins.
+    {
+      name: "otel-api-resolver",
+      enforce: "pre" as const,
+      resolveId(id: string) {
+        if (id !== "@opentelemetry/api") return null;
+        if (otelApiEntry) return otelApiEntry;
+        return "\0otel-api-stub";
+      },
+      load(id: string) {
+        if (id !== "\0otel-api-stub") return null;
+        // Minimal no-op stub satisfying the named exports that `ai` reads at
+        // import time: trace, context, propagation, metrics, diag,
+        // SpanStatusCode, SpanKind, ROOT_CONTEXT, createContextKey,
+        // defaultTextMapPropagator, isSpanContextValid, INVALID_SPAN_CONTEXT,
+        // INVALID_TRACER_PROVIDER.
+        return `
+export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
+export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
+export const propagation = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const metrics = { getMeter: () => ({ createCounter: () => ({ add(){} }), createHistogram: () => ({ record(){} }), createGauge: () => ({ record(){} }), createObservableGauge: () => ({}) }) };
+export const diag = { setLogger: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, verbose: () => {} };
+export const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 };
+export const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 };
+export const ROOT_CONTEXT = {};
+export const createContextKey = (name) => Symbol(name);
+export const defaultTextMapPropagator = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const isSpanContextValid = () => false;
+export const INVALID_SPAN_CONTEXT = {};
+export const INVALID_TRACER_PROVIDER = {};
+`;
+      },
+    },
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
@@ -1202,8 +1629,12 @@ export default defineConfig({
       "@capacitor/core",
       "@elizaos/app-core",
       "zod",
+      "@opentelemetry/api",
     ],
     alias: [
+      ...(otelApiEntry
+        ? [{ find: /^@opentelemetry\/api$/, replacement: otelApiEntry }]
+        : []),
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
@@ -1244,6 +1675,12 @@ export default defineConfig({
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
+      {
+        // Per-icon deep imports (emitted by the lucide-per-icon-imports plugin)
+        // resolve here — the exact alias below only matches the bare specifier.
+        find: /^lucide-react\/(.*)$/,
+        replacement: `${path.resolve(elizaRoot, "packages/ui/node_modules/lucide-react")}/$1`,
+      },
       {
         find: /^lucide-react$/,
         replacement: path.resolve(
@@ -1592,6 +2029,28 @@ export default defineConfig({
       "three/examples/jsm/loaders/DRACOLoader.js",
       "three/examples/jsm/loaders/GLTFLoader.js",
       "three/examples/jsm/loaders/FBXLoader.js",
+      // Browser-safe deps that are otherwise served raw, file-by-file in dev
+      // (noDiscovery is on, so only this list is pre-bundled). Each entry here
+      // collapses dozens of cold-load module round-trips into one bundled chunk.
+      // lucide-react alone is ~250 per-icon requests once the build-only
+      // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
+      "lucide-react",
+      "yaml",
+      "uuid",
+      "adze",
+      // zod was historically excluded over a Vite dep-optimize chunk
+      // invalidation that 404'd the optimized chunk mid-startup. Retested on
+      // Vite v8 + Rolldown (8 rapid reloads + 5 cold starts): no chunk 404/504
+      // and no forced re-optimize reload. Including it collapses ~90 raw
+      // per-load module round-trips (zod v4 core + all locales) into one chunk.
+      // zod/v3 and zod/v4 are separate package entry points: a few sources
+      // import "zod/v3" (the v3 compat surface) directly, which the bare "zod"
+      // pre-bundle does not cover, so pre-bundle those subpaths too.
+      "zod",
+      "zod/v3",
+      "zod/v4",
+      // Resolvable via the resolve.alias above (transitive through @elizaos/core).
+      "@opentelemetry/api",
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.
@@ -1688,9 +2147,6 @@ export default defineConfig({
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
       "@elizaos/vault",
-      // Vite occasionally invalidates zod's optimized chunk during dev startup,
-      // which leaves the UI serving a missing .vite/deps file.
-      "zod",
     ],
   },
   build: {
@@ -1706,6 +2162,57 @@ export default defineConfig({
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,
     rolldownOptions: {
+      plugins: [
+        // Rolldown build-phase resolver for @opentelemetry/api.
+        // The `ai` package imports @opentelemetry/api but it is not hoisted to
+        // the workspace root in bun canary's content-addressable layout. The
+        // resolve.alias above covers the case when otelApiEntry is resolved, but
+        // when the bun store layout differs in CI the alias may be absent.
+        // This plugin is a safety net: it resolves the bare specifier to the
+        // same entry the alias would use, falling back to a no-op stub.
+        ...(otelApiEntry
+          ? [
+              {
+                name: "otel-api-build-resolver",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return otelApiEntry;
+                  return null;
+                },
+              },
+            ]
+          : [
+              {
+                name: "otel-api-build-stub",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  return null;
+                },
+                load(id: string) {
+                  if (id === "\0otel-api-stub") {
+                    // Minimal no-op that satisfies the `trace`, `context`,
+                    // `propagation`, `metrics`, `diag`, `SpanStatusCode` and
+                    // `SpanKind` named exports that `ai` reads at import time.
+                    return `
+export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
+export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
+export const propagation = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const metrics = { getMeter: () => ({ createCounter: () => ({ add(){} }), createHistogram: () => ({ record(){} }), createGauge: () => ({ record(){} }), createObservableGauge: () => ({}) }) };
+export const diag = { setLogger: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, verbose: () => {} };
+export const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 };
+export const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 };
+export const ROOT_CONTEXT = {};
+export const createContextKey = (name) => Symbol(name);
+export const defaultTextMapPropagator = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const isSpanContextValid = () => false;
+export const INVALID_SPAN_CONTEXT = {};
+export const INVALID_TRACER_PROVIDER = {};
+`;
+                  }
+                  return null;
+                },
+              },
+            ]),
+      ],
       checks: {
         eval: false,
         pluginTimings: false,
@@ -1755,11 +2262,69 @@ export default defineConfig({
         manualChunks: resolveManualChunk,
       },
     },
+    // rollupOptions mirrors the otel stub from rolldownOptions above.
+    // Vite reads rolldownOptions only when using experimental Rolldown; when
+    // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
+    // rolldownOptions is silently ignored and the otel-api-build-* plugin
+    // never runs. The rollupOptions block below is the standard path and is
+    // always applied by Vite + Rollup.
+    rollupOptions: {
+      plugins: [
+        ...(otelApiEntry
+          ? [
+              {
+                name: "otel-api-build-resolver",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return otelApiEntry;
+                  return null;
+                },
+              },
+            ]
+          : [
+              {
+                name: "otel-api-build-stub",
+                resolveId(id: string) {
+                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  return null;
+                },
+                load(id: string) {
+                  if (id !== "\0otel-api-stub") return null;
+                  return `
+export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
+export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
+export const propagation = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const metrics = { getMeter: () => ({ createCounter: () => ({ add(){} }), createHistogram: () => ({ record(){} }), createGauge: () => ({ record(){} }), createObservableGauge: () => ({}) }) };
+export const diag = { setLogger: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, verbose: () => {} };
+export const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 };
+export const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 };
+export const ROOT_CONTEXT = {};
+export const createContextKey = (name) => Symbol(name);
+export const defaultTextMapPropagator = { inject: () => {}, extract: (_c, carrier) => _c, fields: () => [] };
+export const isSpanContextValid = () => false;
+export const INVALID_SPAN_CONTEXT = {};
+export const INVALID_TRACER_PROVIDER = {};
+`;
+                },
+              },
+            ]),
+      ],
+      onwarn(warning, warn) {
+        if (isKnownToleratedBuildWarning(warning)) {
+          return;
+        }
+        warn(warning);
+      },
+    },
   },
   server: {
     host: true,
     port: uiPort,
     strictPort: true,
+    // Proactively transform the boot entry's import graph at server start
+    // instead of lazily on the first browser request. On this app the eager
+    // graph is large (~1200 workspace source modules), so warming it parallelizes
+    // the transform work and shortens cold-load TTFB after a server (re)start.
+    warmup: { clientFiles: ["src/main.tsx"] },
     // Only pin the dev origin when the desktop shell explicitly asks for a
     // loopback public URL. Capacitor live reload and LAN/browser clients need
     // Vite to keep serving the current request host instead of rewriting

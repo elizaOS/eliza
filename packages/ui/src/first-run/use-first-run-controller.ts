@@ -51,6 +51,10 @@ import {
 } from "./mobile-runtime-mode";
 import { readFirstRunRuntimeTarget } from "./reload-into-first-run-runtime";
 import {
+  type MicrophonePermissionController,
+  useMicrophonePermission,
+} from "./use-microphone-permission";
+import {
   FIRST_RUN_VOICE_PREPARING_MESSAGE,
   prepareFirstRunVoiceAndTranscription,
   resolveFirstRunLocalAgentApiBase,
@@ -88,6 +92,7 @@ export interface FirstRunController {
   error: string | null;
   cloudError: string | null | undefined;
   voice: FirstRunVoiceState;
+  microphone: MicrophonePermissionController;
   primaryLabel: string;
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
@@ -309,6 +314,10 @@ export function useFirstRunController(): FirstRunController {
       ? null
       : "Voice input is not available in this renderer.",
   }));
+  // Voice-first onboarding needs microphone access before the listening step.
+  // The hook wraps the cross-platform permission client and degrades to a
+  // getUserMedia probe when that client is unavailable; it never throws.
+  const microphone = useMicrophonePermission();
   const voiceCaptureRef = React.useRef<VoiceCaptureHandle | null>(null);
   const voiceCaptureGenerationRef = React.useRef(0);
   const voiceOutputActiveRef = React.useRef(false);
@@ -486,7 +495,7 @@ export function useFirstRunController(): FirstRunController {
       }
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [
       completeFirstRun,
@@ -534,7 +543,7 @@ export function useFirstRunController(): FirstRunController {
       await submitFirstRun(sourceDraft, "remote");
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [completeFirstRun, setState, submitFirstRun, syncIdentity],
   );
@@ -598,7 +607,7 @@ export function useFirstRunController(): FirstRunController {
       await client.submitFirstRun(plan.payload);
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("home", { launchCompanionOverlay: true });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [
       completeFirstRun,
@@ -927,6 +936,7 @@ export function useFirstRunController(): FirstRunController {
     error,
     cloudError: elizaCloudLoginError,
     voice,
+    microphone,
     primaryLabel,
     canBack: previousFirstRunStep(step) !== null && !submitting,
     updateDraft,
