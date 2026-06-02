@@ -35,4 +35,5 @@ export const PREF_KEYS = {
   notes: "notes",
   bgPattern: "bg-pattern",
   customThemes: "custom-themes",
+  sidebarWidth: "sidebar-width",
 } as const;

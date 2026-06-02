@@ -12,10 +12,12 @@
 import type { CodingAgentTaskThread } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import {
+  type PointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { BgEffect } from "./BgEffect";
@@ -51,6 +53,11 @@ export function OdysseusShell(): ReactNode {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     readPref<boolean>(PREF_KEYS.sidebarCollapsed, false),
   );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() =>
+    readPref<number>(PREF_KEYS.sidebarWidth, 240),
+  );
+  const widthRef = useRef(sidebarWidth);
+  widthRef.current = sidebarWidth;
   const [searchOpen, setSearchOpen] = useState(false);
   const [themeName, setThemeName] = useState<ThemeName>(() =>
     readPref<ThemeName>(PREF_KEYS.themeMode, "dark"),
@@ -154,6 +161,26 @@ export function OdysseusShell(): ReactNode {
       writePref(PREF_KEYS.sidebarCollapsed, !prev);
       return !prev;
     });
+  }, []);
+
+  // Drag-to-resize the sidebar (odysseus .sidebar-resize-handle). Pointer move
+  // updates width live (clamped 180–440px); the final width persists on release.
+  const startResize = useCallback((e: PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = widthRef.current;
+    const onMove = (ev: globalThis.PointerEvent) => {
+      setSidebarWidth(
+        Math.max(180, Math.min(440, startW + (ev.clientX - startX))),
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      writePref(PREF_KEYS.sidebarWidth, widthRef.current);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }, []);
 
   const pickTheme = useCallback((name: ThemeName) => {
@@ -289,6 +316,8 @@ export function OdysseusShell(): ReactNode {
           onSearch={() => setSearchOpen(true)}
           onRename={onRenameThread}
           onDelete={onDeleteThread}
+          width={sidebarWidth}
+          onResizeStart={startResize}
         />
       )}
       <ChatContainer

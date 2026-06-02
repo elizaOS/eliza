@@ -170,4 +170,47 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     expect(await page.locator(".od-skill-item").count()).toBeGreaterThan(0);
     await closeOverlay();
   });
+
+  // Drag-resize the sidebar (odysseus .sidebar-resize-handle): widen on drag,
+  // clamp at the 180px floor, and persist the final width across reload. Runs
+  // last because it reloads the page.
+  it("sidebar resize handle widens, clamps, and persists", async () => {
+    await closeOverlay();
+    const sidebar = page.locator(".od-sidebar").first();
+    const handle = page.locator(".od-sidebar-resize-handle").first();
+    expect(await handle.count()).toBe(1);
+
+    const widthOf = async () => (await sidebar.boundingBox())?.width ?? 0;
+    const dragBy = async (dx: number) => {
+      const hb = await handle.boundingBox();
+      if (!hb) throw new Error("resize handle has no box");
+      const cx = hb.x + hb.width / 2;
+      const cy = hb.y + hb.height / 2;
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + dx / 2, cy, { steps: 5 });
+      await page.mouse.move(cx + dx, cy, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+    };
+
+    const w0 = await widthOf();
+    await dragBy(70);
+    expect(await widthOf()).toBeGreaterThan(w0 + 40);
+
+    // Drag far left → clamps at the 180px floor.
+    await dragBy(-400);
+    expect(Math.abs((await widthOf()) - 180)).toBeLessThan(3);
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem("odysseus:sidebar-width"),
+      ),
+    ).toBe("180");
+
+    // Persisted width survives a reload.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await ensureShell();
+    await page.waitForTimeout(400);
+    expect(Math.abs((await widthOf()) - 180)).toBeLessThan(3);
+  });
 });

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type KeyboardEvent,
+  type PointerEvent,
   type ReactNode,
   useEffect,
   useRef,
@@ -113,6 +114,8 @@ export function SessionSidebar({
   onSearch,
   onRename,
   onDelete,
+  width,
+  onResizeStart,
 }: {
   threads: CodingAgentTaskThread[];
   selectedId: string | null;
@@ -121,12 +124,14 @@ export function SessionSidebar({
   onSearch: () => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  width: number;
+  onResizeStart: (e: PointerEvent) => void;
 }): ReactNode {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
-    <nav className="od-sidebar" aria-label="Sidebar">
+    <nav className="od-sidebar" aria-label="Sidebar" style={{ width }}>
       <div className="od-sidebar-header">
         <button
           type="button"
@@ -194,6 +199,12 @@ export function SessionSidebar({
           <Settings size={16} />
         </button>
       </div>
+      <button
+        type="button"
+        className="od-sidebar-resize-handle"
+        onPointerDown={onResizeStart}
+        aria-label={`Resize sidebar (${width}px)`}
+      />
     </nav>
   );
 }

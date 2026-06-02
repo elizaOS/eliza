@@ -319,8 +319,13 @@ export const ODYSSEUS_CSS = `
 
 /* ── sidebar ── */
 .odysseus-root .od-sidebar { width:240px; flex-shrink:0; display:flex; flex-direction:column;
-  overflow:hidden; min-height:0; background:var(--sidebar-bg, var(--panel));
+  overflow:hidden; min-height:0; background:var(--sidebar-bg, var(--panel)); position:relative;
   border-right:1px solid var(--border); box-shadow:0 4px 12px rgba(0,0,0,.1); backdrop-filter:blur(10px); }
+.odysseus-root .od-sidebar-resize-handle { position:absolute; top:0; right:0; width:5px; height:100%;
+  cursor:col-resize; z-index:5; touch-action:none; border:none; padding:0; margin:0;
+  background:transparent; appearance:none; }
+.odysseus-root .od-sidebar-resize-handle:hover,
+.odysseus-root .od-sidebar-resize-handle:focus-visible { background:color-mix(in srgb, var(--red) 30%, transparent); outline:none; }
 .odysseus-root .od-sidebar.od-collapsed { width:0; border-right:none; }
 .odysseus-root .od-sidebar-header { display:flex; align-items:center; gap:8px;
   padding:15px 12px 6px; flex-shrink:0; min-height:40px; }
