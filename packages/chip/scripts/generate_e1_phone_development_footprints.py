@@ -133,6 +133,93 @@ SUPPORT_PATTERN_BASIS: dict[str, dict[str, object]] = {
     },
 }
 
+PINOUT_FOOTPRINT_LAND_PATTERN_BASIS: dict[str, str] = {
+    "GCT_USB4105_GF_A_DEV": (
+        "public USB4105 signal pinout with local 0.5mm receptacle development pad row; "
+        "pending GCT drawing/DFM land-pattern approval"
+    ),
+    "PANASONIC_EVQ_P7_DEV": (
+        "public Panasonic EVQ-P7 four-terminal switch pinout with local tactile-switch "
+        "development pads; pending selected switch drawing approval"
+    ),
+    "DISPLAY_40P_0P30_DEV": (
+        "local 40-pin 0.30mm display FPC development pad row from public signal set; "
+        "pending signed display FPC pin order and land-pattern drawing"
+    ),
+    "CAMERA_24P_0P50_DEV": (
+        "local 24-pin 0.50mm rear-camera FPC development pad row from public CSI signal set; "
+        "pending signed camera FPC drawing"
+    ),
+    "CAMERA_30P_0P50_DEV": (
+        "local 30-pin 0.50mm front-camera FPC development pad row from public CSI signal set; "
+        "pending signed camera FPC drawing"
+    ),
+    "HIROSE_DF40_80P_0P4_DEV": (
+        "local 80-contact 0.40mm board-to-board development pattern bound to public Hirose "
+        "numbering; pending selected connector drawing and stack-height approval"
+    ),
+    "BATTERY_4P_1P00_DEV": (
+        "local 4-pin 1.00mm battery-pack flex development pad row from pack signal contract; "
+        "pending pack supplier lead/connector drawing"
+    ),
+    "TI_TPS65987_RSH_56QFN_DEV": (
+        "public TPS65987 RSH56 QFN pin table with local exposed-pad development pattern; "
+        "pending TI land-pattern/DFM release review"
+    ),
+    "ADI_MAX77860_WLP81_DEV": (
+        "public MAX77860 WLP81 ball map with local 0.40mm WLP development grid; "
+        "pending Analog Devices package drawing and assembler DFM approval"
+    ),
+    "AUDIO_CODEC_QFN48_DEV": (
+        "local QFN48 audio-codec development pattern from codec signal contract; "
+        "pending exact codec MPN land pattern and pinout"
+    ),
+    "MURATA_TYPE_2EA_GEOMETRY_DEV": (
+        "public Murata Type 2EA terminal table/DXF development geometry; pending Murata/CM "
+        "approved footprint import"
+    ),
+    "QUECTEL_RG255C_GEOMETRY_DEV": (
+        "public Quectel RG255C pin table with synthetic LGA development grid; pending selected "
+        "regional SKU land-pattern drawing"
+    ),
+    "SODIMM_260P_0P5_COMPUTE_SOM_DEV": (
+        "public 260-position SoM connector count with local dual-row development footprint; "
+        "pending selected connector and SoM pin-order drawing"
+    ),
+    "USIM_ESD_LEVELSHIFT_DEV": (
+        "local 10-terminal USIM ESD/level-shift development pattern from public signal contract; "
+        "pending selected device land pattern"
+    ),
+    "ESIM_LGA_DEV": (
+        "public MFF2/eSIM 8-pad pinout with local QFN/LGA development footprint; pending eSIM "
+        "supplier package drawing approval"
+    ),
+    "NFC_CONTROLLER_QFN_DEV": (
+        "local QFN32 NFC-controller development pattern from NFC signal contract; pending exact "
+        "controller MPN land pattern"
+    ),
+    "NFC_LOOP_MATCH_DEV": (
+        "local five-terminal NFC loop matching development pattern; pending antenna tuning and "
+        "selected matching network"
+    ),
+    "SENSOR_HUB_QFN_DEV": (
+        "local QFN24 sensor-hub development pattern from sensor signal contract; pending exact "
+        "sensor/IMU package selection"
+    ),
+    "BACKLIGHT_BIAS_POWER_DEV": (
+        "local QFN24 backlight/bias power development pattern from display-power signal "
+        "contract; pending exact driver package selection"
+    ),
+    "HAPTIC_DRIVER_WLCSP_DEV": (
+        "local WLCSP9 haptic-driver development grid from haptic signal contract; pending exact "
+        "driver ball map"
+    ),
+    "FUEL_GAUGE_WLCSP_DEV": (
+        "local WLCSP12 fuel-gauge development grid from battery gauge signal contract; pending "
+        "exact gauge ball map"
+    ),
+}
+
 
 def uid(*parts: object) -> str:
     return str(
@@ -227,6 +314,11 @@ def record(name: str, **fields: object) -> dict[str, object]:
         item["local_terminal_contract"] = basis["terminal_contract"]
         item["local_terminal_contract_source"] = (
             "generated_development_footprint_support_pattern_basis"
+        )
+    elif name in PINOUT_FOOTPRINT_LAND_PATTERN_BASIS:
+        item["land_pattern_basis"] = PINOUT_FOOTPRINT_LAND_PATTERN_BASIS[name]
+        item["local_terminal_contract_source"] = (
+            "generated_development_footprint_pinout_pattern_basis"
         )
     return item
 

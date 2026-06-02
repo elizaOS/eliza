@@ -39,6 +39,10 @@ function fileSize(relPath: string): number {
   return statSync(p).size;
 }
 
+function bundlePathFor(pluginDir: string): string {
+  return `${pluginDir}/dist/views/bundle.js`;
+}
+
 // Parses viewType/id/componentExport/bundlePath from plugin source
 function extractXrViews(
   source: string,
@@ -108,7 +112,7 @@ describe("Facewear view bundle coverage", () => {
   it("dist/views/bundle.js exists for every plugin with an XR view", () => {
     const missing: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
+      const bundlePath = bundlePathFor(pluginDir);
       if (!fileExists(bundlePath)) {
         missing.push(bundlePath);
       }
@@ -122,7 +126,7 @@ describe("Facewear view bundle coverage", () => {
   it("every bundle.js is non-empty (at least 1 KB of content)", () => {
     const tooSmall: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
+      const bundlePath = bundlePathFor(pluginDir);
       const size = fileSize(bundlePath);
       if (size < 1024) {
         tooSmall.push(`${bundlePath}: ${size} bytes`);
@@ -134,8 +138,11 @@ describe("Facewear view bundle coverage", () => {
   it("every bundle.js starts with valid JavaScript (not HTML or JSON)", () => {
     const invalid: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
-      if (!fileExists(bundlePath)) continue;
+      const bundlePath = bundlePathFor(pluginDir);
+      if (!fileExists(bundlePath)) {
+        invalid.push(`${bundlePath}: missing`);
+        continue;
+      }
       const first = readFile(bundlePath).trimStart().slice(0, 20);
       if (first.startsWith("<") || first.startsWith("{")) {
         invalid.push(`${bundlePath}: starts with "${first}"`);
@@ -147,8 +154,11 @@ describe("Facewear view bundle coverage", () => {
   it("every bundle.js contains the componentExport declared in the plugin manifest", () => {
     const mismatches: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
-      if (!fileExists(bundlePath)) continue;
+      const bundlePath = bundlePathFor(pluginDir);
+      if (!fileExists(bundlePath)) {
+        mismatches.push(`${bundlePath}: missing`);
+        continue;
+      }
 
       const manifestSource = readFile(manifestPath);
       const xrViews = extractXrViews(manifestSource);

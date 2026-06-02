@@ -27,11 +27,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from heapq import heappop, heappush
 from math import exp
+from typing import cast
 
 from compiler.runtime.e1_npu_scale_model import OPEN_2028_SOTA
 from compiler.runtime.e1x_wafer_model import (
     SCALED_8GB_MODEL,
     SCALED_8GB_RUN,
+    Coord,
+    DefectScenario,
+    E1XConfig,
     QuantizedModelSpec,
     _stable_fraction,
     _u64_hex,
@@ -882,7 +886,12 @@ def defect_scenario_report(
     mesh = validate_repaired_mesh(
         config, mapping, blocked_cores, blocked_links, scenario.max_route_checks
     )
-    load = model_load_plan(config, model, blocked_cores, mapping)
+    load = model_load_plan(
+        cast(E1XConfig, config),
+        model,
+        cast(set[Coord], blocked_cores),
+        cast(dict[Coord, Coord], mapping),
+    )
     return {
         "scenario": scenario.name,
         "dead_tier": scenario.dead_tier,
@@ -912,7 +921,7 @@ def build_e1x3d_report(config: E1X3DConfig | None = None) -> dict:
         "schema": "eliza.e1x3d.stacked_mesh_model.v1",
         "claim_boundary": "architecture_simulation_only_not_rtl_not_pdk_not_silicon",
         "benchmark_success_allowed": True,
-        "target_cycles": int(mesh["logical_neighbor_paths_checked"] + 1),
+        "target_cycles": int(mesh["logical_neighbor_paths_checked"]) + 1,
         "simulated_frequency_hz": cfg.core_clock_hz,
         "ipc": cfg.logical_cores * cfg.int8_lanes_per_core,
         "architecture": {
@@ -978,12 +987,14 @@ def build_scaled_e1x3d_report(
     high_defect_map = defect_map_artifact(cfg, HIGH_DEFECT_SCENARIO_3D)
     high_repair_manifest = repair_manifest_artifact(cfg, HIGH_DEFECT_SCENARIO_3D, high_defect_map)
     high_repair_rom = repair_rom_artifact(high_repair_manifest)
-    high_model_shard_sample = model_shard_sample_artifact(cfg, model, high["model_load"])
+    high_model_shard_sample = model_shard_sample_artifact(
+        cast(E1XConfig, cfg), model, high["model_load"]
+    )
     high_execution = model_execution_plan(
-        cfg,
+        cast(E1XConfig, cfg),
         model,
         SCALED_8GB_RUN,
-        HIGH_DEFECT_SCENARIO_3D,
+        cast(DefectScenario, HIGH_DEFECT_SCENARIO_3D),
         high["model_load"],
         float(high["average_extra_hops_per_neighbor"]),
     )

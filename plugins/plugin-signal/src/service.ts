@@ -917,7 +917,15 @@ export class SignalService extends Service implements ISignalService {
                   } as TargetInfo),
             });
           },
-          getUser: service.getConnectorUser.bind(service),
+          getUser: (handlerRuntime, params) =>
+            service.getConnectorUser(handlerRuntime, {
+              ...params,
+              target: params.target
+                ? params.target.accountId
+                  ? params.target
+                  : ({ ...params.target, accountId: connectorAccountId } as TargetInfo)
+                : ({ source: SIGNAL_SERVICE_NAME, accountId: connectorAccountId } as TargetInfo),
+            }),
           getChatContext: async (target, context) => {
             const targetAccountId = service.normalizeAccountId(
               target.accountId ?? context.accountId ?? connectorAccountId
@@ -1213,7 +1221,10 @@ export class SignalService extends Service implements ISignalService {
     if (!("envelope" in raw)) {
       return SignalService.unwrapFlatMessage(raw);
     }
-    return SignalService.unwrapEnvelopeMessage(raw.envelope as Record<string, unknown>);
+    if (!isRecord(raw.envelope)) {
+      return null;
+    }
+    return SignalService.unwrapEnvelopeMessage(raw.envelope);
   }
 
   private static unwrapFlatMessage(raw: Record<string, unknown>): SignalMessage | null {
@@ -1235,25 +1246,31 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private static unwrapEnvelopeMessage(env: Record<string, unknown>): SignalMessage | null {
-    const dm = (env.dataMessage || {}) as Record<string, unknown>;
-    const groupInfo = dm.groupInfo as Record<string, unknown> | undefined;
+    const dm = isRecord(env.dataMessage) ? env.dataMessage : {};
+    const groupInfo = isRecord(dm.groupInfo) ? dm.groupInfo : undefined;
 
-    const sender = (env.sourceNumber as string) || (env.source as string);
-    const timestamp = (dm.timestamp as number) || (env.timestamp as number);
+    const sender =
+      (typeof env.sourceNumber === "string" && env.sourceNumber) ||
+      (typeof env.source === "string" && env.source) ||
+      "";
+    const timestamp =
+      (typeof dm.timestamp === "number" && dm.timestamp) ||
+      (typeof env.timestamp === "number" && env.timestamp) ||
+      0;
 
     // Both sender and timestamp are required to produce a usable message.
     if (!sender || !timestamp) return null;
 
     return {
       sender,
-      senderUuid: env.source as string | undefined,
-      message: dm.message as string | undefined,
+      senderUuid: typeof env.source === "string" ? env.source : undefined,
+      message: typeof dm.message === "string" ? dm.message : undefined,
       timestamp,
-      groupId: groupInfo?.groupId as string | undefined,
-      attachments: (dm.attachments as SignalAttachment[]) || [],
+      groupId: typeof groupInfo?.groupId === "string" ? groupInfo.groupId : undefined,
+      attachments: Array.isArray(dm.attachments) ? (dm.attachments as SignalAttachment[]) : [],
       reaction: dm.reaction as SignalReactionInfo | undefined,
-      expiresInSeconds: (dm.expiresInSeconds as number) || 0,
-      viewOnce: (dm.viewOnce as boolean) || false,
+      expiresInSeconds: typeof dm.expiresInSeconds === "number" ? dm.expiresInSeconds : 0,
+      viewOnce: dm.viewOnce === true,
       quote: dm.quote as SignalQuote | undefined,
     };
   }

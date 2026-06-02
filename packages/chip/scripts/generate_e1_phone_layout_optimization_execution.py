@@ -54,7 +54,7 @@ def main() -> int:
     cellular_top_island = load_yaml(CELLULAR_TOP_ISLAND)
     repack = load_yaml(PLACEMENT_REPACK)
     feasibility = load_yaml(ROUTE_FEASIBILITY)
-    trial_route_input = load_yaml(TRIAL_ROUTE_INPUT)
+    _trial_route_input = load_yaml(TRIAL_ROUTE_INPUT)
     routing_acceptance = load_yaml(ROUTING_ACCEPTANCE)
     routed_release = load_yaml(ROUTED_RELEASE)
     display_fit = load_yaml(DISPLAY_FIT)

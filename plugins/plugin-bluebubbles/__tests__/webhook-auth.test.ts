@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { verifyBlueBubblesWebhookSecret } from "../src/webhook-auth.js";
+import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	BLUEBUBBLES_WEBHOOK_SECRET_HEADER,
+	isBlueBubblesWebhookAuthorized,
+	readRouteHeader,
+	resolveBlueBubblesWebhookSecret,
+	verifyBlueBubblesWebhookSecret,
+} from "../src/webhook-auth.js";
 
 describe("verifyBlueBubblesWebhookSecret", () => {
 	const secret = "operator-shared-secret";
@@ -18,5 +25,86 @@ describe("verifyBlueBubblesWebhookSecret", () => {
 
 	it("rejects when the configured secret is empty", () => {
 		expect(verifyBlueBubblesWebhookSecret("", secret)).toBe(false);
+	});
+});
+
+describe("BlueBubbles webhook auth helpers", () => {
+	afterEach(() => {
+		delete process.env.BLUEBUBBLES_WEBHOOK_SECRET;
+	});
+
+	it("reads lowercase, original case, uppercase, and array route headers", () => {
+		expect(
+			readRouteHeader(
+				{
+					headers: {
+						[BLUEBUBBLES_WEBHOOK_SECRET_HEADER.toLowerCase()]: "lower",
+					},
+				} as RouteRequest,
+				BLUEBUBBLES_WEBHOOK_SECRET_HEADER,
+			),
+		).toBe("lower");
+		expect(
+			readRouteHeader(
+				{
+					headers: {
+						[BLUEBUBBLES_WEBHOOK_SECRET_HEADER]: "original",
+					},
+				} as RouteRequest,
+				BLUEBUBBLES_WEBHOOK_SECRET_HEADER,
+			),
+		).toBe("original");
+		expect(
+			readRouteHeader(
+				{
+					headers: {
+						[BLUEBUBBLES_WEBHOOK_SECRET_HEADER.toUpperCase()]: [
+							"first",
+							"second",
+						],
+					},
+				} as RouteRequest,
+				BLUEBUBBLES_WEBHOOK_SECRET_HEADER,
+			),
+		).toBe("first");
+	});
+
+	it("prefers a trimmed runtime secret over the environment", () => {
+		process.env.BLUEBUBBLES_WEBHOOK_SECRET = "env-secret";
+		const runtime = {
+			getSetting: vi.fn(() => " runtime-secret "),
+		} as unknown as IAgentRuntime;
+
+		expect(resolveBlueBubblesWebhookSecret(runtime)).toBe("runtime-secret");
+	});
+
+	it("falls back to a trimmed environment secret", () => {
+		process.env.BLUEBUBBLES_WEBHOOK_SECRET = " env-secret ";
+		const runtime = {
+			getSetting: vi.fn(() => undefined),
+		} as unknown as IAgentRuntime;
+
+		expect(resolveBlueBubblesWebhookSecret(runtime)).toBe("env-secret");
+	});
+
+	it("authorizes only requests with the configured shared secret", () => {
+		const runtime = {
+			getSetting: vi.fn(() => "operator-shared-secret"),
+		} as unknown as IAgentRuntime;
+
+		expect(
+			isBlueBubblesWebhookAuthorized(runtime, {
+				headers: {
+					[BLUEBUBBLES_WEBHOOK_SECRET_HEADER]: "operator-shared-secret",
+				},
+			} as RouteRequest),
+		).toBe(true);
+		expect(
+			isBlueBubblesWebhookAuthorized(runtime, {
+				headers: {
+					[BLUEBUBBLES_WEBHOOK_SECRET_HEADER]: "wrong",
+				},
+			} as RouteRequest),
+		).toBe(false);
 	});
 });

@@ -40,6 +40,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
     desktopDevLogPath,
     desktopDevLogOptOut,
     childrenList,
+    apiEmbeddingWarmupPolicy,
     elizaNamespace,
     elizaNamespaceUnset,
   } = p;
@@ -270,6 +271,12 @@ export function formatOrchestratorDesktopDevBanner(p) {
       effective: skipApi ? "—" : "1",
       source: skipApi ? "default (n/a)" : "derived — dev-platform sets for API",
       change: "set by orchestrator for headless API + runtime",
+    },
+    {
+      setting: "Local embedding warmup (API child)",
+      effective: skipApi ? "—" : apiEmbeddingWarmupPolicy.effective,
+      source: skipApi ? "default (n/a)" : apiEmbeddingWarmupPolicy.source,
+      change: apiEmbeddingWarmupPolicy.change,
     },
   );
 

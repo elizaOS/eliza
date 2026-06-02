@@ -333,6 +333,14 @@ export class PgliteVaultImpl implements Vault {
 
   /** Close the underlying PGlite connection. Tests + graceful shutdown only. */
   async close(): Promise<void> {
+    // Zero and drop the cached plaintext master key so it does not stay
+    // resident for the rest of the process lifetime. Defense-in-depth only:
+    // V8's GC may have copied the Buffer, so this cannot guarantee full
+    // scrubbing, but it removes the long-lived live reference.
+    if (this.cachedKey) {
+      this.cachedKey.fill(0);
+      this.cachedKey = null;
+    }
     if (!this.dbPromise) return;
     const db = await this.dbPromise;
     this.dbPromise = null;

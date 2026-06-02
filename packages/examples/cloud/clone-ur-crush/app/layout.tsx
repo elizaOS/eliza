@@ -6,6 +6,7 @@ import { PrivyProvider } from "@/providers/PrivyProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://cloneyourcrush.com"),
   title: "Clone Your Crush | AI-Powered Chat",
   description:
     "Create an AI clone of your crush and chat with them. Powered by ElizaOS.",

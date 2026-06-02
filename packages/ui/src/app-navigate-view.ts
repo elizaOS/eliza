@@ -5,7 +5,7 @@ export type NavigateViewDetail = {
   viewId?: string;
   viewPath?: string;
   viewLabel?: string;
-  viewType?: "gui" | "tui";
+  viewType?: "gui" | "tui" | "xr";
   action?: string;
   alwaysOnTop?: boolean;
 };

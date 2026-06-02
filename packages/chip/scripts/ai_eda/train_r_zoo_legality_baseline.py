@@ -19,6 +19,13 @@ DEFAULT_SPLIT_MANIFEST = (
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/r_zoo_legality_baseline"
 CLAIM_BOUNDARY = "r_zoo_legality_baseline_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 FEATURES = (
     "bias",
     "diearea_point_count",
@@ -216,6 +223,7 @@ def train_logistic(samples: list[dict[str, Any]], epochs: int, lr: float) -> dic
         "schema": "eliza.ai_eda.r_zoo_legality_model.v1",
         "model_type": "standard_library_logistic_regression",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "features": list(FEATURES),
         "standardization": stats,
         "weights": dict(zip(FEATURES, weights, strict=False)),
@@ -299,6 +307,7 @@ def main() -> int:
     metrics = {
         "schema": "eliza.ai_eda.r_zoo_legality_metrics.v1",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "splits": evaluations,
         "release_use_allowed": False,
     }
@@ -308,6 +317,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "record_dir": rel(args.record_dir),
         "split_manifest": split_source,
         "sample_count": len(samples),
@@ -320,6 +330,7 @@ def main() -> int:
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
             "runs_openlane_or_openroad": False,
+            **FALSE_CLAIM_FLAGS,
         },
         "next_required_gates": [
             "resolve R-Zoo license ambiguity before release use",

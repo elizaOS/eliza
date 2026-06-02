@@ -84,3 +84,18 @@ def test_write_summary_includes_processed_count_and_interruption(tmp_path) -> No
     assert summary["interrupted"] is True
     assert payload["metrics"]["n"] == 2
     assert payload["metrics"]["processed_records"] == 2
+
+
+def test_expand_records_adds_ten_label_preserving_edges() -> None:
+    base = cli._fallback_records()
+    expanded = cli._expand_records(base)
+
+    cli._validate_records(expanded)
+    assert cli._count_records(base, expanded) == {
+        "base": 2,
+        "edge": 20,
+        "total": 22,
+        "edge_multiplier": 10,
+    }
+    assert expanded[2]["metadata"]["base_record_id"] == "record-0"
+    assert cli._classify_record(expanded[2]) == cli._classify_record(base[0])

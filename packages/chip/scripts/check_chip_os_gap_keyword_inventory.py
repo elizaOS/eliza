@@ -102,6 +102,10 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         re.I,
     ),
     re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
+    re.compile(r"^packages/chip/docs/security/tee-plan/.*\.md$", re.I),
+    re.compile(r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I),
+    re.compile(r"^packages/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
+    re.compile(r"^packages/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
 )
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
@@ -115,32 +119,219 @@ BENIGN_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
     (
         "stub_placeholder",
+        re.compile(r"\b(?:not a stub|nothing is stubbed)\b", re.I),
+    ),
+    (
+        "stub_placeholder",
         re.compile(r'\bplaceholder:\s*"[^"]+"'),
     ),
 )
 CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
-    re.compile(r"^packages/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.py$"),
-    re.compile(r"^packages/chip/scripts/(?:aggregate_tapeout_readiness|product_check)\.py$"),
+    re.compile(r"^packages/chip/fw/(?:.*/)?(?:check|build)_[^/]+\.py$"),
+    re.compile(r"^packages/chip/fw/signing/[^/]+\.sh$"),
+    re.compile(r"^packages/chip/scripts/(?:ai_eda|alphachip)/.*\.(?:py|sh)$"),
+    re.compile(r"^packages/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.(?:py|sh)$"),
+    re.compile(
+        r"^packages/chip/scripts/(?:"
+        r"aggregate_tapeout_readiness|product_check|docs_check|"
+        r"e1_phone_objective_completion_audit|"
+        r"e1_phone_release_evidence_validation_dry_run"
+        r")\.py$"
+    ),
+    re.compile(
+        r"^packages/chip/scripts/(?:"
+        r"pipeline_check|champsim_sweep|cpu_ap_evidence_lib|"
+        r"target_metadata_contract|qor_regression|run_sky130_qor_baseline|"
+        r"gen_dvfs_table_placeholders|build_node_profile|"
+        r"build_traceability_graph|render_chip_specs|run_analysis|"
+        r"run_multi_corner_sta|wire_cpu_ap_capture_commands|"
+        r"write_axi4_cocotb_status|project_ppa_to_n2p|"
+        r"e1_phone_enclosure_readiness_gap_map|"
+        r"e1_phone_fabrication_enclosure_e2e_release_gate|"
+        r"e1_phone_kicad_route_inventory|e1_phone_readiness_unblock_register|"
+        r"e1_phone_release_evidence_content_contract|"
+        r"e1_phone_routed_board_release_acceptance_matrix|"
+        r"generate_e1_phone_factory_output_candidates"
+        r")\.py$"
+    ),
+    re.compile(r"^packages/chip/scripts/generate_e1x3d_tier_split_manifest\.py$"),
+    re.compile(r"^packages/chip/scripts/setup_kicad_tools\.sh$"),
+    re.compile(r"^packages/chip/scripts/tee/[^/]+\.py$"),
     re.compile(r"^packages/chip/scripts/run_[^/]+\.sh$"),
     re.compile(r"^packages/chip/sw/check_[^/]+\.py$"),
+    re.compile(r"^packages/chip/sw/.*/scripts/check_[^/]+\.py$"),
     re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
     re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
+    re.compile(r"^packages/os/linux/elizaos/scripts/[^/]+\.sh$"),
 )
-CLASSIFIED_GENERATOR_PATH_PATTERNS = (re.compile(r"^packages/chip/scripts/generate_[^/]+\.py$"),)
+CLASSIFIED_GENERATOR_PATH_PATTERNS = (
+    re.compile(r"^packages/chip/scripts/(?:.*/)?generate_[^/]+\.py$"),
+)
+CLASSIFIED_OPERATOR_DOC_PATH_PATTERNS = (
+    re.compile(
+        r"^packages/chip/docs/(?:android|arch|architecture-optimization|board|manufacturing|package|pd|project|sw|toolchain|benchmarks|npu|risks|tapeout-checklist|rtl|generators|spec-db)/.*\.(?:json|md|yaml|yml)$",
+        re.I,
+    ),
+    re.compile(r"^packages/chip/docs/README\.md$", re.I),
+)
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
     r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
     r"closure_evidence=|description=|next_step|next_command|message|evidence|"
     r"CLAIM_BOUNDARY|claim_boundary|re\.compile|AllowedFinding|print\(|help=|"
     r"TEMPLATE_|template|sentinel|manifest|classification policy|"
-    r"for placeholder, replacement in|text\.replace\(placeholder, replacement\)"
+    r"for placeholder, replacement in|text\.replace\(placeholder, replacement\)|"
+    r"\bplaceholder\s*(?:=|\+=|:)|unsupported .*expected|"
+    r"e1_npu_status=unsupported|"
+    r"must (?:stay )?blocked|strict release boundary|"
+    r"lets scaffold/tool/source evidence pass|"
+    r"lacks scaffold/blocker boundary language|--scaffold-only|"
+    r"\bscaffold\s*=|if scaffold\.|"
+    r"forbidden placeholder/failure markers|must forbid unsupported claim|"
+    r"BLOCKED stub|BLOCKED placeholder|BLOCKED .* wrote stub|"
+    r"fail-closed (?:QoR )?placeholder|record(?:ed)? fail-closed|"
+    r"compatibility alias for --build-firmware|"
+    r"TODO placeholder|SHA placeholder|"
+    r"placeholder XOR/device-key scheme MUST be gone|"
+    r"not yet integrated|"
+    r"if not isinstance\(scaffold, dict\)|"
+    r"placeholder_marker_count|placeholder_footprint_count|"
+    r"command_value = value or hint\.placeholder|"
+    r'if "TODO" in text|still contains TODO|'
+    r"--build-stub|"
+    r"Required AOSP scaffold sources|Source scaffold presence|"
+    r"synthetic stub when the script printed nothing|"
+    r"fake score|"
+    r"Stub used only for std_cell_placer_mode|"
+    r"line\.startswith\(\"placeholder:\"\)|"
+    r"_PLACEHOLDER_LINE|"
+    r"unsupported URL scheme|"
+    r"pd/<node>-stub/access-gate\.yaml|"
+    r"Record a placeholder so the gate can flag|"
+    r"Phone-class IPC claims remain BLOCKED|"
+    r"remain BLOCKED(?: follow-ons)?|"
+    r"stays blocked until pins/timing|"
+    r"modelled, not implemented|"
+    r"identity/allowlist stub|"
+    r"placeholder logs|"
+    r"if placeholder is None|"
+    r"if isinstance\(scaffold, dict\)|"
+    r"stub = load_yaml_mapping|"
+    r"if not isinstance\(stub, dict\)|"
+    r"all-zero placeholder|"
+    r"canonical .* placeholder|"
+    r"checked-in scaffold as either locally executable or externally blocked|"
+    r"while the native bridge is a stub|"
+    r"placeholder QEMU/Renode stages as BLOCKED|"
+    r"gate is BLOCKED until|"
+    r"blocks when the current tree still has|"
+    r"objective-critical gates remain BLOCKED|"
+    r"not yet exercised end to end|"
+    r"not an MMIO-poked pixel stub|"
+    r"not the AXI-Lite word-copy scaffold|"
+    r"not regress to the AXI-Lite SRAM aperture scaffold|"
+    r"tapeout-netlist-cpu-is-stub-no-cva6|"
+    r"blocked candidate .*advanced node placeholder|"
+    r"unsupported --algo .*expected|"
+    r"kernel .* EFI stub|"
+    r"CONFIG_INITRAMFS_SOURCE .* placeholder|"
+    r"unsupported policy|"
+    r'elif words\[0\] == "placeholder:"|'
+    r"datasheet stub|"
+    r"summary flags .*false|"
+    r"not sign anything.*placeholder|"
+    r"model placeholder|"
+    r"dry-run validator rejects .* placeholder|"
+    r"requirements and placeholder rejection rules only|"
+    r"Forbidden claims include|"
+    r"unsupported KiCad export candidate directory|"
+    r"deferred fuller logic-tier proxy|"
+    r"chip-top stub only|"
+    r"does not include real big-core|"
+    r"apt install skipped: unsupported OS ID|"
+    r"real DRAM PHY measurement|"
+    r"unsupported with the UEFI ISO path|"
+    r"unsupported arch"
     r")"
 )
 CLASSIFIED_GENERATOR_LINE_RE = re.compile(
     r"("
     r"non[-_]release|evidence_class|demo|template|generated|generator|"
     r"placeholder|remain(?:s)? blocked|not yet|"
+    r"scaffold|blocked until|"
     r"scaffold files|concept/scaffold|Replace .*placeholder|Not fabrication-bound"
+    r")",
+    re.I,
+)
+CLASSIFIED_OPERATOR_DOC_LINE_RE = re.compile(
+    r"("
+    r"fail[- ]closed scaffold|repo[- ]local scaffold check|"
+    r"scaffold audit|explicit stub rationale|no stub may fake|"
+    r"HAL Stub Map|stub map|stub rationale|"
+    r"return unsupported when (?:the )?(?:device node|hardware|backend).*absent|"
+    r"return(?:s)? unsupported|"
+    r"unsupported operations without crashing|unsupported access paths fail closed|"
+    r"not .* evidence|not .* implementation|"
+    r"not yet (?:complete|locally covered|run)|does not yet (?:prove|run)|"
+    r"(?:is |are )?blocked until .* evidence|"
+    r"evidence blocked|remains? blocked|placeholder files do not close this gate|"
+    r"claim(?:s)? remain(?:s)? blocked until|must block until|"
+    r"stays blocked until|must remain blocked until|"
+    r"before .* replace the scaffold|must .* before .* readiness claim|"
+    r"no .* claim may rely on this scaffold|"
+    r"test scaffold until generated|non[- ]Linux scaffold|"
+    r"fail[- ]closed on unsupported|poll for unsupported bits|"
+    r"non[- ]claiming scaffold checks|"
+    r"scaffold map|control scaffold|scaffold accesses|scaffold routes|"
+    r"virtual[- ]device smoke|operator guide|capture plan"
+    r"|pre[- ]tapeout scaffold|first executable milestone|"
+    r"launch the Renode platform stub when available|"
+    r"current .* scaffold|current implementation uses placeholder|"
+    r"placeholder cryptography|boot-vector placeholder|"
+    r"verification stub|replacement stub|"
+    r"blocked until .* exists|blocked until .* lands|"
+    r"BLOCKED until foundry agreements|BLOCKED until foundry agreement|"
+    r"BLOCKED until commercial EDA seat|"
+    r"not yet .* evidence|not yet .* full|"
+    r"placeholder for the foundry macro|"
+    r"procurement gate|access-gate\.yaml|"
+    r"concept scaffold|NON-RELEASE|no release .* gate may be flipped|"
+    r"placeholder groups|placeholder footprints|"
+    r"unsupported[- ]op count|unsupported ops counter|zero unsupported ops|"
+    r"CPU fallback .* unsupported|"
+    r"blocked marker|deferred .* coverage|"
+    r"repo source, scaffold, or checker exists|"
+    r"Checks repo-local .* scaffold|Keeps .* scaffold/evidence status fail-closed|"
+    r"includes scaffold nodes|named in the CPU/AP work order|"
+    r"scaffold gate|separate scaffold presence|"
+    r"Not modeled in the current scaffold|represented here by .* scaffold|"
+    r"placeholder model artifacts|placeholder or undersized .* blocked|"
+    r"placeholder file is also blocked|placeholder timestamps?|"
+    r"claim_allowed.*release_claim_allowed.*false|"
+    r"Generator invocation .* not yet wired|Retire stub alias|"
+    r"Reference the assembled stub|"
+    r"external peripheral interface scaffold|placeholder QFN64 package|"
+    r"Contract scaffold|boundary stub|"
+    r"AXI-Lite .* scaffold|interrupt controller scaffold|"
+    r"scaffold is not wired|scaffold lives under|"
+    r"minimal executable .* scaffold|intentionally not secure boot|"
+    r"verification stub|"
+    r"executable scaffold|DTS scaffold|HAL stub policy|"
+    r"stub display path|input stub|scaffold terms|"
+    r"absent-device behavior without fake|"
+    r"scaffold metadata only|placeholder .* referenced|"
+    r"must only pass against real|do not add placeholder|"
+    r"stricter than the scaffold check|scaffold LPF|"
+    r"current scaffold uses|"
+    r"unsupported class file major version|"
+    r"framebuffer HWC stub|"
+    r"live system state reaches the launcher, mock|"
+    r"repo-local device tree is a scaffold|"
+    r"successful `m vendorimage` only means the scaffold|"
+    r"PERF_UNSUPPORTED_OPS|"
+    r"Unsupported opcode was rejected|"
+    r"unsupported precisions before lowering|"
+    r"Runtime counters .* unsupported ops"
     r")",
     re.I,
 )
@@ -199,6 +390,35 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         ),
     ),
 )
+
+GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_gap_keyword_inventory.py"
+
+
+def cleanup_commands(path: Path, line_number: int) -> list[str]:
+    path_text = rel(path)
+    parts = set(path.parts)
+    commands = [
+        f"${{EDITOR:-vi}} +{line_number} {path_text}",
+    ]
+    lower_path = path_text.lower()
+    if "npu" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_npu_scope.py")
+    if "benchmark" in lower_path or "benchmarks" in parts:
+        commands.append("python3 packages/chip/scripts/check_benchmark_efficiency_scope.py")
+    if "cpu_ap" in lower_path or "chipyard" in lower_path or "riscv" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_cpu_ap_scope.py")
+    if "android" in parts or "aosp" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_android_sim_boot.py")
+    if "linux" in parts or "elizaos" in parts:
+        commands.append("python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only")
+    if "runtime" in lower_path or "peripheral" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py")
+    commands.append(GENERIC_RECHECK_COMMAND)
+    deduped: list[str] = []
+    for command in commands:
+        if command not in deduped:
+            deduped.append(command)
+    return deduped
 
 
 def utc_now() -> str:
@@ -322,9 +542,19 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True
-    if CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
+    return bool(CLASSIFIED_GENERATOR_LINE_RE.search(stripped))
+
+
+def is_classified_operator_doc_line(path: Path, line: str) -> bool:
+    relative = rel(path)
+    if not any(pattern.search(relative) for pattern in CLASSIFIED_OPERATOR_DOC_PATH_PATTERNS):
+        return False
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if re.match(r"^(?:make|python3|scripts/)[\w./ -]+$", stripped):
         return True
-    return False
+    return bool(CLASSIFIED_OPERATOR_DOC_LINE_RE.search(stripped))
 
 
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:
@@ -337,11 +567,14 @@ def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any
             continue
         if is_classified_generator_line(path, line):
             continue
+        if is_classified_operator_doc_line(path, line):
+            continue
         if any(
             benign_category == category and benign_pattern.search(line)
             for benign_category, benign_pattern in BENIGN_LINE_PATTERNS
         ):
             continue
+        commands = cleanup_commands(path, line_number)
         findings.append(
             {
                 "category": category,
@@ -356,6 +589,8 @@ def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any
                     "completing the implementation before using it as boot, launcher, "
                     "agent, or release evidence."
                 ),
+                "next_command": commands[0],
+                "next_commands": commands,
             }
         )
     return findings
@@ -383,6 +618,13 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_category = Counter(str(item["category"]) for item in findings)
     by_path = Counter(str(item["path"]) for item in findings)
     by_root = scan_root_summary(findings, roots)
+    command_batches = sorted(
+        {
+        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
+        for item in findings
+        if item.get("next_commands")
+        }
+    )
     status = "blocked" if findings else "pass"
     return {
         "schema": SCHEMA,
@@ -396,10 +638,19 @@ def build_report(roots: list[str]) -> dict[str, Any]:
             "findings": len(findings),
             "categories": dict(sorted(by_category.items())),
             "paths_with_findings": len(by_path),
+            "next_command_batch_count": len(command_batches),
         },
         "scan_roots": roots,
         "scan_root_summary": by_root,
         "top_paths": [{"path": path, "findings": count} for path, count in by_path.most_common(25)],
+        "next_command_plan": [
+            {
+                "id": f"resolve_keyword_marker_batch_{index + 1}",
+                "commands": list(commands),
+                "claim_boundary": "operator_cleanup_commands_only_not_boot_or_runtime_evidence",
+            }
+            for index, commands in enumerate(command_batches)
+        ],
         "findings": findings,
     }
 

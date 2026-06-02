@@ -9,6 +9,13 @@ phone_class_accelerator_claim_allowed: false
 release_claim_allowed: false
 sustained_performance_claim_allowed: false
 silicon_claim_allowed: false
+false_claim_flags:
+  android_boot_claim_allowed: false
+  android_nnapi_claim_allowed: false
+  phone_class_accelerator_claim_allowed: false
+  release_claim_allowed: false
+  sustained_performance_claim_allowed: false
+  silicon_claim_allowed: false
 
 current_phase: L0_MMIO_PROTOTYPE
 phase_order:

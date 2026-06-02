@@ -290,6 +290,7 @@ def main() -> int:
     }
     out_dir = (args.out_root / args.run_id).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    report["policy"]["false_claim_flags"] = dict(sorted(report["policy"].items()))
     path = out_dir / "targets_report.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"STATUS: PASS ai_eda.routing_congestion.targets {rel(path)}")

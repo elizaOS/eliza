@@ -1783,7 +1783,42 @@ describe("capability router", () => {
 		await expect(router.plugin.listModules()).rejects.toMatchObject({
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.modules.list.modules.views",
-			message: "viewType must be gui or tui when present.",
+			message: "viewType must be gui, tui, or xr when present.",
+		});
+	});
+
+	it("accepts remote plugin XR view manifests", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-spatial",
+								label: "Weather Spatial",
+								viewType: "xr",
+								bundlePath: "/assets/weather-xr.js",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).resolves.toEqual({
+			modules: [
+				expect.objectContaining({
+					id: "remote-weather",
+					views: [
+						expect.objectContaining({
+							id: "weather-spatial",
+							viewType: "xr",
+						}),
+					],
+				}),
+			],
 		});
 	});
 

@@ -10,6 +10,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x3d_fabric_cocotb.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_3d_stack_claim_allowed": False,
+}
 RUNS = {
     "mesh_router_3d": {
         "top": "e1x3d_mesh_router_tb",
@@ -99,6 +108,7 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x3d",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X3D fabric cocotb verification: the verified PORTS-parametric e1x_mesh_router "
             "instantiated as a 7-port 3D router, proving inter-tier UP/DOWN forwarding and "

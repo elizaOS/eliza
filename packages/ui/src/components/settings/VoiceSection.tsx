@@ -20,6 +20,7 @@
 
 import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
 import * as React from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext";
@@ -122,6 +123,55 @@ export function VoiceSection({
     [onPrefsChange, prefs],
   );
 
+  const { ref: wakeWordRef, agentProps: wakeWordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-section-wake-toggle",
+      role: "toggle",
+      label: t("voicesection.toggleWakeWord", {
+        defaultValue: "Toggle wake word",
+      }),
+      group: "voice-section",
+      status: wakeWordEnabled ? "active" : "inactive",
+      onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
+    });
+  const { ref: strategyRef, agentProps: strategyAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "voice-section-strategy-select",
+      role: "select",
+      label: t("voicesection.localVsCloudStrategy", {
+        defaultValue: "Local vs Cloud strategy",
+      }),
+      group: "voice-section",
+      getValue: () => prefs.strategy,
+      onFill: (value) =>
+        updatePrefs({ strategy: value as VoiceLocalCloudStrategy }),
+      options: ["auto", "force-local", "force-cloud"],
+    });
+  const { ref: cloudCacheRef, agentProps: cloudCacheAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-section-cloud-cache-toggle",
+      role: "toggle",
+      label: t("voicesection.cloudFirstLineCacheAria", {
+        defaultValue: "Cloud first-line cache opt-in",
+      }),
+      group: "voice-section",
+      status: prefs.cloudFirstLineCache ? "active" : "inactive",
+      onActivate: () =>
+        updatePrefs({ cloudFirstLineCache: !prefs.cloudFirstLineCache }),
+    });
+  const { ref: autoLearnRef, agentProps: autoLearnAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-section-auto-learn-toggle",
+      role: "toggle",
+      label: t("voicesection.autoLearnVoices", {
+        defaultValue: "Auto-learn new voices",
+      }),
+      group: "voice-section",
+      status: prefs.autoLearnVoices ? "active" : "inactive",
+      onActivate: () =>
+        updatePrefs({ autoLearnVoices: !prefs.autoLearnVoices }),
+    });
+
   return (
     <section
       data-testid="voice-section"
@@ -158,14 +208,17 @@ export function VoiceSection({
       >
         <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
           <input
+            ref={wakeWordRef}
             type="checkbox"
             checked={wakeWordEnabled}
             onChange={(e) => onWakeWordToggle?.(e.target.checked)}
             data-testid="voice-section-wake-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
+            aria-current={wakeWordEnabled ? "true" : undefined}
             aria-label={t("voicesection.toggleWakeWord", {
               defaultValue: "Toggle wake word",
             })}
+            {...wakeWordAgentProps}
           />
           <span className="text-muted">
             {wakeWordEnabled
@@ -185,6 +238,7 @@ export function VoiceSection({
         })}
       >
         <select
+          ref={strategyRef}
           value={prefs.strategy}
           onChange={(e) =>
             updatePrefs({
@@ -196,6 +250,7 @@ export function VoiceSection({
           aria-label={t("voicesection.localVsCloudStrategy", {
             defaultValue: "Local vs Cloud strategy",
           })}
+          {...strategyAgentProps}
         >
           <option value="auto">
             {t("voicesection.strategyAuto", {
@@ -265,6 +320,7 @@ export function VoiceSection({
             </span>
           </span>
           <input
+            ref={cloudCacheRef}
             type="checkbox"
             checked={prefs.cloudFirstLineCache}
             onChange={(e) =>
@@ -272,9 +328,11 @@ export function VoiceSection({
             }
             data-testid="voice-section-cloud-cache-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
+            aria-current={prefs.cloudFirstLineCache ? "true" : undefined}
             aria-label={t("voicesection.cloudFirstLineCacheAria", {
               defaultValue: "Cloud first-line cache opt-in",
             })}
+            {...cloudCacheAgentProps}
           />
         </label>
         <label className="flex cursor-pointer items-center justify-between gap-3 text-xs">
@@ -292,14 +350,17 @@ export function VoiceSection({
             </span>
           </span>
           <input
+            ref={autoLearnRef}
             type="checkbox"
             checked={prefs.autoLearnVoices}
             onChange={(e) => updatePrefs({ autoLearnVoices: e.target.checked })}
             data-testid="voice-section-auto-learn-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
+            aria-current={prefs.autoLearnVoices ? "true" : undefined}
             aria-label={t("voicesection.autoLearnVoices", {
               defaultValue: "Auto-learn new voices",
             })}
+            {...autoLearnAgentProps}
           />
         </label>
       </div>

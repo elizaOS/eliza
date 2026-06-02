@@ -434,6 +434,10 @@ def detail_kind_for_key(key: str) -> str:
     return key[:-1] if key.endswith("s") else key
 
 
+def list_values(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
 def report_findings(data: dict[str, Any]) -> list[str]:
     codes: list[str] = []
     seen: set[str] = set()
@@ -467,6 +471,26 @@ def report_findings(data: dict[str, Any]) -> list[str]:
     return codes
 
 
+def report_next_commands(data: dict[str, Any]) -> list[str]:
+    commands: list[str] = []
+    for value in list_values(data.get("findings")):
+        if not isinstance(value, dict):
+            continue
+        next_command = value.get("next_command")
+        if isinstance(next_command, str) and next_command:
+            commands.append(next_command)
+        for command in list_values(value.get("next_commands")):
+            if isinstance(command, str) and command:
+                commands.append(command)
+    for batch in list_values(data.get("next_command_plan")):
+        if not isinstance(batch, dict):
+            continue
+        for command in list_values(batch.get("commands")):
+            if isinstance(command, str) and command:
+                commands.append(command)
+    return list(dict.fromkeys(commands))
+
+
 def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
     path = report_dir / req.required_report
     data = load_json(path)
@@ -477,10 +501,13 @@ def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
             "description": req.description,
             "proof_state": MISSING,
             "proof_kind": req.proof_kind,
+            "primary_report": rel(path),
             "source_report": rel(path),
             "current_status": None,
             "closure_evidence": req.closure_evidence,
             "findings": ["required report is missing or invalid JSON"],
+            "next_command": None,
+            "next_commands": [],
         }
 
     findings: list[str] = []
@@ -504,17 +531,21 @@ def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
         proof_state = PROVEN
 
     blocker_codes = report_findings(data)
+    next_commands = report_next_commands(data)
     return {
         "id": req.ident,
         "area": req.area,
         "description": req.description,
         "proof_state": proof_state,
         "proof_kind": req.proof_kind,
+        "primary_report": rel(path),
         "source_report": rel(path),
         "current_status": status,
         "closure_evidence": req.closure_evidence,
         "findings": findings,
         "source_finding_codes": blocker_codes[:25],
+        "next_command": next_commands[0] if next_commands else None,
+        "next_commands": next_commands[:25],
     }
 
 

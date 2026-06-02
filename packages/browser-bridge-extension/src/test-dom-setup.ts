@@ -15,6 +15,7 @@ const globals: Record<string, unknown> = {
   document: dom.window.document,
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,

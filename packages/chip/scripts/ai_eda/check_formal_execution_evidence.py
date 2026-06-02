@@ -17,6 +17,13 @@ EXPECTED_SCHEMA = "eliza.ai_eda.formal_execution_evidence.v1"
 EXPECTED_CLAIM_BOUNDARY = "formal_execution_evidence_only_no_release_claim"
 
 
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if report.get("status") != "STRICT_FORMAL_EVIDENCE_READY":
+        flags["formal_proof_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -94,6 +101,8 @@ def validate(report: dict[str, Any]) -> list[str]:
             errors.append("non-strict evidence must not allow formal proof claim")
         if not report.get("blockers"):
             errors.append("non-strict evidence must list blockers")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("false_claim_flags must match denied formal execution claims")
     if (
         report.get("fallback_evidence_only") is True
         and report.get("strict_deep_formal_ready") is True

@@ -8,8 +8,8 @@
     "dev": "bun --watch run src/index.ts",
     "start": "bun run src/index.ts",
     "typecheck": "tsgo --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write ."
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",

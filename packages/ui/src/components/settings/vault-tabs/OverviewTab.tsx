@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../../agent-surface";
 import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -81,6 +82,25 @@ export function OverviewTab(props: OverviewTabProps) {
   const [signinSheet, setSigninSheet] = useState<InstallableBackendId | null>(
     null,
   );
+
+  const { ref: redetectRef, agentProps: redetectAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "vault-overview-redetect",
+      role: "button",
+      label: "Re-detect backends",
+      group: "vault-overview",
+      description: "Re-scan the system for installed secret backends",
+      onActivate: onReload,
+    });
+  const { ref: saveRef, agentProps: saveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "vault-overview-save",
+      role: "button",
+      label: "Save backend preferences",
+      group: "vault-overview",
+      description: "Persist the enabled backends and their routing order",
+      onActivate: onSave,
+    });
 
   const isEnabled = useCallback(
     (id: BackendId): boolean =>
@@ -143,6 +163,8 @@ export function OverviewTab(props: OverviewTabProps) {
           })}
         </p>
         <Button
+          ref={redetectRef}
+          {...redetectAgentProps}
           variant="ghost"
           size="sm"
           className="h-7 rounded-sm px-2"
@@ -202,6 +224,8 @@ export function OverviewTab(props: OverviewTabProps) {
 
       <div className="flex items-center justify-end gap-2 border-t border-border/30 pt-2">
         <Button
+          ref={saveRef}
+          {...saveAgentProps}
           variant="default"
           size="sm"
           className="h-8 rounded-sm font-semibold"
@@ -278,6 +302,54 @@ export function BackendRow(props: BackendRowProps) {
     onSignout,
   } = props;
   const { t } = useTranslation();
+  const { ref: enableRef, agentProps: enableAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-backend-enable-${backend.id}`,
+      role: "toggle",
+      label: `Enable ${backend.label} backend`,
+      group: "vault-overview",
+      status: enabled ? "active" : "inactive",
+    });
+  const { ref: installRef, agentProps: installAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-backend-install-${backend.id}`,
+      role: "button",
+      label: `Install ${backend.label}`,
+      group: "vault-overview",
+      onActivate: onOpenInstallSheet,
+    });
+  const { ref: signinRef, agentProps: signinAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-backend-signin-${backend.id}`,
+      role: "button",
+      label: `Sign in to ${backend.label}`,
+      group: "vault-overview",
+      onActivate: onOpenSigninSheet,
+    });
+  const { ref: signoutRef, agentProps: signoutAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-backend-signout-${backend.id}`,
+      role: "button",
+      label: `Sign out of ${backend.label}`,
+      group: "vault-overview",
+      onActivate: onSignout,
+    });
+  const { ref: moveUpRef, agentProps: moveUpAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-backend-move-up-${backend.id}`,
+      role: "button",
+      label: `Move ${backend.label} up in routing order`,
+      group: "vault-overview",
+      onActivate: onMoveUp,
+    });
+  const { ref: moveDownRef, agentProps: moveDownAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-backend-move-down-${backend.id}`,
+      role: "button",
+      label: `Move ${backend.label} down in routing order`,
+      group: "vault-overview",
+      onActivate: onMoveDown,
+    });
   const tone = backend.available
     ? backend.signedIn === false
       ? "warn"
@@ -307,6 +379,8 @@ export function BackendRow(props: BackendRowProps) {
     >
       <div className="flex items-center gap-3">
         <input
+          ref={enableRef}
+          {...enableAgentProps}
           type="checkbox"
           checked={enabled}
           disabled={lockedInHouse}
@@ -353,6 +427,8 @@ export function BackendRow(props: BackendRowProps) {
         <div className="flex shrink-0 items-center gap-1">
           {showInstallButton && (
             <Button
+              ref={installRef}
+              {...installAgentProps}
               variant="outline"
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs"
@@ -368,6 +444,8 @@ export function BackendRow(props: BackendRowProps) {
           )}
           {showSigninButton && (
             <Button
+              ref={signinRef}
+              {...signinAgentProps}
               variant="outline"
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs"
@@ -383,6 +461,8 @@ export function BackendRow(props: BackendRowProps) {
           )}
           {showSignoutButton && (
             <Button
+              ref={signoutRef}
+              {...signoutAgentProps}
               variant="ghost"
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs text-muted"
@@ -400,6 +480,8 @@ export function BackendRow(props: BackendRowProps) {
           {enabled && backend.available && backend.signedIn !== false && (
             <>
               <Button
+                ref={moveUpRef}
+                {...moveUpAgentProps}
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 rounded-sm p-0"
@@ -413,6 +495,8 @@ export function BackendRow(props: BackendRowProps) {
                 <ChevronUp className="h-3.5 w-3.5" aria-hidden />
               </Button>
               <Button
+                ref={moveDownRef}
+                {...moveDownAgentProps}
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 rounded-sm p-0"
@@ -500,6 +584,22 @@ export function InstallSheet({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
+
+  const { ref: closeRef, agentProps: closeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-install-close-${backendId}`,
+      role: "button",
+      label: `Close ${backendLabel} install sheet`,
+      group: "vault-install",
+    });
+  const { ref: continueRef, agentProps: continueAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-install-continue-${backendId}`,
+      role: "button",
+      label: "Continue after install",
+      group: "vault-install",
+      onActivate: onComplete,
+    });
 
   const close = useCallback(() => {
     sourceRef.current?.close();
@@ -604,6 +704,8 @@ export function InstallSheet({
           })}
         </p>
         <Button
+          ref={closeRef}
+          {...closeAgentProps}
           variant="ghost"
           size="sm"
           className="h-6 rounded-sm px-2 text-2xs"
@@ -626,20 +728,12 @@ export function InstallSheet({
             </p>
           ) : (
             methods.map((m) => (
-              <Button
+              <InstallMethodButton
                 key={methodKey(m)}
-                variant="outline"
-                size="sm"
-                className="h-8 w-full justify-start gap-2 rounded-sm"
-                onClick={() => void start(m)}
-              >
-                {m.kind === "manual" ? (
-                  <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                ) : (
-                  <Download className="h-3.5 w-3.5" aria-hidden />
-                )}
-                <span className="truncate text-xs">{describeMethod(m)}</span>
-              </Button>
+                backendId={backendId}
+                method={m}
+                onStart={() => void start(m)}
+              />
             ))
           )}
         </div>
@@ -666,6 +760,8 @@ export function InstallSheet({
             {t("vault.install.complete", { defaultValue: "Install complete." })}
           </span>
           <Button
+            ref={continueRef}
+            {...continueAgentProps}
             variant="ghost"
             size="sm"
             className="h-6 rounded-sm px-2 text-2xs"
@@ -707,6 +803,42 @@ function describeMethod(method: InstallMethod): string {
   return `Open docs: ${method.url}`;
 }
 
+function InstallMethodButton({
+  backendId,
+  method,
+  onStart,
+}: {
+  backendId: InstallableBackendId;
+  method: InstallMethod;
+  onStart: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `vault-install-method-${backendId}-${methodKey(method)}`,
+    role: "button",
+    label: describeMethod(method),
+    group: "vault-install",
+    description: `Install ${backendId} via ${method.kind}`,
+    onActivate: onStart,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="outline"
+      size="sm"
+      className="h-8 w-full justify-start gap-2 rounded-sm"
+      onClick={onStart}
+    >
+      {method.kind === "manual" ? (
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <Download className="h-3.5 w-3.5" aria-hidden />
+      )}
+      <span className="truncate text-xs">{describeMethod(method)}</span>
+    </Button>
+  );
+}
+
 // ── Sign-in sheet ──────────────────────────────────────────────────
 
 interface SigninSheetProps {
@@ -732,6 +864,76 @@ export function SigninSheet({
   const [masterPassword, setMasterPassword] = useState("");
   const [bwClientId, setBwClientId] = useState("");
   const [bwClientSecret, setBwClientSecret] = useState("");
+
+  const { ref: emailRef, agentProps: emailAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-email-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} email`,
+      group: "vault-signin",
+      getValue: () => email,
+      onFill: (v) => setEmail(v),
+    });
+  const { ref: secretKeyRef, agentProps: secretKeyAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-secret-key-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} secret key`,
+      group: "vault-signin",
+      getValue: () => secretKey,
+      onFill: (v) => setSecretKey(v),
+    });
+  const { ref: addressRef, agentProps: addressAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-address-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} sign-in address`,
+      group: "vault-signin",
+      getValue: () => signInAddress,
+      onFill: (v) => setSignInAddress(v),
+    });
+  const { ref: clientIdRef, agentProps: clientIdAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-client-id-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} client id`,
+      group: "vault-signin",
+      getValue: () => bwClientId,
+      onFill: (v) => setBwClientId(v),
+    });
+  const { ref: clientSecretRef, agentProps: clientSecretAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-client-secret-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} client secret`,
+      group: "vault-signin",
+      getValue: () => bwClientSecret,
+      onFill: (v) => setBwClientSecret(v),
+    });
+  const { ref: masterPasswordRef, agentProps: masterPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-signin-master-password-${backendId}`,
+      role: "text-input",
+      label: `${backendLabel} master password`,
+      group: "vault-signin",
+      getValue: () => masterPassword,
+      onFill: (v) => setMasterPassword(v),
+    });
+  const { ref: cancelRef, agentProps: cancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-signin-cancel-${backendId}`,
+      role: "button",
+      label: `Cancel ${backendLabel} sign-in`,
+      group: "vault-signin",
+      onActivate: onCancel,
+    });
+  const { ref: submitRef, agentProps: submitAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-signin-submit-${backendId}`,
+      role: "button",
+      label: `Sign in to ${backendLabel}`,
+      group: "vault-signin",
+    });
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -787,6 +989,8 @@ export function SigninSheet({
           })}
         </p>
         <Button
+          ref={cancelRef}
+          {...cancelAgentProps}
           variant="ghost"
           size="sm"
           type="button"
@@ -805,6 +1009,8 @@ export function SigninSheet({
               {t("vault.signin.email", { defaultValue: "Email" })}
             </Label>
             <Input
+              ref={emailRef}
+              {...emailAgentProps}
               id="op-email"
               type="email"
               autoComplete="username"
@@ -821,6 +1027,8 @@ export function SigninSheet({
               })}
             </Label>
             <Input
+              ref={secretKeyRef}
+              {...secretKeyAgentProps}
               id="op-secret-key"
               type="text"
               required
@@ -837,6 +1045,8 @@ export function SigninSheet({
               })}
             </Label>
             <Input
+              ref={addressRef}
+              {...addressAgentProps}
               id="op-address"
               type="text"
               value={signInAddress}
@@ -862,6 +1072,8 @@ export function SigninSheet({
               })}
             </Label>
             <Input
+              ref={clientIdRef}
+              {...clientIdAgentProps}
               id="bw-client-id"
               type="text"
               required
@@ -877,6 +1089,8 @@ export function SigninSheet({
               })}
             </Label>
             <Input
+              ref={clientSecretRef}
+              {...clientSecretAgentProps}
               id="bw-client-secret"
               type="password"
               autoComplete="off"
@@ -905,6 +1119,8 @@ export function SigninSheet({
           })}
         </Label>
         <Input
+          ref={masterPasswordRef}
+          {...masterPasswordAgentProps}
           id="master-password"
           type="password"
           autoComplete="current-password"
@@ -923,6 +1139,8 @@ export function SigninSheet({
 
       <div className="flex justify-end gap-2 pt-1">
         <Button
+          ref={submitRef}
+          {...submitAgentProps}
           type="submit"
           variant="default"
           size="sm"

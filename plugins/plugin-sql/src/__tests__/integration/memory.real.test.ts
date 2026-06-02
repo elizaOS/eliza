@@ -468,6 +468,35 @@ describe("Memory Integration Tests", () => {
       expect(secondPage.length).toBeGreaterThanOrEqual(memoryTestMemories.length);
     });
 
+    it("should apply a LIMIT clause when only `limit` is passed (not `count`)", async () => {
+      // Regression: getMemories previously only honored `count`, so callers that
+      // passed the canonical `limit` param (recent-messages provider, attachments,
+      // autonomy history, etc.) received the full unbounded result set.
+      for (const content of ["lim1", "lim2", "lim3", "lim4", "lim5"]) {
+        await adapter.createMemory(createTestMemory({ text: content }), "memories");
+      }
+
+      const limited = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+      });
+      expect(limited).toHaveLength(2);
+
+      // `limit` should compose with `offset` just like `count` does.
+      const limitedWithOffset = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+        offset: 2,
+      });
+      expect(limitedWithOffset).toHaveLength(2);
+      const firstIds = new Set(limited.map((m) => m.id));
+      for (const memory of limitedWithOffset) {
+        expect(firstIds.has(memory.id)).toBe(false);
+      }
+    });
+
     it("should retrieve memories with offset for pagination", async () => {
       // Create 5 test memories with known content
       const memoryContents = ["mem1", "mem2", "mem3", "mem4", "mem5"];

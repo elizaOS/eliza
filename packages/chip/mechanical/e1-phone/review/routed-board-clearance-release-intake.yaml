@@ -15,15 +15,15 @@ intake_metadata:
   review_id: local-routed-candidate-clearance-intake-2026-05-28
   board_revision: EVT1-routed-first-article
   routed_pcb_path: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  routed_pcb_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  routed_pcb_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
   routed_board_step_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   routed_board_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   routed_board_step_size_bytes: 33644081
   enclosure_cad_revision: null
   component_model_bundle_path: packages/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
-  component_model_bundle_sha256: 0f2a9e13b7c44a2eaa291da2ddcd132ea9cb614ce5434bc8bf3d8450d1cd5113
+  component_model_bundle_sha256: c67a152e68d6dfc1b4f7c57238c4354334acdfd322f03a91015d7d6e604e4f04
   component_model_manifest_path: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-  component_model_manifest_sha256: 395d050132bf05751d35f29afe398162bd07e9edee634d56a64ceefd01326694
+  component_model_manifest_sha256: bb95c58b6c78f43a5d72208dc68db6bd74a39a486368b57f38aa7bb19ec68af6
   reviewer: null
   review_date: null
   unit_or_fixture_serials: []

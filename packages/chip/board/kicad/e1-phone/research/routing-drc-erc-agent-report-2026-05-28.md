@@ -80,8 +80,8 @@ sha256sum \
 Observed hashes:
 
 ```text
-f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f  e1-phone-mainboard-routed.kicad_pcb
-f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f  e1-phone-mainboard-real-footprint-development.kicad_pcb
+158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b  e1-phone-mainboard-routed.kicad_pcb
+158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b  e1-phone-mainboard-real-footprint-development.kicad_pcb
 e00ee14ca4e49ff754b788ebf534bf141a525b9ae2ed72df2716b7d10c345df5  e1-phone.kicad_sch
 ```
 

@@ -69,7 +69,9 @@ function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 	const icon = typeof entry.icon === "string" ? entry.icon : undefined;
 	const path = typeof entry.path === "string" ? entry.path : undefined;
 	const viewType =
-		entry.viewType === "gui" || entry.viewType === "tui"
+		entry.viewType === "gui" ||
+		entry.viewType === "tui" ||
+		entry.viewType === "xr"
 			? entry.viewType
 			: undefined;
 	const order = typeof entry.order === "number" ? entry.order : undefined;
@@ -140,7 +142,7 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		typeof viewId !== "string" ||
 		!(typeof viewPath === "string" || viewPath === null) ||
 		typeof viewLabel !== "string" ||
-		!(viewType === "gui" || viewType === "tui") ||
+		!(viewType === "gui" || viewType === "tui" || viewType === "xr") ||
 		typeof updatedAt !== "string"
 	) {
 		throw new Error("Malformed currentView: missing required fields");

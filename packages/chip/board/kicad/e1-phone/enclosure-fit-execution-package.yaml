@@ -410,7 +410,7 @@ cross_checks:
   selected_hardware_enclosure_clearance_gate_blocks_final_readiness: true
   alternate_display_enclosure_branches_fail_closed: true
 release_blockers:
-  - routed KiCad PCB and DRC report are missing
+  - local routed KiCad PCB candidate exists, but DRC/ERC reports are non-release and blocked by 2304 DRC rows and 366 ERC rows
   - selected supplier response packs with enclosure datums and STEP/B-rep geometry for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - supplier STEP or B-rep models for height-critical parts are missing
   - local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance

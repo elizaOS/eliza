@@ -347,16 +347,32 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("umbrella_missing_android_riscv64_chip_artifact", codes)
         findings_by_code = {finding["code"]: finding for finding in report["findings"]}
         self.assertIn(
-            "android_release_artifact_inventory.commands",
+            "build-aosp",
             findings_by_code["android_release_artifacts_missing_from_expected_paths"][
                 "next_command"
             ],
         )
+        self.assertTrue(
+            any(
+                "check_android_release_readiness_contract.py" in command
+                for command in findings_by_code[
+                    "android_release_artifacts_missing_from_expected_paths"
+                ]["next_commands"]
+            )
+        )
         self.assertIn(
-            "live_launcher_agent_missing_evidence.records",
+            "capture_launcher_runtime_evidence.py",
             findings_by_code["android_live_launcher_agent_evidence_missing_by_target"][
                 "next_command"
             ],
+        )
+        self.assertTrue(
+            any(
+                "check_android_launcher_runtime_evidence.py" in command
+                for command in findings_by_code[
+                    "android_live_launcher_agent_evidence_missing_by_target"
+                ]["next_commands"]
+            )
         )
         self.assertEqual(
             report["summary"]["blocker_dependency_counts"],
@@ -496,6 +512,42 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             any(
                 "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" in command
                 for command in power["capture_commands"]
+            )
+        )
+        command_plan = report["next_command_plan"]
+        self.assertEqual(report["summary"]["next_command_batch_count"], len(command_plan))
+        command_plan_by_id = {row["id"]: row for row in command_plan}
+        self.assertIn("capture_android_release_artifact_integrity", command_plan_by_id)
+        self.assertIn("capture_android_release_artifact_staging", command_plan_by_id)
+        self.assertIn(
+            "capture_android_release_cuttlefish-x86_64_live_evidence",
+            command_plan_by_id,
+        )
+        self.assertIn(
+            "capture_android_release_power_thermal_live_evidence",
+            command_plan_by_id,
+        )
+        self.assertTrue(
+            any(
+                "sha256sum" in command or "generateArchiveIntegrityEvidence" in command
+                for command in command_plan_by_id[
+                    "capture_android_release_artifact_integrity"
+                ]["commands"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "capture_launcher_runtime_evidence.py" in command
+                for command in command_plan_by_id[
+                    "capture_android_release_cuttlefish-x86_64_live_evidence"
+                ]["commands"]
+            )
+        )
+        self.assertTrue(
+            all(
+                row["claim_boundary"]
+                == "operator_commands_only_not_android_release_or_runtime_evidence"
+                for row in command_plan
             )
         )
 

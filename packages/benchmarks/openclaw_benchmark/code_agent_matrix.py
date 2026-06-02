@@ -12,6 +12,18 @@ from typing import Any
 
 DATASET_VERSION = "openclaw-benchmark-execution-v1"
 DEFAULT_MOCK_SCENARIOS = ("setup", "implementation", "testing")
+EDGE_VARIANTS: tuple[str, ...] = (
+    "cold-start sandbox state",
+    "pre-existing partial implementation",
+    "ambiguous file naming",
+    "missing optional dependency",
+    "large output handling",
+    "retry after failed command",
+    "strict no-network execution",
+    "unicode path or content",
+    "minimal-change requirement",
+    "post-change validation required",
+)
 
 
 def _repo_root() -> Path:
@@ -48,6 +60,40 @@ def available_scenario_names() -> list[str]:
 
     runner = BenchmarkRunner(model="dummy", api_key="dummy", use_docker=False)
     return list(runner._ordered_scenarios())
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def expand_scenarios(scenarios: list[str], *, expand: bool = False) -> list[dict[str, str]]:
+    base = [{"scenario": scenario, "source_scenario": scenario, "edge_condition": ""} for scenario in scenarios]
+    if not expand:
+        return base
+    expanded = list(base)
+    for scenario in scenarios:
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            expanded.append(
+                {
+                    "scenario": f"{scenario}__edge_{index:02d}",
+                    "source_scenario": scenario,
+                    "edge_condition": edge_condition,
+                }
+            )
+    return expanded
+
+
+def count_scenarios(scenarios: list[str], *, expand: bool = False) -> dict[str, int]:
+    base = len(scenarios)
+    edge = base * len(EDGE_VARIANTS) if expand else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_scenarios(scenarios: list[str], *, expand: bool = False) -> dict[str, Any]:
+    expanded = expand_scenarios(scenarios, expand=expand)
+    ids = [item["scenario"] for item in expanded]
+    duplicate_count = len(ids) - len(set(ids))
+    return {"valid": duplicate_count == 0, "duplicate_count": duplicate_count, "total": len(ids)}
 
 
 def _configure_agent_env(task_agent: str, model_provider: str, model: str, timeout_seconds: int) -> None:
@@ -208,6 +254,8 @@ def _task_results(raw: dict[str, Any]) -> list[dict[str, Any]]:
         results.append(
             {
                 "task": str(scenario),
+                "source_scenario": str(payload.get("source_scenario") or scenario),
+                "edge_condition": str(payload.get("edge_condition") or ""),
                 "status": "completed" if "error" not in payload else "failed",
                 "success": bounded >= 1.0,
                 "score": bounded,
@@ -237,6 +285,8 @@ def _normalize_result(
     model_provider: str,
     model: str,
     mode: str,
+    scenario_counts: dict[str, int] | None = None,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     results = _task_results(raw)
     total = len(results)
@@ -249,6 +299,9 @@ def _normalize_result(
         "model": model,
         "mode": mode,
         "dataset_version": DATASET_VERSION,
+        "include_edge_scenarios": include_edge_scenarios,
+        "scenario_counts": scenario_counts
+        or {"base": total, "edge": 0, "total": total},
         "available_task_count": available,
         "coverage_note": (
             f"local OpenCLAW benchmark exposes {available} ordered scenarios"
@@ -324,13 +377,15 @@ def _mock_selected_result(
     scenario: str,
     max_tasks: int | None,
     trajectory_dir: Path | None,
+    expand: bool,
+    scenario_counts: dict[str, int],
 ) -> dict[str, Any]:
     if scenario != "all":
-        scenarios = [scenario]
+        selected = [scenario]
     else:
         available = available_scenario_names()
         total = max_tasks if max_tasks is not None else len(available)
-        scenarios = [
+        selected = [
             (
                 available[index]
                 if index < len(available)
@@ -338,19 +393,22 @@ def _mock_selected_result(
             )
             for index in range(total)
         ]
+    scenarios = expand_scenarios(selected, expand=expand)
     raw = {
         "benchmark": "openclaw_benchmark",
         "scoring_type": "execution_validation_mock",
         "tasks": {
-            item: {
-                "scenario": item,
+            item["scenario"]: {
+                "scenario": item["scenario"],
+                "source_scenario": item["source_scenario"],
+                "edge_condition": item["edge_condition"],
                 "score": {"score": 1.0, "passed": 1, "total_checks": 1},
                 "duration_ms": 0,
                 "steps": 1,
                 "tool_calls": [],
                 "trajectory_path": _write_mock_trajectory(
                     trajectory_dir,
-                    scenario=item,
+                    scenario=item["scenario"],
                     task_agent=task_agent,
                 ),
             }
@@ -365,6 +423,8 @@ def _mock_selected_result(
         model_provider=model_provider,
         model=model,
         mode="mock",
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=expand,
     )
 
 
@@ -380,6 +440,8 @@ def run_openclaw_benchmark(
     timeout_seconds: int,
     use_docker: bool,
     mock: bool,
+    expand: bool = False,
+    scenario_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if trajectory_dir is not None:
@@ -394,7 +456,11 @@ def run_openclaw_benchmark(
             scenario=scenario,
             max_tasks=max_tasks,
             trajectory_dir=trajectory_dir,
+            expand=expand,
+            scenario_counts=scenario_counts or {"base": 1, "edge": 0, "total": 1},
         )
+    if expand:
+        raise ValueError("OpenClaw benchmark expanded scenarios currently require --mock")
 
     runner = MatrixOpenClawRunner(
         task_agent=task_agent,
@@ -416,6 +482,8 @@ def run_openclaw_benchmark(
         model_provider=model_provider,
         model=model,
         mode="live",
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=expand,
     )
 
 
@@ -431,12 +499,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    expand = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    if args.scenario == "all":
+        available = available_scenario_names()
+        selected = available[: args.max_tasks] if args.max_tasks is not None else available
+    else:
+        selected = [args.scenario]
+    counts = count_scenarios(selected, expand=expand)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "OpenClaw benchmark scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_scenarios(selected, expand=expand)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid OpenClaw scenario expansion: {validation}")
+        print(f"OpenClaw benchmark scenario validation passed: {counts['total']} scenario(s)")
     result = run_openclaw_benchmark(
         task_agent=args.task_agent,
         model_provider=args.model_provider,
@@ -448,6 +540,8 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds=args.timeout_seconds,
         use_docker=not args.no_docker,
         mock=bool(args.mock),
+        expand=expand,
+        scenario_counts=counts,
     )
     result_path = Path(args.output) / "openclaw-benchmark-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

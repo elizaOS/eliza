@@ -12,6 +12,18 @@ from typing import Any
 
 
 DATASET_VERSION = "clawbench-scenarios-v1"
+EDGE_VARIANTS: tuple[str, ...] = (
+    "cold-start harness state",
+    "partial previous work present",
+    "ambiguous tool output",
+    "missing optional fixture",
+    "large command output",
+    "retry after failed tool call",
+    "strict no-network condition",
+    "unicode content or filenames",
+    "minimal-change requirement",
+    "explicit validation after completion",
+)
 
 
 def _repo_root() -> Path:
@@ -64,7 +76,7 @@ def _configure_agent_env(task_agent: str, model_provider: str, model: str, timeo
 
 def _available_scenarios() -> list[str]:
     _add_paths()
-    from clawbench.multi_harness_runner import SCENARIOS_DIR
+    from clawbench.scenarios import SCENARIOS_DIR
 
     return sorted(path.stem for path in SCENARIOS_DIR.glob("*.yaml"))
 
@@ -74,6 +86,40 @@ def _select_scenarios(scenario: str, max_tasks: int | None) -> list[str]:
     if max_tasks is not None:
         scenarios = scenarios[:max_tasks]
     return scenarios
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def expand_scenarios(scenarios: list[str], *, expand: bool = False) -> list[dict[str, str]]:
+    base = [{"scenario": item, "source_scenario": item, "edge_condition": ""} for item in scenarios]
+    if not expand:
+        return base
+    expanded = list(base)
+    for item in scenarios:
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            expanded.append(
+                {
+                    "scenario": f"{item}__edge_{index:02d}",
+                    "source_scenario": item,
+                    "edge_condition": edge_condition,
+                }
+            )
+    return expanded
+
+
+def count_scenarios(scenarios: list[str], *, expand: bool = False) -> dict[str, int]:
+    base = len(scenarios)
+    edge = base * len(EDGE_VARIANTS) if expand else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_scenarios(scenarios: list[str], *, expand: bool = False) -> dict[str, Any]:
+    expanded = expand_scenarios(scenarios, expand=expand)
+    ids = [item["scenario"] for item in expanded]
+    duplicate_count = len(ids) - len(set(ids))
+    return {"valid": duplicate_count == 0, "duplicate_count": duplicate_count, "total": len(ids)}
 
 
 async def _run_live_scenario(name: str, model: str) -> dict[str, Any]:
@@ -105,6 +151,8 @@ def _result_row(result: dict[str, Any]) -> dict[str, Any]:
     total_checks = score.get("total_checks") if isinstance(score, dict) else None
     return {
         "task": str(result.get("scenario") or "scenario"),
+        "source_scenario": str(result.get("source_scenario") or result.get("scenario") or "scenario"),
+        "edge_condition": str(result.get("edge_condition") or ""),
         "status": "completed" if not result.get("error") else "failed",
         "success": bounded >= 1.0,
         "score": bounded,
@@ -130,6 +178,8 @@ def _normalize_result(
     model: str,
     mode: str,
     scenario_results: list[dict[str, Any]],
+    scenario_counts: dict[str, int] | None = None,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     rows = [_result_row(result) for result in scenario_results]
     total = len(rows)
@@ -141,6 +191,9 @@ def _normalize_result(
         "model": model,
         "mode": mode,
         "dataset_version": DATASET_VERSION,
+        "include_edge_scenarios": include_edge_scenarios,
+        "scenario_counts": scenario_counts
+        or {"base": total, "edge": 0, "total": total},
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -158,18 +211,22 @@ def _mock_result(
     task_agent: str,
     model_provider: str,
     model: str,
-    scenarios: list[str],
+    scenarios: list[dict[str, str]],
+    scenario_counts: dict[str, int],
+    include_edge_scenarios: bool,
 ) -> dict[str, Any]:
     raw = [
         {
-            "scenario": name,
+            "scenario": item["scenario"],
+            "source_scenario": item["source_scenario"],
+            "edge_condition": item["edge_condition"],
             "score": {"score": 1.0, "passed": 1, "total_checks": 1},
             "latency_ms": 0,
             "tool_calls_total": 0,
             "tool_calls_by_type": {},
             "usage": {"prompt_tokens": 0, "completion_tokens": 0},
         }
-        for name in scenarios
+        for item in scenarios
     ]
     return _normalize_result(
         task_agent=task_agent,
@@ -177,6 +234,8 @@ def _mock_result(
         model=model,
         mode="mock",
         scenario_results=raw,
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=include_edge_scenarios,
     )
 
 
@@ -191,9 +250,12 @@ def run_clawbench_matrix(
     max_tasks: int | None,
     timeout_seconds: int,
     mock: bool,
+    expand: bool = False,
+    scenario_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    scenarios = _select_scenarios(scenario, max_tasks)
+    selected = _select_scenarios(scenario, max_tasks)
+    scenarios = expand_scenarios(selected, expand=expand)
     if trajectory_dir is not None:
         trajectory_dir.mkdir(parents=True, exist_ok=True)
         os.environ["BENCHMARK_RUN_DIR"] = str(trajectory_dir)
@@ -204,21 +266,39 @@ def run_clawbench_matrix(
             model_provider=model_provider,
             model=model,
             scenarios=scenarios,
+            scenario_counts=scenario_counts or count_scenarios(selected, expand=expand),
+            include_edge_scenarios=expand,
         )
+    if expand:
+        raise ValueError("ClawBench expanded scenarios currently require --mock")
 
     _configure_agent_env(task_agent, model_provider, model, timeout_seconds)
     results: list[dict[str, Any]] = []
-    for name in scenarios:
+    for item in scenarios:
+        name = item["source_scenario"]
         try:
-            results.append(asyncio.run(_run_live_scenario(name, model)))
+            result = asyncio.run(_run_live_scenario(name, model))
+            result["scenario"] = item["scenario"]
+            result["source_scenario"] = item["source_scenario"]
+            result["edge_condition"] = item["edge_condition"]
+            results.append(result)
         except Exception as exc:  # noqa: BLE001 - report per-task harness failures.
-            results.append({"scenario": name, "error": f"{type(exc).__name__}: {exc}"})
+            results.append(
+                {
+                    "scenario": item["scenario"],
+                    "source_scenario": item["source_scenario"],
+                    "edge_condition": item["edge_condition"],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
     return _normalize_result(
         task_agent=task_agent,
         model_provider=model_provider,
         model=model,
         mode="live",
         scenario_results=results,
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=expand,
     )
 
 
@@ -234,12 +314,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true", help="Accepted for matrix CLI parity.")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    expand = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    selected = _select_scenarios(args.scenario, args.max_tasks)
+    counts = count_scenarios(selected, expand=expand)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "ClawBench scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_scenarios(selected, expand=expand)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid ClawBench scenario expansion: {validation}")
+        print(f"ClawBench scenario validation passed: {counts['total']} scenario(s)")
     result = run_clawbench_matrix(
         task_agent=args.task_agent,
         model_provider=args.model_provider,
@@ -250,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
         max_tasks=args.max_tasks,
         timeout_seconds=args.timeout_seconds,
         mock=bool(args.mock),
+        expand=expand,
+        scenario_counts=counts,
     )
     result_path = Path(args.output) / "clawbench-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

@@ -163,6 +163,7 @@ class Finding:
     next_step: str
     blocker_dependency: str = "repo_artifact_generation"
     next_command: str = ""
+    next_commands: tuple[str, ...] = ()
 
 
 def read_text(path: Path) -> str:
@@ -537,8 +538,11 @@ def add_if(
     next_step: str,
     blocker_dependency: str = "repo_artifact_generation",
     next_command: str = "",
+    next_commands: Iterable[str] = (),
 ) -> None:
     if condition:
+        command_batch = tuple(command for command in next_commands if command)
+        selected_command = next_command or (command_batch[0] if command_batch else "")
         findings.append(
             Finding(
                 code,
@@ -547,9 +551,29 @@ def add_if(
                 evidence,
                 next_step,
                 blocker_dependency,
-                next_command,
+                selected_command,
+                command_batch,
             )
         )
+
+
+def command_strings(*groups: Any) -> tuple[str, ...]:
+    commands: list[str] = []
+    for group in groups:
+        if isinstance(group, str):
+            commands.append(group)
+        elif isinstance(group, Iterable):
+            commands.extend(command for command in group if isinstance(command, str))
+    return tuple(dict.fromkeys(command for command in commands if command))
+
+
+def preferred_command(commands: Iterable[str], *tokens: str) -> str:
+    command_list = [command for command in commands if command]
+    for token in tokens:
+        for command in command_list:
+            if token in command:
+                return command
+    return command_list[0] if command_list else ""
 
 
 def android_artifacts(umbrella: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1518,7 +1542,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
         "claimBoundary": "operator_commands_only_not_collected_runtime_evidence",
         "requiredObservationContract": list(REQUIRED_LAUNCHER_LIVE_OBSERVATIONS),
         "cuttlefishX8664": [
-            "export AOSP_ROOT=/home/shaw/aosp",
+            "export AOSP_ROOT=$AOSP_WORKSPACE",
             "make -C packages/os/android bootanimation",
             'node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root "$AOSP_ROOT" --skip-libllama',
             'AOSP_DIR="$AOSP_ROOT" packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish',
@@ -1570,7 +1594,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             ),
         ],
         "chipRiscv64": [
-            "export AOSP_DIR=/home/shaw/aosp",
+            "export AOSP_DIR=$AOSP_WORKSPACE",
             "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
             (
                 'AOSP_DIR="$AOSP_DIR" AOSP_PRODUCT=eliza_openagent_ai_soc_phone-trunk_staging-userdebug '
@@ -2071,6 +2095,35 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     archive_source_next_step = android_archive_source_next_step(archive_source_inventory)
     live_launcher_missing_inventory = live_launcher_agent_missing_evidence(umbrella_manifest)
     aosp_chip_inventory = aosp_chip_build_artifact_inventory()
+    artifact_commands = artifact_inventory.get("commands", {})
+    if not isinstance(artifact_commands, dict):
+        artifact_commands = {}
+    integrity_commands = command_strings(
+        artifact_commands.get("populateIntegrity", ()),
+        artifact_commands.get("generateArchiveIntegrityEvidence", ()),
+        artifact_commands.get("validate", ()),
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+    )
+    artifact_stage_commands = command_strings(
+        artifact_commands.get("buildChipRiscv64Archive", ()),
+        artifact_commands.get("buildCuttlefishX8664Archive", ()),
+        artifact_commands.get("buildPixelArm64Archive", ()),
+        artifact_commands.get("stagePixelCaimanPartitions", ()),
+        artifact_commands.get("generateArchiveIntegrityEvidence", ()),
+        artifact_commands.get("populateIntegrity", ()),
+        artifact_commands.get("validate", ()),
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+    )
+    live_capture_plan = prioritized_live_evidence_capture_plan(umbrella_manifest)
+    live_capture_commands = command_strings(
+        *(
+            command
+            for row in live_capture_plan
+            for command in list(row.get("capture_commands", []))
+            + list(row.get("validation_commands", []))
+        ),
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+    )
 
     add_if(
         findings,
@@ -2139,9 +2192,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing_hashes={umbrella_missing_hashes} missing_sizes={umbrella_missing_sizes}",
         archive_source_next_step,
         archive_source_dependency,
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
-        "&& jq '.evidence.android_release_artifact_inventory.commands.populateIntegrity' "
-        "packages/chip/build/reports/android_release_readiness_contract.json",
+        preferred_command(integrity_commands, "sha256sum", "validate-release-manifest.mjs"),
+        integrity_commands,
     )
     add_if(
         findings,
@@ -2151,9 +2203,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing={artifact_inventory['missing']}",
         archive_source_next_step,
         archive_source_dependency,
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
-        "&& jq '.evidence.android_release_artifact_inventory.commands' "
-        "packages/chip/build/reports/android_release_readiness_contract.json",
+        preferred_command(
+            artifact_stage_commands,
+            "build-aosp-riscv64.sh",
+            "build-aosp.mjs",
+            "install-elizaos-android.sh",
+            "zip -qry",
+        ),
+        artifact_stage_commands,
     )
     add_if(
         findings,
@@ -2240,10 +2297,13 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing_targets={live_launcher_missing_inventory['missingTargets']}",
         "Run the per-target command lists in evidence.live_launcher_agent_missing_evidence.records[*].collectionCommands, then update each manifest evidence row only with collected payloads from the named booted target.",
         "live_device_validation",
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
-        "&& jq '.evidence.live_launcher_agent_missing_evidence.records[] | "
-        "{artifactId, collectionCommands, validationCommand}' "
-        "packages/chip/build/reports/android_release_readiness_contract.json",
+        preferred_command(
+            live_capture_commands,
+            "capture_launcher_runtime_evidence.py",
+            "boot_android_simulator.sh --run-cuttlefish",
+            "install-elizaos-android.sh",
+        ),
+        live_capture_commands,
     )
     add_if(
         findings,
@@ -2253,10 +2313,13 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"artifacts={umbrella_uncollected_evidence}",
         "Collect boot, role, launcher foreground, agent health, fatal log, and SELinux evidence before promoting any Android artifact.",
         "live_device_validation",
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
-        "&& jq '.evidence.prioritized_live_evidence_capture_plan[] | "
-        "{capture_area, capture_commands, validation_commands}' "
-        "packages/chip/build/reports/android_release_readiness_contract.json",
+        preferred_command(
+            live_capture_commands,
+            "capture_launcher_runtime_evidence.py",
+            "boot_android_simulator.sh --run-cuttlefish",
+            "install-elizaos-android.sh",
+        ),
+        live_capture_commands,
     )
     add_if(
         findings,
@@ -2299,9 +2362,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "aosp_chip_build_artifact_inventory": aosp_chip_inventory,
         "live_launcher_agent_capture_commands": live_launcher_agent_capture_commands(),
         "live_launcher_agent_missing_evidence": live_launcher_missing_inventory,
-        "prioritized_live_evidence_capture_plan": prioritized_live_evidence_capture_plan(
-            umbrella_manifest
-        ),
+        "prioritized_live_evidence_capture_plan": live_capture_plan,
     }
     return payload(findings, evidence)
 
@@ -2314,6 +2375,7 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
         dependency_counts[finding.blocker_dependency] = (
             dependency_counts.get(finding.blocker_dependency, 0) + 1
         )
+    next_command_plan = report_next_command_plan(evidence)
     return {
         "schema": SCHEMA,
         "generated_utc": generated_utc(),
@@ -2324,12 +2386,103 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
             "blockers": len(blockers),
             "findings": len(findings),
             "blocker_dependency_counts": dependency_counts,
+            "next_command_batch_count": len(next_command_plan),
         },
         "blockers": blocker_rows,
         "blocker_dependency_counts": dependency_counts,
         "findings": [provenance_safe_value(asdict(finding)) for finding in findings],
+        "next_command_plan": provenance_safe_value(next_command_plan),
         "evidence": provenance_safe_value(evidence),
     }
+
+
+def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    artifact_inventory = evidence.get("android_release_artifact_inventory")
+    artifact_commands = (
+        artifact_inventory.get("commands", {})
+        if isinstance(artifact_inventory, dict)
+        else {}
+    )
+    if not isinstance(artifact_commands, dict):
+        artifact_commands = {}
+    integrity_commands = command_strings(
+        artifact_commands.get("populateIntegrity", ()),
+        artifact_commands.get("generateArchiveIntegrityEvidence", ()),
+        artifact_commands.get("validate", ()),
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+    )
+    if integrity_commands:
+        plan.append(
+            {
+                "id": "capture_android_release_artifact_integrity",
+                "area": "aosp",
+                "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
+                "commands": list(integrity_commands),
+                "requires": [
+                    "final staged Android partition images and archives",
+                    "measured byte sizes and SHA-256 digests from the staged artifacts",
+                    "rerun of Android release readiness after manifest/evidence update",
+                ],
+            }
+        )
+    stage_commands = command_strings(
+        artifact_commands.get("buildChipRiscv64Archive", ()),
+        artifact_commands.get("buildCuttlefishX8664Archive", ()),
+        artifact_commands.get("buildPixelArm64Archive", ()),
+        artifact_commands.get("stagePixelCaimanPartitions", ()),
+        artifact_commands.get("generateArchiveIntegrityEvidence", ()),
+        artifact_commands.get("populateIntegrity", ()),
+        artifact_commands.get("validate", ()),
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+    )
+    if stage_commands:
+        plan.append(
+            {
+                "id": "capture_android_release_artifact_staging",
+                "area": "aosp",
+                "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
+                "commands": list(stage_commands),
+                "requires": [
+                    "AOSP workspace capable of building chip/riscv64 and reference Android targets",
+                    "staged release directory writable by the build job",
+                    "rerun of archive integrity generation and release readiness validation",
+                ],
+            }
+        )
+    live_plan = evidence.get("prioritized_live_evidence_capture_plan")
+    if isinstance(live_plan, list):
+        for row in live_plan:
+            if not isinstance(row, dict):
+                continue
+            commands = command_strings(
+                row.get("capture_commands", ()),
+                row.get("validation_commands", ()),
+                "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+            )
+            if not commands:
+                continue
+            capture_area = str(row.get("capture_area") or "android_live")
+            plan.append(
+                {
+                    "id": f"capture_android_release_{capture_area}_live_evidence",
+                    "area": "runtime",
+                    "capture_area": capture_area,
+                    "artifact_id": row.get("artifact_id"),
+                    "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                    "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
+                    "commands": list(commands),
+                    "expected_output_files": row.get("expected_output_files", []),
+                    "requires": [
+                        "booted target matching the capture area and expected CPU ABI",
+                        "launcher foreground, HOME role, agent health, and clean log evidence",
+                        "rerun of launcher runtime and Android release readiness checks",
+                    ],
+                }
+            )
+    return plan
 
 
 def write_report(report: dict[str, Any], path: Path) -> None:

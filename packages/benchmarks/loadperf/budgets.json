@@ -5,7 +5,8 @@
     "totalAssetsBrotliBytes": 16000000,
     "largestChunkBrotliBytes": 2300000,
     "maxDuplicateLibBytes": 1200000,
-    "perChunkWarnBrotliBytes": 600000
+    "perChunkWarnBrotliBytes": 600000,
+    "eagerGraphBrotliBytes": 1500000
   },
   "boot": {
     "coldReadyMs": 25000,

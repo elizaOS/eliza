@@ -79,11 +79,15 @@ export function parseKeyId(id: KeyId): KeyParts {
   const match = KEY_RE.exec(id);
   if (!match) throw new KmsError(`malformed key id: ${id}`);
   const scope = match[1] as KeyScope;
-  const principal = match[2]!;
+  const principal = match[2];
+  if (!principal) throw new KmsError(`malformed key id: ${id}`);
   const sub = match[3];
   const version = Number(match[4]);
   assertVersion(version);
   if (scope === "system") {
+    if (sub !== undefined) {
+      throw new KmsError(`malformed system key id: ${id}`);
+    }
     return { scope: "system", purpose: principal, version };
   }
   if (scope === "org") {
@@ -108,7 +112,7 @@ export function isValidKeyId(id: string): id is KeyId {
 }
 
 export function withVersion(id: KeyId, version: KeyVersion): KeyId {
-  const parts = parseKeyId(id);
+  parseKeyId(id);
   assertVersion(version);
   return id.replace(/\/v\d+$/, `/v${version}`);
 }

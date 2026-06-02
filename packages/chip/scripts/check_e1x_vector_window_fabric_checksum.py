@@ -280,7 +280,7 @@ def main() -> int:
         "sampled_color_records": color_records[:8],
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-vector-window-fabric-checksum",
         "status": "PASS" if not failures else "BLOCKED",

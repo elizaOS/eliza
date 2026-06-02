@@ -258,6 +258,8 @@ EOF
 # Steady-state startup elimination: the fixed init inside CoreMark's timed region
 # cancels in the per-iteration slope. CoreMark/MHz = 1 / (ticks_per_iter / 1e6).
 RUNLOG="${BUILD}/coremark.cva6.iter${ITER_N1}.run.log"
+# ELF path is reserved for artifact checks; assigned here alongside RUNLOG for symmetry
+# shellcheck disable=SC2034
 ELF="${BUILD}/coremark.cva6.rv64gc.iter${ITER_N1}.elf"
 # Headline metrics report the N1 whole-program run; steady-state is the slope.
 CYCLES="${CYCLES_N1}"; INSNS="${INSNS_N1}"; ITERS="${ITERS_N1}"

@@ -42,7 +42,10 @@ export function renderMarkdown(report: EvidenceReport): string {
     lines.push(`| Status | Severity | Check | Evidence |`);
     lines.push(`| --- | --- | --- | --- |`);
     for (const c of block.checks) {
-      const ev = c.evidence.replace(/\n+/g, " ").replace(/\|/g, "\\|").slice(0, 400);
+      const ev = c.evidence
+        .replace(/(?:\r\n|\r|\n)+/g, " ")
+        .replace(/\|/g, "\\|")
+        .slice(0, 400);
       lines.push(
         `| ${STATUS_SYMBOL[c.status] ?? c.status} | ${c.severity} | **${c.id}** — ${c.title} | ${ev} |`,
       );

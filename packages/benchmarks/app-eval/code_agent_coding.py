@@ -16,6 +16,49 @@ from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "app-eval-coding-v1"
+EXPANDED_DATASET_VERSION = "app-eval-coding-edge-v1"
+EDGE_VARIANTS = (
+    (
+        "edge-ambiguous-user-wording",
+        "The request contains mildly ambiguous wording; preserve the original deliverable and resolve ambiguity using explicit requirements.",
+    ),
+    (
+        "edge-distractor-requirement",
+        "Ignore one plausible but irrelevant adjacent requirement; only implement what the task actually asks.",
+    ),
+    (
+        "edge-tight-output-budget",
+        "Prioritize the minimum complete implementation and verification because review time is limited.",
+    ),
+    (
+        "edge-format-noise",
+        "Treat odd punctuation, casing, or markdown formatting as noise around the same task.",
+    ),
+    (
+        "edge-conflicting-style-request",
+        "A surrounding style request may conflict with tests; the benchmark task and assertions remain authoritative.",
+    ),
+    (
+        "edge-missing-context-check",
+        "If a detail appears missing, use the narrowest assumption instead of inventing unsupported APIs.",
+    ),
+    (
+        "edge-regression-risk",
+        "Avoid changing unrelated behavior while satisfying the requested feature or refactor.",
+    ),
+    (
+        "edge-accessibility-or-safety",
+        "Maintain accessibility, safety, and input-validation expectations even when the prompt emphasizes speed.",
+    ),
+    (
+        "edge-order-independence",
+        "Do not rely on the order that requirements are presented; satisfy all explicit acceptance criteria.",
+    ),
+    (
+        "edge-verification-focus",
+        "Include or perform a concise verification step that matches the task type and rubric.",
+    ),
+)
 
 
 def app_eval_root() -> Path:
@@ -79,13 +122,47 @@ def agent_command_template(
     return _builtin_agent_command_template(task_agent, provider, model, timeout_seconds)
 
 
-def load_tasks(*, max_tasks: int | None = None) -> list[dict[str, Any]]:
+def expand_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    expanded = list(tasks)
+    for task in tasks:
+        task_id = str(task.get("id") or "app-eval-code")
+        prompt = str(task.get("prompt") or "")
+        for index, (variant_id, variant_note) in enumerate(EDGE_VARIANTS, start=1):
+            clone = dict(task)
+            clone["id"] = f"{task_id}--edge-{index:02d}"
+            clone["prompt"] = f"{prompt}\n\nEdge condition: {variant_note}"
+            clone["edge_variant"] = variant_id
+            clone["edge_source_id"] = task_id
+            expanded.append(clone)
+    return expanded
+
+
+def validate_tasks(tasks: list[dict[str, Any]]) -> None:
+    seen: set[str] = set()
+    for task in tasks:
+        task_id = str(task.get("id") or "").strip()
+        if not task_id:
+            raise ValueError("task is missing id")
+        if task_id in seen:
+            raise ValueError(f"duplicate task id: {task_id}")
+        seen.add(task_id)
+        if not str(task.get("prompt") or "").strip():
+            raise ValueError(f"{task_id}: missing prompt")
+
+
+def load_tasks(
+    *,
+    max_tasks: int | None = None,
+    include_edge_scenarios: bool = False,
+) -> list[dict[str, Any]]:
     path = app_eval_root() / "tasks" / "coding-tasks.json"
     tasks = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(tasks, list):
         raise ValueError("App Eval coding task file must contain a JSON array")
     selected = [task for task in tasks if isinstance(task, dict)]
-    return selected[:max_tasks] if max_tasks is not None else selected
+    if max_tasks is not None:
+        selected = selected[:max_tasks]
+    return expand_tasks(selected) if include_edge_scenarios else selected
 
 
 def _safe_task_id(task_id: str) -> str:
@@ -323,6 +400,7 @@ def build_result(
     model_provider: str,
     model: str,
     mode: str,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(1 for item in results if item.get("success") is True)
@@ -332,7 +410,7 @@ def build_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
-        "dataset_version": DATASET_VERSION,
+        "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -356,6 +434,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--eval-timeout-seconds", type=int, default=120)
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
@@ -365,7 +446,23 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(max_tasks=args.max_tasks)
+    base_tasks = load_tasks(max_tasks=args.max_tasks)
+    tasks = load_tasks(max_tasks=args.max_tasks, include_edge_scenarios=args.expand_scenarios)
+    if args.validate_scenarios:
+        validate_tasks(tasks)
+    if args.count_scenarios or args.validate_scenarios:
+        print(
+            json.dumps(
+                {
+                    "base": len(base_tasks),
+                    "edge": len(tasks) - len(base_tasks),
+                    "total": len(tasks),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     if args.mock:
         results = [
@@ -387,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="mock",
+            include_edge_scenarios=args.expand_scenarios,
         )
     else:
         command_template = agent_command_template(
@@ -419,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="live",
+            include_edge_scenarios=args.expand_scenarios,
         )
 
     result_path = output_dir / "app-eval-coding-results.json"

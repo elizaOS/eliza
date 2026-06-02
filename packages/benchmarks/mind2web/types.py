@@ -191,6 +191,7 @@ class Mind2WebConfig:
     max_tasks: int | None = None
     num_trials: int = 1
     max_steps_per_task: int = 20
+    include_edge_scenarios: bool = False
 
     # Timing
     timeout_ms: int = 120000

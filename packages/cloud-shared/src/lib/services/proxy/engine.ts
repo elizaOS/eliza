@@ -114,6 +114,32 @@ function wrapResponseWithHeaders(response: Response, headers: Headers): Response
   });
 }
 
+/**
+ * Decide how much to bill for a handler result.
+ *
+ * - 2xx success (`response.ok`): bill the handler's reported `actualCost`, or
+ *   the full reserved `cost` when the handler didn't report one.
+ * - 5xx: bill the handler's reported `actualCost`, or the full reserved
+ *   `cost` when omitted. Provider-attempted failures can still cost upstream
+ *   credits. No-upstream fast-fail paths (for example circuit-open) must set
+ *   `actualCost: 0` explicitly to refund the reservation.
+ * - everything else (3xx redirects, 4xx client errors): billed at the reserved
+ *   `cost` unless the handler reported a different `actualCost`, preserving
+ *   prior behavior.
+ */
+export function resolveBillableCost(
+  result: Pick<HandlerResult, "actualCost"> & { response: Pick<Response, "ok" | "status"> },
+  reservedCost: number,
+): number {
+  if (result.response.ok) {
+    return result.actualCost ?? reservedCost;
+  }
+  if (result.response.status >= 500) {
+    return result.actualCost ?? reservedCost;
+  }
+  return result.actualCost ?? reservedCost;
+}
+
 function isClientErrorMessage(message: string): boolean {
   const lowered = message.toLowerCase();
   return (
@@ -244,7 +270,11 @@ export function createHandler(
         throw error;
       }
 
-      const actualCost = result.actualCost ?? cost;
+      // Only bill for actual work performed. Returned 5xx responses default to
+      // the reserved cost because upstream attempts can be provider-billed even
+      // when they fail; no-upstream fast-fails report actualCost: 0 explicitly.
+      // See resolveBillableCost.
+      const actualCost = resolveBillableCost(result, cost);
       await reservation.reconcile(actualCost);
 
       if (cacheKey && cacheCandidate && config.cache) {

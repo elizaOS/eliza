@@ -42,8 +42,14 @@ async def run_suite(
     judge: Judge,
     limit: int | None,
     mock: bool = False,
+    include_edge_scenarios: bool = False,
 ) -> SuiteResult:
-    samples = load_samples(suite, limit=limit, mock=mock)
+    samples = load_samples(
+        suite,
+        limit=limit,
+        mock=mock,
+        include_edge_scenarios=include_edge_scenarios,
+    )
     if not samples:
         raise RuntimeError(f"suite {suite!r} loaded zero samples")
 
@@ -78,6 +84,7 @@ async def run(
     agent_name: str,
     stt_provider: str,
     mock: bool = False,
+    include_edge_scenarios: bool = False,
 ) -> VoiceBenchResult:
     started = time.perf_counter()
     suite_details: list[SuiteResult] = []
@@ -92,6 +99,7 @@ async def run(
             judge=judge,
             limit=limit,
             mock=mock,
+            include_edge_scenarios=include_edge_scenarios,
         )
         suite_details.append(result)
         per_suite[suite] = round(result.score, 4)
@@ -113,6 +121,7 @@ async def run(
         judge_model=getattr(judge, "model", ""),
         stt_provider=stt_provider,
         mock=mock,
+        include_edge_scenarios=include_edge_scenarios,
     )
     _persist(result, output_dir)
     return result

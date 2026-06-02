@@ -46,6 +46,8 @@ export type QueryParams =
 export interface CloudApiErrorBody {
   success: false;
   error: string;
+  code?: string;
+  type?: string;
   details?: Record<string, unknown>;
   requiredCredits?: number;
   quota?: { current: number; max: number };

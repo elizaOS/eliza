@@ -27,6 +27,7 @@ import {
 } from "./llm-scripted.ts";
 import { renderConversation } from "./prompt.ts";
 import { buildBenchRegistry } from "./registry.ts";
+import { getBaseScenarioId } from "./scenarios.ts";
 import { scoreScenario } from "./scorer.ts";
 import { SimulatorState } from "./state.ts";
 import { Trace } from "./trace.ts";
@@ -186,10 +187,11 @@ function shouldDeferUntilBurstEnd(
   scenario: Scenario,
   step: ScenarioScriptStep,
 ): boolean {
+  const scenarioId = getBaseScenarioId(scenario.id);
   if (
-    scenario.id !== "A1-fragmented-email-draft" &&
-    scenario.id !== "A4-stream-with-retraction" &&
-    scenario.id !== "K1-recipe-assembly"
+    scenarioId !== "A1-fragmented-email-draft" &&
+    scenarioId !== "A4-stream-with-retraction" &&
+    scenarioId !== "K1-recipe-assembly"
   ) {
     return false;
   }

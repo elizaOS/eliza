@@ -4,9 +4,25 @@ function requireElement(selector?: string | null): HTMLElement {
   if (!selector) {
     throw new Error("selector is required");
   }
-  const element = document.querySelector(selector);
+  let element: Element | null;
+  try {
+    element = document.querySelector(selector);
+  } catch (error) {
+    throw new Error(
+      `Invalid selector ${selector}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   if (!(element instanceof HTMLElement)) {
     throw new Error(`No HTMLElement found for selector ${selector}`);
+  }
+  if (
+    (element instanceof HTMLButtonElement ||
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement) &&
+    element.disabled
+  ) {
+    throw new Error(`Target element is disabled for selector ${selector}`);
   }
   if (typeof element.scrollIntoView === "function") {
     element.scrollIntoView({ block: "center", inline: "center" });
@@ -22,6 +38,9 @@ function setElementText(
     element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement
   ) {
+    if (element.readOnly) {
+      throw new Error("Target element is read-only");
+    }
     element.focus();
     element.value = text;
     element.dispatchEvent(new Event("input", { bubbles: true }));

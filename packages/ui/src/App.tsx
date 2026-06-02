@@ -20,6 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -45,6 +46,7 @@ import {
 } from "./components/shell/ShellControllerContext";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
+import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
@@ -514,6 +516,20 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+/**
+ * Fallback shown when a view/tab is unavailable. Chat is the floating overlay
+ * (GlobalChatOverlay on the chat tab) + the always-present pill — views never
+ * embed an inline ChatView — so an unavailable view falls back to the app/view
+ * launcher, not a chat surface.
+ */
+function ViewUnavailableFallback(): ReactNode {
+  return (
+    <TabContentView chatDisabled>
+      <ViewManagerPage />
+    </TabContentView>
+  );
+}
+
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
@@ -523,12 +539,12 @@ function renderPhoneSurface(
       <Component />
     </TabContentView>
   ) : (
-    <ChatView />
+    <ViewUnavailableFallback />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ChatView />;
+  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView chatScope="page-apps">
       {getAppSlugFromPath(navigationPath) ? (
@@ -555,9 +571,9 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     onboarding: <FirstRunScreen />,
-    chat: <ChatView />,
+    chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ChatView />,
+    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -623,7 +639,7 @@ function renderStaticViewRouterTab({
     ),
   };
   if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
   }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
@@ -664,7 +680,7 @@ function renderStaticViewRouterTab({
       </TabContentView>
     );
   }
-  return directViews[tab] ?? <ChatView />;
+  return directViews[tab] ?? <ViewUnavailableFallback />;
 }
 
 function renderViewRouterContent({
@@ -1025,6 +1041,27 @@ function ShellFoundationMount() {
         />
       </AssistantOverlay>
     </>
+  );
+}
+
+/**
+ * Web/mobile embedded floating pill. The persistent collapsible chat/voice pill
+ * floats bottom-center on top of whichever view is active, so no view embeds its
+ * own chat surface. On desktop (Electrobun) the pill instead lives in its own
+ * always-on-top OS window (`pill-window.ts` → `chat-overlay` shell), so it is
+ * never embedded here; on OS kiosk it is mounted in-canvas by `KioskShell`. The
+ * wrapper is pointer-events-none so only the pill itself is interactive, and it
+ * clears the mobile bottom nav.
+ */
+function EmbeddedShellPill(): ReactNode {
+  if (isElectrobunRuntime()) return null;
+  return (
+    <div
+      data-testid="embedded-shell-pill"
+      className={`pointer-events-none fixed inset-0 flex items-end justify-center ${MOBILE_NAV_PADDING_CLASS}`}
+    >
+      <ShellFoundationMount />
+    </div>
   );
 }
 
@@ -1436,6 +1473,15 @@ export function App() {
     );
   }
 
+  if (!isCoordinatorReady) {
+    return (
+      <BugReportProvider value={bugReport}>
+        <StartupScreen />
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
   // Auth gate — when the coordinator is ready, check /api/auth/me.
   // "loading" phase: wait (fall through to the coordinator's own "ready" render).
   // "unauthenticated": render LoginView.
@@ -1522,7 +1568,7 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        <GlobalChatOverlay />
+        {isChat ? <GlobalChatOverlay /> : <EmbeddedShellPill />}
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

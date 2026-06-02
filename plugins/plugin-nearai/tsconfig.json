@@ -19,7 +19,6 @@
     "outDir": "./dist",
     "rootDir": ".",
     "types": [
-      "node",
       "bun-types"
     ],
     "noEmit": true,

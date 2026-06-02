@@ -22,6 +22,9 @@ import {
   DEFAULT_CONSOLIDATION_POLICIES,
   DEFAULT_ESCALATION_LADDERS,
   dailyRhythmPack,
+  EXECUTIVE_ASSISTANT_PACK_KEY,
+  EXECUTIVE_ASSISTANT_RECORD_IDS,
+  executiveAssistantPack,
   FOLLOWUP_STARTER_PACK_KEY,
   followupStarterPack,
   getAllDefaultPacks,
@@ -147,8 +150,8 @@ function validatePack(pack: DefaultPack): string[] {
 }
 
 describe("W1-D default-pack registry — shape", () => {
-  it("registers exactly 6 packs", () => {
-    expect(getAllDefaultPacks().length).toBe(6);
+  it("registers exactly 7 packs", () => {
+    expect(getAllDefaultPacks().length).toBe(7);
   });
 
   it("registers the documented pack keys", () => {
@@ -159,6 +162,7 @@ describe("W1-D default-pack registry — shape", () => {
     ).toEqual(
       [
         DAILY_RHYTHM_PACK_KEY,
+        EXECUTIVE_ASSISTANT_PACK_KEY,
         FOLLOWUP_STARTER_PACK_KEY,
         HABIT_STARTERS_PACK_KEY,
         INBOX_TRIAGE_STARTER_PACK_KEY,
@@ -174,7 +178,7 @@ describe("W1-D default-pack registry — shape", () => {
   });
 
   it("getOfferedDefaultPacks returns all packs", () => {
-    expect(getOfferedDefaultPacks().length).toBe(6);
+    expect(getOfferedDefaultPacks().length).toBe(7);
   });
 });
 
@@ -184,6 +188,44 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
     expect(
       getDefaultEnabledPacks({ connectorRegistry: null }).map((p) => p.key),
     ).not.toContain(HABIT_STARTERS_PACK_KEY);
+  });
+
+  it("executive-assistant is offered but not auto-enabled", () => {
+    expect(executiveAssistantPack.defaultEnabled).toBe(false);
+    expect(executiveAssistantPack.records.length).toBe(35);
+    expect(
+      getDefaultEnabledPacks({ connectorRegistry: null }).map((p) => p.key),
+    ).not.toContain(EXECUTIVE_ASSISTANT_PACK_KEY);
+  });
+
+  it("executive-assistant includes the expanded personal assistant operating loop", () => {
+    const recordIds = new Set(
+      executiveAssistantPack.records.map((record) => record.idempotencyKey),
+    );
+
+    expect([...recordIds]).toEqual(
+      expect.arrayContaining([
+        EXECUTIVE_ASSISTANT_RECORD_IDS.approvalBatchReview,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.privacyRedactionSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.interruptionFirebreak,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.statusCompression,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.vipEscalationSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.delegationMapReview,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.remoteAgentRecovery,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.familyLogisticsPrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.outageRecoverySweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.boardPackPrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.chiefOfStaffHandoff,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.eventPlanning,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.financeDisputeSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.giftMilestonePrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.hiringLoopCoordination,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.introRoutingSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.legalDeadlineSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.travelDisruptionRecovery,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.vendorNegotiationPrep,
+      ]),
+    );
   });
 
   it("inbox-triage-starter is gated by gmail capability", () => {
@@ -239,6 +281,7 @@ describe("W1-D default-pack registry — schema per pack", () => {
     followupStarterPack,
     inboxTriageStarterPack,
     habitStartersPack,
+    executiveAssistantPack,
   ]) {
     it(`${pack.key} pack records validate`, () => {
       const errs = validatePack(pack);
@@ -248,6 +291,35 @@ describe("W1-D default-pack registry — schema per pack", () => {
       expect(errs).toEqual([]);
     });
   }
+});
+
+describe("executive-assistant scenario pack", () => {
+  it("uses stable record IDs and ScheduledTask definitions for every scenario", () => {
+    const ids = new Set(Object.values(EXECUTIVE_ASSISTANT_RECORD_IDS));
+    expect(ids.size).toBe(35);
+    expect(executiveAssistantPack.records.map((r) => r.idempotencyKey)).toEqual(
+      expect.arrayContaining([...ids]),
+    );
+    expect(
+      executiveAssistantPack.records.every(
+        (record) =>
+          record.source === "default_pack" &&
+          record.createdBy === EXECUTIVE_ASSISTANT_PACK_KEY &&
+          record.metadata?.packKey === EXECUTIVE_ASSISTANT_PACK_KEY,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps health and screen-time scenarios out of the LifeOps assistant pack", () => {
+    const prompts = executiveAssistantPack.records
+      .map((record) => record.promptInstructions.toLowerCase())
+      .join("\n");
+
+    expect(prompts).not.toContain("health");
+    expect(prompts).not.toContain("sleep");
+    expect(prompts).not.toContain("screen-time");
+    expect(prompts).not.toContain("workout");
+  });
 });
 
 describe("W1-D consolidation policies", () => {

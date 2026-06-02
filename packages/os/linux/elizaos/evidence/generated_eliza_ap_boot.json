@@ -5,7 +5,7 @@
   "provenance": "generated_eliza_ap",
   "schema": "eliza.os.linux.chip_boot.v1",
   "status": "blocked",
-  "transcript_path": "/home/shaw/milady/eliza/packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "transcript_path": "packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
   "validation": {
     "problems": [
       "boot transcript missing marker group: elizaos-firstboot-ready"

@@ -139,15 +139,20 @@ def compact_component_model_record(model: dict[str, Any]) -> dict[str, Any]:
         "footprint": str(model.get("footprint", "")),
         "visual_package_class": str(model.get("visual_package_class", "")),
         "pinout_file": str(model.get("pinout_file", "")),
+        "pinout_bound": bool(model.get("pinout_bound") is True),
         "pinout_status": str(model.get("pinout_status", "")),
         "coverage": str(model.get("coverage", "")),
         "land_pattern_basis": str(model.get("land_pattern_basis", "")),
+        "pattern_bound": bool(model.get("pattern_bound") is True),
+        "pattern_binding_status": str(model.get("pattern_binding_status", "")),
+        "support_pattern_bound": bool(model.get("support_pattern_bound") is True),
         "support_pattern_has_explicit_provenance": bool(
             model.get("support_pattern_has_explicit_provenance") is True
         ),
         "pad_visual_count": int(model.get("pad_visual_count", 0) or 0),
         "pad_contract_covered_count": int(model.get("pad_contract_covered_count", 0) or 0),
         "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+        "terminal_contract_bound": bool(model.get("terminal_contract_bound") is True),
         "non_signal_pad_contract_count": len(model.get("non_signal_pad_contract", [])),
         "npth_mechanical_feature_contract_count": len(
             model.get("npth_mechanical_feature_contract", [])
@@ -163,6 +168,7 @@ def compact_component_model_record(model: dict[str, Any]) -> dict[str, Any]:
             model.get("npth_mechanical_feature_contract_matches_footprint") is True
         ),
         "local_discrete_step_file": str(model.get("local_discrete_step_file", "")),
+        "local_step_bound": bool(model.get("local_step_bound") is True),
         "local_discrete_step_sha256": str(model.get("local_discrete_step_sha256", "")),
         "local_discrete_step_bytes": int(model.get("local_discrete_step_bytes", 0) or 0),
         "local_discrete_step_imported_as_solid": bool(
@@ -1282,6 +1288,9 @@ def main() -> int:
             )
         ):
             raise ValueError("candidate_end_to_end_context nested summaries must be mappings")
+        assert isinstance(candidate_visual, dict)
+        assert isinstance(candidate_source_binding, dict)
+        assert isinstance(candidate_models, dict)
         contract_mismatches: list[str] = []
         expected_candidate_context = {
             "status": "blocked_local_candidate_outputs_not_release",
@@ -1333,6 +1342,12 @@ def main() -> int:
             for model in component_manifest_source.get("models", [])
             if isinstance(model, dict)
         ]
+        for model in component_models_source:
+            if bool(model.get("pinout_bound")) != bool(model.get("pinout_file")):
+                raise ValueError(
+                    "component model pinout_bound field diverges from pinout_file: "
+                    f"{model.get('reference', '')}"
+                )
         expected_candidate_counts: dict[str | tuple[str, str], Any] = {
             "source_step_size_bytes": source_step_path.stat().st_size,
             ("routed_candidate_source_binding", "source_board_sha256"): source_board_counts[
@@ -1623,6 +1638,18 @@ def main() -> int:
             ): traceability_summary.get("cad_connection_bend_radius_requirement_defined_count"),
             (
                 "kicad_cad_traceability",
+                "cad_connection_mechanical_envelope_defined_count",
+            ): traceability_summary.get("cad_connection_mechanical_envelope_defined_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_all_records_have_mechanical_envelope",
+            ): traceability_summary.get("cad_connection_all_records_have_mechanical_envelope"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_mechanical_envelope_release_credit",
+            ): traceability_summary.get("cad_connection_mechanical_envelope_release_credit"),
+            (
+                "kicad_cad_traceability",
                 "cad_connection_supplier_release_required_count",
             ): traceability_summary.get("cad_connection_supplier_release_required_count"),
             ("kicad_cad_traceability", "incomplete_footprint_count"): traceability_summary.get(
@@ -1659,6 +1686,14 @@ def main() -> int:
                 "component_model_manifest_summary",
                 "support_pattern_model_count",
             ): component_terminal_summary.get("support_pattern_model_count"),
+            (
+                "component_model_manifest_summary",
+                "pattern_bound_model_count",
+            ): component_terminal_summary.get("pattern_bound_model_count"),
+            (
+                "component_model_manifest_summary",
+                "terminal_contract_bound_model_count",
+            ): component_terminal_summary.get("terminal_contract_bound_model_count"),
             (
                 "component_model_manifest_summary",
                 "models_with_terminal_contract_or_no_electrical_pads_count",
@@ -1709,6 +1744,10 @@ def main() -> int:
                 for model in component_models_source
                 if model.get("local_discrete_step_bbox_matches_envelope") is True
             ),
+            (
+                "component_model_manifest_summary",
+                "local_step_bound_model_count",
+            ): sum(1 for model in component_models_source if model.get("local_step_bound") is True),
             ("component_model_manifest_summary", "component_model_record_count"): len(
                 component_models_source
             ),
@@ -1738,8 +1777,16 @@ def main() -> int:
             ): component_dir_manifest_source.get("support_pattern_model_record_count"),
             (
                 "component_model_directory_summary",
+                "pattern_bound_model_record_count",
+            ): component_dir_manifest_source.get("pattern_bound_model_record_count"),
+            (
+                "component_model_directory_summary",
                 "terminal_contract_model_record_count",
             ): component_dir_manifest_source.get("terminal_contract_model_record_count"),
+            (
+                "component_model_directory_summary",
+                "terminal_contract_bound_model_record_count",
+            ): component_dir_manifest_source.get("terminal_contract_bound_model_record_count"),
             (
                 "component_model_directory_summary",
                 "terminal_contract_total_count",
@@ -1768,6 +1815,10 @@ def main() -> int:
                 "component_model_directory_summary",
                 "local_discrete_step_bbox_match_count",
             ): component_dir_manifest_source.get("local_discrete_step_bbox_match_count"),
+            (
+                "component_model_directory_summary",
+                "local_step_bound_model_record_count",
+            ): component_dir_manifest_source.get("local_step_bound_model_record_count"),
             (
                 "component_model_directory_summary",
                 "npth_mechanical_feature_contract_total_count",
@@ -1959,6 +2010,7 @@ def main() -> int:
         for section, field in [
             ("cad_connection_coverage", "release_credit"),
             ("kicad_cad_traceability", "release_credit"),
+            ("kicad_cad_traceability", "cad_connection_mechanical_envelope_release_credit"),
             ("component_model_manifest_summary", "release_allowed"),
             ("component_model_directory_summary", "release_allowed"),
         ]:
@@ -1974,6 +2026,10 @@ def main() -> int:
             (
                 "kicad_cad_traceability",
                 "cad_connection_all_represented_routes_have_layer_source_and_class",
+            ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_all_records_have_mechanical_envelope",
             ),
             ("component_model_manifest_summary", "all_model_pad_counts_match_visuals"),
             ("component_model_manifest_summary", "all_models_have_visual_package_class"),
@@ -1995,6 +2051,14 @@ def main() -> int:
             ),
             (
                 "component_model_manifest_summary",
+                "all_models_have_pattern_binding",
+            ),
+            (
+                "component_model_manifest_summary",
+                "all_models_have_terminal_contract_binding",
+            ),
+            (
+                "component_model_manifest_summary",
                 "all_model_pad_visuals_have_contract",
             ),
             (
@@ -2008,6 +2072,10 @@ def main() -> int:
             (
                 "component_model_manifest_summary",
                 "all_models_have_local_discrete_step_file",
+            ),
+            (
+                "component_model_manifest_summary",
+                "all_models_have_local_step_binding",
             ),
             (
                 "component_model_manifest_summary",
@@ -2072,6 +2140,10 @@ def main() -> int:
             ),
             (
                 "component_model_directory_summary",
+                "all_model_records_have_local_step_binding",
+            ),
+            (
+                "component_model_directory_summary",
                 "all_local_discrete_step_files_import_as_solids",
             ),
             (
@@ -2090,6 +2162,14 @@ def main() -> int:
             (
                 "component_model_directory_summary",
                 "all_support_pattern_records_have_explicit_provenance",
+            ),
+            (
+                "component_model_directory_summary",
+                "all_model_records_have_pattern_binding",
+            ),
+            (
+                "component_model_directory_summary",
+                "all_model_records_have_terminal_contract_binding",
             ),
             (
                 "component_model_directory_summary",

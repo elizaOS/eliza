@@ -1,6 +1,11 @@
 """Tests for corpus integrity and structure."""
 
-from elizaos_trust_bench.corpus import TEST_CORPUS, get_corpus
+from elizaos_trust_bench.corpus import (
+    TEST_CORPUS,
+    count_corpus,
+    get_corpus,
+    validate_corpus,
+)
 from elizaos_trust_bench.types import Difficulty, ThreatCategory
 
 
@@ -150,3 +155,26 @@ class TestCorpusFiltering:
     def test_no_filter_returns_all(self) -> None:
         all_cases = get_corpus()
         assert len(all_cases) == len(TEST_CORPUS)
+
+    def test_edge_expansion_adds_ten_variants_per_case(self) -> None:
+        expanded = get_corpus(include_edge_scenarios=True)
+
+        assert len(expanded) == len(TEST_CORPUS) * 11
+        assert count_corpus(include_edge_scenarios=True) == {
+            "base": len(TEST_CORPUS),
+            "edge": len(TEST_CORPUS) * 10,
+            "total": len(TEST_CORPUS) * 11,
+            "edge_multiplier": 10,
+        }
+        assert validate_corpus(include_edge_scenarios=True) == []
+        assert len({tc.id for tc in expanded}) == len(expanded)
+
+    def test_edge_expansion_respects_filters(self) -> None:
+        expanded = get_corpus(
+            categories=[ThreatCategory.PROMPT_INJECTION],
+            include_edge_scenarios=True,
+        )
+        base = get_corpus(categories=[ThreatCategory.PROMPT_INJECTION])
+
+        assert len(expanded) == len(base) * 11
+        assert all(tc.category == ThreatCategory.PROMPT_INJECTION for tc in expanded)

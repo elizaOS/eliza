@@ -1,6 +1,11 @@
 {
   "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "claim_policy": {
+    "false_claim_flags": {
+      "linux_capable_claim_allowed": false,
+      "phone_2028_claim_allowed": false,
+      "rva23_claim_allowed": false
+    },
     "linux_capable_claim_allowed": false,
     "no_phase_may_pass_without_exit_gates": true,
     "phone_2028_claim_allowed": false,

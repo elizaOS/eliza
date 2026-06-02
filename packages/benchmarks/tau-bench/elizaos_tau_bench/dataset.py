@@ -16,6 +16,20 @@ from typing import Iterator, Optional
 from elizaos_tau_bench.types import DomainName, Task, TaskSplit
 
 
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("impatient_user", "The user is in a hurry and may give terse replies; still follow policy and confirm required details."),
+    ("partial_memory", "The user remembers only some identifiers at first and may reveal details only after being asked."),
+    ("policy_sensitive", "The user asks for the fastest path, but you must obey all domain policies and eligibility rules."),
+    ("ambiguous_preference", "The user has a secondary preference that should not override the explicit task goal."),
+    ("correction_midstream", "The user may correct a detail once; update state carefully before taking irreversible actions."),
+    ("privacy_cautious", "The user is privacy-conscious and may resist sharing unnecessary personal information."),
+    ("multi_item_context", "The user mentions related orders or trips; act only on the item needed for this task."),
+    ("channel_noise", "The conversation contains casual filler; extract only task-relevant constraints."),
+    ("cost_sensitive", "The user is cost-sensitive and asks about fees or prices before final confirmation."),
+    ("confirmation_required", "Before finalizing, clearly confirm the concrete change or answer that satisfies the task."),
+)
+
+
 def _load_retail_tasks(split: TaskSplit) -> list[Task]:
     if split == "test":
         from elizaos_tau_bench.upstream.envs.retail.tasks_test import TASKS_TEST
@@ -75,6 +89,50 @@ def iter_tasks(
             yield domain, idx, tasks[idx]
 
 
+def expand_task_items(
+    items: list[tuple[DomainName, int, Task]],
+) -> list[tuple[DomainName, int, Task, str, str]]:
+    expanded: list[tuple[DomainName, int, Task, str, str]] = [
+        (domain, idx, task, "base", "") for domain, idx, task in items
+    ]
+    for domain, idx, task in items:
+        for variant_id, note in EDGE_VARIANTS:
+            expanded.append((domain, idx, task, variant_id, note))
+    return expanded
+
+
+def count_task_items(
+    items: list[tuple[DomainName, int, Task]],
+    *,
+    include_edge_scenarios: bool,
+) -> dict[str, int]:
+    base = len(items)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge, "edge_multiplier": len(EDGE_VARIANTS)}
+
+
+def validate_task_items(
+    items: list[tuple[DomainName, int, Task]],
+    *,
+    include_edge_scenarios: bool,
+) -> list[str]:
+    errors: list[str] = []
+    seen = {(domain, idx) for domain, idx, _ in items}
+    if len(seen) != len(items):
+        errors.append("duplicate base task selection")
+    if include_edge_scenarios:
+        variant_ids = [variant_id for variant_id, _ in EDGE_VARIANTS]
+        if len(variant_ids) != 10:
+            errors.append(f"expected 10 edge variants, found {len(variant_ids)}")
+        if len(set(variant_ids)) != len(variant_ids):
+            errors.append("duplicate edge variant ids")
+        expanded = expand_task_items(items)
+        expected = len(items) * 11
+        if len(expanded) != expected:
+            errors.append(f"expected {expected} expanded tasks, got {len(expanded)}")
+    return errors
+
+
 # --- Sample tasks (smoke only) -------------------------------------------------
 # Four tiny hand-written tasks for harness smoke tests when no LLM is available.
 # These reuse real upstream Task ids so the env still works, but they are NOT
@@ -114,6 +172,10 @@ __all__ = [
     "load_domain_tasks",
     "task_count",
     "iter_tasks",
+    "expand_task_items",
+    "count_task_items",
+    "validate_task_items",
     "iter_sample_tasks",
     "SAMPLE_TASKS",
+    "EDGE_VARIANTS",
 ]

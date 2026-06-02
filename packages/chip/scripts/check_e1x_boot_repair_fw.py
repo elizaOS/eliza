@@ -96,10 +96,11 @@ def utc_now() -> str:
 
 
 def ensure_generated_rom() -> None:
-    required = [
+    required: list[Path] = [
         path
         for case in ROM_CASES
         for path in (case["rom_json"], case["rom_hex"], case["manifest_json"])
+        if isinstance(path, Path)
     ]
     if all(path.is_file() for path in required):
         return
@@ -409,6 +410,16 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fuse_otp_claim_allowed": False,
+            "firmware_release_claim_allowed": False,
+        },
         "claim_boundary": CLAIM_BOUNDARY,
         "evidence_paths": EVIDENCE_PATHS,
         "checks": checks,

@@ -217,7 +217,7 @@ release_blockers:
   - Cellular supplier region SKU, band matrix, design guide, pad map, reference layout, STEP/B-rep, firmware, carrier, PTCRB, GCF, and SAR evidence are missing.
   - Murata Type 2EA pinout, land pattern, reference layout, STEP/B-rep, firmware/NVRAM/CLM/license, regulatory database, and antenna gain review are missing.
   - Routed RF geometry, matching networks, conducted access, VNA, coexistence, GNSS desense, SAR pre-scan, and factory RF calibration logs are missing.
-  - Routed PCB, clean ERC/DRC, routed STEP, enclosure clearance, factory probe coordinates, and first-article transcripts are missing.
+  - Local routed PCB and routed STEP candidates exist for review only; clean ERC/DRC, supplier-approved routed STEP, enclosure clearance, factory probe coordinates, and first-article transcripts are missing.
 forbidden_claims:
   - wireless_module_release_ready
   - radio_module_selection_final

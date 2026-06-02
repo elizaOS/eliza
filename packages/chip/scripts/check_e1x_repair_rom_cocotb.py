@@ -37,6 +37,15 @@ REAL_GRAPH_NORMAL_ROM_HEX = (
 REAL_GRAPH_NORMAL_MANIFEST_JSON = (
     ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_wafer_repair_claim_allowed": False,
+}
 RUNS = {
     "loader": {
         "top": "e1x_repair_rom_loader_tb",
@@ -314,6 +323,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": "E1X repair-ROM loader/state cocotb verification only; not full fuse ROM, firmware, wafer-scale route-table programming, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_repair_rom_loader.sv",

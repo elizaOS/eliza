@@ -14,6 +14,54 @@ interface ElizaWindow extends Window {
   __ELIZA_API_TOKEN__?: string;
 }
 
+function assertNonEmptyText(text: unknown): string {
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new Error("Agent.chat requires non-empty text");
+  }
+  return text;
+}
+
+function assertRequestPath(path: unknown): string {
+  if (typeof path !== "string" || path.trim().length === 0) {
+    throw new Error("Agent.request path must start with /");
+  }
+  const trimmed = path.trim();
+  if (
+    !trimmed.startsWith("/") ||
+    trimmed.startsWith("//") ||
+    trimmed.includes("\\")
+  ) {
+    throw new Error(
+      "Agent.request requires a local path that starts with / and is not an absolute URL",
+    );
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol) {
+      throw new Error(
+        "Agent.request requires a local path that starts with / and is not an absolute URL",
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("absolute URL")) {
+      throw err;
+    }
+  }
+  return trimmed;
+}
+
+function assertRequestMethod(method: unknown): string {
+  if (method === undefined) return "GET";
+  if (typeof method !== "string") {
+    throw new Error("Unsupported HTTP method");
+  }
+  const normalized = method.trim().toUpperCase();
+  if (!/^[A-Z]{1,16}$/.test(normalized)) {
+    throw new Error("Unsupported HTTP method");
+  }
+  return normalized;
+}
+
 /**
  * Web fallback implementation.
  *
@@ -226,10 +274,11 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   }
 
   async chat(options: { text: string }): Promise<ChatResult> {
+    const text = assertNonEmptyText(options.text);
     if (!this.canReachApi()) {
       return { text: "Agent API not available", agentName: "System" };
     }
-    return this.chatViaConversation(options.text);
+    return this.chatViaConversation(text);
   }
 
   async getLocalAgentToken(): Promise<LocalAgentTokenResult> {
@@ -241,9 +290,8 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   }
 
   async request(options: AgentRequestOptions): Promise<AgentRequestResult> {
-    if (!options.path?.startsWith("/")) {
-      throw new Error("Agent.request path must start with /");
-    }
+    const path = assertRequestPath(options.path);
+    const method = assertRequestMethod(options.method);
     if (this.isLocalAgentIpcBase()) {
       return {
         status: 503,
@@ -256,8 +304,8 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         }),
       };
     }
-    const res = await fetch(`${this.apiBase()}${options.path}`, {
-      method: options.method ?? "GET",
+    const res = await fetch(`${this.apiBase()}${path}`, {
+      method,
       headers: {
         ...this.authHeaders(),
         ...options.headers,

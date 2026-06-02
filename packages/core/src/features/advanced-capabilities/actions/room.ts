@@ -808,6 +808,9 @@ function makeRoomOpChildAction(args: {
 				options?.parameters && typeof options.parameters === "object"
 					? (options.parameters as Record<string, unknown>)
 					: {};
+			const actionCallback: typeof callback = callback
+				? (response, actionName) => callback(response, actionName ?? args.name)
+				: undefined;
 			return roomOpAction.handler(
 				runtime,
 				message,
@@ -819,7 +822,7 @@ function makeRoomOpChildAction(args: {
 						op: args.op,
 					},
 				},
-				callback,
+				actionCallback,
 				responses,
 			);
 		},

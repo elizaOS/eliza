@@ -29,9 +29,18 @@ export interface FrontendKpiSample {
 // The page-side global the init script populates and readFrontendKpis() drains.
 const KPI_GLOBAL = "__elizaLoadperfKpi__";
 
+// The composer testid marks "first interactive". We snapshot the JS-transfer
+// total the moment it appears so the payload KPI reflects the cost to reach a
+// usable chat shell — before the shell's idle requestIdleCallback warm-up
+// (prefetchRouteViewChunks in App.tsx) speculatively pulls every other route's
+// lazy chunk and inflates the chat-route number.
+const FIRST_INTERACTIVE_SELECTOR = '[data-testid="chat-composer-textarea"]';
+
 interface KpiCollectorState {
   lcpMs: number | null;
   cls: number;
+  /** JS-transfer total snapshotted at first-interactive, null until captured. */
+  firstInteractiveJsBytes: number | null;
 }
 
 declare global {
@@ -45,43 +54,97 @@ declare global {
  * captured. Must be called before page.goto/openAppPath.
  */
 export async function installWebVitalsObservers(page: Page): Promise<void> {
-  await page.addInitScript((globalKey: string) => {
-    const state: KpiCollectorState = { lcpMs: null, cls: 0 };
-    (window as unknown as Record<string, KpiCollectorState>)[globalKey] = state;
+  await page.addInitScript(
+    (args: { globalKey: string; firstInteractiveSelector: string }) => {
+      const { globalKey, firstInteractiveSelector } = args;
+      const state: KpiCollectorState = {
+        lcpMs: null,
+        cls: 0,
+        firstInteractiveJsBytes: null,
+      };
+      (window as unknown as Record<string, KpiCollectorState>)[globalKey] =
+        state;
 
-    try {
-      const lcpObserver = new PerformanceObserver((list) => {
-        const entries = list.getEntries();
-        const last = entries[entries.length - 1];
-        if (last) {
-          state.lcpMs = last.startTime;
-        }
-      });
-      lcpObserver.observe({
-        type: "largest-contentful-paint",
-        buffered: true,
-      });
-    } catch {
-      // LCP unsupported in this engine; leave lcpMs null.
-    }
-
-    try {
-      const clsObserver = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          const shift = entry as PerformanceEntry & {
-            value: number;
-            hadRecentInput: boolean;
-          };
-          if (!shift.hadRecentInput) {
-            state.cls += shift.value;
+      const sumScriptBytes = (): number => {
+        let total = 0;
+        for (const entry of performance.getEntriesByType(
+          "resource",
+        ) as PerformanceResourceTiming[]) {
+          if (entry.initiatorType === "script") {
+            total += entry.encodedBodySize;
           }
         }
-      });
-      clsObserver.observe({ type: "layout-shift", buffered: true });
-    } catch {
-      // layout-shift unsupported; leave cls at 0.
-    }
-  }, KPI_GLOBAL);
+        return total;
+      };
+
+      // Snapshot JS transfer the instant the composer mounts. A MutationObserver
+      // fires synchronously within the microtask of the DOM insertion, before
+      // the idle-time route prefetch can run, so the captured total is the
+      // eager cost to reach an interactive chat shell.
+      const captureFirstInteractive = () => {
+        if (state.firstInteractiveJsBytes !== null) return false;
+        if (!document.querySelector(firstInteractiveSelector)) return false;
+        state.firstInteractiveJsBytes = sumScriptBytes();
+        return true;
+      };
+      if (!captureFirstInteractive()) {
+        const domObserver = new MutationObserver(() => {
+          if (captureFirstInteractive()) domObserver.disconnect();
+        });
+        const startObserving = () => {
+          if (captureFirstInteractive()) return;
+          domObserver.observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+          });
+        };
+        if (document.documentElement) {
+          startObserving();
+        } else {
+          document.addEventListener("DOMContentLoaded", startObserving, {
+            once: true,
+          });
+        }
+      }
+
+      try {
+        const lcpObserver = new PerformanceObserver((list) => {
+          const entries = list.getEntries();
+          const last = entries[entries.length - 1];
+          if (last) {
+            state.lcpMs = last.startTime;
+          }
+        });
+        lcpObserver.observe({
+          type: "largest-contentful-paint",
+          buffered: true,
+        });
+      } catch {
+        // LCP unsupported in this engine; leave lcpMs null.
+      }
+
+      try {
+        const clsObserver = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const shift = entry as PerformanceEntry & {
+              value: number;
+              hadRecentInput: boolean;
+            };
+            if (!shift.hadRecentInput) {
+              state.cls += shift.value;
+            }
+          }
+        });
+        clsObserver.observe({ type: "layout-shift", buffered: true });
+      } catch {
+        // layout-shift unsupported; leave cls at 0.
+      }
+    },
+    {
+      globalKey: KPI_GLOBAL,
+      firstInteractiveSelector: FIRST_INTERACTIVE_SELECTOR,
+    },
+  );
 }
 
 /**
@@ -92,7 +155,7 @@ export async function readFrontendKpis(page: Page): Promise<FrontendKpiSample> {
   return page.evaluate((globalKey: string): FrontendKpiSample => {
     const state = (window as unknown as Record<string, KpiCollectorState>)[
       globalKey
-    ] ?? { lcpMs: null, cls: 0 };
+    ] ?? { lcpMs: null, cls: 0, firstInteractiveJsBytes: null };
 
     const paintEntries = performance.getEntriesByType("paint");
     const fcpEntry = paintEntries.find(
@@ -103,12 +166,16 @@ export async function readFrontendKpis(page: Page): Promise<FrontendKpiSample> {
     const resourceEntries = performance.getEntriesByType(
       "resource",
     ) as PerformanceResourceTiming[];
-    let jsTransferredBytes = 0;
+    let liveJsBytes = 0;
     for (const entry of resourceEntries) {
       if (entry.initiatorType === "script") {
-        jsTransferredBytes += entry.encodedBodySize;
+        liveJsBytes += entry.encodedBodySize;
       }
     }
+
+    // Prefer the first-interactive snapshot (eager cost to a usable shell)
+    // over the live total, which the idle route-prefetch warm-up inflates.
+    const jsTransferredBytes = state.firstInteractiveJsBytes ?? liveJsBytes;
 
     return {
       fcpMs,

@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/objective_readiness/validation/objective_readiness.json"
 EXPECTED_SCHEMA = "eliza.ai_eda.objective_readiness.v1"
 EXPECTED_CLAIM_BOUNDARY = "objective_readiness_audit_only_no_completion_or_release_claim"
+
+
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if report.get("status") != "COMPLETE_READY":
+        flags["completion_claim_allowed"] = False
+    return flags
 REQUIRED_REQUIREMENTS = {
     "research_doc",
     "current_research_watchlist",
@@ -87,6 +94,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         and report.get("completion_claim_allowed") is not False
     ):
         errors.append("completion_claim_allowed must be false unless status is COMPLETE_READY")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("false_claim_flags must match denied objective readiness claims")
 
     evidence_run_ids = report.get("evidence_run_ids")
     if not isinstance(evidence_run_ids, dict):

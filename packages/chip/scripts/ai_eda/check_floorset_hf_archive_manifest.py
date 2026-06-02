@@ -17,6 +17,11 @@ EXPECTED_STATUS = "VERIFIED_FULL_HF_ARCHIVE_SET"
 EXPECTED_ARCHIVE_COUNT = 10
 EXPECTED_TOTAL_BYTES = 29665773263
 RECORDED_INTAKE_STATUS = "RECORDED_IN_REVIEWED_INTAKE"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "unpack_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -122,6 +127,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("unpack_claim_allowed must be false")
     if report.get("e1_signoff_claim_allowed") is not False:
         errors.append("e1_signoff_claim_allowed must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied FloorSet archive claims")
     if report.get("blockers") != []:
         errors.append("blockers must be empty")
     archives = report.get("archives")

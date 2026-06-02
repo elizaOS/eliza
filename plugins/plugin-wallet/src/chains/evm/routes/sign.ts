@@ -34,6 +34,12 @@ interface JsonResponse {
   setHeader?: (name: string, value: string) => void;
 }
 
+class EvmSignInputError extends Error {}
+
+function routeErrorStatus(error: unknown): number {
+  return error instanceof EvmSignInputError ? 400 : 500;
+}
+
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   const origin = (req.headers?.origin as string | undefined) ?? "*";
   const r = res as unknown as JsonResponse;
@@ -92,7 +98,7 @@ function chainFromId(chainId: number): Chain {
   const all = Object.values(viemChains) as Chain[];
   const hit = all.find((c) => typeof c.id === "number" && c.id === chainId);
   if (!hit) {
-    throw new Error(`unsupported EVM chainId: ${chainId}`);
+    throw new EvmSignInputError(`unsupported EVM chainId: ${chainId}`);
   }
   return hit;
 }
@@ -110,7 +116,7 @@ function rpcUrlForChain(runtime: IAgentRuntime, chain: Chain): string {
 
 function readChainId(body: unknown): number {
   if (typeof body !== "object" || body === null) {
-    throw new Error("chainId required");
+    throw new EvmSignInputError("chainId required");
   }
   const c = (body as { chainId?: unknown }).chainId;
   if (typeof c === "number") return c;
@@ -118,7 +124,7 @@ function readChainId(body: unknown): number {
     const n = c.startsWith("0x") ? Number.parseInt(c.slice(2), 16) : Number(c);
     if (Number.isFinite(n)) return n;
   }
-  throw new Error("chainId must be a number or hex string");
+  throw new EvmSignInputError("chainId must be a number or hex string");
 }
 
 const addressHandler: LegacyRouteHandler = async (req, res, runtime) => {
@@ -199,9 +205,13 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
   if (typeof value === "number") return BigInt(value);
   if (typeof value === "string") {
     if (value.length === 0) return undefined;
-    return value.startsWith("0x") ? BigInt(value) : BigInt(value);
+    try {
+      return value.startsWith("0x") ? BigInt(value) : BigInt(value);
+    } catch {
+      throw new EvmSignInputError(`invalid bigint value: ${value}`);
+    }
   }
-  return undefined;
+  throw new EvmSignInputError("bigint value must be a number, bigint, or string");
 }
 
 const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
@@ -244,7 +254,7 @@ const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
     res.status(200).json({ hash, address: account.address, chainId });
   } catch (err) {
     logger.error({ err }, "[wallet/evm/send-transaction] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 
@@ -287,7 +297,7 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
     });
   } catch (err) {
     logger.error({ err }, "[wallet/evm/sign-transaction] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 

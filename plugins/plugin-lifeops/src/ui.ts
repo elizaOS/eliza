@@ -8,7 +8,8 @@ const LIFEOPS_APP_NAME = "@elizaos/plugin-lifeops";
 export const lifeOpsOverlayApp: OverlayApp = {
   name: LIFEOPS_APP_NAME,
   displayName: "LifeOps",
-  description: "Routines, goals, inbox, calendar, and health operations.",
+  description:
+    "Personal assistant workspace for inbox, calendar, reminders, documents, money admin, and owner operations.",
   category: "utility",
   icon: null,
   loader: async () => ({ default: LifeOpsPageView }),
@@ -24,6 +25,7 @@ export {
   BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
 } from "./components/BrowserBridgeSetupPanel.js";
 export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.js";
+export * from "./components/LifeOpsAssistantSection.js";
 export * from "./components/LifeOpsPageSections.js";
 export * from "./components/LifeOpsPageView.js";
 export * from "./components/LifeOpsSettingsSection.js";

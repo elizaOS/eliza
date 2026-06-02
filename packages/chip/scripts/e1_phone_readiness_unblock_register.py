@@ -520,6 +520,12 @@ def main() -> int:
             "local_component_model_support_pattern_model_count": local_progress.get(
                 "component_model_support_pattern_model_count", 0
             ),
+            "local_component_model_pattern_bound_model_count": local_progress.get(
+                "component_model_pattern_bound_model_count", 0
+            ),
+            "local_component_model_terminal_contract_bound_model_count": local_progress.get(
+                "component_model_terminal_contract_bound_model_count", 0
+            ),
             "local_component_model_terminal_contract_or_no_pad_model_count": local_progress.get(
                 "component_model_terminal_contract_or_no_pad_model_count", 0
             ),
@@ -538,12 +544,25 @@ def main() -> int:
             "local_component_model_all_terminal_contract_flags_pass": local_progress.get(
                 "component_model_all_terminal_contract_flags_pass", False
             ),
+            "local_component_model_all_pattern_binding_flags_pass": local_progress.get(
+                "component_model_all_pattern_binding_flags_pass", False
+            ),
             "local_component_model_directory_record_count": local_progress.get(
                 "component_model_directory_record_count", 0
             ),
             "local_component_model_directory_terminal_contract_model_record_count": (
                 local_progress.get(
                     "component_model_directory_terminal_contract_model_record_count", 0
+                )
+            ),
+            "local_component_model_directory_pattern_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_pattern_bound_model_record_count", 0
+                )
+            ),
+            "local_component_model_directory_terminal_contract_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_terminal_contract_bound_model_record_count", 0
                 )
             ),
             "local_component_model_directory_terminal_contract_total_count": local_progress.get(
@@ -587,6 +606,11 @@ def main() -> int:
             "local_component_model_directory_local_discrete_step_bbox_match_count": (
                 local_progress.get(
                     "component_model_directory_local_discrete_step_bbox_match_count", 0
+                )
+            ),
+            "local_component_model_directory_local_step_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_local_step_bound_model_record_count", 0
                 )
             ),
             "local_component_model_directory_local_discrete_step_bytes_total": (

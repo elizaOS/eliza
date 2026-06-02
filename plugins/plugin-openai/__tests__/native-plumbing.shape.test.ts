@@ -234,6 +234,53 @@ describe("OpenAI native text plumbing", () => {
     });
   }, 180_000);
 
+  it("forwards streaming text chunks to the core onStreamChunk callback", async () => {
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "hel";
+        yield "lo";
+      })(),
+      text: Promise.resolve("hello"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 2, outputTokens: 1 }),
+    });
+
+    const onStreamChunk = vi.fn();
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "stream",
+      stream: true,
+      onStreamChunk,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    const chunks: string[] = [];
+    for await (const chunk of stream.textStream) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual(["hel", "lo"]);
+    expect(onStreamChunk).toHaveBeenNthCalledWith(1, "hel");
+    expect(onStreamChunk).toHaveBeenNthCalledWith(2, "lo");
+  });
+
+  it("maps string responseFormat json_object into the AI SDK responseFormat", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "{}",
+      finishReason: "stop",
+      usage: { inputTokens: 3, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "json",
+      responseFormat: "json_object",
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.responseFormat).toEqual({ type: "json" });
+  });
+
   it("marks unconsumed streaming companion promises as handled", async () => {
     const noOutputError = Object.assign(
       new Error("No output generated. Check the stream for errors."),

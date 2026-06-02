@@ -59,6 +59,9 @@ interface ParseClampedIntegerOptions {
   fallback?: number;
 }
 
+const MCP_MARKETPLACE_QUERY_MAX_LENGTH = 200;
+const MCP_MARKETPLACE_SERVER_NAME_MAX_LENGTH = 200;
+
 function parseClampedInteger(
   value: string | null | undefined,
   options: ParseClampedIntegerOptions = {}
@@ -66,14 +69,26 @@ function parseClampedInteger(
   const raw = value == null ? "" : value.trim();
   if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) {
+  if (!/^[+-]?\d+$/.test(raw)) {
+    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) {
     return Number.isFinite(options.fallback) ? options.fallback : undefined;
   }
 
   if (options.min !== undefined && parsed < options.min) return options.min;
   if (options.max !== undefined && parsed > options.max) return options.max;
   return parsed;
+}
+
+function normalizeBoundedString(value: string, maxLength: number, label: string): string {
+  const normalized = value.trim();
+  if (normalized.length > maxLength) {
+    throw new RangeError(`${label} must be ${maxLength} characters or fewer`);
+  }
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +103,17 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
   // ═══════════════════════════════════════════════════════════════════════
 
   if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
-    const query = url.searchParams.get("q") ?? "";
+    let query: string;
+    try {
+      query = normalizeBoundedString(
+        url.searchParams.get("q") ?? "",
+        MCP_MARKETPLACE_QUERY_MAX_LENGTH,
+        "Marketplace search query"
+      );
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : String(err), 400);
+      return true;
+    }
     const limitStr = url.searchParams.get("limit");
     const limit = limitStr ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 }) : 30;
     try {
@@ -107,14 +132,25 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       "server name"
     );
     if (serverName === null) return true;
-    if (!serverName.trim()) {
+    let normalizedServerName: string;
+    try {
+      normalizedServerName = normalizeBoundedString(
+        serverName,
+        MCP_MARKETPLACE_SERVER_NAME_MAX_LENGTH,
+        "Server name"
+      );
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : String(err), 400);
+      return true;
+    }
+    if (!normalizedServerName) {
       error(res, "Server name is required", 400);
       return true;
     }
     try {
-      const details = await getMcpServerDetails(serverName);
+      const details = await getMcpServerDetails(normalizedServerName);
       if (!details) {
-        error(res, `MCP server "${serverName}" not found`, 404);
+        error(res, `MCP server "${normalizedServerName}" not found`, 404);
         return true;
       }
       json(res, { ok: true, server: details });
@@ -246,6 +282,16 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) {
         error(res, "servers must be a JSON object", 400);
         return true;
+      }
+      for (const serverName of Object.keys(body.servers)) {
+        if (ctx.isBlockedObjectKey(serverName)) {
+          error(
+            res,
+            'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
+            400
+          );
+          return true;
+        }
       }
       const mcpRejection = await ctx.resolveMcpServersRejection(
         body.servers as Record<string, unknown>

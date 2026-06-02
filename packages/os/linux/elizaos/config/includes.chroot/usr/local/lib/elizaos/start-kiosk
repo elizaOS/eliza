@@ -1,0 +1,69 @@
+#!/bin/sh
+# elizaOS Linux — locked single-app kiosk entrypoint.
+#
+# Run as the seat owner inside `cage` (the single-window Wayland compositor).
+# This is the WHOLE GUI: no desktop, no window switching, no escape. cage is
+# invoked as `cage -- /usr/local/lib/elizaos/start-kiosk` by
+# elizaos-kiosk.service, so this script is cage's only child window and exec()s
+# the elizaOS application in place.
+#
+# Surface selection:
+#   - Electrobun-capable images: the app (/opt/elizaos/app/elizaos) launches in
+#     kiosk shell mode and runs its OWN self-contained embedded runtime
+#     (Resources/app/eliza-dist, full node_modules baked) — its tested launch
+#     path — so we do NOT set ELIZA_DESKTOP_API_BASE (that would force external
+#     mode against a separate agent service) and we do NOT pre-wait on agent
+#     health: the app renders the kiosk shell + chat pill immediately and brings
+#     its runtime up behind a connecting state. The separate elizaos-agent
+#     service is masked when this binary is present (see the app-local-mode
+#     hook) so nothing competes for :31337.
+#   - Images without an Electrobun binary, including current arm64 and riscv64
+#     agent-bundle builds: a WebKitGTK kiosk (epiphany application mode)
+#     rendering the agent's web UI, which is served by the separate
+#     elizaos-agent.service, so that path waits for agent health first.
+#
+# Fail-closed: if neither surface can start, exit non-zero and let systemd
+# surface the failure. No silent drop to a desktop or shell.
+set -eu
+
+log() { echo "elizaos-kiosk: $*" >&2; }
+
+AGENT_URL="${ELIZAOS_AGENT_URL:-http://127.0.0.1:31337}"
+export ELIZAOS_SHELL_MODE="${ELIZAOS_SHELL_MODE:-kiosk}"
+export ELIZAOS_AGENT_URL="${AGENT_URL}"
+
+# Software rendering for the WebKitGTK surface. On a QEMU/headless virtio-gpu
+# there is no hardware GL (libEGL: failed to create dri2 screen), and WebKitGTK
+# renders its web content via GL by default — without these it paints a black
+# window. Force Mesa to llvmpipe and disable WebKit's GL/dmabuf renderer so the
+# UI paints in software. Harmless on real GPUs (a board profile can drop them).
+export LIBGL_ALWAYS_SOFTWARE=1
+export GALLIUM_DRIVER=llvmpipe
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+ELECTROBUN=/opt/elizaos/app/elizaos
+if [ -x "${ELECTROBUN}" ]; then
+    log "launching Electrobun app (local embedded runtime): ${ELECTROBUN} --shell-mode=kiosk"
+    exec "${ELECTROBUN}" --shell-mode=kiosk
+fi
+
+# WebKitGTK fallback (riscv64). The agent runs as the separate
+# elizaos-agent.service here, so wait for its health before rendering so the
+# kiosk does not flash a "no backend" state.
+if command -v epiphany-browser >/dev/null 2>&1; then
+    log "waiting for agent health at ${AGENT_URL}/api/health"
+    for _ in $(seq 1 240); do
+        if curl -fsS "${AGENT_URL}/api/health" >/dev/null 2>&1; then
+            log "agent healthy"
+            break
+        fi
+        sleep 1
+    done
+    log "Electrobun binary absent at ${ELECTROBUN}; using WebKitGTK kiosk fallback"
+    exec epiphany-browser --application-mode \
+        --profile=/tmp/elizaos-kiosk "${AGENT_URL}/"
+fi
+
+log "FATAL: no kiosk surface available (missing ${ELECTROBUN} and epiphany-browser)"
+exit 1

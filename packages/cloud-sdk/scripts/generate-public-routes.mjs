@@ -226,9 +226,11 @@ function isPathParamArray(value: PathParamValue): value is readonly (string | nu
 
 function encodeCatchAllPathValue(value: PathParamValue): string {
   const parts = isPathParamArray(value) ? value : String(value).split("/");
+  if (parts.length === 0 || parts[0] === "" || parts[parts.length - 1] === "") {
+    throw new Error("Catch-all path parameter cannot start or end with an empty segment");
+  }
   return parts
     .map(String)
-    .filter(Boolean)
     .map((part) => encodeURIComponent(part))
     .join("/");
 }

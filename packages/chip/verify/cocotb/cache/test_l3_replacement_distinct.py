@@ -210,7 +210,7 @@ async def test_l3_replacement_policies_distinct(dut):
 
     print(
         "L3_REPLACEMENT_DISTINCT_SUMMARY "
-        f"drrip_vs_hawkeye_diff={sum(a != b for a, b in zip(drrip_seq, hawkeye_seq))} "
-        f"drrip_vs_mj_diff={sum(a != b for a, b in zip(drrip_seq, mockingjay_seq))} "
-        f"hawkeye_vs_mj_diff={sum(a != b for a, b in zip(hawkeye_seq, mockingjay_seq))}"
+        f"drrip_vs_hawkeye_diff={sum(a != b for a, b in zip(drrip_seq, hawkeye_seq, strict=True))} "
+        f"drrip_vs_mj_diff={sum(a != b for a, b in zip(drrip_seq, mockingjay_seq, strict=True))} "
+        f"hawkeye_vs_mj_diff={sum(a != b for a, b in zip(hawkeye_seq, mockingjay_seq, strict=True))}"
     )

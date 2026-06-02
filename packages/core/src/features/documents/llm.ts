@@ -1,9 +1,4 @@
-import {
-	generateText as aiGenerateText,
-	type EmbeddingModel,
-	embed,
-	type ModelMessage,
-} from "ai";
+import type { EmbeddingModel, ModelMessage } from "ai";
 import { logger } from "../../logger";
 import {
 	logActiveTrajectoryLlmCall,
@@ -34,6 +29,43 @@ import type { ModelConfig, TextGenerationOptions } from "./types";
 
 function importAiProvider<T>(specifier: string): Promise<T> {
 	return import(/* @vite-ignore */ specifier) as Promise<T>;
+}
+
+/**
+ * Lazily load the `ai` package's runtime functions (`generateText`, `embed`).
+ *
+ * WHY lazy: this module is reachable from `@elizaos/core`'s browser entry (via
+ * `features/documents`), so a static `import { generateText, embed } from "ai"`
+ * pulled the entire Vercel AI SDK into every consumer's bundle — including the
+ * agent frontend, which calls the agent over HTTP and never runs document LLM
+ * inference itself. Document processing is a Node-side concern; loading `ai`
+ * on first use keeps it out of the eager frontend graph. Types above stay
+ * `import type` (erased at build, zero cost). Cached so repeated calls don't
+ * re-import.
+ */
+// `typeof import("ai")` is a type-only query (no runtime import) — it gives the
+// real `generateText`/`embed` signatures so call sites keep full type safety
+// while the actual module loads lazily at runtime.
+type AiModule = typeof import("ai");
+type AiGenerateText = AiModule["generateText"];
+type AiEmbed = AiModule["embed"];
+let aiCorePromise: Promise<AiModule> | null = null;
+function loadAiCore(): Promise<AiModule> {
+	aiCorePromise ??= importAiProvider<AiModule>("ai");
+	return aiCorePromise;
+}
+
+// Thin async shims so existing call sites keep their exact shape; each resolves
+// the lazily-loaded `ai` runtime on first call (cached thereafter).
+function aiGenerateText(
+	...args: Parameters<AiGenerateText>
+): ReturnType<AiGenerateText> {
+	return loadAiCore().then((m) =>
+		m.generateText(...args),
+	) as ReturnType<AiGenerateText>;
+}
+function embed(...args: Parameters<AiEmbed>): ReturnType<AiEmbed> {
+	return loadAiCore().then((m) => m.embed(...args)) as ReturnType<AiEmbed>;
 }
 
 type CreateAnthropic = (settings: {

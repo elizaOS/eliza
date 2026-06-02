@@ -92,6 +92,25 @@ interface RegistryHost {
 }
 
 export function registerMobileCameraSource(source: MobileCameraSource): void {
+  const candidate = source as Partial<MobileCameraSource>;
+  for (const method of [
+    "listCameras",
+    "open",
+    "captureJpeg",
+    "close",
+  ] as const) {
+    if (typeof candidate[method] !== "function") {
+      throw new TypeError(`Invalid MobileCameraSource: missing ${method}()`);
+    }
+  }
+  if (
+    candidate.capabilities !== undefined &&
+    typeof candidate.capabilities !== "function"
+  ) {
+    throw new TypeError(
+      "Invalid MobileCameraSource: capabilities must be a function when present",
+    );
+  }
   (globalThis as unknown as RegistryHost)[REGISTRY_KEY] = source;
   logger.info(
     `[MobileCameraSource] registered (${source.constructor?.name ?? "anonymous"})`,

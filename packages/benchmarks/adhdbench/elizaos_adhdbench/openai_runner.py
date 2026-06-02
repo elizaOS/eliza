@@ -227,6 +227,7 @@ class OpenAICompatibleADHDBenchRunner:
                 scenario_ids=self.config.scenario_ids,
                 include_memory_scenarios=is_full,
                 include_planning_scenarios=is_full,
+                include_edge_scenarios=self.config.include_edge_scenarios,
             )
             if not scenarios:
                 continue
@@ -258,6 +259,7 @@ class OpenAICompatibleADHDBenchRunner:
             levels=self.config.levels,
             tags=self.config.tags,
             scenario_ids=self.config.scenario_ids,
+            include_edge_scenarios=self.config.include_edge_scenarios,
         )
         benchmark_results = BenchmarkResults(
             metadata={

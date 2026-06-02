@@ -3,7 +3,7 @@
  */
 
 import type { Component } from "../tui.js";
-import { visibleWidth } from "../utils.js";
+import { truncateToWidth, visibleWidth } from "../utils.js";
 
 /**
  * Toast severity levels.
@@ -151,11 +151,7 @@ export class Toast implements Component {
     );
 
     // Build the content
-    let content = this.message;
-    if (content.length > contentWidth) {
-      // Truncate with ellipsis
-      content = content.slice(0, contentWidth - 1) + "…";
-    }
+    const content = truncateToWidth(this.message, contentWidth, "…");
 
     // Build prefix (icon + padding)
     const prefix = this.showIcon && icon ? `${icon} ` : "";

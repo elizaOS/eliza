@@ -14,6 +14,348 @@ import {
   type TrainingTrajectoryDetail,
   type TrainingTrajectoryList,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Input } from "@elizaos/ui/components";
+import type { ReactNode } from "react";
+
+const FILTER_INPUT_CLASS =
+  "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
+
+/* ── Agent-surface helpers ─────────────────────────────────────────── */
+
+function AgentActionButton({
+  agentId,
+  label,
+  group,
+  description,
+  variant = "outline",
+  size = "sm",
+  className,
+  disabled,
+  onClick,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  variant?: "outline" | "ghost" | "link";
+  size?: "sm";
+  className: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group,
+    description,
+    onActivate: onClick,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size={size}
+      className={className}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={label}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function AgentTextInput({
+  agentId,
+  label,
+  group,
+  description,
+  value,
+  onChange,
+  placeholder,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: "text-input",
+    label,
+    group,
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Input
+      ref={ref}
+      className={FILTER_INPUT_CLASS}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      aria-label={label}
+      {...agentProps}
+    />
+  );
+}
+
+function AgentSelect({
+  agentId,
+  label,
+  group,
+  description,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: readonly string[];
+  placeholder?: string;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "select",
+    label,
+    group,
+    description,
+    options,
+    getValue: () => value,
+    onFill: (next) => onValueChange(next),
+  });
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SettingsControls.SelectTrigger
+        ref={ref}
+        variant="toolbar"
+        aria-label={label}
+        {...agentProps}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SettingsControls.SelectTrigger>
+      {children}
+    </Select>
+  );
+}
+
+type TrajectorySummary = TrainingTrajectoryList["trajectories"][number];
+
+function TrajectoryListItem({
+  trajectory,
+  onSelectTrajectory,
+  t,
+}: {
+  trajectory: TrajectorySummary;
+  onSelectTrajectory: (trajectoryId: string) => void;
+  t: TranslateFn;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `trajectory-item-${trajectory.trajectoryId}`,
+    role: "list-item",
+    label: `Trajectory ${trajectory.trajectoryId}`,
+    group: "trajectory-list",
+    description: "Inspect this trajectory",
+    onActivate: () => onSelectTrajectory(trajectory.trajectoryId),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      className="w-full justify-start rounded-none px-3 py-3 text-left text-xs hover:bg-bg-hover"
+      onClick={() => onSelectTrajectory(trajectory.trajectoryId)}
+      {...agentProps}
+    >
+      <div className="font-mono">{trajectory.trajectoryId}</div>
+      <div className="text-muted mt-1">
+        {t("finetuningview.Calls")} {trajectory.llmCallCount}{" "}
+        {t("finetuningview.Reward")} {trajectory.totalReward ?? "n/a"} ·{" "}
+        {formatDate(trajectory.createdAt)}
+      </div>
+    </Button>
+  );
+}
+
+function DatasetRadioItem({
+  dataset,
+  selectedDatasetId,
+  setSelectedDatasetId,
+  t,
+}: {
+  dataset: TrainingDatasetRecord;
+  selectedDatasetId: string;
+  setSelectedDatasetId: (value: string) => void;
+  t: TranslateFn;
+}) {
+  const checked = selectedDatasetId === dataset.id;
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `dataset-select-${dataset.id}`,
+    role: "list-item",
+    label: `Select dataset ${dataset.id}`,
+    group: "dataset-list",
+    description: "Choose this dataset for training",
+    status: checked ? "active" : "inactive",
+    onActivate: () => setSelectedDatasetId(dataset.id),
+  });
+  return (
+    <label className="flex min-h-touch cursor-pointer items-center gap-3 rounded-xl border border-border/35 bg-bg/20 px-3 py-3 text-sm transition-colors hover:border-border/55 hover:bg-bg/35">
+      <input
+        ref={ref}
+        type="radio"
+        name="dataset-select"
+        checked={checked}
+        onChange={() => setSelectedDatasetId(dataset.id)}
+        aria-current={checked ? "true" : undefined}
+        {...agentProps}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="font-mono text-sm text-txt">{dataset.id}</div>
+        <div className="mt-1 text-xs text-muted">
+          {dataset.sampleCount} {t("finetuningview.samples")}{" "}
+          {dataset.trajectoryCount} {t("finetuningview.trajectories")}
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function JobListItem({
+  job,
+  selectedJobId,
+  setSelectedJobId,
+  cancellingJobId,
+  onCancelJob,
+  t,
+}: {
+  job: TrainingJobRecord;
+  selectedJobId: string;
+  setSelectedJobId: (value: string) => void;
+  cancellingJobId: string;
+  onCancelJob: (jobId: string) => void;
+  t: TranslateFn;
+}) {
+  const { ref: selectRef, agentProps: selectProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `job-item-${job.id}`,
+      role: "list-item",
+      label: `Select job ${job.id}`,
+      group: "job-list",
+      description: "Inspect this training job's logs",
+      status: selectedJobId === job.id ? "active" : "inactive",
+      onActivate: () => setSelectedJobId(job.id),
+    });
+  const cancellable = job.status === "running" || job.status === "queued";
+  const { ref: cancelRef, agentProps: cancelProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `job-cancel-${job.id}`,
+      role: "button",
+      label: `Cancel job ${job.id}`,
+      group: "job-list",
+      description: "Cancel this training job",
+      onActivate: () => onCancelJob(job.id),
+    });
+  return (
+    <div
+      className={`px-3 py-3 text-sm ${
+        selectedJobId === job.id ? "bg-bg-hover" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          ref={selectRef}
+          variant="link"
+          className="h-auto w-auto justify-start p-0 text-left font-mono text-sm"
+          onClick={() => setSelectedJobId(job.id)}
+          {...selectProps}
+        >
+          {job.id}
+        </Button>
+        {cancellable && (
+          <Button
+            ref={cancelRef}
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-xl border-danger/35 px-3 text-xs-tight text-danger shadow-sm hover:border-danger hover:bg-danger/10 disabled:opacity-50"
+            disabled={cancellingJobId === job.id}
+            onClick={() => onCancelJob(job.id)}
+            {...cancelProps}
+          >
+            {cancellingJobId === job.id
+              ? t("finetuningview.Cancelling")
+              : t("finetuningview.Cancel")}
+          </Button>
+        )}
+      </div>
+      <div className="mt-1 text-xs text-muted">
+        {job.status} · {formatProgress(job.progress)} · {job.phase}
+      </div>
+      <div className="text-xs text-muted">{formatDate(job.createdAt)}</div>
+    </div>
+  );
+}
+
+function ModelListItem({
+  model,
+  selectedModelId,
+  setSelectedModelId,
+  t,
+}: {
+  model: TrainingModelRecord;
+  selectedModelId: string;
+  setSelectedModelId: (value: string) => void;
+  t: TranslateFn;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `model-item-${model.id}`,
+    role: "list-item",
+    label: `Select model ${model.id}`,
+    group: "model-list",
+    description: "Choose this trained model for actions",
+    status: selectedModelId === model.id ? "active" : "inactive",
+    onActivate: () => setSelectedModelId(model.id),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      className={`w-full justify-start rounded-none px-3 py-3 text-left text-sm ${
+        selectedModelId === model.id ? "bg-bg-hover" : "hover:bg-bg-hover"
+      }`}
+      onClick={() => setSelectedModelId(model.id)}
+      {...agentProps}
+    >
+      <div className="font-mono">
+        {model.id} {model.active ? t("finetuningview.ActiveIndicator") : ""}
+      </div>
+      <div className="mt-1 text-xs text-muted">
+        {t("finetuningview.backend")} {model.backend}
+        {model.ollamaModel ? ` · ollama: ${model.ollamaModel}` : ""}
+      </div>
+      <div className="text-xs text-muted">
+        {t("finetuningview.benchmark")} {model.benchmark.status}
+        {model.benchmark.lastRunAt
+          ? ` · ${formatDate(model.benchmark.lastRunAt)}`
+          : ""}
+      </div>
+    </Button>
+  );
+}
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -141,9 +483,11 @@ export function TrajectoriesSection({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <AgentActionButton
+            agentId="trajectories-publish"
+            label="Publish trajectories to HuggingFace"
+            group="trajectories"
+            description="Publish collected trajectories to HuggingFace"
             className={FINE_TUNING_ACTION_CLASS}
             disabled={publishingTrajectories || !publishConfigured}
             onClick={onPublishTrajectories}
@@ -151,15 +495,17 @@ export function TrajectoriesSection({
             {publishingTrajectories
               ? t("finetuningview.Publishing")
               : t("finetuningview.PublishToHuggingFace")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+          </AgentActionButton>
+          <AgentActionButton
+            agentId="trajectories-refresh"
+            label="Refresh trajectories"
+            group="trajectories"
+            description="Reload the trajectory list"
             className={FINE_TUNING_ACTION_CLASS}
             onClick={onRefresh}
           >
             {t("common.refresh")}
-          </Button>
+          </AgentActionButton>
         </div>
       </div>
       {!trajectoryList.available ? (
@@ -185,22 +531,12 @@ export function TrajectoriesSection({
                   </div>
                 ) : (
                   trajectoryList.trajectories.map((trajectory) => (
-                    <Button
-                      variant="ghost"
+                    <TrajectoryListItem
                       key={trajectory.trajectoryId}
-                      className="w-full justify-start rounded-none px-3 py-3 text-left text-xs hover:bg-bg-hover"
-                      onClick={() =>
-                        onSelectTrajectory(trajectory.trajectoryId)
-                      }
-                    >
-                      <div className="font-mono">{trajectory.trajectoryId}</div>
-                      <div className="text-muted mt-1">
-                        {t("finetuningview.Calls")} {trajectory.llmCallCount}{" "}
-                        {t("finetuningview.Reward")}{" "}
-                        {trajectory.totalReward ?? "n/a"} ·{" "}
-                        {formatDate(trajectory.createdAt)}
-                      </div>
-                    </Button>
+                      trajectory={trajectory}
+                      onSelectTrajectory={onSelectTrajectory}
+                      t={t}
+                    />
                   ))
                 )}
               </div>
@@ -296,21 +632,29 @@ export function DatasetSection({
         </div>
       </div>
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-4">
-        <SettingsControls.Input
-          variant="filter"
+        <AgentTextInput
+          agentId="dataset-limit"
+          label="Limit trajectories"
+          group="dataset-build"
+          description="Maximum trajectories to include in the dataset"
           value={buildLimit}
-          onChange={(event) => setBuildLimit(event.target.value)}
+          onChange={setBuildLimit}
           placeholder={t("finetuningview.LimitTrajectories")}
         />
-        <SettingsControls.Input
-          variant="filter"
+        <AgentTextInput
+          agentId="dataset-min-calls"
+          label="Min LLM calls per trajectory"
+          group="dataset-build"
+          description="Minimum LLM calls required per trajectory"
           value={buildMinCalls}
-          onChange={(event) => setBuildMinCalls(event.target.value)}
+          onChange={setBuildMinCalls}
           placeholder={t("finetuningview.MinLLMCallsPerTr")}
         />
-        <Button
-          variant="outline"
-          size="sm"
+        <AgentActionButton
+          agentId="dataset-build"
+          label="Build dataset"
+          group="dataset-build"
+          description="Build a training dataset from trajectories"
           className={FINE_TUNING_ACTION_CLASS}
           disabled={datasetBuilding}
           onClick={onBuildDataset}
@@ -318,15 +662,17 @@ export function DatasetSection({
           {datasetBuilding
             ? t("finetuningview.Building")
             : t("finetuningview.BuildDataset")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
+        </AgentActionButton>
+        <AgentActionButton
+          agentId="dataset-refresh"
+          label="Refresh datasets"
+          group="dataset-build"
+          description="Reload the dataset list"
           className={FINE_TUNING_ACTION_CLASS}
           onClick={onRefreshDatasets}
         >
           {t("finetuningview.RefreshDatasets")}
-        </Button>
+        </AgentActionButton>
       </div>
       <div className={`${FINE_TUNING_PANEL_CLASS} max-h-60 overflow-auto p-3`}>
         {datasets.length === 0 ? (
@@ -336,24 +682,13 @@ export function DatasetSection({
         ) : (
           <div className="space-y-2">
             {datasets.map((dataset) => (
-              <label
+              <DatasetRadioItem
                 key={dataset.id}
-                className="flex min-h-touch cursor-pointer items-center gap-3 rounded-xl border border-border/35 bg-bg/20 px-3 py-3 text-sm transition-colors hover:border-border/55 hover:bg-bg/35"
-              >
-                <input
-                  type="radio"
-                  name="dataset-select"
-                  checked={selectedDatasetId === dataset.id}
-                  onChange={() => setSelectedDatasetId(dataset.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-mono text-sm text-txt">{dataset.id}</div>
-                  <div className="mt-1 text-xs text-muted">
-                    {dataset.sampleCount} {t("finetuningview.samples")}{" "}
-                    {dataset.trajectoryCount} {t("finetuningview.trajectories")}
-                  </div>
-                </div>
-              </label>
+                dataset={dataset}
+                selectedDatasetId={selectedDatasetId}
+                setSelectedDatasetId={setSelectedDatasetId}
+                t={t}
+              />
             ))}
           </div>
         )}
@@ -431,13 +766,19 @@ export function TrainingJobsSection({
         {t("finetuningview.GpuFineTunesViaVast")}
       </div>
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-        <Select
+        <AgentSelect
+          agentId="job-dataset"
+          label="Training dataset"
+          group="job-config"
+          description="Dataset to train the job on"
           value={selectedDatasetId}
-          onValueChange={(value: string) => setSelectedDatasetId(value)}
+          onValueChange={setSelectedDatasetId}
+          options={[
+            "__auto__",
+            ...datasets.filter((dataset) => dataset.id).map((d) => d.id),
+          ]}
+          placeholder={t("finetuningview.AutoBuildDatasetF")}
         >
-          <SettingsControls.SelectTrigger variant="toolbar">
-            <SelectValue placeholder={t("finetuningview.AutoBuildDatasetF")} />
-          </SettingsControls.SelectTrigger>
           <SelectContent>
             <SelectItem value="__auto__">
               {t("finetuningview.AutoBuildDatasetF")}
@@ -450,51 +791,67 @@ export function TrainingJobsSection({
                 </SelectItem>
               ))}
           </SelectContent>
-        </Select>
-        <Select
+        </AgentSelect>
+        <AgentSelect
+          agentId="job-backend"
+          label="Training backend"
+          group="job-config"
+          description="Compute backend for the training job"
           value={startBackend}
-          onValueChange={(value: string) =>
+          onValueChange={(value) =>
             setStartBackend(value as "mlx" | "cuda" | "cpu")
           }
+          options={["cpu", "mlx", "cuda"]}
         >
-          <SettingsControls.SelectTrigger variant="toolbar">
-            <SelectValue />
-          </SettingsControls.SelectTrigger>
           <SelectContent>
             <SelectItem value="cpu">{t("finetuningview.cpu")}</SelectItem>
             <SelectItem value="mlx">{t("finetuningview.mlx")}</SelectItem>
             <SelectItem value="cuda">{t("finetuningview.cuda")}</SelectItem>
           </SelectContent>
-        </Select>
-        <SettingsControls.Input
-          variant="filter"
+        </AgentSelect>
+        <AgentTextInput
+          agentId="job-base-model"
+          label="Base model"
+          group="job-config"
+          description="Optional base model id for the training job"
           value={startModel}
-          onChange={(event) => setStartModel(event.target.value)}
+          onChange={setStartModel}
           placeholder={t("finetuningview.BaseModelOptional")}
         />
-        <SettingsControls.Input
-          variant="filter"
+        <AgentTextInput
+          agentId="job-iterations"
+          label="Iterations"
+          group="job-config"
+          description="Optional number of training iterations"
           value={startIterations}
-          onChange={(event) => setStartIterations(event.target.value)}
+          onChange={setStartIterations}
           placeholder={t("finetuningview.IterationsOptional")}
         />
-        <SettingsControls.Input
-          variant="filter"
+        <AgentTextInput
+          agentId="job-batch-size"
+          label="Batch size"
+          group="job-config"
+          description="Optional training batch size"
           value={startBatchSize}
-          onChange={(event) => setStartBatchSize(event.target.value)}
+          onChange={setStartBatchSize}
           placeholder={t("finetuningview.BatchSizeOptional")}
         />
-        <SettingsControls.Input
-          variant="filter"
+        <AgentTextInput
+          agentId="job-learning-rate"
+          label="Learning rate"
+          group="job-config"
+          description="Optional training learning rate"
           value={startLearningRate}
-          onChange={(event) => setStartLearningRate(event.target.value)}
+          onChange={setStartLearningRate}
           placeholder={t("finetuningview.LearningRateOptio")}
         />
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
+        <AgentActionButton
+          agentId="job-start"
+          label="Start training job"
+          group="job-config"
+          description="Start a new training job"
           className={FINE_TUNING_ACTION_CLASS}
           disabled={startingJob || Boolean(activeRunningJob)}
           onClick={onStartJob}
@@ -502,15 +859,17 @@ export function TrainingJobsSection({
           {startingJob
             ? t("finetuningview.Starting")
             : t("finetuningview.StartTrainingJob")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
+        </AgentActionButton>
+        <AgentActionButton
+          agentId="job-refresh"
+          label="Refresh jobs"
+          group="job-config"
+          description="Reload the training jobs list"
           className={FINE_TUNING_ACTION_CLASS}
           onClick={onRefreshJobs}
         >
           {t("finetuningview.RefreshJobs")}
-        </Button>
+        </AgentActionButton>
         {activeRunningJob && (
           <div className="rounded-full border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
             {t("finetuningview.ActiveJob")}{" "}
@@ -526,41 +885,15 @@ export function TrainingJobsSection({
             </div>
           ) : (
             jobs.map((job) => (
-              <div
+              <JobListItem
                 key={job.id}
-                className={`px-3 py-3 text-sm ${
-                  selectedJobId === job.id ? "bg-bg-hover" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <Button
-                    variant="link"
-                    className="h-auto w-auto justify-start p-0 text-left font-mono text-sm"
-                    onClick={() => setSelectedJobId(job.id)}
-                  >
-                    {job.id}
-                  </Button>
-                  {(job.status === "running" || job.status === "queued") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-xl border-danger/35 px-3 text-xs-tight text-danger shadow-sm hover:border-danger hover:bg-danger/10 disabled:opacity-50"
-                      disabled={cancellingJobId === job.id}
-                      onClick={() => onCancelJob(job.id)}
-                    >
-                      {cancellingJobId === job.id
-                        ? t("finetuningview.Cancelling")
-                        : t("finetuningview.Cancel")}
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  {job.status} · {formatProgress(job.progress)} · {job.phase}
-                </div>
-                <div className="text-xs text-muted">
-                  {formatDate(job.createdAt)}
-                </div>
-              </div>
+                job={job}
+                selectedJobId={selectedJobId}
+                setSelectedJobId={setSelectedJobId}
+                cancellingJobId={cancellingJobId}
+                onCancelJob={onCancelJob}
+                t={t}
+              />
             ))
           )}
         </div>
@@ -641,31 +974,13 @@ export function TrainedModelsSection({
             </div>
           ) : (
             models.map((model) => (
-              <Button
-                variant="ghost"
+              <ModelListItem
                 key={model.id}
-                className={`w-full justify-start rounded-none px-3 py-3 text-left text-sm ${
-                  selectedModelId === model.id
-                    ? "bg-bg-hover"
-                    : "hover:bg-bg-hover"
-                }`}
-                onClick={() => setSelectedModelId(model.id)}
-              >
-                <div className="font-mono">
-                  {model.id}{" "}
-                  {model.active ? t("finetuningview.ActiveIndicator") : ""}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  {t("finetuningview.backend")} {model.backend}
-                  {model.ollamaModel ? ` · ollama: ${model.ollamaModel}` : ""}
-                </div>
-                <div className="text-xs text-muted">
-                  {t("finetuningview.benchmark")} {model.benchmark.status}
-                  {model.benchmark.lastRunAt
-                    ? ` · ${formatDate(model.benchmark.lastRunAt)}`
-                    : ""}
-                </div>
-              </Button>
+                model={model}
+                selectedModelId={selectedModelId}
+                setSelectedModelId={setSelectedModelId}
+                t={t}
+              />
             ))
           )}
         </div>
@@ -844,27 +1159,38 @@ export function SelectedModelPanel({
         <span className="font-mono">{selectedModel.adapterPath ?? "n/a"}</span>
       </div>
 
-      <SettingsControls.Input
-        variant="filter"
+      <AgentTextInput
+        agentId="model-import-name"
+        label="Ollama model name"
+        group="model-actions"
+        description="Name for the imported Ollama model"
         value={importModelName}
-        onChange={(event) => setImportModelName(event.target.value)}
+        onChange={setImportModelName}
         placeholder={t("finetuningview.OllamaModelNameO")}
       />
-      <SettingsControls.Input
-        variant="filter"
+      <AgentTextInput
+        agentId="model-import-base"
+        label="Base model for Ollama"
+        group="model-actions"
+        description="Base model used for the Ollama import"
         value={importBaseModel}
-        onChange={(event) => setImportBaseModel(event.target.value)}
+        onChange={setImportBaseModel}
         placeholder={t("finetuningview.BaseModelForOllam")}
       />
-      <SettingsControls.Input
-        variant="filter"
+      <AgentTextInput
+        agentId="model-import-url"
+        label="Ollama URL"
+        group="model-actions"
+        description="Ollama server URL for the import"
         value={importOllamaUrl}
-        onChange={(event) => setImportOllamaUrl(event.target.value)}
+        onChange={setImportOllamaUrl}
         placeholder={t("finetuningview.OllamaURL")}
       />
-      <Button
-        variant="outline"
-        size="sm"
+      <AgentActionButton
+        agentId="model-import"
+        label="Import to Ollama"
+        group="model-actions"
+        description="Import the selected model into Ollama"
         className={FINE_TUNING_ACTION_CLASS}
         disabled={modelAction === `import:${selectedModel.id}`}
         onClick={onImport}
@@ -872,18 +1198,23 @@ export function SelectedModelPanel({
         {modelAction === `import:${selectedModel.id}`
           ? t("finetuningview.Importing")
           : t("finetuningview.ImportToOllama")}
-      </Button>
+      </AgentActionButton>
 
-      <SettingsControls.Input
-        variant="filter"
+      <AgentTextInput
+        agentId="model-provider-model"
+        label="Provider model"
+        group="model-actions"
+        description="Provider model id to activate"
         value={activateProviderModel}
-        onChange={(event) => setActivateProviderModel(event.target.value)}
+        onChange={setActivateProviderModel}
         placeholder={t("finetuningview.ProviderModelEG")}
       />
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
+        <AgentActionButton
+          agentId="model-activate"
+          label="Activate model"
+          group="model-actions"
+          description="Activate the selected model"
           className={FINE_TUNING_ACTION_CLASS}
           disabled={modelAction === `activate:${selectedModel.id}`}
           onClick={onActivate}
@@ -891,10 +1222,12 @@ export function SelectedModelPanel({
           {modelAction === `activate:${selectedModel.id}`
             ? t("finetuningview.Activating")
             : t("finetuningview.ActivateModel")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
+        </AgentActionButton>
+        <AgentActionButton
+          agentId="model-benchmark"
+          label="Benchmark model"
+          group="model-actions"
+          description="Run a benchmark against the selected model"
           className={FINE_TUNING_ACTION_CLASS}
           disabled={modelAction === `benchmark:${selectedModel.id}`}
           onClick={onBenchmark}
@@ -902,10 +1235,12 @@ export function SelectedModelPanel({
           {modelAction === `benchmark:${selectedModel.id}`
             ? t("finetuningview.Benchmarking")
             : t("finetuningview.BenchmarkAction")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
+        </AgentActionButton>
+        <AgentActionButton
+          agentId="model-smoke-test"
+          label="Run smoke prompt"
+          group="model-actions"
+          description="Run a smoke-test prompt against the selected model"
           className={FINE_TUNING_ACTION_CLASS}
           disabled={modelAction === `smoke:${selectedModel.id}`}
           onClick={onSmokeTest}
@@ -913,7 +1248,7 @@ export function SelectedModelPanel({
           {modelAction === `smoke:${selectedModel.id}`
             ? t("finetuningview.Testing")
             : t("finetuningview.RunSmokePrompt")}
-        </Button>
+        </AgentActionButton>
       </div>
       {smokeResult && (
         <SettingsControls.Textarea

@@ -1,5 +1,12 @@
-import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+  UserRound,
+} from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type CloudCompatAgent,
   type CloudOAuthConnectionRole,
@@ -139,13 +146,21 @@ function buildRoleButtonLabel(
   return `${baseLabel} ${ROLE_BUTTON_SUFFIX[role]}`;
 }
 
+function cloudOAuthRoleTitle(
+  platform: string,
+  role: CloudOAuthConnectionRole,
+): string {
+  return role === "agent"
+    ? `Connect the agent's ${platform} identity.`
+    : `Connect your own ${platform} identity.`;
+}
+
 const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
   slack: {
     platform: "slack",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use Slack OAuth",
-    connectedHint:
-      "Connect Slack with Eliza Cloud OAuth. Use 'agent' to install the agent's own Slack bot (xoxb-... bot token) into the workspace; use 'your account' to grant the agent permission to act on your own Slack identity (xoxp-... user token) — read your channels, write as you, search your messages.",
+    connectedHint: "OAuth ready. Choose agent bot or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use Slack OAuth instead of local Socket Mode tokens.",
     successNotice: "Finish Slack OAuth in your browser, then return here.",
@@ -154,8 +169,7 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     platform: "twitter",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use X/Twitter OAuth",
-    connectedHint:
-      "Connect X/Twitter with Eliza Cloud OAuth. Use 'agent' to link the agent's own X account for autonomous posts and DMs; use 'your account' to grant the agent permission to act on your own X account.",
+    connectedHint: "OAuth ready. Choose agent account or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
     successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
@@ -164,8 +178,7 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     platform: "google",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use Google OAuth",
-    connectedHint:
-      "Connect Google with Eliza Cloud OAuth. Use 'agent' to link the agent's own Google account for autonomous Gmail / Calendar / Drive / Meet activity; use 'your account' to grant the agent permission to act on your own Google account.",
+    connectedHint: "OAuth ready. Choose agent workspace or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use Google OAuth instead of local OAuth2 credentials.",
     successNotice: "Finish Google OAuth in your browser, then return here.",
@@ -180,6 +193,90 @@ function getCloudOAuthConnector(
     return null;
   }
   return CLOUD_OAUTH_CONNECTORS[pluginId] ?? null;
+}
+
+function ConnectorOAuthRoleButton({
+  pluginId,
+  role,
+  label,
+  title,
+  busy,
+  icon,
+  onConnect,
+}: {
+  pluginId: string;
+  role: CloudOAuthConnectionRole;
+  label: string;
+  title: string;
+  busy: boolean;
+  icon: ReactNode;
+  onConnect: (role: CloudOAuthConnectionRole) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `connector-${pluginId}-oauth-${role}`,
+    role: "button",
+    label,
+    group: "connector",
+    description: title,
+    onActivate: () => onConnect(role),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+      onClick={() => {
+        void onConnect(role);
+      }}
+      disabled={busy}
+      title={title}
+      {...agentProps}
+    >
+      {icon}
+      {label}
+    </Button>
+  );
+}
+
+function ConnectorResourceLink({
+  pluginId,
+  linkKey,
+  url,
+  label,
+  title,
+  onOpen,
+}: {
+  pluginId: string;
+  linkKey: string;
+  url: string;
+  label: string;
+  title: string;
+  onOpen: (url: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `connector-${pluginId}-link-${linkKey}`,
+    role: "link",
+    label: `${label} (${pluginId})`,
+    group: "connector",
+    description: title,
+    onActivate: () => onOpen(url),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="h-8 rounded-sm border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
+      onClick={() => {
+        void onOpen(url);
+      }}
+      title={title}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
 }
 
 function connectorProvenanceBadges(plugin: PluginInfo): Array<{
@@ -356,6 +453,95 @@ function ConnectorPluginCard({
     draftConfig: pluginConfigs[plugin.id],
   });
   const provenanceBadges = connectorProvenanceBadges(plugin);
+  const toggleControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-toggle`,
+    role: "toggle",
+    label: `Toggle ${plugin.name}`,
+    group: "connector",
+    status: plugin.enabled ? "active" : "inactive",
+    description: `Enable or disable the ${plugin.name} connector`,
+    onActivate: () => void handleTogglePlugin(plugin.id, !plugin.enabled),
+  });
+  const expandControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-expand`,
+    role: "button",
+    label: `${isExpanded ? collapseLabel : expandLabel} ${plugin.name}`,
+    group: "connector",
+    status: isExpanded ? "active" : "inactive",
+    description: `Expand or collapse the ${plugin.name} connector section`,
+    onActivate: () => handleConnectorSectionToggle(plugin.id),
+  });
+  const managedDiscordControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-managed-discord`,
+    role: "button",
+    label: `Managed Discord for ${plugin.name}`,
+    group: "connector",
+    description: "Start managed Discord OAuth via Eliza Cloud",
+    onActivate: () => void handleOpenManagedDiscord(),
+  });
+  const managedDiscordContinueControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-managed-discord-continue`,
+    role: "button",
+    label: "Continue managed Discord setup",
+    group: "connector",
+    description: "Continue with the selected cloud agent for managed Discord",
+    onActivate: () => void handleConfirmManagedDiscordAgent(),
+  });
+  const telegramOpenCloudControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-telegram-open-cloud`,
+    role: "button",
+    label: "Open Eliza Cloud for Telegram gateway",
+    group: "connector",
+    description:
+      "Open Eliza Cloud billing to enable the Telegram webhook gateway",
+    onActivate: () => {
+      setState("cloudDashboardView", "billing");
+      setTab("settings");
+    },
+  });
+  const installControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-install`,
+    role: "button",
+    label: `Install ${plugin.name}`,
+    group: "connector",
+    description: `Install the ${plugin.name} connector package`,
+    onActivate: () => void handleInstallPlugin(plugin.id, plugin.npmName ?? ""),
+  });
+  const testControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-test`,
+    role: "button",
+    label: `Test ${plugin.name} connection`,
+    group: "connector",
+    description: `Run a connection test for ${plugin.name}`,
+    onActivate: () => void handleTestConnection(plugin.id),
+  });
+  const resetControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-reset`,
+    role: "button",
+    label: `Reset ${plugin.name} settings`,
+    group: "connector",
+    description: `Discard unsaved configuration changes for ${plugin.name}`,
+    onActivate: () => handleConfigReset(plugin.id),
+  });
+  const saveControl = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-save`,
+    role: "button",
+    label: `Save ${plugin.name} settings`,
+    group: "connector",
+    description: `Save the configuration for ${plugin.name}`,
+    onActivate: () => void handleConfigSave(plugin.id),
+  });
+  const managedDiscordAgentSelect = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-managed-discord-agent`,
+    role: "select",
+    label: "Managed Discord cloud agent",
+    group: "connector",
+    description: "Choose which cloud agent receives managed Discord",
+    options: managedDiscordAgents.map((agent) => agent.agent_id),
+    getValue: () => managedDiscordSelectedAgentId ?? "",
+    onFill: (value) =>
+      setManagedDiscordSelectedAgentId(value === "" ? null : value),
+  });
   const openCloudAgentsView = () => {
     setState("cloudDashboardView", "overview");
     setTab("settings");
@@ -637,7 +823,10 @@ function ConnectorPluginCard({
         ))}
       </span>
       <div className="mt-2">
-        <p className="text-sm text-muted">
+        <p
+          className="line-clamp-1 text-sm text-muted"
+          title={plugin.description || pluginDescriptionFallback}
+        >
           {plugin.description || pluginDescriptionFallback}
         </p>
         {plugin.enabled && !plugin.isActive && (
@@ -666,6 +855,7 @@ function ConnectorPluginCard({
         <StatusIcon className="h-5 w-5" aria-hidden="true" />
       </span>
       <Switch
+        ref={toggleControl.ref}
         checked={plugin.enabled}
         disabled={toggleDisabled}
         onClick={(event) => event.stopPropagation()}
@@ -676,8 +866,10 @@ function ConnectorPluginCard({
         aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${
           plugin.name
         }`}
+        {...toggleControl.agentProps}
       />
       <Button
+        ref={expandControl.ref}
         variant="ghost"
         size="icon"
         className={`h-8 w-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
@@ -692,6 +884,7 @@ function ConnectorPluginCard({
           plugin.name
         }`}
         title={isExpanded ? collapseLabel : expandLabel}
+        {...expandControl.agentProps}
       >
         <ChevronRight
           className={`h-4 w-4 transition-transform ${
@@ -747,6 +940,7 @@ function ConnectorPluginCard({
               className="mb-4"
               actions={
                 <Button
+                  ref={managedDiscordControl.ref}
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
@@ -754,6 +948,7 @@ function ConnectorPluginCard({
                     void handleOpenManagedDiscord();
                   }}
                   disabled={managedDiscordBusy}
+                  {...managedDiscordControl.agentProps}
                 >
                   {managedDiscordBusy
                     ? "..."
@@ -769,12 +964,10 @@ function ConnectorPluginCard({
             >
               {elizaCloudConnected
                 ? t("pluginsview.ManagedDiscordGatewayHintConnected", {
-                    defaultValue:
-                      "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
+                    defaultValue: "Managed Discord gateway available.",
                   })
                 : t("pluginsview.ManagedDiscordGatewayHint", {
-                    defaultValue:
-                      "Prefer OAuth? Connect Eliza Cloud to use the shared Discord gateway instead of a local bot token.",
+                    defaultValue: "Connect Eliza Cloud for managed Discord.",
                   })}
               {managedDiscordPickerOpen && managedDiscordAgents.length > 1 ? (
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -786,7 +979,11 @@ function ConnectorPluginCard({
                       )
                     }
                   >
-                    <SelectTrigger className="h-9 min-w-[14rem] rounded-sm border-border/40 bg-bg/80 text-sm">
+                    <SelectTrigger
+                      ref={managedDiscordAgentSelect.ref}
+                      className="h-9 min-w-[14rem] rounded-sm border-border/40 bg-bg/80 text-sm"
+                      {...managedDiscordAgentSelect.agentProps}
+                    >
                       <SelectValue
                         placeholder={t(
                           "pluginsview.ManagedDiscordSelectAgent",
@@ -805,6 +1002,7 @@ function ConnectorPluginCard({
                     </SelectContent>
                   </Select>
                   <Button
+                    ref={managedDiscordContinueControl.ref}
                     variant="default"
                     size="sm"
                     className="h-9 rounded-sm px-4 text-xs-tight font-semibold"
@@ -814,6 +1012,7 @@ function ConnectorPluginCard({
                     disabled={
                       managedDiscordBusy || !managedDiscordSelectedAgentId
                     }
+                    {...managedDiscordContinueControl.agentProps}
                   >
                     {managedDiscordBusy
                       ? "..."
@@ -835,28 +1034,40 @@ function ConnectorPluginCard({
                 {cloudOAuthConnector.connectionRoles.map((role) => {
                   const roleBusy = cloudOAuthBusy[role] === true;
                   return (
-                    <Button
+                    <ConnectorOAuthRoleButton
                       key={role}
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
-                      onClick={() => {
-                        void handleOpenCloudOAuthConnector(role);
-                      }}
-                      disabled={roleBusy}
-                    >
-                      {roleBusy
-                        ? "..."
-                        : elizaCloudConnected
-                          ? buildRoleButtonLabel(
-                              cloudOAuthConnector.buttonLabel,
-                              role,
-                              cloudOAuthConnector.connectionRoles.length > 1,
-                            )
-                          : t("pluginsview.OpenElizaCloud", {
-                              defaultValue: "Open Eliza Cloud",
-                            })}
-                    </Button>
+                      pluginId={plugin.id}
+                      role={role}
+                      busy={roleBusy}
+                      title={cloudOAuthRoleTitle(
+                        cloudOAuthConnector.platform,
+                        role,
+                      )}
+                      icon={
+                        role === "agent" ? (
+                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                        ) : (
+                          <UserRound
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                        )
+                      }
+                      label={
+                        roleBusy
+                          ? "..."
+                          : elizaCloudConnected
+                            ? buildRoleButtonLabel(
+                                cloudOAuthConnector.buttonLabel,
+                                role,
+                                cloudOAuthConnector.connectionRoles.length > 1,
+                              )
+                            : t("pluginsview.OpenElizaCloud", {
+                                defaultValue: "Open Eliza Cloud",
+                              })
+                      }
+                      onConnect={handleOpenCloudOAuthConnector}
+                    />
                   );
                 })}
               </div>
@@ -875,6 +1086,7 @@ function ConnectorPluginCard({
             actions={
               elizaCloudConnected ? undefined : (
                 <Button
+                  ref={telegramOpenCloudControl.ref}
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
@@ -882,6 +1094,7 @@ function ConnectorPluginCard({
                     setState("cloudDashboardView", "billing");
                     setTab("settings");
                   }}
+                  {...telegramOpenCloudControl.agentProps}
                 >
                   {t("pluginsview.OpenElizaCloud", {
                     defaultValue: "Open Eliza Cloud",
@@ -892,12 +1105,10 @@ function ConnectorPluginCard({
           >
             {elizaCloudConnected
               ? t("pluginsview.TelegramCloudGatewayHint", {
-                  defaultValue:
-                    "Telegram does not support bot-install OAuth for bidirectional chats. Use a BotFather token here; Eliza Cloud can host the webhook gateway and route updates to this app.",
+                  defaultValue: "Webhook gateway available.",
                 })
               : t("pluginsview.TelegramCloudGatewayHintDisconnected", {
-                  defaultValue:
-                    "Telegram does not support bot-install OAuth for bidirectional chats. Connect Eliza Cloud to host the webhook gateway, then use a BotFather token here.",
+                  defaultValue: "Connect Eliza Cloud for webhook hosting.",
                 })}
           </PagePanel.Notice>
         ) : null}
@@ -905,18 +1116,15 @@ function ConnectorPluginCard({
         {pluginLinks.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-2">
             {pluginLinks.map((link) => (
-              <Button
+              <ConnectorResourceLink
                 key={`${plugin.id}:${link.key}`}
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-sm border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
-                onClick={() => {
-                  void handleOpenPluginExternalUrl(link.url);
-                }}
+                pluginId={plugin.id}
+                linkKey={link.key}
+                url={link.url}
+                label={pluginResourceLinkLabel(t, link.key)}
                 title={`${pluginResourceLinkLabel(t, link.key)}: ${link.url}`}
-              >
-                {pluginResourceLinkLabel(t, link.key)}
-              </Button>
+                onOpen={handleOpenPluginExternalUrl}
+              />
             ))}
           </div>
         )}
@@ -927,6 +1135,7 @@ function ConnectorPluginCard({
             className="mb-4"
             actions={
               <Button
+                ref={installControl.ref}
                 variant="default"
                 size="sm"
                 className="h-8 rounded-sm px-4 text-xs-tight font-bold"
@@ -934,6 +1143,7 @@ function ConnectorPluginCard({
                 onClick={() =>
                   void handleInstallPlugin(plugin.id, plugin.npmName ?? "")
                 }
+                {...installControl.agentProps}
               >
                 {installingPlugins.has(plugin.id)
                   ? installProgressLabel(
@@ -1002,6 +1212,7 @@ function ConnectorPluginCard({
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {plugin.isActive && (
             <Button
+              ref={testControl.ref}
               variant={
                 testResult?.success
                   ? "default"
@@ -1021,6 +1232,7 @@ function ConnectorPluginCard({
               }`}
               disabled={testResult?.loading}
               onClick={() => void handleTestConnection(plugin.id)}
+              {...testControl.agentProps}
             >
               {formatTestConnectionLabel(testResult)}
             </Button>
@@ -1028,14 +1240,17 @@ function ConnectorPluginCard({
           {hasParams && (
             <>
               <Button
+                ref={resetControl.ref}
                 variant="ghost"
                 size="sm"
                 className="h-8 rounded-sm px-4 text-xs-tight font-semibold text-muted hover:text-txt"
                 onClick={() => handleConfigReset(plugin.id)}
+                {...resetControl.agentProps}
               >
                 {t("common.reset")}
               </Button>
               <Button
+                ref={saveControl.ref}
                 variant={saveSuccess ? "default" : "secondary"}
                 size="sm"
                 className={`h-8 rounded-sm px-4 text-xs-tight font-bold transition-all ${
@@ -1045,6 +1260,7 @@ function ConnectorPluginCard({
                 }`}
                 onClick={() => void handleConfigSave(plugin.id)}
                 disabled={isSaving}
+                {...saveControl.agentProps}
               >
                 {formatSaveSettingsLabel(isSaving, saveSuccess)}
               </Button>

@@ -4,6 +4,16 @@ ext {
 }
 
 apply plugin: 'com.android.library'
+// Explicitly apply the Kotlin Android plugin. The kotlin-gradle-plugin is on
+// the root buildscript classpath, but without applying it here AGP 8.13 falls
+// back to its "built-in Kotlin" compile path (build/intermediates/
+// built_in_kotlinc), which compiles the .kt sources but does NOT bundle the
+// resulting .class files into the *release* library jar. The app's
+// :app:assembleRelease then links a library AAR with zero plugin classes, so
+// the Capacitor plugin (and any manifest-declared component) is absent from
+// the release dex. Applying the standard Kotlin plugin wires Kotlin
+// compilation into both the debug and release jar-bundling tasks.
+apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "ai.eliza.plugins.agent"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
@@ -12,8 +22,12 @@ android {
         targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    kotlinOptions {
+        jvmTarget = "21"
     }
 }
 

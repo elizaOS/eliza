@@ -96,9 +96,14 @@ function smsRole(status: SystemStatus | null) {
   return status?.roles.find((role) => role.role === "sms") ?? null;
 }
 
+function normalizeMessagesLimit(value: unknown, fallback = 200): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(500, Math.max(1, Math.trunc(value)));
+}
+
 async function loadMessagesState(limit = 200) {
   const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit }),
+    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
     System.getStatus().catch(() => null),
   ]);
   const threads = buildThreads(messageResult.messages);
@@ -160,6 +165,64 @@ function MessagesThreadButton({
           {thread.unreadCount}
         </span>
       ) : null}
+    </button>
+  );
+}
+
+function TuiThreadButton({
+  thread,
+  index,
+  selected,
+  onOpen,
+}: {
+  thread: ThreadSummary;
+  index: number;
+  selected: boolean;
+  onOpen: (thread: ThreadSummary) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-thread-${thread.id}`,
+    role: "list-item",
+    label: thread.address || "Unknown",
+    group: "messages-tui-threads",
+    status: selected ? "active" : undefined,
+    description: `Open the SMS thread with ${thread.address || "Unknown"}`,
+    onActivate: () => onOpen(thread),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onOpen(thread)}
+      aria-current={selected ? "true" : undefined}
+      style={{
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "4ch minmax(8ch, 1fr) 6ch",
+        gap: 10,
+        border: "none",
+        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        background: selected ? "rgba(125,211,252,0.12)" : "transparent",
+        color: "#cbd5e1",
+        padding: "8px 0",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "left",
+      }}
+    >
+      <span style={{ color: "#64748b" }}>
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
+        {thread.address}
+      </span>
+      <span style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}>
+        {thread.unreadCount ? `${thread.unreadCount} new` : "read"}
+      </span>
+      <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+        {thread.lastMessage.body}
+      </span>
     </button>
   );
 }
@@ -298,6 +361,13 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     group: "messages-header",
     description: "Open the composer to start a new text message",
   });
+  const emptyNewMessage = useAgentElement<HTMLButtonElement>({
+    id: "action-empty-new-message",
+    role: "button",
+    label: t("messages.new", { defaultValue: "New message" }),
+    group: "messages-threads",
+    description: "Start a new text message from the empty thread list",
+  });
   const requestRole = useAgentElement<HTMLButtonElement>({
     id: "action-set-default-sms",
     role: "button",
@@ -311,6 +381,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     label: t("messages.to", { defaultValue: "To" }),
     group: "messages-composer",
     description: "Recipient phone number for the outgoing text message",
+    getValue: () => composeAddress,
+    onFill: setComposeAddress,
   });
   const bodyInput = useAgentElement<HTMLTextAreaElement>({
     id: "input-message-body",
@@ -318,6 +390,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     label: t("messages.placeholder", { defaultValue: "Message" }),
     group: "messages-composer",
     description: "Body text of the outgoing message",
+    getValue: () => composeBody,
+    onFill: setComposeBody,
   });
   const sendButton = useAgentElement<HTMLButtonElement>({
     id: "action-send",
@@ -471,7 +545,12 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                   })}
                 </p>
               </div>
-              <Button size="sm" onClick={openNewComposer}>
+              <Button
+                ref={emptyNewMessage.ref}
+                {...emptyNewMessage.agentProps}
+                size="sm"
+                onClick={openNewComposer}
+              >
                 <Plus className="mr-1.5 h-4 w-4" />
                 {t("messages.new", { defaultValue: "New message" })}
               </Button>
@@ -701,6 +780,49 @@ export function MessagesTuiView() {
     }
   }, [refresh]);
 
+  const tuiRefresh = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "messages-tui-threads",
+    description: "Reload SMS threads and system status",
+    onActivate: () => void refresh(),
+  });
+  const tuiRequestRole = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-request-sms-role",
+    role: "button",
+    label: "Request SMS role",
+    group: "messages-tui-compose",
+    description: "Request the Android default SMS role for this app",
+    onActivate: () => void requestSmsRole(),
+  });
+  const tuiAddressInput = useAgentElement<HTMLInputElement>({
+    id: "tui-input-recipient",
+    role: "text-input",
+    label: "To",
+    group: "messages-tui-compose",
+    description: "Recipient phone number for the outgoing text message",
+    getValue: () => composeAddress,
+    onFill: setComposeAddress,
+  });
+  const tuiBodyInput = useAgentElement<HTMLTextAreaElement>({
+    id: "tui-input-message-body",
+    role: "textarea",
+    label: "Body",
+    group: "messages-tui-compose",
+    description: "Body text of the outgoing message",
+    getValue: () => composeBody,
+    onFill: setComposeBody,
+  });
+  const tuiSend = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-send",
+    role: "button",
+    label: "Send",
+    group: "messages-tui-compose",
+    description: "Send the composed text message",
+    onActivate: () => void send(),
+  });
+
   const state = {
     viewType: "tui",
     viewId: "messages",
@@ -768,6 +890,8 @@ export function MessagesTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>threads</strong>
             <button
+              ref={tuiRefresh.ref}
+              {...tuiRefresh.agentProps}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
@@ -790,44 +914,13 @@ export function MessagesTuiView() {
             <div style={{ color: "#64748b" }}>no sms threads</div>
           )}
           {threads.map((thread, index) => (
-            <button
+            <TuiThreadButton
               key={thread.id}
-              type="button"
-              onClick={() => openThread(thread)}
-              style={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: "4ch minmax(8ch, 1fr) 6ch",
-                gap: 10,
-                border: "none",
-                borderTop:
-                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-                background:
-                  thread.id === selectedThreadId
-                    ? "rgba(125,211,252,0.12)"
-                    : "transparent",
-                color: "#cbd5e1",
-                padding: "8px 0",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                textAlign: "left",
-              }}
-            >
-              <span style={{ color: "#64748b" }}>
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
-                {thread.address}
-              </span>
-              <span
-                style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}
-              >
-                {thread.unreadCount ? `${thread.unreadCount} new` : "read"}
-              </span>
-              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
-                {thread.lastMessage.body}
-              </span>
-            </button>
+              thread={thread}
+              index={index}
+              selected={thread.id === selectedThreadId}
+              onOpen={openThread}
+            />
           ))}
         </section>
 
@@ -849,6 +942,8 @@ export function MessagesTuiView() {
 
           {!ownsSmsRole && (
             <button
+              ref={tuiRequestRole.ref}
+              {...tuiRequestRole.agentProps}
               type="button"
               onClick={() => void requestSmsRole()}
               style={{
@@ -873,6 +968,8 @@ export function MessagesTuiView() {
             to
           </label>
           <input
+            ref={tuiAddressInput.ref}
+            {...tuiAddressInput.agentProps}
             id="messages-tui-address"
             name="address"
             value={composeAddress}
@@ -897,6 +994,8 @@ export function MessagesTuiView() {
             body
           </label>
           <textarea
+            ref={tuiBodyInput.ref}
+            {...tuiBodyInput.agentProps}
             id="messages-tui-body"
             name="body"
             value={composeBody}
@@ -917,6 +1016,8 @@ export function MessagesTuiView() {
           />
 
           <button
+            ref={tuiSend.ref}
+            {...tuiSend.agentProps}
             type="button"
             onClick={() => void send()}
             disabled={!composeAddress.trim() || !composeBody.trim() || sending}
@@ -961,7 +1062,7 @@ export async function interact(
 ): Promise<unknown> {
   if (capability === "terminal-list-threads") {
     const state = await loadMessagesState(
-      typeof params?.limit === "number" ? params.limit : 200,
+      normalizeMessagesLimit(params?.limit),
     );
     return {
       viewType: "tui",

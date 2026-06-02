@@ -541,6 +541,23 @@ function extractWebhookText(message: WhatsAppIncomingMessage): string {
   return "";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function isWebhookMessage(value: unknown): value is WhatsAppIncomingMessage {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Boolean(
+    typeof value.from === "string" && value.from.trim() && typeof value.id === "string"
+  );
+}
+
 export class WhatsAppConnectorService extends Service {
   static serviceType = "whatsapp";
   protected declare runtime: IAgentRuntime;
@@ -862,18 +879,27 @@ export class WhatsAppConnectorService extends Service {
   }
 
   async handleWebhook(event: WhatsAppWebhookEvent): Promise<void> {
-    for (const entry of event.entry) {
-      for (const change of entry.changes) {
+    for (const entry of asRecordArray((event as Partial<WhatsAppWebhookEvent> | null)?.entry)) {
+      for (const change of asRecordArray(entry.changes)) {
+        if (!isRecord(change.value)) {
+          continue;
+        }
         const value = change.value;
-        const accountId = this.resolveWebhookAccountId(value.metadata.phone_number_id);
-        if (typeof value.metadata.display_phone_number === "string") {
-          this.phoneNumbers.set(accountId, value.metadata.display_phone_number);
+        const metadata = isRecord(value.metadata) ? value.metadata : {};
+        const phoneNumberId =
+          typeof metadata.phone_number_id === "string" ? metadata.phone_number_id : undefined;
+        const accountId = this.resolveWebhookAccountId(phoneNumberId);
+        if (typeof metadata.display_phone_number === "string") {
+          this.phoneNumbers.set(accountId, metadata.display_phone_number);
           if (accountId === this.defaultAccountId) {
-            this.phoneNumber = value.metadata.display_phone_number;
+            this.phoneNumber = metadata.display_phone_number;
           }
         }
 
-        for (const message of value.messages ?? []) {
+        for (const message of asRecordArray(value.messages)) {
+          if (!isWebhookMessage(message)) {
+            continue;
+          }
           await this.handleIncomingWebhookMessage(message, accountId);
         }
       }

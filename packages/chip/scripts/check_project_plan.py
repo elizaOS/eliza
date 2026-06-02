@@ -270,6 +270,17 @@ REQUIRED_TERMS = {
         "No milestone may be marked complete",
     ],
 }
+CLAIM_FLAG_FILES = (
+    "docs/project/phone-soc-minimum-blocks.yaml",
+    "docs/project/uma-coherency-validation-strategy.yaml",
+    "docs/project/ai-accelerator-options.yaml",
+    "docs/project/spec-rtl-sw-pd-handoff-work-order.yaml",
+    "docs/architecture-optimization/cpu-npu-2028-readiness-scorecard.yaml",
+)
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+)
 
 
 def check_benchmark_schema(root: Path) -> list[str]:
@@ -330,6 +341,20 @@ def check_benchmark_schema(root: Path) -> list[str]:
         if token not in matrix:
             errors.append(f"docs/benchmarks/benchmark-matrix.md missing benchmark token: {token}")
 
+    return errors
+
+
+def check_claim_flags(root: Path) -> list[str]:
+    errors: list[str] = []
+    for path_text in CLAIM_FLAG_FILES:
+        path = root / path_text
+        data = yaml.safe_load(path.read_text())
+        if not isinstance(data, dict):
+            errors.append(f"{path_text} must be a YAML mapping")
+            continue
+        for field in REQUIRED_FALSE_CLAIM_FLAGS:
+            if data.get(field) is not False:
+                errors.append(f"{path_text}.{field} must be false")
     return errors
 
 
@@ -544,6 +569,7 @@ def main() -> int:
 
     errors = []
     errors.extend(check_benchmark_schema(root))
+    errors.extend(check_claim_flags(root))
     errors.extend(check_android_plan(root))
     errors.extend(check_board_plan(root))
     errors.extend(check_risk_register(root))

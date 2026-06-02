@@ -31,6 +31,9 @@ function normalizeApiBaseUrl(value: unknown): string | null {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return null;
     }
+    if (parsed.username || parsed.password) {
+      return null;
+    }
     parsed.hash = "";
     parsed.search = "";
     return parsed.toString().replace(/\/+$/, "");
@@ -57,6 +60,9 @@ function normalizeOriginCandidate(
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (parsed.username || parsed.password) {
       return null;
     }
     return parsed.origin.replace(/\/+$/, "");

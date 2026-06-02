@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import re
 import unittest
+from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from check_cocotb_results import PIPELINE_TARGETS
+import check_cocotb_results
+from check_cocotb_results import CLAIM_BOUNDARY, PIPELINE_TARGETS
 from pipeline_check import COCOTB_TARGETS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,20 @@ def evidence_regression_deps() -> set[str]:
 class CocotbPipelineTargetsTest(unittest.TestCase):
     def test_manifest_writer_and_pipeline_check_target_sets_match(self) -> None:
         self.assertEqual(PIPELINE_TARGETS, COCOTB_TARGETS)
+
+    def test_manifest_loader_normalizes_claim_boundary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            old_manifest = check_cocotb_results.MANIFEST
+            try:
+                check_cocotb_results.MANIFEST = Path(tmp) / "manifest.json"
+                check_cocotb_results.MANIFEST.write_text(
+                    '{"schema":"e1-chip-cocotb-evidence-v1","targets":{}}\n',
+                    encoding="utf-8",
+                )
+                manifest = check_cocotb_results.load_manifest()
+            finally:
+                check_cocotb_results.MANIFEST = old_manifest
+        self.assertEqual(manifest["claim_boundary"], CLAIM_BOUNDARY)
 
     def test_release_regression_generates_required_cocotb_targets(self) -> None:
         deps = evidence_regression_deps()

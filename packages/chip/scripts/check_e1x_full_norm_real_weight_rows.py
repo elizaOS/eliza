@@ -19,7 +19,7 @@ FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,
@@ -224,7 +224,7 @@ def main() -> int:
         "sampled_norm_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-full-norm-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",

@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type {
   RelationshipsGraphEdge,
   RelationshipsGraphSnapshot,
@@ -583,16 +584,21 @@ function GraphIconButton({
   disabled = false,
   onClick,
   children,
+  agentRef,
+  agentProps,
 }: {
   label: string;
   disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
+  agentRef?: React.Ref<HTMLButtonElement>;
+  agentProps?: Record<string, string | undefined>;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
+          ref={agentRef}
           type="button"
           size="sm"
           variant="outline"
@@ -600,6 +606,7 @@ function GraphIconButton({
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
+          {...agentProps}
         >
           {children}
         </Button>
@@ -1004,6 +1011,33 @@ export function RelationshipsGraphPanel({
   const graphWidth = GRAPH_WIDTH * zoom;
   const graphHeight = GRAPH_HEIGHT * zoom;
 
+  const zoomOutButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-graph-zoom-out",
+    role: "button",
+    label: t("relationshipsgraph.zoomOut", { defaultValue: "Zoom out" }),
+    group: "relationships-graph",
+    description: "Zoom the relationships graph out",
+    onActivate: () => zoomOut(),
+  });
+  const zoomInButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-graph-zoom-in",
+    role: "button",
+    label: t("relationshipsgraph.zoomIn", { defaultValue: "Zoom in" }),
+    group: "relationships-graph",
+    description: "Zoom the relationships graph in",
+    onActivate: () => zoomIn(),
+  });
+  const zoomToggleButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-graph-zoom-toggle",
+    role: "button",
+    label: t("relationshipsgraph.toggleZoomAria", {
+      defaultValue: "Toggle zoom (fit / 100%)",
+    }),
+    group: "relationships-graph",
+    description: "Toggle the graph zoom between fit and 100%",
+    onActivate: () => handleZoomPercentClick(),
+  });
+
   return (
     <TooltipProvider delayDuration={160} skipDelayDuration={80}>
       <div className={compact ? "space-y-3" : "space-y-4"}>
@@ -1016,18 +1050,22 @@ export function RelationshipsGraphPanel({
               })}
               disabled={zoom <= MIN_ZOOM}
               onClick={zoomOut}
+              agentRef={zoomOutButton.ref}
+              agentProps={zoomOutButton.agentProps}
             >
               <Minus className="h-3.5 w-3.5" />
             </GraphIconButton>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  ref={zoomToggleButton.ref}
                   type="button"
                   onClick={handleZoomPercentClick}
                   className="min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
                   aria-label={t("relationshipsgraph.toggleZoomAria", {
                     defaultValue: "Toggle zoom (fit / 100%)",
                   })}
+                  {...zoomToggleButton.agentProps}
                 >
                   {zoomPercent}
                 </button>
@@ -1044,6 +1082,8 @@ export function RelationshipsGraphPanel({
               })}
               disabled={zoom >= MAX_ZOOM}
               onClick={zoomIn}
+              agentRef={zoomInButton.ref}
+              agentProps={zoomInButton.agentProps}
             >
               <Plus className="h-3.5 w-3.5" />
             </GraphIconButton>

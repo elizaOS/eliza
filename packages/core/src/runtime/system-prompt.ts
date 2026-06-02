@@ -95,7 +95,7 @@ export function extractLeadingSystemPrompt(
 		return undefined;
 	}
 	const first = messages[0] as MessageLike | undefined;
-	if (!first || first.role !== "system") {
+	if (first?.role !== "system") {
 		return undefined;
 	}
 	const content = textFromChatMessageContent(first.content);

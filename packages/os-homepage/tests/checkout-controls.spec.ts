@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "playwright/test";
 
-async function installCheckoutMocks(page: Page) {
+async function installCheckoutMocks(
+  page: Page,
+  options: { failMagicLink?: boolean } = {},
+) {
   const requests: Array<{
     url: string;
     body: unknown;
@@ -43,6 +46,18 @@ async function installCheckoutMocks(page: Page) {
       });
     }
 
+    if (url.pathname === "/steward/auth/email/send") {
+      if (options.failMagicLink) {
+        return route.fulfill({
+          status: 502,
+          json: { ok: false, error: "Magic link service unavailable" },
+        });
+      }
+      return route.fulfill({
+        json: { ok: true, data: { expiresAt: "2026-01-01T00:00:00.000Z" } },
+      });
+    }
+
     return route.fulfill({
       json: { success: true },
     });
@@ -54,7 +69,7 @@ async function installCheckoutMocks(page: Page) {
 test("checkout product picker, color swatches, and email login are wired", async ({
   page,
 }) => {
-  await installCheckoutMocks(page);
+  const requests = await installCheckoutMocks(page);
 
   await page.goto("/checkout?sku=elizaos-usb");
   await expect(
@@ -71,12 +86,35 @@ test("checkout product picker, color swatches, and email login are wired", async
 
   await page.getByRole("button", { name: "Email link" }).click();
   await expect(page.getByText("Enter your email first.")).toBeVisible();
+  expect(
+    requests.filter(
+      (request) => new URL(request.url).pathname === "/steward/auth/email/send",
+    ),
+  ).toEqual([]);
 
   await page
     .getByPlaceholder("you@example.com")
-    .fill("checkout-controls@example.com");
+    .fill("  checkout-controls@example.com  ");
   await page.getByRole("button", { name: "Email link" }).click();
   await expect(page.getByText("Check your inbox.")).toBeVisible();
+
+  const magicLinkRequest = requests.find(
+    (request) => new URL(request.url).pathname === "/steward/auth/email/send",
+  );
+  expect(magicLinkRequest?.body).toMatchObject({
+    email: "checkout-controls@example.com",
+    tenantId: "elizacloud",
+  });
+});
+
+test("checkout reports magic-link API failures", async ({ page }) => {
+  await installCheckoutMocks(page, { failMagicLink: true });
+
+  await page.goto("/checkout?sku=elizaos-usb");
+  await page.getByPlaceholder("you@example.com").fill("failure@example.com");
+  await page.getByRole("button", { name: "Email link" }).click();
+
+  await expect(page.getByText("Magic link service unavailable")).toBeVisible();
 });
 
 test("checkout accepts a Steward token and posts the selected product to Stripe", async ({

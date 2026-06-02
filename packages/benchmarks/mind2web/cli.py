@@ -33,6 +33,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from benchmarks.mind2web.dataset import Mind2WebDataset, expand_tasks, validate_tasks
 from benchmarks.mind2web.runner import Mind2WebRunner
 from benchmarks.mind2web.types import Mind2WebConfig, Mind2WebRankerMode, Mind2WebSplit
 
@@ -110,6 +111,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20,
         help="Maximum steps per task (default: 20)",
+    )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add ten edge-case variants for every selected base task",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected scenarios and exit",
     )
 
     # Output
@@ -284,6 +300,7 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         max_tasks=args.max_tasks,
         num_trials=max(1, args.trials),
         max_steps_per_task=max(1, args.max_steps),
+        include_edge_scenarios=args.expand_scenarios,
         timeout_ms=max(1000, args.timeout),
         use_mock=bool(args.mock),
         model_provider=provider,
@@ -349,6 +366,26 @@ def main() -> int:
 
     config = create_config(args)
 
+    if args.count_scenarios or args.validate_scenarios:
+        dataset = Mind2WebDataset(split=config.split)
+        asyncio.run(dataset.load(use_huggingface=use_huggingface, use_sample=use_sample))
+        base_tasks = dataset.get_tasks(limit=config.max_tasks)
+        tasks = expand_tasks(base_tasks) if config.include_edge_scenarios else base_tasks
+        if args.validate_scenarios:
+            validate_tasks(tasks)
+        print(
+            json.dumps(
+                {
+                    "base": len(base_tasks),
+                    "edge": len(tasks) - len(base_tasks),
+                    "total": len(tasks),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
     provider = (config.model_provider or "").strip().lower()
     uses_bridge = provider in {"eliza", "eliza-bridge", "eliza-ts"}
 
@@ -364,6 +401,7 @@ def main() -> int:
             or os.environ.get("OPENAI_API_KEY")
             or os.environ.get("OPENROUTER_API_KEY")
             or os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("CEREBRAS_API_KEY")
         )
         if not has_key:
             logger.error(

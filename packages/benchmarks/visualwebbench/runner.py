@@ -57,6 +57,7 @@ class VisualWebBenchRunner:
             use_huggingface=self.config.use_huggingface,
             use_sample_tasks=self.config.use_sample_tasks,
             max_tasks=self.config.max_tasks,
+            include_edge_scenarios=self.config.include_edge_scenarios,
         )
         tasks = self.dataset.get_tasks(self.config.max_tasks)
         if not tasks:

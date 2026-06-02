@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from elizaos_tau_bench.dataset import iter_sample_tasks, iter_tasks
+from elizaos_tau_bench.dataset import expand_task_items, iter_sample_tasks, iter_tasks
 from elizaos_tau_bench.eliza_agent import (
     AgentRunResult,
     BaseTauAgent,
@@ -84,6 +84,13 @@ class TauBenchRunner:
             task_split=self.config.task_split,
             task_index=task_index,
         )
+
+    def _apply_scenario_note(self, env: Env, task_index: int, scenario_note: str) -> None:
+        if not scenario_note:
+            return
+        task = env.tasks[task_index]
+        note = f"\n\nAdditional conversation condition: {scenario_note}"
+        env.tasks[task_index] = task.model_copy(update={"instruction": task.instruction + note})
 
     def _make_agent(self) -> BaseTauAgent:
         if self.config.use_mock:
@@ -155,9 +162,12 @@ class TauBenchRunner:
         task: Task,
         trial: int,
         agent: BaseTauAgent,
+        scenario_id: str = "base",
+        scenario_note: str = "",
     ) -> TaskRunResult:
         try:
             env = self._make_env(domain, task_index)
+            self._apply_scenario_note(env, task_index, scenario_note)
         except Exception as e:
             logger.exception("Failed to construct env for %s task %d", domain, task_index)
             return TaskRunResult(
@@ -166,6 +176,8 @@ class TauBenchRunner:
                 domain=domain,
                 reward=0.0,
                 success=False,
+                scenario_id=scenario_id,
+                scenario_note=scenario_note,
                 error=f"env_init: {e}",
             )
 
@@ -225,6 +237,8 @@ class TauBenchRunner:
             domain=domain,
             reward=float(run.reward),
             success=bool(success),
+            scenario_id=scenario_id,
+            scenario_note=scenario_note,
             judge_passed=judge_passed,
             judge_explanation=judge_expl,
             r_actions=r_actions,
@@ -263,7 +277,12 @@ class TauBenchRunner:
                 max_per_domain=self.config.max_tasks_per_domain,
             )
         try:
-            task_list = list(task_iter)
+            base_task_list = list(task_iter)
+            task_list = (
+                expand_task_items(base_task_list)
+                if self.config.include_edge_scenarios
+                else [(domain, idx, task, "base", "") for domain, idx, task in base_task_list]
+            )
             if not task_list:
                 raise ValueError("No tasks selected — check --domains / --task-ids / --split")
 
@@ -281,9 +300,17 @@ class TauBenchRunner:
             )
 
             done = 0
-            for domain, task_index, task in task_list:
+            for domain, task_index, task, scenario_id, scenario_note in task_list:
                 for trial in range(self.config.num_trials):
-                    r = self._run_trial(domain, task_index, task, trial, agent)
+                    r = self._run_trial(
+                        domain,
+                        task_index,
+                        task,
+                        trial,
+                        agent,
+                        scenario_id,
+                        scenario_note,
+                    )
                     results.append(r)
                     domain_results.setdefault(domain, []).append(r)
                     done += 1
@@ -339,6 +366,8 @@ class TauBenchRunner:
                 "domain": r.domain,
                 "task_id": r.task_id,
                 "trial": r.trial,
+                "scenario_id": r.scenario_id,
+                "scenario_note": r.scenario_note,
                 "reward": r.reward,
                 "success": r.success,
                 "messages": r.messages,

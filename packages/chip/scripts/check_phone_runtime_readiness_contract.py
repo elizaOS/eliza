@@ -1062,6 +1062,123 @@ def next_runtime_capture_action(
     }
 
 
+def report_next_command_plan(
+    capture_area_groups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return aggregate-friendly command batches for runtime evidence capture."""
+    plan: list[dict[str, Any]] = []
+    for group in capture_area_groups:
+        commands = [
+            command for command in group.get("next_commands", []) if isinstance(command, str)
+        ]
+        if not commands:
+            continue
+        capture_area = str(group.get("capture_area") or "phone_runtime")
+        plan.append(
+            {
+                "id": f"capture_{capture_area}_phone_runtime_evidence",
+                "area": "runtime",
+                "capture_area": capture_area,
+                "source": "packages/chip/build/reports/phone_runtime_readiness_contract.json",
+                "claim_boundary": "operator_commands_only_not_phone_runtime_or_release_evidence",
+                "commands": commands,
+                "expected_output_files": group.get("next_artifacts", []),
+                "next_command_batches": group.get("next_command_batches", []),
+                "requires": [
+                    "booted eliza_ai_soc Android target reachable over adb",
+                    "CHIP_ANDROID_ADB_HOSTPORT set to the chip emulator adb host:port",
+                    "fresh runtime evidence files matching the fail-closed contracts",
+                    "rerun of phone runtime readiness and aggregate tapeout checks",
+                ],
+            }
+        )
+    return plan
+
+
+def finding_capture_area(finding: Finding) -> str | None:
+    for suffix in (
+        "_runtime_evidence_incomplete",
+        "_runtime_surface_blocked",
+        "_scope_report_invalid",
+    ):
+        if finding.code.endswith(suffix):
+            return finding.code[: -len(suffix)]
+    return None
+
+
+def finding_commands(
+    finding: Finding,
+    capture_area_groups: list[dict[str, Any]],
+) -> list[str]:
+    capture_area = finding_capture_area(finding)
+    if not capture_area:
+        return []
+    for group in capture_area_groups:
+        if group.get("capture_area") != capture_area:
+            continue
+        commands: list[str] = []
+        for batch in group.get("next_command_batches", []):
+            if not isinstance(batch, dict):
+                continue
+            commands.extend(
+                command
+                for command in batch.get("capture_commands", [])
+                if isinstance(command, str) and command
+            )
+            commands.extend(
+                command
+                for command in batch.get("validation_commands", [])
+                if isinstance(command, str) and command
+            )
+        commands.extend(
+            command for command in group.get("next_commands", []) if isinstance(command, str)
+        )
+        return list(dict.fromkeys(commands))
+    return []
+
+
+def is_setup_only_command(command: str) -> bool:
+    stripped = command.strip()
+    return stripped.startswith("export ") or stripped.startswith("adb connect ")
+
+
+def is_validation_only_command(command: str) -> bool:
+    return command in {PHONE_RUNTIME_VALIDATION_COMMAND, PHONE_RUNTIME_AGGREGATE_COMMAND}
+
+
+def is_capture_action_command(command: str) -> bool:
+    return (
+        "packages/chip/scripts/android/capture_" in command
+        or 'sh -c "$ELIZA_' in command
+        or "| tee packages/chip/docs/evidence/" in command
+    )
+
+
+def preferred_finding_command(commands: list[str]) -> str:
+    return next(
+        (
+            command
+            for command in commands
+            if is_capture_action_command(command)
+            and not is_setup_only_command(command)
+            and not is_validation_only_command(command)
+        ),
+        commands[0],
+    )
+
+
+def finding_payload(
+    finding: Finding,
+    capture_area_groups: list[dict[str, Any]],
+) -> dict[str, Any]:
+    row = asdict(finding)
+    commands = finding_commands(finding, capture_area_groups)
+    if commands:
+        row["next_command"] = preferred_finding_command(commands)
+        row["next_commands"] = commands
+    return row
+
+
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
     del args
     findings: list[Finding] = []
@@ -1137,6 +1254,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     collection_inventory = runtime_evidence_collection_inventory(evidence)
     capture_area_groups = runtime_capture_area_groups(collection_inventory)
     next_capture_action = next_runtime_capture_action(capture_area_groups)
+    next_command_plan = report_next_command_plan(capture_area_groups)
     blocked_runtime_files = [
         file_record
         for scope_record in collection_inventory
@@ -1158,6 +1276,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
             "findings": len(findings),
             "blocker_dependency_counts": blocker_dependency_counts,
             "runtime_capture_plan_count": len(capture_plan),
+            "next_command_batch_count": len(next_command_plan),
             "runtime_evidence_collection_scope_count": len(collection_inventory),
             "blocked_runtime_evidence_file_count": len(blocked_runtime_files),
             "live_capture_unavailable_file_count": blocked_file_class_counts[
@@ -1189,10 +1308,11 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
                 next_capture_action.get("blocked_evidence_file_count") if next_capture_action else 0
             ),
         },
-        "findings": [asdict(finding) for finding in findings],
+        "findings": [finding_payload(finding, capture_area_groups) for finding in findings],
         "evidence": evidence,
         "prioritized_runtime_capture_plan": capture_plan,
         "runtime_capture_area_groups": capture_area_groups,
+        "next_command_plan": next_command_plan,
         "next_runtime_capture_action": next_capture_action,
         "runtime_evidence_collection_inventory": collection_inventory,
     }

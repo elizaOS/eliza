@@ -13,6 +13,7 @@ import { Plus, X } from "lucide-react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";
 import { navActiveClassHorizontal } from "../composites/sidebar/nav-active";
+import { ViewIcon } from "../views/ViewIcon";
 
 export interface DesktopTabBarProps {
   tabs: DesktopTab[];
@@ -43,11 +44,9 @@ function TabButton({
           : "border-border/40 bg-card/60 text-muted hover:border-border hover:text-txt"
       }`}
     >
-      {tab.icon && (
-        <span className="shrink-0 text-[10px]" aria-hidden>
-          {tab.icon}
-        </span>
-      )}
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-accent/10 text-accent">
+        <ViewIcon icon={tab.icon} label={tab.label} className="h-3 w-3" />
+      </span>
       <button
         type="button"
         title={tab.label}

@@ -250,6 +250,10 @@ export const pageDelegateAction: PageActionGroup = {
         text: `${childAction.name} is not available for this request.`,
       };
     }
+    const childCallback: typeof callback = callback
+      ? (response, actionName) =>
+          callback(response, actionName ?? childAction.name)
+      : undefined;
 
     return (
       (await childAction.handler(
@@ -260,7 +264,7 @@ export const pageDelegateAction: PageActionGroup = {
           ...options,
           parameters: params.parameters ?? {},
         },
-        callback,
+        childCallback,
       )) ?? {
         success: true,
         text: `${childAction.name} completed.`,

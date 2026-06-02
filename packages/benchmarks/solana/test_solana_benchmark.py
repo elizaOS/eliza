@@ -566,6 +566,20 @@ class TestElizaExplorerConstruction:
         assert "hermes_adapter.client.HermesClient" in HARNESS_PATHS["hermes"].transport
         assert "openclaw_adapter.client.OpenClawClient" in HARNESS_PATHS["openclaw"].transport
 
+    def test_scenario_expansion_counts_and_validates(self):
+        from benchmarks.solana.eliza_explorer import (
+            count_scenarios,
+            scenario_labels,
+            validate_scenarios,
+        )
+
+        assert count_scenarios(False) == {"base": 1, "edge": 0, "total": 1}
+        assert count_scenarios(True) == {"base": 1, "edge": 10, "total": 11}
+        labels = scenario_labels(True)
+        assert labels[0] == "base"
+        assert len(labels) == len(set(labels)) == 11
+        assert validate_scenarios(True)["valid"] is True
+
     def test_invalid_harness_rejected(self):
         from benchmarks.solana.eliza_explorer import normalize_harness
         with pytest.raises(ValueError, match="Unsupported Solana benchmark harness"):
@@ -759,9 +773,10 @@ class TestRegistryIntegration:
         command = solana.build_command(
             tmp_path,
             ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-            {"agent": "openclaw"},
+            {"agent": "openclaw", "expand_scenarios": True},
         )
         assert command[command.index("--harness") + 1] == "openclaw"
+        assert "--expand-scenarios" in command
         assert solana.requirements.env_vars == ()
         assert "selected harness/provider credentials" in solana.requirements.notes
 

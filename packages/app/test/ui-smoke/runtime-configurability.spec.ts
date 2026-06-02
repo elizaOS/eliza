@@ -92,10 +92,10 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
   const cloudInference = page.getByTestId("first-run-local-cloud-inference");
   await expect(allLocal).toBeVisible({ timeout: 10_000 });
   await expect(cloudInference).toBeVisible();
-  await cloudInference.click();
-  await expect(cloudInference).toHaveAttribute("aria-checked", "true");
-  await allLocal.click();
-  await expect(allLocal).toHaveAttribute("aria-checked", "true");
+  await cloudInference.check({ force: true });
+  await expect(cloudInference).toBeChecked();
+  await allLocal.check({ force: true });
+  await expect(allLocal).toBeChecked();
 
   // Cloud is configurable: re-selecting it is the recommended resting choice
   // and collapses the local sub-choice.
@@ -113,4 +113,50 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   await expectNoRenderTelemetryErrors(page, "runtime configurability");
   await expect(shell).toBeVisible();
+});
+
+test("onboarding survives browser back and forward while runtime choices churn", async ({
+  page,
+}) => {
+  await installRenderTelemetryGuard(page);
+  await installDefaultAppRoutes(page);
+  await routeFirstRunIncomplete(page);
+  await injectFullCapabilityHost(page);
+  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+  await page.goto("/?runtime=first-run&runtimeTarget=remote", {
+    waitUntil: "domcontentloaded",
+  });
+  const shell = page.getByTestId("first-run-shell");
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await page.goto("/?runtime=first-run&runtimeTarget=local", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+  const allLocal = page.getByTestId("first-run-local-all-local");
+  await expect(allLocal).toBeVisible({ timeout: 10_000 });
+
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await page.goForward({ waitUntil: "domcontentloaded" });
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+  await expect(allLocal).toBeVisible({ timeout: 10_000 });
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: /runtime/i }).click();
+  const cloud = page.getByTestId("first-run-runtime-cloud");
+  await expect(cloud).toBeVisible({ timeout: 10_000 });
+  await cloud.click();
+  await expect(allLocal).toHaveCount(0);
+
+  await expectNoRenderTelemetryErrors(page, "runtime browser history");
 });

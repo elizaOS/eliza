@@ -27,9 +27,48 @@ interface GrokConfig {
   embeddingModel: string;
 }
 
+function getSettingString(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function normalizeBaseUrl(value: unknown): string {
+  const raw =
+    typeof value === "string" && value.trim() ? value.trim() : XAI_API_BASE;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("XAI_BASE_URL must be a valid URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("XAI_BASE_URL must use http or https");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function normalizeModelName(
+  value: unknown,
+  fallback: string,
+  settingName: string,
+): string {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${settingName} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
 function getConfig(runtime: IAgentRuntime): GrokConfig {
-  const apiKey = runtime.getSetting("XAI_API_KEY");
-  if (!apiKey || typeof apiKey !== "string") {
+  const apiKey =
+    getSettingString(runtime, "XAI_API_KEY") ??
+    getSettingString(runtime, "GROK_API_KEY");
+  if (!apiKey) {
     throw new Error("XAI_API_KEY is required");
   }
 
@@ -41,16 +80,30 @@ function getConfig(runtime: IAgentRuntime): GrokConfig {
 
   return {
     apiKey,
-    baseUrl: typeof baseUrl === "string" ? baseUrl : XAI_API_BASE,
-    smallModel:
-      typeof smallModel === "string" ? smallModel : DEFAULT_MODELS.small,
-    largeModel:
-      typeof largeModel === "string" ? largeModel : DEFAULT_MODELS.large,
-    embeddingModel:
-      typeof embeddingModel === "string"
-        ? embeddingModel
-        : DEFAULT_MODELS.embedding,
+    baseUrl: normalizeBaseUrl(baseUrl),
+    smallModel: normalizeModelName(
+      smallModel,
+      DEFAULT_MODELS.small,
+      "XAI_SMALL_MODEL",
+    ),
+    largeModel: normalizeModelName(
+      largeModel,
+      DEFAULT_MODELS.large,
+      "XAI_MODEL",
+    ),
+    embeddingModel: normalizeModelName(
+      embeddingModel,
+      DEFAULT_MODELS.embedding,
+      "XAI_EMBEDDING_MODEL",
+    ),
   };
+}
+
+function getFetch(runtime: IAgentRuntime): typeof fetch {
+  const runtimeFetch = (runtime as { fetch?: typeof fetch }).fetch;
+  return typeof runtimeFetch === "function"
+    ? runtimeFetch.bind(runtime)
+    : fetch;
 }
 
 function getAuthHeader(config: GrokConfig): Record<string, string> {
@@ -308,6 +361,74 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
   };
 }
 
+function sanitizeTemperature(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("temperature must be a finite number");
+  }
+  return Math.min(2, Math.max(0, value));
+}
+
+function sanitizeMaxTokens(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    !Number.isInteger(value) ||
+    value < 1
+  ) {
+    throw new Error("maxTokens must be a positive finite integer");
+  }
+  return value;
+}
+
+function sanitizeStopSequences(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("stopSequences must be an array of strings");
+  }
+  return value;
+}
+
+function normalizePrompt(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string") {
+    throw new Error("prompt must be a string");
+  }
+  return value;
+}
+
+function normalizeEmbeddingText(
+  params: TextEmbeddingParams | string | null,
+): string {
+  if (params === null) {
+    throw new Error("Null params provided for embedding");
+  }
+  if (typeof params === "string") return params.trim();
+  if (
+    !params ||
+    typeof params !== "object" ||
+    typeof params.text !== "string"
+  ) {
+    throw new Error("Embedding text must be a string");
+  }
+  return params.text.trim();
+}
+
+function validateEmbeddingVector(embedding: unknown): number[] {
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error("No embedding in Grok response");
+  }
+  if (
+    embedding.some(
+      (value) => typeof value !== "number" || !Number.isFinite(value),
+    )
+  ) {
+    throw new Error("Grok embedding response contained non-finite values");
+  }
+  return embedding;
+}
+
 function emitModelUsed(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -347,7 +468,7 @@ async function generateText(
     toolChoice?: XaiToolChoice;
     responseSchema?: unknown;
   };
-  const promptText = params.prompt ?? "";
+  const promptText = normalizePrompt(params.prompt);
   const tools = normalizeXaiTools(paramsWithNative.tools);
   const toolChoice = normalizeXaiToolChoice(paramsWithNative.toolChoice);
   const responseFormat = buildXaiResponseFormat(
@@ -369,14 +490,17 @@ async function generateText(
     messages,
   };
 
-  if (params.temperature !== undefined) {
-    body.temperature = params.temperature;
+  const temperature = sanitizeTemperature(params.temperature);
+  if (temperature !== undefined) {
+    body.temperature = temperature;
   }
-  if (params.maxTokens !== undefined) {
-    body.max_tokens = params.maxTokens;
+  const maxTokens = sanitizeMaxTokens(params.maxTokens);
+  if (maxTokens !== undefined) {
+    body.max_tokens = maxTokens;
   }
-  if (params.stopSequences) {
-    body.stop = params.stopSequences;
+  const stopSequences = sanitizeStopSequences(params.stopSequences);
+  if (stopSequences) {
+    body.stop = stopSequences;
   }
   if (tools) {
     body.tools = tools;
@@ -389,79 +513,26 @@ async function generateText(
   }
 
   if (params.stream && params.onStreamChunk) {
-    body.stream = true;
-    const onStreamChunk = params.onStreamChunk;
-
-    return recordLlmCall(
+    return createStreamTextResult(
       runtime,
-      {
-        model,
-        systemPrompt: "",
-        userPrompt: promptText,
-        temperature: params.temperature ?? 0,
-        maxTokens: params.maxTokens ?? 0,
-        purpose: "external_llm",
-        actionType: "xai.chat.completions.stream",
-      },
-      async () => {
-        const response = await fetch(`${config.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: getAuthHeader(config),
-          body: JSON.stringify(body),
-        });
+      config,
+      modelType,
+      model,
+      params,
+      body,
+      promptText,
+    );
+  }
 
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Grok API error (${response.status}): ${error}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("No response body");
-        }
-
-        const decoder = new TextDecoder();
-        let fullText = "";
-        let usage: NormalizedUsage | null = null;
-        let responseModel = model;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            const parsed = JSON.parse(data) as StreamCompletionChunk;
-            const chunkUsage = normalizeTokenUsage(parsed.usage);
-            if (chunkUsage) {
-              usage = chunkUsage;
-            }
-            if (typeof parsed.model === "string" && parsed.model.length > 0) {
-              responseModel = parsed.model;
-            }
-
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullText += content;
-              onStreamChunk(content);
-            }
-          }
-        }
-
-        emitModelUsed(
-          runtime,
-          modelType,
-          responseModel,
-          usage ?? estimateUsage(promptText, fullText),
-        );
-        return fullText;
-      },
+  if (params.stream) {
+    return createStreamTextResult(
+      runtime,
+      config,
+      modelType,
+      model,
+      params,
+      body,
+      promptText,
     );
   }
 
@@ -477,11 +548,14 @@ async function generateText(
       actionType: "xai.chat.completions.create",
     },
     async () => {
-      const response = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: getAuthHeader(config),
-        body: JSON.stringify(body),
-      });
+      const response = await getFetch(runtime)(
+        `${config.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: getAuthHeader(config),
+          body: JSON.stringify(body),
+        },
+      );
 
       if (!response.ok) {
         const error = await response.text();
@@ -534,6 +608,124 @@ async function generateText(
   );
 }
 
+function createStreamTextResult(
+  runtime: IAgentRuntime,
+  config: GrokConfig,
+  modelType: ModelTypeName,
+  model: string,
+  params: GenerateTextParams,
+  body: Record<string, unknown>,
+  promptText: string,
+): TextStreamResult {
+  body.stream = true;
+  const onStreamChunk = params.onStreamChunk;
+  const fetchImpl = getFetch(runtime);
+  const state = recordLlmCall(
+    runtime,
+    {
+      model,
+      systemPrompt: "",
+      userPrompt: promptText,
+      temperature: params.temperature ?? 0,
+      maxTokens: params.maxTokens ?? 0,
+      purpose: "external_llm",
+      actionType: "xai.chat.completions.stream",
+    },
+    async () => {
+      const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: getAuthHeader(config),
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok API error (${response.status}): ${error}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      let buffered = "";
+      let usage: NormalizedUsage | null = null;
+      let responseModel = model;
+      let finishReason: string | undefined;
+
+      const readLine = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        const data = line.slice(6).trim();
+        if (!data || data === "[DONE]") return;
+
+        const parsed = JSON.parse(data) as StreamCompletionChunk & {
+          choices?: Array<{
+            finish_reason?: string;
+            delta?: { content?: string };
+          }>;
+        };
+        const chunkUsage = normalizeTokenUsage(parsed.usage);
+        if (chunkUsage) {
+          usage = chunkUsage;
+        }
+        if (typeof parsed.model === "string" && parsed.model.length > 0) {
+          responseModel = parsed.model;
+        }
+
+        const choice = parsed.choices?.[0];
+        if (typeof choice?.finish_reason === "string") {
+          finishReason = choice.finish_reason;
+        }
+        const content = choice?.delta?.content;
+        if (content) {
+          chunks.push(content);
+          onStreamChunk?.(content);
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split(/\r?\n/);
+        buffered = lines.pop() ?? "";
+        for (const line of lines) {
+          readLine(line);
+        }
+      }
+
+      buffered += decoder.decode();
+      for (const line of buffered.split(/\r?\n/)) {
+        readLine(line);
+      }
+
+      const fullText = chunks.join("");
+      const finalUsage = usage ?? estimateUsage(promptText, fullText);
+      emitModelUsed(runtime, modelType, responseModel, finalUsage);
+
+      return {
+        fullText,
+        chunks,
+        usage: finalUsage,
+        finishReason,
+      };
+    },
+  );
+
+  return {
+    textStream: (async function* () {
+      const result = await state;
+      yield* result.chunks;
+    })(),
+    text: state.then((result) => result.fullText),
+    usage: state.then((result) => result.usage),
+    finishReason: state.then((result) => result.finishReason),
+  };
+}
+
 function parseJsonOrRaw(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -548,7 +740,7 @@ async function createEmbedding(
   config: GrokConfig,
   text: string,
 ): Promise<number[]> {
-  const response = await fetch(`${config.baseUrl}/embeddings`, {
+  const response = await getFetch(runtime)(`${config.baseUrl}/embeddings`, {
     method: "POST",
     headers: getAuthHeader(config),
     body: JSON.stringify({
@@ -564,9 +756,7 @@ async function createEmbedding(
 
   const data = (await response.json()) as EmbeddingResponse;
 
-  if (!data.data?.[0]?.embedding) {
-    throw new Error("No embedding in Grok response");
-  }
+  const embedding = validateEmbeddingVector(data.data?.[0]?.embedding);
 
   emitModelUsed(
     runtime,
@@ -574,7 +764,7 @@ async function createEmbedding(
     data.model || config.embeddingModel,
     normalizeTokenUsage(data.usage) ?? estimateEmbeddingUsage(text),
   );
-  return data.data[0].embedding;
+  return embedding;
 }
 
 export async function handleTextSmall(
@@ -616,12 +806,8 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
-  if (params === null) {
-    throw new Error("Null params provided for embedding");
-  }
   const config = getConfig(runtime);
-  const text =
-    typeof params === "string" ? params : (params as TextEmbeddingParams).text;
+  const text = normalizeEmbeddingText(params);
   if (!text) {
     throw new Error("Empty text provided for embedding");
   }
@@ -650,5 +836,8 @@ export async function listModels(
 }
 
 export function isGrokConfigured(runtime: IAgentRuntime): boolean {
-  return !!runtime.getSetting("XAI_API_KEY");
+  return !!(
+    getSettingString(runtime, "XAI_API_KEY") ??
+    getSettingString(runtime, "GROK_API_KEY")
+  );
 }

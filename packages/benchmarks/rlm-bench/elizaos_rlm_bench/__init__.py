@@ -36,7 +36,7 @@ from .types import (
     RLMStrategyMetrics,
 )
 from .runner import RLMBenchRunner
-from .generator import RLMBenchGenerator
+from .generator import RLMBenchGenerator, count_tasks, expand_tasks, validate_tasks
 from .evaluator import RLMBenchEvaluator
 from .reporting import RLMBenchReporter, save_results
 
@@ -53,6 +53,9 @@ __all__ = [
     "RLMBenchRunner",
     # Generator
     "RLMBenchGenerator",
+    "count_tasks",
+    "expand_tasks",
+    "validate_tasks",
     # Evaluator
     "RLMBenchEvaluator",
     # Reporting

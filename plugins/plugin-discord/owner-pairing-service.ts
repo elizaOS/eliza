@@ -23,6 +23,7 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { ChatInputCommandInteraction } from "discord.js";
 import { addCommand } from "./slash-commands";
+import { isValidSnowflake } from "./types";
 
 /** Service type string used by the backend to look up this service. */
 export const DISCORD_OWNER_PAIRING_SERVICE_TYPE = "OWNER_PAIRING_DISCORD";
@@ -359,6 +360,9 @@ export class DiscordOwnerPairingServiceImpl
 		link: string;
 	}): Promise<void> {
 		const { externalId, link } = params;
+		if (!isValidSnowflake(externalId)) {
+			throw new Error("Discord externalId must be a valid snowflake");
+		}
 
 		// Resolve the DiscordService to get the discord.js Client.
 		const discordSvc = this.runtime.getService("discord") as unknown;

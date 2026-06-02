@@ -80,6 +80,18 @@ RAW_FALSE_CLAIM_FLAGS = (
     "thermal_claim_allowed",
     "dma_backed_tensor_execution_claim_allowed",
 )
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "android_driver_claim_allowed": False,
+    "power_claim_allowed": False,
+    "thermal_claim_allowed": False,
+    "dma_backed_tensor_execution_claim_allowed": False,
+    "hardware_benchmark_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -175,6 +187,12 @@ def build_summary(cocotb_path: Path, results_path: Path = DEFAULT_COCOTB_RESULTS
         "production_accelerator_claim_allowed": False,
         "nnapi_claim_allowed": False,
         "performance_claim_allowed": False,
+        "android_driver_claim_allowed": False,
+        "power_claim_allowed": False,
+        "thermal_claim_allowed": False,
+        "dma_backed_tensor_execution_claim_allowed": False,
+        "hardware_benchmark_claim_allowed": False,
+        "false_claim_flags": dict(FALSE_CLAIM_FLAGS),
         "artifacts": {
             "cocotb_coverage": artifact(cocotb_path),
             "cocotb_results": artifact(results_path),
@@ -240,9 +258,18 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
         "production_accelerator_claim_allowed",
         "nnapi_claim_allowed",
         "performance_claim_allowed",
+        "android_driver_claim_allowed",
+        "power_claim_allowed",
+        "thermal_claim_allowed",
+        "dma_backed_tensor_execution_claim_allowed",
+        "hardware_benchmark_claim_allowed",
     ):
         if summary.get(claim) is not False:
             errors.append(f"{claim} must be false")
+
+    false_flags = summary.get("false_claim_flags", {})
+    if false_flags != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match the NPU coverage non-claim map")
 
     boundary = summary.get("claim_boundary", {})
     for claim in (

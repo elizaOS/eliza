@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { IWhatsAppClient } from "./clients/interface";
+import { assertValidWhatsAppMediaLink } from "./media";
 import type {
   CloudAPIConfig,
   ConnectionStatus,
@@ -422,7 +423,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
           ...basePayload,
           ...contextPayload,
           image: {
-            link: imageContent.link,
+            link: assertValidWhatsAppMediaLink(imageContent.link, "image"),
             caption: imageContent.caption,
           },
         };
@@ -434,7 +435,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
           ...basePayload,
           ...contextPayload,
           video: {
-            link: videoContent.link,
+            link: assertValidWhatsAppMediaLink(videoContent.link, "video"),
             caption: videoContent.caption,
           },
         };
@@ -446,7 +447,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
           ...basePayload,
           ...contextPayload,
           audio: {
-            link: audioContent.link,
+            link: assertValidWhatsAppMediaLink(audioContent.link, "audio"),
           },
         };
       }
@@ -457,7 +458,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
           ...basePayload,
           ...contextPayload,
           document: {
-            link: docContent.link,
+            link: assertValidWhatsAppMediaLink(docContent.link, "document"),
             filename: docContent.filename,
             caption: docContent.caption,
           },

@@ -8,6 +8,43 @@ import type {
   UnblockAppsResult,
 } from "./definitions";
 
+const PACKAGE_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+
+function validateBlockAppsOptions(options: BlockAppsOptions): void {
+  const packageNames = Array.isArray(options?.packageNames)
+    ? options.packageNames
+    : [];
+  const appTokens = Array.isArray(options?.appTokens) ? options.appTokens : [];
+
+  for (const packageName of packageNames) {
+    if (
+      typeof packageName !== "string" ||
+      !PACKAGE_NAME_RE.test(packageName.trim())
+    ) {
+      throw new Error("packageNames must contain valid Android package names");
+    }
+  }
+
+  for (const token of appTokens) {
+    if (typeof token !== "string" || token.trim().length === 0) {
+      throw new Error("appTokens must contain non-empty strings");
+    }
+  }
+
+  if (
+    options?.durationMinutes !== undefined &&
+    options.durationMinutes !== null
+  ) {
+    if (
+      typeof options.durationMinutes !== "number" ||
+      !Number.isFinite(options.durationMinutes) ||
+      options.durationMinutes <= 0
+    ) {
+      throw new Error("durationMinutes must be a positive finite number");
+    }
+  }
+}
+
 export class AppBlockerWeb extends WebPlugin {
   async checkPermissions(): Promise<AppBlockerPermissionResult> {
     return {
@@ -57,7 +94,8 @@ export class AppBlockerWeb extends WebPlugin {
     return { apps: [], cancelled: true };
   }
 
-  async blockApps(_options: BlockAppsOptions): Promise<BlockAppsResult> {
+  async blockApps(options: BlockAppsOptions): Promise<BlockAppsResult> {
+    validateBlockAppsOptions(options);
     return {
       success: false,
       endsAt: null,

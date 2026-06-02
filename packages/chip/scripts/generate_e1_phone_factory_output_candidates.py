@@ -11,6 +11,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,7 @@ ROUTED_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_
 ROUTED_SCHEMATIC = ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
 ROUTED_STEP = ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
 ROUTED_STEP_METADATA = ROUTED_STEP.with_suffix(ROUTED_STEP.suffix + ".metadata.yaml")
+KICAD_CLI = ROOT / "tools/bin/kicad-cli"
 
 INPUTS = [
     ROUTED_BOARD,
@@ -75,6 +79,23 @@ def load_yaml_if_present(path: Path) -> dict[str, Any]:
         return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
+
+
+def normalize_kicad_text(text: str) -> str:
+    return re.sub(r"\b\d{2}:\d{2}:\d{2}: ", "HH:MM:SS: ", text)
+
+
+def normalize_kicad_json(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {
+            key: "normalized_local_candidate_timestamp"
+            if key == "date" and isinstance(value, str)
+            else normalize_kicad_json(value)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [normalize_kicad_json(item) for item in payload]
+    return payload
 
 
 def routed_release_provenance() -> dict[str, Any]:
@@ -205,6 +226,184 @@ def write_dir_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     }
 
 
+def directory_file_records(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for child in sorted(item for item in path.rglob("*") if item.is_file()):
+        records.append(
+            {
+                "path": child.relative_to(path).as_posix(),
+                "bytes": child.stat().st_size,
+                "sha256": sha256(child),
+            }
+        )
+    return records
+
+
+def run_kicad_export(args: list[str]) -> dict[str, Any]:
+    if not KICAD_CLI.is_file():
+        return {
+            "status": "blocked_kicad_cli_missing",
+            "command": " ".join(args),
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"{chip_rel(KICAD_CLI)} is missing",
+        }
+    completed = subprocess.run(
+        [str(KICAD_CLI), *args],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    return {
+        "status": "pass" if completed.returncode == 0 else "blocked_kicad_cli_export_failed",
+        "command": " ".join([chip_rel(KICAD_CLI), *args]),
+        "returncode": completed.returncode,
+        "stdout": normalize_kicad_text(completed.stdout),
+        "stderr": normalize_kicad_text(completed.stderr),
+    }
+
+
+def run_kicad_json_report(args: list[str], output: Path) -> dict[str, Any]:
+    run = run_kicad_export(args)
+    payload: Any = {}
+    parse_status = "not_parsed"
+    if output.is_file():
+        try:
+            payload = normalize_kicad_json(json.loads(output.read_text(encoding="utf-8")))
+            parse_status = "pass"
+        except json.JSONDecodeError as exc:
+            payload = {"json_error": str(exc)}
+            parse_status = "blocked_json_parse_failed"
+    run["output"] = chip_rel(output)
+    run["output_present"] = output.is_file()
+    run["output_bytes"] = output.stat().st_size if output.is_file() else 0
+    run["output_sha256"] = sha256(output) if output.is_file() else ""
+    run["json_parse_status"] = parse_status
+    return {"run": run, "payload": payload}
+
+
+def write_kicad_export_dir_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
+    path = ROOT / path_text
+    path.mkdir(parents=True, exist_ok=True)
+    placeholder = path / "candidate-placeholder.txt"
+    if placeholder.exists():
+        placeholder.unlink()
+    for child in path.iterdir():
+        if child.name == "release-manifest.yaml":
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+    export_runs: list[dict[str, Any]] = []
+    board_rel = chip_rel(ROUTED_BOARD)
+    schematic_rel = chip_rel(ROUTED_SCHEMATIC)
+    if path_text == "board/kicad/e1-phone/production/gerbers":
+        export_runs.append(run_kicad_export(["pcb", "export", "gerbers", "-o", path_text, board_rel]))
+    elif path_text == "board/kicad/e1-phone/production/gerbers/nc-drill-and-slots":
+        export_runs.append(
+            run_kicad_export(
+                [
+                    "pcb",
+                    "export",
+                    "drill",
+                    "-o",
+                    path_text,
+                    "--generate-report",
+                    "--report-path",
+                    f"{path_text}/drill-report.rpt",
+                    board_rel,
+                ]
+            )
+        )
+    elif path_text == "board/kicad/e1-phone/production/pos":
+        export_runs.append(
+            run_kicad_export(
+                [
+                    "pcb",
+                    "export",
+                    "pos",
+                    "-o",
+                    f"{path_text}/positions.csv",
+                    "--format",
+                    "csv",
+                    "--units",
+                    "mm",
+                    "--side",
+                    "both",
+                    board_rel,
+                ]
+            )
+        )
+    elif path_text == "board/kicad/e1-phone/production/ipc-2581":
+        export_runs.append(
+            run_kicad_export(
+                [
+                    "pcb",
+                    "export",
+                    "ipc2581",
+                    "-o",
+                    f"{path_text}/e1-phone-mainboard-routed.ipc2581.xml",
+                    board_rel,
+                ]
+            )
+        )
+    elif path_text == "board/kicad/e1-phone/production/bom":
+        export_runs.append(
+            run_kicad_export(
+                [
+                    "sch",
+                    "export",
+                    "bom",
+                    "-o",
+                    f"{path_text}/bom.csv",
+                    schematic_rel,
+                ]
+            )
+        )
+    else:
+        raise ValueError(f"unsupported KiCad export candidate directory: {path_text}")
+
+    generated_files = directory_file_records(path)
+    manifest = blocked_record(artifact_id, path_text)
+    manifest.update(
+        {
+            "kicad_cli": chip_rel(KICAD_CLI),
+            "kicad_cli_version": subprocess.run(
+                [str(KICAD_CLI), "version"],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            ).stdout.strip()
+            if KICAD_CLI.is_file()
+            else "",
+            "kicad_export_runs": export_runs,
+            "candidate_children": [record["path"] for record in generated_files],
+            "candidate_child_count": len(generated_files),
+            "candidate_child_bytes_total": sum(int(record["bytes"]) for record in generated_files),
+            "candidate_child_hashes": generated_files,
+            "candidate_children_generated_from_routed_kicad": bool(generated_files)
+            and all(run["status"] == "pass" for run in export_runs),
+            "release_children_complete": False,
+            "release_blockers": [
+                "local KiCad exports are generated from a non-release routed development candidate",
+                "production DRC/ERC/SI/PI/RF signoff and approved waivers are missing",
+                "fabricator stackup, coupon, CAM review, and panelization approval are missing",
+                "supplier-approved component STEP/B-rep and drawing packs are missing",
+            ],
+        }
+    )
+    write_yaml(path / "release-manifest.yaml", manifest)
+    return {
+        "path": chip_rel(path),
+        "kind": "directory",
+        "metadata": chip_rel(path / "release-manifest.yaml"),
+    }
+
+
 def write_yaml_candidate(
     path_text: str, artifact_id: str, source_text: str | None
 ) -> dict[str, str]:
@@ -230,38 +429,96 @@ def write_json_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = blocked_record(artifact_id, path_text)
     if path_text == "board/kicad/e1-phone/production/reports/drc.json":
+        raw_path = ROOT / "build/e1-phone-factory-output-candidates/raw-routed-drc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "pcb",
+                "drc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_BOARD),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        violations = raw_payload.get("violations") if isinstance(raw_payload, dict) else []
+        unconnected = raw_payload.get("unconnected_items") if isinstance(raw_payload, dict) else []
         payload.update(
             {
                 "raw_kicad_report_kind": "drc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_drc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli pcb drc --format json --output "
                     "board/kicad/e1-phone/production/reports/drc.json "
                     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
                 ),
-                "kicad_cli_version": "",
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
                 "source_board_sha256": sha256(ROUTED_BOARD) if ROUTED_BOARD.is_file() else "",
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": len(violations) if isinstance(violations, list) else 0,
+                "raw_kicad_unconnected_item_count": (
+                    len(unconnected) if isinstance(unconnected, list) else 0
+                ),
+                "raw_kicad_total_issue_count": (
+                    (len(violations) if isinstance(violations, list) else 0)
+                    + (len(unconnected) if isinstance(unconnected, list) else 0)
+                ),
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )
     if path_text == "board/kicad/e1-phone/production/reports/erc.json":
+        raw_path = ROOT / "build/e1-phone-factory-output-candidates/raw-routed-erc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "sch",
+                "erc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_SCHEMATIC),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        erc_count = sum(
+            len(sheet.get("violations") or [])
+            for sheet in sheets
+            if isinstance(sheet, dict) and isinstance(sheet.get("violations"), list)
+        )
         payload.update(
             {
                 "raw_kicad_report_kind": "erc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_erc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli sch erc --format json --output "
                     "board/kicad/e1-phone/production/reports/erc.json "
                     "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
                 ),
-                "kicad_cli_version": "",
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
                 "source_schematic_sha256": (
                     sha256(ROUTED_SCHEMATIC) if ROUTED_SCHEMATIC.is_file() else ""
                 ),
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": erc_count,
+                "raw_kicad_total_issue_count": erc_count,
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )
@@ -293,12 +550,16 @@ def generate() -> dict[str, Any]:
 
     for path_text, artifact_id in [
         ("board/kicad/e1-phone/production/bom", "production_bom_directory_candidate"),
-        ("board/kicad/e1-phone/production/fab-quote", "fab_quote_directory_candidate"),
-        ("board/kicad/e1-phone/production/first-article", "first_article_directory_candidate"),
         ("board/kicad/e1-phone/production/gerbers", "gerber_directory_candidate"),
         ("board/kicad/e1-phone/production/gerbers/nc-drill-and-slots", "drill_directory_candidate"),
         ("board/kicad/e1-phone/production/ipc-2581", "ipc2581_directory_candidate"),
         ("board/kicad/e1-phone/production/pos", "position_file_directory_candidate"),
+    ]:
+        artifacts.append(write_kicad_export_dir_candidate(path_text, artifact_id))
+
+    for path_text, artifact_id in [
+        ("board/kicad/e1-phone/production/fab-quote", "fab_quote_directory_candidate"),
+        ("board/kicad/e1-phone/production/first-article", "first_article_directory_candidate"),
     ]:
         artifacts.append(write_dir_candidate(path_text, artifact_id))
 

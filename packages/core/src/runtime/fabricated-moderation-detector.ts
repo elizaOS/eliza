@@ -42,12 +42,14 @@ const APOS = "['‘’`]";
 const FABRICATED_MODERATION_PATTERNS: readonly RegExp[] = [
 	// "violates / breaches / against our|the|my usage|content|community|safety policies|guidelines|standards|rules"
 	/\b(?:violat\w+|breach\w+|against)\s+(?:our|the|my)\s+(?:usage|content|community|safety)\s+(?:polic\w+|guidelines?|standards?|rules?)\b/i,
-	// "your request|message|previous message|input|prompt|content (was|got|has been) flagged|rejected"
-	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?(?:flagged|rejected)\b/i,
+	// "your request|message|... was flagged as hateful|harmful|..."
+	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?flagged\s+as\s+(?:hateful|harmful|inappropriate|unsafe|abusive|offensive|toxic)\b/i,
+	// "your request|message|... was flagged/rejected by the content filter / moderation system / safety policy"
+	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?(?:flagged|rejected)\s+by\s+(?:the\s+)?(?:system|content\s+filter|(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|safety\s+(?:system|filter|policy))\b/i,
 	// "your request|message|... was blocked by the system/content filter/moderation system"
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?blocked\s+by\s+(?:the\s+)?(?:system|content\s+filter|(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|safety\s+(?:system|filter|policy))\b/i,
-	// "my|the|our content filter"
-	/\b(?:my|the|our)\s+content\s+filter\b/i,
+	// "my|our content filter", or "the content filter blocked/prevented/..."
+	/\b(?:(?:my|our)\s+content\s+filter|the\s+content\s+filter\s+(?:blocked|flagged|prevented|filtered|rejected))\b/i,
 	// "I (was|am|got|'m) blocked from ..." — "'m" is contracted (no space before it)
 	new RegExp(
 		`\\bi(?:\\s+(?:was|am|got)|\\s*${APOS}\\s*m)\\s+blocked\\s+from\\b`,
@@ -55,12 +57,15 @@ const FABRICATED_MODERATION_PATTERNS: readonly RegExp[] = [
 	),
 	// "my|our safety guidelines | usage policies | content policies"
 	/\b(?:my|our)\s+(?:safety\s+guidelines?|usage\s+polic\w+|content\s+polic\w+)\b/i,
-	// "my|our|the (content) moderation system|filter|layer|policy"
-	/\b(?:my|our|the)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\b/i,
+	// "my|our|the (content) moderation system|filter|layer|policy" followed by an
+	// enforcement verb. Requiring the verb on the my/our branch too keeps the
+	// fabricated "my content moderation system caught that" while clearing the agent
+	// describing its OWN product ("our moderation system processes 1k posts/min").
+	/\b(?:my|our|the)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\s+(?:blocked|flagged|prevented|filtered|rejected|caught|stopped|removed)\b/i,
 	// "your request|message|... contained hateful|harmful|inappropriate|abusive|offensive language|content|material|speech"
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+contained\s+(?:hateful|harmful|inappropriate|abusive|offensive)\s+(?:language|content|material|speech)\b/i,
-	// "the system (automatically) blocked|flagged|prevented|filtered this|that|it|your|the request|message|content|response|reply"
-	/(?:^|[.!?]\s+)(?:the\s+)?system\s+(?:automatically\s+)?(?:blocked|flagged|prevented|filtered)\s+(?:this|that|it|your|the\s+(?:request|message|content|response|reply))\b/i,
+	// "the system (automatically) blocks/blocked such content | your request | ..."
+	/(?:^|[.!?]\s+)(?:the\s+)?system\s+(?:automatically\s+)?(?:blocks?|flags?|prevents?|filters?|blocked|flagged|prevented|filtered)\s+(?:such\s+content|this|that|it|your|the\s+(?:request|message|content|response|reply))\b/i,
 ];
 
 /**

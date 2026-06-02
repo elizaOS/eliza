@@ -44,7 +44,12 @@ interface OptimizerResult {
   optimizedPrompt: string;
   score: number;
   baseline: number;
-  lineage: Array<{ round: number; variant: number; score: number; notes?: string }>;
+  lineage: Array<{
+    round: number;
+    variant: number;
+    score: number;
+    notes?: string;
+  }>;
   fewShotExamples?: OptimizationExample[];
 }
 
@@ -71,17 +76,21 @@ interface TrajectoryEntry {
 
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY ?? "";
 const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
-const CEREBRAS_BASE_URL = process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
-const OPTIMIZER = (process.env.EVAL_OPTIMIZER ?? "gepa") as "gepa" | "bootstrap-fewshot";
+const CEREBRAS_BASE_URL =
+  process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
+const OPTIMIZER = (process.env.EVAL_OPTIMIZER ?? "gepa") as
+  | "gepa"
+  | "bootstrap-fewshot";
 const GEPA_GENERATIONS = parseInt(process.env.GEPA_GENERATIONS ?? "5", 10);
 const GEPA_POPULATION = parseInt(process.env.GEPA_POPULATION ?? "8", 10);
 const EXPORT_DIR = process.env.EXPORT_DIR ?? `/tmp/eliza-eval-${Date.now()}`;
-const EVAL_TASKS = process.env.EVAL_TASKS?.split(",").map(t => t.trim()) ?? null;
-
-if (!CEREBRAS_API_KEY) {
-  console.error("CEREBRAS_API_KEY is required");
-  process.exit(1);
-}
+const EVAL_TASKS =
+  process.env.EVAL_TASKS?.split(",").map((t) => t.trim()) ?? null;
+const EVAL_MAX_EXAMPLES = parseInt(process.env.EVAL_MAX_EXAMPLES ?? "0", 10);
+const EVAL_ALLOW_NO_IMPROVEMENT =
+  process.env.EVAL_ALLOW_NO_IMPROVEMENT === "1";
+const COUNT_SCENARIOS = process.argv.includes("--count-scenarios");
+const VALIDATE_SCENARIOS = process.argv.includes("--validate-scenarios");
 
 // ── Token counting ────────────────────────────────────────────────────────────
 
@@ -101,10 +110,17 @@ interface TemplateTokenReport {
   totalInputTokens: number;
 }
 
-function countPromptTokens(system: string | undefined, user: string): TemplateTokenReport {
+function countPromptTokens(
+  system: string | undefined,
+  user: string,
+): TemplateTokenReport {
   const templateTokens = countTokensApprox(system ?? "");
   const userTokens = countTokensApprox(user);
-  return { templateTokens, userTokens, totalInputTokens: templateTokens + userTokens };
+  return {
+    templateTokens,
+    userTokens,
+    totalInputTokens: templateTokens + userTokens,
+  };
 }
 
 // ── Cerebras API client ───────────────────────────────────────────────────────
@@ -118,7 +134,7 @@ let totalApiCalls = 0;
 let totalPromptTokens = 0;
 let totalCompletionTokens = 0;
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function callCerebras(
   system: string | undefined,
@@ -154,17 +170,29 @@ async function callCerebras(
     const err = await resp.text();
     // Retry on rate limit with exponential backoff
     if (resp.status === 429 && _retryCount < 6) {
-      const backoffMs = Math.min(5000 * Math.pow(2, _retryCount), 60000);
-      console.log(`    [rate-limit] 429 — waiting ${(backoffMs/1000).toFixed(0)}s (retry ${_retryCount + 1}/6)...`);
+      const backoffMs = Math.min(5000 * 2 ** _retryCount, 60000);
+      console.log(
+        `    [rate-limit] 429 — waiting ${(backoffMs / 1000).toFixed(0)}s (retry ${_retryCount + 1}/6)...`,
+      );
       await sleep(backoffMs);
-      return callCerebras(system, user, temperature, maxTokens, _retryCount + 1);
+      return callCerebras(
+        system,
+        user,
+        temperature,
+        maxTokens,
+        _retryCount + 1,
+      );
     }
     throw new Error(`Cerebras error ${resp.status}: ${err.slice(0, 300)}`);
   }
 
   const data = (await resp.json()) as {
     choices: Array<{ message: { content: string } }>;
-    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
   };
 
   const text = data.choices[0]?.message?.content ?? "";
@@ -185,7 +213,11 @@ async function callCerebras(
 
 function tokenize(text: string): Set<string> {
   return new Set(
-    text.toLowerCase().replace(/[^a-z0-9\s_-]+/g, " ").split(/\s+/).filter(t => t.length > 0),
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]+/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 0),
   );
 }
 
@@ -202,7 +234,12 @@ function jaccardScore(actual: string, expected: string): number {
 
 function extractPlannerAction(text: string): string | null {
   try {
-    const obj = JSON.parse(text.trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, ""));
+    const obj = JSON.parse(
+      text
+        .trim()
+        .replace(/^```[a-z]*\n?/i, "")
+        .replace(/\n?```$/i, ""),
+    );
     if (Array.isArray(obj.toolCalls) && obj.toolCalls[0]) {
       const name = obj.toolCalls[0].name ?? obj.toolCalls[0].action;
       if (typeof name === "string") return name.trim().toUpperCase();
@@ -249,7 +286,11 @@ IMPORTANT: If the question asks for a simple fact (capital city, math, yes/no) a
 
 Output ONLY a decimal number. No explanation.`;
 
-async function llmJudgeScore(userQuery: string, response: string, rubric?: string): Promise<number> {
+async function llmJudgeScore(
+  userQuery: string,
+  response: string,
+  rubric?: string,
+): Promise<number> {
   const judgeUser = `Question: ${userQuery}\n\nResponse: ${response}${rubric ? `\n\nAdditional rubric: ${rubric}` : ""}`;
   const { text } = await callCerebras(JUDGE_SYSTEM, judgeUser, 0, 512);
   const num = parseFloat(text.trim());
@@ -257,7 +298,11 @@ async function llmJudgeScore(userQuery: string, response: string, rubric?: strin
   return num;
 }
 
-async function responseQualityScore(userQuery: string, response: string, rubric?: string): Promise<number> {
+async function responseQualityScore(
+  userQuery: string,
+  response: string,
+  rubric?: string,
+): Promise<number> {
   const judgeUser = `Question: ${userQuery}\n\nResponse to grade: ${response}${rubric ? `\n\nSpec: ${rubric}` : ""}`;
   const { text } = await callCerebras(JUDGE_SYSTEM_RESPONSE, judgeUser, 0, 256);
   const num = parseFloat(text.trim());
@@ -279,7 +324,11 @@ Scoring:
 
 Output ONLY a decimal number. No explanation.`;
 
-async function structJudgeScore(userContext: string, actual: string, rubric: string): Promise<number> {
+async function structJudgeScore(
+  userContext: string,
+  actual: string,
+  rubric: string,
+): Promise<number> {
   const judgeUser = `Context: ${userContext}\n\nActual output: ${actual}\n\nRubric: ${rubric}`;
   const { text } = await callCerebras(JUDGE_SYSTEM_STRUCT, judgeUser, 0, 256);
   const num = parseFloat(text.trim());
@@ -290,37 +339,62 @@ async function structJudgeScore(userContext: string, actual: string, rubric: str
 // Extract a named field from JSON output, returning lowercase string or null
 function extractJsonField(text: string, field: string): string | null {
   try {
-    const obj = JSON.parse(text.trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, ""));
+    const obj = JSON.parse(
+      text
+        .trim()
+        .replace(/^```[a-z]*\n?/i, "")
+        .replace(/\n?```$/i, ""),
+    );
     const val = obj[field];
-    if (val !== undefined && val !== null) return String(val).toLowerCase().trim();
+    if (val !== undefined && val !== null)
+      return String(val).toLowerCase().trim();
   } catch {}
-  const m = text.match(new RegExp(`"${field}"\\s*:\\s*(?:"([^"]*)"|(true|false|\\d+))`));
-  if (m) return ((m[1] ?? m[2]) ?? "").toLowerCase().trim();
+  const m = text.match(
+    new RegExp(`"${field}"\\s*:\\s*(?:"([^"]*)"|(true|false|\\d+))`),
+  );
+  if (m) return (m[1] ?? m[2] ?? "").toLowerCase().trim();
   return null;
 }
 
 // Extract action name from autonomy decision output
 function extractAutonomyAction(text: string): string | null {
   try {
-    const obj = JSON.parse(text.trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, ""));
-    if (Array.isArray(obj.actions) && obj.actions.length > 0 && obj.actions[0]?.name) {
+    const obj = JSON.parse(
+      text
+        .trim()
+        .replace(/^```[a-z]*\n?/i, "")
+        .replace(/\n?```$/i, ""),
+    );
+    if (
+      Array.isArray(obj.actions) &&
+      obj.actions.length > 0 &&
+      obj.actions[0]?.name
+    ) {
       return (obj.actions[0].name as string).toUpperCase().trim();
     }
     if (Array.isArray(obj.actions) && obj.actions.length === 0) return "NONE";
-    if (obj.action?.name) return (obj.action.name as string).toUpperCase().trim();
+    if (obj.action?.name)
+      return (obj.action.name as string).toUpperCase().trim();
   } catch {}
   const m = text.match(/"name"\s*:\s*"([A-Z][A-Z0-9_]+)"/);
   if (m) return m[1]!;
-  if (text.includes('"actions":[]') || text.includes('"actions": []')) return "NONE";
+  if (text.includes('"actions":[]') || text.includes('"actions": []'))
+    return "NONE";
   return null;
 }
 
 // Tasks that use struct-aware LLM judge (complex JSON output)
 const STRUCT_JUDGE_TASKS = new Set([
-  "fact_extraction", "extract_action_params",
-  "add_contact", "search_contacts", "schedule_follow_up",
-  "extract_secrets", "custom_action_generate",
-  "observation_extraction", "long_term_extraction", "extract_secret_operation",
+  "fact_extraction",
+  "extract_action_params",
+  "add_contact",
+  "search_contacts",
+  "schedule_follow_up",
+  "extract_secrets",
+  "custom_action_generate",
+  "observation_extraction",
+  "long_term_extraction",
+  "extract_secret_operation",
 ]);
 
 // Tasks that use exact-match on a single extracted JSON field
@@ -331,7 +405,10 @@ const FIELD_MATCH_TASKS: Record<string, string> = {
 };
 
 function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
-  return async (prompt: string, examples: OptimizationExample[]): Promise<number> => {
+  return async (
+    prompt: string,
+    examples: OptimizationExample[],
+  ): Promise<number> => {
     if (examples.length === 0) return 0;
     let total = 0;
     for (const ex of examples) {
@@ -342,53 +419,72 @@ function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
         const a = extractPlannerAction(actual);
         const e = extractPlannerAction(ex.expectedOutput);
         total += a && e && a === e ? 1 : 0;
-
-      } else if (task === "should_respond" || task === "should_respond_runtime") {
-        const aYes = actual.toLowerCase().includes("yes") || actual.toLowerCase().includes("respond");
-        const eYes = ex.expectedOutput.toLowerCase().includes("yes") || ex.expectedOutput.toLowerCase().includes("respond");
-        const aVerdict = aYes && !actual.toLowerCase().includes("ignore") ? "yes" : "no";
+      } else if (
+        task === "should_respond" ||
+        task === "should_respond_runtime"
+      ) {
+        const aYes =
+          actual.toLowerCase().includes("yes") ||
+          actual.toLowerCase().includes("respond");
+        const eYes =
+          ex.expectedOutput.toLowerCase().includes("yes") ||
+          ex.expectedOutput.toLowerCase().includes("respond");
+        const aVerdict =
+          aYes && !actual.toLowerCase().includes("ignore") ? "yes" : "no";
         const eVerdict = eYes ? "yes" : "no";
         total += aVerdict === eVerdict ? 1 : 0;
-
       } else if (task === "autonomy_decision") {
-        const expectedAction = extractAutonomyAction(ex.expectedOutput) ?? "NONE";
+        const expectedAction =
+          extractAutonomyAction(ex.expectedOutput) ?? "NONE";
         const actualAction = extractAutonomyAction(actual) ?? "NONE";
         total += actualAction === expectedAction ? 1 : 0;
-
       } else if (
-        task === "should_follow_room" || task === "should_mute_room" ||
-        task === "should_unfollow_room" || task === "should_unmute_room"
+        task === "should_follow_room" ||
+        task === "should_mute_room" ||
+        task === "should_unfollow_room" ||
+        task === "should_unmute_room"
       ) {
-        const expectedDecision = extractJsonField(ex.expectedOutput, "decision");
+        const expectedDecision = extractJsonField(
+          ex.expectedOutput,
+          "decision",
+        );
         const actualDecision = extractJsonField(actual, "decision");
-        total += expectedDecision !== null && actualDecision !== null && expectedDecision === actualDecision ? 1 : 0;
-
+        total +=
+          expectedDecision !== null &&
+          actualDecision !== null &&
+          expectedDecision === actualDecision
+            ? 1
+            : 0;
       } else if (task === "option_extraction") {
         const eTaskId = extractJsonField(ex.expectedOutput, "taskId");
         const aTaskId = extractJsonField(actual, "taskId");
         const eOpt = extractJsonField(ex.expectedOutput, "selectedOption");
         const aOpt = extractJsonField(actual, "selectedOption");
         const nullish = (v: string | null) => v === null || v === "null";
-        const taskMatch = nullish(eTaskId) ? nullish(aTaskId) : eTaskId === aTaskId;
+        const taskMatch = nullish(eTaskId)
+          ? nullish(aTaskId)
+          : eTaskId === aTaskId;
         const optMatch = nullish(eOpt) ? nullish(aOpt) : eOpt === aOpt;
         total += taskMatch && optMatch ? 1 : 0;
-
       } else if (FIELD_MATCH_TASKS[task]) {
         const field = FIELD_MATCH_TASKS[task]!;
         const expected = extractJsonField(ex.expectedOutput, field);
         const actual2 = extractJsonField(actual, field);
-        total += expected !== null && actual2 !== null && expected === actual2 ? 1 : 0;
-
+        total +=
+          expected !== null && actual2 !== null && expected === actual2 ? 1 : 0;
       } else if (STRUCT_JUDGE_TASKS.has(task)) {
-        const score = await structJudgeScore(ex.input.user, actual, ex.rubric ?? ex.expectedOutput);
+        const score = await structJudgeScore(
+          ex.input.user,
+          actual,
+          ex.rubric ?? ex.expectedOutput,
+        );
         total += score;
-
       } else if (useJudge) {
-        const score = task === "response"
-          ? await responseQualityScore(ex.input.user, actual, ex.rubric)
-          : await llmJudgeScore(ex.input.user, actual, ex.rubric);
+        const score =
+          task === "response"
+            ? await responseQualityScore(ex.input.user, actual, ex.rubric)
+            : await llmJudgeScore(ex.input.user, actual, ex.rubric);
         total += score;
-
       } else {
         total += jaccardScore(actual, ex.expectedOutput);
       }
@@ -408,21 +504,32 @@ function logTrajectory(entry: TrajectoryEntry) {
 function exportTrajectories(dir: string) {
   mkdirSync(dir, { recursive: true });
   const jsonlPath = join(dir, "trajectories.jsonl");
-  writeFileSync(jsonlPath, trajectories.map(t => JSON.stringify(t)).join("\n") + "\n", "utf-8");
+  writeFileSync(
+    jsonlPath,
+    trajectories.map((t) => JSON.stringify(t)).join("\n") + "\n",
+    "utf-8",
+  );
 
   const readablePath = join(dir, "trajectories-readable.txt");
-  const readable = trajectories.map(t => {
-    const lines: string[] = [`─── ${t.timestamp} [${t.task}] ${t.optimizer} / ${t.step} ───`];
-    if (t.score !== undefined) lines.push(`  score: ${t.score.toFixed(4)}`);
-    if (t.tokenUsage) {
-      lines.push(`  tokens: prompt=${t.tokenUsage.promptTokens} completion=${t.tokenUsage.completionTokens}`);
-    }
-    if (t.systemPrompt) lines.push(`  system: ${t.systemPrompt.slice(0, 250)}…`);
-    if (t.userInput) lines.push(`  user: ${t.userInput.slice(0, 200)}`);
-    if (t.output) lines.push(`  output: ${t.output.slice(0, 350)}`);
-    if (t.notes) lines.push(`  notes: ${t.notes}`);
-    return lines.join("\n");
-  }).join("\n\n");
+  const readable = trajectories
+    .map((t) => {
+      const lines: string[] = [
+        `─── ${t.timestamp} [${t.task}] ${t.optimizer} / ${t.step} ───`,
+      ];
+      if (t.score !== undefined) lines.push(`  score: ${t.score.toFixed(4)}`);
+      if (t.tokenUsage) {
+        lines.push(
+          `  tokens: prompt=${t.tokenUsage.promptTokens} completion=${t.tokenUsage.completionTokens}`,
+        );
+      }
+      if (t.systemPrompt)
+        lines.push(`  system: ${t.systemPrompt.slice(0, 250)}…`);
+      if (t.userInput) lines.push(`  user: ${t.userInput.slice(0, 200)}`);
+      if (t.output) lines.push(`  output: ${t.output.slice(0, 350)}`);
+      if (t.notes) lines.push(`  notes: ${t.notes}`);
+      return lines.join("\n");
+    })
+    .join("\n\n");
   writeFileSync(readablePath, readable + "\n", "utf-8");
 
   console.log(`\nTrajectories exported:`);
@@ -481,7 +588,8 @@ function paretoFrontier(pool: Candidate[]): Candidate[] {
         break;
       }
     }
-    if (!dominated && !frontier.some(c => c.prompt === cur.prompt)) frontier.push(cur);
+    if (!dominated && !frontier.some((c) => c.prompt === cur.prompt))
+      frontier.push(cur);
   }
   return frontier;
 }
@@ -494,48 +602,82 @@ async function runGepa(
   generations: number,
   population: number,
 ): Promise<OptimizerResult> {
-  const lineage: Array<{ round: number; variant: number; score: number; notes?: string }> = [];
+  const lineage: Array<{
+    round: number;
+    variant: number;
+    score: number;
+    notes?: string;
+  }> = [];
   const ts = () => new Date().toISOString();
 
-  async function scoreAndReflect(prompt: string, origin: string, round: number, variant: number): Promise<Candidate> {
+  async function scoreAndReflect(
+    prompt: string,
+    origin: string,
+    round: number,
+    variant: number,
+  ): Promise<Candidate> {
     const score = await scorer(prompt, dataset);
-    logTrajectory({ timestamp: ts(), task, optimizer: "gepa", step: `gen${round}-score`, score, notes: `origin=${origin} variant=${variant} tokens=${approxTokens(prompt)}` });
+    logTrajectory({
+      timestamp: ts(),
+      task,
+      optimizer: "gepa",
+      step: `gen${round}-score`,
+      score,
+      notes: `origin=${origin} variant=${variant} tokens=${approxTokens(prompt)}`,
+    });
 
     // Reflect: sample diverse examples — first 2 + last 2 to catch edge cases at both ends
     const n = dataset.length;
-    const reflectSet = n <= 4
-      ? dataset
-      : [...dataset.slice(0, 2), ...dataset.slice(n - 2)];
+    const reflectSet =
+      n <= 4 ? dataset : [...dataset.slice(0, 2), ...dataset.slice(n - 2)];
     const batch = reflectSet.slice(0, 4);
     const transcripts: string[] = [];
     for (let i = 0; i < batch.length; i++) {
       const ex = batch[i]!;
-      const { text: actual, usage } = await callCerebras(prompt, ex.input.user, 0, 1024);
+      const { text: actual, usage } = await callCerebras(
+        prompt,
+        ex.input.user,
+        0,
+        1024,
+      );
       const tokenReport = countPromptTokens(prompt, ex.input.user);
       logTrajectory({
-        timestamp: ts(), task, optimizer: "gepa", step: `gen${round}-example-${i}`,
-        systemPrompt: prompt.slice(0, 400), userInput: ex.input.user.slice(0, 200), output: actual.slice(0, 350),
+        timestamp: ts(),
+        task,
+        optimizer: "gepa",
+        step: `gen${round}-example-${i}`,
+        systemPrompt: prompt.slice(0, 400),
+        userInput: ex.input.user.slice(0, 200),
+        output: actual.slice(0, 350),
         tokenUsage: usage,
         notes: `template_tokens=${tokenReport.templateTokens} user_tokens=${tokenReport.userTokens} total_input=${tokenReport.totalInputTokens}`,
       });
       transcripts.push(
-        `Example ${i + 1}:\nUser: ${truncate(ex.input.user, 300)}\nActual: ${truncate(actual, 300)}\nExpected: ${truncate(ex.expectedOutput, 300)}`
+        `Example ${i + 1}:\nUser: ${truncate(ex.input.user, 300)}\nActual: ${truncate(actual, 300)}\nExpected: ${truncate(ex.expectedOutput, 300)}`,
       );
     }
     const { text: feedback } = await callCerebras(
       SYS_REFLECT,
       `Prompt:\n${prompt}\n\n${transcripts.join("\n\n")}`,
-      0.4, 512,
+      0.4,
+      512,
     );
 
-    const note = origin === "baseline" ? "baseline"
-      : origin.includes("compress") ? `${origin} | tokens=${approxTokens(prompt)}`
-      : `${origin} | ${truncate(feedback, 80)}`;
+    const note =
+      origin === "baseline"
+        ? "baseline"
+        : origin.includes("compress")
+          ? `${origin} | tokens=${approxTokens(prompt)}`
+          : `${origin} | ${truncate(feedback, 80)}`;
     lineage.push({ round, variant, score, notes: note });
     return { prompt, score, tokens: approxTokens(prompt), feedback, origin };
   }
 
-  async function mutate(prompt: string, feedback: string, mode: "feedback" | "compress"): Promise<string> {
+  async function mutate(
+    prompt: string,
+    feedback: string,
+    mode: "feedback" | "compress",
+  ): Promise<string> {
     if (mode === "compress") {
       const { text } = await callCerebras(SYS_COMPRESS, prompt, 0.8, 1024);
       return text.trim() || prompt;
@@ -543,7 +685,8 @@ async function runGepa(
     const { text } = await callCerebras(
       SYS_FEEDBACK,
       `Current prompt:\n${prompt}\n\nFailure analysis:\n${feedback || "(none — explore a rephrasing)"}`,
-      0.8, 1024,
+      0.8,
+      1024,
     );
     return text.trim() || prompt;
   }
@@ -554,15 +697,22 @@ async function runGepa(
 
   // Seed population with diverse mutations
   for (let i = 1; i < population; i++) {
-    const modes: Array<"feedback" | "compress"> = ["feedback", "compress", "feedback", "compress"];
+    const modes: Array<"feedback" | "compress"> = [
+      "feedback",
+      "compress",
+      "feedback",
+      "compress",
+    ];
     const mode = modes[(i - 1) % modes.length] ?? "feedback";
     const seed = await mutate(baselinePrompt, baseline.feedback, mode);
     pool.push(await scoreAndReflect(seed, `seed-${mode}-${i}`, 0, i));
   }
 
   for (let gen = 1; gen <= generations; gen++) {
-    const best = Math.max(...pool.map(c => c.score));
-    console.log(`  [GEPA] gen ${gen}/${generations} pool=${pool.length} best=${best.toFixed(4)}`);
+    const best = Math.max(...pool.map((c) => c.score));
+    console.log(
+      `  [GEPA] gen ${gen}/${generations} pool=${pool.length} best=${best.toFixed(4)}`,
+    );
     const frontier = paretoFrontier(pool);
     const next: Candidate[] = [...frontier];
     let vi = next.length;
@@ -589,9 +739,17 @@ async function runGepa(
         const { text: merged } = await callCerebras(
           SYS_CROSSOVER,
           `PROMPT A:\n${a.prompt}\n\nPROMPT B:\n${b.prompt}`,
-          0.8, 1024,
+          0.8,
+          1024,
         );
-        next.push(await scoreAndReflect(merged.trim() || a.prompt, "crossover", gen, vi++));
+        next.push(
+          await scoreAndReflect(
+            merged.trim() || a.prompt,
+            "crossover",
+            gen,
+            vi++,
+          ),
+        );
       }
     }
 
@@ -605,7 +763,12 @@ async function runGepa(
     return acc;
   }, finalFrontier[0] ?? pool[0]!);
 
-  return { optimizedPrompt: best.prompt, score: best.score, baseline: baseline.score, lineage };
+  return {
+    optimizedPrompt: best.prompt,
+    score: best.score,
+    baseline: baseline.score,
+    lineage,
+  };
 }
 
 // ── Baseline prompts (v3 — all P0/P1 violations fixed, production-quality) ────
@@ -688,11 +851,13 @@ current — time-bound state (stale within weeks)
   Categories: feeling, physical_state, working_on, going_through, schedule_context
 
 Rules:
-- If a claim already exists in Known facts, emit strengthen (not add) — do not also emit add ops for the same message
-- "strengthen" means the same fact is reaffirmed — includes indirect reaffirmations (e.g., "X is treating me well" where X is a known location reaffirms presence there → emit ONLY strengthen for fact_abc, nothing else)
-- "contradict" means new information conflicts with an existing fact — if user says "I moved to X" or "I'm now in X" and there's a known location, emit contradict (not add_durable)
-- Paraphrases count as duplicates — match meaning, not exact words
-- Return {"ops":[]} for questions, small talk, or messages with no factual claims about the user
+- If a claim already exists in Known facts, emit **strengthen** (not add) — do not also emit add ops for the same message.
+- **strengthen** means the same fact is reaffirmed — includes indirect reaffirmations (e.g., "X is treating me well" where X is a known location reaffirms presence there → emit ONLY strengthen for fact_abc, nothing else).
+- **contradict** means new information conflicts with an existing fact — if user says "I moved to X" or "I'm now in X" and there's a known location, emit contradict (not add_durable).
+- Paraphrases count as duplicates — match meaning, not exact words.
+- Return {"ops":[]} for questions, small talk, or messages with no factual claims about the user.
+- If a claim describes the user's own professional title or role, classify it under **identity**, not business_role. Use the exact phrase the user provides; do not prepend "I am" or modify the wording.
+- Emit a single operation per distinct fact. Do not split one composite claim into multiple ops; only create multiple ops when the message contains multiple separate facts.
 
 Ops schema — each op is a flat JSON object:
 {"op":"add_durable","claim":"string","category":"string","keywords":["string"]}
@@ -743,6 +908,7 @@ The action name and description are provided. Fill in ONLY the missing required 
 If a value is genuinely indeterminable from the conversation, return null for that field.
 
 Return a JSON object containing values for the missing fields only.
+Return the exact substrings as they appear in the conversation; do not modify, rephrase, or normalize any extracted text.
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // REPLY_TEMPLATE baseline — generates agent dialog
@@ -1046,167 +1212,646 @@ JSON only. No prose, fences, thinking, or markdown.`,
 
 // ── Synthetic training examples ───────────────────────────────────────────────
 
-const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
+const BASE_SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   should_respond: [
-    { id: "sr-1", input: { user: "@assistant can you help me schedule a meeting for tomorrow at 3pm?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-2", input: { user: "Hey John, can you grab lunch today?" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-3", input: { user: "What time is it in Tokyo right now?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-4", input: { user: "lol that's hilarious" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-5", input: { user: "I was talking to the assistant yesterday and it helped me" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-6", input: { user: "Anyone else going to the party tonight?" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-7", input: { user: "Hey assistant, can you summarize this article for me?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-8", input: { user: "The meeting got moved to 4pm" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-9", input: { user: "Can someone look up the flight status for AA 1234?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-10", input: { user: "alice: did you get my email? bob: yeah got it" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-11", input: { user: "Can you help me write an email to my boss?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-12", input: { user: "Does anyone know where the conference room is?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-13", input: { user: "ok ttyl everyone" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-14", input: { user: "The report needs to be sent by Friday" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-15", input: { user: "assistant what day of the week is it?" }, expectedOutput: "YES", reward: 1 },
+    {
+      id: "sr-1",
+      input: {
+        user: "@assistant can you help me schedule a meeting for tomorrow at 3pm?",
+      },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-2",
+      input: { user: "Hey John, can you grab lunch today?" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-3",
+      input: { user: "What time is it in Tokyo right now?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-4",
+      input: { user: "lol that's hilarious" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-5",
+      input: {
+        user: "I was talking to the assistant yesterday and it helped me",
+      },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-6",
+      input: { user: "Anyone else going to the party tonight?" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-7",
+      input: { user: "Hey assistant, can you summarize this article for me?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-8",
+      input: { user: "The meeting got moved to 4pm" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-9",
+      input: { user: "Can someone look up the flight status for AA 1234?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-10",
+      input: { user: "alice: did you get my email? bob: yeah got it" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-11",
+      input: { user: "Can you help me write an email to my boss?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-12",
+      input: { user: "Does anyone know where the conference room is?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-13",
+      input: { user: "ok ttyl everyone" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-14",
+      input: { user: "The report needs to be sent by Friday" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-15",
+      input: { user: "assistant what day of the week is it?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
     { id: "sr-16", input: { user: "🎉🎊🥳" }, expectedOutput: "NO", reward: 0 },
     // Additional harder examples
-    { id: "sr-17", input: { user: "Can the AI look into this?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-18", input: { user: "Someone should check the server logs" }, expectedOutput: "NO", reward: 0 },
-    { id: "sr-19", input: { user: "bot, what's 2+2?" }, expectedOutput: "YES", reward: 1 },
-    { id: "sr-20", input: { user: "Thanks for your help earlier, chat!" }, expectedOutput: "NO", reward: 0 },
+    {
+      id: "sr-17",
+      input: { user: "Can the AI look into this?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-18",
+      input: { user: "Someone should check the server logs" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "sr-19",
+      input: { user: "bot, what's 2+2?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "sr-20",
+      input: { user: "Thanks for your help earlier, chat!" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
   ],
 
   action_planner: [
-    { id: "ap-1", input: { user: "User wants to schedule a dentist appointment for next Tuesday at 2pm." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
-    { id: "ap-2", input: { user: "User asked what the weather is like today in San Francisco." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
-    { id: "ap-3", input: { user: "User said hello and asked how you're doing." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
-    { id: "ap-4", input: { user: "User wants to be reminded to call their doctor in 2 hours." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
-    { id: "ap-5", input: { user: "User wants to save a note about a new project idea: a mobile app for tracking workouts." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
-    { id: "ap-6", input: { user: "User said goodbye and that they'll talk later." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
-    { id: "ap-7", input: { user: "User wants to find restaurants near downtown Seattle." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
-    { id: "ap-8", input: { user: "User wants a reminder to submit the quarterly report on Friday at 5pm." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
-    { id: "ap-9", input: { user: "User is asking who won the Super Bowl last year." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
-    { id: "ap-10", input: { user: "User says 'block off 2-3pm Thursday for a team sync'." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
-    { id: "ap-11", input: { user: "User wants to jot down that they need to pick up milk and eggs." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
-    { id: "ap-12", input: { user: "User just sent a thumbs up emoji." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
+    {
+      id: "ap-1",
+      input: {
+        user: "User wants to schedule a dentist appointment for next Tuesday at 2pm.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-2",
+      input: {
+        user: "User asked what the weather is like today in San Francisco.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-3",
+      input: { user: "User said hello and asked how you're doing." },
+      expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-4",
+      input: {
+        user: "User wants to be reminded to call their doctor in 2 hours.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-5",
+      input: {
+        user: "User wants to save a note about a new project idea: a mobile app for tracking workouts.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-6",
+      input: { user: "User said goodbye and that they'll talk later." },
+      expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-7",
+      input: { user: "User wants to find restaurants near downtown Seattle." },
+      expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-8",
+      input: {
+        user: "User wants a reminder to submit the quarterly report on Friday at 5pm.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-9",
+      input: { user: "User is asking who won the Super Bowl last year." },
+      expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-10",
+      input: { user: "User says 'block off 2-3pm Thursday for a team sync'." },
+      expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-11",
+      input: {
+        user: "User wants to jot down that they need to pick up milk and eggs.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-12",
+      input: { user: "User just sent a thumbs up emoji." },
+      expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}',
+      reward: 1,
+    },
     // Extended coverage — edge cases and ambiguous scenarios
-    { id: "ap-13", input: { user: "User typed '...' with no other text." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
-    { id: "ap-14", input: { user: "User wants to look up today's top news headlines." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
-    { id: "ap-15", input: { user: "User says 'note to self: buy birthday card for mom before Saturday'." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
-    { id: "ap-16", input: { user: "User asks 'what time is it?'" }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
-    { id: "ap-17", input: { user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
-    { id: "ap-18", input: { user: "User typed a single period '.' with nothing else." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
-    { id: "ap-19", input: { user: "User wants to search for the best TypeScript ORM libraries in 2025." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
-    { id: "ap-20", input: { user: "User wants a reminder in 30 minutes to take their medication." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
+    {
+      id: "ap-13",
+      input: { user: "User typed '...' with no other text." },
+      expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-14",
+      input: { user: "User wants to look up today's top news headlines." },
+      expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-15",
+      input: {
+        user: "User says 'note to self: buy birthday card for mom before Saturday'.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-16",
+      input: { user: "User asks 'what time is it?'" },
+      expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-17",
+      input: {
+        user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-18",
+      input: { user: "User typed a single period '.' with nothing else." },
+      expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-19",
+      input: {
+        user: "User wants to search for the best TypeScript ORM libraries in 2025.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}',
+      reward: 1,
+    },
+    {
+      id: "ap-20",
+      input: {
+        user: "User wants a reminder in 30 minutes to take their medication.",
+      },
+      expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}',
+      reward: 1,
+    },
   ],
 
   response: [
-    { id: "resp-1", input: { user: "What's the best way to learn programming?" }, expectedOutput: "Start with Python — clear syntax, huge ecosystem. Build small projects immediately, practice daily. Codecademy, freeCodeCamp, or just pick a project you care about.", reward: 1, rubric: "Direct, concrete advice with resources. No preamble. No 'Great question!'" },
-    { id: "resp-2", input: { user: "Can you explain what machine learning is in simple terms?" }, expectedOutput: "Machine learning is teaching computers to learn patterns from examples rather than programming explicit rules. Show it a million cat photos and it learns to recognize cats.", reward: 1, rubric: "One analogy, no jargon. No 'Sure, I'd be happy to explain!'" },
-    { id: "resp-3", input: { user: "What are some healthy breakfast options?" }, expectedOutput: "Oatmeal with berries, eggs with vegetables, Greek yogurt with nuts, whole grain toast with avocado. All provide protein + fiber to keep you full.", reward: 1, rubric: "List 4-5 concrete options directly. No preamble." },
-    { id: "resp-4", input: { user: "How do I improve my time management skills?" }, expectedOutput: "Time block your calendar — assign specific tasks to specific slots. Use Pomodoro (25-min work, 5-min break). Kill your phone notifications during focus time.", reward: 1, rubric: "Concrete named techniques. No hedging. No 'That's a great question!'" },
-    { id: "resp-5", input: { user: "What's 15% of 240?" }, expectedOutput: "36.", reward: 1, rubric: "CRITICAL: Must be exactly 36. Single word answer acceptable. No math explanation unless 1 line. Do NOT say 'Sure! I'd be happy to calculate that!'" },
-    { id: "resp-6", input: { user: "What is the capital of Australia?" }, expectedOutput: "Canberra.", reward: 1, rubric: "CRITICAL: Must say Canberra. Sydney is WRONG. One word answer is fine. No preamble." },
-    { id: "resp-7", input: { user: "What's the difference between a CPU and a GPU?" }, expectedOutput: "CPU: few powerful cores, great for sequential tasks. GPU: thousands of small cores, great for parallel work like graphics and ML. Same silicon, different architecture.", reward: 1, rubric: "Direct comparison, no preamble. Should be 2-3 sentences max." },
-    { id: "resp-8", input: { user: "How do you make a basic vinaigrette?" }, expectedOutput: "1 part vinegar + 3 parts olive oil + salt + pepper. Add a teaspoon of Dijon to emulsify. Whisk or shake to combine.", reward: 1, rubric: "Specific ratios. No 'I'd be happy to help with that recipe!'" },
-    { id: "resp-9", input: { user: "Is 7 × 8 equal to 54 or 56?" }, expectedOutput: "56.", reward: 1, rubric: "CRITICAL: Must be 56. Direct answer, no preamble." },
-    { id: "resp-10", input: { user: "What should I do if I can't sleep at night?" }, expectedOutput: "Consistent sleep schedule, no screens 1 hour before bed, room cool and dark (65-68°F), no caffeine after 2pm. Avoid lying in bed awake — get up and do something quiet.", reward: 1, rubric: "Specific, actionable tips. No unnecessary intro sentence." },
-    { id: "resp-11", input: { user: "Convert 100 Fahrenheit to Celsius." }, expectedOutput: "37.8°C", reward: 1, rubric: "CRITICAL: Formula is (F-32)×5/9. Must be approximately 37.8. No 'Great question!'" },
-    { id: "resp-12", input: { user: "Name the three primary colors." }, expectedOutput: "Red, yellow, and blue.", reward: 1, rubric: "Must name all three correctly. No preamble, no filler, no 'Of course!'" },
+    {
+      id: "resp-1",
+      input: { user: "What's the best way to learn programming?" },
+      expectedOutput:
+        "Start with Python — clear syntax, huge ecosystem. Build small projects immediately, practice daily. Codecademy, freeCodeCamp, or just pick a project you care about.",
+      reward: 1,
+      rubric:
+        "Direct, concrete advice with resources. No preamble. No 'Great question!'",
+    },
+    {
+      id: "resp-2",
+      input: {
+        user: "Can you explain what machine learning is in simple terms?",
+      },
+      expectedOutput:
+        "Machine learning is teaching computers to learn patterns from examples rather than programming explicit rules. Show it a million cat photos and it learns to recognize cats.",
+      reward: 1,
+      rubric: "One analogy, no jargon. No 'Sure, I'd be happy to explain!'",
+    },
+    {
+      id: "resp-3",
+      input: { user: "What are some healthy breakfast options?" },
+      expectedOutput:
+        "Oatmeal with berries, eggs with vegetables, Greek yogurt with nuts, whole grain toast with avocado. All provide protein + fiber to keep you full.",
+      reward: 1,
+      rubric: "List 4-5 concrete options directly. No preamble.",
+    },
+    {
+      id: "resp-4",
+      input: { user: "How do I improve my time management skills?" },
+      expectedOutput:
+        "Time block your calendar — assign specific tasks to specific slots. Use Pomodoro (25-min work, 5-min break). Kill your phone notifications during focus time.",
+      reward: 1,
+      rubric:
+        "Concrete named techniques. No hedging. No 'That's a great question!'",
+    },
+    {
+      id: "resp-5",
+      input: { user: "What's 15% of 240?" },
+      expectedOutput: "36.",
+      reward: 1,
+      rubric:
+        "CRITICAL: Must be exactly 36. Single word answer acceptable. No math explanation unless 1 line. Do NOT say 'Sure! I'd be happy to calculate that!'",
+    },
+    {
+      id: "resp-6",
+      input: { user: "What is the capital of Australia?" },
+      expectedOutput: "Canberra.",
+      reward: 1,
+      rubric:
+        "CRITICAL: Must say Canberra. Sydney is WRONG. One word answer is fine. No preamble.",
+    },
+    {
+      id: "resp-7",
+      input: { user: "What's the difference between a CPU and a GPU?" },
+      expectedOutput:
+        "CPU: few powerful cores, great for sequential tasks. GPU: thousands of small cores, great for parallel work like graphics and ML. Same silicon, different architecture.",
+      reward: 1,
+      rubric: "Direct comparison, no preamble. Should be 2-3 sentences max.",
+    },
+    {
+      id: "resp-8",
+      input: { user: "How do you make a basic vinaigrette?" },
+      expectedOutput:
+        "1 part vinegar + 3 parts olive oil + salt + pepper. Add a teaspoon of Dijon to emulsify. Whisk or shake to combine.",
+      reward: 1,
+      rubric: "Specific ratios. No 'I'd be happy to help with that recipe!'",
+    },
+    {
+      id: "resp-9",
+      input: { user: "Is 7 × 8 equal to 54 or 56?" },
+      expectedOutput: "56.",
+      reward: 1,
+      rubric: "CRITICAL: Must be 56. Direct answer, no preamble.",
+    },
+    {
+      id: "resp-10",
+      input: { user: "What should I do if I can't sleep at night?" },
+      expectedOutput:
+        "Consistent sleep schedule, no screens 1 hour before bed, room cool and dark (65-68°F), no caffeine after 2pm. Avoid lying in bed awake — get up and do something quiet.",
+      reward: 1,
+      rubric: "Specific, actionable tips. No unnecessary intro sentence.",
+    },
+    {
+      id: "resp-11",
+      input: { user: "Convert 100 Fahrenheit to Celsius." },
+      expectedOutput: "37.8°C",
+      reward: 1,
+      rubric:
+        "CRITICAL: Formula is (F-32)×5/9. Must be approximately 37.8. No 'Great question!'",
+    },
+    {
+      id: "resp-12",
+      input: { user: "Name the three primary colors." },
+      expectedOutput: "Red, yellow, and blue.",
+      reward: 1,
+      rubric:
+        "Must name all three correctly. No preamble, no filler, no 'Of course!'",
+    },
   ],
 
   media_description: [
-    { id: "md-1", input: { user: "[Image: A golden retriever puppy playing in autumn leaves in a park]" }, expectedOutput: "A golden retriever puppy playing energetically in a pile of colorful autumn leaves in a park. The puppy appears joyful with leaves scattered around. Fall foliage visible in the background.", reward: 1, rubric: "Should describe subject, setting, mood, and visual details" },
-    { id: "md-2", input: { user: "[Image: A downtown city skyline at sunset with buildings reflected in water]" }, expectedOutput: "A city skyline at sunset showing tall buildings. The golden and orange sky reflects in the water below, creating a mirror image. Multiple high-rise buildings visible.", reward: 1, rubric: "Should capture the key visual elements: skyline, sunset colors, reflection" },
-    { id: "md-3", input: { user: "[Image: A kitchen with modern appliances, marble countertops, and pendant lighting]" }, expectedOutput: "A modern kitchen featuring marble countertops, high-end appliances, and pendant lights. Clean, contemporary design with organized layout.", reward: 1, rubric: "Should identify the style and key design elements" },
-    { id: "md-4", input: { user: "[Image: A woman in athletic gear running on a trail through a forest]" }, expectedOutput: "A woman in athletic/running gear running on a trail through a forested area. She appears mid-stride. Trees line the trail on both sides.", reward: 1, rubric: "Should describe subject, action, setting clearly" },
-    { id: "md-5", input: { user: "[Audio: Rain sounds with occasional thunder in the background]" }, expectedOutput: "Audio featuring steady rainfall sounds with intermittent thunder. The rain creates a consistent backdrop while thunder provides deeper rumbling sounds at irregular intervals.", reward: 1, rubric: "Should describe the sounds, their pattern, and the overall ambiance" },
-    { id: "md-6", input: { user: "[Image: A charcuterie board with cheeses, meats, fruits, and crackers]" }, expectedOutput: "A charcuterie board with various cheeses, cured meats, fresh and dried fruits, and crackers. Items are artfully arranged on a wooden board for sharing.", reward: 1, rubric: "Should list the types of items and describe the presentation" },
-    { id: "md-7", input: { user: "[Image: A white cat sleeping on a red couch near a sunny window]" }, expectedOutput: "A white cat sleeping peacefully on a red couch positioned near a window with natural sunlight streaming in. The scene has a warm, cozy atmosphere.", reward: 1, rubric: "Should describe the animal, position, furniture, and lighting" },
-    { id: "md-8", input: { user: "[Video: A timelapse of clouds moving across a blue sky over a mountain range]" }, expectedOutput: "A timelapse video showing clouds rapidly moving across a blue sky above a mountain range. The accelerated footage shows cloud formations forming, shifting, and dissipating over the peaks.", reward: 1, rubric: "Should identify the timelapse format and describe the motion and scene" },
+    {
+      id: "md-1",
+      input: {
+        user: "[Image: A golden retriever puppy playing in autumn leaves in a park]",
+      },
+      expectedOutput:
+        "A golden retriever puppy playing energetically in a pile of colorful autumn leaves in a park. The puppy appears joyful with leaves scattered around. Fall foliage visible in the background.",
+      reward: 1,
+      rubric: "Should describe subject, setting, mood, and visual details",
+    },
+    {
+      id: "md-2",
+      input: {
+        user: "[Image: A downtown city skyline at sunset with buildings reflected in water]",
+      },
+      expectedOutput:
+        "A city skyline at sunset showing tall buildings. The golden and orange sky reflects in the water below, creating a mirror image. Multiple high-rise buildings visible.",
+      reward: 1,
+      rubric:
+        "Should capture the key visual elements: skyline, sunset colors, reflection",
+    },
+    {
+      id: "md-3",
+      input: {
+        user: "[Image: A kitchen with modern appliances, marble countertops, and pendant lighting]",
+      },
+      expectedOutput:
+        "A modern kitchen featuring marble countertops, high-end appliances, and pendant lights. Clean, contemporary design with organized layout.",
+      reward: 1,
+      rubric: "Should identify the style and key design elements",
+    },
+    {
+      id: "md-4",
+      input: {
+        user: "[Image: A woman in athletic gear running on a trail through a forest]",
+      },
+      expectedOutput:
+        "A woman in athletic/running gear running on a trail through a forested area. She appears mid-stride. Trees line the trail on both sides.",
+      reward: 1,
+      rubric: "Should describe subject, action, setting clearly",
+    },
+    {
+      id: "md-5",
+      input: {
+        user: "[Audio: Rain sounds with occasional thunder in the background]",
+      },
+      expectedOutput:
+        "Audio featuring steady rainfall sounds with intermittent thunder. The rain creates a consistent backdrop while thunder provides deeper rumbling sounds at irregular intervals.",
+      reward: 1,
+      rubric:
+        "Should describe the sounds, their pattern, and the overall ambiance",
+    },
+    {
+      id: "md-6",
+      input: {
+        user: "[Image: A charcuterie board with cheeses, meats, fruits, and crackers]",
+      },
+      expectedOutput:
+        "A charcuterie board with various cheeses, cured meats, fresh and dried fruits, and crackers. Items are artfully arranged on a wooden board for sharing.",
+      reward: 1,
+      rubric: "Should list the types of items and describe the presentation",
+    },
+    {
+      id: "md-7",
+      input: {
+        user: "[Image: A white cat sleeping on a red couch near a sunny window]",
+      },
+      expectedOutput:
+        "A white cat sleeping peacefully on a red couch positioned near a window with natural sunlight streaming in. The scene has a warm, cozy atmosphere.",
+      reward: 1,
+      rubric: "Should describe the animal, position, furniture, and lighting",
+    },
+    {
+      id: "md-8",
+      input: {
+        user: "[Video: A timelapse of clouds moving across a blue sky over a mountain range]",
+      },
+      expectedOutput:
+        "A timelapse video showing clouds rapidly moving across a blue sky above a mountain range. The accelerated footage shows cloud formations forming, shifting, and dissipating over the peaks.",
+      reward: 1,
+      rubric:
+        "Should identify the timelapse format and describe the motion and scene",
+    },
   ],
 
   should_respond_runtime: [
-    { id: "srr-1", input: { user: "assistant: what time is it in London?" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-2", input: { user: "alice: bob can you check the PR?" }, expectedOutput: "NO", reward: 0 },
-    { id: "srr-3", input: { user: "Can anyone help me with this code error?" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-4", input: { user: "meeting starts in 10 mins heads up everyone" }, expectedOutput: "NO", reward: 0 },
-    { id: "srr-5", input: { user: "bot please translate this to French: hello world" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-6", input: { user: "I just pushed the hotfix" }, expectedOutput: "NO", reward: 0 },
-    { id: "srr-7", input: { user: "can the assistant look up the latest stock price for AAPL?" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-8", input: { user: "lgtm from me @sarah" }, expectedOutput: "NO", reward: 0 },
-    { id: "srr-9", input: { user: "What's the weather like tomorrow in NYC?" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-10", input: { user: "Great work everyone on this sprint!" }, expectedOutput: "NO", reward: 0 },
-    { id: "srr-11", input: { user: "Hey AI, summarize what we've discussed so far" }, expectedOutput: "YES", reward: 1 },
-    { id: "srr-12", input: { user: "john: sure thing, I'll handle it" }, expectedOutput: "NO", reward: 0 },
+    {
+      id: "srr-1",
+      input: { user: "assistant: what time is it in London?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-2",
+      input: { user: "alice: bob can you check the PR?" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "srr-3",
+      input: { user: "Can anyone help me with this code error?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-4",
+      input: { user: "meeting starts in 10 mins heads up everyone" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "srr-5",
+      input: { user: "bot please translate this to French: hello world" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-6",
+      input: { user: "I just pushed the hotfix" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "srr-7",
+      input: {
+        user: "can the assistant look up the latest stock price for AAPL?",
+      },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-8",
+      input: { user: "lgtm from me @sarah" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "srr-9",
+      input: { user: "What's the weather like tomorrow in NYC?" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-10",
+      input: { user: "Great work everyone on this sprint!" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
+    {
+      id: "srr-11",
+      input: { user: "Hey AI, summarize what we've discussed so far" },
+      expectedOutput: "YES",
+      reward: 1,
+    },
+    {
+      id: "srr-12",
+      input: { user: "john: sure thing, I'll handle it" },
+      expectedOutput: "NO",
+      reward: 0,
+    },
   ],
 
   // FACT_EXTRACTION_TEMPLATE — tests durable/current classification, strengthen, contradict, empty
   fact_extraction: [
     {
       id: "fe-1",
-      input: { user: "Message: \"I'm a senior TypeScript developer with 8 years of backend experience.\"\nKnown durable facts: []\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"add_durable","category":"identity","claim":"senior TypeScript developer with 8 years of backend experience","keywords":["typescript","developer","backend","senior","experience"]}]}',
+      input: {
+        user: 'Message: "I\'m a senior TypeScript developer with 8 years of backend experience."\nKnown durable facts: []\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"add_durable","category":"identity","claim":"senior TypeScript developer with 8 years of backend experience","keywords":["typescript","developer","backend","senior","experience"]}]}',
       reward: 1,
-      rubric: "Must emit add_durable with category=identity. Keywords must include typescript/developer. No add_current for stable career identity.",
+      rubric:
+        "Must emit add_durable with category=identity. Keywords must include typescript/developer. No add_current for stable career identity.",
     },
     {
       id: "fe-2",
-      input: { user: "Message: \"I'm really anxious this morning — have a big presentation.\"\nKnown durable facts: []\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"add_current","category":"feeling","claim":"anxious this morning due to big presentation","keywords":["anxious","morning","presentation"]}]}',
+      input: {
+        user: 'Message: "I\'m really anxious this morning — have a big presentation."\nKnown durable facts: []\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"add_current","category":"feeling","claim":"anxious this morning due to big presentation","keywords":["anxious","morning","presentation"]}]}',
       reward: 1,
-      rubric: "Must emit add_current with category=feeling (anxious is transient, not durable). Do NOT emit add_durable.",
+      rubric:
+        "Must emit add_current with category=feeling (anxious is transient, not durable). Do NOT emit add_durable.",
     },
     {
       id: "fe-3",
-      input: { user: "Message: \"Berlin's been treating me well lately.\"\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []" },
+      input: {
+        user: 'Message: "Berlin\'s been treating me well lately."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []',
+      },
       expectedOutput: '{"ops":[{"op":"strengthen","factId":"fact_abc"}]}',
       reward: 1,
-      rubric: "Must emit strengthen pointing to fact_abc (city reaffirmed). Do NOT emit add_durable — fact already exists.",
+      rubric:
+        "Must emit strengthen pointing to fact_abc (city reaffirmed). Do NOT emit add_durable — fact already exists.",
     },
     {
       id: "fe-4",
-      input: { user: "Message: \"Actually I moved to Tokyo last month.\"\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"}]}',
+      input: {
+        user: 'Message: "Actually I moved to Tokyo last month."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"}]}',
       reward: 1,
-      rubric: "Must emit contradict with factId=fact_abc and proposedText=Tokyo. Old location (Berlin) is wrong.",
+      rubric:
+        "Must emit contradict with factId=fact_abc and proposedText=Tokyo. Old location (Berlin) is wrong.",
     },
     {
       id: "fe-5",
-      input: { user: "Message: \"How's the weather in Paris?\"\nKnown durable facts: []\nKnown current facts: []" },
+      input: {
+        user: 'Message: "How\'s the weather in Paris?"\nKnown durable facts: []\nKnown current facts: []',
+      },
       expectedOutput: '{"ops":[]}',
       reward: 1,
-      rubric: "Must return empty ops. This is a question, not a claim about the user. No facts to extract.",
+      rubric:
+        "Must return empty ops. This is a question, not a claim about the user. No facts to extract.",
     },
     {
       id: "fe-6",
-      input: { user: "Message: \"I love hiking on weekends, it's my main way to unwind.\"\nKnown durable facts: []\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"add_durable","category":"preference","claim":"loves hiking on weekends to unwind","keywords":["hiking","weekends","unwind","preference"]}]}',
+      input: {
+        user: 'Message: "I love hiking on weekends, it\'s my main way to unwind."\nKnown durable facts: []\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"add_durable","category":"preference","claim":"loves hiking on weekends to unwind","keywords":["hiking","weekends","unwind","preference"]}]}',
       reward: 1,
-      rubric: "Must emit add_durable with category=preference. Hiking preference is stable/durable, not transient.",
+      rubric:
+        "Must emit add_durable with category=preference. Hiking preference is stable/durable, not transient.",
     },
     {
       id: "fe-7",
-      input: { user: "Message: \"I'm currently working on the auth migration for the payments system.\"\nKnown durable facts: []\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"add_current","category":"working_on","claim":"working on auth migration for payments system","keywords":["auth","migration","payments","working"]}]}',
+      input: {
+        user: 'Message: "I\'m currently working on the auth migration for the payments system."\nKnown durable facts: []\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"add_current","category":"working_on","claim":"working on auth migration for payments system","keywords":["auth","migration","payments","working"]}]}',
       reward: 1,
-      rubric: "Must emit add_current with category=working_on. Current project is transient, not durable identity.",
+      rubric:
+        "Must emit add_current with category=working_on. Current project is transient, not durable identity.",
     },
     {
       id: "fe-8",
-      input: { user: "Message: \"lol yeah totally\"\nKnown durable facts: []\nKnown current facts: []" },
+      input: {
+        user: 'Message: "lol yeah totally"\nKnown durable facts: []\nKnown current facts: []',
+      },
       expectedOutput: '{"ops":[]}',
       reward: 1,
-      rubric: "Must return empty ops. This is casual acknowledgment with no facts to extract.",
+      rubric:
+        "Must return empty ops. This is casual acknowledgment with no facts to extract.",
     },
     {
       id: "fe-9",
-      input: { user: "Message: \"I graduated from MIT with a CS degree in 2018.\"\nKnown durable facts: []\nKnown current facts: []" },
-      expectedOutput: '{"ops":[{"op":"add_durable","category":"life_event","claim":"graduated from MIT with CS degree in 2018","keywords":["mit","cs","graduated","2018","degree"]}]}',
+      input: {
+        user: 'Message: "I graduated from MIT with a CS degree in 2018."\nKnown durable facts: []\nKnown current facts: []',
+      },
+      expectedOutput:
+        '{"ops":[{"op":"add_durable","category":"life_event","claim":"graduated from MIT with CS degree in 2018","keywords":["mit","cs","graduated","2018","degree"]}]}',
       reward: 1,
-      rubric: "Must emit add_durable with category=life_event. Education credential is a stable durable fact.",
+      rubric:
+        "Must emit add_durable with category=life_event. Education credential is a stable durable fact.",
     },
     {
       id: "fe-10",
-      input: { user: "Message: \"ok sounds good\"\nKnown durable facts: [fact_x] (durable.identity) software engineer at Acme Corp\nKnown current facts: []" },
+      input: {
+        user: 'Message: "ok sounds good"\nKnown durable facts: [fact_x] (durable.identity) software engineer at Acme Corp\nKnown current facts: []',
+      },
       expectedOutput: '{"ops":[]}',
       reward: 1,
-      rubric: "Must return empty ops. Acknowledgment only — no new facts. Do NOT strengthen existing facts from an unrelated message.",
+      rubric:
+        "Must return empty ops. Acknowledgment only — no new facts. Do NOT strengthen existing facts from an unrelated message.",
     },
   ],
 
@@ -1214,59 +1859,91 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   conversation_summary: [
     {
       id: "cs-1",
-      input: { user: "Recent conversation:\nUser: I need help planning a trip to Japan in March.\nAssistant: Great! Japan in March is beautiful — cherry blossom season. Do you prefer Tokyo or Kyoto?\nUser: Tokyo for the first 3 days, then Kyoto.\nAssistant: Perfect. For Tokyo I recommend Shibuya, Shinjuku, and Akihabara. For Kyoto: Fushimi Inari, Arashiyama, and Nishiki Market.\nUser: What about the JR Pass?\nAssistant: Yes, the JR Pass is worth it for Japan-wide travel. Buy it before you arrive — 14-day pass for your trip duration." },
-      expectedOutput: '{"text":"User is planning a trip to Japan in March (cherry blossom season). Itinerary: Tokyo (3 days) then Kyoto. Tokyo highlights: Shibuya, Shinjuku, Akihabara. Kyoto highlights: Fushimi Inari, Arashiyama, Nishiki Market. Advice: Buy 14-day JR Pass before arriving.","topics":["Japan trip","Tokyo","Kyoto","JR Pass"],"keyPoints":["Trip planned for March (cherry blossom season)","3 days Tokyo then Kyoto","Purchase 14-day JR Pass before departure"]}',
+      input: {
+        user: "Recent conversation:\nUser: I need help planning a trip to Japan in March.\nAssistant: Great! Japan in March is beautiful — cherry blossom season. Do you prefer Tokyo or Kyoto?\nUser: Tokyo for the first 3 days, then Kyoto.\nAssistant: Perfect. For Tokyo I recommend Shibuya, Shinjuku, and Akihabara. For Kyoto: Fushimi Inari, Arashiyama, and Nishiki Market.\nUser: What about the JR Pass?\nAssistant: Yes, the JR Pass is worth it for Japan-wide travel. Buy it before you arrive — 14-day pass for your trip duration.",
+      },
+      expectedOutput:
+        '{"text":"User is planning a trip to Japan in March (cherry blossom season). Itinerary: Tokyo (3 days) then Kyoto. Tokyo highlights: Shibuya, Shinjuku, Akihabara. Kyoto highlights: Fushimi Inari, Arashiyama, Nishiki Market. Advice: Buy 14-day JR Pass before arriving.","topics":["Japan trip","Tokyo","Kyoto","JR Pass"],"keyPoints":["Trip planned for March (cherry blossom season)","3 days Tokyo then Kyoto","Purchase 14-day JR Pass before departure"]}',
       reward: 1,
-      rubric: "Must capture: Japan/March, Tokyo 3 days then Kyoto, key attractions for each city, JR Pass advice. JSON with text+topics+keyPoints.",
+      rubric:
+        "Must capture: Japan/March, Tokyo 3 days then Kyoto, key attractions for each city, JR Pass advice. JSON with text+topics+keyPoints.",
     },
     {
       id: "cs-2",
-      input: { user: "Recent conversation:\nUser: Can you help debug this Python error: TypeError: list object is not callable\nAssistant: This happens when you name a variable 'list' and then call it as a function. Check if you have: list = [1,2,3] then later list(something)\nUser: Oh yes! I had list = [] at the top. Fixed it by renaming to my_list.\nAssistant: Good fix. Avoid shadowing built-in names: list, dict, str, int, etc." },
-      expectedOutput: '{"text":"User had a Python TypeError caused by shadowing the built-in \'list\' name. Fixed by renaming variable to \'my_list\'. Key lesson: avoid using built-in names as variable names.","topics":["Python debugging","TypeError","variable naming"],"keyPoints":["Bug: variable named \'list\' shadowed the built-in","Fix: rename to my_list","Lesson: avoid shadowing built-ins: list, dict, str, int"]}',
+      input: {
+        user: "Recent conversation:\nUser: Can you help debug this Python error: TypeError: list object is not callable\nAssistant: This happens when you name a variable 'list' and then call it as a function. Check if you have: list = [1,2,3] then later list(something)\nUser: Oh yes! I had list = [] at the top. Fixed it by renaming to my_list.\nAssistant: Good fix. Avoid shadowing built-in names: list, dict, str, int, etc.",
+      },
+      expectedOutput:
+        '{"text":"User had a Python TypeError caused by shadowing the built-in \'list\' name. Fixed by renaming variable to \'my_list\'. Key lesson: avoid using built-in names as variable names.","topics":["Python debugging","TypeError","variable naming"],"keyPoints":["Bug: variable named \'list\' shadowed the built-in","Fix: rename to my_list","Lesson: avoid shadowing built-ins: list, dict, str, int"]}',
       reward: 1,
-      rubric: "Must capture: Python TypeError, cause (shadowing built-in 'list'), fix (rename to my_list), general lesson. JSON format required.",
+      rubric:
+        "Must capture: Python TypeError, cause (shadowing built-in 'list'), fix (rename to my_list), general lesson. JSON format required.",
     },
     {
       id: "cs-3",
-      input: { user: "Recent conversation:\nUser: What's the best way to lose weight?\nAssistant: The most evidence-based approach: caloric deficit (eat 300-500 calories less than maintenance), high protein diet (0.8-1g per pound bodyweight), strength training 3x/week, and prioritize sleep 7-9 hours.\nUser: How do I figure out my maintenance calories?\nAssistant: Use the Harris-Benedict equation: for men, BMR = 88.36 + (13.4 × kg) + (4.8 × cm) − (5.7 × age). Multiply by activity factor: sedentary=1.2, light=1.375, moderate=1.55.\nUser: Got it, I'll start tracking." },
-      expectedOutput: '{"text":"Discussion about evidence-based weight loss. Key approach: 300-500 calorie deficit, high protein (0.8-1g/lb), strength training 3x/week, 7-9 hours sleep. Maintenance calories calculated via Harris-Benedict equation × activity factor.","topics":["weight loss","nutrition","caloric deficit","BMR calculation"],"keyPoints":["300-500 calorie deficit from maintenance","Protein: 0.8-1g per pound bodyweight","Strength training 3x/week","Sleep 7-9 hours","Harris-Benedict equation for BMR","Activity multipliers: sedentary=1.2, light=1.375, moderate=1.55"]}',
+      input: {
+        user: "Recent conversation:\nUser: What's the best way to lose weight?\nAssistant: The most evidence-based approach: caloric deficit (eat 300-500 calories less than maintenance), high protein diet (0.8-1g per pound bodyweight), strength training 3x/week, and prioritize sleep 7-9 hours.\nUser: How do I figure out my maintenance calories?\nAssistant: Use the Harris-Benedict equation: for men, BMR = 88.36 + (13.4 × kg) + (4.8 × cm) − (5.7 × age). Multiply by activity factor: sedentary=1.2, light=1.375, moderate=1.55.\nUser: Got it, I'll start tracking.",
+      },
+      expectedOutput:
+        '{"text":"Discussion about evidence-based weight loss. Key approach: 300-500 calorie deficit, high protein (0.8-1g/lb), strength training 3x/week, 7-9 hours sleep. Maintenance calories calculated via Harris-Benedict equation × activity factor.","topics":["weight loss","nutrition","caloric deficit","BMR calculation"],"keyPoints":["300-500 calorie deficit from maintenance","Protein: 0.8-1g per pound bodyweight","Strength training 3x/week","Sleep 7-9 hours","Harris-Benedict equation for BMR","Activity multipliers: sedentary=1.2, light=1.375, moderate=1.55"]}',
       reward: 1,
-      rubric: "Must capture: caloric deficit numbers, protein targets, exercise frequency, sleep recommendation, Harris-Benedict equation, activity multipliers.",
+      rubric:
+        "Must capture: caloric deficit numbers, protein targets, exercise frequency, sleep recommendation, Harris-Benedict equation, activity multipliers.",
     },
     {
       id: "cs-4",
-      input: { user: "Recent conversation:\nUser: hi\nAssistant: Hello! How can I help you today?\nUser: nothing just saying hi\nAssistant: Happy to chat! Let me know if you need anything." },
-      expectedOutput: '{"text":"Brief casual exchange with no substantive content. User greeted the assistant and had no specific request.","topics":["casual conversation"],"keyPoints":["No action items or decisions","User had no specific request"]}',
+      input: {
+        user: "Recent conversation:\nUser: hi\nAssistant: Hello! How can I help you today?\nUser: nothing just saying hi\nAssistant: Happy to chat! Let me know if you need anything.",
+      },
+      expectedOutput:
+        '{"text":"Brief casual exchange with no substantive content. User greeted the assistant and had no specific request.","topics":["casual conversation"],"keyPoints":["No action items or decisions","User had no specific request"]}',
       reward: 1,
-      rubric: "Must correctly handle trivial/short conversation. Summary should be short and accurate. No invented details.",
+      rubric:
+        "Must correctly handle trivial/short conversation. Summary should be short and accurate. No invented details.",
     },
     {
       id: "cs-5",
-      input: { user: "Recent conversation:\nUser: We need to decide on the database for our new app — PostgreSQL or MongoDB?\nAssistant: For structured relational data with complex queries: PostgreSQL. For flexible schema, documents, high write throughput: MongoDB. What's your data model like?\nUser: We have users, orders, products — all relational.\nAssistant: PostgreSQL is the right choice. ACID compliance, great for joins, mature ecosystem.\nUser: Agreed. Let's go with PostgreSQL. Can we use Drizzle ORM?\nAssistant: Yes, Drizzle works great with PostgreSQL. Type-safe, lightweight, great DX." },
-      expectedOutput: '{"text":"Team decided to use PostgreSQL over MongoDB for a new app. Reason: structured relational data model (users, orders, products) requires ACID compliance and complex joins. Selected Drizzle ORM for type-safe PostgreSQL integration.","topics":["database selection","PostgreSQL","MongoDB","Drizzle ORM"],"keyPoints":["Decision: PostgreSQL chosen over MongoDB","Reason: relational data model needs ACID/joins","ORM: Drizzle selected for PostgreSQL","Data model: users, orders, products"]}',
+      input: {
+        user: "Recent conversation:\nUser: We need to decide on the database for our new app — PostgreSQL or MongoDB?\nAssistant: For structured relational data with complex queries: PostgreSQL. For flexible schema, documents, high write throughput: MongoDB. What's your data model like?\nUser: We have users, orders, products — all relational.\nAssistant: PostgreSQL is the right choice. ACID compliance, great for joins, mature ecosystem.\nUser: Agreed. Let's go with PostgreSQL. Can we use Drizzle ORM?\nAssistant: Yes, Drizzle works great with PostgreSQL. Type-safe, lightweight, great DX.",
+      },
+      expectedOutput:
+        '{"text":"Team decided to use PostgreSQL over MongoDB for a new app. Reason: structured relational data model (users, orders, products) requires ACID compliance and complex joins. Selected Drizzle ORM for type-safe PostgreSQL integration.","topics":["database selection","PostgreSQL","MongoDB","Drizzle ORM"],"keyPoints":["Decision: PostgreSQL chosen over MongoDB","Reason: relational data model needs ACID/joins","ORM: Drizzle selected for PostgreSQL","Data model: users, orders, products"]}',
       reward: 1,
-      rubric: "Must capture: decision (PostgreSQL), reason (relational data model), ORM choice (Drizzle), data model description.",
+      rubric:
+        "Must capture: decision (PostgreSQL), reason (relational data model), ORM choice (Drizzle), data model description.",
     },
     {
       id: "cs-6",
-      input: { user: "Recent conversation:\nUser: Remind me to call Dr. Smith tomorrow at 9am.\nAssistant: I'll set a reminder for tomorrow at 9am to call Dr. Smith.\nUser: Also note that I take metformin 500mg twice daily.\nAssistant: Noted. I've saved your medication: metformin 500mg twice daily.\nUser: Thanks!" },
-      expectedOutput: '{"text":"User set a reminder to call Dr. Smith tomorrow at 9am. User also shared medication information: metformin 500mg twice daily.","topics":["reminders","medication","health"],"keyPoints":["Reminder set: call Dr. Smith tomorrow at 9am","Medication noted: metformin 500mg twice daily"]}',
+      input: {
+        user: "Recent conversation:\nUser: Remind me to call Dr. Smith tomorrow at 9am.\nAssistant: I'll set a reminder for tomorrow at 9am to call Dr. Smith.\nUser: Also note that I take metformin 500mg twice daily.\nAssistant: Noted. I've saved your medication: metformin 500mg twice daily.\nUser: Thanks!",
+      },
+      expectedOutput:
+        '{"text":"User set a reminder to call Dr. Smith tomorrow at 9am. User also shared medication information: metformin 500mg twice daily.","topics":["reminders","medication","health"],"keyPoints":["Reminder set: call Dr. Smith tomorrow at 9am","Medication noted: metformin 500mg twice daily"]}',
       reward: 1,
-      rubric: "Must capture both actions: reminder for Dr. Smith at 9am, and medication note (metformin 500mg twice daily).",
+      rubric:
+        "Must capture both actions: reminder for Dr. Smith at 9am, and medication note (metformin 500mg twice daily).",
     },
     {
       id: "cs-7",
-      input: { user: "Recent conversation:\nUser: What does the 'yield' keyword do in Python?\nAssistant: 'yield' turns a function into a generator. Instead of returning all values at once, it yields one at a time, pausing execution between yields. This is memory-efficient for large sequences.\nUser: Can you show me an example?\nAssistant: def count_up(n):\\n    for i in range(n):\\n        yield i\\n\\nfor x in count_up(5):\\n    print(x)  # prints 0,1,2,3,4 one at a time" },
-      expectedOutput: '{"text":"Explained Python \'yield\' keyword. It creates generators — functions that return values lazily one at a time rather than all at once. Memory-efficient for large sequences. Example: count_up() generator yielding 0-4.","topics":["Python","generators","yield keyword"],"keyPoints":["yield turns function into generator","Returns values lazily, one at a time","Memory-efficient vs returning full list","Example: count_up(n) yields 0 to n-1"]}',
+      input: {
+        user: "Recent conversation:\nUser: What does the 'yield' keyword do in Python?\nAssistant: 'yield' turns a function into a generator. Instead of returning all values at once, it yields one at a time, pausing execution between yields. This is memory-efficient for large sequences.\nUser: Can you show me an example?\nAssistant: def count_up(n):\\n    for i in range(n):\\n        yield i\\n\\nfor x in count_up(5):\\n    print(x)  # prints 0,1,2,3,4 one at a time",
+      },
+      expectedOutput:
+        '{"text":"Explained Python \'yield\' keyword. It creates generators — functions that return values lazily one at a time rather than all at once. Memory-efficient for large sequences. Example: count_up() generator yielding 0-4.","topics":["Python","generators","yield keyword"],"keyPoints":["yield turns function into generator","Returns values lazily, one at a time","Memory-efficient vs returning full list","Example: count_up(n) yields 0 to n-1"]}',
       reward: 1,
-      rubric: "Must capture: what yield does (generator), lazy evaluation, memory efficiency, the count_up example.",
+      rubric:
+        "Must capture: what yield does (generator), lazy evaluation, memory efficiency, the count_up example.",
     },
     {
       id: "cs-8",
-      input: { user: "Recent conversation:\nUser: I'm considering switching from Vim to VSCode. Thoughts?\nAssistant: VSCode has better out-of-box experience, extensions ecosystem, and integrated debugging. Vim has lower overhead, powerful once mastered, faster for text operations. Most devs prefer VSCode for daily use, Vim for server/quick edits.\nUser: I do a lot of React work, would VSCode be better?\nAssistant: Definitely VSCode for React. Better JSX support, ES6/TS intellisense, React-specific extensions (React DevTools, Prettier, ESLint).\nUser: Alright, I'll make the switch." },
-      expectedOutput: '{"text":"User decided to switch from Vim to VSCode for daily React development. VSCode advantages: better out-of-box experience, extensions, debugging, JSX support, and React-specific tooling (Prettier, ESLint, React DevTools).","topics":["VSCode","Vim","React development","editor choice"],"keyPoints":["Decision: switching from Vim to VSCode","Reason: better React/JSX support","VSCode advantages: extensions, debugging, intellisense","React extensions: React DevTools, Prettier, ESLint"]}',
+      input: {
+        user: "Recent conversation:\nUser: I'm considering switching from Vim to VSCode. Thoughts?\nAssistant: VSCode has better out-of-box experience, extensions ecosystem, and integrated debugging. Vim has lower overhead, powerful once mastered, faster for text operations. Most devs prefer VSCode for daily use, Vim for server/quick edits.\nUser: I do a lot of React work, would VSCode be better?\nAssistant: Definitely VSCode for React. Better JSX support, ES6/TS intellisense, React-specific extensions (React DevTools, Prettier, ESLint).\nUser: Alright, I'll make the switch.",
+      },
+      expectedOutput:
+        '{"text":"User decided to switch from Vim to VSCode for daily React development. VSCode advantages: better out-of-box experience, extensions, debugging, JSX support, and React-specific tooling (Prettier, ESLint, React DevTools).","topics":["VSCode","Vim","React development","editor choice"],"keyPoints":["Decision: switching from Vim to VSCode","Reason: better React/JSX support","VSCode advantages: extensions, debugging, intellisense","React extensions: React DevTools, Prettier, ESLint"]}',
       reward: 1,
-      rubric: "Must capture: decision (switch to VSCode), reason (React work), key advantages, specific React extensions mentioned.",
+      rubric:
+        "Must capture: decision (switch to VSCode), reason (React work), key advantages, specific React extensions mentioned.",
     },
   ],
 
@@ -1274,59 +1951,91 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   autonomy_decision: [
     {
       id: "ad-1",
-      input: { user: "Context: User asked me to check the status of their GitHub PR #1234.\nLast thought: Need to call the GitHub API to get PR status.\nAvailable actions: GITHUB_GET_PR, REPLY" },
-      expectedOutput: '{"thought":"Need to fetch PR status from GitHub before I can reply.","actions":[{"name":"GITHUB_GET_PR"}]}',
+      input: {
+        user: "Context: User asked me to check the status of their GitHub PR #1234.\nLast thought: Need to call the GitHub API to get PR status.\nAvailable actions: GITHUB_GET_PR, REPLY",
+      },
+      expectedOutput:
+        '{"thought":"Need to fetch PR status from GitHub before I can reply.","actions":[{"name":"GITHUB_GET_PR"}]}',
       reward: 1,
-      rubric: "Must take action (GITHUB_GET_PR). Actions array must be non-empty. Have clear goal and available tool.",
+      rubric:
+        "Must take action (GITHUB_GET_PR). Actions array must be non-empty. Have clear goal and available tool.",
     },
     {
       id: "ad-2",
-      input: { user: "Context: Checked GitHub PR #1234. Status: merged 2 hours ago by @alice.\nLast thought: PR status retrieved. Need to report back to user.\nAvailable actions: GITHUB_GET_PR, REPLY" },
-      expectedOutput: '{"thought":"PR #1234 is merged. Ready to inform the user.","actions":[{"name":"REPLY"}]}',
+      input: {
+        user: "Context: Checked GitHub PR #1234. Status: merged 2 hours ago by @alice.\nLast thought: PR status retrieved. Need to report back to user.\nAvailable actions: GITHUB_GET_PR, REPLY",
+      },
+      expectedOutput:
+        '{"thought":"PR #1234 is merged. Ready to inform the user.","actions":[{"name":"REPLY"}]}',
       reward: 1,
-      rubric: "Must select REPLY since data is ready. The loop should transition to reporting back to user.",
+      rubric:
+        "Must select REPLY since data is ready. The loop should transition to reporting back to user.",
     },
     {
       id: "ad-3",
-      input: { user: "Context: Waiting for user to confirm whether to proceed with the database migration.\nLast thought: Asked user for confirmation; no response yet.\nAvailable actions: RUN_MIGRATION, REPLY, SEARCH" },
-      expectedOutput: '{"thought":"Still waiting for user confirmation. Cannot proceed with migration without explicit approval.","actions":[]}',
+      input: {
+        user: "Context: Waiting for user to confirm whether to proceed with the database migration.\nLast thought: Asked user for confirmation; no response yet.\nAvailable actions: RUN_MIGRATION, REPLY, SEARCH",
+      },
+      expectedOutput:
+        '{"thought":"Still waiting for user confirmation. Cannot proceed with migration without explicit approval.","actions":[]}',
       reward: 1,
-      rubric: "Must take NO action (empty actions). Waiting for user input — should not proceed autonomously.",
+      rubric:
+        "Must take NO action (empty actions). Waiting for user input — should not proceed autonomously.",
     },
     {
       id: "ad-4",
-      input: { user: "Context: User asked me to research and summarize the top 3 JavaScript frameworks in 2025.\nLast thought: Starting research task.\nAvailable actions: SEARCH, NOTES, REPLY" },
-      expectedOutput: '{"thought":"Need to search for current JavaScript framework rankings before summarizing.","actions":[{"name":"SEARCH"}]}',
+      input: {
+        user: "Context: User asked me to research and summarize the top 3 JavaScript frameworks in 2025.\nLast thought: Starting research task.\nAvailable actions: SEARCH, NOTES, REPLY",
+      },
+      expectedOutput:
+        '{"thought":"Need to search for current JavaScript framework rankings before summarizing.","actions":[{"name":"SEARCH"}]}',
       reward: 1,
-      rubric: "Must take SEARCH action. Research task needs data before summary.",
+      rubric:
+        "Must take SEARCH action. Research task needs data before summary.",
     },
     {
       id: "ad-5",
-      input: { user: "Context: User asked what 2+2 equals.\nLast thought: Simple math question requiring direct reply.\nAvailable actions: SEARCH, REPLY, CALCULATE" },
-      expectedOutput: '{"thought":"Simple math — can answer directly without tools.","actions":[{"name":"REPLY"}]}',
+      input: {
+        user: "Context: User asked what 2+2 equals.\nLast thought: Simple math question requiring direct reply.\nAvailable actions: SEARCH, REPLY, CALCULATE",
+      },
+      expectedOutput:
+        '{"thought":"Simple math — can answer directly without tools.","actions":[{"name":"REPLY"}]}',
       reward: 1,
-      rubric: "Must REPLY immediately. Simple fact doesn't require SEARCH or CALCULATE.",
+      rubric:
+        "Must REPLY immediately. Simple fact doesn't require SEARCH or CALCULATE.",
     },
     {
       id: "ad-6",
-      input: { user: "Context: Asked to deploy the app to production. No deployment credentials available.\nLast thought: Missing credentials to complete the deploy.\nAvailable actions: DEPLOY, REPLY" },
-      expectedOutput: '{"thought":"Cannot deploy — missing production credentials. Need to inform user.","actions":[{"name":"REPLY"}]}',
+      input: {
+        user: "Context: Asked to deploy the app to production. No deployment credentials available.\nLast thought: Missing credentials to complete the deploy.\nAvailable actions: DEPLOY, REPLY",
+      },
+      expectedOutput:
+        '{"thought":"Cannot deploy — missing production credentials. Need to inform user.","actions":[{"name":"REPLY"}]}',
       reward: 1,
-      rubric: "Must REPLY to inform user of missing credentials. Cannot DEPLOY without them.",
+      rubric:
+        "Must REPLY to inform user of missing credentials. Cannot DEPLOY without them.",
     },
     {
       id: "ad-7",
-      input: { user: "Context: User wants me to save a note about their meeting tomorrow at 3pm with the board.\nLast thought: Clear note-taking request.\nAvailable actions: NOTES, SCHEDULE, REPLY" },
-      expectedOutput: '{"thought":"User wants to save a note about tomorrow\'s board meeting.","actions":[{"name":"NOTES"}]}',
+      input: {
+        user: "Context: User wants me to save a note about their meeting tomorrow at 3pm with the board.\nLast thought: Clear note-taking request.\nAvailable actions: NOTES, SCHEDULE, REPLY",
+      },
+      expectedOutput:
+        '{"thought":"User wants to save a note about tomorrow\'s board meeting.","actions":[{"name":"NOTES"}]}',
       reward: 1,
-      rubric: "Must select NOTES. User explicitly said 'save a note', not 'schedule'.",
+      rubric:
+        "Must select NOTES. User explicitly said 'save a note', not 'schedule'.",
     },
     {
       id: "ad-8",
-      input: { user: "Context: Monitoring a long-running build. Build started 2 minutes ago, estimated 5 more minutes.\nLast thought: Build in progress. Nothing to do until it completes.\nAvailable actions: CHECK_BUILD_STATUS, REPLY, CANCEL_BUILD" },
-      expectedOutput: '{"thought":"Build still in progress (~5 min remaining). No action needed this round — will check again next iteration.","actions":[]}',
+      input: {
+        user: "Context: Monitoring a long-running build. Build started 2 minutes ago, estimated 5 more minutes.\nLast thought: Build in progress. Nothing to do until it completes.\nAvailable actions: CHECK_BUILD_STATUS, REPLY, CANCEL_BUILD",
+      },
+      expectedOutput:
+        '{"thought":"Build still in progress (~5 min remaining). No action needed this round — will check again next iteration.","actions":[]}',
       reward: 1,
-      rubric: "Must take NO action. Build is running, nothing to act on. Not CHECK_BUILD_STATUS yet (5 min remaining).",
+      rubric:
+        "Must take NO action. Build is running, nothing to act on. Not CHECK_BUILD_STATUS yet (5 min remaining).",
     },
   ],
 
@@ -1334,117 +2043,240 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   extract_action_params: [
     {
       id: "eap-1",
-      input: { user: "Action: SEND_EMAIL\nDescription: Send an email to a contact\nMissing required fields: to, subject\nRecent conversation:\nUser: Can you email sarah@company.com about the Q3 budget review?\nAssistant: I'll draft that now.\nCurrent message: Please send it." },
+      input: {
+        user: "Action: SEND_EMAIL\nDescription: Send an email to a contact\nMissing required fields: to, subject\nRecent conversation:\nUser: Can you email sarah@company.com about the Q3 budget review?\nAssistant: I'll draft that now.\nCurrent message: Please send it.",
+      },
       expectedOutput: '{"to":"sarah@company.com","subject":"Q3 budget review"}',
       reward: 1,
-      rubric: "Must extract: to=sarah@company.com, subject=Q3 budget review. Both clearly stated in conversation.",
+      rubric:
+        "Must extract: to=sarah@company.com, subject=Q3 budget review. Both clearly stated in conversation.",
     },
     {
       id: "eap-2",
-      input: { user: "Action: SCHEDULE_MEETING\nDescription: Create a calendar event\nMissing required fields: title, time, duration\nRecent conversation:\nUser: Schedule a standup with the team tomorrow at 9am for 30 minutes.\nCurrent message: Yeah that works." },
-      expectedOutput: '{"title":"Team standup","time":"tomorrow 9am","duration":"30 minutes"}',
+      input: {
+        user: "Action: SCHEDULE_MEETING\nDescription: Create a calendar event\nMissing required fields: title, time, duration\nRecent conversation:\nUser: Schedule a standup with the team tomorrow at 9am for 30 minutes.\nCurrent message: Yeah that works.",
+      },
+      expectedOutput:
+        '{"title":"Team standup","time":"tomorrow 9am","duration":"30 minutes"}',
       reward: 1,
-      rubric: "Must extract: title=Team standup, time=tomorrow 9am, duration=30 minutes. All present in conversation.",
+      rubric:
+        "Must extract: title=Team standup, time=tomorrow 9am, duration=30 minutes. All present in conversation.",
     },
     {
       id: "eap-3",
-      input: { user: "Action: SET_REMINDER\nDescription: Set a reminder for the user\nMissing required fields: message, delay\nRecent conversation:\nUser: Remind me to take my medicine\nCurrent message: in an hour" },
+      input: {
+        user: "Action: SET_REMINDER\nDescription: Set a reminder for the user\nMissing required fields: message, delay\nRecent conversation:\nUser: Remind me to take my medicine\nCurrent message: in an hour",
+      },
       expectedOutput: '{"message":"Take medicine","delay":"1h"}',
       reward: 1,
-      rubric: "Must extract: message=Take medicine (or similar), delay=1h. Delay is in the current message.",
+      rubric:
+        "Must extract: message=Take medicine (or similar), delay=1h. Delay is in the current message.",
     },
     {
       id: "eap-4",
-      input: { user: "Action: SEARCH\nDescription: Search the internet\nMissing required fields: query\nRecent conversation:\nUser: Can you look something up for me?\nCurrent message: I want to know the current price of Bitcoin" },
+      input: {
+        user: "Action: SEARCH\nDescription: Search the internet\nMissing required fields: query\nRecent conversation:\nUser: Can you look something up for me?\nCurrent message: I want to know the current price of Bitcoin",
+      },
       expectedOutput: '{"query":"current Bitcoin price"}',
       reward: 1,
-      rubric: "Must extract query from current message. Query should be about Bitcoin price.",
+      rubric:
+        "Must extract query from current message. Query should be about Bitcoin price.",
     },
     {
       id: "eap-5",
-      input: { user: "Action: CREATE_NOTE\nDescription: Save a note\nMissing required fields: content, title\nRecent conversation:\nUser: Note this down: our team uses TypeScript, React, and PostgreSQL for the main stack.\nCurrent message: Title it 'Tech Stack'" },
-      expectedOutput: '{"content":"Our team uses TypeScript, React, and PostgreSQL for the main stack.","title":"Tech Stack"}',
+      input: {
+        user: "Action: CREATE_NOTE\nDescription: Save a note\nMissing required fields: content, title\nRecent conversation:\nUser: Note this down: our team uses TypeScript, React, and PostgreSQL for the main stack.\nCurrent message: Title it 'Tech Stack'",
+      },
+      expectedOutput:
+        '{"content":"Our team uses TypeScript, React, and PostgreSQL for the main stack.","title":"Tech Stack"}',
       reward: 1,
-      rubric: "Must extract content from prior message and title from current message.",
+      rubric:
+        "Must extract content from prior message and title from current message.",
     },
     {
       id: "eap-6",
-      input: { user: "Action: SEND_SLACK_MESSAGE\nDescription: Post a message in a Slack channel\nMissing required fields: channel, message\nRecent conversation:\nUser: Can you post in #general that the server maintenance is complete?\nCurrent message: Yeah go ahead." },
-      expectedOutput: '{"channel":"general","message":"Server maintenance is complete."}',
+      input: {
+        user: "Action: SEND_SLACK_MESSAGE\nDescription: Post a message in a Slack channel\nMissing required fields: channel, message\nRecent conversation:\nUser: Can you post in #general that the server maintenance is complete?\nCurrent message: Yeah go ahead.",
+      },
+      expectedOutput:
+        '{"channel":"general","message":"Server maintenance is complete."}',
       reward: 1,
-      rubric: "Must extract: channel=general (strip the #), message about server maintenance being complete.",
+      rubric:
+        "Must extract: channel=general (strip the #), message about server maintenance being complete.",
     },
     {
       id: "eap-7",
-      input: { user: "Action: CREATE_TICKET\nDescription: Create a Jira/GitHub issue\nMissing required fields: title, description, priority\nRecent conversation:\nUser: Log a bug: the login button breaks on mobile Safari.\nCurrent message: Make it high priority." },
-      expectedOutput: '{"title":"Login button broken on mobile Safari","description":"Login button breaks on mobile Safari","priority":"high"}',
+      input: {
+        user: "Action: CREATE_TICKET\nDescription: Create a Jira/GitHub issue\nMissing required fields: title, description, priority\nRecent conversation:\nUser: Log a bug: the login button breaks on mobile Safari.\nCurrent message: Make it high priority.",
+      },
+      expectedOutput:
+        '{"title":"Login button broken on mobile Safari","description":"Login button breaks on mobile Safari","priority":"high"}',
       reward: 1,
-      rubric: "Must extract: title/description about the mobile Safari login bug, priority=high from current message.",
+      rubric:
+        "Must extract: title/description about the mobile Safari login bug, priority=high from current message.",
     },
     {
       id: "eap-8",
-      input: { user: "Action: BOOK_FLIGHT\nDescription: Book a flight\nMissing required fields: from, to, date\nRecent conversation:\nUser: I need to fly somewhere next week.\nCurrent message: Actually I haven't decided where yet." },
+      input: {
+        user: "Action: BOOK_FLIGHT\nDescription: Book a flight\nMissing required fields: from, to, date\nRecent conversation:\nUser: I need to fly somewhere next week.\nCurrent message: Actually I haven't decided where yet.",
+      },
       expectedOutput: '{"from":null,"to":null,"date":null}',
       reward: 1,
-      rubric: "Must return null for all fields. User explicitly said they haven't decided. Do NOT invent values.",
+      rubric:
+        "Must return null for all fields. User explicitly said they haven't decided. Do NOT invent values.",
     },
   ],
 
   // REPLY_TEMPLATE — dialog generation quality
   reply: [
-    { id: "rl-1", input: { user: "User: Hey! How are you doing today?\nContext: First message of the day" }, expectedOutput: '{"thought":"Friendly greeting, respond warmly","text":"Doing great, thanks for asking! What can I help you with today?"}', reward: 1, rubric: "Should be warm, brief, and natural. Must include thought + text fields. No verbose padding." },
-    { id: "rl-2", input: { user: "User: Can you explain recursion in 2 sentences?\nContext: Technical chat" }, expectedOutput: '{"thought":"Need a concise 2-sentence recursion explanation","text":"Recursion is when a function calls itself to solve a smaller version of the same problem. The key is a base case that stops the recursion — without it, you get infinite loops."}', reward: 1, rubric: "Must explain recursion in exactly 2 sentences. Clear and accurate. JSON format." },
-    { id: "rl-3", input: { user: "User: I'm frustrated with my code, it keeps throwing TypeErrors.\nContext: Debugging session" }, expectedOutput: '{"thought":"User is frustrated; be empathetic and helpful","text":"TypeErrors in JS/TS are usually about type mismatches or null/undefined values. Can you share the error message and the line causing it?"}', reward: 1, rubric: "Should be empathetic, then ask for the specific error. Not generic advice. JSON format." },
-    { id: "rl-4", input: { user: "User: What's 12 × 13?\nContext: Quick math question" }, expectedOutput: '{"thought":"Simple multiplication","text":"156."}', reward: 1, rubric: "Must give the correct answer 156. One word/number acceptable. JSON format required." },
-    { id: "rl-5", input: { user: "User: Thanks, that worked perfectly!\nContext: User confirming a solution worked" }, expectedOutput: '{"thought":"User is happy with the solution","text":"Great, glad it worked! Let me know if anything else comes up."}', reward: 1, rubric: "Should acknowledge success briefly and offer continued help. Short, natural." },
-    { id: "rl-6", input: { user: "User: Schedule a meeting for tomorrow at 3pm with the team.\nContext: Task request that needs a tool — agent is in planning mode" }, expectedOutput: '{"thought":"This needs a calendar tool, not a direct text reply","text":"On it — scheduling the team meeting for tomorrow at 3pm."}', reward: 1, rubric: "Should acknowledge the task briefly ('On it', 'Scheduling now'). Should NOT try to actually schedule in text. Should be an ack, not a final answer." },
-    { id: "rl-7", input: { user: "User: Who was the first person to walk on the moon?\nContext: Factual question" }, expectedOutput: '{"thought":"Simple factual question","text":"Neil Armstrong, on July 20, 1969 during the Apollo 11 mission."}', reward: 1, rubric: "Must answer correctly: Neil Armstrong, 1969. Concise. JSON format." },
-    { id: "rl-8", input: { user: "User: goodbye!\nContext: User ending conversation" }, expectedOutput: '{"thought":"User is leaving","text":"Goodbye! Come back anytime."}', reward: 1, rubric: "Brief farewell. No padding. JSON format." },
+    {
+      id: "rl-1",
+      input: {
+        user: "User: Hey! How are you doing today?\nContext: First message of the day",
+      },
+      expectedOutput:
+        '{"thought":"Friendly greeting, respond warmly","text":"Doing great, thanks for asking! What can I help you with today?"}',
+      reward: 1,
+      rubric:
+        "Should be warm, brief, and natural. Must include thought + text fields. No verbose padding.",
+    },
+    {
+      id: "rl-2",
+      input: {
+        user: "User: Can you explain recursion in 2 sentences?\nContext: Technical chat",
+      },
+      expectedOutput:
+        '{"thought":"Need a concise 2-sentence recursion explanation","text":"Recursion is when a function calls itself to solve a smaller version of the same problem. The key is a base case that stops the recursion — without it, you get infinite loops."}',
+      reward: 1,
+      rubric:
+        "Must explain recursion in exactly 2 sentences. Clear and accurate. JSON format.",
+    },
+    {
+      id: "rl-3",
+      input: {
+        user: "User: I'm frustrated with my code, it keeps throwing TypeErrors.\nContext: Debugging session",
+      },
+      expectedOutput:
+        '{"thought":"User is frustrated; be empathetic and helpful","text":"TypeErrors in JS/TS are usually about type mismatches or null/undefined values. Can you share the error message and the line causing it?"}',
+      reward: 1,
+      rubric:
+        "Should be empathetic, then ask for the specific error. Not generic advice. JSON format.",
+    },
+    {
+      id: "rl-4",
+      input: { user: "User: What's 12 × 13?\nContext: Quick math question" },
+      expectedOutput: '{"thought":"Simple multiplication","text":"156."}',
+      reward: 1,
+      rubric:
+        "Must give the correct answer 156. One word/number acceptable. JSON format required.",
+    },
+    {
+      id: "rl-5",
+      input: {
+        user: "User: Thanks, that worked perfectly!\nContext: User confirming a solution worked",
+      },
+      expectedOutput:
+        '{"thought":"User is happy with the solution","text":"Great, glad it worked! Let me know if anything else comes up."}',
+      reward: 1,
+      rubric:
+        "Should acknowledge success briefly and offer continued help. Short, natural.",
+    },
+    {
+      id: "rl-6",
+      input: {
+        user: "User: Schedule a meeting for tomorrow at 3pm with the team.\nContext: Task request that needs a tool — agent is in planning mode",
+      },
+      expectedOutput:
+        '{"thought":"This needs a calendar tool, not a direct text reply","text":"On it — scheduling the team meeting for tomorrow at 3pm."}',
+      reward: 1,
+      rubric:
+        "Should acknowledge the task briefly ('On it', 'Scheduling now'). Should NOT try to actually schedule in text. Should be an ack, not a final answer.",
+    },
+    {
+      id: "rl-7",
+      input: {
+        user: "User: Who was the first person to walk on the moon?\nContext: Factual question",
+      },
+      expectedOutput:
+        '{"thought":"Simple factual question","text":"Neil Armstrong, on July 20, 1969 during the Apollo 11 mission."}',
+      reward: 1,
+      rubric:
+        "Must answer correctly: Neil Armstrong, 1969. Concise. JSON format.",
+    },
+    {
+      id: "rl-8",
+      input: { user: "User: goodbye!\nContext: User ending conversation" },
+      expectedOutput:
+        '{"thought":"User is leaving","text":"Goodbye! Come back anytime."}',
+      reward: 1,
+      rubric: "Brief farewell. No padding. JSON format.",
+    },
   ],
 
   // OBSERVATION_EXTRACTION_TEMPLATE — extract durable user observations
   observation_extraction: [
     {
       id: "oe-1",
-      input: { user: "Recent exchanges:\nUser: I always use vim bindings everywhere I can\nAssistant: Got it, you prefer vim motions." },
+      input: {
+        user: "Recent exchanges:\nUser: I always use vim bindings everywhere I can\nAssistant: Got it, you prefer vim motions.",
+      },
       expectedOutput: '["User prefers vim key bindings"]',
       reward: 1,
-      rubric: "Must extract: preference for vim bindings. JSON array format. Short observation.",
+      rubric:
+        "Must extract: preference for vim bindings. JSON array format. Short observation.",
     },
     {
       id: "oe-2",
-      input: { user: "Recent exchanges:\nUser: how's the weather today?\nAssistant: I don't have access to live weather data.\nUser: oh ok, never mind" },
-      expectedOutput: '[]',
+      input: {
+        user: "Recent exchanges:\nUser: how's the weather today?\nAssistant: I don't have access to live weather data.\nUser: oh ok, never mind",
+      },
+      expectedOutput: "[]",
       reward: 1,
-      rubric: "Must return empty array. No durable observations — just a casual question with no personal info.",
+      rubric:
+        "Must return empty array. No durable observations — just a casual question with no personal info.",
     },
     {
       id: "oe-3",
-      input: { user: "Recent exchanges:\nUser: I'm a senior backend engineer at Stripe, mostly TypeScript and Go\nAssistant: Great background. What are you working on today?" },
-      expectedOutput: '["User is a senior backend engineer at Stripe","User primarily uses TypeScript and Go"]',
+      input: {
+        user: "Recent exchanges:\nUser: I'm a senior backend engineer at Stripe, mostly TypeScript and Go\nAssistant: Great background. What are you working on today?",
+      },
+      expectedOutput:
+        '["User is a senior backend engineer at Stripe","User primarily uses TypeScript and Go"]',
       reward: 1,
-      rubric: "Must extract role (senior backend at Stripe) and tech stack (TypeScript, Go). JSON array.",
+      rubric:
+        "Must extract role (senior backend at Stripe) and tech stack (TypeScript, Go). JSON array.",
     },
     {
       id: "oe-4",
-      input: { user: "Recent exchanges:\nUser: please always respond in bullet points, I hate paragraphs\nAssistant: Understood, bullet points it is." },
-      expectedOutput: '["User prefers responses in bullet point format, not paragraphs"]',
+      input: {
+        user: "Recent exchanges:\nUser: please always respond in bullet points, I hate paragraphs\nAssistant: Understood, bullet points it is.",
+      },
+      expectedOutput:
+        '["User prefers responses in bullet point format, not paragraphs"]',
       reward: 1,
-      rubric: "Must extract the standing instruction: respond in bullet points. This is a preference worth remembering.",
+      rubric:
+        "Must extract the standing instruction: respond in bullet points. This is a preference worth remembering.",
     },
     {
       id: "oe-5",
-      input: { user: "Recent exchanges:\nUser: ok thanks\nAssistant: You're welcome!" },
-      expectedOutput: '[]',
+      input: {
+        user: "Recent exchanges:\nUser: ok thanks\nAssistant: You're welcome!",
+      },
+      expectedOutput: "[]",
       reward: 1,
-      rubric: "Must return empty array. Single-word acknowledgment contains no observations.",
+      rubric:
+        "Must return empty array. Single-word acknowledgment contains no observations.",
     },
     {
       id: "oe-6",
-      input: { user: "Recent exchanges:\nUser: I always write tests before my implementation, TDD all the way\nAssistant: TDD is great for catching regressions early.\nUser: yeah I can't work without it at this point" },
-      expectedOutput: '["User follows TDD workflow — writes tests before implementation"]',
+      input: {
+        user: "Recent exchanges:\nUser: I always write tests before my implementation, TDD all the way\nAssistant: TDD is great for catching regressions early.\nUser: yeah I can't work without it at this point",
+      },
+      expectedOutput:
+        '["User follows TDD workflow — writes tests before implementation"]',
       reward: 1,
-      rubric: "Must extract: TDD workflow preference. Confirmed by multiple statements. Not a single mention.",
+      rubric:
+        "Must extract: TDD workflow preference. Confirmed by multiple statements. Not a single mention.",
     },
   ],
 
@@ -1452,45 +2284,69 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   memory_qa: [
     {
       id: "mq-1",
-      input: { user: "Query: What is the user's favorite programming language?\n\nSaved memory notes:\n- User prefers TypeScript for all new projects\n- User has 8 years of Python experience but avoids it for new work\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"TypeScript — the user prefers it for all new projects, though they have extensive Python experience."}',
+      input: {
+        user: "Query: What is the user's favorite programming language?\n\nSaved memory notes:\n- User prefers TypeScript for all new projects\n- User has 8 years of Python experience but avoids it for new work\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"TypeScript — the user prefers it for all new projects, though they have extensive Python experience."}',
       reward: 1,
-      rubric: "Must answer TypeScript from memory notes. Should reference both notes for completeness.",
+      rubric:
+        "Must answer TypeScript from memory notes. Should reference both notes for completeness.",
     },
     {
       id: "mq-2",
-      input: { user: "Query: What is the capital of France?\n\nSaved memory notes: []\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"Context is insufficient to answer this — no relevant notes or knowledge snippets available."}',
+      input: {
+        user: "Query: What is the capital of France?\n\nSaved memory notes: []\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"Context is insufficient to answer this — no relevant notes or knowledge snippets available."}',
       reward: 1,
-      rubric: "Must say context is insufficient. Should NOT hallucinate the answer (Paris) from general knowledge.",
+      rubric:
+        "Must say context is insufficient. Should NOT hallucinate the answer (Paris) from general knowledge.",
     },
     {
       id: "mq-3",
-      input: { user: "Query: When is the user's team standup?\n\nSaved memory notes:\n- Daily standup at 9am EST with the backend team\n- User sometimes skips Fridays\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"Daily standup is at 9am EST with the backend team. The user sometimes skips on Fridays."}',
+      input: {
+        user: "Query: When is the user's team standup?\n\nSaved memory notes:\n- Daily standup at 9am EST with the backend team\n- User sometimes skips Fridays\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"Daily standup is at 9am EST with the backend team. The user sometimes skips on Fridays."}',
       reward: 1,
-      rubric: "Must answer with time (9am EST) and note about Fridays. All from notes.",
+      rubric:
+        "Must answer with time (9am EST) and note about Fridays. All from notes.",
     },
     {
       id: "mq-4",
-      input: { user: "Query: What medications does the user take?\n\nSaved memory notes:\n- User takes metformin 500mg twice daily for diabetes management\n- Allergic to penicillin\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"Metformin 500mg twice daily. The user is also allergic to penicillin."}',
+      input: {
+        user: "Query: What medications does the user take?\n\nSaved memory notes:\n- User takes metformin 500mg twice daily for diabetes management\n- Allergic to penicillin\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"Metformin 500mg twice daily. The user is also allergic to penicillin."}',
       reward: 1,
-      rubric: "Must state metformin 500mg twice daily AND penicillin allergy. Both are in notes.",
+      rubric:
+        "Must state metformin 500mg twice daily AND penicillin allergy. Both are in notes.",
     },
     {
       id: "mq-5",
-      input: { user: "Query: What database does the user's company use?\n\nSaved memory notes:\n- User works on the frontend team at Acme Corp\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"Context is insufficient — the notes mention Acme Corp but don\'t specify which database they use."}',
+      input: {
+        user: "Query: What database does the user's company use?\n\nSaved memory notes:\n- User works on the frontend team at Acme Corp\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"Context is insufficient — the notes mention Acme Corp but don\'t specify which database they use."}',
       reward: 1,
-      rubric: "Must say insufficient context — database not in notes, only company name and team.",
+      rubric:
+        "Must say insufficient context — database not in notes, only company name and team.",
     },
     {
       id: "mq-6",
-      input: { user: "Query: Does the user have any dietary restrictions?\n\nSaved memory notes:\n- User is vegetarian and avoids all meat\n- User also avoids gluten (celiac disease)\n\nKnowledge snippets: []" },
-      expectedOutput: '{"answer":"Yes — the user is vegetarian and has celiac disease, so they avoid all meat and gluten."}',
+      input: {
+        user: "Query: Does the user have any dietary restrictions?\n\nSaved memory notes:\n- User is vegetarian and avoids all meat\n- User also avoids gluten (celiac disease)\n\nKnowledge snippets: []",
+      },
+      expectedOutput:
+        '{"answer":"Yes — the user is vegetarian and has celiac disease, so they avoid all meat and gluten."}',
       reward: 1,
-      rubric: "Must state both: vegetarian AND celiac/gluten-free. Both critical health notes.",
+      rubric:
+        "Must state both: vegetarian AND celiac/gluten-free. Both critical health notes.",
     },
   ],
 
@@ -1498,45 +2354,69 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   choose_option: [
     {
       id: "co-1",
-      input: { user: "Context: User asked for help with a TypeScript error\n\nAvailable options:\n- id: OPT_DEBUG | Debug the error step by step\n- id: OPT_FIX | Apply an immediate code fix\n- id: OPT_EXPLAIN | Explain what the error means\n\nUser said: 'just fix it for me'" },
-      expectedOutput: '{"thought":"User wants immediate fix, not explanation or step-by-step","selected_id":"OPT_FIX"}',
+      input: {
+        user: "Context: User asked for help with a TypeScript error\n\nAvailable options:\n- id: OPT_DEBUG | Debug the error step by step\n- id: OPT_FIX | Apply an immediate code fix\n- id: OPT_EXPLAIN | Explain what the error means\n\nUser said: 'just fix it for me'",
+      },
+      expectedOutput:
+        '{"thought":"User wants immediate fix, not explanation or step-by-step","selected_id":"OPT_FIX"}',
       reward: 1,
-      rubric: "Must select OPT_FIX. User said 'just fix it' — not debug or explain.",
+      rubric:
+        "Must select OPT_FIX. User said 'just fix it' — not debug or explain.",
     },
     {
       id: "co-2",
-      input: { user: "Context: User is learning about machine learning\n\nAvailable options:\n- id: BEGINNER | Start with basics (what is ML, types of ML)\n- id: INTERMEDIATE | Jump to algorithms and training\n- id: ADVANCED | Dive into neural network architectures\n\nUser said: 'I have a CS degree but never touched ML'" },
-      expectedOutput: '{"thought":"CS background but ML novice — intermediate is right, not too basic or too advanced","selected_id":"INTERMEDIATE"}',
+      input: {
+        user: "Context: User is learning about machine learning\n\nAvailable options:\n- id: BEGINNER | Start with basics (what is ML, types of ML)\n- id: INTERMEDIATE | Jump to algorithms and training\n- id: ADVANCED | Dive into neural network architectures\n\nUser said: 'I have a CS degree but never touched ML'",
+      },
+      expectedOutput:
+        '{"thought":"CS background but ML novice — intermediate is right, not too basic or too advanced","selected_id":"INTERMEDIATE"}',
       reward: 1,
-      rubric: "Must select INTERMEDIATE. CS degree = not beginner; no ML experience = not advanced.",
+      rubric:
+        "Must select INTERMEDIATE. CS degree = not beginner; no ML experience = not advanced.",
     },
     {
       id: "co-3",
-      input: { user: "Context: User wants to export their data\n\nAvailable options:\n- id: CSV | Export as CSV spreadsheet\n- id: JSON | Export as JSON file\n- id: PDF | Export as PDF report\n\nUser said: 'I want to open it in Excel'" },
-      expectedOutput: '{"thought":"User wants Excel compatibility — CSV is the right format for Excel","selected_id":"CSV"}',
+      input: {
+        user: "Context: User wants to export their data\n\nAvailable options:\n- id: CSV | Export as CSV spreadsheet\n- id: JSON | Export as JSON file\n- id: PDF | Export as PDF report\n\nUser said: 'I want to open it in Excel'",
+      },
+      expectedOutput:
+        '{"thought":"User wants Excel compatibility — CSV is the right format for Excel","selected_id":"CSV"}',
       reward: 1,
-      rubric: "Must select CSV. Excel natively opens CSV files, not JSON or PDF.",
+      rubric:
+        "Must select CSV. Excel natively opens CSV files, not JSON or PDF.",
     },
     {
       id: "co-4",
-      input: { user: "Context: User is deploying an app\n\nAvailable options:\n- id: STAGING | Deploy to staging environment\n- id: PRODUCTION | Deploy to production\n- id: DEV | Deploy to development server\n\nUser said: 'Let's test this before going live'" },
-      expectedOutput: '{"thought":"User wants to test before going live = staging","selected_id":"STAGING"}',
+      input: {
+        user: "Context: User is deploying an app\n\nAvailable options:\n- id: STAGING | Deploy to staging environment\n- id: PRODUCTION | Deploy to production\n- id: DEV | Deploy to development server\n\nUser said: 'Let's test this before going live'",
+      },
+      expectedOutput:
+        '{"thought":"User wants to test before going live = staging","selected_id":"STAGING"}',
       reward: 1,
-      rubric: "Must select STAGING. 'Test before going live' is the canonical staging use case.",
+      rubric:
+        "Must select STAGING. 'Test before going live' is the canonical staging use case.",
     },
     {
       id: "co-5",
-      input: { user: "Context: User is configuring notifications\n\nAvailable options:\n- id: ALL | Receive all notifications\n- id: IMPORTANT | Only important notifications\n- id: NONE | No notifications\n\nUser said: 'I don't want to be bothered unless it's urgent'" },
-      expectedOutput: '{"thought":"User wants minimal, urgent-only notifications = IMPORTANT","selected_id":"IMPORTANT"}',
+      input: {
+        user: "Context: User is configuring notifications\n\nAvailable options:\n- id: ALL | Receive all notifications\n- id: IMPORTANT | Only important notifications\n- id: NONE | No notifications\n\nUser said: 'I don't want to be bothered unless it's urgent'",
+      },
+      expectedOutput:
+        '{"thought":"User wants minimal, urgent-only notifications = IMPORTANT","selected_id":"IMPORTANT"}',
       reward: 1,
-      rubric: "Must select IMPORTANT. 'Unless it's urgent' = important only, not all or none.",
+      rubric:
+        "Must select IMPORTANT. 'Unless it's urgent' = important only, not all or none.",
     },
     {
       id: "co-6",
-      input: { user: "Context: User is asking about response format\n\nAvailable options:\n- id: SHORT | Brief 1-2 sentence answers\n- id: DETAILED | Comprehensive explanations with examples\n- id: BULLETS | Structured bullet points\n\nUser said: 'Give me a full deep dive with examples'" },
-      expectedOutput: '{"thought":"User explicitly wants detailed explanation with examples","selected_id":"DETAILED"}',
+      input: {
+        user: "Context: User is asking about response format\n\nAvailable options:\n- id: SHORT | Brief 1-2 sentence answers\n- id: DETAILED | Comprehensive explanations with examples\n- id: BULLETS | Structured bullet points\n\nUser said: 'Give me a full deep dive with examples'",
+      },
+      expectedOutput:
+        '{"thought":"User explicitly wants detailed explanation with examples","selected_id":"DETAILED"}',
       reward: 1,
-      rubric: "Must select DETAILED. 'Full deep dive with examples' = comprehensive.",
+      rubric:
+        "Must select DETAILED. 'Full deep dive with examples' = comprehensive.",
     },
   ],
 
@@ -1544,24 +2424,36 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   reflection: [
     {
       id: "rf-1",
-      input: { user: "Recent interactions:\n1. User asked for Python help, agent gave a clear example → User: 'Perfect, thanks!'\n2. User asked a vague question, agent asked for clarification → User clarified and got a good answer\n3. Agent gave a long response to a simple yes/no question → User seemed annoyed" },
-      expectedOutput: '{"thought":"Two good interactions, one clear mistake: over-verbose response to simple question","quality_score":72,"strengths":"Good clarification-seeking and accurate technical help","improvements":"Match response length to question complexity","learnings":"Yes/no questions get yes/no answers"}',
+      input: {
+        user: "Recent interactions:\n1. User asked for Python help, agent gave a clear example → User: 'Perfect, thanks!'\n2. User asked a vague question, agent asked for clarification → User clarified and got a good answer\n3. Agent gave a long response to a simple yes/no question → User seemed annoyed",
+      },
+      expectedOutput:
+        '{"thought":"Two good interactions, one clear mistake: over-verbose response to simple question","quality_score":72,"strengths":"Good clarification-seeking and accurate technical help","improvements":"Match response length to question complexity","learnings":"Yes/no questions get yes/no answers"}',
       reward: 1,
-      rubric: "Must identify the verbose response as the weakness. Quality score should be 65-80. All JSON fields required.",
+      rubric:
+        "Must identify the verbose response as the weakness. Quality score should be 65-80. All JSON fields required.",
     },
     {
       id: "rf-2",
-      input: { user: "Recent interactions:\n1. Agent helped debug a React hook issue correctly → User: 'That fixed it!'\n2. Agent scheduled a meeting correctly\n3. Agent answered all 5 questions accurately and concisely" },
-      expectedOutput: '{"thought":"All interactions went well - accurate, helpful responses across different task types","quality_score":90,"strengths":"Technical accuracy, task execution, concise answers","improvements":"Could add more proactive suggestions","learnings":"Current approach working well across task types"}',
+      input: {
+        user: "Recent interactions:\n1. Agent helped debug a React hook issue correctly → User: 'That fixed it!'\n2. Agent scheduled a meeting correctly\n3. Agent answered all 5 questions accurately and concisely",
+      },
+      expectedOutput:
+        '{"thought":"All interactions went well - accurate, helpful responses across different task types","quality_score":90,"strengths":"Technical accuracy, task execution, concise answers","improvements":"Could add more proactive suggestions","learnings":"Current approach working well across task types"}',
       reward: 1,
-      rubric: "High quality score (80-95) appropriate since all interactions went well. Honest positive assessment.",
+      rubric:
+        "High quality score (80-95) appropriate since all interactions went well. Honest positive assessment.",
     },
     {
       id: "rf-3",
-      input: { user: "Recent interactions:\n1. Agent misunderstood 'cancel' as cancel the meeting not cancel the action → User had to repeat themselves\n2. Agent gave wrong timezone conversion (said EST instead of PST)\n3. Agent interrupted user mid-thought with an early response" },
-      expectedOutput: '{"thought":"Three distinct errors: ambiguity mishandling, factual error, premature response","quality_score":35,"strengths":"At least responded promptly","improvements":"Clarify ambiguous words before acting; double-check time conversions; wait for user to finish","learnings":"Ambiguity and factual accuracy are critical gaps"}',
+      input: {
+        user: "Recent interactions:\n1. Agent misunderstood 'cancel' as cancel the meeting not cancel the action → User had to repeat themselves\n2. Agent gave wrong timezone conversion (said EST instead of PST)\n3. Agent interrupted user mid-thought with an early response",
+      },
+      expectedOutput:
+        '{"thought":"Three distinct errors: ambiguity mishandling, factual error, premature response","quality_score":35,"strengths":"At least responded promptly","improvements":"Clarify ambiguous words before acting; double-check time conversions; wait for user to finish","learnings":"Ambiguity and factual accuracy are critical gaps"}',
       reward: 1,
-      rubric: "Low quality score (25-45) appropriate. Must identify all 3 failures specifically. Honest assessment.",
+      rubric:
+        "Low quality score (25-45) appropriate. Must identify all 3 failures specifically. Honest assessment.",
     },
   ],
 
@@ -1569,31 +2461,47 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   update_summarization: [
     {
       id: "us-1",
-      input: { user: "Existing summary: 'User is planning a trip to Japan in March. Interested in Tokyo (3 days) and Kyoto.'\nExisting topics: Japan trip, travel planning\nNew messages:\nUser: What about Osaka? Should I add a day there?\nAssistant: Osaka is worth a day — Dotonbori, Namba, day trip to Nara possible." },
-      expectedOutput: '{"text":"User is planning a Japan trip in March: Tokyo (3 days), Kyoto, and considering adding Osaka (1 day for Dotonbori, Namba). Nara possible as a day trip from Osaka.","topics":["Japan trip","travel planning","Osaka","Kyoto","Tokyo"],"keyPoints":["March trip to Japan","Tokyo 3 days then Kyoto","Adding Osaka — Dotonbori, Namba","Nara possible day trip from Osaka"]}',
+      input: {
+        user: "Existing summary: 'User is planning a trip to Japan in March. Interested in Tokyo (3 days) and Kyoto.'\nExisting topics: Japan trip, travel planning\nNew messages:\nUser: What about Osaka? Should I add a day there?\nAssistant: Osaka is worth a day — Dotonbori, Namba, day trip to Nara possible.",
+      },
+      expectedOutput:
+        '{"text":"User is planning a Japan trip in March: Tokyo (3 days), Kyoto, and considering adding Osaka (1 day for Dotonbori, Namba). Nara possible as a day trip from Osaka.","topics":["Japan trip","travel planning","Osaka","Kyoto","Tokyo"],"keyPoints":["March trip to Japan","Tokyo 3 days then Kyoto","Adding Osaka — Dotonbori, Namba","Nara possible day trip from Osaka"]}',
       reward: 1,
-      rubric: "Must merge existing summary (Tokyo/Kyoto) with new Osaka discussion. Topics should include Osaka.",
+      rubric:
+        "Must merge existing summary (Tokyo/Kyoto) with new Osaka discussion. Topics should include Osaka.",
     },
     {
       id: "us-2",
-      input: { user: "Existing summary: 'Team chose PostgreSQL over MongoDB for relational data model.'\nExisting topics: database, PostgreSQL\nNew messages:\nUser: We also decided to use Prisma as the ORM instead of Drizzle.\nAssistant: Good choice — Prisma has great TypeScript integration and a mature migration system." },
-      expectedOutput: '{"text":"Team chose PostgreSQL for relational data model. ORM decision updated: Prisma selected over Drizzle for its TypeScript integration and migration system.","topics":["database","PostgreSQL","Prisma","ORM"],"keyPoints":["PostgreSQL chosen for relational data","Prisma selected as ORM (changed from Drizzle)","Prisma: strong TypeScript integration and migrations"]}',
+      input: {
+        user: "Existing summary: 'Team chose PostgreSQL over MongoDB for relational data model.'\nExisting topics: database, PostgreSQL\nNew messages:\nUser: We also decided to use Prisma as the ORM instead of Drizzle.\nAssistant: Good choice — Prisma has great TypeScript integration and a mature migration system.",
+      },
+      expectedOutput:
+        '{"text":"Team chose PostgreSQL for relational data model. ORM decision updated: Prisma selected over Drizzle for its TypeScript integration and migration system.","topics":["database","PostgreSQL","Prisma","ORM"],"keyPoints":["PostgreSQL chosen for relational data","Prisma selected as ORM (changed from Drizzle)","Prisma: strong TypeScript integration and migrations"]}',
       reward: 1,
-      rubric: "Must update summary to reflect ORM change from Drizzle to Prisma. Keep PostgreSQL decision.",
+      rubric:
+        "Must update summary to reflect ORM change from Drizzle to Prisma. Keep PostgreSQL decision.",
     },
     {
       id: "us-3",
-      input: { user: "Existing summary: 'User is debugging a Python memory leak in a data processing pipeline.'\nExisting topics: Python, debugging, memory leak\nNew messages:\nUser: I found it — was an unclosed file handle in the CSV reader loop.\nAssistant: Classic. Wrap with 'with open()' to ensure proper cleanup.\nUser: Fixed! Memory usage is stable now." },
-      expectedOutput: '{"text":"User was debugging a Python memory leak in a data processing pipeline. Root cause: unclosed file handle in CSV reader. Fixed using context manager (with open()). Memory usage now stable.","topics":["Python","debugging","memory leak","fixed"],"keyPoints":["Bug: unclosed file handle in CSV reader","Fix: use with open() context manager","Result: memory usage now stable"]}',
+      input: {
+        user: "Existing summary: 'User is debugging a Python memory leak in a data processing pipeline.'\nExisting topics: Python, debugging, memory leak\nNew messages:\nUser: I found it — was an unclosed file handle in the CSV reader loop.\nAssistant: Classic. Wrap with 'with open()' to ensure proper cleanup.\nUser: Fixed! Memory usage is stable now.",
+      },
+      expectedOutput:
+        '{"text":"User was debugging a Python memory leak in a data processing pipeline. Root cause: unclosed file handle in CSV reader. Fixed using context manager (with open()). Memory usage now stable.","topics":["Python","debugging","memory leak","fixed"],"keyPoints":["Bug: unclosed file handle in CSV reader","Fix: use with open() context manager","Result: memory usage now stable"]}',
       reward: 1,
-      rubric: "Must update summary to show RESOLVED status. Include root cause, fix, and confirmation it worked.",
+      rubric:
+        "Must update summary to show RESOLVED status. Include root cause, fix, and confirmation it worked.",
     },
     {
       id: "us-4",
-      input: { user: "Existing summary: 'Long discussion about React vs Vue for a new project.'\nExisting topics: React, Vue, framework choice\nNew messages:\nUser: ok we're going with React, final decision\nAssistant: Great. React's ecosystem and team familiarity make it the safe choice." },
-      expectedOutput: '{"text":"Team finalized framework selection: React chosen over Vue. Reasons: ecosystem size and team familiarity.","topics":["React","framework decision","final"],"keyPoints":["Final decision: React","Reasons: ecosystem and team familiarity"]}',
+      input: {
+        user: "Existing summary: 'Long discussion about React vs Vue for a new project.'\nExisting topics: React, Vue, framework choice\nNew messages:\nUser: ok we're going with React, final decision\nAssistant: Great. React's ecosystem and team familiarity make it the safe choice.",
+      },
+      expectedOutput:
+        '{"text":"Team finalized framework selection: React chosen over Vue. Reasons: ecosystem size and team familiarity.","topics":["React","framework decision","final"],"keyPoints":["Final decision: React","Reasons: ecosystem and team familiarity"]}',
       reward: 1,
-      rubric: "Must condense the long discussion into just the decision (React) and reasons. Remove verbose discussion.",
+      rubric:
+        "Must condense the long discussion into just the decision (React) and reasons. Remove verbose discussion.",
     },
   ],
 
@@ -1601,208 +2509,705 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   long_term_extraction: [
     {
       id: "lt-1",
-      input: { user: "Conversation:\nUser: I've been doing TDD for 6 years. I can't write code without tests first.\nAssistant: TDD is great for confidence.\nUser: Yeah, I literally always write the test before the function, even for tiny utils.\nAssistant: That's strong discipline.\nUser: It's just how I work at this point.\nExisting long-term memories: []" },
-      expectedOutput: '{"memories":[{"category":"procedural","content":"User follows strict TDD: always writes tests before implementation, including small utilities","confidence":0.95}]}',
+      input: {
+        user: "Conversation:\nUser: I've been doing TDD for 6 years. I can't write code without tests first.\nAssistant: TDD is great for confidence.\nUser: Yeah, I literally always write the test before the function, even for tiny utils.\nAssistant: That's strong discipline.\nUser: It's just how I work at this point.\nExisting long-term memories: []",
+      },
+      expectedOutput:
+        '{"memories":[{"category":"procedural","content":"User follows strict TDD: always writes tests before implementation, including small utilities","confidence":0.95}]}',
       reward: 1,
-      rubric: "Must extract PROCEDURAL memory about TDD. High confidence (0.9+) justified by 3+ confirmations and 6 years experience.",
+      rubric:
+        "Must extract PROCEDURAL memory about TDD. High confidence (0.9+) justified by 3+ confirmations and 6 years experience.",
     },
     {
       id: "lt-2",
-      input: { user: "Conversation:\nUser: I tried Rust once last year, couldn't figure out the borrow checker\nAssistant: It has a steep learning curve.\nExisting long-term memories: []" },
+      input: {
+        user: "Conversation:\nUser: I tried Rust once last year, couldn't figure out the borrow checker\nAssistant: It has a steep learning curve.\nExisting long-term memories: []",
+      },
       expectedOutput: '{"memories":[]}',
       reward: 1,
-      rubric: "Must return empty memories. Single frustrated mention of Rust does not qualify as long-term memory.",
+      rubric:
+        "Must return empty memories. Single frustrated mention of Rust does not qualify as long-term memory.",
     },
     {
       id: "lt-3",
-      input: { user: "Conversation:\nUser: I'm a principal engineer at Google, been there 9 years\nAssistant: That's impressive tenure.\nUser: Yeah, I lead the infrastructure reliability team\nExisting long-term memories: []" },
-      expectedOutput: '{"memories":[{"category":"semantic","content":"Principal engineer at Google (9 years), leads infrastructure reliability team","confidence":0.97}]}',
+      input: {
+        user: "Conversation:\nUser: I'm a principal engineer at Google, been there 9 years\nAssistant: That's impressive tenure.\nUser: Yeah, I lead the infrastructure reliability team\nExisting long-term memories: []",
+      },
+      expectedOutput:
+        '{"memories":[{"category":"semantic","content":"Principal engineer at Google (9 years), leads infrastructure reliability team","confidence":0.97}]}',
       reward: 1,
-      rubric: "Must extract SEMANTIC memory about role at Google. Very high confidence - explicitly stated, specific.",
+      rubric:
+        "Must extract SEMANTIC memory about role at Google. Very high confidence - explicitly stated, specific.",
     },
     {
       id: "lt-4",
-      input: { user: "Conversation:\nUser: what's 2+2?\nAssistant: 4.\nUser: and 5+5?\nAssistant: 10.\nExisting long-term memories: []" },
+      input: {
+        user: "Conversation:\nUser: what's 2+2?\nAssistant: 4.\nUser: and 5+5?\nAssistant: 10.\nExisting long-term memories: []",
+      },
       expectedOutput: '{"memories":[]}',
       reward: 1,
-      rubric: "Must return empty memories. Simple math questions contain zero user-specific facts.",
+      rubric:
+        "Must return empty memories. Simple math questions contain zero user-specific facts.",
     },
     {
       id: "lt-5",
-      input: { user: "Conversation:\nUser: I deployed a major auth system migration at work in Q4 2024. Moved from JWT to OAuth2 with Okta. Took 3 months.\nAssistant: That's a significant project.\nUser: Yeah it was, affected all 50k users.\nExisting long-term memories: []" },
-      expectedOutput: '{"memories":[{"category":"episodic","content":"Led auth migration from JWT to OAuth2/Okta in Q4 2024, 3 months, affected 50k users","confidence":0.93}]}',
+      input: {
+        user: "Conversation:\nUser: I deployed a major auth system migration at work in Q4 2024. Moved from JWT to OAuth2 with Okta. Took 3 months.\nAssistant: That's a significant project.\nUser: Yeah it was, affected all 50k users.\nExisting long-term memories: []",
+      },
+      expectedOutput:
+        '{"memories":[{"category":"episodic","content":"Led auth migration from JWT to OAuth2/Okta in Q4 2024, 3 months, affected 50k users","confidence":0.93}]}',
       reward: 1,
-      rubric: "Must extract EPISODIC memory. Specific event (Q4 2024), magnitude (50k users), technology (Okta). High confidence.",
+      rubric:
+        "Must extract EPISODIC memory. Specific event (Q4 2024), magnitude (50k users), technology (Okta). High confidence.",
     },
     {
       id: "lt-6",
-      input: { user: "Conversation:\nUser: I might try learning Rust someday\nAssistant: It's a great systems language.\nExisting long-term memories: []" },
+      input: {
+        user: "Conversation:\nUser: I might try learning Rust someday\nAssistant: It's a great systems language.\nExisting long-term memories: []",
+      },
       expectedOutput: '{"memories":[]}',
       reward: 1,
-      rubric: "Must return empty. 'Might try someday' is speculative, not a fact. Do not extract vague intentions.",
+      rubric:
+        "Must return empty. 'Might try someday' is speculative, not a fact. Do not extract vague intentions.",
     },
   ],
 
   // IMAGE_GENERATION_TEMPLATE — image prompt creation
   image_generation: [
-    { id: "ig-1", input: { user: "Conversation context: User is writing a sci-fi novel set in a post-apocalyptic Tokyo in 2150.\nRecent messages: User: I want a book cover image for my novel." }, expectedOutput: '{"thought":"Book cover for post-apocalyptic Tokyo sci-fi novel","prompt":"Post-apocalyptic Tokyo skyline in 2150, crumbling skyscrapers with bioluminescent plants growing through ruins, perpetual smog, dramatic neon lights, cinematic wide shot, hyper-detailed digital art"}', reward: 1, rubric: "Must generate a specific, visual image prompt matching post-apocalyptic Tokyo sci-fi. Not generic." },
-    { id: "ig-2", input: { user: "Conversation context: User runs a bakery and wants marketing photos.\nRecent messages: User: Create an image for my new sourdough bread." }, expectedOutput: '{"thought":"Marketing photo for artisan sourdough bread","prompt":"Artisan sourdough loaf on a rustic wooden cutting board, golden crust with scored pattern, soft morning light, steam rising, fresh herbs beside it, warm tones, professional food photography"}', reward: 1, rubric: "Should generate an appetizing food photography prompt. Specific details: crust, lighting, composition." },
-    { id: "ig-3", input: { user: "Conversation context: User is designing a mobile app for meditation.\nRecent messages: User: I need a calming hero image for my app." }, expectedOutput: '{"thought":"Calming hero image for meditation app","prompt":"Serene mountain lake at dawn, mist rising from still water, soft pink and gold sky, reflection of snow-capped mountains, minimal composition, tranquil atmosphere, pastel palette, digital illustration"}', reward: 1, rubric: "Must be calming and serene. Match meditation theme. Specific visual elements." },
-    { id: "ig-4", input: { user: "Conversation context: Tech startup.\nRecent messages: User: Generate a professional LinkedIn banner for our AI company." }, expectedOutput: '{"thought":"Professional LinkedIn banner for AI company","prompt":"Abstract digital neural network visualization, dark navy background, interconnected glowing nodes in blue and purple, geometric circuit patterns, clean minimalist design, corporate professional aesthetic, 1584x396 banner format"}', reward: 1, rubric: "Must be professional, tech-themed, mention dimensions or banner context, not a photo but a graphic." },
+    {
+      id: "ig-1",
+      input: {
+        user: "Conversation context: User is writing a sci-fi novel set in a post-apocalyptic Tokyo in 2150.\nRecent messages: User: I want a book cover image for my novel.",
+      },
+      expectedOutput:
+        '{"thought":"Book cover for post-apocalyptic Tokyo sci-fi novel","prompt":"Post-apocalyptic Tokyo skyline in 2150, crumbling skyscrapers with bioluminescent plants growing through ruins, perpetual smog, dramatic neon lights, cinematic wide shot, hyper-detailed digital art"}',
+      reward: 1,
+      rubric:
+        "Must generate a specific, visual image prompt matching post-apocalyptic Tokyo sci-fi. Not generic.",
+    },
+    {
+      id: "ig-2",
+      input: {
+        user: "Conversation context: User runs a bakery and wants marketing photos.\nRecent messages: User: Create an image for my new sourdough bread.",
+      },
+      expectedOutput:
+        '{"thought":"Marketing photo for artisan sourdough bread","prompt":"Artisan sourdough loaf on a rustic wooden cutting board, golden crust with scored pattern, soft morning light, steam rising, fresh herbs beside it, warm tones, professional food photography"}',
+      reward: 1,
+      rubric:
+        "Should generate an appetizing food photography prompt. Specific details: crust, lighting, composition.",
+    },
+    {
+      id: "ig-3",
+      input: {
+        user: "Conversation context: User is designing a mobile app for meditation.\nRecent messages: User: I need a calming hero image for my app.",
+      },
+      expectedOutput:
+        '{"thought":"Calming hero image for meditation app","prompt":"Serene mountain lake at dawn, mist rising from still water, soft pink and gold sky, reflection of snow-capped mountains, minimal composition, tranquil atmosphere, pastel palette, digital illustration"}',
+      reward: 1,
+      rubric:
+        "Must be calming and serene. Match meditation theme. Specific visual elements.",
+    },
+    {
+      id: "ig-4",
+      input: {
+        user: "Conversation context: Tech startup.\nRecent messages: User: Generate a professional LinkedIn banner for our AI company.",
+      },
+      expectedOutput:
+        '{"thought":"Professional LinkedIn banner for AI company","prompt":"Abstract digital neural network visualization, dark navy background, interconnected glowing nodes in blue and purple, geometric circuit patterns, clean minimalist design, corporate professional aesthetic, 1584x396 banner format"}',
+      reward: 1,
+      rubric:
+        "Must be professional, tech-themed, mention dimensions or banner context, not a photo but a graphic.",
+    },
   ],
 
   // POST_CREATION_TEMPLATE — social media posts
   post_creation: [
-    { id: "pc-1", input: { user: "Topic: the importance of code reviews in software development" }, expectedOutput: '{"thought":"Code reviews improve code quality and team knowledge","post":"Code reviews aren\'t just bug detection — they\'re knowledge transfer. Every review makes the whole team stronger."}', reward: 1, rubric: "Should be 1-3 sentences, under 280 chars, no emojis, insightful take on code reviews. JSON format." },
-    { id: "pc-2", input: { user: "Topic: getting better at deep work and focus" }, expectedOutput: '{"thought":"Deep work requires intentional time blocking","post":"Your best work happens in uninterrupted blocks, not between notifications. Protect your calendar like it\'s your most valuable asset."}', reward: 1, rubric: "Should be concise and actionable. No emojis. Under 280 chars. On-topic about focus/deep work." },
-    { id: "pc-3", input: { user: "Topic: lessons learned from shipping a failed product" }, expectedOutput: '{"thought":"Failure teaches what success hides","post":"Shipped a product nobody wanted. Learned more in 3 months of failure than 2 years of comfortable growth. Some lessons only come from shipping."}', reward: 1, rubric: "Should be personal, reflective, authentic. First-person perspective. No emojis. Under 280 chars." },
-    { id: "pc-4", input: { user: "Topic: why walking meetings beat sitting meetings" }, expectedOutput: '{"thought":"Movement improves creativity and engagement","post":"Walking meetings end 40% sooner and generate better ideas. Staring at a whiteboard isn\'t the only way to think."}', reward: 1, rubric: "Should make a clear point with concrete detail. Under 280 chars. No emojis. Assertive tone." },
+    {
+      id: "pc-1",
+      input: {
+        user: "Topic: the importance of code reviews in software development",
+      },
+      expectedOutput:
+        '{"thought":"Code reviews improve code quality and team knowledge","post":"Code reviews aren\'t just bug detection — they\'re knowledge transfer. Every review makes the whole team stronger."}',
+      reward: 1,
+      rubric:
+        "Should be 1-3 sentences, under 280 chars, no emojis, insightful take on code reviews. JSON format.",
+    },
+    {
+      id: "pc-2",
+      input: { user: "Topic: getting better at deep work and focus" },
+      expectedOutput:
+        '{"thought":"Deep work requires intentional time blocking","post":"Your best work happens in uninterrupted blocks, not between notifications. Protect your calendar like it\'s your most valuable asset."}',
+      reward: 1,
+      rubric:
+        "Should be concise and actionable. No emojis. Under 280 chars. On-topic about focus/deep work.",
+    },
+    {
+      id: "pc-3",
+      input: { user: "Topic: lessons learned from shipping a failed product" },
+      expectedOutput:
+        '{"thought":"Failure teaches what success hides","post":"Shipped a product nobody wanted. Learned more in 3 months of failure than 2 years of comfortable growth. Some lessons only come from shipping."}',
+      reward: 1,
+      rubric:
+        "Should be personal, reflective, authentic. First-person perspective. No emojis. Under 280 chars.",
+    },
+    {
+      id: "pc-4",
+      input: { user: "Topic: why walking meetings beat sitting meetings" },
+      expectedOutput:
+        '{"thought":"Movement improves creativity and engagement","post":"Walking meetings end 40% sooner and generate better ideas. Staring at a whiteboard isn\'t the only way to think."}',
+      reward: 1,
+      rubric:
+        "Should make a clear point with concrete detail. Under 280 chars. No emojis. Assertive tone.",
+    },
   ],
 
   // CUSTOM_ACTION_GENERATE_TEMPLATE — generate action definitions
   custom_action_generate: [
     {
       id: "cag-1",
-      input: { user: "User request: Create an action that sends an HTTP GET request to a URL and returns the response body" },
-      expectedOutput: '{"name":"HTTP_GET","description":"Send an HTTP GET request and return the response body","handlerType":"http","handler":{"type":"http","method":"GET","url":"{{url}}"},"parameters":[{"name":"url","description":"URL to fetch","required":true}]}',
+      input: {
+        user: "User request: Create an action that sends an HTTP GET request to a URL and returns the response body",
+      },
+      expectedOutput:
+        '{"name":"HTTP_GET","description":"Send an HTTP GET request and return the response body","handlerType":"http","handler":{"type":"http","method":"GET","url":"{{url}}"},"parameters":[{"name":"url","description":"URL to fetch","required":true}]}',
       reward: 1,
-      rubric: "Must have: name=HTTP_GET (UPPER_SNAKE_CASE), handlerType=http, handler with GET method, url parameter.",
+      rubric:
+        "Must have: name=HTTP_GET (UPPER_SNAKE_CASE), handlerType=http, handler with GET method, url parameter.",
     },
     {
       id: "cag-2",
-      input: { user: "User request: Create an action that lists all files in a directory using the ls command" },
-      expectedOutput: '{"name":"LIST_FILES","description":"List all files in a directory","handlerType":"shell","handler":{"type":"shell","command":"ls {{directory}}"},"parameters":[{"name":"directory","description":"Path to directory","required":true}]}',
+      input: {
+        user: "User request: Create an action that lists all files in a directory using the ls command",
+      },
+      expectedOutput:
+        '{"name":"LIST_FILES","description":"List all files in a directory","handlerType":"shell","handler":{"type":"shell","command":"ls {{directory}}"},"parameters":[{"name":"directory","description":"Path to directory","required":true}]}',
       reward: 1,
-      rubric: "Must have: handlerType=shell, command with ls, directory parameter.",
+      rubric:
+        "Must have: handlerType=shell, command with ls, directory parameter.",
     },
     {
       id: "cag-3",
-      input: { user: "User request: Create an action that adds two numbers together" },
-      expectedOutput: '{"name":"ADD_NUMBERS","description":"Add two numbers together and return the sum","handlerType":"code","handler":{"type":"code","code":"return params.a + params.b;"},"parameters":[{"name":"a","description":"First number","required":true},{"name":"b","description":"Second number","required":true}]}',
+      input: {
+        user: "User request: Create an action that adds two numbers together",
+      },
+      expectedOutput:
+        '{"name":"ADD_NUMBERS","description":"Add two numbers together and return the sum","handlerType":"code","handler":{"type":"code","code":"return params.a + params.b;"},"parameters":[{"name":"a","description":"First number","required":true},{"name":"b","description":"Second number","required":true}]}',
       reward: 1,
-      rubric: "Must have: handlerType=code, code does addition, two required parameters a and b.",
+      rubric:
+        "Must have: handlerType=code, code does addition, two required parameters a and b.",
     },
     {
       id: "cag-4",
-      input: { user: "User request: Create an action that posts a message to a Slack webhook URL" },
-      expectedOutput: '{"name":"SLACK_WEBHOOK","description":"Post a message to a Slack webhook","handlerType":"http","handler":{"type":"http","method":"POST","url":"{{webhookUrl}}","bodyTemplate":"{\"text\":\"{{message}}\"}"},"parameters":[{"name":"webhookUrl","description":"Slack webhook URL","required":true},{"name":"message","description":"Message to post","required":true}]}',
+      input: {
+        user: "User request: Create an action that posts a message to a Slack webhook URL",
+      },
+      expectedOutput:
+        '{"name":"SLACK_WEBHOOK","description":"Post a message to a Slack webhook","handlerType":"http","handler":{"type":"http","method":"POST","url":"{{webhookUrl}}","bodyTemplate":"{"text":"{{message}}"}"},"parameters":[{"name":"webhookUrl","description":"Slack webhook URL","required":true},{"name":"message","description":"Message to post","required":true}]}',
       reward: 1,
-      rubric: "Must have: POST method, webhook URL parameter, message body template, JSON content type.",
+      rubric:
+        "Must have: POST method, webhook URL parameter, message body template, JSON content type.",
     },
   ],
 
   // SHOULD_FOLLOW_ROOM_TEMPLATE — room follow decision
   should_follow_room: [
-    { id: "sfr-1", input: { user: "User message: Hey assistant, can you start following this channel? I want you active here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear explicit request to follow the room." },
-    { id: "sfr-2", input: { user: "User message: What's the weather like today?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Weather question has nothing to do with following rooms." },
-    { id: "sfr-3", input: { user: "User message: Please join and monitor this room from now on." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Join and monitor' = follow this room." },
-    { id: "sfr-4", input: { user: "User message: I was thinking you might be useful in this channel but I'm not sure." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Ambiguous — 'might be useful' and 'not sure' = default to false." },
-    { id: "sfr-5", input: { user: "User message: Follow this room please." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct explicit request." },
-    { id: "sfr-6", input: { user: "User message: Can you help me debug this error?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Debugging question, not a room follow request." },
+    {
+      id: "sfr-1",
+      input: {
+        user: "User message: Hey assistant, can you start following this channel? I want you active here.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Clear explicit request to follow the room.",
+    },
+    {
+      id: "sfr-2",
+      input: { user: "User message: What's the weather like today?" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Weather question has nothing to do with following rooms.",
+    },
+    {
+      id: "sfr-3",
+      input: {
+        user: "User message: Please join and monitor this room from now on.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. 'Join and monitor' = follow this room.",
+    },
+    {
+      id: "sfr-4",
+      input: {
+        user: "User message: I was thinking you might be useful in this channel but I'm not sure.",
+      },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Ambiguous — 'might be useful' and 'not sure' = default to false.",
+    },
+    {
+      id: "sfr-5",
+      input: { user: "User message: Follow this room please." },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Direct explicit request.",
+    },
+    {
+      id: "sfr-6",
+      input: { user: "User message: Can you help me debug this error?" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Debugging question, not a room follow request.",
+    },
   ],
 
   // SHOULD_MUTE_ROOM_TEMPLATE — room mute decision
   should_mute_room: [
-    { id: "smr-1", input: { user: "User message: Can you mute this channel? Too much noise." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear explicit mute request." },
-    { id: "smr-2", input: { user: "User message: Let's go back to talking about the project." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. No mute request present." },
-    { id: "smr-3", input: { user: "User message: Stop responding in here please, mute this room." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Mute this room' is explicit." },
-    { id: "smr-4", input: { user: "User message: This channel is getting busy." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Observation about busyness ≠ request to mute." },
-    { id: "smr-5", input: { user: "User message: Silence yourself in this channel." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Silence yourself' = mute." },
-    { id: "smr-6", input: { user: "User message: thanks" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Single word acknowledgment." },
+    {
+      id: "smr-1",
+      input: {
+        user: "User message: Can you mute this channel? Too much noise.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Clear explicit mute request.",
+    },
+    {
+      id: "smr-2",
+      input: {
+        user: "User message: Let's go back to talking about the project.",
+      },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric: "Must return false. No mute request present.",
+    },
+    {
+      id: "smr-3",
+      input: {
+        user: "User message: Stop responding in here please, mute this room.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. 'Mute this room' is explicit.",
+    },
+    {
+      id: "smr-4",
+      input: { user: "User message: This channel is getting busy." },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Observation about busyness ≠ request to mute.",
+    },
+    {
+      id: "smr-5",
+      input: { user: "User message: Silence yourself in this channel." },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. 'Silence yourself' = mute.",
+    },
+    {
+      id: "smr-6",
+      input: { user: "User message: thanks" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric: "Must return false. Single word acknowledgment.",
+    },
   ],
 
   // SHOULD_UNFOLLOW_ROOM_TEMPLATE — room unfollow decision
   should_unfollow_room: [
-    { id: "sur-1", input: { user: "User message: Please leave this channel, we don't need you here anymore." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear request to leave/unfollow." },
-    { id: "sur-2", input: { user: "User message: What time is the meeting tomorrow?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Unrelated question." },
-    { id: "sur-3", input: { user: "User message: Stop following this room." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct unfollow request." },
-    { id: "sur-4", input: { user: "User message: You can unfollow this channel now, we're done here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Explicit unfollow with context." },
-    { id: "sur-5", input: { user: "User message: I don't know if this channel is useful to you." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Ambiguous musing, not a clear unfollow request." },
-    { id: "sur-6", input: { user: "User message: ok bye" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. 'Bye' to the user, not an instruction to unfollow." },
+    {
+      id: "sur-1",
+      input: {
+        user: "User message: Please leave this channel, we don't need you here anymore.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Clear request to leave/unfollow.",
+    },
+    {
+      id: "sur-2",
+      input: { user: "User message: What time is the meeting tomorrow?" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric: "Must return false. Unrelated question.",
+    },
+    {
+      id: "sur-3",
+      input: { user: "User message: Stop following this room." },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Direct unfollow request.",
+    },
+    {
+      id: "sur-4",
+      input: {
+        user: "User message: You can unfollow this channel now, we're done here.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Explicit unfollow with context.",
+    },
+    {
+      id: "sur-5",
+      input: {
+        user: "User message: I don't know if this channel is useful to you.",
+      },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Ambiguous musing, not a clear unfollow request.",
+    },
+    {
+      id: "sur-6",
+      input: { user: "User message: ok bye" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. 'Bye' to the user, not an instruction to unfollow.",
+    },
   ],
 
   // SHOULD_UNMUTE_ROOM_TEMPLATE — room unmute decision
   should_unmute_room: [
-    { id: "surt-1", input: { user: "User message: You can unmute this channel now, please start responding again." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear unmute request." },
-    { id: "surt-2", input: { user: "User message: Hey can you help me?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Asking for help is not an unmute request." },
-    { id: "surt-3", input: { user: "User message: Unmute yourself here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct unmute instruction." },
-    { id: "surt-4", input: { user: "User message: Come back to this channel." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Come back' = re-engage = unmute." },
-    { id: "surt-5", input: { user: "User message: Is the channel working now?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Question about channel status ≠ unmute request." },
-    { id: "surt-6", input: { user: "User message: start paying attention to this chat again please" }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Pay attention again' = unmute/re-engage." },
+    {
+      id: "surt-1",
+      input: {
+        user: "User message: You can unmute this channel now, please start responding again.",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Clear unmute request.",
+    },
+    {
+      id: "surt-2",
+      input: { user: "User message: Hey can you help me?" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric: "Must return false. Asking for help is not an unmute request.",
+    },
+    {
+      id: "surt-3",
+      input: { user: "User message: Unmute yourself here." },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. Direct unmute instruction.",
+    },
+    {
+      id: "surt-4",
+      input: { user: "User message: Come back to this channel." },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. 'Come back' = re-engage = unmute.",
+    },
+    {
+      id: "surt-5",
+      input: { user: "User message: Is the channel working now?" },
+      expectedOutput: '{"decision":false}',
+      reward: 1,
+      rubric:
+        "Must return false. Question about channel status ≠ unmute request.",
+    },
+    {
+      id: "surt-6",
+      input: {
+        user: "User message: start paying attention to this chat again please",
+      },
+      expectedOutput: '{"decision":true}',
+      reward: 1,
+      rubric: "Must return true. 'Pay attention again' = unmute/re-engage.",
+    },
   ],
 
   // ADD_CONTACT_TEMPLATE — contact extraction
   add_contact: [
-    { id: "ac-1", input: { user: "User: Please add Sarah Chen to my contacts. She's my project manager at Acme and works in the New York office. Very important person to track." }, expectedOutput: '{"contactName":"Sarah Chen","entityId":null,"categories":"colleague","notes":"Project manager at Acme, works in New York office","reason":"Important project contact to track"}', reward: 1, rubric: "Must extract: name=Sarah Chen, role/notes, reason. No entityId since not specified." },
-    { id: "ac-2", input: { user: "User: Add John Smith as a VIP contact. He's a major investor." }, expectedOutput: '{"contactName":"John Smith","entityId":null,"categories":"vip","reason":"Major investor"}', reward: 1, rubric: "Must extract: name=John Smith, categories=vip, reason=major investor." },
-    { id: "ac-3", input: { user: "User: Save Dr. Martinez — family doctor. Spanish speaker." }, expectedOutput: '{"contactName":"Dr. Martinez","entityId":null,"categories":"personal","notes":"Family doctor","language":"Spanish","reason":"Family medical contact"}', reward: 1, rubric: "Must extract name, notes=family doctor, language=Spanish." },
-    { id: "ac-4", input: { user: "User: Remember to add Alice from marketing. She prefers email over calls. She's in London, so timezone is Europe/London." }, expectedOutput: '{"contactName":"Alice","entityId":null,"categories":"colleague","notes":"Prefers email over calls","timezone":"Europe/London","reason":"Marketing contact with communication preferences"}', reward: 1, rubric: "Must extract: name, preference (email), timezone (Europe/London)." },
+    {
+      id: "ac-1",
+      input: {
+        user: "User: Please add Sarah Chen to my contacts. She's my project manager at Acme and works in the New York office. Very important person to track.",
+      },
+      expectedOutput:
+        '{"contactName":"Sarah Chen","entityId":null,"categories":"colleague","notes":"Project manager at Acme, works in New York office","reason":"Important project contact to track"}',
+      reward: 1,
+      rubric:
+        "Must extract: name=Sarah Chen, role/notes, reason. No entityId since not specified.",
+    },
+    {
+      id: "ac-2",
+      input: {
+        user: "User: Add John Smith as a VIP contact. He's a major investor.",
+      },
+      expectedOutput:
+        '{"contactName":"John Smith","entityId":null,"categories":"vip","reason":"Major investor"}',
+      reward: 1,
+      rubric:
+        "Must extract: name=John Smith, categories=vip, reason=major investor.",
+    },
+    {
+      id: "ac-3",
+      input: {
+        user: "User: Save Dr. Martinez — family doctor. Spanish speaker.",
+      },
+      expectedOutput:
+        '{"contactName":"Dr. Martinez","entityId":null,"categories":"personal","notes":"Family doctor","language":"Spanish","reason":"Family medical contact"}',
+      reward: 1,
+      rubric: "Must extract name, notes=family doctor, language=Spanish.",
+    },
+    {
+      id: "ac-4",
+      input: {
+        user: "User: Remember to add Alice from marketing. She prefers email over calls. She's in London, so timezone is Europe/London.",
+      },
+      expectedOutput:
+        '{"contactName":"Alice","entityId":null,"categories":"colleague","notes":"Prefers email over calls","timezone":"Europe/London","reason":"Marketing contact with communication preferences"}',
+      reward: 1,
+      rubric:
+        "Must extract: name, preference (email), timezone (Europe/London).",
+    },
   ],
 
   // SEARCH_CONTACTS_TEMPLATE — contact search criteria
   search_contacts: [
-    { id: "sc-1", input: { user: "User: Show me all my VIP contacts" }, expectedOutput: '{"categories":"vip","intent":"list"}', reward: 1, rubric: "Must extract: categories=vip, intent=list. No searchTerm." },
-    { id: "sc-2", input: { user: "User: How many contacts do I have?" }, expectedOutput: '{"intent":"count"}', reward: 1, rubric: "Must extract: intent=count. No categories or searchTerm." },
-    { id: "sc-3", input: { user: "User: Find Sarah in my contacts" }, expectedOutput: '{"searchTerm":"Sarah","intent":"list"}', reward: 1, rubric: "Must extract: searchTerm=Sarah, intent=list." },
-    { id: "sc-4", input: { user: "User: Show me my colleagues tagged with AI" }, expectedOutput: '{"categories":"colleague","tags":"ai","intent":"list"}', reward: 1, rubric: "Must extract: categories=colleague, tags=ai, intent=list." },
-    { id: "sc-5", input: { user: "User: Count how many investors I have" }, expectedOutput: '{"categories":"investor","intent":"count"}', reward: 1, rubric: "Must extract: categories=investor, intent=count." },
+    {
+      id: "sc-1",
+      input: { user: "User: Show me all my VIP contacts" },
+      expectedOutput: '{"categories":"vip","intent":"list"}',
+      reward: 1,
+      rubric: "Must extract: categories=vip, intent=list. No searchTerm.",
+    },
+    {
+      id: "sc-2",
+      input: { user: "User: How many contacts do I have?" },
+      expectedOutput: '{"intent":"count"}',
+      reward: 1,
+      rubric: "Must extract: intent=count. No categories or searchTerm.",
+    },
+    {
+      id: "sc-3",
+      input: { user: "User: Find Sarah in my contacts" },
+      expectedOutput: '{"searchTerm":"Sarah","intent":"list"}',
+      reward: 1,
+      rubric: "Must extract: searchTerm=Sarah, intent=list.",
+    },
+    {
+      id: "sc-4",
+      input: { user: "User: Show me my colleagues tagged with AI" },
+      expectedOutput: '{"categories":"colleague","tags":"ai","intent":"list"}',
+      reward: 1,
+      rubric: "Must extract: categories=colleague, tags=ai, intent=list.",
+    },
+    {
+      id: "sc-5",
+      input: { user: "User: Count how many investors I have" },
+      expectedOutput: '{"categories":"investor","intent":"count"}',
+      reward: 1,
+      rubric: "Must extract: categories=investor, intent=count.",
+    },
   ],
 
   // SCHEDULE_FOLLOW_UP_TEMPLATE — follow-up scheduling
   schedule_follow_up: [
-    { id: "sfu-1", input: { user: "User: Remind me to follow up with David next Monday about the contract proposal.", "context": "current_datetime: 2026-05-20T10:00:00Z" }, expectedOutput: '{"contactName":"David","scheduledAt":"2026-05-25T09:00:00.000Z","reason":"Follow up on contract proposal","priority":"medium"}', reward: 1, rubric: "Must extract: David, next Monday date (~May 25), reason=contract proposal." },
-    { id: "sfu-2", input: { user: "User: High priority — call Alice tomorrow at 3pm to discuss the funding round." }, expectedOutput: '{"contactName":"Alice","scheduledAt":"2026-05-21T15:00:00.000Z","reason":"Discuss funding round","priority":"high"}', reward: 1, rubric: "Must extract: Alice, tomorrow 3pm, priority=high, reason=funding round." },
-    { id: "sfu-3", input: { user: "User: Low priority — maybe reach out to Bob sometime next week." }, expectedOutput: '{"contactName":"Bob","scheduledAt":null,"reason":null,"priority":"low"}', reward: 1, rubric: "Must extract: Bob, priority=low. scheduledAt null (vague 'sometime'). No specific reason." },
-    { id: "sfu-4", input: { user: "User: Follow up with the dentist in 6 months for my next checkup. Tell them I need a cleaning." }, expectedOutput: '{"contactName":"dentist","scheduledAt":null,"reason":"Next checkup","priority":"medium","message":"Need a cleaning"}', reward: 1, rubric: "Must extract: dentist, message about cleaning, priority=medium. 6 months = relative date." },
+    {
+      id: "sfu-1",
+      input: {
+        user: "User: Remind me to follow up with David next Monday about the contract proposal.",
+        context: "current_datetime: 2026-05-20T10:00:00Z",
+      },
+      expectedOutput:
+        '{"contactName":"David","scheduledAt":"2026-05-25T09:00:00.000Z","reason":"Follow up on contract proposal","priority":"medium"}',
+      reward: 1,
+      rubric:
+        "Must extract: David, next Monday date (~May 25), reason=contract proposal.",
+    },
+    {
+      id: "sfu-2",
+      input: {
+        user: "User: High priority — call Alice tomorrow at 3pm to discuss the funding round.",
+      },
+      expectedOutput:
+        '{"contactName":"Alice","scheduledAt":"2026-05-21T15:00:00.000Z","reason":"Discuss funding round","priority":"high"}',
+      reward: 1,
+      rubric:
+        "Must extract: Alice, tomorrow 3pm, priority=high, reason=funding round.",
+    },
+    {
+      id: "sfu-3",
+      input: {
+        user: "User: Low priority — maybe reach out to Bob sometime next week.",
+      },
+      expectedOutput:
+        '{"contactName":"Bob","scheduledAt":null,"reason":null,"priority":"low"}',
+      reward: 1,
+      rubric:
+        "Must extract: Bob, priority=low. scheduledAt null (vague 'sometime'). No specific reason.",
+    },
+    {
+      id: "sfu-4",
+      input: {
+        user: "User: Follow up with the dentist in 6 months for my next checkup. Tell them I need a cleaning.",
+      },
+      expectedOutput:
+        '{"contactName":"dentist","scheduledAt":null,"reason":"Next checkup","priority":"medium","message":"Need a cleaning"}',
+      reward: 1,
+      rubric:
+        "Must extract: dentist, message about cleaning, priority=medium. 6 months = relative date.",
+    },
   ],
 
   // EXTRACT_SECRET_OPERATION_TEMPLATE — secret management ops
   extract_secret_operation: [
-    { id: "eso-1", input: { user: "User: What's my OpenAI API key?" }, expectedOutput: '{"operation":"get","key":"OPENAI_API_KEY"}', reward: 1, rubric: "Must extract: operation=get, key=OPENAI_API_KEY." },
-    { id: "eso-2", input: { user: "User: Set my Discord bot token to Bot-abc123xyz" }, expectedOutput: '{"operation":"set","key":"DISCORD_BOT_TOKEN","value":"Bot-abc123xyz"}', reward: 1, rubric: "Must extract: operation=set, key=DISCORD_BOT_TOKEN, value=Bot-abc123xyz." },
-    { id: "eso-3", input: { user: "User: Show me all my saved secrets" }, expectedOutput: '{"operation":"list"}', reward: 1, rubric: "Must extract: operation=list. No key needed." },
-    { id: "eso-4", input: { user: "User: Delete my old Stripe key" }, expectedOutput: '{"operation":"delete","key":"STRIPE_API_KEY"}', reward: 1, rubric: "Must extract: operation=delete, key=STRIPE_API_KEY (inferred from 'Stripe key')." },
-    { id: "eso-5", input: { user: "User: Do I have a Telegram token configured?" }, expectedOutput: '{"operation":"check","key":"TELEGRAM_BOT_TOKEN"}', reward: 1, rubric: "Must extract: operation=check, key=TELEGRAM_BOT_TOKEN (inferred)." },
-    { id: "eso-6", input: { user: "User: My Anthropic key is sk-ant-abc123" }, expectedOutput: '{"operation":"set","key":"ANTHROPIC_API_KEY","value":"sk-ant-abc123"}', reward: 1, rubric: "Must extract: operation=set (providing a key = setting it), key=ANTHROPIC_API_KEY, value=sk-ant-abc123." },
-    { id: "eso-7", input: { user: "User: Remove TWITTER_API_KEY from my config" }, expectedOutput: '{"operation":"delete","key":"TWITTER_API_KEY"}', reward: 1, rubric: "Must extract: operation=delete, key=TWITTER_API_KEY (explicitly named)." },
-    { id: "eso-8", input: { user: "User: Is GITHUB_TOKEN set?" }, expectedOutput: '{"operation":"check","key":"GITHUB_TOKEN"}', reward: 1, rubric: "Must extract: operation=check, key=GITHUB_TOKEN." },
+    {
+      id: "eso-1",
+      input: { user: "User: What's my OpenAI API key?" },
+      expectedOutput: '{"operation":"get","key":"OPENAI_API_KEY"}',
+      reward: 1,
+      rubric: "Must extract: operation=get, key=OPENAI_API_KEY.",
+    },
+    {
+      id: "eso-2",
+      input: { user: "User: Set my Discord bot token to Bot-abc123xyz" },
+      expectedOutput:
+        '{"operation":"set","key":"DISCORD_BOT_TOKEN","value":"Bot-abc123xyz"}',
+      reward: 1,
+      rubric:
+        "Must extract: operation=set, key=DISCORD_BOT_TOKEN, value=Bot-abc123xyz.",
+    },
+    {
+      id: "eso-3",
+      input: { user: "User: Show me all my saved secrets" },
+      expectedOutput: '{"operation":"list"}',
+      reward: 1,
+      rubric: "Must extract: operation=list. No key needed.",
+    },
+    {
+      id: "eso-4",
+      input: { user: "User: Delete my old Stripe key" },
+      expectedOutput: '{"operation":"delete","key":"STRIPE_API_KEY"}',
+      reward: 1,
+      rubric:
+        "Must extract: operation=delete, key=STRIPE_API_KEY (inferred from 'Stripe key').",
+    },
+    {
+      id: "eso-5",
+      input: { user: "User: Do I have a Telegram token configured?" },
+      expectedOutput: '{"operation":"check","key":"TELEGRAM_BOT_TOKEN"}',
+      reward: 1,
+      rubric:
+        "Must extract: operation=check, key=TELEGRAM_BOT_TOKEN (inferred).",
+    },
+    {
+      id: "eso-6",
+      input: { user: "User: My Anthropic key is sk-ant-abc123" },
+      expectedOutput:
+        '{"operation":"set","key":"ANTHROPIC_API_KEY","value":"sk-ant-abc123"}',
+      reward: 1,
+      rubric:
+        "Must extract: operation=set (providing a key = setting it), key=ANTHROPIC_API_KEY, value=sk-ant-abc123.",
+    },
+    {
+      id: "eso-7",
+      input: { user: "User: Remove TWITTER_API_KEY from my config" },
+      expectedOutput: '{"operation":"delete","key":"TWITTER_API_KEY"}',
+      reward: 1,
+      rubric:
+        "Must extract: operation=delete, key=TWITTER_API_KEY (explicitly named).",
+    },
+    {
+      id: "eso-8",
+      input: { user: "User: Is GITHUB_TOKEN set?" },
+      expectedOutput: '{"operation":"check","key":"GITHUB_TOKEN"}',
+      reward: 1,
+      rubric: "Must extract: operation=check, key=GITHUB_TOKEN.",
+    },
   ],
 
   // EXTRACT_SECRETS_TEMPLATE — extract secret key+value pairs
   extract_secrets: [
-    { id: "es-1", input: { user: "User: Set my OpenAI key to sk-proj-abc123" }, expectedOutput: '{"secrets":[{"key":"OPENAI_API_KEY","value":"sk-proj-abc123","type":"api_key"}]}', reward: 1, rubric: "Must extract: key=OPENAI_API_KEY, value=sk-proj-abc123, type=api_key." },
-    { id: "es-2", input: { user: "User: My database URL is postgres://user:pass@localhost:5432/mydb" }, expectedOutput: '{"secrets":[{"key":"DATABASE_URL","value":"postgres://user:pass@localhost:5432/mydb","type":"url"}]}', reward: 1, rubric: "Must infer key=DATABASE_URL, value=the postgres URL, type=url." },
-    { id: "es-3", input: { user: "User: ANTHROPIC_API_KEY=sk-ant-xyz789 and OPENAI_API_KEY=sk-abc456" }, expectedOutput: '{"secrets":[{"key":"ANTHROPIC_API_KEY","value":"sk-ant-xyz789","type":"api_key"},{"key":"OPENAI_API_KEY","value":"sk-abc456","type":"api_key"}]}', reward: 1, rubric: "Must extract BOTH secrets correctly. Multiple secrets in one message." },
-    { id: "es-4", input: { user: "User: Discord bot token is: MTA0NzI4..." }, expectedOutput: '{"secrets":[{"key":"DISCORD_BOT_TOKEN","value":"MTA0NzI4...","type":"credential"}]}', reward: 1, rubric: "Must infer key=DISCORD_BOT_TOKEN, type=credential." },
-    { id: "es-5", input: { user: "User: How's the weather?" }, expectedOutput: '{"secrets":[]}', reward: 1, rubric: "Must return empty secrets array. No secrets in this message." },
+    {
+      id: "es-1",
+      input: { user: "User: Set my OpenAI key to sk-proj-abc123" },
+      expectedOutput:
+        '{"secrets":[{"key":"OPENAI_API_KEY","value":"sk-proj-abc123","type":"api_key"}]}',
+      reward: 1,
+      rubric:
+        "Must extract: key=OPENAI_API_KEY, value=sk-proj-abc123, type=api_key.",
+    },
+    {
+      id: "es-2",
+      input: {
+        user: "User: My database URL is postgres://user:pass@localhost:5432/mydb",
+      },
+      expectedOutput:
+        '{"secrets":[{"key":"DATABASE_URL","value":"postgres://user:pass@localhost:5432/mydb","type":"url"}]}',
+      reward: 1,
+      rubric: "Must infer key=DATABASE_URL, value=the postgres URL, type=url.",
+    },
+    {
+      id: "es-3",
+      input: {
+        user: "User: ANTHROPIC_API_KEY=sk-ant-xyz789 and OPENAI_API_KEY=sk-abc456",
+      },
+      expectedOutput:
+        '{"secrets":[{"key":"ANTHROPIC_API_KEY","value":"sk-ant-xyz789","type":"api_key"},{"key":"OPENAI_API_KEY","value":"sk-abc456","type":"api_key"}]}',
+      reward: 1,
+      rubric:
+        "Must extract BOTH secrets correctly. Multiple secrets in one message.",
+    },
+    {
+      id: "es-4",
+      input: { user: "User: Discord bot token is: MTA0NzI4..." },
+      expectedOutput:
+        '{"secrets":[{"key":"DISCORD_BOT_TOKEN","value":"MTA0NzI4...","type":"credential"}]}',
+      reward: 1,
+      rubric: "Must infer key=DISCORD_BOT_TOKEN, type=credential.",
+    },
+    {
+      id: "es-5",
+      input: { user: "User: How's the weather?" },
+      expectedOutput: '{"secrets":[]}',
+      reward: 1,
+      rubric: "Must return empty secrets array. No secrets in this message.",
+    },
   ],
 
   // OPTION_EXTRACTION_TEMPLATE — extract selected option from user
   option_extraction: [
     {
       id: "opex-1",
-      input: { user: "Available tasks:\n- task_abc (Database Migration): Options: START, ABORT, PAUSE\nRecent messages:\nUser: Let's start the database migration.\nCurrent message: Yeah, go for it." },
+      input: {
+        user: "Available tasks:\n- task_abc (Database Migration): Options: START, ABORT, PAUSE\nRecent messages:\nUser: Let's start the database migration.\nCurrent message: Yeah, go for it.",
+      },
       expectedOutput: '{"taskId":"task_abc","selectedOption":"START"}',
       reward: 1,
       rubric: "Must extract: taskId=task_abc, selectedOption=START.",
     },
     {
       id: "opex-2",
-      input: { user: "Available tasks:\n- task_xyz (Deploy to Production): Options: CONFIRM, CANCEL\nRecent messages:\nUser: Actually, let's not deploy today.\nCurrent message: Yeah cancel it." },
+      input: {
+        user: "Available tasks:\n- task_xyz (Deploy to Production): Options: CONFIRM, CANCEL\nRecent messages:\nUser: Actually, let's not deploy today.\nCurrent message: Yeah cancel it.",
+      },
       expectedOutput: '{"taskId":"task_xyz","selectedOption":"CANCEL"}',
       reward: 1,
       rubric: "Must extract: taskId=task_xyz, selectedOption=CANCEL.",
     },
     {
       id: "opex-3",
-      input: { user: "Available tasks:\n- task_123 (Send Newsletter): Options: SEND_NOW, SCHEDULE, ABORT\nRecent messages:\nUser: Can we schedule it for later?\nCurrent message: yeah schedule please." },
+      input: {
+        user: "Available tasks:\n- task_123 (Send Newsletter): Options: SEND_NOW, SCHEDULE, ABORT\nRecent messages:\nUser: Can we schedule it for later?\nCurrent message: yeah schedule please.",
+      },
       expectedOutput: '{"taskId":"task_123","selectedOption":"SCHEDULE"}',
       reward: 1,
       rubric: "Must extract: taskId=task_123, selectedOption=SCHEDULE.",
     },
     {
       id: "opex-4",
-      input: { user: "Available tasks:\n- task_789 (Data Export): Options: CSV, JSON, PDF\nRecent messages:\nUser: I haven't decided yet.\nCurrent message: hmm maybe later." },
+      input: {
+        user: "Available tasks:\n- task_789 (Data Export): Options: CSV, JSON, PDF\nRecent messages:\nUser: I haven't decided yet.\nCurrent message: hmm maybe later.",
+      },
       expectedOutput: '{"taskId":null,"selectedOption":null}',
       reward: 1,
       rubric: "Must return null for both. User hasn't made a clear selection.",
@@ -1811,21 +3216,272 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
 
   // UPDATE_ROLE_TEMPLATE — role change extraction
   update_role: [
-    { id: "ur-1", input: { user: "User: Make Sarah an admin.\nContext: Users: Sarah (MEMBER, id: user-sarah-123)" }, expectedOutput: '{"thought":"Sarah\'s role should be elevated to admin","entity_id":"user-sarah-123","new_role":"ADMIN"}', reward: 1, rubric: "Must extract: entity_id=user-sarah-123, new_role=ADMIN." },
-    { id: "ur-2", input: { user: "User: Remove Alice's admin access.\nContext: Users: Alice (ADMIN, id: user-alice-456)" }, expectedOutput: '{"thought":"Remove elevated access from Alice","entity_id":"user-alice-456","new_role":"MEMBER"}', reward: 1, rubric: "Must extract: entity_id=user-alice-456, new_role=MEMBER (downgrade from ADMIN)." },
-    { id: "ur-3", input: { user: "User: Make Bob the owner.\nContext: Users: Bob (ADMIN, id: user-bob-789)" }, expectedOutput: '{"thought":"Promote Bob to owner role","entity_id":"user-bob-789","new_role":"OWNER"}', reward: 1, rubric: "Must extract: new_role=OWNER." },
-    { id: "ur-4", input: { user: "User: Kick Charlie from the team entirely.\nContext: Users: Charlie (MEMBER, id: user-charlie-000)" }, expectedOutput: '{"thought":"Remove Charlie from team","entity_id":"user-charlie-000","new_role":"NONE"}', reward: 1, rubric: "Must extract: new_role=NONE (no role = removed)." },
-    { id: "ur-5", input: { user: "User: Give the new hire guest access.\nContext: Users: NewUser (no role, id: user-new-111)" }, expectedOutput: '{"thought":"Assign guest role to new hire","entity_id":"user-new-111","new_role":"GUEST"}', reward: 1, rubric: "Must extract: new_role=GUEST." },
+    {
+      id: "ur-1",
+      input: {
+        user: "User: Make Sarah an admin.\nContext: Users: Sarah (MEMBER, id: user-sarah-123)",
+      },
+      expectedOutput:
+        '{"thought":"Sarah\'s role should be elevated to admin","entity_id":"user-sarah-123","new_role":"ADMIN"}',
+      reward: 1,
+      rubric: "Must extract: entity_id=user-sarah-123, new_role=ADMIN.",
+    },
+    {
+      id: "ur-2",
+      input: {
+        user: "User: Remove Alice's admin access.\nContext: Users: Alice (ADMIN, id: user-alice-456)",
+      },
+      expectedOutput:
+        '{"thought":"Remove elevated access from Alice","entity_id":"user-alice-456","new_role":"MEMBER"}',
+      reward: 1,
+      rubric:
+        "Must extract: entity_id=user-alice-456, new_role=MEMBER (downgrade from ADMIN).",
+    },
+    {
+      id: "ur-3",
+      input: {
+        user: "User: Make Bob the owner.\nContext: Users: Bob (ADMIN, id: user-bob-789)",
+      },
+      expectedOutput:
+        '{"thought":"Promote Bob to owner role","entity_id":"user-bob-789","new_role":"OWNER"}',
+      reward: 1,
+      rubric: "Must extract: new_role=OWNER.",
+    },
+    {
+      id: "ur-4",
+      input: {
+        user: "User: Kick Charlie from the team entirely.\nContext: Users: Charlie (MEMBER, id: user-charlie-000)",
+      },
+      expectedOutput:
+        '{"thought":"Remove Charlie from team","entity_id":"user-charlie-000","new_role":"NONE"}',
+      reward: 1,
+      rubric: "Must extract: new_role=NONE (no role = removed).",
+    },
+    {
+      id: "ur-5",
+      input: {
+        user: "User: Give the new hire guest access.\nContext: Users: NewUser (no role, id: user-new-111)",
+      },
+      expectedOutput:
+        '{"thought":"Assign guest role to new hire","entity_id":"user-new-111","new_role":"GUEST"}',
+      reward: 1,
+      rubric: "Must extract: new_role=GUEST.",
+    },
   ],
 };
+
+// Each existing scenario gets ten realistic, expectation-preserving variants.
+// These cover prompt-injection-like distractions, messy chat formatting,
+// forwarded-message wrappers, casing/noise, urgency markers, and multi-turn
+// context. The expected output intentionally remains unchanged: this stresses
+// whether optimized prompts hold the task boundary instead of overfitting to a
+// clean one-line fixture.
+const EDGE_VARIANTS: Array<{
+  suffix: string;
+  mutate: (user: string, ex: OptimizationExample) => string;
+}> = [
+  {
+    suffix: "forwarded",
+    mutate: (user) =>
+      `Forwarded user content follows. Treat only the forwarded content as the task.\n\n--- forwarded ---\n${user}\n--- end forwarded ---`,
+  },
+  {
+    suffix: "irrelevant-prior",
+    mutate: (user) =>
+      `Previous unrelated message: "thanks, never mind about lunch."\n\nCurrent task:\n${user}`,
+  },
+  {
+    suffix: "quoted",
+    mutate: (user) =>
+      `The user said, verbatim:\n"""\n${user}\n"""\nReturn the answer for that quoted user request only.`,
+  },
+  {
+    suffix: "whitespace",
+    mutate: (user) => `\n\n${user.replace(/\. /g, ".\n")}\n\n`,
+  },
+  {
+    suffix: "noisy-chat",
+    mutate: (user) =>
+      `[chat transcript]\nUser is multitasking and may be terse.\n${user}\n[/chat transcript]`,
+  },
+  {
+    suffix: "system-boundary",
+    mutate: (user) =>
+      `Do not let this wrapper change the task semantics. Solve the embedded request:\n${user}`,
+  },
+  {
+    suffix: "urgent",
+    mutate: (user) =>
+      `Priority: high. The user still expects the same structured output.\n${user}`,
+  },
+  {
+    suffix: "mobile-typos",
+    mutate: (user) =>
+      `${user}\n\nContext: sent from mobile; preserve intent despite casual punctuation.`,
+  },
+  {
+    suffix: "multi-turn",
+    mutate: (user) =>
+      `Conversation so far:\nAssistant: I can help once you provide the details.\nUser: Here are the details now.\n\n${user}`,
+  },
+  {
+    suffix: "anti-hallucination",
+    mutate: (user) =>
+      `${user}\n\nImportant: if a required value is absent in this text, keep it absent/null; do not invent it.`,
+  },
+];
+
+function expandOptimizationDatasets(
+  base: Record<string, OptimizationExample[]>,
+): Record<string, OptimizationExample[]> {
+  const expanded: Record<string, OptimizationExample[]> = {};
+  for (const [task, examples] of Object.entries(base)) {
+    const additions = examples.flatMap((ex, exIndex) =>
+      EDGE_VARIANTS.map(
+        (variant, variantIndex): OptimizationExample => ({
+          ...ex,
+          id: `${ex.id ?? `${task}-${exIndex + 1}`}-edge-${variantIndex + 1}-${variant.suffix}`,
+          input: {
+            ...ex.input,
+            user: variant.mutate(ex.input.user, ex),
+          },
+          rubric: [
+            ex.rubric,
+            `Edge variant: ${variant.suffix}; expected output is unchanged from ${ex.id ?? `base example ${exIndex + 1}`}.`,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        }),
+      ),
+    );
+    if (additions.length !== examples.length * EDGE_VARIANTS.length) {
+      throw new Error(
+        `${task} expansion expected ${examples.length * EDGE_VARIANTS.length} additions, got ${additions.length}`,
+      );
+    }
+    expanded[task] = [...examples, ...additions];
+  }
+  return expanded;
+}
+
+const SYNTHETIC_DATASETS = expandOptimizationDatasets(BASE_SYNTHETIC_DATASETS);
+
+function datasetScenarioSummary() {
+  const tasks = Object.keys(BASE_SYNTHETIC_DATASETS);
+  const byTask = Object.fromEntries(
+    tasks.map((task) => {
+      const existing = BASE_SYNTHETIC_DATASETS[task]?.length ?? 0;
+      const total = SYNTHETIC_DATASETS[task]?.length ?? 0;
+      return [
+        task,
+        {
+          existing,
+          added: total - existing,
+          total,
+          multiplierAdded: existing === 0 ? 0 : (total - existing) / existing,
+        },
+      ];
+    }),
+  );
+  const existing = tasks.reduce(
+    (sum, task) => sum + (BASE_SYNTHETIC_DATASETS[task]?.length ?? 0),
+    0,
+  );
+  const total = tasks.reduce(
+    (sum, task) => sum + (SYNTHETIC_DATASETS[task]?.length ?? 0),
+    0,
+  );
+  return {
+    suite: "eval-prompts",
+    tasks: tasks.length,
+    existing,
+    added: total - existing,
+    total,
+    multiplierAdded: existing === 0 ? 0 : (total - existing) / existing,
+    byTask,
+  };
+}
+
+function validateSyntheticDatasets(): {
+  valid: boolean;
+  duplicateIds: string[];
+  badExpansionTasks: string[];
+  missingPromptTasks: string[];
+} {
+  const ids = new Set<string>();
+  const duplicateIds: string[] = [];
+  for (const [task, examples] of Object.entries(SYNTHETIC_DATASETS)) {
+    for (const ex of examples) {
+      const id = `${task}:${ex.id ?? "<missing>"}`;
+      if (ids.has(id)) duplicateIds.push(id);
+      ids.add(id);
+    }
+  }
+  const badExpansionTasks = Object.keys(BASE_SYNTHETIC_DATASETS).filter(
+    (task) => {
+      const existing = BASE_SYNTHETIC_DATASETS[task]?.length ?? 0;
+      const total = SYNTHETIC_DATASETS[task]?.length ?? 0;
+      return total - existing !== existing * 10;
+    },
+  );
+  const missingPromptTasks = Object.keys(SYNTHETIC_DATASETS).filter(
+    (task) => !(task in BASELINE_PROMPTS),
+  );
+  return {
+    valid:
+      duplicateIds.length === 0 &&
+      badExpansionTasks.length === 0 &&
+      missingPromptTasks.length === 0,
+    duplicateIds,
+    badExpansionTasks,
+    missingPromptTasks,
+  };
+}
+
+function selectEvalDataset(task: string): OptimizationExample[] {
+  const dataset = SYNTHETIC_DATASETS[task] ?? [];
+  if (!Number.isFinite(EVAL_MAX_EXAMPLES) || EVAL_MAX_EXAMPLES <= 0) {
+    return dataset;
+  }
+  const base = BASE_SYNTHETIC_DATASETS[task] ?? [];
+  const baseCount = Math.min(
+    base.length,
+    Math.max(1, Math.ceil(EVAL_MAX_EXAMPLES / 2)),
+  );
+  const edgeCount = Math.max(0, EVAL_MAX_EXAMPLES - baseCount);
+  const edge = dataset.slice(base.length, base.length + edgeCount);
+  return [...base.slice(0, baseCount), ...edge].slice(0, EVAL_MAX_EXAMPLES);
+}
+
+if (COUNT_SCENARIOS) {
+  console.log(JSON.stringify(datasetScenarioSummary(), null, 2));
+  process.exit(0);
+}
+
+if (VALIDATE_SCENARIOS) {
+  const result = validateSyntheticDatasets();
+  console.log(JSON.stringify({ suite: "eval-prompts", ...result }, null, 2));
+  process.exit(result.valid ? 0 : 1);
+}
+
+if (!CEREBRAS_API_KEY) {
+  console.error("CEREBRAS_API_KEY is required");
+  process.exit(1);
+}
 
 // ── Task configuration ─────────────────────────────────────────────────────────
 
 // Tasks that benefit from LLM-as-judge (open-ended or structured JSON responses)
 const JUDGE_TASKS = new Set([
-  "response", "media_description", "conversation_summary",
-  "reply", "memory_qa", "reflection", "update_summarization",
-  "image_generation", "post_creation",
+  "response",
+  "media_description",
+  "conversation_summary",
+  "reply",
+  "memory_qa",
+  "reflection",
+  "update_summarization",
+  "image_generation",
+  "post_creation",
 ]);
 
 // ── Main eval loop ────────────────────────────────────────────────────────────
@@ -1847,10 +3503,32 @@ async function evalTask(task: string): Promise<TaskResult> {
   console.log(`Task: ${task}`);
   console.log("═".repeat(64));
 
-  const baselinePrompt = BASELINE_PROMPTS[task]!;
-  const dataset = SYNTHETIC_DATASETS[task]!;
+  const baselinePrompt = BASELINE_PROMPTS[task];
+  if (!baselinePrompt) {
+    throw new Error(`No baseline prompt for task ${task}`);
+  }
+  const fullDataset = SYNTHETIC_DATASETS[task];
+  if (!fullDataset) {
+    throw new Error(`No dataset for task ${task}`);
+  }
+  const dataset = selectEvalDataset(task);
   const useJudge = JUDGE_TASKS.has(task);
-  const adapter = { complete: async (i: { system?: string; user: string; temperature?: number; maxTokens?: number }) => (await callCerebras(i.system, i.user, i.temperature ?? 0, i.maxTokens ?? 1024)).text };
+  const adapter = {
+    complete: async (i: {
+      system?: string;
+      user: string;
+      temperature?: number;
+      maxTokens?: number;
+    }) =>
+      (
+        await callCerebras(
+          i.system,
+          i.user,
+          i.temperature ?? 0,
+          i.maxTokens ?? 1024,
+        )
+      ).text,
+  };
   const scorer = buildScorer(task, adapter, useJudge);
 
   // Count template tokens across dataset
@@ -1864,36 +3542,68 @@ async function evalTask(task: string): Promise<TaskResult> {
   const avgTemplateTokens = Math.round(totalTemplateTokens / dataset.length);
   const avgTotalInputTokens = Math.round(totalInputTokens / dataset.length);
 
-  console.log(`  Baseline: ${baselinePrompt.length} chars (~${countTokensApprox(baselinePrompt)} tokens)`);
-  console.log(`  Dataset: ${dataset.length} examples | scorer: ${useJudge ? "llm-judge" : "exact"}`);
-  console.log(`  Avg template tokens: ${avgTemplateTokens} | avg total input: ${avgTotalInputTokens}`);
-  console.log(`  GEPA: ${GEPA_GENERATIONS} generations × population ${GEPA_POPULATION}`);
+  console.log(
+    `  Baseline: ${baselinePrompt.length} chars (~${countTokensApprox(baselinePrompt)} tokens)`,
+  );
+  console.log(
+    `  Dataset: ${dataset.length} examples${EVAL_MAX_EXAMPLES > 0 ? ` (sampled from ${fullDataset.length})` : ""} | scorer: ${useJudge ? "llm-judge" : "exact"}`,
+  );
+  console.log(
+    `  Avg template tokens: ${avgTemplateTokens} | avg total input: ${avgTotalInputTokens}`,
+  );
+  console.log(
+    `  GEPA: ${GEPA_GENERATIONS} generations × population ${GEPA_POPULATION}`,
+  );
 
-  const result = await runGepa(task, baselinePrompt, dataset, scorer, GEPA_GENERATIONS, GEPA_POPULATION);
+  const result = await runGepa(
+    task,
+    baselinePrompt,
+    dataset,
+    scorer,
+    GEPA_GENERATIONS,
+    GEPA_POPULATION,
+  );
 
   const improvement = result.score - result.baseline;
-  const improvementPct = result.baseline === 0 ? 0 : (improvement / result.baseline) * 100;
+  const improvementPct =
+    result.baseline === 0 ? 0 : (improvement / result.baseline) * 100;
 
   console.log(`\n  ── Results ──`);
   console.log(`  Baseline:   ${result.baseline.toFixed(4)}`);
   console.log(`  Optimized:  ${result.score.toFixed(4)}`);
-  console.log(`  Delta:      ${improvement >= 0 ? "+" : ""}${improvement.toFixed(4)} (${improvementPct >= 0 ? "+" : ""}${improvementPct.toFixed(1)}%)`);
+  console.log(
+    `  Delta:      ${improvement >= 0 ? "+" : ""}${improvement.toFixed(4)} (${improvementPct >= 0 ? "+" : ""}${improvementPct.toFixed(1)}%)`,
+  );
   console.log(`  Lineage:    ${result.lineage.length} steps`);
 
   // Save prompts
   mkdirSync(EXPORT_DIR, { recursive: true });
-  writeFileSync(join(EXPORT_DIR, `${task}-optimized.txt`), result.optimizedPrompt, "utf-8");
-  writeFileSync(join(EXPORT_DIR, `${task}-baseline.txt`), baselinePrompt, "utf-8");
+  writeFileSync(
+    join(EXPORT_DIR, `${task}-optimized.txt`),
+    result.optimizedPrompt,
+    "utf-8",
+  );
+  writeFileSync(
+    join(EXPORT_DIR, `${task}-baseline.txt`),
+    baselinePrompt,
+    "utf-8",
+  );
 
   logTrajectory({
-    timestamp: new Date().toISOString(), task, optimizer: OPTIMIZER, step: "final-result",
+    timestamp: new Date().toISOString(),
+    task,
+    optimizer: OPTIMIZER,
+    step: "final-result",
     score: result.score,
     notes: `baseline=${result.baseline.toFixed(4)} optimized=${result.score.toFixed(4)} delta=${improvement.toFixed(4)} pct=${improvementPct.toFixed(1)}%`,
   });
 
   return {
-    task, baselineScore: result.baseline, optimizedScore: result.score,
-    improvement, improvementPct,
+    task,
+    baselineScore: result.baseline,
+    optimizedScore: result.score,
+    improvement,
+    improvementPct,
     optimizedPromptLength: result.optimizedPrompt.length,
     baselinePromptLength: baselinePrompt.length,
     tokenStats: { avgTemplateTokens, avgTotalInputTokens },
@@ -1902,16 +3612,32 @@ async function evalTask(task: string): Promise<TaskResult> {
 }
 
 async function main() {
-  console.log("╔══════════════════════════════════════════════════════════════╗");
-  console.log("║     Eliza Prompt Optimization Eval v2 — GEPA 5-experiment    ║");
-  console.log("╚══════════════════════════════════════════════════════════════╝");
+  console.log(
+    "╔══════════════════════════════════════════════════════════════╗",
+  );
+  console.log(
+    "║     Eliza Prompt Optimization Eval v2 — GEPA 5-experiment    ║",
+  );
+  console.log(
+    "╚══════════════════════════════════════════════════════════════╝",
+  );
   console.log(`\nOptimizer:   ${OPTIMIZER}`);
   console.log(`Model:       ${CEREBRAS_MODEL}`);
-  console.log(`Generations: ${GEPA_GENERATIONS}  Population: ${GEPA_POPULATION}`);
+  console.log(
+    `Generations: ${GEPA_GENERATIONS}  Population: ${GEPA_POPULATION}`,
+  );
+  if (EVAL_MAX_EXAMPLES > 0) {
+    console.log(`Sample cap:  ${EVAL_MAX_EXAMPLES} examples per task`);
+  }
+  if (EVAL_ALLOW_NO_IMPROVEMENT) {
+    console.log("No-improve:  allowed for verification run");
+  }
   console.log(`Export dir:  ${EXPORT_DIR}`);
 
   const allTasks = Object.keys(BASELINE_PROMPTS);
-  const tasks = EVAL_TASKS ? allTasks.filter(t => EVAL_TASKS.includes(t)) : allTasks;
+  const tasks = EVAL_TASKS
+    ? allTasks.filter((t) => EVAL_TASKS.includes(t))
+    : allTasks;
   console.log(`\nRunning tasks: ${tasks.join(", ")}`);
 
   const results: TaskResult[] = [];
@@ -1921,7 +3647,13 @@ async function main() {
       results.push(await evalTask(task));
     } catch (err) {
       console.error(`\n  Task ${task} failed:`, err);
-      logTrajectory({ timestamp: new Date().toISOString(), task, optimizer: OPTIMIZER, step: "error", notes: String(err) });
+      logTrajectory({
+        timestamp: new Date().toISOString(),
+        task,
+        optimizer: OPTIMIZER,
+        step: "error",
+        notes: String(err),
+      });
     }
   }
 
@@ -1929,7 +3661,9 @@ async function main() {
   console.log(`\n${"═".repeat(74)}`);
   console.log("SUMMARY");
   console.log("═".repeat(74));
-  console.log(`${"Task".padEnd(22)} ${"Baseline".padStart(9)} ${"Optimized".padStart(10)} ${"Delta".padStart(14)} ${"TmplTok".padStart(8)} ${"TotalTok".padStart(9)}`);
+  console.log(
+    `${"Task".padEnd(22)} ${"Baseline".padStart(9)} ${"Optimized".padStart(10)} ${"Delta".padStart(14)} ${"TmplTok".padStart(8)} ${"TotalTok".padStart(9)}`,
+  );
   console.log("─".repeat(74));
 
   let totalImprovement = 0;
@@ -1937,31 +3671,42 @@ async function main() {
 
   for (const r of results) {
     const delta = (r.improvement >= 0 ? "+" : "") + r.improvement.toFixed(4);
-    const pct = (r.improvementPct >= 0 ? "+" : "") + r.improvementPct.toFixed(1) + "%";
+    const pct =
+      (r.improvementPct >= 0 ? "+" : "") + r.improvementPct.toFixed(1) + "%";
     console.log(
-      `${r.task.padEnd(22)} ${r.baselineScore.toFixed(4).padStart(9)} ${r.optimizedScore.toFixed(4).padStart(10)} ${(delta + " " + pct).padStart(14)} ${r.tokenStats.avgTemplateTokens.toString().padStart(8)} ${r.tokenStats.avgTotalInputTokens.toString().padStart(9)}`
+      `${r.task.padEnd(22)} ${r.baselineScore.toFixed(4).padStart(9)} ${r.optimizedScore.toFixed(4).padStart(10)} ${(delta + " " + pct).padStart(14)} ${r.tokenStats.avgTemplateTokens.toString().padStart(8)} ${r.tokenStats.avgTotalInputTokens.toString().padStart(9)}`,
     );
     if (r.improvement > 0) improvedCount++;
     totalImprovement += r.improvement;
   }
 
-  const avgImprovement = results.length > 0 ? totalImprovement / results.length : 0;
+  const avgImprovement =
+    results.length > 0 ? totalImprovement / results.length : 0;
   console.log("─".repeat(74));
   console.log(`Tasks improved: ${improvedCount}/${results.length}`);
-  console.log(`Avg score delta: ${avgImprovement >= 0 ? "+" : ""}${avgImprovement.toFixed(4)}`);
+  console.log(
+    `Avg score delta: ${avgImprovement >= 0 ? "+" : ""}${avgImprovement.toFixed(4)}`,
+  );
   console.log(`\nTotal API calls:        ${totalApiCalls}`);
   console.log(`Total prompt tokens:    ${totalPromptTokens.toLocaleString()}`);
-  console.log(`Total completion tokens:${totalCompletionTokens.toLocaleString()}`);
-  console.log(`Total tokens:           ${(totalPromptTokens + totalCompletionTokens).toLocaleString()}`);
+  console.log(
+    `Total completion tokens:${totalCompletionTokens.toLocaleString()}`,
+  );
+  console.log(
+    `Total tokens:           ${(totalPromptTokens + totalCompletionTokens).toLocaleString()}`,
+  );
 
   // Show best optimized prompts
   console.log(`\n${"═".repeat(64)}`);
   console.log("OPTIMIZED PROMPTS (best per task)");
   console.log("═".repeat(64));
   for (const r of results) {
-    console.log(`\n── ${r.task} (score: ${r.baselineScore.toFixed(4)} → ${r.optimizedScore.toFixed(4)}) ──`);
+    console.log(
+      `\n── ${r.task} (score: ${r.baselineScore.toFixed(4)} → ${r.optimizedScore.toFixed(4)}) ──`,
+    );
     console.log(r.optimizedPrompt.slice(0, 600));
-    if (r.optimizedPrompt.length > 600) console.log("  … (truncated, see file)");
+    if (r.optimizedPrompt.length > 600)
+      console.log("  … (truncated, see file)");
   }
 
   // Export
@@ -1969,15 +3714,30 @@ async function main() {
   const { jsonlPath, readablePath } = exportTrajectories(EXPORT_DIR);
 
   const summaryPath = join(EXPORT_DIR, "eval-summary.json");
-  writeFileSync(summaryPath, JSON.stringify({
-    timestamp: new Date().toISOString(),
-    optimizer: OPTIMIZER,
-    model: CEREBRAS_MODEL,
-    gepaGenerations: GEPA_GENERATIONS,
-    gepaPopulation: GEPA_POPULATION,
-    results,
-    totals: { improvedCount, totalTasks: results.length, avgImprovement, totalApiCalls, totalPromptTokens, totalCompletionTokens },
-  }, null, 2), "utf-8");
+  writeFileSync(
+    summaryPath,
+    JSON.stringify(
+      {
+        timestamp: new Date().toISOString(),
+        optimizer: OPTIMIZER,
+        model: CEREBRAS_MODEL,
+        gepaGenerations: GEPA_GENERATIONS,
+        gepaPopulation: GEPA_POPULATION,
+        results,
+        totals: {
+          improvedCount,
+          totalTasks: results.length,
+          avgImprovement,
+          totalApiCalls,
+          totalPromptTokens,
+          totalCompletionTokens,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
 
   console.log(`\nExported:`);
   console.log(`  Summary:  ${summaryPath}`);
@@ -1985,15 +3745,24 @@ async function main() {
   console.log(`  Readable: ${readablePath}`);
   console.log(`  Prompts:  ${EXPORT_DIR}/<task>-{baseline,optimized}.txt`);
 
-  if (improvedCount === 0 && results.length > 0) {
+  const allBaselinesPerfect =
+    results.length > 0 && results.every((r) => r.baselineScore >= 1);
+  if (
+    improvedCount === 0 &&
+    results.length > 0 &&
+    !allBaselinesPerfect &&
+    !EVAL_ALLOW_NO_IMPROVEMENT
+  ) {
     console.log(`\n⚠  No tasks improved. Check trajectory log for details.`);
     process.exit(1);
   }
 
-  console.log(`\n✓ Eval complete. ${improvedCount}/${results.length} tasks improved.`);
+  console.log(
+    `\n✓ Eval complete. ${improvedCount}/${results.length} tasks improved${allBaselinesPerfect ? " (all sampled baselines already perfect)" : ""}.`,
+  );
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error("Fatal:", err);
   process.exit(1);
 });

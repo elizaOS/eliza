@@ -14,7 +14,6 @@ import {
   LIFEOPS_DISCORD_CAPABILITIES,
   LIFEOPS_SIGNAL_CAPABILITIES,
   LIFEOPS_TELEGRAM_CAPABILITIES,
-  type LifeOpsSignalInboundMessage,
 } from "@elizaos/shared";
 import {
   createLifeOpsConnectorGrant,
@@ -24,8 +23,9 @@ import { LifeOpsService } from "../../../../plugins/plugin-lifeops/src/lifeops/s
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/signal-local-client.ts";
-import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugins/plugin-lifeops/src/lifeops/telegram-local-client.ts";
+  type SignalRecentMessage,
+} from "../../../../plugins/plugin-signal/src/local-client.ts";
+import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugins/plugin-telegram/src/local-client.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
   getLifeOpsSimulatorPerson,
@@ -42,18 +42,6 @@ import { ensureLifeOpsSchema } from "./seed-grants.ts";
 
 type Cleanup = () => Promise<void> | void;
 type RuntimeSendHandler = Parameters<AgentRuntime["registerSendHandler"]>[1];
-
-interface SignalRecentMessage {
-  id: string;
-  roomId: string;
-  channelId: string;
-  roomName: string;
-  speakerName: string;
-  text: string;
-  createdAt: number;
-  isFromAgent: boolean;
-  isGroup: boolean;
-}
 
 interface SignalMockService {
   getAccountNumber(): string;
@@ -121,22 +109,6 @@ function registeredSendHandlers(
   return sendHandlers instanceof Map ? sendHandlers : null;
 }
 
-function signalInboundToRecentMessage(
-  message: LifeOpsSignalInboundMessage,
-): SignalRecentMessage {
-  return {
-    id: message.id,
-    roomId: message.roomId,
-    channelId: message.channelId,
-    roomName: message.roomName,
-    speakerName: message.speakerName,
-    text: message.text,
-    createdAt: message.createdAt,
-    isFromAgent: !message.isInbound,
-    isGroup: message.isGroup,
-  };
-}
-
 function installSignalMockService(runtime: AgentRuntime): Cleanup {
   const services = servicesMap(runtime);
   const previous = services.get("signal");
@@ -148,8 +120,7 @@ function installSignalMockService(runtime: AgentRuntime): Cleanup {
       if (!config) {
         return [];
       }
-      const messages = await readSignalInboundMessages(config, limit);
-      return messages.map(signalInboundToRecentMessage);
+      return readSignalInboundMessages(config, limit);
     },
     async sendMessage(recipient: string, text: string) {
       const baseUrl = process.env.SIGNAL_HTTP_URL?.replace(/\/$/, "");

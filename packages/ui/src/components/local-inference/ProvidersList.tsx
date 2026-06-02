@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import type { ProviderStatus } from "../../api/client-local-inference";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext";
 
@@ -55,13 +56,16 @@ export function ProvidersList() {
     }
   }, [t]);
 
+  const documentVisible = useDocumentVisibility();
   useEffect(() => {
-    void refresh();
     // Re-poll every 10s so provider state follows env-var / config-file
-    // changes without the user having to reload.
+    // changes without a reload — but only while the document is visible, so a
+    // backgrounded window stops hitting the network.
+    if (!documentVisible) return;
+    void refresh();
     const interval = setInterval(() => void refresh(), 10_000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [refresh, documentVisible]);
 
   if (error && !providers) {
     return (

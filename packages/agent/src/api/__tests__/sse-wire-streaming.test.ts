@@ -7,11 +7,13 @@
  * caught by full e2e runs.
  */
 import type { ServerResponse } from "node:http";
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   initSse,
   writeChatTokenSse,
   writeSse,
+  writeSseData,
   writeSseJson,
 } from "../chat-routes.js";
 
@@ -170,8 +172,59 @@ describe("SSE wire format", () => {
   it("writeSseJson includes an event line when provided", () => {
     const mock = createMockResponse();
     writeSseJson(mock.res, { ok: true }, "ping");
-    // Two writes: the `event:` line and the `data:` line.
+    // Three writes: the `event:` line, the `data:` line, and the blank
+    // terminator line.
     expect(mock.writes.join("")).toContain("event: ping\n");
     expect(mock.writes.join("")).toContain('data: {"ok":true}\n\n');
+  });
+
+  it("writeSseData frames multiline raw data without creating bare lines", () => {
+    const mock = createMockResponse();
+    writeSseData(mock.res, "alpha\nbeta\r\ngamma\rdone", "message");
+
+    expect(mock.writes.join("")).toBe(
+      "event: message\n" +
+        "data: alpha\n" +
+        "data: beta\n" +
+        "data: gamma\n" +
+        "data: done\n" +
+        "\n",
+    );
+  });
+
+  it("writeSseData drops event names that could inject SSE fields", () => {
+    const mock = createMockResponse();
+    writeSseData(mock.res, "payload", "token\nid: attacker");
+
+    expect(mock.writes.join("")).toBe("data: payload\n\n");
+  });
+
+  it("writeSseJson preserves hostile strings as JSON data, not SSE syntax", () => {
+    fc.assert(
+      fc.property(fc.string(), fc.string(), (text, eventName) => {
+        const mock = createMockResponse();
+        writeSseJson(mock.res, { text }, eventName);
+        const wire = mock.writes.join("");
+
+        expect(wire.endsWith("\n\n")).toBe(true);
+        for (const line of wire.slice(0, -2).split("\n")) {
+          expect(
+            line === "" ||
+              line.startsWith("data: ") ||
+              line.startsWith("event: "),
+          ).toBe(true);
+          if (line.startsWith("event: ")) {
+            expect(line).toMatch(/^event: [A-Za-z0-9_.-]+$/);
+          }
+        }
+
+        const dataLines = wire
+          .split("\n")
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => line.slice("data: ".length));
+        expect(JSON.parse(dataLines.join("\n"))).toEqual({ text });
+      }),
+      { numRuns: 200 },
+    );
   });
 });

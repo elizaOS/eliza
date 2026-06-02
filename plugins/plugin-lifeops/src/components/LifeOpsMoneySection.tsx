@@ -15,13 +15,48 @@ import {
   TrendingDown,
   Upload,
 } from "lucide-react";
-import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import {
+  type ComponentProps,
+  type JSX,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentsDashboard,
   LifeOpsRecurringCharge,
   LifeOpsUpcomingBill,
 } from "../lifeops/payment-types.js";
+
+function MoneyIconButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<"button">) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-money",
+    description,
+  });
+  return (
+    <button ref={ref} type="button" {...buttonProps} {...agentProps}>
+      {children}
+    </button>
+  );
+}
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { LifeOpsLinkBankButton } from "./LifeOpsLinkBankButton.js";
 import { LifeOpsLinkPaypalButton } from "./LifeOpsLinkPaypalButton.js";
@@ -181,7 +216,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         ([] as CloudBillingHistoryItem[]);
       setCreditTransactions(list);
     } catch {
-      // 401/404/network → no data yet, keep section quiet rather than erroring loudly.
+      // 401/404/network: no data yet, keep section quiet rather than erroring loudly.
       setCreditTransactions([]);
     } finally {
       setCreditTransactionsLoading(false);
@@ -303,7 +338,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         });
         if (result.fallback === "csv_export") {
           setImportStatus(
-            "PayPal Reporting API isn't available for this account (typically personal-tier). Use the CSV export from paypal.com → Activity → Statements.",
+            "PayPal Reporting API isn't available for this account (typically personal-tier). Use CSV export from paypal.com / Activity / Statements.",
           );
         } else {
           setImportStatus(
@@ -485,13 +520,15 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
           {error}
         </div>
-        <button
-          type="button"
+        <MoneyIconButton
+          agentId="money-retry"
+          label="Retry money dashboard"
+          description="Reload the money dashboard"
           onClick={() => void refresh()}
           className="inline-flex items-center gap-2 rounded-md border border-border/30 bg-bg-muted/30 px-3 py-1.5 text-xs font-medium text-txt hover:bg-bg-muted/60"
         >
           <RefreshCw className="h-3.5 w-3.5" /> Retry
-        </button>
+        </MoneyIconButton>
       </div>
     );
   }
@@ -511,17 +548,21 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <MoneyIconButton
+            agentId="money-scan-gmail"
+            label="Scan Gmail for subscriptions"
+            description="Scan Gmail for subscription senders"
             onClick={() => void onScanGmail()}
             aria-label="Scan Gmail for subscription senders"
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
             title="Scan Gmail for subscription senders"
           >
             <Upload className="h-3.5 w-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
+          </MoneyIconButton>
+          <MoneyIconButton
+            agentId="money-refresh"
+            label="Refresh money dashboard"
+            description="Refresh the money dashboard and credit transactions"
             onClick={() => {
               void refresh();
               void refreshCreditTransactions();
@@ -531,7 +572,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
             title="Refresh dashboard"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </MoneyIconButton>
         </div>
       </header>
 
@@ -575,19 +616,21 @@ export function LifeOpsMoneySection(): JSX.Element | null {
               <div className="flex flex-wrap items-center gap-1.5">
                 <LifeOpsLinkBankButton onLinked={() => void refresh()} />
                 <LifeOpsLinkPaypalButton onLinked={() => void refresh()} />
-                <button
-                  type="button"
+                <MoneyIconButton
+                  agentId="money-add-source"
+                  label="Add money source"
+                  description="Add a payment source manually (CSV / manual)"
                   onClick={() => void onAddSource()}
                   aria-label="Add a source manually"
                   className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                   title="Add a source manually (CSV / manual)"
                 >
                   <FilePlus2 className="h-3.5 w-3.5" aria-hidden />
-                </button>
+                </MoneyIconButton>
               </div>
             </header>
             {dash.sources.length === 0 ? (
-              <p className="text-xs text-muted">No sources.</p>
+              <div className="text-xs text-muted">No sources.</div>
             ) : (
               <ul className="space-y-2">
                 {dash.sources.map((source) => (
@@ -613,47 +656,55 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {source.kind === "csv" ? (
-                        <button
-                          type="button"
+                        <MoneyIconButton
+                          agentId={`money-source-import-${source.id}`}
+                          label={`Import CSV for ${source.label}`}
+                          description={`Import a CSV into ${source.label}`}
                           onClick={() => void onImportCsv(source)}
                           aria-label={`Import CSV for ${source.label}`}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                           title="Import CSV"
                         >
                           <Upload className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        </MoneyIconButton>
                       ) : null}
                       {source.kind === "plaid" ? (
-                        <button
-                          type="button"
+                        <MoneyIconButton
+                          agentId={`money-source-sync-${source.id}`}
+                          label={`Sync ${source.label}`}
+                          description={`Pull the latest transactions from Plaid for ${source.label}`}
                           onClick={() => void onSyncPlaid(source)}
                           aria-label={`Sync ${source.label}`}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                           title="Pull the latest transactions from Plaid"
                         >
                           <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        </MoneyIconButton>
                       ) : null}
                       {source.kind === "paypal" ? (
-                        <button
-                          type="button"
+                        <MoneyIconButton
+                          agentId={`money-source-sync-${source.id}`}
+                          label={`Sync ${source.label}`}
+                          description={`Pull recent PayPal transactions for ${source.label}`}
                           onClick={() => void onSyncPaypal(source)}
                           aria-label={`Sync ${source.label}`}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                           title="Pull recent PayPal transactions (Reporting API)"
                         >
                           <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        </MoneyIconButton>
                       ) : null}
-                      <button
-                        type="button"
+                      <MoneyIconButton
+                        agentId={`money-source-delete-${source.id}`}
+                        label={`Remove ${source.label}`}
+                        description={`Remove the source ${source.label}`}
                         onClick={() => void onDeleteSource(source)}
                         aria-label={`Remove ${source.label}`}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-bg-muted/40 hover:text-rose-300"
                         title="Remove source"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </MoneyIconButton>
                     </div>
                   </li>
                 ))}
@@ -664,7 +715,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
             <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
             {dash.spending.topCategories.length === 0 ? (
-              <p className="text-xs text-muted">No categories.</p>
+              <div className="text-xs text-muted">No categories.</div>
             ) : (
               <ul className="space-y-1.5">
                 {dash.spending.topCategories.map((category) => (
@@ -703,9 +754,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           </h2>
         </header>
         {dash.upcomingBills.length === 0 ? (
-          <p className="text-xs text-muted">
-            No bills detected from email yet.
-          </p>
+          <div className="text-xs text-muted">No bills from email.</div>
         ) : (
           <ul className="space-y-1.5">
             {dash.upcomingBills.map((bill) => (
@@ -737,33 +786,39 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                   <span className="tabular-nums font-semibold text-amber-300">
                     {formatUsd(bill.amountUsd)}
                   </span>
-                  <button
-                    type="button"
+                  <MoneyIconButton
+                    agentId={`money-bill-paid-${bill.id}`}
+                    label={`Mark ${bill.merchant} paid`}
+                    description={`Mark the bill from ${bill.merchant} as paid`}
                     onClick={() => void onMarkBillPaid(bill)}
                     aria-label={`Mark ${bill.merchant} paid`}
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
                     title="Mark this bill as paid"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
+                  </MoneyIconButton>
+                  <MoneyIconButton
+                    agentId={`money-bill-snooze-${bill.id}`}
+                    label={`Snooze ${bill.merchant} one week`}
+                    description={`Push the due date of ${bill.merchant} out a week`}
                     onClick={() => void onSnoozeBill(bill)}
                     aria-label={`Snooze ${bill.merchant} one week`}
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                     title="Push the due date out a week"
                   >
                     <Timer className="h-3.5 w-3.5" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
+                  </MoneyIconButton>
+                  <MoneyIconButton
+                    agentId={`money-bill-chat-${bill.id}`}
+                    label={`Chat about ${bill.merchant}`}
+                    description={`Open chat about the bill from ${bill.merchant}`}
                     onClick={() => onChatAboutBill(bill)}
                     aria-label={`Open chat about ${bill.merchant}`}
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                     title="Open chat about this bill"
                   >
                     <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                  </button>
+                  </MoneyIconButton>
                 </div>
               </li>
             ))}
@@ -776,7 +831,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <h2 className="text-sm font-semibold">Recurring charges</h2>
         </header>
         {dash.recurring.length === 0 ? (
-          <p className="text-xs text-muted">No recurring charges.</p>
+          <div className="text-xs text-muted">No recurring charges.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-xs">
@@ -822,8 +877,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                         );
                         if (playbookKey) {
                           return (
-                            <button
-                              type="button"
+                            <MoneyIconButton
+                              agentId={`money-recurring-cancel-${charge.merchantNormalized}`}
+                              label={`Cancel ${charge.merchantDisplay}`}
+                              description={`Open the cancellation flow for ${charge.merchantDisplay}`}
                               onClick={() =>
                                 void onCancelRecurringCharge(
                                   charge,
@@ -835,20 +892,22 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                               title={`Open the cancellation flow for ${charge.merchantDisplay}`}
                             >
                               <Ban className="h-3.5 w-3.5" aria-hidden />
-                            </button>
+                            </MoneyIconButton>
                           );
                         }
                         return null;
                       })()}
-                      <button
-                        type="button"
+                      <MoneyIconButton
+                        agentId={`money-recurring-chat-${charge.merchantNormalized}`}
+                        label={`Chat about ${charge.merchantDisplay}`}
+                        description={`Open chat about the recurring charge ${charge.merchantDisplay}`}
                         onClick={() => onChatAboutRecurringCharge(charge)}
                         aria-label={`Open chat about ${charge.merchantDisplay}`}
                         className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                         title="Open chat with this recurring charge attached"
                       >
                         <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                      </button>
+                      </MoneyIconButton>
                     </td>
                   </tr>
                 ))}
@@ -871,7 +930,8 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                   {merchant.merchantDisplay}
                 </span>
                 <span className="tabular-nums text-muted">
-                  {formatUsd(merchant.totalUsd)} · {merchant.transactionCount}×
+                  {formatUsd(merchant.totalUsd)} / {merchant.transactionCount}{" "}
+                  tx
                 </span>
               </li>
             ))}
@@ -920,13 +980,15 @@ function CloudCreditsBalance(props: {
           <Sparkles className="h-3.5 w-3.5" aria-hidden />
           Eliza Cloud
         </span>
-        <button
-          type="button"
+        <MoneyIconButton
+          agentId="money-cloud-settings"
+          label="Open Cloud settings"
+          description="Open the Eliza Cloud settings"
           onClick={props.onOpenSettings}
           className="font-medium text-txt underline-offset-2 hover:underline"
         >
           Settings
-        </button>
+        </MoneyIconButton>
       </section>
     );
   }
@@ -990,9 +1052,9 @@ function CloudCreditsActivity(props: {
         ) : null}
       </header>
       {recent.length === 0 ? (
-        <p className="text-xs text-muted">
+        <div className="text-xs text-muted">
           {props.loading ? "Loading…" : "No recent activity"}
-        </p>
+        </div>
       ) : (
         <ul className="space-y-1.5">
           {recent.map((txn) => {

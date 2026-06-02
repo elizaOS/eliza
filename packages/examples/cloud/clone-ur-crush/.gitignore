@@ -13,7 +13,9 @@ playwright-report-synpress
 # Next.js
 /.next/
 /.next-build/
+/.next-build-*/
 /.next-probe*/
+/.build-lock/
 /out/
 .turbo
 

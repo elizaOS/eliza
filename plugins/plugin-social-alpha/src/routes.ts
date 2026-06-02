@@ -106,7 +106,7 @@ async function communityInvestorPanelHandler(
 			if (agentId) {
 				html = html.replace(
 					"<head>",
-					`<head>\n    <script>window.elizaAgentId = "${agentId}";</script>`,
+					`<head>\n    <script>window.elizaAgentId = ${JSON.stringify(agentId)};</script>`,
 				);
 				logger.debug(`[COMMUNITY INVESTOR PANEL] Injected agentId: ${agentId}`);
 			} else {
@@ -192,10 +192,28 @@ async function communityInvestorAssetsHandler(
 		if (assetsStartIndex === -1) {
 			return sendError(res, 400, "BAD_REQUEST", "Invalid asset path");
 		}
-		const assetName = requestedAssetPath.substring(
+		const rawAssetName = requestedAssetPath.substring(
 			assetsStartIndex + assetsMarker.length,
 		);
-		if (!assetName || assetName.includes("..")) {
+		let assetName: string;
+		try {
+			assetName = decodeURIComponent(rawAssetName);
+		} catch {
+			return sendError(
+				res,
+				400,
+				"BAD_REQUEST",
+				`Invalid asset name: '${rawAssetName}' from path ${requestedAssetPath}`,
+			);
+		}
+		const normalizedAssetName = path.normalize(assetName);
+		if (
+			!assetName ||
+			assetName.includes("\0") ||
+			path.isAbsolute(assetName) ||
+			normalizedAssetName === ".." ||
+			normalizedAssetName.startsWith(`..${path.sep}`)
+		) {
 			return sendError(
 				res,
 				400,
@@ -204,7 +222,19 @@ async function communityInvestorAssetsHandler(
 			);
 		}
 
-		const assetPath = path.join(assetsBasePath, assetName);
+		const assetPath = path.resolve(assetsBasePath, normalizedAssetName);
+		const resolvedBase = path.resolve(assetsBasePath);
+		if (
+			assetPath !== resolvedBase &&
+			!assetPath.startsWith(`${resolvedBase}${path.sep}`)
+		) {
+			return sendError(
+				res,
+				400,
+				"BAD_REQUEST",
+				`Invalid asset name: '${assetName}' from path ${requestedAssetPath}`,
+			);
+		}
 		logger.debug(
 			`[COMMUNITY INVESTOR ASSET HANDLER] Attempting to serve asset: ${assetPath}`,
 		);

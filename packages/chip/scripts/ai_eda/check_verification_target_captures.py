@@ -77,6 +77,10 @@ REPORTS: dict[str, dict[str, Any]] = {
 }
 
 
+def false_claim_flags(expected: dict[str, Any]) -> dict[str, bool]:
+    return {field: False for field in sorted(expected["false_policy"])}
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -166,6 +170,8 @@ def validate_report(report_id: str, report: dict[str, Any], expected: dict[str, 
         for field in expected["false_policy"]:
             if policy.get(field) is not False:
                 errors.append(f"{report_id}: policy.{field} must be false")
+        if policy.get("false_claim_flags") != false_claim_flags(expected):
+            errors.append(f"{report_id}: policy.false_claim_flags must match denied claims")
     if not isinstance(report.get("source_ids"), list) or not report.get("source_ids"):
         errors.append(f"{report_id}: source_ids must be non-empty")
     if not isinstance(report.get("blocked_by"), list) or not report.get("blocked_by"):

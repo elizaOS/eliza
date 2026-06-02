@@ -76,6 +76,36 @@ const parseGatewayError = (
   };
 };
 
+function assertGatewayUrl(url: unknown): string {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    throw new Error("url must be a non-empty WebSocket URL");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("url must be a valid WebSocket URL");
+  }
+  if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+    throw new Error("url must use ws: or wss:");
+  }
+  return parsed.toString();
+}
+
+function assertRpcMethod(method: unknown): string {
+  if (typeof method !== "string" || method.trim().length === 0) {
+    throw new Error("method must be a non-empty string");
+  }
+  const normalized = method.trim();
+  if (normalized !== method) {
+    throw new Error("method must not contain leading or trailing whitespace");
+  }
+  if (!/^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$/.test(normalized)) {
+    throw new Error("method contains invalid characters");
+  }
+  return normalized;
+}
+
 /**
  * Web implementation of the Gateway Plugin
  *
@@ -134,6 +164,7 @@ export class GatewayWeb extends WebPlugin {
    * Connect to a Gateway server
    */
   async connect(options: GatewayConnectOptions): Promise<GatewayConnectResult> {
+    const url = assertGatewayUrl(options.url);
     // Close existing connection if any
     if (this.ws) {
       this.closed = true;
@@ -141,7 +172,7 @@ export class GatewayWeb extends WebPlugin {
       this.ws = null;
     }
 
-    this.options = options;
+    this.options = { ...options, url };
     this.closed = false;
     this.backoffMs = 800;
 
@@ -455,6 +486,7 @@ export class GatewayWeb extends WebPlugin {
    * Send an RPC request
    */
   async send(options: GatewaySendOptions): Promise<GatewaySendResult> {
+    const method = assertRpcMethod(options.method);
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return {
         ok: false,
@@ -469,7 +501,7 @@ export class GatewayWeb extends WebPlugin {
     const frame = {
       type: "req",
       id,
-      method: options.method,
+      method,
       params: options.params || {},
     };
 

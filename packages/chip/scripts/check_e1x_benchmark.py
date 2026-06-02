@@ -502,7 +502,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     if float(real_graph_load.get("total_required_mib", 0.0)) <= float(
         e1_baseline["local_sram_mib"]
     ):
-        return False, "real-graph resident model unexpectedly fits in E1 local SRAM"
+        return False, "real-graph resident model unexpectedly fits in E1 local SRAM", {}
     schedule_vs_e1_peak = float(schedule_execution_data["effective_tops"]) / float(
         e1_baseline["dense_int8_peak_tops"]
     )
@@ -763,6 +763,16 @@ def main() -> int:
         "generated_utc": datetime.now(UTC).isoformat(),
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fpga_claim_allowed": False,
+            "full_wafer_rtl_claim_allowed": False,
+        },
         "claim_boundary": "E1X L2 architecture-simulator benchmark only; not silicon, FPGA, board, PD, DFT, package, or full-wafer RTL benchmark evidence.",
         "evidence_paths": [
             "benchmarks/configs/benchmark_plan.json",

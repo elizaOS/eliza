@@ -1,10 +1,10 @@
 # @elizaos/plugin-calendly
 
-Calendly v2 integration for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff.
+Calendly v2 integration for elizaOS agents — event types, scheduled events, cancellations, booking-link handoff, and Calendly-owned assistant message projections.
 
 ## Purpose / role
 
-Adds Calendly scheduling capabilities to an Eliza agent: listing the connected user's event types, resolving booking links, and canceling scheduled events via the Calendly v2 REST API. Auto-enabled when any of `CALENDLY_ACCESS_TOKEN`, `CALENDLY_ACCOUNTS`, or `ELIZA_E2E_CALENDLY_ACCESS_TOKEN` is present. Registered as `"calendly"` in the plugin registry.
+Adds Calendly scheduling capabilities to an Eliza agent: listing the connected user's event types, resolving booking links, canceling scheduled events via the Calendly v2 REST API, and exposing a `CalendlyAdapter` for assistant surfaces such as LifeOps. Auto-enabled when any of `CALENDLY_ACCESS_TOKEN`, `CALENDLY_ACCOUNTS`, or `ELIZA_E2E_CALENDLY_ACCESS_TOKEN` is present. Registered as `"calendly"` in the plugin registry.
 
 ## Plugin surface
 
@@ -13,6 +13,7 @@ Adds Calendly scheduling capabilities to an Eliza agent: listing the connected u
 | Service | `CalendlyService` (`serviceType: "calendly"`) | Owns Calendly API access; wraps `calendly-client.ts`; supports N accounts via `accounts.ts`. |
 | Provider | `calendlyEventTypes` | Read-only; surfaces connected user's active event types (name, slug, duration, scheduling URL) as JSON context. Active in `connectors` and `productivity` routing contexts. Cache scope: per-turn. |
 | Action | `CALENDLY` (exported as `calendlyOpAction`) | Unified router for `subaction: "book"` (URL handoff or own-event booking link) and `subaction: "cancel"` (cancellation with `requireConfirmation` guard). Active in `calendar`, `automation`, `connectors` contexts. Role gate: `ADMIN`. |
+| Message adapter | `CalendlyAdapter` | Calendly-owned projection of scheduled events into the core message-triage shape for assistant plugins. |
 
 Note: the plugin registers `actions: []` in the `Plugin` object — `calendlyOpAction` is exported from the package for host apps to compose into their own plugin arrays or action lists. If you want `CALENDLY` in the default plugin surface, add `calendlyOpAction` to the `actions` array in `src/index.ts`.
 
@@ -29,6 +30,7 @@ src/
                                     listCalendlyScheduledEvents, getCalendlyAvailability,
                                     cancelCalendlyScheduledEvent, createCalendlySingleUseLink,
                                     readCalendlyCredentialsFromEnv
+  lifeops-message-adapter.ts       CalendlyAdapter for assistant/LifeOps message triage registration
   connector-account-provider.ts   ConnectorAccountManager bridge: list/create/patch/delete accounts,
                                   startOAuth, completeOAuth (PKCE not needed; code flow)
   connector-credential-refs.ts    Credential-ref persistence helper for OAuth tokens

@@ -72,8 +72,11 @@ export class TalkModeWeb extends WebPlugin {
 
     this.recognition.onresult = (event: SpeechRecognitionResultEvent) => {
       const result = event.results[event.results.length - 1];
-      const transcript = result[0].transcript;
+      const first = result?.[0];
+      if (!first || typeof first.transcript !== "string") return;
+      const transcript = first.transcript;
       const isFinal = result.isFinal;
+      if (!transcript.trim()) return;
 
       this.notifyListeners("transcript", { transcript, isFinal });
 
@@ -167,7 +170,11 @@ export class TalkModeWeb extends WebPlugin {
       utterance.lang = options.directive?.language || "en-US";
 
       // Apply directive settings if available
-      if (options.directive?.speed) {
+      if (
+        typeof options.directive?.speed === "number" &&
+        Number.isFinite(options.directive.speed) &&
+        options.directive.speed > 0
+      ) {
         utterance.rate = options.directive.speed;
       }
 
@@ -211,10 +218,16 @@ export class TalkModeWeb extends WebPlugin {
     // Check microphone permission
     let microphone: TalkModePermissionStatus["microphone"] = "prompt";
     try {
-      const result = await navigator.permissions.query({
+      const result = await navigator.permissions?.query?.({
         name: "microphone" as PermissionName,
       });
-      microphone = result.state as TalkModePermissionStatus["microphone"];
+      if (
+        result?.state === "granted" ||
+        result?.state === "denied" ||
+        result?.state === "prompt"
+      ) {
+        microphone = result.state;
+      }
     } catch {
       // Permissions API may not support microphone query
     }
@@ -237,7 +250,10 @@ export class TalkModeWeb extends WebPlugin {
   async requestPermissions(): Promise<TalkModePermissionStatus> {
     // Request microphone permission by attempting to get user media
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices?.getUserMedia?.({
+        audio: true,
+      });
+      if (!stream) throw new Error("mediaDevices.getUserMedia unavailable");
       stream.getTracks().forEach((track) => {
         track.stop();
       });

@@ -198,7 +198,7 @@ run_sby() {
     for result_dir in "$prefix"_*; do
         [ -f "$result_dir/status" ] || continue
         found_task=1
-        task_name="${result_dir#$prefix"_"}"
+        task_name="${result_dir#"$prefix""_"}"
         {
             printf '== %s ==\n' "$task_name"
             cat "$result_dir/status"

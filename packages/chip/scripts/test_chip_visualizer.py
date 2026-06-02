@@ -7,13 +7,18 @@ import importlib.util
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import build_chip_visualizer as _build_chip_visualizer_type
 
 SCRIPT = Path(__file__).with_name("build_chip_visualizer.py")
 SPEC = importlib.util.spec_from_file_location("build_chip_visualizer", SCRIPT)
 assert SPEC and SPEC.loader
-build_chip_visualizer = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = build_chip_visualizer
-SPEC.loader.exec_module(build_chip_visualizer)
+_mod = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = _mod
+SPEC.loader.exec_module(_mod)
+build_chip_visualizer: _build_chip_visualizer_type = _mod
 
 
 SAMPLE_DEF = """VERSION 5.8 ;

@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import fc from "fast-check";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +32,10 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
-import { interact, MessagesTuiView } from "./MessagesAppView";
+import { interact, MessagesAppView, MessagesTuiView } from "./MessagesAppView";
+
+const t = (key: string, opts?: { defaultValue?: string }) =>
+  opts?.defaultValue ?? key;
 
 const sampleMessages = [
   {
@@ -86,6 +90,14 @@ function mockBridge() {
     held: true,
     resultCode: 0,
   });
+}
+
+function overlayContext(exitToApps = vi.fn()) {
+  return {
+    exitToApps,
+    uiTheme: "light" as const,
+    t,
+  };
 }
 
 afterEach(() => {
@@ -176,5 +188,116 @@ describe("MessagesTuiView", () => {
       viewType: "tui",
     });
     expect(bridge.requestRole).toHaveBeenCalledWith({ role: "sms" });
+  });
+
+  it("clamps hostile terminal-list-threads limits before hitting the native bridge", async () => {
+    mockBridge();
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.oneof(
+          fc.double({ noNaN: true }),
+          fc.constant(Number.POSITIVE_INFINITY),
+          fc.constant(Number.NEGATIVE_INFINITY),
+          fc.constant(Number.NaN),
+        ),
+        async (limit) => {
+          bridge.listMessages.mockClear();
+          await interact("terminal-list-threads", { limit });
+
+          const requested = bridge.listMessages.mock.calls[0]?.[0] as
+            | { limit?: number }
+            | undefined;
+          expect(Number.isInteger(requested?.limit)).toBe(true);
+          expect(requested?.limit).toBeGreaterThanOrEqual(1);
+          expect(requested?.limit).toBeLessThanOrEqual(500);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it("rejects malformed terminal-send-sms payloads without calling native send", async () => {
+    mockBridge();
+
+    await expect(
+      interact("terminal-send-sms", { address: " ", body: "hello" }),
+    ).rejects.toThrow("address is required");
+    await expect(
+      interact("terminal-send-sms", { address: "+15550300", body: "\n\t" }),
+    ).rejects.toThrow("body is required");
+    await expect(
+      interact("terminal-send-sms", {
+        address: ["+15550300"] as unknown as string,
+        body: { text: "hello" } as unknown as string,
+      }),
+    ).rejects.toThrow("address is required");
+
+    expect(bridge.sendSms).not.toHaveBeenCalled();
+  });
+});
+
+describe("MessagesAppView", () => {
+  it("keeps overlay back navigation inside the composer before exiting apps", async () => {
+    mockBridge();
+    const exitToApps = vi.fn();
+
+    render(React.createElement(MessagesAppView, overlayContext(exitToApps)));
+
+    fireEvent.click(await screen.findByTestId("messages-thread-thread-a"));
+    expect(
+      (screen.getByTestId("messages-compose-address") as HTMLInputElement)
+        .value,
+    ).toBe("+15550100");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to threads" }));
+
+    expect(exitToApps).not.toHaveBeenCalled();
+    expect(screen.getByTestId("messages-thread-list").className).toContain(
+      "flex",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(exitToApps).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks blank composed SMS bodies and trims outbound addresses and text", async () => {
+    mockBridge();
+
+    render(React.createElement(MessagesAppView, overlayContext()));
+
+    await screen.findByText("+15550200");
+    fireEvent.click(screen.getByTestId("messages-new"));
+
+    fireEvent.change(screen.getByTestId("messages-compose-address"), {
+      target: { value: " +15550400 " },
+    });
+    fireEvent.change(screen.getByTestId("messages-compose-body"), {
+      target: { value: " \n\t " },
+    });
+
+    const sendButton = screen.getByTestId("messages-send");
+    expect((sendButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(sendButton);
+    expect(bridge.sendSms).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId("messages-compose-body"), {
+      target: { value: "  hello from overlay  " },
+    });
+    expect((sendButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(sendButton);
+
+    await waitFor(() =>
+      expect(bridge.sendSms).toHaveBeenCalledWith({
+        address: "+15550400",
+        body: "hello from overlay",
+      }),
+    );
+    expect(await screen.findByText("Message sent.")).toBeTruthy();
+    expect(
+      (screen.getByTestId("messages-compose-body") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
   });
 });

@@ -4,6 +4,7 @@ Command-line interface for AgentBench.
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -116,6 +117,21 @@ def create_parser() -> argparse.ArgumentParser:
         help="Allow empty task sets for setup checks",
     )
     run_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add ten edge-case variants for every loaded base task",
+    )
+    run_parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit",
+    )
+    run_parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate loaded scenarios and exit unless running benchmark normally",
+    )
+    run_parser.add_argument(
         "--no-docker",
         action="store_true",
         help="Disable Docker for OS environment",
@@ -180,6 +196,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         data_mode=AgentBenchDataMode(args.data_mode),
         allow_empty_tasks=args.allow_empty,
         dry_run=args.dry_run,
+        include_edge_scenarios=args.expand_scenarios,
     )
 
     # Configure environments
@@ -214,6 +231,33 @@ async def run_benchmark(args: argparse.Namespace) -> int:
 
         if env == AgentBenchEnvironment.OS:
             env_config.additional_settings["use_docker"] = not args.no_docker
+
+    if args.count_scenarios or args.validate_scenarios:
+        summary: list[dict[str, int | str]] = []
+        for env in AgentBenchEnvironment:
+            env_config = config.get_env_config(env)
+            if not env_config.enabled:
+                continue
+            counts = upstream_loader.count_tasks(
+                env,
+                split=config.split.value,
+                limit=env_config.max_tasks,
+                data_mode=config.data_mode,
+                include_edge_scenarios=config.include_edge_scenarios,
+            )
+            summary.append(counts)
+            if args.validate_scenarios:
+                tasks = upstream_loader.load_tasks(
+                    env,
+                    split=config.split.value,
+                    limit=env_config.max_tasks,
+                    data_mode=config.data_mode,
+                    include_edge_scenarios=config.include_edge_scenarios,
+                )
+                upstream_loader.validate_tasks(tasks)
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        if args.count_scenarios or args.validate_scenarios:
+            return 0
 
     # Create runtime
     runtime = None

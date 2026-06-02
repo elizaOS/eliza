@@ -138,6 +138,54 @@ describe("local inference provider", () => {
 		expect(transcribePcm).toHaveBeenCalledWith({ pcm, sampleRate: 16_000 });
 	});
 
+	it("delegates TTS through an arbiter-only speak capability", async () => {
+		const wav = new Uint8Array([82, 73, 70, 70]);
+		const requestTextToSpeech = vi.fn(async () => wav);
+		const arbiter = {
+			hasCapability: vi.fn((capability: string) => capability === "speak"),
+			requestTextToSpeech,
+		};
+		const runtime = runtimeWithService({ getMemoryArbiter: () => arbiter });
+		const handlers = createLocalInferenceModelHandlers();
+
+		await expect(
+			handlers[ModelType.TEXT_TO_SPEECH]?.(runtime as never, {
+				text: "say this",
+				modelKey: "voice-model",
+			} as never),
+		).resolves.toEqual(wav);
+
+		expect(requestTextToSpeech).toHaveBeenCalledWith({
+			modelKey: "voice-model",
+			payload: { text: "say this" },
+		});
+	});
+
+	it("delegates transcription through an arbiter-only transcribe capability", async () => {
+		const requestTranscribe = vi.fn(async () => ({ text: "hello transcript" }));
+		const arbiter = {
+			hasCapability: vi.fn((capability: string) => capability === "transcribe"),
+			requestTranscribe,
+		};
+		const runtime = runtimeWithService({ getMemoryArbiter: () => arbiter });
+		const handlers = createLocalInferenceModelHandlers();
+		const pcm = new Float32Array([0, 0.1, -0.1]);
+		const params = {
+			pcm,
+			sampleRateHz: 16_000,
+			modelKey: "asr-model",
+		};
+
+		await expect(
+			handlers[ModelType.TRANSCRIPTION]?.(runtime as never, params as never),
+		).resolves.toBe("hello transcript");
+
+		expect(requestTranscribe).toHaveBeenCalledWith({
+			modelKey: "asr-model",
+			payload: params,
+		});
+	});
+
 	it("delegates image description to the local backend", async () => {
 		const describeImage = vi.fn(async () => ({
 			title: "A chart",

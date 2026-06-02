@@ -10,6 +10,7 @@
 
 import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
 import * as React from "react";
+import { useAgentElement } from "../../agent-surface";
 import type {
   VoiceProfile,
   VoiceProfilesClient,
@@ -69,6 +70,244 @@ const COMMON_RELATIONSHIPS = [
   "colleague",
   "roommate",
 ];
+
+function VoiceProfileRow({
+  profile,
+  isEditingThis,
+  renameValue,
+  setRenameValue,
+  setRenameId,
+  dispatch,
+  t,
+}: {
+  profile: VoiceProfile;
+  isEditingThis: boolean;
+  renameValue: string;
+  setRenameValue: (value: string) => void;
+  setRenameId: (id: string | null) => void;
+  dispatch: (action: ProfileAction) => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const { ref: nameRef, agentProps: nameAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `voice-profile-name-${profile.id}`,
+      role: "button",
+      label: t("voiceprofile.renameAria", {
+        defaultValue: "Rename voice profile",
+      }),
+      group: "voice-profiles-list",
+      onActivate: () => {
+        setRenameId(profile.id);
+        setRenameValue(profile.displayName);
+      },
+    });
+  const { ref: renameInputRef, agentProps: renameInputAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `voice-profile-rename-input-${profile.id}`,
+      role: "text-input",
+      label: t("voiceprofile.renameAria", {
+        defaultValue: "Rename voice profile",
+      }),
+      group: "voice-profiles-list",
+      getValue: () => renameValue,
+      onFill: setRenameValue,
+    });
+  const { ref: relationshipRef, agentProps: relationshipAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: `voice-profile-relationship-${profile.id}`,
+      role: "select",
+      label: t("voiceprofile.setRelationship", {
+        defaultValue: "Set relationship",
+      }),
+      group: "voice-profiles-list",
+      getValue: () => profile.relationshipLabel ?? "",
+      onFill: (value) =>
+        dispatch({
+          type: "set-relationship",
+          id: profile.id,
+          relationshipLabel: value || null,
+        }),
+      options: ["", ...COMMON_RELATIONSHIPS],
+    });
+  const { ref: renameBtnRef, agentProps: renameBtnAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `voice-profile-rename-${profile.id}`,
+      role: "button",
+      label: t("voiceprofile.renameAria", {
+        defaultValue: "Rename voice profile",
+      }),
+      group: "voice-profiles-list",
+      onActivate: () => {
+        setRenameId(profile.id);
+        setRenameValue(profile.displayName);
+      },
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `voice-profile-delete-${profile.id}`,
+      role: "button",
+      label: t("voiceprofile.deleteAria", {
+        defaultValue: "Delete voice profile",
+      }),
+      group: "voice-profiles-list",
+      onActivate: () => dispatch({ type: "delete", id: profile.id }),
+    });
+
+  return (
+    <li
+      data-testid={`voice-profile-row-${profile.id}`}
+      data-is-owner={profile.isOwner ? "true" : "false"}
+      data-cohort={profile.cohort}
+      className="flex items-center gap-3 px-4 py-3"
+    >
+      {profile.isOwner ? (
+        <Crown
+          className="h-4 w-4 shrink-0 text-accent"
+          aria-label={t("voiceprofile.owner", { defaultValue: "Owner" })}
+          data-testid={`voice-profile-crown-${profile.id}`}
+        />
+      ) : (
+        <span className="inline-block h-4 w-4 shrink-0" aria-hidden="true" />
+      )}
+
+      <div className="min-w-0 flex-1">
+        {isEditingThis ? (
+          <input
+            ref={renameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={() => {
+              setRenameId(null);
+              if (renameValue.trim() && renameValue !== profile.displayName) {
+                dispatch({
+                  type: "rename",
+                  id: profile.id,
+                  displayName: renameValue.trim(),
+                });
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                setRenameId(null);
+                setRenameValue("");
+              }
+            }}
+            // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
+            autoFocus
+            className="w-full rounded-sm border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
+            data-testid={`voice-profile-rename-input-${profile.id}`}
+            aria-label={t("voiceprofile.renameAria", {
+              defaultValue: "Rename voice profile",
+            })}
+            {...renameInputAgentProps}
+          />
+        ) : (
+          <button
+            ref={nameRef}
+            type="button"
+            onClick={() => {
+              setRenameId(profile.id);
+              setRenameValue(profile.displayName);
+            }}
+            className="text-left text-sm font-medium hover:underline"
+            data-testid={`voice-profile-name-${profile.id}`}
+            {...nameAgentProps}
+          >
+            {profile.displayName}
+          </button>
+        )}
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
+          <span data-testid={`voice-profile-samples-${profile.id}`}>
+            {profile.embeddingCount === 1
+              ? t("voiceprofile.sampleOne", {
+                  count: profile.embeddingCount,
+                  defaultValue: "{{count}} sample",
+                })
+              : t("voiceprofile.sampleOther", {
+                  count: profile.embeddingCount,
+                  defaultValue: "{{count}} samples",
+                })}
+          </span>
+          {profile.relationshipLabel ? (
+            <span
+              className="rounded-sm bg-bg/60 px-1 py-0.5"
+              data-testid={`voice-profile-relationship-${profile.id}`}
+            >
+              {profile.relationshipLabel}
+            </span>
+          ) : null}
+          <span className="opacity-60">{profile.cohort}</span>
+        </div>
+      </div>
+
+      {!profile.isOwner ? (
+        <div className="flex items-center gap-1">
+          <select
+            ref={relationshipRef}
+            value={profile.relationshipLabel ?? ""}
+            onChange={(e) =>
+              dispatch({
+                type: "set-relationship",
+                id: profile.id,
+                relationshipLabel: e.target.value || null,
+              })
+            }
+            className="rounded-sm border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
+            data-testid={`voice-profile-relationship-select-${profile.id}`}
+            aria-label={t("voiceprofile.setRelationship", {
+              defaultValue: "Set relationship",
+            })}
+            {...relationshipAgentProps}
+          >
+            <option value="">
+              {t("voiceprofile.noLabel", { defaultValue: "(no label)" })}
+            </option>
+            {COMMON_RELATIONSHIPS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <Button
+            ref={renameBtnRef}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setRenameId(profile.id);
+              setRenameValue(profile.displayName);
+            }}
+            data-testid={`voice-profile-rename-${profile.id}`}
+            aria-label={t("voiceprofile.renameAria", {
+              defaultValue: "Rename voice profile",
+            })}
+            {...renameBtnAgentProps}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            ref={deleteRef}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => dispatch({ type: "delete", id: profile.id })}
+            data-testid={`voice-profile-delete-${profile.id}`}
+            aria-label={t("voiceprofile.deleteAria", {
+              defaultValue: "Delete voice profile",
+            })}
+            {...deleteAgentProps}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-danger" />
+          </Button>
+        </div>
+      ) : null}
+    </li>
+  );
+}
 
 export function VoiceProfileSection({
   profilesClient,
@@ -211,6 +450,27 @@ export function VoiceProfileSection({
   const ownerCount = sorted.filter((p) => p.isOwner).length;
   const otherCount = sorted.length - ownerCount;
 
+  const { ref: exportRef, agentProps: exportAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-profile-export",
+      role: "button",
+      label: t("voiceprofile.exportAria", {
+        defaultValue: "Export voice profile metadata",
+      }),
+      group: "voice-profiles",
+      onActivate: () => void onExport(),
+    });
+  const { ref: resetRef, agentProps: resetAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-profile-delete-all",
+      role: "button",
+      label: t("voiceprofile.resetAria", {
+        defaultValue: "Delete all non-owner voice profiles",
+      }),
+      group: "voice-profiles",
+      onActivate: () => void onDeleteAll(),
+    });
+
   return (
     <div
       data-testid="voice-profile-section"
@@ -248,6 +508,7 @@ export function VoiceProfileSection({
         </div>
         <div className="flex items-center gap-2">
           <Button
+            ref={exportRef}
             variant="ghost"
             size="sm"
             onClick={() => void onExport()}
@@ -255,11 +516,13 @@ export function VoiceProfileSection({
             aria-label={t("voiceprofile.exportAria", {
               defaultValue: "Export voice profile metadata",
             })}
+            {...exportAgentProps}
           >
             <Download className="mr-1 h-3.5 w-3.5" />{" "}
             {t("voiceprofile.export", { defaultValue: "Export" })}
           </Button>
           <Button
+            ref={resetRef}
             variant="ghost"
             size="sm"
             onClick={() => void onDeleteAll()}
@@ -267,6 +530,7 @@ export function VoiceProfileSection({
             aria-label={t("voiceprofile.resetAria", {
               defaultValue: "Delete all non-owner voice profiles",
             })}
+            {...resetAgentProps}
           >
             <Trash2 className="mr-1 h-3.5 w-3.5" />{" "}
             {t("voiceprofile.reset", { defaultValue: "Reset" })}
@@ -306,166 +570,18 @@ export function VoiceProfileSection({
           className="divide-y divide-border/30"
           data-testid="voice-profile-list"
         >
-          {sorted.map((profile) => {
-            const isEditingThis = renameId === profile.id;
-            return (
-              <li
-                key={profile.id}
-                data-testid={`voice-profile-row-${profile.id}`}
-                data-is-owner={profile.isOwner ? "true" : "false"}
-                data-cohort={profile.cohort}
-                className="flex items-center gap-3 px-4 py-3"
-              >
-                {profile.isOwner ? (
-                  <Crown
-                    className="h-4 w-4 shrink-0 text-accent"
-                    aria-label={t("voiceprofile.owner", {
-                      defaultValue: "Owner",
-                    })}
-                    data-testid={`voice-profile-crown-${profile.id}`}
-                  />
-                ) : (
-                  <span
-                    className="inline-block h-4 w-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                )}
-
-                <div className="min-w-0 flex-1">
-                  {isEditingThis ? (
-                    <input
-                      type="text"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => {
-                        setRenameId(null);
-                        if (
-                          renameValue.trim() &&
-                          renameValue !== profile.displayName
-                        ) {
-                          void dispatch({
-                            type: "rename",
-                            id: profile.id,
-                            displayName: renameValue.trim(),
-                          });
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.currentTarget.blur();
-                        }
-                        if (e.key === "Escape") {
-                          setRenameId(null);
-                          setRenameValue("");
-                        }
-                      }}
-                      // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
-                      autoFocus
-                      className="w-full rounded-sm border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
-                      data-testid={`voice-profile-rename-input-${profile.id}`}
-                      aria-label={t("voiceprofile.renameAria", {
-                        defaultValue: "Rename voice profile",
-                      })}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRenameId(profile.id);
-                        setRenameValue(profile.displayName);
-                      }}
-                      className="text-left text-sm font-medium hover:underline"
-                      data-testid={`voice-profile-name-${profile.id}`}
-                    >
-                      {profile.displayName}
-                    </button>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
-                    <span data-testid={`voice-profile-samples-${profile.id}`}>
-                      {profile.embeddingCount === 1
-                        ? t("voiceprofile.sampleOne", {
-                            count: profile.embeddingCount,
-                            defaultValue: "{{count}} sample",
-                          })
-                        : t("voiceprofile.sampleOther", {
-                            count: profile.embeddingCount,
-                            defaultValue: "{{count}} samples",
-                          })}
-                    </span>
-                    {profile.relationshipLabel ? (
-                      <span
-                        className="rounded-sm bg-bg/60 px-1 py-0.5"
-                        data-testid={`voice-profile-relationship-${profile.id}`}
-                      >
-                        {profile.relationshipLabel}
-                      </span>
-                    ) : null}
-                    <span className="opacity-60">{profile.cohort}</span>
-                  </div>
-                </div>
-
-                {!profile.isOwner ? (
-                  <div className="flex items-center gap-1">
-                    <select
-                      value={profile.relationshipLabel ?? ""}
-                      onChange={(e) =>
-                        void dispatch({
-                          type: "set-relationship",
-                          id: profile.id,
-                          relationshipLabel: e.target.value || null,
-                        })
-                      }
-                      className="rounded-sm border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
-                      data-testid={`voice-profile-relationship-select-${profile.id}`}
-                      aria-label={t("voiceprofile.setRelationship", {
-                        defaultValue: "Set relationship",
-                      })}
-                    >
-                      <option value="">
-                        {t("voiceprofile.noLabel", {
-                          defaultValue: "(no label)",
-                        })}
-                      </option>
-                      {COMMON_RELATIONSHIPS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setRenameId(profile.id);
-                        setRenameValue(profile.displayName);
-                      }}
-                      data-testid={`voice-profile-rename-${profile.id}`}
-                      aria-label={t("voiceprofile.renameAria", {
-                        defaultValue: "Rename voice profile",
-                      })}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        void dispatch({ type: "delete", id: profile.id })
-                      }
-                      data-testid={`voice-profile-delete-${profile.id}`}
-                      aria-label={t("voiceprofile.deleteAria", {
-                        defaultValue: "Delete voice profile",
-                      })}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-danger" />
-                    </Button>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
+          {sorted.map((profile) => (
+            <VoiceProfileRow
+              key={profile.id}
+              profile={profile}
+              isEditingThis={renameId === profile.id}
+              renameValue={renameValue}
+              setRenameValue={setRenameValue}
+              setRenameId={setRenameId}
+              dispatch={(action) => void dispatch(action)}
+              t={t}
+            />
+          ))}
         </ul>
       )}
     </div>

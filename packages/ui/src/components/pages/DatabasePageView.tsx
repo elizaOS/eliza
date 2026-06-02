@@ -1,11 +1,18 @@
 import type { ReactNode } from "react";
+import { lazy, Suspense } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp } from "../../state";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { DatabaseView } from "./DatabaseView";
 import { MediaGalleryView } from "./MediaGalleryView";
-import { VectorBrowserView } from "./VectorBrowserView";
+
+// VectorBrowserView is a heavy three.js (WebGL) surface and pulls the injected
+// THREE runtime. Load it dynamically so it (and three) only ship when the user
+// actually opens the vectors tab, never with the always-loaded Database page.
+const VectorBrowserView = lazy(async () => ({
+  default: (await import("./VectorBrowserView")).VectorBrowserView,
+}));
 
 // The SegmentedControl is a composite that renders its own internal buttons and
 // does not forward refs to them, so each tab registers with the agent surface
@@ -91,7 +98,15 @@ export function DatabasePageView({
   if (databaseSubTab === "vectors") {
     return (
       <ShellViewAgentSurface viewId="database">
-        <VectorBrowserView leftNav={leftNav} contentHeader={contentHeader} />
+        <Suspense
+          fallback={
+            <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+              {t("common.loading", { defaultValue: "Loading…" })}
+            </div>
+          }
+        >
+          <VectorBrowserView leftNav={leftNav} contentHeader={contentHeader} />
+        </Suspense>
       </ShellViewAgentSurface>
     );
   }

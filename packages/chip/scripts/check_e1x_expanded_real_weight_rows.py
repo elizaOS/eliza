@@ -20,7 +20,7 @@ MASK64 = (1 << 64) - 1
 EXPECTED_PROOF_CHECKSUM = 32_681_797
 EXPECTED_WORKPLAN_SHA256 = "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,
@@ -229,7 +229,7 @@ def main() -> int:
         "sampled_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-expanded-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",

@@ -86,7 +86,7 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 | `OPENROUTER_IMAGE_MODEL` | no | `x-ai/grok-2-vision-1212` | Override for IMAGE_DESCRIPTION. |
 | `OPENROUTER_IMAGE_GENERATION_MODEL` | no | `google/gemini-2.5-flash-image-preview` | Override for IMAGE generation. |
 | `OPENROUTER_EMBEDDING_MODEL` | no | `openai/text-embedding-3-small` | Override for TEXT_EMBEDDING. |
-| `OPENROUTER_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector size. Valid: 256, 384, 512, 768, 1024, 1536, 2048, 3072. |
+| `OPENROUTER_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector size. Valid: 384, 512, 768, 1024, 1536, 2048, 3072. |
 | `OPENROUTER_AUTO_CLEANUP_IMAGES` | no | `false` | Flag read by `shouldAutoCleanupImages()` in `utils/config.ts`. |
 | `SMALL_MODEL`, `LARGE_MODEL`, etc. | no | — | Generic fallbacks when OPENROUTER_* variants are unset. |
 

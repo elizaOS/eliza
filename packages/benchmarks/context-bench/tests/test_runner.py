@@ -44,6 +44,24 @@ class TestContextBenchRunner:
         assert runner.niah_suite.llm_query_fn is not None
         assert runner.multihop_suite.llm_query_fn is not None
 
+    def test_edge_expansion_counts_generated_tasks(self) -> None:
+        config = ContextBenchConfig(
+            context_lengths=[512],
+            positions=[NeedlePosition.START, NeedlePosition.END],
+            tasks_per_position=1,
+            run_niah_basic=True,
+            run_niah_semantic=True,
+            run_multi_hop=True,
+            multi_hop_depths=[2],
+            include_edge_scenarios=True,
+        )
+        runner = ContextBenchRunner(config=config, seed=42)
+
+        counts = runner.count_scenarios()
+
+        assert counts == {"base": 5, "edge": 50, "total": 55, "edge_multiplier": 10}
+        assert runner.validate_scenarios() == []
+
 
 @pytest.mark.asyncio
 class TestContextBenchRunnerAsync:

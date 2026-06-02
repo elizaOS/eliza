@@ -18,6 +18,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_formal.json"
 OSS_CAD_BIN = ROOT / "external/oss-cad-suite/bin"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_system_formal_claim_allowed": False,
+    "liveness_claim_allowed": False,
+}
 
 # (task id, .sby path relative to ROOT, sby task name, bounded?).
 TASKS: tuple[tuple[str, str, str, bool], ...] = (
@@ -73,6 +83,7 @@ def main() -> int:
             "as_of": datetime.now(UTC).isoformat(),
             "generated_utc": utc_now(),
             "subsystem": "e1x",
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
             "claim_boundary": (
                 "E1X mesh-router and repair-store formal safety properties only; "
                 "not full system formal, not silicon evidence."
@@ -111,6 +122,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X mesh-router crossbar safety (no output contention, disabled-port "
             "isolation, no spurious drop under repair-disable, repaired-drop gating) "

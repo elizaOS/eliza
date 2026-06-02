@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { forwardRef } from "react";
 
 import { cn } from "../../lib/utils";
 import { DialogContent, DialogFooter, DialogHeader } from "./dialog";
@@ -100,17 +101,20 @@ export function AdminMonoMeta({ className, ...props }: AdminMonoMetaProps) {
 
 export interface AdminInputProps extends InputProps {}
 
-export function AdminInput({ className, ...props }: AdminInputProps) {
-  return (
-    <Input
-      className={cn(
-        "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+export const AdminInput = forwardRef<HTMLInputElement, AdminInputProps>(
+  function AdminInput({ className, ...props }, ref) {
+    return (
+      <Input
+        ref={ref}
+        className={cn(
+          "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
+);
 
 export interface AdminCodeEditorProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}

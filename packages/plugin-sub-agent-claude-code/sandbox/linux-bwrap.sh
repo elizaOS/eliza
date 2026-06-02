@@ -32,6 +32,13 @@ cache_root="${HOME}/.cache/eliza-sub-agent/${session}"
 tmp_root="/tmp/eliza-sub-agent-${session}"
 mkdir -p "${cache_root}" "${tmp_root}"
 
+bind_args=()
+for candidate in /lib /lib64; do
+  if [[ -d "${candidate}" ]]; then
+    bind_args+=(--ro-bind "${candidate}" "${candidate}")
+  fi
+done
+
 # Build a fresh, scoped HOME so the sub-agent cannot reach the spawning
 # user's dotfiles. The CLI's needed config bits should be staged into
 # ${workspace} before invocation.
@@ -44,7 +51,7 @@ exec bwrap \
   --ro-bind /usr /usr \
   --ro-bind /etc/resolv.conf /etc/resolv.conf \
   --ro-bind /etc/ssl /etc/ssl \
-  --ro-bind /lib /lib 2>/dev/null || true \
+  "${bind_args[@]}" \
   --bind "${workspace}" "${workspace}" \
   --bind "${tmp_root}" "${tmp_root}" \
   --bind "${cache_root}" "${cache_root}" \

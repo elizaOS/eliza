@@ -5,6 +5,14 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import TypedDict
+
+
+class _CaseEntry(TypedDict):
+    defect: Path
+    repair: Path
+    expected_repair_sha256: str
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_linkage.json"
@@ -13,7 +21,7 @@ PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 WINDOW_SHARD = ROOT / "build/reports/e1x_window_shard_linkage.json"
 YIELD_REPAIR = ROOT / "build/reports/e1x_yield_repair_margin.json"
 
-CASES = {
+CASES: dict[str, _CaseEntry] = {
     "normal": {
         "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",
         "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
@@ -78,7 +86,7 @@ def coord_key(coord: dict) -> tuple[int, int]:
 
 
 def validate_case(
-    case: str, placement: dict, touched_cores: list[int], paths: dict
+    case: str, placement: dict, touched_cores: list[int], paths: _CaseEntry
 ) -> tuple[list[str], dict]:
     defect = load_json(paths["defect"])
     repair = load_json(paths["repair"])
@@ -242,7 +250,7 @@ def main() -> int:
         ),
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-window-repair-linkage",
         "status": "PASS" if not failures else "BLOCKED",

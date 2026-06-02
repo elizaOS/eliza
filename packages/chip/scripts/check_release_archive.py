@@ -9,6 +9,8 @@ import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from provenance_sanitize import sanitize_host_local_paths
+
 REQUIRED_SUFFIXES = [
     "SHA256SUMS",
     "reports/tool_versions.txt",
@@ -182,6 +184,8 @@ REQUIRED_TEXT = {
         "hardware_boot_claim_allowed=false",
         "silicon_evidence_claim_allowed=false",
         "linux_boot_claim_allowed=false",
+        "production_readiness_claim_allowed=false",
+        "false_claim_flags=claim_allowed:false,phone_claim_allowed:false,release_claim_allowed:false,hardware_boot_claim_allowed:false,silicon_evidence_claim_allowed:false,linux_boot_claim_allowed:false,production_readiness_claim_allowed:false",
         "qemu_command=qemu-system-riscv64 -machine virt",
         "banner=eliza e1 qemu",
     ],
@@ -193,6 +197,9 @@ REQUIRED_TEXT = {
         '"hardware_boot_claim_allowed": false',
         '"silicon_evidence_claim_allowed": false',
         '"linux_boot_claim_allowed": false',
+        '"production_readiness_claim_allowed": false',
+        '"false_claim_flags":',
+        '"claim_allowed": false',
         '"status":',
     ],
 }
@@ -207,7 +214,7 @@ def rel(path: Path) -> str:
     try:
         return path.resolve().relative_to(ROOT).as_posix()
     except ValueError:
-        return str(path)
+        return sanitize_host_local_paths(str(path))
 
 
 def finding_payload(status: str, archive: Path, index: int, finding: str) -> dict:
@@ -233,7 +240,7 @@ def finding_payload(status: str, archive: Path, index: int, finding: str) -> dic
         },
     }
     if finding.startswith("release archive missing: "):
-        payload["missing_artifact"] = str(archive)
+        payload["missing_artifact"] = rel(archive)
         payload["next_command"] = "scripts/archive_release.sh"
     elif finding.startswith("missing archive member ending with "):
         suffix = finding.removeprefix("missing archive member ending with ")
@@ -271,6 +278,17 @@ def write_report(status: str, archive: Path, findings: list[str]) -> None:
         "release_claim_allowed": False,
         "hardware_boot_claim_allowed": False,
         "silicon_evidence_claim_allowed": False,
+        "production_readiness_claim_allowed": False,
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
+            "hardware_boot_claim_allowed": False,
+            "silicon_evidence_claim_allowed": False,
+            "linux_boot_claim_allowed": False,
+            "production_readiness_claim_allowed": False,
+            "simulator_pass_is_release_evidence": False,
+        },
         "simulator_pass_is_release_evidence": False,
         "archive": rel(archive),
         "summary": {

@@ -20,6 +20,7 @@ Examples:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -32,6 +33,7 @@ from elizaos_terminal_bench import (
     TerminalBenchRunner,
     TerminalBenchConfig,
 )
+from elizaos_terminal_bench.dataset import count_tasks, validate_tasks
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -49,6 +51,9 @@ async def run_benchmark(
     filter_tasks: str | None = None,
     model: str = "gpt-4",
     verbose: bool = True,
+    expand_scenarios: bool = False,
+    count_scenarios_flag: bool = False,
+    validate_scenarios_flag: bool = False,
 ) -> None:
     """Run the Terminal-Bench benchmark."""
     setup_logging(verbose)
@@ -82,10 +87,35 @@ async def run_benchmark(
         verbose=verbose,
         compare_leaderboard=True,
         data_path=data_path,
+        include_edge_scenarios=bool(expand_scenarios),
     )
 
     runner = TerminalBenchRunner(config=config)
     await runner.setup(use_sample_tasks=sample)
+
+    if count_scenarios_flag or validate_scenarios_flag:
+        assert runner.dataset is not None
+        tasks = list(runner.dataset.tasks)
+        if config.task_ids:
+            id_set = set(config.task_ids)
+            tasks = [task for task in tasks if task.task_id in id_set]
+        if config.max_tasks:
+            tasks = tasks[: config.max_tasks]
+        errors = validate_tasks(
+            tasks,
+            include_edge_scenarios=config.include_edge_scenarios,
+        )
+        if errors:
+            print(json.dumps({"valid": False, "errors": errors}, sort_keys=True))
+            raise SystemExit(1)
+        if count_scenarios_flag:
+            print(json.dumps(
+                count_tasks(tasks, include_edge_scenarios=config.include_edge_scenarios),
+                sort_keys=True,
+            ))
+        else:
+            print("Terminal-Bench scenario validation passed")
+        return
 
     print(f"\n{'='*60}")
     print("TERMINAL-BENCH BENCHMARK")
@@ -162,6 +192,21 @@ def main() -> None:
         action="store_true",
         help="Disable verbose output",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected task with 10 additional edge-condition variants",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected base/expanded task definitions and exit",
+    )
 
     args = parser.parse_args()
 
@@ -174,6 +219,9 @@ def main() -> None:
             filter_tasks=args.filter,
             model=args.model,
             verbose=verbose,
+            expand_scenarios=args.expand_scenarios,
+            count_scenarios_flag=args.count_scenarios,
+            validate_scenarios_flag=args.validate_scenarios,
         ))
     except KeyboardInterrupt:
         print("\nBenchmark interrupted")

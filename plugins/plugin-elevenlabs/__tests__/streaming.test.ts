@@ -14,6 +14,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const streamMock = vi.fn();
+const convertMock = vi.fn();
 
 // Mock the SDK before the plugin module is loaded.
 vi.mock("@elevenlabs/elevenlabs-js", () => {
@@ -23,7 +24,7 @@ vi.mock("@elevenlabs/elevenlabs-js", () => {
         stream: streamMock,
       };
       speechToText = {
-        convert: vi.fn(),
+        convert: convertMock,
       };
     },
   };
@@ -32,7 +33,10 @@ vi.mock("@elevenlabs/elevenlabs-js", () => {
 vi.mock("@elevenlabs/elevenlabs-js/api", () => {
   return {
     SpeechToTextConvertRequestModelId: { ScribeV1: "scribe_v1" },
-    SpeechToTextConvertRequestTimestampsGranularity: { Word: "word" },
+    SpeechToTextConvertRequestTimestampsGranularity: {
+      None: "none",
+      Word: "word",
+    },
     TextToSpeechStreamRequestOutputFormat: {
       Mp3_44100_128: "mp3_44100_128",
       Pcm16000: "pcm_16000",
@@ -58,6 +62,27 @@ function createFakeRuntime(settings: Record<string, string> = {}): FakeRuntime {
     agentId: "test-agent",
     getSetting: (key: string) => merged[key],
     character: { settings: {} },
+  };
+}
+
+function setGlobalValue(key: string, value: unknown): () => void {
+  const hadValue = Object.hasOwn(globalThis, key);
+  const previous = (globalThis as Record<string, unknown>)[key];
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+  return () => {
+    if (hadValue) {
+      Object.defineProperty(globalThis, key, {
+        configurable: true,
+        writable: true,
+        value: previous,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>)[key];
+    }
   };
 }
 
@@ -190,5 +215,250 @@ describe("plugin-elevenlabs TTS streaming", () => {
         "fail me",
       ),
     ).rejects.toThrow(/upstream 503/);
+  });
+
+  it.each([
+    "",
+    " \n\t ",
+    null,
+    { text: "" },
+    { text: "hello", voiceId: " " },
+    { text: "hello", model: "" },
+    { text: "hello", format: "\t" },
+  ])("rejects hostile TTS input before streaming %#", async (input) => {
+    streamMock.mockReset();
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      ttsHandler?.(
+        runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+        input as never,
+      ),
+    ).rejects.toThrow(/ElevenLabs TTS .*required|must be a non-empty string/);
+    expect(streamMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("plugin-elevenlabs STT transcription", () => {
+  it("sends Buffer input with configured STT options", async () => {
+    convertMock.mockReset();
+    convertMock.mockResolvedValueOnce({ text: "transcribed buffer" });
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_STT_MODEL_ID: "scribe_v1",
+      ELEVENLABS_STT_LANGUAGE_CODE: "en",
+      ELEVENLABS_STT_TIMESTAMPS_GRANULARITY: "word",
+      ELEVENLABS_STT_DIARIZE: "true",
+      ELEVENLABS_STT_NUM_SPEAKERS: "2",
+      ELEVENLABS_STT_TAG_AUDIO_EVENTS: "true",
+    });
+    const audio = Buffer.from([1, 2, 3, 4]);
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        audio,
+      ),
+    ).resolves.toBe("transcribed buffer");
+
+    expect(convertMock).toHaveBeenCalledWith({
+      modelId: "scribe_v1",
+      file: audio,
+      languageCode: "en",
+      timestampsGranularity: "word",
+      diarize: true,
+      numSpeakers: 2,
+      tagAudioEvents: true,
+    });
+  });
+
+  it("fetches audioUrl input and sends explicit none timestamp granularity", async () => {
+    convertMock.mockReset();
+    convertMock.mockResolvedValueOnce({
+      transcripts: [{ text: "left" }, { text: "right" }],
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([9, 8, 7]).buffer,
+    }));
+    const restoreFetch = setGlobalValue("fetch", fetchMock);
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_STT_TIMESTAMPS_GRANULARITY: "none",
+      ELEVENLABS_STT_DIARIZE: "false",
+      ELEVENLABS_STT_TAG_AUDIO_EVENTS: "false",
+    });
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        { audioUrl: "https://audio.example/file.wav" },
+      ),
+    ).resolves.toBe("left\nright");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://audio.example/file.wav");
+    expect(convertMock).toHaveBeenCalledWith({
+      modelId: "scribe_v1",
+      file: Buffer.from([9, 8, 7]),
+      timestampsGranularity: "none",
+    });
+
+    restoreFetch();
+  });
+
+  it("throws when URL audio fetch fails before calling the SDK", async () => {
+    convertMock.mockReset();
+    const restoreFetch = setGlobalValue(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        arrayBuffer: async () => new ArrayBuffer(0),
+      })),
+    );
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        "https://audio.example/missing.wav",
+      ),
+    ).rejects.toThrow(
+      "Failed to fetch audio from URL: https://audio.example/missing.wav",
+    );
+    expect(convertMock).not.toHaveBeenCalled();
+
+    restoreFetch();
+  });
+
+  it.each([
+    "",
+    "not a url",
+    "file:///etc/passwd",
+    "data:audio/wav;base64,AAAA",
+    { audioUrl: "javascript:alert(1)" },
+    { audioUrl: " " },
+    null,
+    {},
+  ])("rejects hostile transcription URL input before fetch %#", async (input) => {
+    convertMock.mockReset();
+    const fetchMock = vi.fn();
+    const restoreFetch = setGlobalValue("fetch", fetchMock);
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        input as never,
+      ),
+    ).rejects.toThrow(/audioUrl|Invalid input type/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(convertMock).not.toHaveBeenCalled();
+
+    restoreFetch();
+  });
+
+  it("rejects unsupported STT enum values", async () => {
+    convertMock.mockReset();
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_STT_MODEL_ID: "bad_model",
+    });
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        Buffer.from([1]),
+      ),
+    ).rejects.toThrow("Unsupported ElevenLabs STT model: bad_model");
+    expect(convertMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid numSpeakers before calling the SDK", async () => {
+    convertMock.mockReset();
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_STT_DIARIZE: "true",
+      ELEVENLABS_STT_NUM_SPEAKERS: "abc",
+    });
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        Buffer.from([1]),
+      ),
+    ).rejects.toThrow(
+      "ELEVENLABS_STT_NUM_SPEAKERS must be an integer between 1 and 32",
+    );
+    expect(convertMock).not.toHaveBeenCalled();
+  });
+
+  it("supports browser object URL input without a global Buffer", async () => {
+    convertMock.mockReset();
+    convertMock.mockResolvedValueOnce({ text: "browser transcript" });
+    const blob = new Blob([new Uint8Array([5, 4, 3])], {
+      type: "audio/wav",
+    });
+    const restoreDocument = setGlobalValue("document", {});
+    const restoreBuffer = setGlobalValue("Buffer", undefined);
+    const restoreFetch = setGlobalValue(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        blob: async () => blob,
+        arrayBuffer: async () => new Uint8Array([5, 4, 3]).buffer,
+      })),
+    );
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        { audioUrl: "https://audio.example/browser.wav" },
+      ),
+    ).resolves.toBe("browser transcript");
+
+    expect(convertMock).toHaveBeenCalledWith({
+      modelId: "scribe_v1",
+      file: blob,
+      timestampsGranularity: "word",
+    });
+
+    restoreFetch();
+    restoreBuffer();
+    restoreDocument();
   });
 });

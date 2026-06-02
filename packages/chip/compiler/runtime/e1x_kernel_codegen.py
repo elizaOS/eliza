@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from hashlib import blake2s, sha256
 from math import ceil
+from typing import cast
 
 from compiler.runtime.e1x_wafer_model import E1XConfig, artifact_sha256, json_dumps_canonical
 
@@ -483,9 +484,9 @@ def build_fabric_color_pressure(schedule: dict, config: E1XConfig) -> dict:
         {**record, "sampled_layers": color_layer_samples[color]}
         for color, record in by_color.items()
     ]
-    total_wavelets = sum(int(record["total_wavelets"]) for record in color_records)
-    used = [record for record in color_records if int(record["layer_count"]) > 0]
-    peak = max((int(record["total_wavelets"]) for record in color_records), default=0)
+    total_wavelets = sum(cast(int, record["total_wavelets"]) for record in color_records)
+    used = [record for record in color_records if cast(int, record["layer_count"]) > 0]
+    peak = max((cast(int, record["total_wavelets"]) for record in color_records), default=0)
     pressure = {
         "schema": COLOR_PRESSURE_SCHEMA,
         "claim_boundary": (
@@ -503,10 +504,10 @@ def build_fabric_color_pressure(schedule: dict, config: E1XConfig) -> dict:
         "total_k_wave_count": int(schedule["total_k_wave_count"]),
         "total_core_wave_count": int(schedule["total_core_wave_count"]),
         "total_activation_wavelets": sum(
-            int(record["activation_wavelets"]) for record in color_records
+            cast(int, record["activation_wavelets"]) for record in color_records
         ),
         "total_reduction_wavelets": sum(
-            int(record["reduction_wavelets"]) for record in color_records
+            cast(int, record["reduction_wavelets"]) for record in color_records
         ),
         "total_fabric_wavelets": total_wavelets,
         "peak_color_wavelets": peak,

@@ -7,7 +7,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from eliza_loca.run_cerebras import build_command, build_env, main, parse_args
+from eliza_loca.run_cerebras import (
+    EDGE_VARIANT_COUNT,
+    build_command,
+    build_env,
+    count_config_scenarios,
+    expand_config,
+    main,
+    parse_args,
+    validate_config_scenarios,
+)
 from eliza_loca.harness_proxy import _chat_completion_payload
 from eliza_loca.trajectory_audit import audit_output_dir
 from eliza_loca.long_context import (
@@ -44,6 +53,9 @@ def _args(**overrides):
         "context_awareness": True,
         "thinking_reset": True,
         "reasoning_effort": "low",
+        "expand_scenarios": False,
+        "count_scenarios": False,
+        "validate_scenarios": False,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -119,6 +131,82 @@ def test_cerebras_wrapper_dry_run_does_not_require_api_key(monkeypatch, capsys) 
     payload = json.loads(capsys.readouterr().out)
     assert payload["command"][2:4] == ["loca.cli.main", "run"]
     assert "--output-dir" in payload["command"]
+
+
+def test_loca_config_expansion_adds_ten_seeded_variants_per_config() -> None:
+    config = {
+        "configurations": [
+            {
+                "name": "Demo",
+                "env_class": "gem.envs.demo.DemoEnv",
+                "env_params": {"seed": 7, "num_courses": 2},
+            }
+        ]
+    }
+
+    expanded = expand_config(config)
+    rows = expanded["configurations"]
+
+    assert len(rows) == 1 + EDGE_VARIANT_COUNT
+    assert rows[0]["env_params"]["seed"] == 7
+    assert rows[1]["name"] == "Demo__base_0000__edge_01"
+    assert rows[1]["env_params"]["seed"] == 10007
+    assert rows[-1]["env_params"]["seed"] == 10016
+    assert expanded["metadata"]["edge_scenarios"] == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+
+
+def test_loca_config_count_and_validate_debug_fixture() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = root / "task-configs" / "debug.json"
+
+    validate_config_scenarios(config, include_edge_scenarios=True)
+
+    assert count_config_scenarios(config, include_edge_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+
+
+def test_cerebras_wrapper_dry_run_expands_config(monkeypatch, capsys, tmp_path) -> None:
+    out = tmp_path / "loca-expanded"
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("LOCA_OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_cerebras.py",
+            "--dry-run",
+            "--expand-scenarios",
+            "--count-scenarios",
+            "--validate-scenarios",
+            "--output-dir",
+            str(out),
+        ],
+    )
+
+    assert main() == 0
+
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert json.loads(lines[0]) == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+    payload = json.loads("\n".join(lines[1:]))
+    expanded_config = out / "config_expanded_scenarios.json"
+    assert expanded_config.exists()
+    assert payload["command"][payload["command"].index("--config-file") + 1] == str(
+        expanded_config
+    )
+    assert payload["summary"]["trajectory_count"] == 0
 
 
 def test_cerebras_wrapper_rejects_reset_and_summary_at_parse(monkeypatch) -> None:

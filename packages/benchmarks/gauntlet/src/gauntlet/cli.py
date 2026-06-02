@@ -18,6 +18,7 @@ from pathlib import Path
 
 from gauntlet.harness.orchestrator import TestOrchestrator
 from gauntlet.harness.surfpool import SurfpoolManager, SurfpoolConfig
+from gauntlet.scenarios import count_scenarios, load_scenarios, validate_scenarios
 from gauntlet.scoring.engine import ScoringEngine
 from gauntlet.storage.sqlite import SQLiteStorage
 from gauntlet.storage.export import Exporter
@@ -88,6 +89,17 @@ def load_agent_from_file(agent_path: Path) -> GauntletAgent:
 
 async def run_benchmark(args: argparse.Namespace) -> int:
     """Run benchmark against specified agent."""
+    if args.count_scenarios or args.validate_scenarios:
+        scenarios_dir = Path(args.scenarios).resolve()
+        validation = validate_scenarios(scenarios_dir)
+        if args.validate_scenarios:
+            print(json.dumps(validation, indent=2))
+            if not validation["valid"]:
+                return 1
+        if args.count_scenarios:
+            print(json.dumps(count_scenarios(scenarios_dir), indent=2))
+        return 0
+
     print(f"🌊 Solana Gauntlet v{args.version}")
     print(f"📁 Agent: {args.agent}")
     print(f"🎲 Seed: {args.seed or 'random'}")
@@ -262,14 +274,32 @@ def list_scenarios(args: argparse.Namespace) -> int:
     print(f"📋 Scenarios in {scenarios_dir}")
     print()
     
-    for level_dir in sorted(scenarios_dir.iterdir()):
-        if level_dir.is_dir() and level_dir.name.startswith("level"):
-            scenarios = list(level_dir.glob("*.yaml"))
-            print(f"{level_dir.name}: {len(scenarios)} scenarios")
-            for scenario in sorted(scenarios):
-                print(f"  - {scenario.stem}")
+    scenarios_by_level = load_scenarios(scenarios_dir)
+    for level in sorted(scenarios_by_level):
+        scenarios = scenarios_by_level[level]
+        print(f"level{level}: {len(scenarios)} scenarios")
+        for scenario in scenarios:
+            print(f"  - {scenario.id}")
     
     return 0
+
+
+def count_scenario_command(args: argparse.Namespace) -> int:
+    if args.validate_scenarios:
+        validation = validate_scenarios(Path(args.scenarios).resolve())
+        print(json.dumps(validation, indent=2))
+        if not validation["valid"]:
+            return 1
+    print(json.dumps(count_scenarios(Path(args.scenarios).resolve()), indent=2))
+    return 0
+
+
+def validate_scenario_command(args: argparse.Namespace) -> int:
+    validation = validate_scenarios(Path(args.scenarios).resolve())
+    print(json.dumps(validation, indent=2))
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(Path(args.scenarios).resolve()), indent=2))
+    return 0 if validation["valid"] else 1
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -330,6 +360,21 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Maximum number of scenarios to run across all levels",
     )
+    run_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Compatibility flag; Gauntlet loads expanded scenarios by default",
+    )
+    run_parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print expanded scenario counts and exit",
+    )
+    run_parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate expanded scenario structure and exit",
+    )
     run_parser.set_defaults(func=lambda args: asyncio.run(run_benchmark(args)))
     
     # List command
@@ -340,6 +385,45 @@ def create_parser() -> argparse.ArgumentParser:
         help="Path to scenarios directory",
     )
     list_parser.set_defaults(func=list_scenarios)
+
+    count_parser = subparsers.add_parser("count-scenarios", help="Print expanded scenario counts")
+    count_parser.add_argument(
+        "--scenarios", "-s",
+        default="./scenarios",
+        help="Path to scenarios directory",
+    )
+    count_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Compatibility flag; Gauntlet counts expanded scenarios by default",
+    )
+    count_parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate expanded scenario structure before printing counts",
+    )
+    count_parser.set_defaults(func=count_scenario_command)
+
+    validate_parser = subparsers.add_parser(
+        "validate-scenarios",
+        help="Validate expanded scenario structure",
+    )
+    validate_parser.add_argument(
+        "--scenarios", "-s",
+        default="./scenarios",
+        help="Path to scenarios directory",
+    )
+    validate_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Compatibility flag; Gauntlet validates expanded scenarios by default",
+    )
+    validate_parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print expanded scenario counts after validation",
+    )
+    validate_parser.set_defaults(func=validate_scenario_command)
     
     return parser
 

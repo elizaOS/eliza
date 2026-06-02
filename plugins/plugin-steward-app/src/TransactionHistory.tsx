@@ -54,6 +54,70 @@ const CHAIN_OPTIONS: Array<{ value: number | ""; label: string }> = [
   { value: 101, label: "Solana" },
 ];
 
+function TxAddressButton({
+  txId,
+  address,
+  onCopy,
+}: {
+  txId: string;
+  address: string;
+  onCopy: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `copy-address-${txId}`,
+    role: "button",
+    label: `Copy recipient address for transaction ${txId}`,
+    group: "history-rows",
+    description: "Copy the destination address to the clipboard",
+    onActivate: onCopy,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      className="inline-flex items-center gap-1 font-mono text-xs text-txt hover:text-accent transition-colors cursor-pointer"
+      onClick={onCopy}
+      title={address}
+    >
+      {truncateAddress(address)}
+      <Copy className="h-3 w-3 opacity-0 group-hover:opacity-60" />
+    </button>
+  );
+}
+
+function TxHashLink({
+  txId,
+  txHash,
+  href,
+}: {
+  txId: string;
+  txHash: string;
+  href: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLAnchorElement>({
+    id: `open-explorer-${txId}`,
+    role: "link",
+    label: `Open transaction ${txId} in block explorer`,
+    group: "history-rows",
+    description: "Open this transaction on its chain block explorer",
+  });
+  return (
+    <a
+      ref={ref}
+      {...agentProps}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 font-mono text-xs text-accent hover:text-accent/80 transition-colors"
+      title={txHash}
+    >
+      {truncateAddress(txHash, 4)}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+}
+
 export function TransactionHistory({
   getStewardHistory,
   copyToClipboard,
@@ -76,6 +140,11 @@ export function TransactionHistory({
     group: "history-filters",
     description: "Filter transactions by status",
     options: STATUS_OPTIONS.map((opt) => opt.value),
+    getValue: () => statusFilter,
+    onFill: (value) => {
+      setStatusFilter(value);
+      setPage(0);
+    },
   });
   const chainFilterElement = useAgentElement<HTMLSelectElement>({
     id: "filter-chain",
@@ -84,6 +153,11 @@ export function TransactionHistory({
     group: "history-filters",
     description: "Filter transactions by chain",
     options: CHAIN_OPTIONS.map((opt) => String(opt.value)),
+    getValue: () => String(chainFilter),
+    onFill: (value) => {
+      setChainFilter(value === "" ? "" : Number(value));
+      setPage(0);
+    },
   });
   const refreshElement = useAgentElement<HTMLButtonElement>({
     id: "action-refresh",
@@ -288,17 +362,13 @@ export function TransactionHistory({
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 font-mono text-xs text-txt hover:text-accent transition-colors cursor-pointer"
-                          onClick={() =>
+                        <TxAddressButton
+                          txId={tx.id}
+                          address={tx.request?.to ?? ""}
+                          onCopy={() =>
                             void handleCopy(tx.request?.to ?? "", "Address")
                           }
-                          title={tx.request?.to}
-                        >
-                          {truncateAddress(tx.request?.to ?? "")}
-                          <Copy className="h-3 w-3 opacity-0 group-hover:opacity-60" />
-                        </button>
+                        />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-txt">
                         {formatWeiValue(
@@ -311,21 +381,16 @@ export function TransactionHistory({
                       </td>
                       <td className="px-4 py-3">
                         {tx.txHash ? (
-                          <a
+                          <TxHashLink
+                            txId={tx.id}
+                            txHash={tx.txHash}
                             href={
                               getExplorerTxUrl(
                                 tx.request?.chainId ?? 8453,
                                 tx.txHash,
                               ) ?? "#"
                             }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 font-mono text-xs text-accent hover:text-accent/80 transition-colors"
-                            title={tx.txHash}
-                          >
-                            {truncateAddress(tx.txHash, 4)}
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
+                          />
                         ) : (
                           <span className="text-xs text-muted/50">—</span>
                         )}

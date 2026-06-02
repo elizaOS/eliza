@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 import check_soc_integration as gate
+import check_soc_real_integration as real_gate
 
 
 class SocIntegrationReportTests(unittest.TestCase):
@@ -33,6 +34,7 @@ class SocIntegrationReportTests(unittest.TestCase):
             "production_cpu_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(payload.get("false_claim_flags"), gate.FALSE_CLAIM_FLAGS)
         boundary = payload["claim_boundary"]
         for token in ("not production SoC routing", "coherency", "IOMMU", "QoS", "Linux boot"):
             self.assertIn(token, boundary)
@@ -51,6 +53,28 @@ class SocIntegrationReportTests(unittest.TestCase):
         self.assertEqual(payload["status"], "BLOCKED")
         self.assertEqual(payload["blocker_id"], "soc_integration_lint_blocked")
         self.assertIs(payload["production_fabric_claim_allowed"], False)
+        self.assertEqual(payload.get("false_claim_flags"), gate.FALSE_CLAIM_FLAGS)
+
+    def test_real_soc_report_denies_cpu_and_boot_claims(self) -> None:
+        checks = [
+            {"id": "lint", "status": "pass", "detail": "ok"},
+            {"id": "smoke", "status": "pass", "detail": "ok"},
+        ]
+        report = {
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
+            "linux_boot_claim_allowed": False,
+            "production_cpu_claim_allowed": False,
+            "real_cpu_execution_claim_allowed": False,
+            "false_claim_flags": real_gate.FALSE_CLAIM_FLAGS,
+            "summary": {
+                "check_count": len(checks),
+                "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),
+            },
+        }
+        for key, value in real_gate.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(report.get(key), value)
+        self.assertEqual(report["false_claim_flags"], real_gate.FALSE_CLAIM_FLAGS)
 
 
 if __name__ == "__main__":

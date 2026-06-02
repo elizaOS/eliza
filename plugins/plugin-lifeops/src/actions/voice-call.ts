@@ -12,7 +12,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
-} from "../lifeops/twilio.js";
+} from "@elizaos/plugin-phone";
 import {
   resolveActionArgs,
   type SubactionsMap,

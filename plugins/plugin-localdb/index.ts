@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   IAgentRuntime,
@@ -24,6 +24,7 @@ class FileStorage implements IStorage {
   private collections = new Map<string, Map<string, unknown>>();
   private ready = false;
   private readonly filePath: string;
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
     this.filePath = join(dataDir, "localdb.json");
@@ -62,11 +63,29 @@ class FileStorage implements IStorage {
   }
 
   private async flush(): Promise<void> {
+    // Serialize all flushes through a single chained promise so independently
+    // scheduled async mutations cannot interleave writes to the same file.
+    // Snapshot the live data at enqueue time so the write reflects state at
+    // the moment this mutation completed.
     const out: Record<string, Record<string, unknown>> = {};
     for (const [collection, entries] of this.collections) {
       out[collection] = Object.fromEntries(entries);
     }
-    await writeFile(this.filePath, JSON.stringify(out, null, 2), "utf8");
+    const payload = JSON.stringify(out, null, 2);
+
+    const run = this.writeChain.then(() => this.writeAtomic(payload));
+    // Keep the chain alive even if a write rejects, so a single failure does
+    // not permanently break serialization for subsequent flushes.
+    this.writeChain = run.catch(() => {});
+    await run;
+  }
+
+  private async writeAtomic(payload: string): Promise<void> {
+    // Write to a sibling temp file then rename for an atomic replace, so a
+    // crash mid-write can never truncate or garble the live localdb.json.
+    const tmpPath = `${this.filePath}.tmp.${process.pid}`;
+    await writeFile(tmpPath, payload, "utf8");
+    await rename(tmpPath, this.filePath);
   }
 
   async get<T>(collection: string, id: string): Promise<T | null> {
@@ -133,7 +152,7 @@ class FileStorage implements IStorage {
 }
 
 function getDataDir(runtime: RuntimeWithDatabase): string {
-  const configured = runtime.getSetting("LOCALDB_DATA_DIR");
+  const configured = runtime.getSetting?.("LOCALDB_DATA_DIR");
   if (typeof configured === "string" && configured.length > 0) {
     return configured;
   }

@@ -134,13 +134,13 @@ class MobileApiClient {
     path: string,
     options: ApiRequestOptions = {},
   ): Promise<ApiResponse<T>> {
-    const { body, params, token, ...fetchOptions } = options;
+    const { body, params, token, headers: optionHeaders, ...fetchOptions } = options;
 
     const url = this.buildUrl(path, params);
 
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
-      ...(fetchOptions.headers as Record<string, string>),
+      ...(optionHeaders as Record<string, string>),
     };
 
     // Add authorization token if provided
@@ -158,11 +158,11 @@ class MobileApiClient {
     }
 
     const response = await fetch(url, {
+      ...fetchOptions,
       method,
       headers,
       body: requestBody,
       credentials: "include",
-      ...fetchOptions,
     });
 
     // Handle non-JSON responses
@@ -180,7 +180,7 @@ class MobileApiClient {
         (data as { error?: string; message?: string })?.error ||
         (data as { error?: string; message?: string })?.message ||
         `Request failed with status ${response.status}`;
-      throw new ApiError(errorMessage, response.status);
+      throw new ApiError(errorMessage, response.status, (data as { code?: string })?.code);
     }
 
     return {

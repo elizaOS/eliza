@@ -393,7 +393,7 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
 }) => {
   const lifeOps = installLifeOpsInteractionRoutes(page);
 
-  await openAppPath(page, "/apps/lifeops");
+  await openAppPath(page, "/lifeops");
   await assertReadyChecks(
     page,
     "lifeops app shell",
@@ -458,6 +458,69 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
   await reminders.getByRole("button", { name: "Refresh" }).click();
   await expect.poll(() => lifeOps.overviewGets).toBeGreaterThan(beforeRefresh);
   await expect.poll(() => lifeOps.definitionGets).toBeGreaterThan(0);
+});
+
+test("LifeOps assistant launches chat-first command prompts", async ({
+  page,
+}) => {
+  installLifeOpsInteractionRoutes(page);
+
+  await openAppPath(page, "/lifeops");
+  await assertReadyChecks(
+    page,
+    "lifeops assistant app shell",
+    [{ selector: '[data-testid="lifeops-shell"]' }],
+    "all",
+    90_000,
+  );
+
+  const nav = page.getByTestId("lifeops-nav-rail");
+  await nav.getByRole("button", { name: "Assistant" }).click();
+
+  const assistant = page.getByTestId("lifeops-assistant-intents");
+  await expect(assistant).toBeVisible();
+
+  const composer = page.getByTestId("chat-composer-textarea");
+  await page.getByTestId("lifeops-assistant-command-brief").click();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue(/LifeOps command brief/);
+
+  await page.getByTestId("lifeops-assistant-voice-command").click();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("Voice command for LifeOps: ");
+
+  await page.getByRole("button", { name: "Quick Inbox decisions" }).click();
+  await expect(composer).toHaveValue(/Find messages that need my decision/);
+
+  const scenarioBackedCommands = [
+    ["Approval batch", /Batch pending approvals/],
+    ["Privacy redaction", /privacy-safe summary/],
+    ["Interruption firebreak", /Protect my focus block/],
+    ["Status compression", /Compress status across active projects/],
+    ["VIP escalation", /Handle a VIP escalation/],
+    ["Delegation map", /Map delegated work by owner/],
+    ["Remote agent stuck", /Unstick a remote agent/],
+    ["Family logistics", /Coordinate family logistics/],
+    ["Outage recovery", /Recover from a service or workflow outage/],
+    ["Weekly operating review", /Run my weekly operating review/],
+    ["Board pack prep", /Prepare the board pack brief/],
+    ["Chief-of-staff handoff", /Build a chief-of-staff handoff/],
+    ["Event planning", /Coordinate event planning/],
+    ["Finance dispute", /Handle a finance dispute/],
+    ["Gift milestone", /Prepare a relationship milestone gift/],
+    ["Hiring loop", /Coordinate the hiring loop/],
+    ["Intro routing", /Triage inbound intro requests/],
+    ["Legal deadline", /Track the legal document deadline/],
+    ["Travel disruption", /Recover from a travel disruption/],
+    ["Vendor negotiation", /Prepare vendor renewal negotiation/],
+  ] as const;
+
+  for (const [label, expectedPrompt] of scenarioBackedCommands) {
+    await assistant.getByRole("button", { name: label }).click();
+    await expect(composer, `${label} should prefill chat`).toHaveValue(
+      expectedPrompt,
+    );
+  }
 });
 
 test("Feed routes expose reachable GUI state and deterministic TUI commands", async ({

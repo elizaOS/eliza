@@ -15,12 +15,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function isNeynarWebhookData(value: unknown): value is NeynarWebhookData {
-  if (!isRecord(value) || typeof value.type !== "string") return false;
+  if (!isRecord(value) || !isNonEmptyString(value.type)) return false;
   if (value.data === undefined) return true;
   if (!isRecord(value.data)) return false;
-  if (typeof value.data.hash !== "string") return false;
-  if (!isRecord(value.data.author) || typeof value.data.author.fid !== "number") return false;
+  if (!isNonEmptyString(value.data.hash)) return false;
+  if (!isRecord(value.data.author) || !isPositiveSafeInteger(value.data.author.fid)) return false;
   if (value.data.text !== undefined && typeof value.data.text !== "string") {
     return false;
   }
@@ -29,18 +37,18 @@ function isNeynarWebhookData(value: unknown): value is NeynarWebhookData {
     !(
       Array.isArray(value.data.mentioned_profiles) &&
       value.data.mentioned_profiles.every(
-        (profile) => isRecord(profile) && typeof profile.fid === "number"
+        (profile) => isRecord(profile) && isPositiveSafeInteger(profile.fid)
       )
     )
   ) {
     return false;
   }
-  if (value.data.parent_hash !== undefined && typeof value.data.parent_hash !== "string") {
+  if (value.data.parent_hash !== undefined && !isNonEmptyString(value.data.parent_hash)) {
     return false;
   }
   if (
     value.data.parent_author !== undefined &&
-    !(isRecord(value.data.parent_author) && typeof value.data.parent_author.fid === "number")
+    !(isRecord(value.data.parent_author) && isPositiveSafeInteger(value.data.parent_author.fid))
   ) {
     return false;
   }

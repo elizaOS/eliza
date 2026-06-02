@@ -17,7 +17,6 @@ import type {
 describe("remote plugin permissions", () => {
   it("normalizes legacy permissions into host and bun grants", () => {
     const grant = normalizeRemotePluginPermissions([
-      "bun",
       "bun:fs",
       "bun:env",
       "bun:child_process",
@@ -27,6 +26,14 @@ describe("remote plugin permissions", () => {
     expect(grant).toEqual({
       host: { notifications: true },
       bun: { read: true, write: true, env: true, run: true },
+      isolation: "shared-worker",
+    });
+  });
+
+  it("treats legacy bare bun permission as a no-op compatibility token", () => {
+    expect(normalizeRemotePluginPermissions(["bun"])).toEqual({
+      host: {},
+      bun: {},
       isolation: "shared-worker",
     });
   });
@@ -64,6 +71,36 @@ describe("remote plugin permissions", () => {
     expect(merged).toEqual({
       host: { storage: true, windows: true },
       bun: { read: true, write: true },
+      isolation: "isolated-process",
+    });
+  });
+
+  it("preserves default isolation when overrides are absent or legacy-only", () => {
+    expect(
+      mergeRemotePluginPermissions(
+        {
+          bun: { read: true },
+          isolation: "isolated-process",
+        },
+        undefined,
+      ),
+    ).toEqual({
+      host: {},
+      bun: { read: true },
+      isolation: "isolated-process",
+    });
+
+    expect(
+      mergeRemotePluginPermissions(
+        {
+          bun: { read: true },
+          isolation: "isolated-process",
+        },
+        ["bun:env"],
+      ),
+    ).toEqual({
+      host: {},
+      bun: { read: true, env: true },
       isolation: "isolated-process",
     });
   });

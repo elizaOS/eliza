@@ -15,6 +15,7 @@ from benchmarks.swe_bench.cli import (
     _candidate_context_paths,
     _capability_report,
     _default_task_agent_provider,
+    _expand_instances,
     _harness_turn_cost_usd,
     _mock_instance,
     _opencode_config_content,
@@ -24,7 +25,9 @@ from benchmarks.swe_bench.cli import (
     _run_instance,
     _run_opencode_patchfile_instance,
     _run_subtask_provider_instance,
+    _scenario_counts,
     _subtask_provider_command,
+    _validate_instances,
 )
 from benchmarks.swe_bench.types import (
     PatchStatus,
@@ -95,6 +98,23 @@ def test_build_report_counts_no_docker_pass_as_applied() -> None:
     )
 
     assert report.apply_rate == 1.0
+
+
+def test_scenario_expansion_adds_ten_edge_prompts_per_instance() -> None:
+    instances = [_mock_instance()]
+
+    expanded = _expand_instances(instances, expand_scenarios=True)
+
+    assert _scenario_counts(instances, expand_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "total": 11,
+    }
+    assert len(expanded) == 11
+    assert expanded[0].instance_id == instances[0].instance_id
+    assert expanded[1].instance_id == instances[0].instance_id
+    assert "Additional benchmark edge condition 01" in expanded[1].problem_statement
+    assert _validate_instances(instances, expand_scenarios=True)["valid"] is True
 
 
 def test_capability_report_flags_unknown_provider_missing_caps() -> None:

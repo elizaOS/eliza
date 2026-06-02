@@ -67,6 +67,25 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	const staleAfterMs = 30 * 60 * 1000;
 	let announcedWait = false;
 
+	async function readLockOwnerPid(): Promise<number | null> {
+		try {
+			const rawOwner = await fs.readFile(join(lockDir, "owner"), "utf8");
+			const pid = Number.parseInt(rawOwner.split(/\r?\n/, 1)[0] ?? "", 10);
+			return Number.isFinite(pid) && pid > 0 ? pid : null;
+		} catch {
+			return null;
+		}
+	}
+
+	function isProcessAlive(pid: number): boolean {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code !== "ESRCH";
+		}
+	}
+
 	await fs.mkdir(lockParent, { recursive: true });
 
 	for (;;) {
@@ -84,7 +103,11 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 			}
 
 			const stat = await fs.stat(lockDir).catch(() => null);
-			if (stat && Date.now() - stat.mtimeMs > staleAfterMs) {
+			const ownerPid = await readLockOwnerPid();
+			if (
+				(ownerPid !== null && !isProcessAlive(ownerPid)) ||
+				(stat && Date.now() - stat.mtimeMs > staleAfterMs)
+			) {
 				await fs.rm(lockDir, { recursive: true, force: true });
 				continue;
 			}

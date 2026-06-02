@@ -9,7 +9,38 @@ import {
   useTimeout,
   Z_SYSTEM_CRITICAL,
 } from "@elizaos/ui";
-import { Menu, X } from "lucide-react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import {
+  Accessibility,
+  Activity,
+  ArrowUp,
+  Axe,
+  Bird,
+  Bone,
+  ChevronsUp,
+  Cloud,
+  Dumbbell,
+  Eye,
+  Fish,
+  Footprints,
+  Frown,
+  Hand,
+  Heart,
+  Leaf,
+  type LucideIcon,
+  Menu,
+  MessageCircle,
+  Music2,
+  Rabbit,
+  Shield,
+  Skull,
+  Sparkles,
+  Swords,
+  Target,
+  WandSparkles,
+  Waves,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Types
@@ -17,51 +48,51 @@ interface EmoteItem {
   id: string;
   name: string;
   category: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 // Category icons
-const CATEGORY_ICONS: Record<string, string> = {
-  greeting: "\u{1F44B}",
-  emotion: "\u{1F622}",
-  dance: "\u{1F57A}",
-  combat: "\u{2694}",
-  idle: "\u{1F9D8}",
-  movement: "\u{1F3C3}",
-  other: "\u{2728}",
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  greeting: Hand,
+  emotion: Heart,
+  dance: Music2,
+  combat: Swords,
+  idle: Leaf,
+  movement: Footprints,
+  other: Sparkles,
 };
 
 // Emote icons
-const EMOTE_ICONS: Record<string, string> = {
-  wave: "\u{1F44B}",
-  kiss: "\u{1F48B}",
-  crying: "\u{1F62D}",
-  sorrow: "\u{1F614}",
-  "rude-gesture": "\u{1F595}",
-  "looking-around": "\u{1F440}",
-  "dance-happy": "\u{1F483}",
-  "dance-breaking": "\u{1F938}",
-  "dance-hiphop": "\u{1F57A}",
-  "dance-popping": "\u{1FAA9}",
-  "hook-punch": "\u{1F44A}",
-  punching: "\u{1F94A}",
-  "firing-gun": "\u{1F52B}",
-  "sword-swing": "\u{2694}",
-  chopping: "\u{1FA93}",
-  "spell-cast": "\u{1FA84}",
-  range: "\u{1F3F9}",
-  death: "\u{1F480}",
-  idle: "\u{1F9D8}",
-  talk: "\u{1F5E3}",
-  squat: "\u{1F9CE}",
-  fishing: "\u{1F3A3}",
-  float: "\u{1F54A}",
-  jump: "\u{1F4A8}",
-  flip: "\u{1F938}",
-  run: "\u{1F3C3}",
-  walk: "\u{1F6B6}",
-  crawling: "\u{1F40D}",
-  fall: "\u{1F4A5}",
+const EMOTE_ICONS: Record<string, LucideIcon> = {
+  wave: Hand,
+  kiss: Heart,
+  crying: Waves,
+  sorrow: Frown,
+  "rude-gesture": Hand,
+  "looking-around": Eye,
+  "dance-happy": Music2,
+  "dance-breaking": Accessibility,
+  "dance-hiphop": Activity,
+  "dance-popping": Sparkles,
+  "hook-punch": Dumbbell,
+  punching: Shield,
+  "firing-gun": Target,
+  "sword-swing": Swords,
+  chopping: Axe,
+  "spell-cast": WandSparkles,
+  range: Target,
+  death: Skull,
+  idle: Leaf,
+  talk: MessageCircle,
+  squat: Accessibility,
+  fishing: Fish,
+  float: Bird,
+  jump: ArrowUp,
+  flip: ChevronsUp,
+  run: Rabbit,
+  walk: Footprints,
+  crawling: Bone,
+  fall: Cloud,
 };
 
 // All emotes
@@ -215,6 +246,23 @@ export function EmotePicker() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const { ref: searchAgentRef, agentProps: searchAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "emotes-search",
+      role: "text-input",
+      label: t("emotepicker.SearchEmotes"),
+      group: "emotes-picker",
+      description: "Filter the emote grid by name",
+      getValue: () => search,
+      onFill: (value: string) => setSearch(value),
+    });
+  const setSearchRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node;
+      searchAgentRef.current = node;
+    },
+    [searchAgentRef],
+  );
   const panelRef = useRef<HTMLDivElement>(null);
   const posRef = useRef({ x: 0, y: 0 });
   const dragOrigin = useRef<{
@@ -414,15 +462,7 @@ export function EmotePicker() {
 
         <div className="flex items-center gap-2">
           {/* Stop button */}
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={stopEmote}
-            className="rounded px-2 py-1 text-xs font-medium h-auto"
-            data-testid="emote-picker-stop"
-          >
-            {t("game.stop")}
-          </Button>
+          <EmotePickerStopButton onStop={stopEmote} label={t("game.stop")} />
 
           {/* Shortcut label */}
           <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
@@ -430,23 +470,10 @@ export function EmotePicker() {
           </span>
 
           {/* Close button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={closeEmotePicker}
-            className="h-auto w-auto p-0"
-            aria-label={t("common.close", { defaultValue: "Close" })}
-            data-testid="emote-picker-close"
-            style={{ color: "rgba(255,255,255,0.45)" }}
-            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.currentTarget.style.color = "rgba(240,238,250,0.92)";
-            }}
-            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.currentTarget.style.color = "rgba(255,255,255,0.45)";
-            }}
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          <EmotePickerCloseButton
+            onClose={closeEmotePicker}
+            label={t("common.close", { defaultValue: "Close" })}
+          />
         </div>
       </div>
 
@@ -456,7 +483,7 @@ export function EmotePicker() {
         style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
       >
         <Input
-          ref={inputRef}
+          ref={setSearchRef}
           type="text"
           value={search}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -470,6 +497,7 @@ export function EmotePicker() {
             color: "rgba(240,238,250,0.92)",
             border: "1px solid rgba(255,255,255,0.1)",
           }}
+          {...searchAgentProps}
         />
       </div>
 
@@ -478,47 +506,21 @@ export function EmotePicker() {
         className="flex gap-1 overflow-x-auto px-3 py-2"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setActiveCategory(null)}
-          className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
-          data-testid="emote-picker-category-all"
-          style={{
-            background:
-              activeCategory === null
-                ? "var(--accent)"
-                : "rgba(255,255,255,0.06)",
-            color:
-              activeCategory === null
-                ? "var(--accent-foreground)"
-                : "rgba(255,255,255,0.6)",
-          }}
-        >
-          {t("wallet.all")}
-        </Button>
+        <EmotePickerCategoryButton
+          categoryId="all"
+          label={t("wallet.all")}
+          active={activeCategory === null}
+          onSelect={() => setActiveCategory(null)}
+        />
         {CATEGORIES.map((cat) => (
-          <Button
-            variant="ghost"
-            size="sm"
+          <EmotePickerCategoryButton
             key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
-            data-testid={`emote-picker-category-${cat}`}
-            style={{
-              background:
-                activeCategory === cat
-                  ? "var(--accent)"
-                  : "rgba(255,255,255,0.06)",
-              color:
-                activeCategory === cat
-                  ? "var(--accent-foreground)"
-                  : "rgba(255,255,255,0.6)",
-            }}
-          >
-            <span className="mr-1">{CATEGORY_ICONS[cat]}</span>
-            {CATEGORY_LABELS[cat]}
-          </Button>
+            categoryId={cat}
+            label={CATEGORY_LABELS[cat]}
+            icon={CATEGORY_ICONS[cat] ?? Sparkles}
+            active={activeCategory === cat}
+            onSelect={() => setActiveCategory(cat)}
+          />
         ))}
       </div>
 
@@ -526,25 +528,12 @@ export function EmotePicker() {
       <div className="max-h-[400px] overflow-y-auto p-3">
         <div className="grid grid-cols-5 gap-2">
           {filteredEmotes.map((emote: EmoteItem) => (
-            <Button
-              variant="ghost"
-              size="icon"
+            <EmotePickerEmoteButton
               key={emote.id}
-              onClick={() => playEmote(emote.id)}
-              disabled={playing === emote.id}
-              aria-label={`Play ${emote.name}`}
-              data-testid={`emote-picker-item-${emote.id}`}
-              title={emote.name}
-              className="flex aspect-square items-center justify-center rounded text-2xl h-auto w-auto"
-              style={{
-                background:
-                  playing === emote.id
-                    ? "var(--accent)"
-                    : "rgba(255,255,255,0.06)",
-              }}
-            >
-              {emote.icon}
-            </Button>
+              emote={emote}
+              playing={playing === emote.id}
+              onPlay={() => void playEmote(emote.id)}
+            />
           ))}
         </div>
 
@@ -558,5 +547,154 @@ export function EmotePicker() {
         )}
       </div>
     </div>
+  );
+}
+
+function EmotePickerStopButton({
+  onStop,
+  label,
+}: {
+  onStop: () => void;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "emotes-stop",
+    role: "button",
+    label,
+    group: "emotes-picker",
+    description: "Stop the currently playing emote",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="destructive"
+      size="sm"
+      onClick={onStop}
+      className="rounded px-2 py-1 text-xs font-medium h-auto"
+      data-testid="emote-picker-stop"
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function EmotePickerCloseButton({
+  onClose,
+  label,
+}: {
+  onClose: () => void;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "emotes-close",
+    role: "button",
+    label,
+    group: "emotes-picker",
+    description: "Close the emote picker",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="icon"
+      onClick={onClose}
+      className="h-auto w-auto p-0"
+      aria-label={label}
+      data-testid="emote-picker-close"
+      style={{ color: "rgba(255,255,255,0.45)" }}
+      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+        e.currentTarget.style.color = "rgba(240,238,250,0.92)";
+      }}
+      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+        e.currentTarget.style.color = "rgba(255,255,255,0.45)";
+      }}
+      {...agentProps}
+    >
+      <X className="w-4 h-4" />
+    </Button>
+  );
+}
+
+function EmotePickerCategoryButton({
+  categoryId,
+  label,
+  icon: CategoryIcon,
+  active,
+  onSelect,
+}: {
+  categoryId: string;
+  label: string;
+  icon?: LucideIcon;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `emotes-category-${categoryId}`,
+    role: "tab",
+    label,
+    group: "emotes-categories",
+    status: active ? "active" : "inactive",
+    description: `Filter emotes to the ${label} category`,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="sm"
+      onClick={onSelect}
+      className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+      data-testid={`emote-picker-category-${categoryId}`}
+      aria-current={active ? "true" : undefined}
+      style={{
+        background: active ? "var(--accent)" : "rgba(255,255,255,0.06)",
+        color: active ? "var(--accent-foreground)" : "rgba(255,255,255,0.6)",
+      }}
+      {...agentProps}
+    >
+      {CategoryIcon ? (
+        <CategoryIcon className="mr-1 h-3.5 w-3.5" aria-hidden />
+      ) : null}
+      {label}
+    </Button>
+  );
+}
+
+function EmotePickerEmoteButton({
+  emote,
+  playing,
+  onPlay,
+}: {
+  emote: EmoteItem;
+  playing: boolean;
+  onPlay: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `emotes-play-${emote.id}`,
+    role: "list-item",
+    label: emote.name,
+    group: "emotes-grid",
+    status: playing ? "active" : undefined,
+    description: `Play the ${emote.name} emote`,
+  });
+  const EmoteIcon = emote.icon;
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="icon"
+      onClick={onPlay}
+      disabled={playing}
+      aria-label={`Play ${emote.name}`}
+      data-testid={`emote-picker-item-${emote.id}`}
+      title={emote.name}
+      className="flex aspect-square items-center justify-center rounded h-auto w-auto"
+      style={{
+        background: playing ? "var(--accent)" : "rgba(255,255,255,0.06)",
+      }}
+      {...agentProps}
+    >
+      <EmoteIcon className="h-6 w-6" aria-hidden />
+    </Button>
   );
 }

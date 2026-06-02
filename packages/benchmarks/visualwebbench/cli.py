@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from benchmarks.visualwebbench.runner import VisualWebBenchRunner
+from benchmarks.visualwebbench.dataset import VisualWebBenchDataset
 from benchmarks.visualwebbench.types import (
     VISUALWEBBENCH_TASK_TYPES,
     VisualWebBenchConfig,
@@ -133,6 +134,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-traces", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for every loaded VisualWebBench task.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print loaded task counts and exit.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate loaded tasks and exit.",
+    )
     return parser.parse_args()
 
 
@@ -175,7 +191,26 @@ def create_config(args: argparse.Namespace) -> VisualWebBenchConfig:
         app_harness_ui_url=args.app_harness_ui_url,
         app_harness_poll_interval_ms=args.app_harness_poll_interval,
         verbose=args.verbose,
+        include_edge_scenarios=args.expand_scenarios,
     )
+
+
+async def load_dataset_for_inventory(config: VisualWebBenchConfig) -> VisualWebBenchDataset:
+    dataset = VisualWebBenchDataset(
+        fixture_path=config.fixture_path,
+        hf_repo=config.hf_repo,
+        split=config.split,
+        task_types=config.task_types,
+        image_cache_dir=config.image_cache_dir,
+        cache_images_to_disk=config.cache_images_to_disk,
+    )
+    await dataset.load(
+        use_huggingface=config.use_huggingface,
+        use_sample_tasks=config.use_sample_tasks,
+        max_tasks=config.max_tasks,
+        include_edge_scenarios=config.include_edge_scenarios,
+    )
+    return dataset
 
 
 async def run(config: VisualWebBenchConfig) -> dict[str, object]:
@@ -196,6 +231,25 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     config = create_config(args)
+    if args.count_scenarios or args.validate_scenarios:
+        try:
+            dataset = asyncio.run(load_dataset_for_inventory(config))
+        except Exception as exc:
+            logger.error("VisualWebBench inventory failed: %s", exc)
+            if args.json:
+                print(json.dumps({"error": str(exc)}, indent=2))
+            return 1
+        counts = dataset.count_scenarios()
+        if args.validate_scenarios:
+            errors = dataset.validate_scenarios()
+            payload = {"ok": not errors, **counts}
+            if errors:
+                payload["errors"] = errors[:50]
+                payload["error_count"] = len(errors)
+            print(json.dumps(payload, indent=2))
+            return 0 if not errors else 1
+        print(json.dumps(counts, indent=2))
+        return 0
     server_mgr = None
     provider = (config.provider or "").strip().lower()
     needs_eliza_bridge = (

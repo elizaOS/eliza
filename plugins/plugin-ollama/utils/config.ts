@@ -33,15 +33,16 @@ export function getSetting(
 ): string | undefined {
   const value = runtime.getSetting(key);
   if (value !== undefined && value !== null) {
-    return String(value);
+    return String(value).trim();
   }
-  return getEnvValue(key) ?? defaultValue;
+  return getEnvValue(key)?.trim() ?? defaultValue;
 }
 
 export function getBaseURL(runtime: SettingsProvider): string {
   const apiEndpoint =
     getSetting(runtime, "OLLAMA_API_ENDPOINT") ||
     getSetting(runtime, "OLLAMA_API_URL") ||
+    getSetting(runtime, "OLLAMA_BASE_URL") ||
     DEFAULT_OLLAMA_URL;
 
   if (!apiEndpoint.endsWith("/api")) {

@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
+import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
@@ -570,6 +571,18 @@ export class SubAgentRouter extends Service {
 
     const nextCount = (this.roundTripCounts.get(sessionId) ?? 0) + 1;
     this.roundTripCounts.set(sessionId, nextCount);
+    // Roll the round-trip counter back when a task_complete event is
+    // suppressed downstream (verify-retry handoff, stale continuation, or
+    // cross-session completion dedupe). Those events never post a synthetic
+    // inbound, so counting them against the runaway-loop cap miscounts real
+    // round-trips and can trip the force-stop early. Only decrement if our
+    // increment is still the current value (no later event has advanced it).
+    const rollbackRoundTrip = (): void => {
+      if (this.roundTripCounts.get(sessionId) === nextCount) {
+        if (nextCount <= 1) this.roundTripCounts.delete(sessionId);
+        else this.roundTripCounts.set(sessionId, nextCount - 1);
+      }
+    };
     const capExceeded = nextCount > this.roundTripCap;
     if (capExceeded) {
       if (this.capExceededSessions.has(sessionId)) {
@@ -709,6 +722,7 @@ export class SubAgentRouter extends Service {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
       if (retried) {
         this.verifyRetryHandedOffSessions.add(sessionId);
+        rollbackRoundTrip();
         return;
       }
       if (await this.hasNewerContinuation(session, origin)) {
@@ -717,6 +731,7 @@ export class SubAgentRouter extends Service {
           "suppressing stale verification failure; newer continuation exists",
           { sessionId, deadCount: deadUrls.length },
         );
+        rollbackRoundTrip();
         return;
       }
     }
@@ -745,6 +760,7 @@ export class SubAgentRouter extends Service {
             event,
           },
         );
+        rollbackRoundTrip();
         return;
       }
     }
@@ -1749,9 +1765,12 @@ export async function annotateUnverifiedUrls(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     try {
-      const res = await fetch(url, {
+      // SSRF guard: the URL comes from untrusted sub-agent narration. Resolve
+      // and reject non-public (private/link-local/metadata) hosts, and follow
+      // redirects manually so a public page can't 302 us into an internal
+      // endpoint. Loopback is allowed — local build verification depends on it.
+      const res = await safeFetch(url, {
         method: "GET",
-        redirect: "follow",
         signal: controller.signal,
       });
       // 405/501 mean the server IS reachable — it just won't serve a GET.
@@ -1792,7 +1811,14 @@ export async function annotateUnverifiedUrls(
       }
       return { status: null, servedLive: true };
     } catch (err) {
-      const reason = err instanceof Error ? err.name : "unreachable";
+      // A blocked non-public host is not a reachable artifact; report it as
+      // such (it must never be surfaced to the user as "live").
+      const reason =
+        err instanceof SsrfBlockedError
+          ? "blocked (non-public host)"
+          : err instanceof Error
+            ? err.name
+            : "unreachable";
       log?.(`[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`);
       return { status: reason, servedLive: false };
     } finally {
@@ -2048,9 +2074,11 @@ async function detectCachedMiss(
   // headers. A same-URL cache-bust probe distinguishes that case from a real
   // missing file without treating arbitrary non-404 failures as cache issues.
   busted.searchParams.set("__eliza_verify", Date.now().toString(36));
-  const bustedRes = await fetch(busted, {
+  // Same SSRF guard as the primary probe: the host is unchanged from the
+  // already-validated URL, but route through safeFetch so a redirect on the
+  // cache-bust probe can't reach an internal host either.
+  const bustedRes = await safeFetch(busted.toString(), {
     method: "GET",
-    redirect: "follow",
     signal,
   }).catch(() => null);
   if (!bustedRes) return null;

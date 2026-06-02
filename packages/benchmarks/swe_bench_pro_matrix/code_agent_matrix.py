@@ -17,6 +17,18 @@ from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "swe-bench-pro-public-vendored"
+EDGE_VARIANTS: tuple[str, ...] = (
+    "preserve public API compatibility while fixing the issue",
+    "handle empty, missing, and malformed inputs gracefully",
+    "avoid broad rewrites unrelated to failing tests",
+    "keep existing pass-to-pass tests stable",
+    "handle unicode paths, labels, or user-visible strings",
+    "maintain performance for large collections or fixtures",
+    "avoid network access and nondeterminism during tests",
+    "preserve documented errors and exception classes",
+    "handle nested, composed, or plugin-provided objects",
+    "keep packaging, imports, and build metadata stable",
+)
 
 
 def _repo_root() -> Path:
@@ -110,6 +122,49 @@ def load_tasks(*, max_tasks: int | None = None) -> list[dict[str, Any]]:
             if max_tasks is not None and len(tasks) >= max_tasks:
                 break
     return tasks
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def expand_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> list[dict[str, Any]]:
+    if not expand_scenarios:
+        return [dict(task) for task in tasks]
+    expanded = [dict(task) for task in tasks]
+    for task in tasks:
+        source_id = str(task.get("instance_id") or "")
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            clone = dict(task)
+            clone["source_instance_id"] = source_id
+            clone["scenario_id"] = f"{source_id}__edge_{index:02d}"
+            clone["edge_condition"] = edge_condition
+            clone["problem_statement"] = (
+                str(task.get("problem_statement") or "")
+                + "\n\n"
+                + f"Additional benchmark edge condition {index:02d}: {edge_condition}."
+            )
+            expanded.append(clone)
+    return expanded
+
+
+def count_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> dict[str, Any]:
+    expanded = expand_tasks(tasks, expand_scenarios=expand_scenarios)
+    ids = [str(task.get("scenario_id") or task.get("instance_id") or "") for task in expanded]
+    missing_ids = [task_id for task_id in ids if not task_id]
+    duplicate_count = len(ids) - len(set(ids))
+    return {
+        "valid": not missing_ids and duplicate_count == 0,
+        "missing_ids": missing_ids,
+        "duplicate_count": duplicate_count,
+        "total": len(expanded),
+    }
 
 
 def _format_command(template: str, values: dict[str, str]) -> list[str]:
@@ -319,7 +374,9 @@ def _run_evaluator(
 def _mock_rows(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
-            "task": str(task.get("instance_id")),
+            "task": str(task.get("scenario_id") or task.get("instance_id")),
+            "source_instance_id": str(task.get("source_instance_id") or task.get("instance_id")),
+            "edge_condition": str(task.get("edge_condition") or ""),
             "status": "mock",
             "success": True,
             "score": 1.0,
@@ -357,8 +414,12 @@ def run_swe_bench_pro_matrix(
     skip_clone: bool,
     evaluator_backend: str,
     eval_num_workers: int,
+    expand_scenarios: bool = False,
 ) -> list[dict[str, Any]]:
-    tasks = load_tasks(max_tasks=max_tasks)
+    base_tasks = load_tasks(max_tasks=max_tasks)
+    if expand_scenarios and not no_docker:
+        raise ValueError("SWE-bench Pro expanded scenarios require --no-docker")
+    tasks = expand_tasks(base_tasks, expand_scenarios=expand_scenarios)
     predictions_dir = output_dir / "predictions"
     logs_dir = output_dir / "logs"
     predictions_dir.mkdir(parents=True, exist_ok=True)
@@ -366,7 +427,8 @@ def run_swe_bench_pro_matrix(
     patch_records: list[dict[str, str]] = []
     rows: list[dict[str, Any]] = []
     for task in tasks:
-        task_id = str(task.get("instance_id") or "")
+        source_task_id = str(task.get("source_instance_id") or task.get("instance_id") or "")
+        task_id = str(task.get("scenario_id") or source_task_id)
         safe_id = _safe_task_id(task_id)
         task_dir = output_dir / "tasks" / safe_id
         workspace = task_dir / "workspace"
@@ -414,7 +476,7 @@ def run_swe_bench_pro_matrix(
         pred_dir.mkdir(parents=True, exist_ok=True)
         pred_path = pred_dir / f"{task_agent}.pred"
         pred_path.write_text(patch, encoding="utf-8")
-        patch_records.append({"instance_id": task_id, "patch": patch, "prefix": task_agent})
+        patch_records.append({"instance_id": source_task_id, "patch": patch, "prefix": task_agent})
         token_metrics = token_metrics_from_usage(agent_result.get("usage", {}))
         trajectory_path = _write_trajectory(
             trajectory_dir=trajectory_dir,
@@ -426,6 +488,8 @@ def run_swe_bench_pro_matrix(
         rows.append(
             {
                 "task": task_id,
+                "source_instance_id": source_task_id,
+                "edge_condition": str(task.get("edge_condition") or ""),
                 "status": "generated" if completed.returncode == 0 and patch else "failed",
                 "success": False,
                 "score": 0.0,
@@ -480,6 +544,8 @@ def build_result(
     model_provider: str,
     model: str,
     mode: str,
+    scenario_counts: dict[str, int] | None = None,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     total = sum(int(row.get("total") or 0) for row in results)
     passed = sum(int(row.get("passed") or 0) for row in results)
@@ -496,6 +562,9 @@ def build_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
+        "include_edge_scenarios": include_edge_scenarios,
+        "scenario_counts": scenario_counts
+        or {"base": len(results), "edge": 0, "total": len(results)},
         "summary": {
             "total": total,
             "passed": passed,
@@ -528,6 +597,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true")
     parser.add_argument("--skip-clone", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
@@ -537,7 +609,26 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(max_tasks=args.max_tasks)
+    base_tasks = load_tasks(max_tasks=args.max_tasks)
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    counts = count_tasks(base_tasks, expand_scenarios=expand_scenarios)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "SWE-bench Pro scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_tasks(base_tasks, expand_scenarios=expand_scenarios)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid SWE-bench Pro scenario expansion: {validation}")
+        print(f"SWE-bench Pro scenario validation passed: {counts['total']} task(s)")
+    if expand_scenarios and not (args.mock or args.no_docker):
+        raise ValueError("SWE-bench Pro expanded scenarios require --mock or --no-docker")
+    tasks = expand_tasks(base_tasks, expand_scenarios=expand_scenarios)
     if args.mock:
         result = build_result(
             results=_mock_rows(tasks),
@@ -545,6 +636,8 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="mock",
+            scenario_counts=counts,
+            include_edge_scenarios=expand_scenarios,
         )
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         if args.json:
@@ -564,6 +657,8 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="configuration_error",
+            scenario_counts=counts,
+            include_edge_scenarios=expand_scenarios,
         )
         result["error"] = "SWE-bench Pro code-agent command template is not configured"
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
@@ -584,6 +679,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_clone=args.skip_clone,
         evaluator_backend=args.evaluator_backend,
         eval_num_workers=args.eval_num_workers,
+        expand_scenarios=expand_scenarios,
     )
     result = build_result(
         results=results,
@@ -591,6 +687,8 @@ def main(argv: list[str] | None = None) -> int:
         model_provider=args.model_provider,
         model=args.model,
         mode="live_no_docker" if args.no_docker else "live",
+        scenario_counts=counts,
+        include_edge_scenarios=expand_scenarios,
     )
     (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
     if args.json:

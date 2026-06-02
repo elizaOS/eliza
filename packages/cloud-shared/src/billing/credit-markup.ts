@@ -53,6 +53,12 @@ function assertFiniteNonNegative(value: number, fieldName: string): void {
   }
 }
 
+function assertAtMost(value: number, max: number, fieldName: string): void {
+  if (value > max) {
+    throw new RangeError(`${fieldName} must be <= ${max}, received ${value}`);
+  }
+}
+
 /**
  * Compute the credit markup breakdown for a base cost.
  *
@@ -66,6 +72,8 @@ export function calculateCreditMarkup(input: CreditMarkupInput): CreditMarkupBre
   assertFiniteNonNegative(baseCredits, "baseCredits");
   assertFiniteNonNegative(markupPercent, "markupPercent");
   assertFiniteNonNegative(platformFeeRate, "platformFeeRate");
+  assertAtMost(markupPercent, 100, "markupPercent");
+  assertAtMost(platformFeeRate, 1, "platformFeeRate");
 
   const markupCredits = baseCredits * (markupPercent / 100);
   const platformFeeCredits = baseCredits * platformFeeRate;

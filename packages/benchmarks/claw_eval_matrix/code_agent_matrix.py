@@ -18,6 +18,18 @@ from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "claw-eval-deterministic-yaml-slice-v2"
+EDGE_VARIANTS: tuple[str, ...] = (
+    "handle missing optional context without asking for clarification",
+    "preserve exact category and keyword wording in the final answer",
+    "avoid relying on external web access unless the task explicitly requires it",
+    "use available tools only when they materially support the answer",
+    "keep the final response concise while satisfying all scoring components",
+    "handle unicode names, punctuation, and mixed-case labels",
+    "separate assumptions from verified facts in the response",
+    "recover when a referenced fixture or artifact is absent",
+    "prioritize scoring rubric requirements over conversational filler",
+    "include enough detail for deterministic graders to match the answer",
+)
 SUPPORTED_CHECK_TYPES = {
     "categories_present",
     "keywords_present",
@@ -121,6 +133,44 @@ def load_tasks(*, max_tasks: int | None = None) -> list[dict[str, Any]]:
 
 def available_task_count() -> int:
     return len(load_tasks(max_tasks=None))
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def expand_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> list[dict[str, Any]]:
+    if not expand_scenarios:
+        return [dict(task) for task in tasks]
+    expanded = [dict(task) for task in tasks]
+    for task in tasks:
+        source_id = str(task.get("task_id") or "")
+        for index, edge_condition in enumerate(EDGE_VARIANTS, start=1):
+            clone = dict(task)
+            clone["source_task_id"] = source_id
+            clone["task_id"] = f"{source_id}__edge_{index:02d}"
+            clone["edge_condition"] = edge_condition
+            expanded.append(clone)
+    return expanded
+
+
+def count_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def validate_tasks(tasks: list[dict[str, Any]], *, expand_scenarios: bool = False) -> dict[str, Any]:
+    expanded = expand_tasks(tasks, expand_scenarios=expand_scenarios)
+    ids = [str(task.get("task_id") or "") for task in expanded]
+    duplicate_count = len(ids) - len(set(ids))
+    missing_ids = [task_id for task_id in ids if not task_id]
+    return {
+        "valid": duplicate_count == 0 and not missing_ids,
+        "duplicate_count": duplicate_count,
+        "missing_ids": missing_ids,
+        "total": len(expanded),
+    }
 
 
 def _format_command(template: str, values: dict[str, str]) -> list[str]:
@@ -233,6 +283,26 @@ def _write_trajectory(
     return str(path)
 
 
+def _scenario_task_yaml(task: dict[str, Any], task_dir: Path) -> str:
+    source = Path(str(task.get("task_yaml") or ""))
+    edge_condition = str(task.get("edge_condition") or "")
+    if not edge_condition:
+        return str(source)
+    data = yaml.safe_load(source.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return str(source)
+    prompt = data.get("prompt")
+    if isinstance(prompt, dict):
+        prompt["text"] = (
+            str(prompt.get("text") or "")
+            + "\n\n"
+            + f"Additional benchmark edge condition: {edge_condition}."
+        )
+    target = task_dir / "task.expanded.yaml"
+    target.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return str(target)
+
+
 def _mock_results(
     tasks: list[dict[str, Any]],
     *,
@@ -263,6 +333,8 @@ def _mock_results(
         rows.append(
             {
                 "task": task_id,
+                "source_task_id": str(task.get("source_task_id") or base_task_id),
+                "edge_condition": str(task.get("edge_condition") or ""),
                 "status": "completed",
                 "success": True,
                 "score": 1.0,
@@ -303,16 +375,21 @@ def run_claw_eval_matrix(
     command_template: str,
     timeout_seconds: int,
     mock: bool,
+    expand_scenarios: bool = False,
+    scenario_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(max_tasks=None if mock else max_tasks)
+    base_tasks = load_tasks(max_tasks=max_tasks)
+    tasks = expand_tasks(base_tasks, expand_scenarios=expand_scenarios)
     if mock:
         return build_result(
-            results=_mock_results(tasks, max_tasks=max_tasks, trajectory_dir=trajectory_dir),
+            results=_mock_results(tasks, max_tasks=None, trajectory_dir=trajectory_dir),
             task_agent=task_agent,
             model_provider=model_provider,
             model=model,
             mode="mock",
+            scenario_counts=scenario_counts,
+            include_edge_scenarios=expand_scenarios,
         )
     if not command_template:
         raise ValueError("Claw-Eval live mode requires an agent command template")
@@ -325,12 +402,13 @@ def run_claw_eval_matrix(
         task_dir = output_dir / "tasks" / _safe_task_id(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
         agent_result_path = task_dir / "agent-result.json"
+        task_yaml = _scenario_task_yaml(task, task_dir)
         command = _format_command(
             command_template,
             {
                 "task": task_id,
                 "task_safe": _safe_task_id(task_id),
-                "task_yaml": str(task["task_yaml"]),
+                "task_yaml": task_yaml,
                 "result_json": str(agent_result_path),
                 "output": str(output_dir),
                 "adapter": task_agent,
@@ -360,12 +438,14 @@ def run_claw_eval_matrix(
         trajectory_path = _write_trajectory(
             trajectory_dir=trajectory_dir,
             task_id=task_id,
-            task_yaml=str(task["task_yaml"]),
+            task_yaml=task_yaml,
             agent_result=agent_result,
         )
         results.append(
             {
                 "task": task_id,
+                "source_task_id": str(task.get("source_task_id") or task_id),
+                "edge_condition": str(task.get("edge_condition") or ""),
                 "status": "completed" if completed.returncode == 0 and score >= 0.75 else "failed",
                 "success": completed.returncode == 0 and score >= 0.75,
                 "score": score,
@@ -390,6 +470,8 @@ def run_claw_eval_matrix(
         model_provider=model_provider,
         model=model,
         mode="live",
+        scenario_counts=scenario_counts,
+        include_edge_scenarios=expand_scenarios,
     )
 
 
@@ -400,6 +482,8 @@ def build_result(
     model_provider: str,
     model: str,
     mode: str,
+    scenario_counts: dict[str, int] | None = None,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(1 for item in results if item.get("success") is True)
@@ -411,6 +495,9 @@ def build_result(
         "model": model,
         "mode": mode,
         "dataset_version": DATASET_VERSION,
+        "include_edge_scenarios": include_edge_scenarios,
+        "scenario_counts": scenario_counts
+        or {"base": total, "edge": 0, "total": total},
         "available_task_count": available,
         "coverage_note": (
             f"local deterministic Claw-Eval slice exposes {available} non-LLM-judge tasks"
@@ -438,12 +525,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true", help="Accepted for matrix CLI parity.")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    base_tasks = load_tasks(max_tasks=args.max_tasks)
+    counts = count_tasks(base_tasks, expand_scenarios=expand_scenarios)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "Claw-Eval scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_tasks(base_tasks, expand_scenarios=expand_scenarios)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid Claw-Eval scenario expansion: {validation}")
+        print(f"Claw-Eval scenario validation passed: {counts['total']} task(s)")
     template = agent_command_template(
         args.task_agent,
         explicit=args.agent_command_template,
@@ -461,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
         command_template=template,
         timeout_seconds=args.timeout_seconds,
         mock=bool(args.mock),
+        expand_scenarios=expand_scenarios,
+        scenario_counts=counts,
     )
     result_path = Path(args.output) / "claw-eval-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

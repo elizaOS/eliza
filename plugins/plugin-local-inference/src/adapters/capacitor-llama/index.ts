@@ -26,6 +26,7 @@ import type {
 	TextToSpeechParams,
 	TokenizeTextParams,
 	TokenUsage,
+	ToolChoice,
 	ToolDefinition,
 	TranscriptionParams,
 } from "@elizaos/core";
@@ -111,6 +112,70 @@ function extractEmbeddingText(
 	if (typeof params === "string") return params;
 	const text = getObjectField(params, "text");
 	return typeof text === "string" ? text : null;
+}
+
+function getRequiredEmbeddingText(
+	params: TextEmbeddingParams | string | null,
+): string {
+	const text = extractEmbeddingText(params)?.trim();
+	if (!text) {
+		throw new Error("Embedding text must be a non-empty string");
+	}
+	return text;
+}
+
+function stringifyMessageContent(
+	content: NonNullable<GenerateTextParams["messages"]>[number]["content"],
+): string {
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		return content
+			.map((part) => {
+				if (!part || typeof part !== "object") return "";
+				const record = part as Record<string, unknown>;
+				if (typeof record.text === "string") return record.text;
+				if (typeof record.content === "string") return record.content;
+				return "";
+			})
+			.filter(Boolean)
+			.join("\n");
+	}
+	return "";
+}
+
+function renderCompletionPrompt(params: GenerateTextParams): string {
+	if (params.messages && params.messages.length > 0) {
+		return params.messages
+			.map((message) => {
+				const content = stringifyMessageContent(message.content);
+				return content ? `${message.role}: ${content}` : `${message.role}:`;
+			})
+			.join("\n");
+	}
+
+	const system = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;
+	const prompt = params.prompt ?? "";
+	return `system: ${system}\nuser: ${prompt}`;
+}
+
+function getToolChoiceLabel(
+	toolChoice: ToolChoice | undefined,
+): string | undefined {
+	if (typeof toolChoice === "string") return toolChoice;
+	if (!toolChoice || typeof toolChoice !== "object") return undefined;
+	if ("name" in toolChoice && typeof toolChoice.name === "string") {
+		return toolChoice.name;
+	}
+	if (
+		"type" in toolChoice &&
+		toolChoice.type === "function" &&
+		"function" in toolChoice &&
+		toolChoice.function &&
+		typeof toolChoice.function.name === "string"
+	) {
+		return toolChoice.function.name;
+	}
+	return undefined;
 }
 
 type NormalizedUsage = {
@@ -455,14 +520,7 @@ class LocalAIManager {
 		const modelType = params.modelType ?? ModelType.TEXT_SMALL;
 		const systemPrompt = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;
 		const entry = await this.resolveCtx(modelType, systemPrompt);
-		const prompt = params.prompt ?? "";
-
-		const toolChoiceLabel =
-			typeof params.toolChoice === "string"
-				? params.toolChoice
-				: params.toolChoice && typeof params.toolChoice === "object"
-					? ((params.toolChoice as { name?: string }).name ?? undefined)
-					: undefined;
+		const toolChoiceLabel = getToolChoiceLabel(params.toolChoice);
 		const plan = planStructuredRequest({
 			tools: params.tools as readonly ToolDefinition[] | undefined,
 			responseSchema: params.responseSchema as JSONSchema | undefined,
@@ -471,17 +529,16 @@ class LocalAIManager {
 		});
 
 		const baseParams: CapacitorLlamaCompletionParams = {
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: prompt },
-			],
-			jinja: true,
+			prompt: renderCompletionPrompt({ ...params, system: systemPrompt }),
 			n_predict: params.maxTokens ?? 8192,
 			temperature: params.temperature ?? 0.7,
 			top_p: params.topP ?? 0.9,
-			penalty_repeat: 1.2,
-			penalty_freq: 0.7,
-			penalty_present: 0.7,
+			...(typeof params.topK === "number" ? { top_k: params.topK } : {}),
+			...(typeof params.minP === "number" ? { min_p: params.minP } : {}),
+			...(typeof params.seed === "number" ? { seed: params.seed } : {}),
+			penalty_repeat: params.repetitionPenalty ?? 1.2,
+			penalty_freq: params.frequencyPenalty ?? 0.7,
+			penalty_present: params.presencePenalty ?? 0.7,
 			stop: params.stopSequences ?? [],
 		};
 		const fullParams = applyStructuredPlan(baseParams, plan);
@@ -520,6 +577,10 @@ class LocalAIManager {
 				params: fullParams,
 				estimateUsage: (p, fullText) =>
 					normalizedToTokenUsage(estimateUsage(p, fullText)),
+				onChunk:
+					typeof streamParams.onStreamChunk === "function"
+						? (delta) => streamParams.onStreamChunk?.(delta)
+						: undefined,
 				postProcess: stripThinkTags,
 			});
 		}
@@ -646,10 +707,7 @@ export const localAiPlugin: Plugin = {
 			runtime: IAgentRuntime,
 			params: TextEmbeddingParams | string | null,
 		) => {
-			const text = extractEmbeddingText(params);
-			if (!text) {
-				return new Array(1024).fill(0);
-			}
+			const text = getRequiredEmbeddingText(params);
 			const routed = await tryLocalInferenceModel<number[]>(
 				runtime,
 				ModelType.TEXT_EMBEDDING,

@@ -1375,4 +1375,48 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     const after = await service.getSession(id);
     expect(after?.status).toBe("errored");
   });
+
+  it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {
+    // Native transport: each spawn resolves to an active ("ready") session
+    // without the proc-mock dance, so we can fire many in parallel and let the
+    // check-and-reserve race. Before the fix, the limit check (list) and the
+    // insert (create) were separate awaited ops, so N concurrent spawns could
+    // all pass the check before any inserted and overshoot the cap.
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "2",
+      }),
+    );
+    await service.start();
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, i) =>
+        service.spawnSession({
+          name: `concurrent-${i}`,
+          workdir: "/tmp/acp-test",
+        }),
+      ),
+    );
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    // The cap must hold exactly: 2 succeed, the rest reject with the limit error.
+    expect(fulfilled).toHaveLength(2);
+    expect(rejected.length).toBe(4);
+    for (const r of rejected) {
+      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(Error);
+      expect(((r as PromiseRejectedResult).reason as Error).message).toContain(
+        "max session limit reached",
+      );
+    }
+
+    // And the store agrees: only 2 active sessions exist.
+    const sessions = await service.listSessions();
+    const active = sessions.filter(
+      (s) =>
+        !["stopped", "errored", "completed", "cancelled"].includes(s.status),
+    );
+    expect(active).toHaveLength(2);
+  });
 });

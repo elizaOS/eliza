@@ -11,8 +11,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from elizaos_mmau_audio.agent import MMAUAgentProtocol, OracleMMAUAgent
-from elizaos_mmau_audio.dataset import MMAUDataset
+from elizaos_mmau_audio.agent import (
+    DirectOpenAICompatibleMMAUAgent,
+    MMAUAgentProtocol,
+    OracleMMAUAgent,
+)
+from elizaos_mmau_audio.dataset import MMAUDataset, expand_samples, validate_samples
 from elizaos_mmau_audio.evaluator import MMAUEvaluator
 from elizaos_mmau_audio.types import (
     MMAUConfig,
@@ -53,6 +57,9 @@ class MMAURunner:
         samples = self.dataset.get_samples(self.config.max_samples)
         if not samples:
             raise RuntimeError("MMAU: no samples loaded")
+        if self.config.include_edge_scenarios:
+            samples = expand_samples(samples)
+            validate_samples(samples)
 
         agent = self._create_agent()
         await agent.initialize()
@@ -94,8 +101,18 @@ class MMAURunner:
             from eliza_adapter.mmau import OpenClawMMAUAgent  # type: ignore[import-not-found]
 
             return OpenClawMMAUAgent(self.config)
+        if agent_name in {"direct", "cerebras", "openai", "groq", "openrouter"}:
+            provider = self.config.provider or (
+                agent_name if agent_name != "direct" else "cerebras"
+            )
+            return DirectOpenAICompatibleMMAUAgent(
+                provider=provider,
+                model=self.config.model,
+                temperature=self.config.temperature,
+            )
         raise ValueError(
-            f"MMAU: unknown agent {agent_name!r}; expected one of mock/eliza/hermes/openclaw"
+            "MMAU: unknown agent "
+            f"{agent_name!r}; expected one of mock/eliza/hermes/openclaw/direct/cerebras"
         )
 
     async def _run_sample(self, agent: MMAUAgentProtocol, sample: MMAUSample) -> MMAUResult:
@@ -144,6 +161,7 @@ class MMAURunner:
                 "model": self.config.model or "",
                 "stt_model": self.config.stt_model,
                 "categories": [c.value for c in self.config.categories],
+                "include_edge_scenarios": self.config.include_edge_scenarios,
             },
         )
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import random
@@ -21,7 +22,13 @@ import sys
 from typing import Any
 
 from .runner import WooBenchRunner
-from .scenarios import ALL_SCENARIOS, SCENARIOS_BY_SYSTEM, SCENARIOS_BY_ARCHETYPE
+from .scenarios import (
+    ALL_SCENARIOS,
+    SCENARIOS_BY_SYSTEM,
+    SCENARIOS_BY_ARCHETYPE,
+    count_woobench_scenarios,
+    validate_woobench_scenarios,
+)
 
 
 def _configure_bridge_model_env(model: str) -> None:
@@ -96,6 +103,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list-personas",
         action="store_true",
         help="List all available persona archetypes and exit",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print authored, added, and total scenario counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate expanded scenario corpus and exit",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -406,6 +423,12 @@ def main() -> None:
         return
     if args.list_personas:
         _list_personas()
+        return
+    if args.count_scenarios:
+        print(json.dumps(count_woobench_scenarios(), indent=2))
+        return
+    if args.validate_scenarios:
+        print(json.dumps(validate_woobench_scenarios(), indent=2))
         return
 
     # Run benchmark

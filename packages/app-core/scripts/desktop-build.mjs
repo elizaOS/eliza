@@ -822,6 +822,16 @@ function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
     );
   }
 
+  if (packageName === "@elizaos/ui") {
+    return (
+      fs.existsSync(path.join(distDir, "index.js")) &&
+      fs.existsSync(path.join(distDir, "App.js")) &&
+      fs.existsSync(
+        path.join(distDir, "components", "pages", "LogsView.js"),
+      )
+    );
+  }
+
   return true;
 }
 

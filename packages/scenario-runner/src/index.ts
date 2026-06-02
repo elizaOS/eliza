@@ -4,10 +4,15 @@ export { attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";
 export {
   discoverScenarios,
+  countScenarioCorpus,
+  validateScenarioCorpus,
+  expandScenarioDefinition,
+  expandScenarioMetadata,
   listScenarioMetadata,
   loadAllScenarios,
   loadScenarioFile,
   loadScenarioMetadataFile,
+  SCENARIO_EDGE_VARIANTS,
 } from "./loader.ts";
 export type { NativeBoundaryRow } from "./native-export.ts";
 export {

@@ -16,6 +16,12 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.floorplanning_dataset_readiness.v1"
 EXPECTED_CLAIM_BOUNDARY = "floorplanning_dataset_readiness_only_no_conversion_training_or_e1_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "conversion_claim_allowed": False,
+    "training_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+}
 REQUIRED_ASSETS = {"intel-floorset", "r-zoo-rectilinear-floorplan"}
 REQUIRED_BLOCKER_FRAGMENTS = {
     "dataset-specific schema converter is not implemented",
@@ -321,6 +327,8 @@ def validate(report: dict[str, Any]) -> list[str]:
     ):
         if report.get(field) is not False:
             errors.append(f"{field} must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied floorplanning readiness claims")
     if set(report.get("asset_ids", [])) != REQUIRED_ASSETS:
         errors.append("asset_ids mismatch")
     assets = report.get("assets")

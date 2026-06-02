@@ -31,10 +31,12 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-llama -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run --config vitest.config.ts",
     "prepublishOnly": "bun run build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "dependencies": {
     "llama-cpp-capacitor": "^0.1.5"

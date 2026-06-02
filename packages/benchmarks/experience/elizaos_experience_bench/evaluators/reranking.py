@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from elizaos_experience_bench.edge_cases import expand_dict_cases
 from elizaos_experience_bench.service import ExperienceService
 
 ServiceFactory = Callable[[], ExperienceService]
@@ -18,8 +19,14 @@ class RerankingEvaluator:
     3. Noise rejection: truly irrelevant items are filtered out
     """
 
-    def __init__(self, service_factory: ServiceFactory | None = None) -> None:
+    def __init__(
+        self,
+        service_factory: ServiceFactory | None = None,
+        *,
+        include_edge_scenarios: bool = False,
+    ) -> None:
         self._service_factory = service_factory or ExperienceService
+        self.include_edge_scenarios = include_edge_scenarios
 
     def evaluate(self) -> dict[str, object]:
         """Run all reranking tests and return results."""
@@ -77,6 +84,9 @@ class RerankingEvaluator:
             },
         ]
 
+        if self.include_edge_scenarios:
+            test_cases = expand_dict_cases(test_cases)
+
         passed = 0
         failures: list[str] = []
 
@@ -111,6 +121,9 @@ class RerankingEvaluator:
             },
         ]
 
+        if self.include_edge_scenarios:
+            test_cases = expand_dict_cases(test_cases)
+
         passed = 0
         failures: list[str] = []
 
@@ -143,6 +156,9 @@ class RerankingEvaluator:
                 "query": "deploying containers with docker compose",
             },
         ]
+
+        if self.include_edge_scenarios:
+            test_cases = expand_dict_cases(test_cases)
 
         passed = 0
         failures: list[str] = []

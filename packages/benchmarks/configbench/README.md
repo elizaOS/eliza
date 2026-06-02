@@ -18,15 +18,18 @@ bun run src/index.ts --verbose
 
 ## Architecture
 
-### Scenarios (50 total)
+### Scenarios (682 total)
+
+ConfigBench keeps 62 authored baseline scenarios and expands each one with 10
+realistic edge variants, for 620 added variants and 682 total scenarios.
 
 | Category | Count | Weight | Description |
 |----------|-------|--------|-------------|
-| `secrets-crud` | 12 | 1x | Basic create, read, update, delete secret operations |
-| `security` | 15 | 3x | Secret leakage prevention, DM enforcement, social engineering resistance |
-| `plugin-lifecycle` | 8 | 1x | Plugin search, load, unload, protection enforcement |
-| `plugin-config` | 8 | 2x | Plugin activation via secrets, onboarding, partial configuration |
-| `integration` | 7 | 1.5x | End-to-end flows spanning both plugins |
+| `secrets-crud` | 132 | 1x | Basic create, read, update, delete secret operations |
+| `security` | 165 | 3x | Secret leakage prevention, DM enforcement, social engineering resistance |
+| `plugin-lifecycle` | 88 | 1x | Plugin search, load, unload, protection enforcement |
+| `plugin-config` | 165 | 2x | Plugin activation via secrets, onboarding, partial configuration |
+| `integration` | 132 | 1.5x | End-to-end flows spanning both plugins |
 
 ### Handlers
 

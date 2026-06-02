@@ -7,6 +7,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_power_thermal.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "thermal_signoff_claim_allowed": False,
+    "pdn_signoff_claim_allowed": False,
+}
 SCHEDULE_PATH = ROOT / "benchmarks/results/e1x-real-graph-schedule-execution-estimate.json"
 MODEL_LOAD_PATH = ROOT / "benchmarks/results/e1x-real-graph-model-load.json"
 WAFER_DOC_PATH = ROOT / "docs/arch/e1x-wafer-mesh.md"
@@ -181,6 +191,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Planning-grade E1X power/thermal arithmetic from architecture constants and "
             "real-graph schedule artifacts. This is not package thermal signoff, PDN/SI/PI "

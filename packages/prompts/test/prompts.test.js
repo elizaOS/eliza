@@ -1,9 +1,13 @@
 import assert from "node:assert";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import fc from "fast-check";
+import { compressPromptDescription } from "../scripts/prompt-compression.js";
+import * as prompts from "../src/index.ts";
 
+const exportedPrompts = Object.fromEntries(Object.entries(prompts));
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
 const SRC_INDEX = join(PACKAGE_ROOT, "src", "index.ts");
@@ -14,6 +18,10 @@ function readSrc() {
   return readFileSync(SRC_INDEX, "utf-8");
 }
 
+function readJsonFile(filePath) {
+  return JSON.parse(readFileSync(filePath, "utf-8"));
+}
+
 function extractTemplateConsts(source) {
   const re = /export const ([a-z][a-zA-Z0-9]*Template)\b/g;
   const names = new Set();
@@ -22,8 +30,49 @@ function extractTemplateConsts(source) {
 }
 
 describe("prompt templates (src/index.ts)", () => {
-  it("src/index.ts exists", () => {
-    assert.ok(existsSync(SRC_INDEX), "src/index.ts should exist");
+  it("exports every prompt template as a non-empty string", () => {
+    const names = extractTemplateConsts(readSrc());
+    for (const name of names) {
+      const prompt = exportedPrompts[name];
+      assert.strictEqual(
+        typeof prompt,
+        "string",
+        `${name} should be exported as a string`,
+      );
+      assert.ok(prompt.trim().length > 0, `${name} should not be empty`);
+    }
+  });
+
+  it("compresses arbitrary descriptions into bounded single-line text", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 2_000 }), (description) => {
+        const compressed = compressPromptDescription(description);
+
+        assert.strictEqual(typeof compressed, "string");
+        assert.ok(
+          compressed.length <= 160,
+          `compressed description exceeded 160 chars: ${compressed.length}`,
+        );
+        assert.ok(
+          !/\s{2,}|\r|\n/.test(compressed),
+          `compressed description should be single-line normalized text: ${JSON.stringify(
+            compressed,
+          )}`,
+        );
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it("preserves protected technical spans while compressing surrounding prose", () => {
+    const compressed = compressPromptDescription(
+      "This action will read from `npm run test` and https://example.com/a?b=c plus OPENAI_API_KEY in order to validate configuration.",
+    );
+
+    assert.match(compressed, /`npm run test`/);
+    assert.match(compressed, /https:\/\/example\.com\/a\?b=c/);
+    assert.match(compressed, /OPENAI_API_KEY/);
+    assert.ok(compressed.length <= 160);
   });
 
   it("exports at least one camelCaseTemplate constant", () => {
@@ -456,30 +505,109 @@ describe("prompt templates (src/index.ts)", () => {
 });
 
 describe("build scripts", () => {
-  it("check-secrets.js script exists", () => {
-    assert.ok(
-      existsSync(join(SCRIPTS_DIR, "check-secrets.js")),
-      "check-secrets.js should exist",
-    );
+  it("package build scripts reference package-local script entrypoints", () => {
+    const pkg = readJsonFile(join(PACKAGE_ROOT, "package.json"));
+    const expectedScripts = [
+      "scripts/check-secrets.js",
+      "scripts/generate-action-docs.js",
+      "scripts/generate-plugin-action-spec.js",
+    ];
+
+    for (const scriptPath of expectedScripts) {
+      const script = readFileSync(join(PACKAGE_ROOT, scriptPath), "utf-8");
+      assert.match(
+        script,
+        /^#!\/usr\/bin\/env node|export function|import /,
+        `${scriptPath} should be a runnable module`,
+      );
+      assert.match(
+        JSON.stringify(pkg.scripts),
+        new RegExp(scriptPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+        `${scriptPath} should be wired from package.json scripts`,
+      );
+    }
   });
 
-  it("generate-action-docs.js script exists", () => {
-    assert.ok(
-      existsSync(join(SCRIPTS_DIR, "generate-action-docs.js")),
-      "generate-action-docs.js should exist",
-    );
-  });
-
-  it("generate-plugin-action-spec.js script exists", () => {
-    assert.ok(
-      existsSync(join(SCRIPTS_DIR, "generate-plugin-action-spec.js")),
-      "generate-plugin-action-spec.js should exist",
-    );
+  it("secret scanner covers common prompt-leak credential families", () => {
+    const script = readFileSync(join(SCRIPTS_DIR, "check-secrets.js"), "utf-8");
+    for (const label of [
+      "Private key material",
+      "GitHub token",
+      "Slack token",
+      "AWS access key id",
+      "Google API key",
+      "OpenAI-style key",
+      "Anthropic-style key",
+      "Generic credential assignment",
+    ]) {
+      assert.match(
+        script,
+        new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+        `secret scanner should include ${label}`,
+      );
+    }
   });
 });
 
 describe("specs directory", () => {
-  it("specs directory exists", () => {
-    assert.ok(existsSync(SPECS_DIR), "specs/ directory should exist");
+  it("ships non-empty action and provider specs with unique names", () => {
+    const specs = [
+      {
+        path: join(SPECS_DIR, "actions", "core.json"),
+        key: "actions",
+      },
+      {
+        path: join(SPECS_DIR, "providers", "core.json"),
+        key: "providers",
+      },
+    ];
+
+    for (const spec of specs) {
+      const parsed = readJsonFile(spec.path);
+      assert.strictEqual(typeof parsed.version, "string");
+      assert.ok(parsed.version.length > 0);
+      assert.ok(Array.isArray(parsed[spec.key]));
+      assert.ok(parsed[spec.key].length > 0, `${spec.key} should be non-empty`);
+
+      const names = new Set();
+      for (const item of parsed[spec.key]) {
+        assert.strictEqual(typeof item.name, "string");
+        assert.ok(item.name.trim().length > 0);
+        assert.strictEqual(
+          names.has(item.name),
+          false,
+          `${spec.key} should not duplicate ${item.name}`,
+        );
+        names.add(item.name);
+        assert.strictEqual(typeof item.description, "string");
+        assert.ok(item.description.trim().length > 0);
+      }
+    }
+  });
+
+  it("generated plugin action spec descriptions stay prompt-budget friendly", () => {
+    const generated = readJsonFile(
+      join(SPECS_DIR, "actions", "plugins.generated.json"),
+    );
+    assert.ok(Array.isArray(generated.actions));
+    for (const action of generated.actions) {
+      assert.strictEqual(typeof action.description, "string");
+      const compressed = compressPromptDescription(action.description);
+      assert.ok(compressed.length > 0, `${action.name} should compress`);
+      assert.ok(
+        compressed.length <= 160,
+        `${action.name} compressed description should fit in prompt budget`,
+      );
+      if (
+        action.compressedDescription !== undefined &&
+        action.descriptionCompressed !== undefined
+      ) {
+        assert.strictEqual(
+          action.compressedDescription,
+          action.descriptionCompressed,
+          `${action.name} compressed aliases should match`,
+        );
+      }
+    }
   });
 });

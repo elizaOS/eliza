@@ -56,7 +56,7 @@ export async function readRoutingPreferences(): Promise<RoutingPreferences> {
   try {
     const raw = await fs.readFile(routingPath(), "utf8");
     const parsed = JSON.parse(raw) as RoutingFile;
-    if (!parsed || parsed.version !== 1 || !parsed.preferences) return EMPTY;
+    if (parsed?.version !== 1 || !parsed.preferences) return EMPTY;
     return {
       preferredProvider: parsed.preferences.preferredProvider,
       policy: parsed.preferences.policy,

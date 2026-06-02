@@ -5,9 +5,12 @@ from pathlib import Path
 
 from benchmarks.claw_eval_matrix.code_agent_matrix import (
     agent_command_template,
+    count_tasks,
+    expand_tasks,
     load_tasks,
     run_claw_eval_matrix,
     score_task,
+    validate_tasks,
 )
 
 
@@ -61,6 +64,20 @@ def test_builtin_agent_command_template_points_at_helper() -> None:
     assert "{result_json}" in template
 
 
+def test_expand_tasks_adds_ten_edge_variants_per_task() -> None:
+    tasks = load_tasks(max_tasks=1)
+
+    expanded = expand_tasks(tasks, expand_scenarios=True)
+
+    assert count_tasks(tasks, expand_scenarios=True) == {"base": 1, "edge": 10, "total": 11}
+    assert len(expanded) == 11
+    assert expanded[0]["task_id"] == tasks[0]["task_id"]
+    assert expanded[1]["task_id"].endswith("__edge_01")
+    assert expanded[1]["source_task_id"] == tasks[0]["task_id"]
+    assert expanded[1]["edge_condition"]
+    assert validate_tasks(tasks, expand_scenarios=True)["valid"] is True
+
+
 def test_mock_run_writes_normalized_result(tmp_path: Path) -> None:
     result = run_claw_eval_matrix(
         task_agent="elizaos",
@@ -72,12 +89,15 @@ def test_mock_run_writes_normalized_result(tmp_path: Path) -> None:
         command_template="",
         timeout_seconds=120,
         mock=True,
+        expand_scenarios=True,
+        scenario_counts={"base": 1, "edge": 10, "total": 11},
     )
 
     assert result["benchmark"] == "claw_eval"
     assert result["adapter"] == "elizaos"
-    assert result["summary"]["total_instances"] == 1
-    assert result["summary"]["resolved"] == 1
+    assert result["scenario_counts"] == {"base": 1, "edge": 10, "total": 11}
+    assert result["summary"]["total_instances"] == 11
+    assert result["summary"]["resolved"] == 11
     json.dumps(result)
 
 

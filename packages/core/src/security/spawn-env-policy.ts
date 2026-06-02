@@ -3,7 +3,12 @@
  * Shared by shell, MCP, and other spawn paths.
  */
 
-const BLOCKED_SPAWN_ENV_KEYS = new Set([
+/**
+ * Single source of truth for the spawn/MCP env denylist. Consumers that need
+ * the raw data (e.g. the agent's MCP config validator) import these directly so
+ * the lists cannot drift between the shell/spawn and MCP paths.
+ */
+export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	"LD_PRELOAD",
 	"LD_LIBRARY_PATH",
 	"DYLD_INSERT_LIBRARIES",
@@ -24,7 +29,7 @@ const BLOCKED_SPAWN_ENV_KEYS = new Set([
 	"SHELL",
 ]);
 
-const BLOCKED_SPAWN_ENV_PREFIXES = [
+export const BLOCKED_SPAWN_ENV_PREFIXES = [
 	"NPM_CONFIG_",
 	"PNPM_",
 	"YARN_",

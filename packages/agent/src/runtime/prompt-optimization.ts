@@ -53,6 +53,11 @@ import {
   toOptionalNumber,
   toText,
 } from "./trajectory-internals.ts";
+import {
+  applyActiveViewAwareness,
+  getActiveViewContext,
+  viewScopedActionNames,
+} from "./view-action-affinity.ts";
 
 export {
   buildFullParamActionSet,
@@ -1411,6 +1416,12 @@ export function installPromptOptimizations(
     let nextMessages = originalMessages;
     let outputReserveTokens: number | undefined;
 
+    // The shell reports the view the user is looking at via POST
+    // /api/views/:id/navigate (stored in view-action-affinity). Read it once so
+    // both the action-weighting (keep view-scoped actions at full param detail)
+    // and the awareness block below stay consistent for this prompt.
+    const activeView = getActiveViewContext();
+
     // Skip intent compaction while trajectory capture is active; hard model
     // budgets still apply because providers cannot accept overflow prompts.
     if (
@@ -1421,7 +1432,10 @@ export function installPromptOptimizations(
       // --- Context-aware action compaction (when enabled) ---
       // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
-      let workingPrompt = compactActionsForIntent(originalPrompt);
+      let workingPrompt = compactActionsForIntent(
+        originalPrompt,
+        viewScopedActionNames(activeView?.viewId),
+      );
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(
           `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
@@ -1464,6 +1478,21 @@ export function installPromptOptimizations(
         runtime.logger.info(
           `[eliza] Action compaction: ${originalPrompt.length} -> ${workingPrompt.length} chars (saved ${originalPrompt.length - workingPrompt.length})`,
         );
+      }
+    }
+
+    // Inject the "# Active View" awareness block into planner prompts so the
+    // model knows which surface the user is looking at and that it can drive
+    // every element through the view-interact capabilities. Applies regardless
+    // of prompt size (small planner prompts skip compaction above), and only to
+    // prompts that carry an action catalogue so non-planner calls are untouched.
+    if (activeView && nextPrompt.includes("# Available Actions")) {
+      const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
+      if (awarePrompt !== nextPrompt) {
+        promptOptimizationTelemetry.transformations.push(
+          `active-view-awareness:${activeView.viewId}`,
+        );
+        nextPrompt = awarePrompt;
       }
     }
 

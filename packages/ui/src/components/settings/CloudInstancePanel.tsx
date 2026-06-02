@@ -1,6 +1,7 @@
 import { Copy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -47,13 +48,17 @@ function useRelayStatus() {
     }
   }, []);
 
+  const documentVisible = useDocumentVisibility();
   useEffect(() => {
+    // Poll relay status only while the document is visible so a backgrounded
+    // window stops polling /api/cloud/relay-status.
+    if (!documentVisible) return;
     void refresh();
     const interval = setInterval(() => {
       void refresh();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [refresh, documentVisible]);
 
   return { relayStatus, loading, refresh };
 }

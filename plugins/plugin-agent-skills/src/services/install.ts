@@ -27,6 +27,8 @@ const DEFAULT_TIMEOUT = 300_000;
 
 /** Node package managers in preference order */
 const NODE_MANAGERS = ["bun", "npm", "yarn"] as const;
+const SAFE_INSTALL_TOKEN =
+	/^(?:@?[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)?|[A-Za-z0-9][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9][A-Za-z0-9._+-]*)*)$/;
 
 // ============================================================
 // PLATFORM UTILITIES
@@ -125,24 +127,32 @@ export async function isCargoAvailable(): Promise<boolean> {
  * Build the installation command for a given option.
  */
 function buildInstallCommand(option: OttoInstallOption): string | null {
+	const packageName = option.formula || option.package;
+	if (
+		option.kind !== "manual" &&
+		(typeof packageName !== "string" ||
+			!SAFE_INSTALL_TOKEN.test(packageName.trim()))
+	) {
+		return null;
+	}
+
 	switch (option.kind) {
 		case "brew":
-			return `brew install ${option.formula || option.package}`;
+			return `brew install ${packageName}`;
 
 		case "apt":
-			return `sudo apt-get install -y ${option.package}`;
+			return `sudo apt-get install -y ${packageName}`;
 
 		case "node": {
 			// Will be resolved at runtime to user's preferred manager
-			const pkg = option.package;
-			return `__NODE_MANAGER__ install -g ${pkg}`;
+			return `__NODE_MANAGER__ install -g ${packageName}`;
 		}
 
 		case "pip":
-			return `pip3 install ${option.package}`;
+			return `pip3 install ${packageName}`;
 
 		case "cargo":
-			return `cargo install ${option.package}`;
+			return `cargo install ${packageName}`;
 
 		case "manual":
 			// Manual installation - return instructions

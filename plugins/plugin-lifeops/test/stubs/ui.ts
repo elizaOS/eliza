@@ -40,11 +40,19 @@ export function isApiError(): boolean {
   return false;
 }
 
+export function isElizaOS(): boolean {
+  return false;
+}
+
 export function openExternalUrl(): void {}
 
 export function registerBuiltinWidgetDeclarations(): void {}
 
 export function registerBuiltinWidgets(): void {}
+
+export function registerAppShellPage(): void {}
+
+export function registerOverlayApp(): void {}
 
 export function getAppBlockerPlugin(): Record<string, unknown> {
   return {};

@@ -19,6 +19,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from elizaos_tau_bench.dataset import (
+    count_task_items,
+    iter_sample_tasks,
+    iter_tasks,
+    validate_task_items,
+)
 from elizaos_tau_bench.runner import TauBenchRunner
 from elizaos_tau_bench.types import TauBenchConfig
 
@@ -73,6 +79,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run a tiny 4-task smoke subset rather than all 165 tasks.",
     )
+    p.add_argument("--expand-scenarios", action="store_true")
+    p.add_argument("--count-scenarios", action="store_true")
+    p.add_argument("--validate-scenarios", action="store_true")
 
     # Pass^k
     p.add_argument(
@@ -145,6 +154,7 @@ def build_config(args: argparse.Namespace) -> TauBenchConfig:
         end_index=args.end_index,
         max_tasks_per_domain=args.max_tasks_per_domain,
         use_sample_tasks=args.use_sample_tasks,
+        include_edge_scenarios=args.expand_scenarios,
         use_mock=args.mock,
         agent_harness=args.agent_harness,
         agent_model=args.agent_model,
@@ -194,6 +204,20 @@ def _check_keys(cfg: TauBenchConfig) -> int:
     return 0
 
 
+def _selected_task_items(cfg: TauBenchConfig):
+    iterator = iter_sample_tasks if cfg.use_sample_tasks else iter_tasks
+    return list(
+        iterator(
+            cfg.domains,
+            cfg.task_split,
+            task_ids=cfg.task_ids,
+            start_index=cfg.start_index,
+            end_index=cfg.end_index,
+            max_per_domain=cfg.max_tasks_per_domain,
+        )
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     _maybe_load_dotenv()
     args = parse_args(argv)
@@ -203,6 +227,27 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stdout,
     )
     cfg = build_config(args)
+
+    if args.validate_scenarios or args.count_scenarios:
+        base_items = _selected_task_items(cfg)
+        errors = validate_task_items(
+            base_items,
+            include_edge_scenarios=cfg.include_edge_scenarios,
+        )
+        if errors:
+            print(json.dumps({"valid": False, "errors": errors}, indent=2))
+            return 1
+        if args.count_scenarios:
+            print(
+                json.dumps(
+                    count_task_items(
+                        base_items,
+                        include_edge_scenarios=cfg.include_edge_scenarios,
+                    ),
+                    sort_keys=True,
+                )
+            )
+            return 0
 
     rc = _check_keys(cfg)
     if rc != 0:

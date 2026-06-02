@@ -1473,24 +1473,26 @@ export function createPaymentAwareHandler(
       }
     }
 
-    log("Headers:", JSON.stringify(typedReq.headers, null, 2));
-    log("Query:", JSON.stringify(typedReq.query, null, 2));
+    const requestHeaders = typedReq.headers ?? {};
+    const requestQuery = typedReq.query ?? {};
+
+    log("Headers:", JSON.stringify(requestHeaders, null, 2));
+    log("Query:", JSON.stringify(requestQuery, null, 2));
     if (typedReq.method === "POST" && typedReq.body) {
       log("Body:", JSON.stringify(typedReq.body, null, 2));
     }
 
     const paymentProof =
-      typedReq.headers["x-payment-proof"] ||
-      typedReq.headers["x-payment"] ||
-      typedReq.headers["payment-signature"] ||
-      typedReq.query?.paymentProof;
-    const paymentId =
-      typedReq.headers["x-payment-id"] || typedReq.query?.paymentId;
+      requestHeaders["x-payment-proof"] ||
+      requestHeaders["x-payment"] ||
+      requestHeaders["payment-signature"] ||
+      requestQuery.paymentProof;
+    const paymentId = requestHeaders["x-payment-id"] || requestQuery.paymentId;
 
     log("Payment credentials:", {
-      "x-payment-proof": !!typedReq.headers["x-payment-proof"],
-      "x-payment": !!typedReq.headers["x-payment"],
-      "payment-signature": !!typedReq.headers["payment-signature"],
+      "x-payment-proof": !!requestHeaders["x-payment-proof"],
+      "x-payment": !!requestHeaders["x-payment"],
+      "payment-signature": !!requestHeaders["payment-signature"],
       "x-payment-id": !!paymentId,
       found: !!(paymentProof || paymentId),
     });
@@ -1974,6 +1976,10 @@ export function applyPaymentProtection(
   return routes.map((route) => {
     const x402Route = route as PaymentEnabledRoute;
     if (x402Route.x402 != null) {
+      if (isRoutePaymentWrapped(route)) {
+        return route;
+      }
+
       logger.debug(
         { path: x402Route.path, x402: x402Route.x402 },
         "[x402] payment protection enabled",

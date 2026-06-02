@@ -8,6 +8,14 @@
   "release_claim_allowed": false,
   "silicon_claim_allowed": false,
   "sustained_performance_claim_allowed": false,
+  "false_claim_flags": {
+    "android_boot_claim_allowed": false,
+    "android_nnapi_claim_allowed": false,
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false,
+    "silicon_claim_allowed": false,
+    "sustained_performance_claim_allowed": false
+  },
   "target": "eliza_ai_soc-userdebug",
   "generated_by": "external AOSP validation job command or CI job id",
   "date_utc": "YYYY-MM-DDTHH:MM:SS+00:00",

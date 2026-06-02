@@ -7,6 +7,8 @@ a comprehensive report comparing results with the leaderboard.
 """
 
 import asyncio
+import argparse
+import json
 import logging
 import sys
 from decimal import Decimal
@@ -16,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from elizaos_vending_bench.runner import VendingBenchRunner
+from elizaos_vending_bench.scenarios import count_scenarios, validate_scenarios
 from elizaos_vending_bench.types import VendingBenchConfig
 
 
@@ -32,21 +35,40 @@ async def main() -> int:
     """Run the benchmark."""
     setup_logging()
     logger = logging.getLogger(__name__)
+    parser = argparse.ArgumentParser(description="Run the Vending-Bench benchmark")
+    parser.add_argument("--runs", type=int, default=10)
+    parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--output", default="./benchmark_results/vending-bench")
+    parser.add_argument("--model", default="heuristic")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
+    args = parser.parse_args()
 
     # Configure benchmark
     config = VendingBenchConfig(
-        num_runs=10,  # 10 simulation runs for statistical significance
-        max_days_per_run=30,  # Full 30-day simulation
+        num_runs=args.runs,  # 10 simulation runs for statistical significance
+        max_days_per_run=args.days,  # Full 30-day simulation
         initial_cash=Decimal("500.00"),
         random_seed=42,  # Fixed seed for reproducibility
-        model_name="heuristic",
+        model_name=args.model,
         temperature=0.0,
-        output_dir="./benchmark_results/vending-bench",
+        output_dir=args.output,
         save_detailed_logs=True,
         save_trajectories=True,
         generate_report=True,
         compare_leaderboard=True,
+        include_edge_scenarios=bool(args.expand_scenarios),
     )
+
+    if args.validate_scenarios:
+        validate_scenarios(config)
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(config), sort_keys=True))
+        return 0
+    if args.validate_scenarios:
+        print("Vending-Bench scenario validation passed")
+        return 0
 
     # Create and run benchmark
     runner = VendingBenchRunner(config)

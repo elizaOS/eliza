@@ -278,7 +278,12 @@ export function buildConversation(
   let order = 0;
 
   for (const message of messages) {
-    if (message.direction === "stdin" || message.direction === "keys") continue;
+    if (
+      (message.direction === "stdin" || message.direction === "keys") &&
+      message.senderKind !== "user"
+    ) {
+      continue;
+    }
     if (stripAnsi(message.content).trim() === "") continue;
     atoms.push({
       at: message.timestamp,

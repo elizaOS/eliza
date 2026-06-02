@@ -16,12 +16,18 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/usb_c_receptacle.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/usb_c_receptacle.step
+  land_pattern_basis: public USB4105 signal pinout with local 0.5mm receptacle development
+    pad row; pending GCT drawing/DFM land-pattern approval
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: PANASONIC_EVQ_P7_DEV
   pin_count: 4
   status: public_pinout_development_pattern_generated
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/power_button_cap.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/power_button_cap.step
+  land_pattern_basis: public Panasonic EVQ-P7 four-terminal switch pinout with local
+    tactile-switch development pads; pending selected switch drawing approval
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: DISPLAY_40P_0P30_DEV
   pin_count: 40
   pitch_mm: 0.3
@@ -29,6 +35,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/display_fpc_connector.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/display_fpc_connector.step
+  land_pattern_basis: local 40-pin 0.30mm display FPC development pad row from public
+    signal set; pending signed display FPC pin order and land-pattern drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: CAMERA_24P_0P50_DEV
   pin_count: 24
   pitch_mm: 0.5
@@ -36,6 +45,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/rear_camera_module.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/rear_camera_module.step
+  land_pattern_basis: local 24-pin 0.50mm rear-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: CAMERA_30P_0P50_DEV
   pin_count: 30
   pitch_mm: 0.5
@@ -43,6 +55,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/front_camera_module.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/front_camera_module.step
+  land_pattern_basis: local 30-pin 0.50mm front-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: HIROSE_DF40_80P_0P4_DEV
   pin_count: 80
   pitch_mm: 0.4
@@ -50,6 +65,10 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/split_interconnect_top_connector.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/split_interconnect_top_connector.step
+  land_pattern_basis: local 80-contact 0.40mm board-to-board development pattern bound
+    to public Hirose numbering; pending selected connector drawing and stack-height
+    approval
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: BATTERY_4P_1P00_DEV
   pin_count: 4
   pitch_mm: 1.0
@@ -57,6 +76,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/battery_connector_lead_flex.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/battery_connector_lead_flex.step
+  land_pattern_basis: local 4-pin 1.00mm battery-pack flex development pad row from
+    pack signal contract; pending pack supplier lead/connector drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: TI_TPS65987_RSH_56QFN_DEV
   pin_count: 59
   pitch_mm: 0.4
@@ -64,6 +86,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/pmic_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/pmic_package_marker.step
+  land_pattern_basis: public TPS65987 RSH56 QFN pin table with local exposed-pad development
+    pattern; pending TI land-pattern/DFM release review
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: ADI_MAX77860_WLP81_DEV
   pin_count: 81
   pitch_mm: 0.4
@@ -71,6 +96,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/pmic_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/pmic_package_marker.step
+  land_pattern_basis: public MAX77860 WLP81 ball map with local 0.40mm WLP development
+    grid; pending Analog Devices package drawing and assembler DFM approval
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: AUDIO_CODEC_QFN48_DEV
   pin_count: 48
   pitch_mm: 0.5
@@ -78,6 +106,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/audio_codec_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/audio_codec_package_marker.step
+  land_pattern_basis: local QFN48 audio-codec development pattern from codec signal
+    contract; pending exact codec MPN land pattern and pinout
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: MURATA_TYPE_2EA_GEOMETRY_DEV
   pin_count: 199
   pitch_mm: public_dxf_variable
@@ -85,6 +116,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/wifi_bt_module_keepout.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/wifi_bt_module_keepout.step
+  land_pattern_basis: public Murata Type 2EA terminal table/DXF development geometry;
+    pending Murata/CM approved footprint import
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: QUECTEL_RG255C_GEOMETRY_DEV
   pin_count: 204
   pitch_mm: public_pin_table_synthetic_lga
@@ -92,6 +126,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/cellular_lga_module_keepout.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/cellular_lga_module_keepout.step
+  land_pattern_basis: public Quectel RG255C pin table with synthetic LGA development
+    grid; pending selected regional SKU land-pattern drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: SODIMM_260P_0P5_COMPUTE_SOM_DEV
   pin_count: 260
   pitch_mm: 0.5
@@ -103,6 +140,9 @@ records:
   - mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
   extra_model_bindings:
   - ${KIPRJMOD}/../../../mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
+  land_pattern_basis: public 260-position SoM connector count with local dual-row
+    development footprint; pending selected connector and SoM pin-order drawing
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: ESD_ARRAY_6CH_DEV
   pin_count: 6
   status: generic_off_the_shelf_development_pattern
@@ -241,6 +281,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/usim_levelshift_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/usim_levelshift_package_marker.step
+  land_pattern_basis: local 10-terminal USIM ESD/level-shift development pattern from
+    public signal contract; pending selected device land pattern
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: ESIM_LGA_DEV
   pin_count: 8
   pitch_mm: 1.27
@@ -248,6 +291,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/esim_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/esim_package_marker.step
+  land_pattern_basis: public MFF2/eSIM 8-pad pinout with local QFN/LGA development
+    footprint; pending eSIM supplier package drawing approval
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: NFC_CONTROLLER_QFN_DEV
   pin_count: 32
   pitch_mm: 0.5
@@ -255,12 +301,18 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/nfc_controller_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/nfc_controller_package_marker.step
+  land_pattern_basis: local QFN32 NFC-controller development pattern from NFC signal
+    contract; pending exact controller MPN land pattern
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: NFC_LOOP_MATCH_DEV
   pin_count: 5
   status: generic_rf_pi_match_development_pattern
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/nfc_loop_match_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/nfc_loop_match_marker.step
+  land_pattern_basis: local five-terminal NFC loop matching development pattern; pending
+    antenna tuning and selected matching network
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: SENSOR_HUB_QFN_DEV
   pin_count: 24
   pitch_mm: 0.5
@@ -268,6 +320,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/sensor_hub_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/sensor_hub_package_marker.step
+  land_pattern_basis: local QFN24 sensor-hub development pattern from sensor signal
+    contract; pending exact sensor/IMU package selection
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: BACKLIGHT_BIAS_POWER_DEV
   pin_count: 24
   pitch_mm: 0.5
@@ -275,6 +330,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/backlight_bias_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/backlight_bias_package_marker.step
+  land_pattern_basis: local QFN24 backlight/bias power development pattern from display-power
+    signal contract; pending exact driver package selection
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: HAPTIC_DRIVER_WLCSP_DEV
   pin_count: 9
   pitch_mm: 0.4
@@ -282,6 +340,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/haptic_driver_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/haptic_driver_package_marker.step
+  land_pattern_basis: local WLCSP9 haptic-driver development grid from haptic signal
+    contract; pending exact driver ball map
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 - name: FUEL_GAUGE_WLCSP_DEV
   pin_count: 12
   pitch_mm: 0.4
@@ -289,6 +350,9 @@ records:
   step_binding_status: development_envelope_step_bound
   model: mechanical/e1-phone/out/fuel_gauge_package_marker.step
   model_binding: ${KIPRJMOD}/../../../mechanical/e1-phone/out/fuel_gauge_package_marker.step
+  land_pattern_basis: local WLCSP12 fuel-gauge development grid from battery gauge
+    signal contract; pending exact gauge ball map
+  local_terminal_contract_source: generated_development_footprint_pinout_pattern_basis
 release_blockers_preserved:
 - display/camera FPC exact pin order still needs signed module drawings
 - Murata Type 2EA public table/DXF and Quectel public pin table still need supplier/CM

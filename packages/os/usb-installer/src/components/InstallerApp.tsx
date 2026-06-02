@@ -296,7 +296,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   // ---------------------------------------------------------------------------
 
   function goToImageSelection() {
-    if (!selectedDrive || selectedDrive.safety !== "safe-removable") return;
+    if (selectedDrive?.safety !== "safe-removable") return;
     setAppStep("selecting-image");
   }
 
@@ -528,9 +528,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             <div className="panel-actions">
               <button
                 type="button"
-                disabled={
-                  !selectedDrive || selectedDrive.safety !== "safe-removable"
-                }
+                disabled={selectedDrive?.safety !== "safe-removable"}
                 onClick={goToImageSelection}
               >
                 Next: Select Image →

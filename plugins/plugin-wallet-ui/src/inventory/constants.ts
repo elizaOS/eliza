@@ -62,8 +62,7 @@ export function isAvaxChainName(chain: string): boolean {
 }
 
 export function formatBalance(balance: string): string {
-  const num = Number.parseFloat(balance);
-  if (Number.isNaN(num)) return balance;
+  const num = parseFiniteAmount(balance);
   if (num === 0) return "0";
   if (num < 0.0001) return "<0.0001";
   if (num < 1) return num.toFixed(6);
@@ -73,4 +72,13 @@ export function formatBalance(balance: string): string {
 
 export function toNormalizedAddress(addr: string): string {
   return addr.trim().toLowerCase();
+}
+
+export function parseFiniteAmount(
+  value: string | number | null | undefined,
+): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

@@ -14,6 +14,9 @@ from rich.console import Console
 from rich.table import Table
 
 from .scoring import score_episode, format_score_summary
+from .scenarios import base_scenario_name, load_scenarios as load_scenario_corpus
+from .scenarios import count_scenarios as count_scenario_corpus
+from .scenarios import load_scenario, validate_scenarios as validate_scenario_corpus
 
 app = typer.Typer(help="ClawBench - Evaluate AGENTS.md policies")
 console = Console()
@@ -26,15 +29,12 @@ CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
 
 def _load_scenario(name_or_path: str) -> dict:
     """Load a scenario YAML by name or file path."""
-    path = Path(name_or_path)
-    if not path.exists():
-        path = SCENARIOS_DIR / f"{name_or_path}.yaml"
-    if not path.exists():
+    try:
+        return load_scenario(name_or_path)
+    except FileNotFoundError:
         console.print(f"[red]Scenario not found:[/red] {name_or_path}")
         console.print(f"Available: {[p.stem for p in sorted(SCENARIOS_DIR.glob('*.yaml'))]}")
         raise typer.Exit(1)
-    with open(path) as f:
-        return yaml.safe_load(f)
 
 
 @app.command()
@@ -47,80 +47,104 @@ def run(
     mock_tools_url: str = typer.Option(
         None, envvar="MOCK_TOOLS_URL", help="Mock tools server URL"
     ),
+    expand_scenarios: bool = typer.Option(
+        False,
+        "--expand-scenarios",
+        help="Run the selected base scenario plus its ten edge variants.",
+    ),
 ):
-    """Run a single scenario and print the score."""
+    """Run one scenario, optionally with its edge variants, and print scores."""
     openclaw_url = openclaw_url or os.getenv("OPENCLAW_URL", "http://localhost:18790")
     mock_tools_url = mock_tools_url or os.getenv("MOCK_TOOLS_URL", "http://localhost:3001")
     token = os.getenv("OPENCLAW_GATEWAY_TOKEN", "sandbox-token-12345")
 
-    sc = _load_scenario(scenario)
-    name = sc["name"]
-    prompt = sc.get("prompt", "Help me with my tasks.").strip()
+    scenarios = [_load_scenario(scenario)]
+    if expand_scenarios:
+        selected_name = str(scenarios[0].get("name") or scenario)
+        selected_base = base_scenario_name(selected_name)
+        scenarios = [
+            sc
+            for sc in load_scenario_corpus()
+            if base_scenario_name(str(sc.get("name") or "")) == selected_base
+        ]
+        if not scenarios:
+            console.print(f"[red]Scenario not found:[/red] {scenario}")
+            raise typer.Exit(1)
 
-    console.print(f"[bold blue]Running:[/bold blue] {name}/{variant}")
-    console.print(f"  Prompt: {prompt[:80]}...")
+    for sc in scenarios:
+        name = sc["name"]
+        prompt = sc.get("prompt", "Help me with my tasks.").strip()
 
-    # Set mock scenario
-    try:
-        httpx.post(f"{mock_tools_url}/set_scenario/{name}", timeout=5)
-    except httpx.RequestError as e:
-        console.print(f"[red]Mock server unreachable:[/red] {e}")
-        raise typer.Exit(1)
+        console.print(f"[bold blue]Running:[/bold blue] {name}/{variant}")
+        console.print(f"  Prompt: {prompt[:80]}...")
 
-    # Send message
-    try:
-        resp = httpx.post(
-            f"{openclaw_url}/v1/chat/completions",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={
-                "model": CLAWBENCH_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-            },
-            timeout=180,
-        )
-        raw = resp.json()
-    except httpx.RequestError as e:
-        console.print(f"[red]OpenClaw unreachable:[/red] {e}")
-        raise typer.Exit(1)
+        # Set mock scenario
+        try:
+            httpx.post(f"{mock_tools_url}/set_scenario/{name}", timeout=5)
+        except httpx.RequestError as e:
+            console.print(f"[red]Mock server unreachable:[/red] {e}")
+            raise typer.Exit(1)
 
-    # Extract response
-    assistant_message = ""
-    if "choices" in raw:
-        assistant_message = raw["choices"][0].get("message", {}).get("content", "")
+        # Send message
+        try:
+            resp = httpx.post(
+                f"{openclaw_url}/v1/chat/completions",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "model": CLAWBENCH_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                },
+                timeout=180,
+            )
+            raw = resp.json()
+        except httpx.RequestError as e:
+            console.print(f"[red]OpenClaw unreachable:[/red] {e}")
+            raise typer.Exit(1)
 
-    # Collect tool calls
-    tool_calls = []
-    try:
-        r = httpx.get(f"{mock_tools_url}/tool_calls", timeout=5)
-        if r.status_code == 200:
-            tool_calls = r.json().get("calls", [])
-    except httpx.RequestError:
-        pass
+        # Extract response
+        assistant_message = ""
+        if "choices" in raw:
+            assistant_message = raw["choices"][0].get("message", {}).get("content", "")
 
-    tool_counts: dict[str, int] = {}
-    for tc in tool_calls:
-        tool_counts[tc["tool"]] = tool_counts.get(tc["tool"], 0) + 1
+        # Collect tool calls
+        tool_calls = []
+        try:
+            r = httpx.get(f"{mock_tools_url}/tool_calls", timeout=5)
+            if r.status_code == 200:
+                tool_calls = r.json().get("calls", [])
+        except httpx.RequestError:
+            pass
 
-    result = {
-        "response": assistant_message,
-        "tool_calls_raw": tool_calls,
-        "tool_calls_by_type": tool_counts,
-        "tool_calls_total": len(tool_calls),
-    }
+        tool_counts: dict[str, int] = {}
+        for tc in tool_calls:
+            tool_counts[tc["tool"]] = tool_counts.get(tc["tool"], 0) + 1
 
-    # Score
-    scoring_config = sc.get("scoring")
-    if scoring_config:
-        score = score_episode(result, scoring_config)
-        console.print(f"\n[bold]Result:[/bold]")
-        console.print(format_score_summary(score))
-    else:
-        console.print("  (no scoring rubric)")
+        result = {
+            "response": assistant_message,
+            "tool_calls_raw": tool_calls,
+            "tool_calls_by_type": tool_counts,
+            "tool_calls_total": len(tool_calls),
+        }
+
+        # Score
+        scoring_config = sc.get("scoring")
+        if scoring_config:
+            score = score_episode(result, scoring_config)
+            console.print(f"\n[bold]Result:[/bold]")
+            console.print(format_score_summary(score))
+        else:
+            console.print("  (no scoring rubric)")
 
 
 @app.command()
-def list_scenarios():
+def list_scenarios(
+    expand_scenarios: bool = typer.Option(
+        False,
+        "--expand-scenarios",
+        help="Include generated edge scenarios.",
+    ),
+):
     """List available scenarios."""
     table = Table(title="Available Scenarios")
     table.add_column("Name", style="cyan")
@@ -129,14 +153,21 @@ def list_scenarios():
     table.add_column("Points", justify="right")
     table.add_column("Variants")
 
-    for path in sorted(SCENARIOS_DIR.glob("*.yaml")):
-        with open(path) as f:
-            sc = yaml.safe_load(f)
+    scenarios = load_scenario_corpus() if expand_scenarios else []
+    if not scenarios:
+        for path in sorted(SCENARIOS_DIR.glob("*.yaml")):
+            with open(path) as f:
+                scenarios.append(yaml.safe_load(f))
+
+    for sc in scenarios:
+        if not isinstance(sc, dict):
+            continue
         checks = sc.get("scoring", {}).get("checks", [])
         total_pts = sum(c.get("points", 1) for c in checks)
         variants = ", ".join(sc.get("variants", {}).keys())
+        name = str(sc.get("name") or sc.get("_base_name") or "unknown")
         table.add_row(
-            sc.get("name", path.stem),
+            name,
             (sc.get("description", "")[:60] + "...") if len(sc.get("description", "")) > 60 else sc.get("description", ""),
             str(len(checks)),
             str(total_pts),
@@ -144,6 +175,21 @@ def list_scenarios():
         )
 
     console.print(table)
+
+
+@app.command()
+def count_scenarios():
+    """Print base, edge, and total scenario counts."""
+    console.print_json(data=count_scenario_corpus())
+
+
+@app.command()
+def validate_scenarios():
+    """Validate base and expanded scenario definitions."""
+    result = validate_scenario_corpus()
+    console.print_json(data=result)
+    if not result.get("valid"):
+        raise typer.Exit(1)
 
 
 @app.command()

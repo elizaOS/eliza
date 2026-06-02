@@ -10,7 +10,9 @@
     "rootDir": "src",
     "ignoreDeprecations": "6.0",
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.node.d.ts"]
+      "@elizaos/core": ["../../packages/core/dist/index.node.d.ts"],
+      "@elizaos/security": ["../../packages/security/src/index.ts"],
+      "@elizaos/security/*": ["../../packages/security/src/*"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -338,6 +338,9 @@ class BFCLConfig:
     # entry may itself require several agent steps to satisfy.
     max_multi_turn_steps: int = 20
 
+    # Add ten deterministic robustness variants for every selected base test.
+    include_edge_scenarios: bool = False
+
 
 @dataclass
 class BaselineScore:

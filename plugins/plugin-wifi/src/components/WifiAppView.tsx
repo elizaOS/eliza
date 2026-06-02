@@ -90,10 +90,10 @@ function ConnectedCard({
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-txt">Wi-Fi is off</div>
-            <p className="mt-1 text-xs text-muted">
+            <div className="mt-1 text-xs text-muted">
               Turn on Wi-Fi from Android settings, then scan again to load
               nearby networks.
-            </p>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -337,10 +337,10 @@ export function WifiAppView(props: OverlayAppContext) {
               <div className="mt-3 text-sm font-medium text-txt">
                 No networks found
               </div>
-              <p className="mx-auto mt-1 max-w-sm text-xs text-muted">
+              <div className="mx-auto mt-1 max-w-sm text-xs text-muted">
                 Scans need Wi-Fi and Android location access. If the device has
                 Wi-Fi disabled, open network settings first.
-              </p>
+              </div>
               <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
                 <Button
                   variant="outline"

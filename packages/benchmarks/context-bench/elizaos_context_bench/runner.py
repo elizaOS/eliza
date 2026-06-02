@@ -6,6 +6,7 @@ import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
+from elizaos_context_bench.edge_cases import count_tasks, validate_tasks
 from elizaos_context_bench.evaluators.position import PositionAnalyzer
 from elizaos_context_bench.suites.multihop import MultiHopBenchmarkSuite
 from elizaos_context_bench.suites.niah import NIAHBenchmarkSuite
@@ -54,6 +55,23 @@ class ContextBenchRunner:
         self.llm_query_fn = llm_query_fn
         self.niah_suite.llm_query_fn = llm_query_fn
         self.multihop_suite.llm_query_fn = llm_query_fn
+
+    def generate_tasks(self) -> list:
+        """Generate all configured tasks without running the model."""
+        tasks = []
+        if self.config.run_niah_basic or self.config.run_niah_semantic:
+            tasks.extend(self.niah_suite.generate_tasks())
+        if self.config.run_multi_hop:
+            tasks.extend(self.multihop_suite.generate_tasks())
+        return tasks
+
+    def count_scenarios(self) -> dict[str, int]:
+        """Return counts for the configured generated scenario set."""
+        return count_tasks(self.generate_tasks())
+
+    def validate_scenarios(self) -> list[str]:
+        """Validate the configured generated scenario set."""
+        return validate_tasks(self.generate_tasks())
 
     async def run_quick_eval(self) -> ContextBenchResults:
         """Run a small NIAH-only evaluation."""

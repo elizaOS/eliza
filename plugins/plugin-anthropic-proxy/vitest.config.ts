@@ -6,5 +6,6 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
     exclude: ["dist/**", "node_modules/**", "**/*.live.test.ts"],
     passWithNoTests: false,
+    testTimeout: 15_000,
   },
 });

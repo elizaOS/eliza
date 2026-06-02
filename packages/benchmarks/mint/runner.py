@@ -23,7 +23,7 @@ from benchmarks.mint.types import (
     MINTTrajectory,
     ConfigurationResult,
 )
-from benchmarks.mint.dataset import MINTDataset
+from benchmarks.mint.dataset import MINTDataset, expand_tasks, validate_tasks
 from benchmarks.mint.executor import PythonExecutor, MockExecutor
 from benchmarks.mint.feedback import FeedbackGenerator
 from benchmarks.mint.agent import MINTAgent
@@ -129,6 +129,9 @@ class MINTRunner:
             tasks = tasks[: max(0, int(self.config.max_total_tasks))]
         if not tasks:
             raise ValueError("No tasks loaded from dataset")
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+            validate_tasks(tasks)
 
         tasks = [
             t.replace(max_turns=min(t.max_turns, self.config.max_turns))
@@ -232,6 +235,7 @@ class MINTRunner:
                     "use_sample_tasks": self.config.use_sample_tasks,
                     "auto_fetch_upstream": self.config.auto_fetch_upstream,
                     "use_mock_executor": self.config.use_mock_executor,
+                    "include_edge_scenarios": self.config.include_edge_scenarios,
                 },
             },
             baseline_results=baseline_results,

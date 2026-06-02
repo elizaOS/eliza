@@ -32,6 +32,12 @@ interface JsonResponse {
   setHeader?: (name: string, value: string) => void;
 }
 
+class SolanaSignInputError extends Error {}
+
+function routeErrorStatus(error: unknown): number {
+  return error instanceof SolanaSignInputError ? 400 : 500;
+}
+
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   const origin = (req.headers?.origin as string | undefined) ?? "*";
   const r = res as unknown as JsonResponse & {
@@ -87,7 +93,19 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
 }
 
 function decodeBase64(s: string): Uint8Array {
+  const normalized = s.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)
+  ) {
+    throw new SolanaSignInputError("invalid base64 payload");
+  }
   const buf = Buffer.from(s, "base64");
+  const canonical = buf.toString("base64");
+  if (canonical.replace(/=+$/, "") !== normalized.replace(/=+$/, "")) {
+    throw new SolanaSignInputError("invalid base64 payload");
+  }
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
@@ -101,7 +119,11 @@ function decodeTransaction(b64: string): Transaction | VersionedTransaction {
   try {
     return VersionedTransaction.deserialize(raw);
   } catch {
-    return Transaction.from(raw);
+    try {
+      return Transaction.from(raw);
+    } catch {
+      throw new SolanaSignInputError("invalid transaction payload");
+    }
   }
 }
 
@@ -136,9 +158,9 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
       res.status(400).json({ error: "transactionBase64 required" });
       return;
     }
+    const tx = decodeTransaction(body.transactionBase64);
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
-    const tx = decodeTransaction(body.transactionBase64);
     const signed = await signer.signTransaction(tx);
     res.status(200).json({
       signedBase64: encodeBase64(serializeTransaction(signed)),
@@ -146,7 +168,7 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
     });
   } catch (err) {
     logger.error({ err }, "[wallet/solana/sign-transaction] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 
@@ -161,9 +183,9 @@ const signAllTransactionsHandler: LegacyRouteHandler = async (req, res, runtime)
       res.status(400).json({ error: "transactionsBase64 string[] required" });
       return;
     }
+    const txs = (body.transactionsBase64 as string[]).map((b64) => decodeTransaction(b64));
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
-    const txs = (body.transactionsBase64 as string[]).map((b64) => decodeTransaction(b64));
     const signed = await signer.signAllTransactions(txs);
     res.status(200).json({
       signedBase64s: signed.map((tx) => encodeBase64(serializeTransaction(tx))),
@@ -171,7 +193,7 @@ const signAllTransactionsHandler: LegacyRouteHandler = async (req, res, runtime)
     });
   } catch (err) {
     logger.error({ err }, "[wallet/solana/sign-all-transactions] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 
@@ -183,9 +205,9 @@ const signMessageHandler: LegacyRouteHandler = async (req, res, runtime) => {
       res.status(400).json({ error: "messageBase64 required" });
       return;
     }
+    const messageBytes = decodeBase64(body.messageBase64);
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
-    const messageBytes = decodeBase64(body.messageBase64);
     const sig = await signer.signMessage(messageBytes);
     res.status(200).json({
       signatureBase64: encodeBase64(sig),
@@ -194,7 +216,7 @@ const signMessageHandler: LegacyRouteHandler = async (req, res, runtime) => {
     });
   } catch (err) {
     logger.error({ err }, "[wallet/solana/sign-message] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 
@@ -209,9 +231,9 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
       res.status(400).json({ error: "transactionBase64 required" });
       return;
     }
+    const tx = decodeTransaction(body.transactionBase64);
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
-    const tx = decodeTransaction(body.transactionBase64);
     const signed = await signer.signTransaction(tx);
 
     const solanaService = runtime.getService<SolanaService>("chain_solana");
@@ -237,7 +259,7 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
     });
   } catch (err) {
     logger.error({ err }, "[wallet/solana/sign-and-send-transaction] failed");
-    res.status(500).json({ error: (err as Error).message });
+    res.status(routeErrorStatus(err)).json({ error: (err as Error).message });
   }
 };
 

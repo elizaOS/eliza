@@ -60,6 +60,19 @@ const VALID_TIERS = new Set<string>([
   "stub",
 ]);
 
+const EDGE_VARIANTS = [
+  "answer despite low contrast visual elements",
+  "ignore irrelevant decorative text in the image",
+  "handle rotated or off-center target content",
+  "resolve abbreviated labels and nearby distractors",
+  "prefer visible evidence over prior assumptions",
+  "handle mixed numeric and textual references",
+  "preserve coordinate precision for small UI targets",
+  "follow the final instruction when multiple cues appear",
+  "handle unicode and punctuation-heavy text",
+  "recover when the key evidence is near an image edge",
+] as const;
+
 interface Args {
   tier: Eliza1TierId | "stub";
   harness: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
@@ -71,6 +84,9 @@ interface Args {
   smoke: boolean;
   /** Force the deterministic stub runtime even if a model is available. */
   forceStub: boolean;
+  expandScenarios: boolean;
+  countScenarios: boolean;
+  validateScenarios: boolean;
 }
 
 const HELP = `vision-language bench
@@ -94,6 +110,9 @@ Flags:
                        fixtures and a deterministic stub runtime.
   --stub               use the stub runtime even outside --smoke (useful
                        for harness CI on hosts with no model on disk).
+  --expand-scenarios   run each selected sample plus ten edge-condition clones.
+  --count-scenarios    print base/edge/total sample counts for each benchmark.
+  --validate-scenarios validate generated sample ids before scoring.
   --help, -h           show this help.
 `;
 
@@ -106,6 +125,9 @@ function parseArgs(argv: string[]): Args {
     samples: 100,
     smoke: false,
     forceStub: false,
+    expandScenarios: false,
+    countScenarios: false,
+    validateScenarios: false,
   };
   const requestedBenchmarks: BenchmarkName[] = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -170,6 +192,12 @@ function parseArgs(argv: string[]): Args {
       args.smoke = true;
     } else if (arg === "--stub") {
       args.forceStub = true;
+    } else if (arg === "--expand-scenarios") {
+      args.expandScenarios = true;
+    } else if (arg === "--count-scenarios") {
+      args.countScenarios = true;
+    } else if (arg === "--validate-scenarios") {
+      args.validateScenarios = true;
     } else {
       throw new Error(`unknown flag: ${arg}`);
     }
@@ -227,6 +255,49 @@ async function predictFor(
   throw new Error(`no predict driver for benchmark '${name}'`);
 }
 
+function clonePayload<T>(payload: T): T {
+  return JSON.parse(JSON.stringify(payload)) as T;
+}
+
+export function expandSamples<T>(
+  samples: Sample<T>[],
+  expandScenarios: boolean,
+): Sample<T>[] {
+  if (!expandScenarios) return [...samples];
+  const expanded: Sample<T>[] = [...samples];
+  for (const sample of samples) {
+    for (let index = 0; index < EDGE_VARIANTS.length; index += 1) {
+      const edgeCondition = EDGE_VARIANTS[index];
+      expanded.push({
+        ...sample,
+        id: `${sample.id}__edge_${String(index + 1).padStart(2, "0")}`,
+        question: `${sample.question}\nEdge condition: ${edgeCondition}.`,
+        payload: clonePayload(sample.payload),
+      });
+    }
+  }
+  return expanded;
+}
+
+export function scenarioCounts(baseCount: number, expandScenarios: boolean) {
+  const edge = expandScenarios ? baseCount * EDGE_VARIANTS.length : 0;
+  return { base: baseCount, edge, total: baseCount + edge };
+}
+
+export function validateSamples<T>(
+  samples: Sample<T>[],
+  expandScenarios: boolean,
+) {
+  const expanded = expandSamples(samples, expandScenarios);
+  const ids = expanded.map((sample) => sample.id);
+  const duplicateCount = ids.length - new Set(ids).size;
+  return {
+    valid: duplicateCount === 0,
+    duplicateCount,
+    total: expanded.length,
+  };
+}
+
 interface BaselinesFile {
   baselines: Record<string, { score: number; source: string }>;
 }
@@ -261,6 +332,9 @@ export interface RunOneArgs {
   samples: number;
   smoke: boolean;
   runtime: VisionRuntime;
+  expandScenarios?: boolean;
+  countScenarios?: boolean;
+  validateScenarios?: boolean;
 }
 
 /**
@@ -268,9 +342,27 @@ export interface RunOneArgs {
  */
 export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const adapter = adapterFor(args.benchmark);
-  const samples = await adapter.loadSamples(args.samples, {
+  const baseSamples = await adapter.loadSamples(args.samples, {
     smoke: args.smoke,
   });
+  const counts = scenarioCounts(baseSamples.length, args.expandScenarios === true);
+  if (args.countScenarios) {
+    process.stdout.write(
+      `vision-language ${args.benchmark} scenario counts: base=${counts.base} edge=${counts.edge} total=${counts.total}\n`,
+    );
+  }
+  if (args.validateScenarios) {
+    const validation = validateSamples(baseSamples, args.expandScenarios === true);
+    if (!validation.valid) {
+      throw new Error(
+        `invalid vision-language sample expansion for ${args.benchmark}: ${JSON.stringify(validation)}`,
+      );
+    }
+    process.stdout.write(
+      `vision-language ${args.benchmark} scenario validation passed: ${validation.total} sample(s)\n`,
+    );
+  }
+  const samples = expandSamples(baseSamples, args.expandScenarios === true);
   const startedAt = Date.now();
   const predictions = await predictFor(
     args.benchmark,
@@ -312,6 +404,8 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     delta: baselineScore === null ? null : score - baselineScore,
     runtime_seconds: runtimeSec,
     error_count: errorCount,
+    include_edge_scenarios: args.expandScenarios === true,
+    scenario_counts: counts,
     input_tokens: usage.input_tokens ?? 0,
     output_tokens: usage.output_tokens ?? 0,
     total_tokens: usage.total_tokens ?? 0,
@@ -439,6 +533,9 @@ async function main(): Promise<void> {
       samples: args.samples,
       smoke: args.smoke,
       runtime,
+      expandScenarios: args.expandScenarios,
+      countScenarios: args.countScenarios,
+      validateScenarios: args.validateScenarios,
     });
     const dest = writeReport(
       report,

@@ -20,6 +20,10 @@ import {
 } from "./audio-capture-stream";
 import { EntityTracker } from "./entity-tracker";
 import { FaceRecognition } from "./face-recognition";
+import {
+  assertValidVisionImageBuffer,
+  parseVisionDataImageUrl,
+} from "./image-input";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -645,10 +649,7 @@ export class VisionService extends Service {
   }
 
   private async processFrameData(data: Buffer): Promise<VisionFrame> {
-    // Validate input data
-    if (!data || data.length === 0) {
-      throw new Error("Empty frame data received from camera");
-    }
+    await assertValidVisionImageBuffer(data);
 
     // Use sharp to ensure consistent format
     const image = sharp(data);
@@ -1046,6 +1047,16 @@ export class VisionService extends Service {
     imageUrl: string,
   ): Promise<string> {
     try {
+      try {
+        parseVisionDataImageUrl(imageUrl);
+      } catch (inputError) {
+        logger.warn(
+          "[VisionService] rejected unsafe VLM image input:",
+          inputError instanceof Error ? inputError.message : inputError,
+        );
+        return "Unable to describe scene";
+      }
+
       // Route every VLM call through the runtime IMAGE_DESCRIPTION handler.
       // When eliza-1 (Qwen3.5-VL) is registered locally it owns this slot;
       // otherwise the runtime rotates to whichever cloud/remote provider

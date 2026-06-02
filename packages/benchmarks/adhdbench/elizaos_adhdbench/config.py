@@ -30,6 +30,7 @@ class ADHDBenchConfig:
     levels: tuple[int, ...] = (0, 1, 2)
     tags: tuple[str, ...] = ()
     scenario_ids: tuple[str, ...] = ()
+    include_edge_scenarios: bool = False
 
     # ---- output ----
     output_dir: str = "./adhdbench_results"

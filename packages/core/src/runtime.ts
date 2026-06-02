@@ -219,11 +219,26 @@ import {
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
+// Whether debug-level logs are emitted, captured once at load (mirrors the
+// logger's static LOG_LEVEL read; debug is on only for trace/verbose/debug).
+// Lets hot paths skip building expensive debug-only payloads. Guarded for the
+// browser/edge build targets where `process` is absent.
+const RUNTIME_DEBUG_LOG_ENABLED =
+	typeof process !== "undefined" &&
+	["trace", "verbose", "debug"].includes(
+		String(process.env?.LOG_LEVEL || "info").toLowerCase(),
+	);
 const RUNTIME_TEMPLATE_CACHE = new Map<
 	string,
 	Handlebars.TemplateDelegate<Record<string, unknown>>
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+// stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
+// Previously it was never unconditionally evicted at end-of-turn, so a long-lived
+// runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
+// ~23 MB at 5k messages). Cap it; oldest entries evict once over the cap, which keeps
+// recent and in-flight turns while bounding memory.
+const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
 const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
@@ -1655,8 +1670,24 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.providers) {
+			const existingProviderNames = new Set(
+				this.providers.map((provider) => provider.name),
+			);
 			for (const provider of pluginToRegister.providers) {
+				if (existingProviderNames.has(provider.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: provider.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin provider",
+					);
+					continue;
+				}
 				this.registerProvider(provider);
+				existingProviderNames.add(provider.name);
 			}
 		}
 		if (pluginToRegister.evaluators) {
@@ -2680,6 +2711,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerProvider(provider: Provider) {
 		const canonical = withCanonicalProviderDocs(provider);
+		if (this.providers.find((p) => p.name === canonical.name)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, provider: canonical.name },
+				"Provider already registered, skipping",
+			);
+			return;
+		}
 		this.providers.push(canonical);
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, provider: canonical.name },
@@ -2994,6 +3032,11 @@ export class AgentRuntime implements IAgentRuntime {
 		const worldId = message.worldId ?? roomId;
 
 		const runOne = async (action: Action) => {
+			const callback = options?.callback;
+			const actionCallback: HandlerCallback | undefined = callback
+				? (response, actionName) =>
+						callback(response, actionName ?? action.name)
+				: undefined;
 			await this.emitEvent(EventType.ACTION_STARTED, {
 				runtime: this,
 				messageId,
@@ -3018,7 +3061,7 @@ export class AgentRuntime implements IAgentRuntime {
 							message,
 							composedState,
 							{ mode },
-							options?.callback,
+							actionCallback,
 							options?.responses,
 						),
 				);
@@ -3445,7 +3488,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const cachedState =
 			skipCache || !message.id
 				? emptyObj
-				: (await this.stateCache.get(message.id)) || emptyObj;
+				: this.stateCache.get(message.id) || emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
 			cachedState,
 			message,
@@ -3648,8 +3691,9 @@ export class AgentRuntime implements IAgentRuntime {
 				Object.assign(aggregatedStateValues, providerResult.values);
 			}
 		}
+		const providersToGetNames = new Set(providersToGet.map((p) => p.name));
 		for (const providerName in currentProviderResults) {
-			if (!providersToGet.some((p) => p.name === providerName)) {
+			if (!providersToGetNames.has(providerName)) {
 				const providerResult = currentProviderResults[providerName];
 				if (
 					providerResult?.values &&
@@ -3676,6 +3720,15 @@ export class AgentRuntime implements IAgentRuntime {
 		} as State;
 		if (message.id) {
 			this.stateCache.set(message.id, newState);
+			// Evict oldest entries beyond the cap. The just-set entry and recent
+			// in-flight turns are kept; only stale messages drop out.
+			while (this.stateCache.size > STATE_CACHE_LIMIT) {
+				const oldest = this.stateCache.keys().next().value;
+				if (oldest === undefined) {
+					break;
+				}
+				this.stateCache.delete(oldest);
+			}
 		}
 		return newState;
 	}
@@ -5437,9 +5490,13 @@ export class AgentRuntime implements IAgentRuntime {
 				return Math.ceil(words.length * 1.3);
 			};
 
-			this.logger.debug(
-				`dynamicPromptExecFromState: using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
-			);
+			// estToken scans the full multi-KB output; only run it when the debug
+			// log it feeds would actually be emitted.
+			if (RUNTIME_DEBUG_LOG_ENABLED) {
+				this.logger.debug(
+					`dynamicPromptExecFromState: using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
+				);
+			}
 
 			// Set context level on first iteration
 			if (currentRetry === 0) {
@@ -7474,6 +7531,7 @@ ${section_end}`;
 		metadata?: Record<string, unknown>;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemories({
 			...params,

@@ -1,3 +1,4 @@
+import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 
@@ -125,5 +126,97 @@ describe("assistant launch deep-link routing", () => {
     expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.create");
     expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");
+  });
+
+  it("fuzzes arbitrary assistant entry query strings without throwing or producing unsafe routes", () => {
+    const knownPaths = [
+      "feature/open",
+      "ask",
+      "assistant",
+      "chat/ask",
+      "chat",
+      "voice",
+      "chat/voice",
+      "daily-brief",
+      "lifeops/daily-brief",
+      "lifeops/tasks",
+      "lifeops/create",
+      "lifeops/task",
+      "lifeops/task/new",
+      "lifeops/reminder",
+    ] as const;
+    const keys = [
+      "text",
+      "q",
+      "query",
+      "body",
+      "source",
+      "action",
+      "feature",
+      "lifeops.section",
+      "assistant.launchId",
+      "redirect",
+    ] as const;
+
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...knownPaths),
+        fc.array(
+          fc.tuple(fc.constantFrom(...keys), fc.string({ maxLength: 80 })),
+          { maxLength: 16 },
+        ),
+        (path, entries) => {
+          const searchParams = new URLSearchParams();
+          for (const [key, value] of entries) {
+            searchParams.append(key, value);
+          }
+
+          const hashRoute = buildAssistantLaunchHashRoute(path, searchParams, {
+            generateLaunchId: () => "launch-fuzz",
+          });
+
+          expect(hashRoute).not.toBeNull();
+          expect(hashRoute).toMatch(/^#(?:chat|lifeops)(?:\?|$)/);
+          expect(hashRoute).not.toContain("javascript:");
+          expect(hashRoute).not.toContain("\n");
+          expect(hashRoute).not.toContain("\r");
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it("fuzzes unknown deep-link paths as non-routable instead of falling through to chat", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 80 }), (path) => {
+        fc.pre(
+          ![
+            "feature/open",
+            "ask",
+            "assistant",
+            "chat/ask",
+            "chat",
+            "voice",
+            "chat/voice",
+            "daily-brief",
+            "lifeops/daily-brief",
+            "lifeops/tasks",
+            "lifeops/create",
+            "lifeops/task",
+            "lifeops/task/new",
+            "lifeops/reminder",
+          ].includes(path),
+        );
+
+        expect(
+          buildAssistantLaunchHashRoute(
+            path,
+            new URLSearchParams("text=hello&source=attacker"),
+            { generateLaunchId: () => "launch-unknown" },
+          ),
+        ).toBeNull();
+      }),
+      { numRuns: 500 },
+    );
   });
 });

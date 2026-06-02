@@ -6,15 +6,31 @@ import argparse
 import inspect
 import json
 import os
+import shutil
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+import yaml
+
 # Ensure localhost traffic (mock services) bypasses any HTTP proxy,
 # while external API requests (OpenRouter etc.) still go through proxy.
 os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
 os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")
+
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("missing-context", "Handle missing optional context without asking for clarification."),
+    ("exact-wording", "Preserve exact category and keyword wording in the final answer."),
+    ("no-web", "Avoid relying on external web access unless the task explicitly requires it."),
+    ("tool-discipline", "Use available tools only when they materially support the answer."),
+    ("concise-final", "Keep the final response concise while satisfying all scoring components."),
+    ("unicode", "Handle unicode names, punctuation, and mixed-case labels."),
+    ("assumptions", "Separate assumptions from verified facts in the response."),
+    ("fixture-absent", "Recover when a referenced fixture or artifact is absent."),
+    ("rubric-first", "Prioritize scoring rubric requirements over conversational filler."),
+    ("grader-detail", "Include enough detail for deterministic graders to match the answer."),
+)
 
 
 def _resolve_task_yaml(task_arg: str) -> Path:
@@ -50,6 +66,74 @@ def _make_trace_dir(base_dir: str | Path, model_id: str) -> Path:
     trace_dir = Path(base_dir) / f"{safe_model}_{date_str}"
     trace_dir.mkdir(parents=True, exist_ok=True)
     return trace_dir
+
+
+def _count_task_dirs(task_dirs: list[str], *, expand_scenarios: bool) -> dict[str, int]:
+    base = len(task_dirs)
+    edge = base * len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def _validate_task_dirs(task_dirs: list[str], *, expand_scenarios: bool) -> dict[str, object]:
+    from .models.task import TaskDefinition
+
+    ids: set[str] = set()
+    errors: list[str] = []
+    for task_dir in task_dirs:
+        task_yaml = _resolve_task_yaml(task_dir)
+        try:
+            task = TaskDefinition.from_yaml(task_yaml)
+        except Exception as exc:
+            errors.append(f"{task_dir}: {exc}")
+            continue
+        if task.task_id in ids:
+            errors.append(f"duplicate task_id: {task.task_id}")
+        ids.add(task.task_id)
+        if not task.prompt.text.strip():
+            errors.append(f"{task.task_id}: empty prompt")
+    counts = _count_task_dirs(task_dirs, expand_scenarios=expand_scenarios)
+    return {"valid": not errors, **counts, "errors": errors}
+
+
+def _materialize_edge_task_dirs(task_dirs: list[str], batch_trace_dir: str | Path) -> list[str]:
+    """Copy task directories and rewrite task.yaml for edge variants."""
+
+    expanded_root = Path(batch_trace_dir) / "_expanded_tasks"
+    expanded_root.mkdir(parents=True, exist_ok=True)
+    materialized = list(task_dirs)
+
+    for task_dir_raw in task_dirs:
+        task_dir = Path(task_dir_raw)
+        task_yaml = task_dir / "task.yaml"
+        data = yaml.safe_load(task_yaml.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            continue
+        base_id = str(data.get("task_id") or task_dir.name)
+        base_name = str(data.get("task_name") or base_id)
+        prompt = data.setdefault("prompt", {})
+        if not isinstance(prompt, dict):
+            prompt = {"text": str(prompt)}
+            data["prompt"] = prompt
+        base_prompt = str(prompt.get("text", ""))
+
+        for index, (variant_id, note) in enumerate(EDGE_VARIANTS, start=1):
+            edge_id = f"{base_id}__edge_{index:02d}"
+            edge_dir = expanded_root / edge_id
+            if edge_dir.exists():
+                shutil.rmtree(edge_dir)
+            shutil.copytree(task_dir, edge_dir)
+            edge_data = dict(data)
+            edge_prompt = dict(prompt)
+            edge_prompt["text"] = f"{base_prompt}\n\nEdge condition: {note}"
+            edge_data["prompt"] = edge_prompt
+            edge_data["task_id"] = edge_id
+            edge_data["task_name"] = f"{base_name} ({variant_id})"
+            (edge_dir / "task.yaml").write_text(
+                yaml.safe_dump(edge_data, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            materialized.append(str(edge_dir))
+    return materialized
 
 
 def _make_judge(cfg, args):
@@ -1196,6 +1280,25 @@ def cmd_batch(args: argparse.Namespace) -> None:
     if errored_task_ids:
         task_dirs = [d for d in task_dirs if Path(d).name in errored_task_ids]
 
+    if args.count_scenarios or args.validate_scenarios:
+        validation = _validate_task_dirs(
+            task_dirs,
+            expand_scenarios=bool(getattr(args, "expand_scenarios", False)),
+        )
+        if args.validate_scenarios:
+            print(json.dumps(validation, indent=2, ensure_ascii=False))
+            if not validation["valid"]:
+                sys.exit(1)
+        if args.count_scenarios:
+            print(json.dumps(
+                _count_task_dirs(
+                    task_dirs,
+                    expand_scenarios=bool(getattr(args, "expand_scenarios", False)),
+                ),
+                sort_keys=True,
+            ))
+        return
+
     workers = args.parallel
     trials = args.trials or 1
 
@@ -1245,6 +1348,10 @@ def cmd_batch(args: argparse.Namespace) -> None:
     else:
         batch_trace_dir = str(_make_trace_dir(_base_trace_dir, _model_id))
 
+    if getattr(args, "expand_scenarios", False):
+        task_dirs = _materialize_edge_task_dirs(task_dirs, batch_trace_dir)
+
+    total = len(task_dirs)
     print(f"Running {total} tasks with {workers} parallel workers, {trials} trial(s) each")
     print(f"Traces → {batch_trace_dir}\n")
 
@@ -1641,6 +1748,9 @@ def main(argv: list[str] | None = None) -> None:
     p_batch.add_argument("--sandbox", action="store_true", help="Run sandbox tools inside Docker containers")
     p_batch.add_argument("--sandbox-image", default=None, help="Override sandbox Docker image name")
     p_batch.add_argument("--sandbox-tools", action="store_true", help="Inject sandbox tools (shell/file/browser) without Docker")
+    p_batch.add_argument("--expand-scenarios", action="store_true", help="Run each selected task with 10 edge-condition variants")
+    p_batch.add_argument("--count-scenarios", action="store_true", help="Print base/edge/total task counts and exit")
+    p_batch.add_argument("--validate-scenarios", action="store_true", help="Validate selected base/expanded task definitions and exit")
     p_batch.add_argument("--rerun-errors", default=None, metavar="TRACE_DIR",
                          help="Re-run only errored tasks from a previous batch run. "
                               "Reads batch_results.json from TRACE_DIR, re-runs errored tasks, "

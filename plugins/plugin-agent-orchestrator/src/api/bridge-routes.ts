@@ -27,6 +27,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { SessionInfo } from "../services/types.js";
+import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendJson } from "./route-utils.js";
 
@@ -106,6 +108,26 @@ function getAdapter(ctx: RouteContext): BridgeCredentialAdapter | null {
     null) as BridgeCredentialAdapter | null;
 }
 
+/**
+ * Verify the sessionId names a real, active sub-agent session owned by this
+ * parent runtime before issuing a credential request for it.
+ *
+ * Without this, the POST only gated on loopback — so ANY local process could
+ * trigger the owner-facing REQUEST_SECRET approval flow (and mint a scopedToken)
+ * for an arbitrary, attacker-chosen sessionId. Mirrors the read-only
+ * parent-context bridge's getSession/isActiveSession gate so the credential
+ * POST can only act on a session that genuinely exists and is still running.
+ */
+async function resolveActiveSession(
+  ctx: RouteContext,
+  sessionId: string,
+): Promise<SessionInfo | null> {
+  const session = (await ctx.acpService?.getSession(sessionId)) ?? null;
+  if (!session) return null;
+  if (TERMINAL_SESSION_STATUSES.has(String(session.status))) return null;
+  return session;
+}
+
 async function handlePost(
   req: IncomingMessage,
   res: ServerResponse,
@@ -118,6 +140,22 @@ async function handlePost(
       res,
       { error: "credential bridge unavailable", code: "no_adapter" },
       503,
+    );
+    return;
+  }
+  // Ownership gate: only issue a credential request for a session that is real
+  // and active in this parent runtime. Loopback alone does not prove the caller
+  // owns the session — without this, any local process could trigger the
+  // owner-facing approval flow for an arbitrary sessionId.
+  const session = await resolveActiveSession(ctx, sessionId);
+  if (!session) {
+    sendJson(
+      res,
+      {
+        error: "no active sub-agent session for this id in this parent runtime",
+        code: "session_not_active",
+      },
+      410,
     );
     return;
   }
@@ -176,6 +214,23 @@ async function handleGet(
       res,
       { error: "credential bridge unavailable", code: "no_adapter" },
       503,
+    );
+    return;
+  }
+  // Defense-in-depth ownership gate, mirroring handlePost: only redeem a
+  // credential for a session that is real and still active in this parent
+  // runtime. A scopedToken can only exist if a POST already passed this gate,
+  // but re-checking here keeps both halves of the bridge consistent and closes
+  // the window where a session goes terminal mid-redemption.
+  const session = await resolveActiveSession(ctx, sessionId);
+  if (!session) {
+    sendJson(
+      res,
+      {
+        error: "no active sub-agent session for this id in this parent runtime",
+        code: "session_not_active",
+      },
+      410,
     );
     return;
   }

@@ -19,4 +19,13 @@ export default {
     },
   ],
   external: ["@capacitor/core", "llama-cpp-capacitor"],
+  onwarn(warning, warn) {
+    if (
+      warning.code === "THIS_IS_UNDEFINED" &&
+      String(warning.id ?? "").endsWith("dist/esm/capacitor-llama-adapter.js")
+    ) {
+      return;
+    }
+    warn(warning);
+  },
 };

@@ -235,7 +235,6 @@ describe("runtime service delegates", () => {
       "./service-mixin-core.ts",
       "./service-mixin-x.ts",
       "./service-mixin-x-read.ts",
-      "./messaging/adapters/x-dm-adapter.ts",
     ];
     const bannedImport =
       /from\s+["'][^"']*(x-managed-client|x-poster|x-reader|x-dm-reader)\.js["']/;

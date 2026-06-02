@@ -125,7 +125,9 @@ export async function stewardEvmPostBoot(
 /**
  * Get the Steward account if initialized (for use by other services).
  */
-export function getStewardEvmAccount() {
+export function getStewardEvmAccount(): Awaited<
+  ReturnType<typeof initStewardEvmAccount>
+> {
   return _stewardAccount;
 }
 

@@ -39,6 +39,8 @@ def test_report_and_trajectories_json_contract(tmp_path):
     assert {
         "task_id",
         "trial",
+        "scenario_id",
+        "scenario_note",
         "reward",
         "success",
         "judge_passed",
@@ -57,6 +59,8 @@ def test_report_and_trajectories_json_contract(tmp_path):
         "domain",
         "task_id",
         "trial",
+        "scenario_id",
+        "scenario_note",
         "reward",
         "success",
         "messages",

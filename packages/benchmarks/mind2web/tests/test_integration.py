@@ -421,6 +421,33 @@ async def test_full_benchmark_run() -> bool:
     return True
 
 
+async def test_expanded_benchmark_run() -> bool:
+    """Test expanded sample scenarios in mock mode."""
+    from benchmarks.mind2web.runner import Mind2WebRunner
+    from benchmarks.mind2web.types import Mind2WebConfig, Mind2WebSplit
+
+    config = Mind2WebConfig(
+        output_dir="/tmp/mind2web_expanded_test",
+        split=Mind2WebSplit.TEST_TASK,
+        max_tasks=1,
+        num_trials=1,
+        use_mock=True,
+        save_detailed_logs=False,
+        include_edge_scenarios=True,
+    )
+
+    runner = Mind2WebRunner(config, use_sample=True, use_huggingface=False)
+    report = await runner.run_benchmark()
+
+    assert report.total_tasks == 11
+    assert report.total_trials == 11
+    assert report.overall_task_success_rate == 1.0
+    assert sum("--edge-" in r.task_id for r in report.results) == 10
+
+    logger.info("✓ Expanded benchmark run test passed")
+    return True
+
+
 async def test_cli_integration() -> bool:
     """Test CLI creates valid config."""
     from benchmarks.mind2web.cli import create_config, parse_args
@@ -461,6 +488,7 @@ async def run_all_tests() -> bool:
         ("Action Handler", test_action_handler),
         ("Mock Agent", test_mock_agent),
         ("Full Benchmark Run", test_full_benchmark_run),
+        ("Expanded Benchmark Run", test_expanded_benchmark_run),
         ("CLI Integration", test_cli_integration),
     ]
 

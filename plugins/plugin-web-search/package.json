@@ -40,15 +40,17 @@
     "devDependencies": {
         "@biomejs/biome": "2.4.15",
         "tsup": "^8.5.1",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7"
     },
     "scripts": {
+        "test": "vitest run --config ./vitest.config.ts",
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
-        "lint": "biome check src/",
-        "lint:fix": "biome check --write src/",
-        "format": "biome format src/",
-        "format:fix": "biome format --write src/",
+        "lint": "bunx @biomejs/biome check src/",
+        "lint:fix": "bunx @biomejs/biome check --write src/",
+        "format": "bunx @biomejs/biome format src/",
+        "format:fix": "bunx @biomejs/biome format --write src/",
         "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "agentConfig": {

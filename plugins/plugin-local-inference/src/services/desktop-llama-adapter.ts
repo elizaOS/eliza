@@ -221,6 +221,8 @@ interface ShimSymbols {
 	 * `llama_get_embeddings_seq` to return a pooled vector.
 	 */
 	eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
 	eliza_llama_context_params_set_offload_kqv: (p: Pointer, v: boolean) => void;
 	eliza_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
@@ -368,9 +370,14 @@ export function resolveDesktopBinDir(
 	if (arch === null) {
 		throw new Error(`[desktop-llama] unsupported process.arch=${process.arch}`);
 	}
+	// Default backend MUST match what the build script stages on disk
+	// (packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs): darwin→metal,
+	// linux→vulkan, windows→vulkan. The build's outDir is `${platform}-${arch}-${t.backend}`
+	// and Windows hardcodes `backend: "vulkan"`, so probing `windows-x86_64-cpu` here
+	// never finds the staged dylibs and the in-process FFI path is silently skipped.
 	const backend =
 		env.ELIZA_DESKTOP_BACKEND?.trim() ||
-		(platform === "darwin" ? "metal" : platform === "linux" ? "vulkan" : "cpu");
+		(platform === "darwin" ? "metal" : "vulkan");
 	return path.join(
 		stateDir,
 		"local-inference",
@@ -542,6 +549,14 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 			args: [T.ptr, T.i32],
 			returns: T.void,
 		},
+		eliza_llama_context_params_set_type_k: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
+		eliza_llama_context_params_set_type_v: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
 		eliza_llama_context_params_set_offload_kqv: {
 			args: [T.ptr, T.bool],
 			returns: T.void,
@@ -652,11 +667,6 @@ function encodeCString(text: string): Uint8Array {
 	return out;
 }
 
-function decodeCStringBytes(buf: Uint8Array): string {
-	const end = buf.indexOf(0);
-	return new TextDecoder("utf-8").decode(end < 0 ? buf : buf.subarray(0, end));
-}
-
 /** Default thread count: half the logical cores (a sensible P-core proxy on Apple Silicon). */
 function defaultThreads(env: NodeJS.ProcessEnv = process.env): number {
 	const explicit = Number.parseInt(env.ELIZA_LLAMA_THREADS ?? "", 10);
@@ -708,12 +718,45 @@ function normalizeEmbedding(vec: Float32Array, embdNormalize: number): void {
  */
 const LLAMA_POOLING_TYPE_MEAN = 1;
 
+const GGML_KV_CACHE_TYPES = new Map<string, number>([
+	["f32", 0],
+	["f16", 1],
+	["q4_0", 2],
+	["q4_1", 3],
+	["q5_0", 6],
+	["q5_1", 7],
+	["q8_0", 8],
+	["q4_k", 12],
+	["q5_k", 13],
+	["q6_k", 14],
+	["q8_k", 15],
+	["iq4_nl", 20],
+	["bf16", 30],
+	["tbq3_0", 44],
+	["tbq4_0", 45],
+	["qjl1_256", 46],
+	["q4_polar", 47],
+	["tbq3_tcq", 48],
+]);
+
+function ggmlKvCacheType(name: string | undefined): number | undefined {
+	if (!name) return undefined;
+	const normalized = name.trim().toLowerCase();
+	const value = GGML_KV_CACHE_TYPES.get(normalized);
+	if (value === undefined) {
+		throw new Error(`[desktop-llama] unsupported KV cache type: ${name}`);
+	}
+	return value;
+}
+
 export interface DesktopLlamaLoadOptions {
 	modelPath: string;
 	contextSize?: number;
 	nBatch?: number;
 	nUBatch?: number;
 	gpuLayers?: number;
+	cacheTypeK?: string;
+	cacheTypeV?: string;
 	threads?: number;
 	useMmap?: boolean;
 	useMlock?: boolean;
@@ -738,6 +781,14 @@ interface DesktopSession {
 	// Reusable single-token buffer for stepwise decode.
 	tokenBuf: Int32Array;
 	pieceBuf: Uint8Array;
+	/**
+	 * Persistent streaming UTF-8 decoder for this session. BPE routinely splits
+	 * a multi-byte codepoint (CJK / emoji / accented Latin) across two token
+	 * pieces; decoding each piece in isolation would turn each half into U+FFFD.
+	 * Reusing one decoder with `decode(bytes, { stream: true })` carries the
+	 * trailing bytes of a split codepoint into the next piece so it reassembles.
+	 */
+	pieceDecoder: TextDecoder;
 	emittedFirstToken: boolean;
 	/** Snapshotted at openSession; nextStep never re-reads has_drafter. */
 	usingDrafter: boolean;
@@ -1053,6 +1104,14 @@ export class DesktopLlamaAdapter {
 					this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 					this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 					this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+					const cacheTypeK = ggmlKvCacheType(this.loadOpts.cacheTypeK);
+					const cacheTypeV = ggmlKvCacheType(this.loadOpts.cacheTypeV);
+					if (cacheTypeK !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+					}
+					if (cacheTypeV !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+					}
 					this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
 					nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
 				} finally {
@@ -1101,16 +1160,35 @@ export class DesktopLlamaAdapter {
 
 	/** Detach + free any drafter on the primary ctx (pool slot 0). */
 	detachDrafter(): void {
+		const errors: unknown[] = [];
 		// Detach from every ctx in the pool that has one, then free the
 		// shared drafter model.
 		for (let i = 0; i < this.ctxPool.length; i++) {
-			if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
+			if (!this.drafterAttached[i]) continue;
+			try {
+				this.detachDrafterFromCtx(i);
+			} catch (err) {
+				errors.push(err);
+			} finally {
+				this.drafterAttached[i] = false;
+			}
 		}
 		if (this.drafterModelPtr !== null) {
-			this.llama.llama_model_free(this.drafterModelPtr);
+			const ptr = this.drafterModelPtr;
 			this.drafterModelPtr = null;
+			try {
+				this.llama.llama_model_free(ptr);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.drafterModelPath = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully detach drafter",
+			);
+		}
 	}
 
 	loadedDrafterPath(): string | null {
@@ -1173,6 +1251,14 @@ export class DesktopLlamaAdapter {
 			this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 			this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 			this.shim.eliza_llama_context_params_set_embeddings(cp, embedding);
+			const cacheTypeK = ggmlKvCacheType(opts.cacheTypeK);
+			const cacheTypeV = ggmlKvCacheType(opts.cacheTypeV);
+			if (cacheTypeK !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+			}
+			if (cacheTypeV !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+			}
 			if (embedding) {
 				this.shim.eliza_llama_context_params_set_pooling_type(
 					cp,
@@ -1191,12 +1277,25 @@ export class DesktopLlamaAdapter {
 	}
 
 	unloadModel(): void {
+		const errors: unknown[] = [];
 		for (const sess of this.sessions.values()) {
 			if (sess.mtpEngine !== 0) {
-				this.shim.eliza_llama_mtp_engine_free(sess.mtpEngine);
+				const engine = sess.mtpEngine;
+				sess.mtpEngine = 0;
+				try {
+					this.shim.eliza_llama_mtp_engine_free(engine);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 			if (sess.sampler !== 0) {
-				this.llama.llama_sampler_free(sess.sampler);
+				const sampler = sess.sampler;
+				sess.sampler = 0;
+				try {
+					this.llama.llama_sampler_free(sampler);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 		}
 		this.sessions.clear();
@@ -1204,30 +1303,56 @@ export class DesktopLlamaAdapter {
 		// bound to the text model and must outlive neither the model nor
 		// the active llama ctx.
 		if (this.mtmdCtxPtr !== null && this.vision) {
-			this.vision.eliza_mtmd_free(this.mtmdCtxPtr);
+			const mtmdCtx = this.mtmdCtxPtr;
 			this.mtmdCtxPtr = null;
 			this.mtmdMmprojPath = null;
+			try {
+				this.vision.eliza_mtmd_free(mtmdCtx);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		// Detach + free the drafter BEFORE freeing any main ctx — the
 		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
 		// on the main ctx is otherwise unsafe while a drafter ctx
 		// references it.
-		this.detachDrafter();
+		try {
+			this.detachDrafter();
+		} catch (err) {
+			errors.push(err);
+		}
 		// Free every ctx in the pool. The pool is in allocation order;
 		// freeing back-to-front keeps the implicit slot ordering stable.
 		for (let i = this.ctxPool.length - 1; i >= 0; i--) {
 			const ctx = this.ctxPool[i];
-			if (ctx !== undefined) this.llama.llama_free(ctx);
+			if (ctx !== undefined) {
+				try {
+					this.llama.llama_free(ctx);
+				} catch (err) {
+					errors.push(err);
+				}
+			}
 		}
 		this.ctxPool = [];
 		this.hasDecodedFlags = [];
 		this.drafterAttached = [];
 		if (this.modelPtr !== null) {
-			this.llama.llama_model_free(this.modelPtr);
+			const model = this.modelPtr;
 			this.modelPtr = null;
+			try {
+				this.llama.llama_model_free(model);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.vocabPtr = null;
 		this.loadOpts = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully unload native resources",
+			);
+		}
 	}
 
 	close(): void {
@@ -1595,6 +1720,7 @@ export class DesktopLlamaAdapter {
 			finished: false,
 			tokenBuf: new Int32Array(1),
 			pieceBuf: new Uint8Array(256),
+			pieceDecoder: new TextDecoder("utf-8"),
 			emittedFirstToken: false,
 			usingDrafter,
 			mtpEngine,
@@ -1763,6 +1889,55 @@ export class DesktopLlamaAdapter {
 		}
 	}
 
+	/**
+	 * Convert one sampled token id into its text piece for `sess`.
+	 *
+	 * Handles two failure modes the naive `wrote > 0` guard dropped:
+	 *   1. Negative return: llama_token_to_piece returns `-n` (the negated byte
+	 *      count it needs) when `pieceBuf` is too small. We grow `pieceBuf` to
+	 *      that size and retry once instead of silently dropping the token text.
+	 *   2. UTF-8 codepoints split across token boundaries: we feed the raw piece
+	 *      bytes through the session's persistent streaming decoder so a half
+	 *      codepoint carries into the next piece rather than decoding to U+FFFD.
+	 */
+	private tokenToText(sess: DesktopSession, token: number): string {
+		if (!this.vocabPtr)
+			throw new Error("[desktop-llama] token decode before load");
+		let wrote = this.llama.llama_token_to_piece(
+			this.vocabPtr,
+			token,
+			this.ffi.ptr(sess.pieceBuf),
+			sess.pieceBuf.length,
+			0,
+			false,
+		);
+		if (wrote < 0) {
+			// Buffer too small: -wrote is the required byte count. Grow and retry.
+			sess.pieceBuf = new Uint8Array(-wrote);
+			wrote = this.llama.llama_token_to_piece(
+				this.vocabPtr,
+				token,
+				this.ffi.ptr(sess.pieceBuf),
+				sess.pieceBuf.length,
+				0,
+				false,
+			);
+			if (wrote < 0) {
+				throw new Error(
+					`[desktop-llama] llama_token_to_piece failed after resize (rc=${wrote}) for token ${token}`,
+				);
+			}
+		}
+		if (wrote === 0) return "";
+		return sess.pieceDecoder.decode(sess.pieceBuf.subarray(0, wrote), {
+			stream: true,
+		});
+	}
+
+	private flushTokenText(sess: DesktopSession): string {
+		return sess.pieceDecoder.decode();
+	}
+
 	private nextStep(
 		stream: LlmStreamHandle,
 		maxTokensPerStep = 32,
@@ -1798,17 +1973,7 @@ export class DesktopLlamaAdapter {
 				break;
 			}
 			this.llama.llama_sampler_accept(sess.sampler, next);
-			const wrote = this.llama.llama_token_to_piece(
-				this.vocabPtr,
-				next,
-				this.ffi.ptr(sess.pieceBuf),
-				sess.pieceBuf.length,
-				0,
-				false,
-			);
-			if (wrote > 0) {
-				text += decodeCStringBytes(sess.pieceBuf.subarray(0, wrote));
-			}
+			text += this.tokenToText(sess, next);
 			out.push(next);
 
 			// Decode the just-sampled token to advance the KV cache.
@@ -1832,7 +1997,10 @@ export class DesktopLlamaAdapter {
 
 			if (text.length >= maxTextBytes) break;
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		let drafted = 0;
 		let accepted = 0;
@@ -1873,17 +2041,7 @@ export class DesktopLlamaAdapter {
 			if (this.llama.llama_vocab_is_eog(this.vocabPtr as Pointer, token)) {
 				return true;
 			}
-			const wrote = this.llama.llama_token_to_piece(
-				this.vocabPtr as Pointer,
-				token,
-				this.ffi.ptr(sess.pieceBuf),
-				sess.pieceBuf.length,
-				0,
-				false,
-			);
-			if (wrote > 0) {
-				text += decodeCStringBytes(sess.pieceBuf.subarray(0, wrote));
-			}
+			text += this.tokenToText(sess, token);
 			out.push(token);
 			return false;
 		};
@@ -1927,7 +2085,10 @@ export class DesktopLlamaAdapter {
 				}
 			}
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		const after = this.readEngineStats(sess.mtpEngine);
 		return {

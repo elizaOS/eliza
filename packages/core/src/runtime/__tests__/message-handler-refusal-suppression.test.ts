@@ -130,16 +130,15 @@ describe("parseMessageHandlerOutput — training-cutoff-leak suppression on the 
 		);
 	});
 
-	it("preserves a cutoff leak on the simple path (Stage-1 IS the reply there)", () => {
+	it("forces planning for a cutoff leak on the simple path", () => {
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",
 			contexts: ["simple"],
 			replyText: "As of my training data, that hasn't shipped yet.",
 		});
 		const result = parseMessageHandlerOutput(wire);
-		expect(result?.plan.reply).toBe(
-			"As of my training data, that hasn't shipped yet.",
-		);
+		expect(result?.plan.reply).toBe("");
+		expect(result?.plan.contexts).toEqual(["general"]);
 	});
 });
 
@@ -194,13 +193,14 @@ describe("parseMessageHandlerOutput — fabricated-moderation suppression on the
 		);
 	});
 
-	it("preserves a fabricated-moderation reply on the simple path (model may decline there)", () => {
+	it("forces planning for a fabricated-moderation reply on the simple path", () => {
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",
 			contexts: ["simple"],
 			replyText: "My content filter prevented this.",
 		});
 		const result = parseMessageHandlerOutput(wire);
-		expect(result?.plan.reply).toBe("My content filter prevented this.");
+		expect(result?.plan.reply).toBe("");
+		expect(result?.plan.contexts).toEqual(["general"]);
 	});
 });

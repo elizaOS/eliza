@@ -23,6 +23,7 @@ import type {
   IAgentRuntime,
   RouteRequestMeta,
 } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppLaunchResult,
@@ -67,6 +68,49 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
 };
+
+async function rewriteAppActionText(args: {
+  runtime: IAgentRuntime;
+  actionName: string;
+  text: string;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () =>
+    `I ran ${args.actionName} and got an app action result, but I couldn't format the details cleanly here.`;
+  if (typeof args.runtime.useModel !== "function") return fallback();
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this app action output in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve app names, IDs, URLs, status, errors, and next steps.",
+        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch {
+    return fallback();
+  }
+}
 
 function readBoolFlag(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -1605,12 +1649,19 @@ export async function handleAppsRoutes(
       error(res, "APP action is not registered on the runtime", 503);
       return true;
     }
+    const actionRuntime = runtime as IAgentRuntime;
 
     try {
       const lines: string[] = [];
       const callback = async (content: { text?: string }) => {
         if (typeof content.text === "string" && content.text.length > 0) {
-          lines.push(content.text);
+          lines.push(
+            await rewriteAppActionText({
+              runtime: actionRuntime,
+              actionName: appAction.name,
+              text: content.text,
+            }),
+          );
         }
         return [];
       };
@@ -1621,7 +1672,7 @@ export async function handleAppsRoutes(
         content: { text: intent },
       };
       const result = (await appAction.handler(
-        runtime,
+        actionRuntime,
         fakeMessage,
         undefined,
         {
@@ -1636,9 +1687,17 @@ export async function handleAppsRoutes(
         },
         callback,
       )) as { success?: boolean; text?: string; data?: unknown } | undefined;
+      const resultText =
+        typeof result?.text === "string" && result.text.trim()
+          ? await rewriteAppActionText({
+              runtime: actionRuntime,
+              actionName: appAction.name,
+              text: result.text,
+            })
+          : undefined;
       const response: PostCreateAppResponse = {
         success: result?.success !== false,
-        text: result?.text ?? lines.join("\n"),
+        text: resultText ?? lines.join("\n"),
         messages: lines,
         data: result?.data ?? null,
       };

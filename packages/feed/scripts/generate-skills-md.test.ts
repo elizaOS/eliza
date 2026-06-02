@@ -34,6 +34,36 @@ describe("generate-skills-md", () => {
     expect(result[0]?.examples).toEqual(["Example 1", "Example 2"]);
   });
 
+  test("parseAgentCardSkills handles double-quoted agent card literals", async () => {
+    const mockContent = `
+    skills: [
+      {
+        id: "quoted-skill",
+        name: "Quoted Skill",
+        description:
+          "Handles real Feed agent card style",
+        tags: ["quoted", "skill"],
+        examples: [
+          "Example with \\"quotes\\"",
+          "Example 2"
+        ],
+        inputModes: [],
+      }
+    ],
+    `;
+
+    const result = parseAgentCardSkills(mockContent);
+    expect(result).toEqual([
+      {
+        id: "quoted-skill",
+        name: "Quoted Skill",
+        description: "Handles real Feed agent card style",
+        tags: ["quoted", "skill"],
+        examples: ['Example with "quotes"', "Example 2"],
+      },
+    ]);
+  });
+
   test("parseExecutorOperations", async () => {
     const mockContent = `
     switch (operation) {
@@ -74,6 +104,28 @@ describe("generate-skills-md", () => {
     expect(result[0]?.description).toBe("Tool 1 description");
     expect(result[1]?.name).toBe("tool2");
     expect(result[1]?.description).toBe("Tool 2 multiline description");
+  });
+
+  test("parseMCPTools handles double-quoted server literals", async () => {
+    const mockContent = `
+    return [
+      {
+        name: "tool1",
+        description: "Tool 1 description"
+      },
+      {
+        name: "tool2",
+        description:
+          "Tool 2 \\"quoted\\" multiline description"
+      }
+    ];
+    `;
+
+    const result = parseMCPTools(mockContent);
+    expect(result).toEqual([
+      { name: "tool1", description: "Tool 1 description" },
+      { name: "tool2", description: 'Tool 2 "quoted" multiline description' },
+    ]);
   });
 
   test("generateSkillsMarkdown", async () => {

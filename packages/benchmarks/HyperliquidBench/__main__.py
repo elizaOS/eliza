@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +39,19 @@ from pathlib import Path
 _ELIZA_ADAPTER_PKG = Path(__file__).resolve().parents[1] / "eliza-adapter"
 if _ELIZA_ADAPTER_PKG.exists() and str(_ELIZA_ADAPTER_PKG) not in sys.path:
     sys.path.insert(0, str(_ELIZA_ADAPTER_PKG))
+
+EDGE_VARIANTS = (
+    "Use a conservative order size and avoid unnecessary leverage changes.",
+    "Prefer actions that are reversible in demo mode and cancel residual orders.",
+    "Exercise at least one cancellation path when the requested plan allows it.",
+    "Preserve the requested coin universe and do not introduce unrelated markets.",
+    "Route through builder-code handling if configured by the scenario.",
+    "Confirm transfer direction semantics before adding any USD class transfer step.",
+    "Use reduce-only only when the plan has an offsetting or risk-reducing intent.",
+    "Avoid market-impacting assumptions; use bounded prices or demo-safe placeholders.",
+    "Keep the plan under the scenario step budget even when adding validation actions.",
+    "Favor explicit time-in-force choices so evaluator coverage can attribute intent.",
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -157,8 +171,77 @@ def _parse_args() -> argparse.Namespace:
         default=False,
         help="Enable verbose/debug logging",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run ten deterministic trading edge variants per selected scenario.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected scenarios and optional expansion before running.",
+    )
 
     return parser.parse_args()
+
+
+def expand_scenarios(scenarios: list[object]) -> list[object]:
+    """Return base scenarios plus ten deterministic edge variants each."""
+
+    expanded = list(scenarios)
+    for scenario in scenarios:
+        scenario_id = str(getattr(scenario, "scenario_id", "scenario"))
+        description = str(getattr(scenario, "description", ""))
+        allowed_coins = list(getattr(scenario, "allowed_coins", []) or [])
+        for index, variant in enumerate(EDGE_VARIANTS, start=1):
+            coins = list(allowed_coins)
+            if coins and index % 2 == 0:
+                coins = [*coins[1:], coins[0]]
+            expanded.append(
+                replace(
+                    scenario,
+                    scenario_id=f"{scenario_id}__edge_{index:02d}",
+                    description=f"{description}\n\nEdge condition: {variant}",
+                    allowed_coins=coins,
+                )
+            )
+    return expanded
+
+
+def count_scenarios(scenarios: list[object], include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(scenarios)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS) if include_edge_scenarios else 0,
+        "total": base + edge,
+    }
+
+
+def validate_scenarios(scenarios: list[object], include_edge_scenarios: bool = False) -> None:
+    if not scenarios:
+        raise ValueError("HyperliquidBench selected scenario set is empty")
+    for index, scenario in enumerate(scenarios):
+        if not str(getattr(scenario, "scenario_id", "")).strip():
+            raise ValueError(f"scenario {index} missing scenario_id")
+        if not str(getattr(scenario, "description", "")).strip():
+            raise ValueError(f"scenario {index} missing description")
+        if int(getattr(scenario, "max_steps", 0)) <= 0:
+            raise ValueError(f"scenario {index} has non-positive max_steps")
+    if include_edge_scenarios:
+        expanded = expand_scenarios(scenarios)
+        expected = len(scenarios) * (len(EDGE_VARIANTS) + 1)
+        if len(expanded) != expected:
+            raise ValueError(f"expanded scenario count {len(expanded)} != {expected}")
+        ids = [str(getattr(scenario, "scenario_id", "")) for scenario in expanded]
+        if len(ids) != len(set(ids)):
+            raise ValueError("expanded HyperliquidBench scenarios have duplicate ids")
 
 
 def _build_results_summary(results: list[object]) -> dict[str, object]:
@@ -284,6 +367,13 @@ async def _main() -> int:
     if not scenarios:
         logging.error("No scenarios to run")
         return 1
+    if args.validate_scenarios:
+        validate_scenarios(scenarios, include_edge_scenarios=args.expand_scenarios)
+    scenario_counts = count_scenarios(scenarios, include_edge_scenarios=args.expand_scenarios)
+    if args.count_scenarios:
+        print(json.dumps(scenario_counts, sort_keys=True))
+    if args.expand_scenarios:
+        scenarios = expand_scenarios(scenarios)
 
     # Pick the agent backend.
     bridge_manager = None
@@ -319,6 +409,8 @@ async def _main() -> int:
     summary["model"] = model_name
     summary["network"] = args.network
     summary["demo_mode"] = demo_mode
+    summary["include_edge_scenarios"] = bool(args.expand_scenarios)
+    summary["scenario_counts"] = scenario_counts
 
     # Write the aggregated result JSON in a location the registry can locate.
     output_dir = Path(args.output).resolve() if args.output else (bench_root / config.runs_dir)

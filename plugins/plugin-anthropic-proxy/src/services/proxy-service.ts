@@ -24,6 +24,7 @@ export interface ProxyServiceConfig {
   envToken?: string;
   proxyAuthToken?: string;
   verbose: boolean;
+  configError?: string;
 }
 
 function readEnv(name: string): string | undefined {
@@ -76,10 +77,9 @@ function setAnthropicBaseUrl(target: string): void {
 
 export function resolveConfig(): ProxyServiceConfig {
   const modeRaw = (readEnv("CLAUDE_MAX_PROXY_MODE") ?? "inline").toLowerCase();
-  const mode: ProxyMode =
-    modeRaw === "off" || modeRaw === "shared" || modeRaw === "inline"
-      ? modeRaw
-      : "inline";
+  const validMode =
+    modeRaw === "off" || modeRaw === "shared" || modeRaw === "inline";
+  const mode: ProxyMode = validMode ? modeRaw : "off";
 
   const portRaw = readEnv("CLAUDE_MAX_PROXY_PORT");
   const port = portRaw ? Number.parseInt(portRaw, 10) || 18801 : 18801;
@@ -93,6 +93,9 @@ export function resolveConfig(): ProxyServiceConfig {
     envToken: readEnv("CLAUDE_CODE_OAUTH_TOKEN"),
     proxyAuthToken: readEnv("CLAUDE_MAX_PROXY_AUTH_TOKEN"),
     verbose: readEnv("CLAUDE_MAX_PROXY_VERBOSE") === "true",
+    ...(validMode
+      ? {}
+      : { configError: `Invalid CLAUDE_MAX_PROXY_MODE: ${modeRaw}` }),
   };
 }
 
@@ -115,6 +118,12 @@ export class AnthropicProxyService extends Service {
     const service = new AnthropicProxyService(runtime);
     const config = resolveConfig();
     service.proxyConfig = config;
+    if (config.configError) {
+      service.startError = config.configError;
+      logger.warn(
+        `[anthropic-proxy] ${service.startError} — falling back to off`,
+      );
+    }
 
     if (config.mode === "off") {
       service.effectiveMode = "off";

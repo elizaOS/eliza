@@ -38,6 +38,38 @@ export {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./features/documents/index";
+export type {
+	DraftRecord,
+	DraftRequest,
+	ListOptions,
+	ManageOperation,
+	ManageResult,
+	MessageAdapter,
+	MessageAdapterCapabilities,
+	MessageRef,
+	MessageSource,
+	ScoreContext,
+	SearchMessagesFilters,
+	SendPolicy,
+	SuggestedAction,
+	TriageOptions,
+	TriagePriority,
+	TriageScore,
+} from "./features/messaging/triage";
+export {
+	BaseMessageAdapter,
+	filterInMemory,
+	getDefaultMessageRefStore,
+	getSendPolicy,
+	MessageRefStore,
+	NotYetImplementedError,
+	rankScored,
+	registerSendPolicy,
+	resetMissingServiceWarning,
+	resolveContactWeight,
+	scoreMessage,
+	scoreMessages,
+} from "./features/messaging/triage";
 export { paymentsPlugin } from "./features/payments/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
@@ -48,9 +80,16 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
+export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
+export {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime-route-context";
@@ -113,6 +152,7 @@ export {
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/read-env";
 export * from "./utils/streaming";

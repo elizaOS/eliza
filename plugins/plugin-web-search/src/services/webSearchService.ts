@@ -11,22 +11,9 @@ import type {
 
 export type TavilyClient = ReturnType<typeof tavily>;
 
-type TavilySearchResult = {
-    title?: string;
-    url?: string;
-    content?: string;
-    rawContent?: string;
-    score?: number;
-    publishedDate?: string;
-};
-
-type TavilySearchResponse = {
-    answer?: string;
-    query?: string;
-    responseTime?: number;
-    images?: Array<{ url?: string; description?: string } | string>;
-    results?: TavilySearchResult[];
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
 function parsePublishedDate(value: string | undefined): Date | undefined {
     if (!value) return undefined;
@@ -34,31 +21,108 @@ function parsePublishedDate(value: string | undefined): Date | undefined {
     return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function normalizeResponse(query: string, response: TavilySearchResponse): SearchResponse {
-    const results = (response.results ?? []).map((result) => {
-        const content = result.content ?? "";
+function normalizeApiKey(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function validateSearchQuery(query: unknown): string {
+    if (typeof query !== "string" || !query.trim()) {
+        throw new Error("search query is required");
+    }
+    return query.trim();
+}
+
+function assertOptionalPositiveInteger(value: unknown, name: string): void {
+    if (
+        value !== undefined &&
+        (typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            !Number.isInteger(value) ||
+            value < 1)
+    ) {
+        throw new Error(`${name} must be a positive finite integer`);
+    }
+}
+
+function assertOptionalNonNegativeInteger(value: unknown, name: string): void {
+    if (
+        value !== undefined &&
+        (typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            !Number.isInteger(value) ||
+            value < 0)
+    ) {
+        throw new Error(`${name} must be a non-negative finite integer`);
+    }
+}
+
+function validateSearchOptions(options?: SearchOptions): void {
+    if (options === undefined) return;
+    if (!isRecord(options)) {
+        throw new Error("search options must be an object");
+    }
+    assertOptionalPositiveInteger(options.limit, "limit");
+    assertOptionalNonNegativeInteger(options.days, "days");
+    if (options.topic !== undefined && options.topic !== "general" && options.topic !== "news") {
+        throw new Error("topic must be general or news");
+    }
+    if (options.type !== undefined && options.type !== "general" && options.type !== "news") {
+        throw new Error("type must be general or news");
+    }
+    if (
+        options.searchDepth !== undefined &&
+        options.searchDepth !== "basic" &&
+        options.searchDepth !== "advanced"
+    ) {
+        throw new Error("searchDepth must be basic or advanced");
+    }
+    if (options.includeAnswer !== undefined && typeof options.includeAnswer !== "boolean") {
+        throw new Error("includeAnswer must be a boolean");
+    }
+    if (options.includeImages !== undefined && typeof options.includeImages !== "boolean") {
+        throw new Error("includeImages must be a boolean");
+    }
+}
+
+function normalizeResponse(query: string, response: unknown): SearchResponse {
+    const payload = isRecord(response) ? response : {};
+    const rawResults = Array.isArray(payload.results) ? payload.results : [];
+    const results = rawResults.filter(isRecord).map((result) => {
+        const content = typeof result.content === "string" ? result.content : "";
         return {
-            title: result.title ?? "Untitled",
-            url: result.url ?? "",
+            title: typeof result.title === "string" ? result.title : "Untitled",
+            url: typeof result.url === "string" ? result.url : "",
             description: content,
             content,
-            rawContent: result.rawContent,
-            score: typeof result.score === "number" ? result.score : 0,
-            publishedDate: parsePublishedDate(result.publishedDate),
+            rawContent: typeof result.rawContent === "string" ? result.rawContent : undefined,
+            score:
+                typeof result.score === "number" && Number.isFinite(result.score)
+                    ? result.score
+                    : 0,
+            publishedDate: parsePublishedDate(
+                typeof result.publishedDate === "string" ? result.publishedDate : undefined
+            ),
         };
     });
-    const images = (response.images ?? [])
+    const rawImages = Array.isArray(payload.images) ? payload.images : [];
+    const images = rawImages
         .map((image) =>
             typeof image === "string"
                 ? { url: image }
-                : { url: image.url ?? "", description: image.description }
+                : isRecord(image)
+                  ? {
+                        url: typeof image.url === "string" ? image.url : "",
+                        description:
+                            typeof image.description === "string" ? image.description : undefined,
+                    }
+                  : { url: "" }
         )
         .filter((image) => image.url);
 
     return {
-        answer: response.answer,
-        query: response.query ?? query,
-        responseTime: response.responseTime,
+        answer: typeof payload.answer === "string" ? payload.answer : undefined,
+        query: typeof payload.query === "string" ? payload.query : query,
+        responseTime: typeof payload.responseTime === "number" ? payload.responseTime : undefined,
         images,
         results,
     };
@@ -95,8 +159,8 @@ export class WebSearchService extends IWebSearchService {
     }
 
     private async initialize(runtime: IAgentRuntime): Promise<void> {
-        const apiKey = runtime.getSetting("TAVILY_API_KEY");
-        if (typeof apiKey !== "string" || apiKey.length === 0) {
+        const apiKey = normalizeApiKey(runtime.getSetting("TAVILY_API_KEY"));
+        if (!apiKey) {
             // Degrade gracefully instead of throwing, so the plugin can be
             // installed unconfigured without crashing agent boot. The service
             // stays inert and `search()` reports an honest, recoverable error
@@ -113,11 +177,13 @@ export class WebSearchService extends IWebSearchService {
     }
 
     async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
+        const normalizedQuery = validateSearchQuery(query);
+        validateSearchOptions(options);
         if (!this.configured || !this.tavilyClient) {
             throw new Error("Web search is not configured: set TAVILY_API_KEY to enable it.");
         }
         try {
-            const response = await this.tavilyClient.search(query, {
+            const response = await this.tavilyClient.search(normalizedQuery, {
                 includeAnswer: options?.includeAnswer ?? true,
                 maxResults: options?.limit ?? 3,
                 topic: options?.topic ?? options?.type ?? "general",
@@ -126,7 +192,7 @@ export class WebSearchService extends IWebSearchService {
                 days: options?.days ?? 3,
             });
 
-            return normalizeResponse(query, response as TavilySearchResponse);
+            return normalizeResponse(normalizedQuery, response);
         } catch (cause) {
             const err = cause instanceof Error ? cause : new Error(String(cause));
             logger.error({ src: "plugin-web-search", err }, "Web search error");
@@ -178,7 +244,20 @@ export class WebSearchService extends IWebSearchService {
         images: string[];
         links: string[];
     }> {
-        const response = await fetch(url);
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(url);
+        } catch {
+            throw new Error("Invalid page info URL");
+        }
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+            throw new Error("Page info URL must use http or https");
+        }
+
+        const response = await fetch(parsedUrl.toString());
+        if (!response.ok) {
+            throw new Error(`Failed to fetch page info: ${response.status} ${response.statusText}`);
+        }
         const content = await response.text();
         const title = content.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] ?? url;
         const description =

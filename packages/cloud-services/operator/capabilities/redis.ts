@@ -7,7 +7,7 @@ const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
 let client: Redis | null = null;
 
 function createMockRedis(): Redis {
-  const requireCJS = createRequire(import.meta.url);
+  const requireCJS = createRequire(`${process.cwd()}/package.json`);
   // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
   const mod = requireCJS("ioredis-mock") as any;
   const Ctor = mod?.default ?? mod;

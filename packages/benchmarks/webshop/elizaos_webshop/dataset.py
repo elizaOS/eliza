@@ -27,7 +27,7 @@ import os
 import random
 import runpy
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,59 @@ logger = logging.getLogger(__name__)
 
 REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 FETCH_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "fetch_data.py"
+
+EDGE_VARIANTS: tuple[dict[str, str], ...] = (
+    {
+        "id": "budget_explicit",
+        "label": "Explicit budget reminder",
+        "suffix": " Stay within the stated budget and do not buy a pricier substitute.",
+    },
+    {
+        "id": "option_strict",
+        "label": "Strict option matching",
+        "suffix": " Match every requested option exactly, including color, size, flavor, or temperature.",
+    },
+    {
+        "id": "avoid_sponsored",
+        "label": "Avoid sponsored-looking distractors",
+        "suffix": " Ignore sponsored-looking or irrelevant search results if they do not satisfy the request.",
+    },
+    {
+        "id": "synonym_query",
+        "label": "Search synonym pressure",
+        "prefix": "Use reasonable search synonyms if the first query is too narrow. ",
+    },
+    {
+        "id": "reviews_noise",
+        "label": "Review noise caution",
+        "suffix": " Do not choose based on review text alone; verify the product title and attributes.",
+    },
+    {
+        "id": "inventory_caution",
+        "label": "Inventory caution",
+        "suffix": " If multiple variants appear, select the purchasable variant that satisfies the goal.",
+    },
+    {
+        "id": "accessory_distractor",
+        "label": "Accessory distractor",
+        "suffix": " Avoid accessories, bundles, or replacement parts unless the instruction asks for them.",
+    },
+    {
+        "id": "compact_goal",
+        "label": "Compact terse instruction",
+        "prefix": "Terse shopping request: ",
+    },
+    {
+        "id": "brand_agnostic",
+        "label": "Brand-agnostic match",
+        "suffix": " Brand is less important than matching the requested product type, attributes, options, and price.",
+    },
+    {
+        "id": "final_check",
+        "label": "Final check before purchase",
+        "suffix": " Before buying, confirm the selected item satisfies all stated constraints.",
+    },
+)
 
 
 @dataclass
@@ -109,6 +162,71 @@ def ensure_profile_downloaded(profile: str, data_dir: Path) -> WebShopDataPaths:
             f"WebShop profile {profile!r} did not produce required files in {data_dir}"
         )
     return paths
+
+
+def _apply_edge_variant(task: WebShopTask, variant: dict[str, str]) -> WebShopTask:
+    metadata = dict(task.metadata)
+    metadata.update(
+        {
+            "base_task_id": task.task_id,
+            "scenario_id": variant["id"],
+            "scenario_label": variant["label"],
+        }
+    )
+    instruction = (
+        f"{variant.get('prefix', '')}{task.instruction}{variant.get('suffix', '')}"
+    )
+    return replace(
+        task,
+        task_id=f"{task.task_id}__edge_{variant['id']}",
+        instruction=instruction,
+        metadata=metadata,
+    )
+
+
+def expand_tasks(tasks: list[WebShopTask]) -> list[WebShopTask]:
+    """Return each selected WebShop task plus exactly ten edge variants."""
+    expanded: list[WebShopTask] = []
+    for task in tasks:
+        expanded.append(task)
+        expanded.extend(_apply_edge_variant(task, variant) for variant in EDGE_VARIANTS)
+    return expanded
+
+
+def count_tasks(tasks: list[WebShopTask], include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS),
+        "total": base + edge,
+    }
+
+
+def validate_tasks(tasks: list[WebShopTask], include_edge_scenarios: bool = False) -> None:
+    ids = [task.task_id for task in tasks]
+    duplicates = {task_id for task_id in ids if ids.count(task_id) > 1}
+    if duplicates:
+        raise ValueError(f"Duplicate WebShop task ids: {sorted(duplicates)[:5]}")
+
+    if not include_edge_scenarios:
+        return
+
+    expanded = expand_tasks(tasks)
+    expanded_ids = [task.task_id for task in expanded]
+    expanded_duplicates = {
+        task_id for task_id in expanded_ids if expanded_ids.count(task_id) > 1
+    }
+    if expanded_duplicates:
+        raise ValueError(f"Duplicate expanded WebShop task ids: {sorted(expanded_duplicates)[:5]}")
+    for task in expanded:
+        if "__edge_" not in task.task_id:
+            continue
+        if "base_task_id" not in task.metadata or "scenario_id" not in task.metadata:
+            raise ValueError(f"Expanded WebShop task {task.task_id} is missing scenario metadata")
+        if not task.target_product_ids:
+            raise ValueError(f"Expanded WebShop task {task.task_id} has no target product")
 
 
 class WebShopDataset:

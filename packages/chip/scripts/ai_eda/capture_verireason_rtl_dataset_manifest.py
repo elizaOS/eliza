@@ -21,6 +21,12 @@ SCHEMA = "eliza.ai_eda.verireason_rtl_dataset_manifest.v1"
 CLAIM_BOUNDARY = (
     "verireason_rtl_dataset_manifest_training_only_no_rtl_execution_or_e1_signoff_claim"
 )
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "rtl_execution_claim_allowed": False,
+    "e1_signoff_evidence": False,
+    "optimization_claim_allowed": False,
+}
 
 DATASETS: tuple[dict[str, Any], ...] = (
     {
@@ -246,6 +252,7 @@ def main() -> int:
         "rtl_execution_claim_allowed": False,
         "e1_signoff_evidence": False,
         "optimization_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "summary": {
             "dataset_count": len(datasets),
             "jsonl_file_count": sum(dataset["jsonl_file_count"] for dataset in datasets),

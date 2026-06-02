@@ -1145,10 +1145,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.def_file:
-        source = DefSource(args.def_file, "explicit")
-    else:
-        source = choose_def()
+    source = DefSource(args.def_file, "explicit") if args.def_file else choose_def()
     out_dir = args.out.resolve()
     def_path = source.path.resolve()
     lines = def_path.read_text(errors="replace").splitlines()

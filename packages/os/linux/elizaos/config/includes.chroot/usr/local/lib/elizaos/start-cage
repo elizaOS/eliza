@@ -1,0 +1,102 @@
+#!/bin/sh
+# cage launcher for the elizaOS kiosk: select the wlroots renderer based on
+# whether the GPU can actually do GL, then exec cage.
+#
+# Why this exists: the Electrobun app's native wrapper is GTK3 + WebKit2GTK and
+# drives its window through Xwayland (it calls gdk_x11_window_get_xid /
+# XOpenDisplay — it has no Wayland path). WebKit composites its web content with
+# GL, and Xwayland's glamor acceleration needs the compositor to advertise the
+# wl_drm / linux-dmabuf Wayland interfaces. wlroots only advertises those when
+# it runs its gles2 renderer on a real GBM/GL device. If cage is forced to the
+# pixman (software) renderer, those interfaces are absent, Xwayland's glamor
+# fails ("GBM Wayland interfaces not available"), the app's GL/GLX context
+# creation fails (GLXBadWindow), and the window paints BLACK.
+#
+# So: use gles2 whenever the DRM device can do GL — that includes a real GPU and
+# a QEMU virtio-gpu with virgl (host-GPU-backed GL). Only fall back to pixman on
+# a virtio-gpu WITHOUT virgl (pure software emulated GPU), where gles2 cannot
+# create a context and cage would abort.
+set -eu
+
+log() { echo "elizaos-cage: $*" >&2; }
+
+# On Electrobun arches the kiosk uses stock Xorg, not cage+Xwayland.
+# The Electrobun native wrapper deadlocks inside its post-gtk_main() init under
+# cage's Xwayland (verified: bun main thread blocks in do_sys_poll, no
+# WebKitWebProcess ever spawns → black window) but renders fine on real Xorg.
+# Delegate to start-xorg-kiosk whenever the Electrobun app is staged.
+if [ -x /opt/elizaos/app/elizaos ] && [ -x /usr/local/lib/elizaos/start-xorg-kiosk ]; then
+    log "Electrobun app present; switching to Xorg kiosk (cage+Xwayland deadlocks the app)"
+    exec /usr/local/lib/elizaos/start-xorg-kiosk
+fi
+
+pick_renderer() {
+    # Explicit override always wins.
+    if [ -n "${WLR_RENDERER:-}" ]; then
+        echo "${WLR_RENDERER}"
+        return
+    fi
+
+    # No render node at all -> no GL device -> software.
+    if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+        echo pixman
+        return
+    fi
+
+    # Identify the primary DRM driver.
+    driver=""
+    for d in /sys/class/drm/card*/device/driver; do
+        [ -e "$d" ] || continue
+        driver=$(basename "$(readlink -f "$d")")
+        break
+    done
+
+    if [ "$driver" = "virtio_gpu" ]; then
+        # virtio-gpu only does GL when the host exposes virgl. The kernel logs
+        # "[drm] features: ... +virgl" at probe time; -virgl means no host GL.
+        if dmesg 2>/dev/null | grep -q '\[drm\] features:.*+virgl'; then
+            echo gles2
+        else
+            echo pixman
+        fi
+        return
+    fi
+
+    # Real hardware GPU (i915, amdgpu, nouveau, nvidia, etc.) -> gles2.
+    echo gles2
+}
+
+WLR_RENDERER="$(pick_renderer)"
+export WLR_RENDERER
+log "selected wlroots renderer: ${WLR_RENDERER}"
+
+# Optional headless render-validation capture. When ELIZAOS_KIOSK_CAPTURE_DIR
+# points at a writable directory (e.g. a 9p/virtfs share mounted from a CI host
+# or a local path), capture the live kiosk surface with grim every few seconds.
+# This is the only way to get pixel proof of the rendered output under QEMU,
+# where the GL scanout never reaches the host VNC/screendump path. No-op unless
+# the variable is set, so it has zero cost in normal kiosk operation.
+# Allow the capture dir to be requested via kernel cmdline (elizaos.capture_dir=)
+# so a QEMU validation harness can enable it without editing the image.
+if [ -z "${ELIZAOS_KIOSK_CAPTURE_DIR:-}" ]; then
+    for tok in $(cat /proc/cmdline 2>/dev/null); do
+        case "$tok" in
+            elizaos.capture_dir=*) ELIZAOS_KIOSK_CAPTURE_DIR="${tok#elizaos.capture_dir=}" ;;
+        esac
+    done
+fi
+if [ -n "${ELIZAOS_KIOSK_CAPTURE_DIR:-}" ] && command -v grim >/dev/null 2>&1; then
+    mkdir -p "${ELIZAOS_KIOSK_CAPTURE_DIR}" 2>/dev/null || true
+    (
+        export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/elizaos-kiosk}"
+        export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+        n=0
+        while [ "$n" -lt 60 ]; do
+            sleep 5
+            grim "${ELIZAOS_KIOSK_CAPTURE_DIR}/kiosk-$(date +%s).png" >/dev/null 2>&1 || true
+            n=$((n + 1))
+        done
+    ) &
+fi
+
+exec /usr/bin/cage -s -- /usr/local/lib/elizaos/start-kiosk

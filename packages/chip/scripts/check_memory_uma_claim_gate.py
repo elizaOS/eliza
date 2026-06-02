@@ -296,6 +296,19 @@ FORBIDDEN_POSITIVE_CLAIMS = [
     r"\bLPDDR(?:5X|6)[-\s]class\s+(?:is\s+)?(?:implemented|validated|proven|enabled)\b",
 ]
 
+FALSE_CLAIM_FLAGS = {
+    "android_shared_buffer_claim_allowed": False,
+    "cache_coherency_claim_allowed": False,
+    "iommu_smmu_claim_allowed": False,
+    "linux_boot_memory_handoff_claim_allowed": False,
+    "lpddr_phy_claim_allowed": False,
+    "memory_qos_claim_allowed": False,
+    "memory_uma_claim_allowed": False,
+    "phone_claim_allowed": False,
+    "real_dram_claim_allowed": False,
+    "release_claim_allowed": False,
+}
+
 
 def ensure_dram_controller_report() -> None:
     if DRAM_CONTROLLER_REPORT.is_file():
@@ -461,6 +474,11 @@ def check_gate(errors: list[str]) -> None:
     require(
         data.get("status") == "scaffold_only_real_claims_blocked",
         "memory/UMA gate must stay scaffold_only_real_claims_blocked",
+        errors,
+    )
+    require(
+        data.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        "memory/UMA gate false_claim_flags must match denied real-memory claims",
         errors,
     )
 
@@ -739,6 +757,15 @@ def check_gate(errors: list[str]) -> None:
                 require(
                     report.get("release_claim_allowed") is False,
                     "dram_controller.json must not allow release claims",
+                    errors,
+                )
+                false_flags = report.get("false_claim_flags")
+                require(
+                    isinstance(false_flags, dict)
+                    and false_flags.get("phone_claim_allowed") is False
+                    and false_flags.get("release_claim_allowed") is False
+                    and false_flags.get("lpddr_phy_claim_allowed") is False,
+                    "dram_controller.json must include nested false_claim_flags for phone/release/LPDDR claims",
                     errors,
                 )
                 require(

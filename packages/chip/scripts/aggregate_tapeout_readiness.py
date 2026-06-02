@@ -1191,9 +1191,8 @@ def dependency_from_blocker_counts(report: dict[str, object]) -> BlockerDependen
 def report_has_repo_generatable_now(value: object) -> bool:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in ("repo_generatable_now", "can_generate_from_repo_now"):
-                if item is True:
-                    return True
+            if key in ("repo_generatable_now", "can_generate_from_repo_now") and item is True:
+                return True
             if key in ("repo_generatable_now_count", "can_close_from_current_repo_count"):
                 try:
                     if int(item or 0) > 0:
@@ -1318,7 +1317,10 @@ def report_summary(path: Path) -> dict[str, object]:
 
 def count_value(summary: dict[str, object], key: str) -> int:
     try:
-        return int(summary.get(key) or 0)
+        raw = summary.get(key)
+        if isinstance(raw, (int, float, str)):
+            return int(raw)
+        return 0
     except (TypeError, ValueError):
         return 0
 
@@ -1558,7 +1560,7 @@ def android_release_readiness_action() -> str:
                 missing_archives = [str(path) for path in archives[:3]]
         commands = inventory.get("commands")
         if isinstance(commands, dict):
-            command_keys = [str(key) for key in commands.keys()][:6]
+            command_keys = [str(key) for key in commands][:6]
     missing_text = (
         f" Missing staged archives: {', '.join(missing_archives)}." if missing_archives else ""
     )
@@ -1619,8 +1621,9 @@ def externalized_candidate_action(
 
 def phone_assemblability_action() -> str:
     report = read_report(E1_PHONE_ASSEMBLY_VERIFICATION_PATH)
-    trapped = report.get("trapped_parts")
-    trapped_count = len(trapped) if isinstance(trapped, list) else 0
+    trapped_raw = report.get("trapped_parts")
+    trapped_list: list[object] = trapped_raw if isinstance(trapped_raw, list) else []
+    trapped_count = len(trapped_list)
     fpc = report.get("fpc_routing")
     pinched_routes: list[str] = []
     if isinstance(fpc, dict):
@@ -1631,7 +1634,7 @@ def phone_assemblability_action() -> str:
                     pinched_routes.append(str(route.get("flex") or route.get("keepout")))
     details: list[str] = []
     if trapped_count:
-        details.append(f"{trapped_count} trapped part(s): {', '.join(map(str, trapped[:4]))}")
+        details.append(f"{trapped_count} trapped part(s): {', '.join(map(str, trapped_list[:4]))}")
     if pinched_routes:
         details.append(
             f"{len(pinched_routes)} pinched FPC route(s): {', '.join(pinched_routes[:4])}"
@@ -2099,7 +2102,8 @@ def next_release_action(phase_plan: list[dict[str, object]]) -> dict[str, object
         if not isinstance(dependency_counts, dict):
             continue
         try:
-            blocked_count = int(phase.get("blocked_gate_count") or 0)
+            raw_count = phase.get("blocked_gate_count")
+            blocked_count = int(raw_count) if isinstance(raw_count, (int, float, str)) else 0
         except (TypeError, ValueError):
             blocked_count = 0
         if blocked_count <= 0:
@@ -2242,7 +2246,7 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
         "live_device_validation": [],
         "actionable_external_dependency": [],
     }
-    blocker_action_plan: dict[BlockerDependency, list[dict[str, str]]] = {
+    blocker_action_plan: dict[BlockerDependency, list[dict[str, object]]] = {
         "repo_artifact_generation": [],
         "live_device_validation": [],
         "actionable_external_dependency": [],

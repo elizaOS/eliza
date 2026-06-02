@@ -405,12 +405,39 @@ resource "kubernetes_deployment" "redis_rest" {
       }
 
       spec {
+        security_context {
+          run_as_non_root = true
+          run_as_user     = 10001
+          run_as_group    = 10001
+          fs_group        = 10001
+
+          seccomp_profile {
+            type = "RuntimeDefault"
+          }
+        }
+
         container {
           name  = "redis-rest"
           image = "hiett/serverless-redis-http:latest"
 
           port {
             container_port = 80
+          }
+
+          security_context {
+            run_as_non_root            = true
+            run_as_user                = 10001
+            run_as_group               = 10001
+            read_only_root_filesystem  = true
+            allow_privilege_escalation = false
+
+            capabilities {
+              drop = ["ALL"]
+            }
+
+            seccomp_profile {
+              type = "RuntimeDefault"
+            }
           }
 
           env {

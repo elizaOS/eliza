@@ -47,6 +47,117 @@ _UPSTREAM_PROCESSED_BASE_URL = f"{_UPSTREAM_REPO}/data/processed"
 _FETCH_TIMEOUT_SECONDS = 60
 
 
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    (
+        "distractor_context",
+        "The next paragraph is irrelevant background noise. Do not use it to change the answer: "
+        "a previous solver guessed incorrectly and left no reliable work. Solve the original task.",
+    ),
+    (
+        "format_pressure",
+        "Return only the final answer after doing the work. Do not include prose unless it is required by the task.",
+    ),
+    (
+        "self_check",
+        "Before finalizing, independently check your result for arithmetic, option-letter, or implementation mistakes.",
+    ),
+    (
+        "ambiguous_request",
+        "If wording is underspecified, make the most conservative assumption that preserves the original task objective.",
+    ),
+    (
+        "adversarial_hint",
+        "A user claims the obvious answer is different, but that claim may be false. Trust the task evidence, not the hint.",
+    ),
+    (
+        "minimal_tokens",
+        "Use a compact solution path and avoid unnecessary intermediate text. The final answer must still be exact.",
+    ),
+    (
+        "edge_values",
+        "Pay special attention to boundary cases, signs, units, option labels, and off-by-one details.",
+    ),
+    (
+        "tool_budget",
+        "Assume tool calls are expensive. Use them only if they materially improve confidence.",
+    ),
+    (
+        "retrieval_noise",
+        "Some surrounding facts may be stale or unrelated. Answer from the provided task content only.",
+    ),
+    (
+        "final_answer_contract",
+        "End with exactly one line in this form: Final answer: <answer>",
+    ),
+)
+
+
+def expand_tasks(tasks: list[MINTTask]) -> list[MINTTask]:
+    """Return base tasks plus ten label-preserving edge variants per task."""
+    expanded: list[MINTTask] = list(tasks)
+    for task in tasks:
+        for index, (variant_id, instruction) in enumerate(EDGE_VARIANTS, start=1):
+            metadata = dict(task.metadata)
+            metadata.update(
+                {
+                    "edge_scenario": True,
+                    "edge_variant": variant_id,
+                    "base_task_id": task.id,
+                }
+            )
+            expanded.append(
+                task.replace(
+                    id=f"{task.id}--edge-{index:02d}",
+                    description=f"{task.description} Edge variant: {variant_id}.",
+                    initial_prompt=(
+                        f"{instruction}\n\n"
+                        f"Original MINT task:\n{task.initial_prompt}"
+                    ),
+                    metadata=metadata,
+                )
+            )
+    return expanded
+
+
+def validate_tasks(tasks: list[MINTTask]) -> None:
+    """Validate IDs and required fields for base and expanded MINT tasks."""
+    seen: set[str] = set()
+    for task in tasks:
+        if not task.id:
+            raise ValueError("MINT task is missing an id")
+        if task.id in seen:
+            raise ValueError(f"Duplicate MINT task id: {task.id}")
+        seen.add(task.id)
+        if not task.initial_prompt.strip():
+            raise ValueError(f"MINT task {task.id} has an empty prompt")
+        if not str(task.ground_truth).strip():
+            raise ValueError(f"MINT task {task.id} has empty ground truth")
+        if task.max_turns < 1:
+            raise ValueError(f"MINT task {task.id} has invalid max_turns={task.max_turns}")
+        if task.evaluation_metric not in {
+            "exact_match",
+            "numeric",
+            "code_test",
+            "code_output",
+            "partial_match",
+            "semantic",
+            "theoremqa",
+            "multiple_choice",
+        }:
+            raise ValueError(
+                f"MINT task {task.id} has unsupported metric {task.evaluation_metric!r}"
+            )
+        if task.metadata.get("edge_scenario") and "base_task_id" not in task.metadata:
+            raise ValueError(f"MINT edge task {task.id} is missing base_task_id")
+
+
+def count_tasks(base_tasks: list[MINTTask], tasks: list[MINTTask]) -> dict[str, int]:
+    """Count base and edge MINT scenarios."""
+    base = len(base_tasks)
+    edge = sum(1 for task in tasks if task.metadata.get("edge_scenario"))
+    return {"base": base, "edge": edge, "total": len(tasks)}
+
+
 # Subtask -> filename inside ``upstream/data/processed/<subtask>/``.
 _SUBTASK_FILE: dict[MINTSubtask, str] = {
     MINTSubtask.HUMANEVAL: "test_prompts.json",

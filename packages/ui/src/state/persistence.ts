@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getBootConfig } from "../config/boot-config-store";

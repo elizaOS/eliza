@@ -1,5 +1,11 @@
 schema: eliza.cpu_npu_2028_readiness_scorecard.v1
 status: modeled_ready_release_blocked
+claim_allowed: false
+release_claim_allowed: false
+phone_class_claim_allowed: false
+benchmark_claim_allowed: false
+tapeout_claim_allowed: false
+silicon_claim_allowed: false
 claim_boundary: 'Consolidated CPU+NPU 2028 readiness audit for this local tree. This can pass modeled
   architecture consistency only; it cannot approve phone-class benchmark, AOSP, PDK, post-route, or silicon
   claims without the listed release gates passing with real evidence.

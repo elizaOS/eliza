@@ -13,6 +13,7 @@ DEFAULT_REPORT = ROOT / "build/ai_eda/pd_predictor_dataset/validation/snapshot_m
 EXPECTED_MANIFEST_SCHEMA = "eliza.ai_eda.pd_predictor.snapshot_manifest.v1"
 EXPECTED_LABEL_SCHEMA = "eliza.ai_eda.pd_predictor.label_report.v1"
 CLAIM_BOUNDARY = "predictor_dataset_advisory_only_not_signoff_or_release_evidence"
+FALSE_CLAIM_FLAGS = {"signoff_claim_allowed": False}
 
 
 def rel(path: Path) -> str:
@@ -94,6 +95,8 @@ def validate_manifest(manifest: dict[str, Any], manifest_path: Path) -> list[str
         errors.append("label report claim_boundary mismatch")
     if labels.get("signoff_claim_allowed") is not False:
         errors.append("label report signoff_claim_allowed must be false")
+    if labels.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("label report false_claim_flags must match denied PD predictor claims")
     if labels.get("status") != "DRY_RUN_LABEL_CAPTURE":
         errors.append("label report status must be DRY_RUN_LABEL_CAPTURE")
     label_values = labels.get("labels")

@@ -40,6 +40,70 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
+async function rewriteFallbackActionText(args: {
+  runtime: AgentRuntime;
+  actionName: string;
+  text: string;
+  content?: Content;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () => {
+    const error =
+      typeof args.content?.error === "string" && args.content.error.trim()
+        ? ` It reported: ${args.content.error.trim()}`
+        : "";
+    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
+  };
+  if (typeof args.runtime.useModel !== "function") return fallback();
+
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this fallback action output in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve status, IDs, names, URLs, counts, errors, warnings, and next steps.",
+        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+        `Metadata: ${JSON.stringify({
+          source: args.content?.source,
+          actions: args.content?.actions,
+          actionStatus: args.content?.actionStatus,
+          error: args.content?.error,
+        })}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch (err) {
+    args.runtime.logger.debug(
+      {
+        src: "eliza-api",
+        action: args.actionName,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[eliza-api] Fallback action voice rewrite failed",
+    );
+    return fallback();
+  }
+}
+
 const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/plugin-lifeops";
 
 let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
@@ -196,7 +260,13 @@ export async function executeFallbackParsedActions(
           callbackSeen = true;
           onActionCallback(actionTag, Boolean(chunk));
           if (chunk) {
-            (options?.onCallbackText ?? appendIncomingText)(chunk);
+            const voicedChunk = await rewriteFallbackActionText({
+              runtime,
+              actionName: actionTag,
+              text: chunk,
+              content: contentRecord as Content,
+            });
+            (options?.onCallbackText ?? appendIncomingText)(voicedChunk);
           }
           return [];
         },
@@ -228,10 +298,15 @@ export async function executeFallbackParsedActions(
       if (fallbackText) {
         onActionCallback(parsed.name, !shouldSuppressSuccessFallbackText);
         if (!shouldSuppressSuccessFallbackText) {
+          const voicedFallbackText = await rewriteFallbackActionText({
+            runtime,
+            actionName: parsed.name,
+            text: fallbackText,
+          });
           appendIncomingText(
             currentText.trim().length > 0
-              ? `\n\n${fallbackText}`
-              : fallbackText,
+              ? `\n\n${voicedFallbackText}`
+              : voicedFallbackText,
           );
         }
       }
@@ -807,8 +882,10 @@ async function summarizeDirectBinanceSkillResult(
   userText: string,
   rawText: string,
 ): Promise<string> {
+  const fallback = () =>
+    `I ran ${skillSlug} and got a Binance skill result, but I couldn't format the raw details cleanly here.`;
   const unwrapped = unwrapDirectBinanceSkillResult(rawText);
-  if (!unwrapped) return rawText;
+  if (!unwrapped) return fallback();
   const explicitCount = extractExplicitDirectBinanceCount(userText, 50);
   const compactInput = buildDirectBinanceSummaryInput(unwrapped, explicitCount);
 
@@ -850,7 +927,7 @@ async function summarizeDirectBinanceSkillResult(
     const clean = summary.trim()
       ? normalizeDirectBinanceSummaryText(summary.trim())
       : "";
-    return clean || rawText;
+    return clean || fallback();
   } catch (err) {
     runtime.logger.warn(
       {
@@ -858,9 +935,67 @@ async function summarizeDirectBinanceSkillResult(
         skillSlug,
         error: err instanceof Error ? err.message : String(err),
       },
-      "[eliza-api] Binance skill summarization failed; falling back to raw output",
+      "[eliza-api] Binance skill summarization failed; suppressing raw output",
     );
-    return rawText;
+    return fallback();
+  }
+}
+
+async function rewriteRawDirectBinanceSkillResult(
+  runtime: AgentRuntime,
+  skillSlug: string,
+  userText: string,
+  rawText: string,
+): Promise<string> {
+  const fallback = () =>
+    `I ran ${skillSlug} and got the requested raw Binance skill payload, but I couldn't format it safely here.`;
+  const unwrapped = unwrapDirectBinanceSkillResult(rawText) || rawText;
+  const boundedPayload =
+    unwrapped.length > DIRECT_BINANCE_SUMMARY_INPUT_MAX_CHARS
+      ? `${unwrapped.slice(0, DIRECT_BINANCE_SUMMARY_INPUT_MAX_CHARS)}\n\n[truncated]`
+      : unwrapped;
+  const prompt = [
+    "Write a brief character-voiced response that includes the requested raw Binance skill payload.",
+    'Return strict JSON only: {"response":"..."}.',
+    "",
+    "Rules:",
+    "- Preserve the raw payload exactly inside the response as much as possible.",
+    "- Add only a short natural-language wrapper before the payload.",
+    "- Do not invent fields, interpretation, or extra analysis.",
+    "- If the payload is truncated, say it is truncated.",
+    "",
+    `Character: ${JSON.stringify({
+      name: runtime.character?.name,
+      system: runtime.character?.system,
+      bio: runtime.character?.bio,
+      style: runtime.character?.style,
+    })}`,
+    `User request: ${JSON.stringify(userText)}`,
+    `Skill: ${JSON.stringify(skillSlug)}`,
+    `Raw payload: ${JSON.stringify(boundedPayload)}`,
+  ].join("\n");
+
+  try {
+    const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+      maxTokens: 900,
+      temperature: 0.1,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch (err) {
+    runtime.logger.warn(
+      {
+        src: "eliza-api",
+        skillSlug,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "[eliza-api] Binance raw skill rewrite failed; suppressing raw output",
+    );
+    return fallback();
   }
 }
 
@@ -977,7 +1112,12 @@ export async function maybeHandleDirectBinanceSkillRequest(
           : "";
     if (rawDirectText.trim().length > 0) {
       const finalText = wantsRawBinanceSkillResult(userText)
-        ? rawDirectText
+        ? await rewriteRawDirectBinanceSkillResult(
+            runtime,
+            skillSlug,
+            userText,
+            rawDirectText,
+          )
         : await summarizeDirectBinanceSkillResult(
             runtime,
             skillSlug,

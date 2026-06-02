@@ -199,7 +199,7 @@ cross_checks:
   all_fit_domains_fail_closed: true
 
 release_blockers:
-  - routed KiCad PCB and routed board STEP with supplier 3D models are missing
+  - local routed KiCad PCB and routed STEP candidates exist for review only; supplier-approved routed board STEP with production 3D models is missing
   - routed clearance release and routed boolean interference report are missing
   - signed supplier geometry for display, cameras, USB-C, side keys, cellular, and Wi-Fi/Bluetooth is missing
   - physical enclosure first-article traveler and assembly drawing are missing

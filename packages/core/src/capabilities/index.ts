@@ -220,7 +220,7 @@ export type RemotePluginRouteManifest = {
 export type RemotePluginViewManifest = {
 	id: string;
 	label: string;
-	viewType?: "gui" | "tui";
+	viewType?: "gui" | "tui" | "xr";
 	bundlePath?: string;
 	bundleUrl?: string;
 	contentType?: string;
@@ -3369,8 +3369,13 @@ function requireRemotePluginView(
 ): RemotePluginViewManifest {
 	const object = requireObject(value, method);
 	const viewType = optionalString(object, "viewType", method);
-	if (viewType !== undefined && viewType !== "gui" && viewType !== "tui") {
-		throw decodeError(method, "viewType must be gui or tui when present.");
+	if (
+		viewType !== undefined &&
+		viewType !== "gui" &&
+		viewType !== "tui" &&
+		viewType !== "xr"
+	) {
+		throw decodeError(method, "viewType must be gui, tui, or xr when present.");
 	}
 	const bundlePath = optionalNonEmptyString(object, "bundlePath", method);
 	const bundleUrl = optionalNonEmptyString(object, "bundleUrl", method);

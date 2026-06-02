@@ -1,4 +1,5 @@
 import * as realFs from "node:fs";
+import * as nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type FsAccessMode = "read" | "write";
@@ -25,6 +26,29 @@ export function requireMobileFsResolver(moduleName: string): MobileFsResolver {
 		);
 	}
 	return resolver;
+}
+
+export function mobileFsAccessError(
+	path: string,
+	message: string,
+): NodeJS.ErrnoException {
+	const err = new Error(message) as NodeJS.ErrnoException;
+	err.code = "EACCES";
+	err.path = path;
+	return err;
+}
+
+export function guardMobileFsWritePath(
+	resolved: string,
+	originalPath: string,
+): void {
+	const ext = nodePath.extname(resolved).toLowerCase();
+	if (ext === ".so" || ext === ".dylib" || ext === ".node") {
+		throw mobileFsAccessError(
+			originalPath,
+			`mobile-fs-shim: writing native binary files is blocked (${ext})`,
+		);
+	}
 }
 
 export function mobileFsPathLikeToString(
@@ -65,7 +89,9 @@ export function wrapMobileFsPath<T extends AnyFn>(
 	return function wrappedMobileFsPath(this: unknown, ...args: unknown[]) {
 		const pathStr = mobileFsPathLikeToString(args[0], moduleName);
 		if (pathStr !== null) {
-			args[0] = requireMobileFsResolver(moduleName)(pathStr, mode);
+			const resolved = requireMobileFsResolver(moduleName)(pathStr, mode);
+			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
+			args[0] = resolved;
 		}
 		return (fn as T).apply(this, args as Parameters<T>);
 	} as T;
@@ -78,10 +104,10 @@ export function wrapMobileFsOpen<T extends AnyFn>(
 	return function wrappedMobileFsOpen(this: unknown, ...args: unknown[]) {
 		const pathStr = mobileFsPathLikeToString(args[0], moduleName);
 		if (pathStr !== null) {
-			args[0] = requireMobileFsResolver(moduleName)(
-				pathStr,
-				modeForMobileFsOpenFlags(args[1]),
-			);
+			const mode = modeForMobileFsOpenFlags(args[1]);
+			const resolved = requireMobileFsResolver(moduleName)(pathStr, mode);
+			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
+			args[0] = resolved;
 		}
 		return (fn as T).apply(this, args as Parameters<T>);
 	} as T;
@@ -97,8 +123,16 @@ export function wrapMobileFsTwoPaths<T extends AnyFn>(
 		const src = mobileFsPathLikeToString(args[0], moduleName);
 		const dst = mobileFsPathLikeToString(args[1], moduleName);
 		const resolver = requireMobileFsResolver(moduleName);
-		if (src !== null) args[0] = resolver(src, srcMode);
-		if (dst !== null) args[1] = resolver(dst, dstMode);
+		if (src !== null) {
+			const resolved = resolver(src, srcMode);
+			if (srcMode === "write") guardMobileFsWritePath(resolved, src);
+			args[0] = resolved;
+		}
+		if (dst !== null) {
+			const resolved = resolver(dst, dstMode);
+			if (dstMode === "write") guardMobileFsWritePath(resolved, dst);
+			args[1] = resolved;
+		}
 		return (fn as T).apply(this, args as Parameters<T>);
 	} as T;
 }

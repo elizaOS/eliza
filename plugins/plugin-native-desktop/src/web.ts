@@ -39,6 +39,23 @@ const BROWSER_PERMISSION_IDS = new Set<DesktopPermissionId>([
   "location",
   "notifications",
 ]);
+const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+
+function assertSafeExternalUrl(url: unknown): string {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    throw new Error("url must be a non-empty external URL");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("url must be a valid external URL");
+  }
+  if (!SAFE_EXTERNAL_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error("url protocol is not allowed");
+  }
+  return parsed.toString();
+}
 
 function getDesktopRpc(): ElectrobunRendererRpc | undefined {
   const g = globalThis as typeof globalThis & {
@@ -316,7 +333,7 @@ export class DesktopWeb extends WebPlugin {
 
   // Power Monitor
   async getPowerState(): Promise<PowerMonitorState> {
-    type BatteryManager = { level: number; charging: boolean };
+    type BatteryManager = { level?: unknown; charging?: unknown };
     const getBattery = (
       navigator as Navigator & { getBattery?: () => Promise<BatteryManager> }
     ).getBattery;
@@ -324,10 +341,16 @@ export class DesktopWeb extends WebPlugin {
     if (getBattery) {
       try {
         const battery = await getBattery.call(navigator);
+        const level =
+          typeof battery.level === "number" && Number.isFinite(battery.level)
+            ? Math.max(0, Math.min(100, battery.level * 100))
+            : undefined;
+        const charging =
+          typeof battery.charging === "boolean" ? battery.charging : undefined;
         return {
-          onBattery: !battery.charging,
-          batteryLevel: battery.level * 100,
-          isCharging: battery.charging,
+          onBattery: charging === undefined ? false : !charging,
+          batteryLevel: level,
+          isCharging: charging,
           idleState: "active", // Idle detection not available on web
           idleTime: 0,
         };
@@ -407,7 +430,7 @@ export class DesktopWeb extends WebPlugin {
 
   // Shell
   async openExternal(options: { url: string }): Promise<void> {
-    window.open(options.url, "_blank");
+    window.open(assertSafeExternalUrl(options.url), "_blank", "noopener");
   }
   async showItemInFolder(_options: { path: string }): Promise<void> {}
 

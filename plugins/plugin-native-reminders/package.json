@@ -1,0 +1,62 @@
+{
+  "name": "@elizaos/macosreminders",
+  "version": "2.0.3-beta.0",
+  "description": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-native-reminders"
+  },
+  "keywords": [
+    "elizaos",
+    "macos",
+    "reminders",
+    "eventkit"
+  ],
+  "scripts": {
+    "build": "tsc --noCheck -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "eliza": {
+    "platforms": [
+      "darwin"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "darwin": "Shared Apple Reminders native bridge policy for macOS host runtimes."
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

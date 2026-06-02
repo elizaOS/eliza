@@ -6,6 +6,55 @@ function normalizeHostname(hostname: string): string {
   return hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
+function ipv4FromMappedIpv6(address: string): string | null {
+  const normalized = normalizeHostname(address);
+
+  if (normalized.startsWith("::ffff:")) {
+    const mapped = normalized.slice("::ffff:".length);
+    if (mapped.includes(".")) {
+      return mapped;
+    }
+
+    const parts = mapped.split(":");
+    if (parts.length === 2) {
+      const high = Number.parseInt(parts[0], 16);
+      const low = Number.parseInt(parts[1], 16);
+      if (
+        Number.isInteger(high) &&
+        Number.isInteger(low) &&
+        high >= 0 &&
+        high <= 0xffff &&
+        low >= 0 &&
+        low <= 0xffff
+      ) {
+        return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+      }
+    }
+  }
+
+  const parts = normalized.split(":");
+  if (
+    parts.length === 8 &&
+    parts.slice(0, 5).every((part) => part === "0") &&
+    parts[5] === "ffff"
+  ) {
+    const high = Number.parseInt(parts[6], 16);
+    const low = Number.parseInt(parts[7], 16);
+    if (
+      Number.isInteger(high) &&
+      Number.isInteger(low) &&
+      high >= 0 &&
+      high <= 0xffff &&
+      low >= 0 &&
+      low <= 0xffff
+    ) {
+      return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+    }
+  }
+
+  return null;
+}
+
 function isForbiddenIpv4(address: string): boolean {
   const parts = address.split(".").map((part) => Number.parseInt(part, 10));
   if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
@@ -38,15 +87,13 @@ function isForbiddenIpv4(address: string): boolean {
 
 function isForbiddenIpv6(address: string): boolean {
   const normalized = normalizeHostname(address);
+  const mappedIpv4 = ipv4FromMappedIpv6(normalized);
 
-  if (normalized === "::" || normalized === "::1") {
-    return true;
+  if (mappedIpv4) {
+    return isForbiddenIpAddress(mappedIpv4);
   }
 
-  if (normalized.startsWith("::ffff:")) {
-    const mapped = normalized.slice("::ffff:".length);
-    return isForbiddenIpAddress(mapped);
-  }
+  if (normalized === "::" || normalized === "::1") return true;
 
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
     return true;

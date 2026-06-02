@@ -1026,6 +1026,39 @@ export function ScapeOperatorSurface({
   );
 }
 
+function ScapeTuiPromptButton({
+  prompt,
+  index,
+  disabled,
+  onSelect,
+}: {
+  prompt: string;
+  index: number;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "tui-scape-controls",
+    description: `Send the suggested directive "${prompt}" to the 'scape agent`,
+    onActivate: () => onSelect(prompt),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(prompt)}
+      style={tuiButtonStyle}
+      {...agentProps}
+    >
+      {prompt}
+    </button>
+  );
+}
+
 export function ScapeTuiView() {
   const { appRuns, setActionNotice } = useApp();
   const { run, matchingRuns } = useMemo(
@@ -1115,6 +1148,24 @@ export function ScapeTuiView() {
     }
   };
 
+  const tuiCommandInput = useAgentElement<HTMLInputElement>({
+    id: "tui-command-input",
+    role: "text-input",
+    label: "'scape command",
+    group: "tui-scape-controls",
+    description: "Natural-language operator instruction for the 'scape agent",
+    getValue: () => draft,
+    onFill: (value) => setDraft(value),
+  });
+  const tuiSendControl = useAgentElement<HTMLButtonElement>({
+    id: "tui-send-command",
+    role: "button",
+    label: "Send command",
+    group: "tui-scape-controls",
+    description: "Send the typed directive to the 'scape agent",
+    onActivate: () => void sendDraft(draft),
+  });
+
   return (
     <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
       <div style={tuiRouteStyle}>elizaos://scape --type=tui</div>
@@ -1140,18 +1191,17 @@ export function ScapeTuiView() {
           : ["check status", "set goal", "pause"]
         )
           .slice(0, 6)
-          .map((prompt) => (
-            <button
+          .map((prompt, index) => (
+            <ScapeTuiPromptButton
               key={prompt}
-              type="button"
+              prompt={prompt}
+              index={index}
               disabled={!canSend || sending}
-              onClick={() => void sendDraft(prompt)}
-              style={tuiButtonStyle}
-            >
-              {prompt}
-            </button>
+              onSelect={(value) => void sendDraft(value)}
+            />
           ))}
         <input
+          ref={tuiCommandInput.ref}
           aria-label="'scape command"
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
@@ -1160,12 +1210,15 @@ export function ScapeTuiView() {
           }}
           placeholder="Send an operator instruction..."
           style={tuiInputStyle}
+          {...tuiCommandInput.agentProps}
         />
         <button
+          ref={tuiSendControl.ref}
           type="button"
           disabled={!canSend || sending || !draft.trim()}
           onClick={() => void sendDraft(draft)}
           style={tuiButtonStyle}
+          {...tuiSendControl.agentProps}
         >
           send command
         </button>
