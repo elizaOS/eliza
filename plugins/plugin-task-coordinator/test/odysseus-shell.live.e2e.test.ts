@@ -171,6 +171,34 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     await closeOverlay();
   });
 
+  // The ported tool views (wave 1 + 2): each rail launcher opens an overlay
+  // panel and Escape closes it, with no page errors. Asserts the surface mounts
+  // — fidelity/data is verified per-view elsewhere (screenshots).
+  const TOOL_VIEWS = [
+    "Documents",
+    "Compare",
+    "Deep Research",
+    "Calendar",
+    "Tasks",
+    "Models",
+    "Email",
+    "Gallery",
+    "Cookbook",
+  ];
+  for (const label of TOOL_VIEWS) {
+    it(`opens + closes the ${label} view`, async () => {
+      await closeOverlay();
+      await page.locator(`.od-rail-btn[aria-label="${label}"]`).click();
+      await page.waitForTimeout(700);
+      expect(await page.locator(".od-search-overlay").count()).toBeGreaterThan(
+        0,
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      expect(await page.locator(".od-search-overlay").count()).toBe(0);
+    });
+  }
+
   // Pin/star a thread (odysseus): pinning floats it to the top of the Chats
   // list with a star, and persists; unpinning clears it. Needs ≥2 threads on
   // the live stack — soft-skips otherwise.
