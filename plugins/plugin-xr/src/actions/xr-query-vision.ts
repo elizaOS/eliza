@@ -28,7 +28,7 @@ export const xrQueryVisionAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
+    _state: State | undefined,
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {

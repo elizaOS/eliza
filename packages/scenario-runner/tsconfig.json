@@ -18,6 +18,9 @@
       "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
@@ -53,30 +56,41 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
+      "@elizaos/plugin-app-control": [
+        "../../plugins/plugin-app-control/src/index.ts"
+      ],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
+      "@elizaos/plugin-device-filesystem": [
+        "../../plugins/plugin-device-filesystem/src/index.ts"
+      ],
+      "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
+      "@elizaos/plugin-gitpathologist": [
+        "../../plugins/plugin-gitpathologist/src/index.ts"
+      ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
+      "@elizaos/plugin-omnivoice": [
+        "../../plugins/plugin-omnivoice/src/index.ts"
+      ],
+      "@elizaos/plugin-shell": ["../../plugins/plugin-shell/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-streaming": [
-        "../../plugins/plugin-streaming/dist/index.d.ts"
+        "../../plugins/plugin-streaming/src/index.ts"
       ],
-      "@elizaos/plugin-mcp": [
-        "../../plugins/plugin-mcp/src/index.ts"
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
+      "@elizaos/plugin-todos/*": ["../../plugins/plugin-todos/src/*"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/plugin-mcp/*": [
-        "../../plugins/plugin-mcp/src/*"
-      ],
-      "@elizaos/plugin-todos": [
-        "../../plugins/plugin-todos/src/index.ts"
-      ],
-      "@elizaos/plugin-todos/*": [
-        "../../plugins/plugin-todos/src/*"
-      ],
+      "@elizaos/plugin-xr": ["../../plugins/plugin-xr/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],
