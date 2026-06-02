@@ -353,10 +353,11 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-thread-menu { position:absolute; right:4px; top:calc(50% + 14px); z-index:30;
   background:var(--panel); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.4);
   min-width:120px; overflow:hidden; padding:4px; }
-.odysseus-root .od-thread-menu button { display:block; width:100%; text-align:left; padding:6px 10px; border:none;
-  background:none; color:var(--fg); font-size:12px; border-radius:4px; cursor:pointer; }
+.odysseus-root .od-thread-menu button { display:flex; align-items:center; gap:7px; width:100%; text-align:left;
+  padding:6px 10px; border:none; background:none; color:var(--fg); font-size:12px; border-radius:4px; cursor:pointer; }
 .odysseus-root .od-thread-menu button:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
 .odysseus-root .od-thread-menu button.od-danger { color:var(--red); }
+.odysseus-root .od-thread-pin-dot { flex-shrink:0; margin-right:5px; color:var(--accent, var(--red)); opacity:.85; }
 .odysseus-root .od-thread-rename { width:100%; box-sizing:border-box; padding:3px 8px; margin:1px 0; font-size:13px;
   background:var(--bg); color:var(--fg); border:1px solid var(--red); border-radius:4px; outline:none; font-family:inherit; }
 .odysseus-root .od-section { padding:0; margin:0; }

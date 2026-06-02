@@ -82,6 +82,9 @@ export function OdysseusShell(): ReactNode {
   const [customThemes, setCustomThemes] = useState<
     Record<string, ThemePalette>
   >(() => readPref<Record<string, ThemePalette>>(PREF_KEYS.customThemes, {}));
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() =>
+    readPref<string[]>(PREF_KEYS.pinnedThreads, []),
+  );
 
   const refreshThreads = useCallback(async () => {
     const next = await client
@@ -155,6 +158,18 @@ export function OdysseusShell(): ReactNode {
     },
     [refreshThreads],
   );
+
+  // Pin/unpin a thread (odysseus star): pinned threads sort to the top of the
+  // Chats list and persist across reloads (client-only, localStorage-backed).
+  const onTogglePin = useCallback((id: string) => {
+    setPinnedIds((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((p) => p !== id)
+        : [...prev, id];
+      writePref(PREF_KEYS.pinnedThreads, next);
+      return next;
+    });
+  }, []);
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
@@ -318,6 +333,8 @@ export function OdysseusShell(): ReactNode {
           onDelete={onDeleteThread}
           width={sidebarWidth}
           onResizeStart={startResize}
+          pinnedIds={pinnedIds}
+          onTogglePin={onTogglePin}
         />
       )}
       <ChatContainer

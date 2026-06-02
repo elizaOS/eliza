@@ -36,4 +36,5 @@ export const PREF_KEYS = {
   bgPattern: "bg-pattern",
   customThemes: "custom-themes",
   sidebarWidth: "sidebar-width",
+  pinnedThreads: "pinned-threads",
 } as const;

@@ -171,6 +171,61 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     await closeOverlay();
   });
 
+  // Pin/star a thread (odysseus): pinning floats it to the top of the Chats
+  // list with a star, and persists; unpinning clears it. Needs ≥2 threads on
+  // the live stack — soft-skips otherwise.
+  it("pinning a thread floats it to the top with a star", async () => {
+    await closeOverlay();
+    await page.evaluate(() =>
+      window.localStorage.removeItem("odysseus:pinned-threads"),
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await ensureShell();
+    await page.waitForTimeout(600);
+
+    const rows = page.locator(".od-thread-row");
+    const count = await rows.count();
+    if (count < 2) return; // not enough threads to prove reordering
+
+    const lastTitle = (
+      await rows
+        .nth(count - 1)
+        .locator(".od-grow")
+        .innerText()
+    ).trim();
+    await rows.nth(count - 1).hover();
+    await rows
+      .nth(count - 1)
+      .locator(".od-thread-menu-btn")
+      .click();
+    await page.waitForTimeout(150);
+    await page.getByRole("button", { name: /^Pin$/ }).click();
+    await page.waitForTimeout(300);
+
+    const firstTitle = (
+      await rows.nth(0).locator(".od-grow").innerText()
+    ).trim();
+    expect(firstTitle).toBe(lastTitle);
+    expect(await rows.nth(0).locator(".od-thread-pin-dot").count()).toBe(1);
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem("odysseus:pinned-threads"),
+      ),
+    ).toContain('"');
+
+    // Unpin (cleanup) → pref empties.
+    await rows.nth(0).hover();
+    await rows.nth(0).locator(".od-thread-menu-btn").click();
+    await page.waitForTimeout(150);
+    await page.getByRole("button", { name: /^Unpin$/ }).click();
+    await page.waitForTimeout(250);
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem("odysseus:pinned-threads"),
+      ),
+    ).toBe("[]");
+  });
+
   // Drag-resize the sidebar (odysseus .sidebar-resize-handle): widen on drag,
   // clamp at the 180px floor, and persist the final width across reload. Runs
   // last because it reloads the page.

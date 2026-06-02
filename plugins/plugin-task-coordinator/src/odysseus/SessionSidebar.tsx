@@ -7,9 +7,11 @@ import type { CodingAgentTaskThread } from "@elizaos/ui";
 import {
   MessageSquare,
   MoreHorizontal,
+  Pin,
   Plus,
   Search,
   Settings,
+  Star,
 } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -25,23 +27,27 @@ function ThreadRow({
   active,
   editing,
   menuOpen,
+  pinned,
   onSelect,
   onOpenMenu,
   onStartRename,
   onCommitRename,
   onCancelRename,
   onDelete,
+  onTogglePin,
 }: {
   thread: CodingAgentTaskThread;
   active: boolean;
   editing: boolean;
   menuOpen: boolean;
+  pinned: boolean;
   onSelect: () => void;
   onOpenMenu: () => void;
   onStartRename: () => void;
   onCommitRename: (title: string) => void;
   onCancelRename: () => void;
   onDelete: () => void;
+  onTogglePin: () => void;
 }): ReactNode {
   const [draft, setDraft] = useState(thread.title);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -80,6 +86,9 @@ function ThreadRow({
         onClick={onSelect}
         title={thread.title}
       >
+        {pinned ? (
+          <Star size={11} className="od-thread-pin-dot" fill="currentColor" />
+        ) : null}
         <span className="od-grow">{thread.title}</span>
         <span className="od-sub">{thread.status}</span>
       </button>
@@ -94,6 +103,10 @@ function ThreadRow({
       </button>
       {menuOpen ? (
         <div className="od-thread-menu">
+          <button type="button" onClick={onTogglePin}>
+            <Pin size={13} />
+            {pinned ? "Unpin" : "Pin"}
+          </button>
           <button type="button" onClick={onStartRename}>
             Rename
           </button>
@@ -116,6 +129,8 @@ export function SessionSidebar({
   onDelete,
   width,
   onResizeStart,
+  pinnedIds,
+  onTogglePin,
 }: {
   threads: CodingAgentTaskThread[];
   selectedId: string | null;
@@ -126,9 +141,20 @@ export function SessionSidebar({
   onDelete: (id: string) => void;
   width: number;
   onResizeStart: (e: PointerEvent) => void;
+  pinnedIds: string[];
+  onTogglePin: (id: string) => void;
 }): ReactNode {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Pinned threads float to the top, preserving their existing relative order;
+  // the server list is otherwise recency-ordered. A stable partition keeps the
+  // sort from reshuffling on every poll.
+  const pinned = new Set(pinnedIds);
+  const ordered = [
+    ...threads.filter((t) => pinned.has(t.id)),
+    ...threads.filter((t) => !pinned.has(t.id)),
+  ];
 
   return (
     <nav className="od-sidebar" aria-label="Sidebar" style={{ width }}>
@@ -159,13 +185,18 @@ export function SessionSidebar({
               Chats
             </span>
           </div>
-          {threads.map((thread) => (
+          {ordered.map((thread) => (
             <ThreadRow
               key={thread.id}
               thread={thread}
               active={thread.id === selectedId}
               editing={editingId === thread.id}
               menuOpen={menuOpenId === thread.id}
+              pinned={pinned.has(thread.id)}
+              onTogglePin={() => {
+                setMenuOpenId(null);
+                onTogglePin(thread.id);
+              }}
               onSelect={() => {
                 setMenuOpenId(null);
                 onSelect(thread.id);
