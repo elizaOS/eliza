@@ -239,6 +239,14 @@ with:
 python3 scripts/check_e1x_stratified_full_k_repair_execution.py
 ```
 
+Run the dense stratified full-K repair execution gate, which doubles the
+repair-aware full-K evidence to 32 rows per placed layer while preserving the
+full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_dense_stratified_full_k_repair_execution.py
+```
+
 Run the full norm real-weight row gate, which executes every output row for the
 complete `norm` layer class across its full K dimension and records the
 remaining matmul-heavy full-output checksum blocker, with:

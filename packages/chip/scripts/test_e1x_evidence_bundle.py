@@ -36,8 +36,8 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["missing_evidence_path_count"] == 0
-    assert report["summary"]["evidence_path_check_count"] == 62
-    assert report["summary"]["freshness_check_count"] == 62
+    assert report["summary"]["evidence_path_check_count"] == 63
+    assert report["summary"]["freshness_check_count"] == 63
     assert report["summary"]["real_graph_model_required_vs_e1_sram"] > 100
     assert 0.0 < report["summary"]["real_graph_model_required_vs_e1x_sram"] < 1.0
     assert report["summary"]["e1_comparison_audit_sram_ratio"] == 128.25
@@ -211,6 +211,30 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     )
     assert (
         report["summary"]["stratified_full_k_repair_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["dense_stratified_full_k_repair_rows"] == 9_056
+    assert report["summary"]["dense_stratified_full_k_repair_macs"] == 44_239_392
+    assert report["summary"]["dense_stratified_full_k_repair_touched_cores"] == 6_545
+    assert (
+        report["summary"]["dense_stratified_full_k_repair_output_checksum"]
+        == 13_739_606_427_776_396_480
+    )
+    assert (
+        report["summary"]["dense_stratified_full_k_repair_normal_route_checksum"]
+        == 17_541_455_524_737_409_381
+    )
+    assert (
+        report["summary"]["dense_stratified_full_k_repair_high_failure_route_checksum"]
+        == 185_044_992_303_269_905
+    )
+    assert report["summary"]["dense_stratified_full_k_repair_high_failure_remapped_rows"] == 195
+    assert (
+        report["summary"]["dense_stratified_full_k_repair_rows_sha256"]
+        == "e6eec1eefdfbc6d2b146a5efde1c4ba149d188fa31156f3ca394674830a12768"
+    )
+    assert (
+        report["summary"]["dense_stratified_full_k_repair_residual_blocker"]
         == "full_output_real_weight_checksum_missing"
     )
     assert report["summary"]["full_norm_real_weight_layers"] == 81

@@ -152,6 +152,11 @@ def test_capture_command_removal_fails() -> None:
     required = check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS
     if commands != required:
         raise AssertionError(f"capture commands drifted: {commands!r}")
+    target_command = commands.get("target_benchmark_report", "")
+    if "--metadata benchmarks/results/target-phone/target-metadata.json" not in target_command:
+        raise AssertionError(f"target benchmark command must use runner --metadata: {target_command}")
+    if "--target-metadata" in target_command:
+        raise AssertionError(f"target benchmark command uses obsolete flag: {target_command}")
     mutated = copy.deepcopy(report)
     del mutated["next_capture_commands"]["npu_nnapi_proof"]
     expect_error(mutated, "npu_nnapi_proof")

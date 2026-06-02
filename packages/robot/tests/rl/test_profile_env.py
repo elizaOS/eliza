@@ -261,6 +261,61 @@ def test_hiwonder_stand_up_floor_placement_uses_foot_extents() -> None:
     assert info["below_floor_robot_geom_count"] == 0
 
 
+def test_walking_reward_helpers_shape_stance_swing_before_completion() -> None:
+    phase = math.pi / 2.0
+    stance_left_swing_right = np.asarray([1.0, 0.0], dtype=np.float32)
+    partial_left_contact = np.asarray([0.5, 0.0], dtype=np.float32)
+    no_support = np.asarray([0.0, 0.0], dtype=np.float32)
+    foot_bottom_clearance = np.asarray([0.0, 0.02], dtype=np.float32)
+
+    assert _stance_contact_reward(stance_left_swing_right, phase) == pytest.approx(1.0)
+    assert _contact_cadence_reward(partial_left_contact, phase) == pytest.approx(0.75)
+    assert _foot_clearance_reward(
+        foot_bottom_clearance,
+        stance_left_swing_right,
+        phase,
+        swing_height_m=0.08,
+    ) == pytest.approx(0.02 / (0.45 * 0.08))
+
+    assert _stance_contact_reward(no_support, phase) == 0.0
+    assert _contact_cadence_reward(no_support, phase) == 0.0
+    assert (
+        _foot_clearance_reward(
+            foot_bottom_clearance,
+            np.asarray([1.0, 1.0], dtype=np.float32),
+            phase,
+            swing_height_m=0.08,
+        )
+        == 0.0
+    )
+
+
+def test_foot_clearance_telemetry_uses_aabb_bottom_clearance() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+    env.reset(seed=0)
+
+    foot_center_z = env._current_foot_z()  # noqa: SLF001
+    foot_min_z = env._current_foot_aabb_min_z()  # noqa: SLF001
+    bottom_clearance = env._current_foot_clearance_z()  # noqa: SLF001
+    finite = np.isfinite(foot_min_z)
+
+    assert np.all(finite)
+    assert np.all(foot_min_z[finite] <= foot_center_z[finite])
+    assert np.allclose(
+        bottom_clearance[finite],
+        np.maximum(0.0, foot_min_z[finite] - env._floor_height_m()),  # noqa: SLF001
+    )
+
+
 def test_profile_env_detects_deliberate_below_floor_geometry() -> None:
     mujoco = pytest.importorskip("mujoco")
     env = make_text_conditioned_env("hiwonder-ainex", config=_smoke_config())

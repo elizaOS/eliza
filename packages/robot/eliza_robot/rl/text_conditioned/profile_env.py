@@ -2805,6 +2805,14 @@ class TextConditionedProfileEnv(gym.Env):
             matched = True
             if self._foot_contact_switch_count < int(crit["min_alternating_foot_contacts"]):
                 return False
+        for side_idx, side in enumerate(("left", "right")):
+            key = f"{side}_foot_contact_required"
+            if key in crit:
+                matched = True
+                required = bool(crit[key])
+                actual = bool(self._last_foot_telemetry[side_idx] > 0.5)
+                if actual is not required:
+                    return False
         if "min_swing_foot_clearance_m" in crit:
             matched = True
             if self._max_swing_foot_clearance_m < float(crit["min_swing_foot_clearance_m"]):

@@ -120,7 +120,7 @@ REQUIRED_CAPTURE_COMMANDS = {
         "--config benchmarks/configs/benchmark_plan.json "
         "--out-dir benchmarks/results/target-phone "
         "--claim-level L5_PROTOTYPE_SILICON "
-        "--target-metadata benchmarks/results/target-phone/target-metadata.json"
+        "--metadata benchmarks/results/target-phone/target-metadata.json"
     ),
     "target_benchmark_validation": (
         "python3 benchmarks/run_benchmarks.py validate-report "

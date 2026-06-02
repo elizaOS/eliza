@@ -62,8 +62,16 @@ describe("LifeOps package boundaries", () => {
     expect(sleepServiceMixin).not.toContain("computeSleepRegularity");
     expect(sleepServiceMixin).not.toContain("computePersonalBaseline");
     expect(screenTimeServiceMixin).toContain("classifyScreenTimeTarget");
+    expect(screenTimeServiceMixin).toContain("computeScreenTimeRange");
+    expect(screenTimeServiceMixin).toContain("enumerateScreenTimeHistoryDays");
     expect(screenTimeServiceMixin).toContain("isSystemInactivityApp");
     expect(screenTimeServiceMixin).toContain('from "@elizaos/plugin-health"');
+    expect(screenTimeServiceMixin).not.toContain(
+      "function computeScreenTimeRange",
+    );
+    expect(screenTimeServiceMixin).not.toContain(
+      "function enumerateHistoryDays",
+    );
     expect(
       existsSync(resolve(packageRoot, "src/lifeops/social-taxonomy.ts")),
     ).toBe(false);
