@@ -54,6 +54,27 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/core/src/services/pairing-migration.ts packages/core/src/__tests__/pairing-migration.test.ts`
   - `bunx biome check packages/core/src/features/advanced-planning/actions/plan.ts packages/core/src/features/advanced-planning/actions/plan.test.ts`
 
+### packages/feed
+
+- Finished the autonomous direct-executor entrypoints for
+  `SHARE_INFORMATION` and `REQUEST_PAYMENT`. `DirectExecutors.ts` now delegates
+  to the existing intel/payment executor implementation while preserving the
+  nullable-ID result contract expected by `MultiStepExecutor`.
+- Updated the stale WIP header in
+  `packages/agents/src/autonomous/intel-payment-executors.ts` now that it is
+  on the active execution path.
+- Added wrapper coverage to
+  `packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`.
+- Also moved `desc` in `DirectExecutors.ts` to a direct `drizzle-orm` import
+  to avoid a brittle Bun named-import failure through the `@feed/db` barrel in
+  isolated tests.
+- Verified with:
+  - `bun test /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts --preload /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/testing/unit/preload.ts`
+  - `git diff --check -- packages/feed/packages/agents/src/autonomous/DirectExecutors.ts packages/feed/packages/agents/src/autonomous/intel-payment-executors.ts packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`
+  - Marker scan on the touched Feed files
+- Biome note: root `biome.json` excludes `packages/feed/**`, so Biome reports
+  these files as ignored.
+
 ### packages/plugin-worker-runtime
 
 - Finished dynamic remote-plugin surface announcement. Worker bootstrap now
