@@ -1588,7 +1588,8 @@ function makeEsToolkitCompatEsmPlugin(
       const stack = [path.join(dir, "dist", "compat")];
       let mjs: string | null = null;
       while (stack.length) {
-        const d = stack.pop()!;
+        const d = stack.pop();
+        if (d === undefined) break;
         let entries: fs.Dirent[];
         try {
           entries = fs.readdirSync(d, { withFileTypes: true });
