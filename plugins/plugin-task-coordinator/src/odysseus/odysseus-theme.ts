@@ -6878,4 +6878,2108 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-rz-nw { top:-5px; left:-5px; width:14px; height:14px; cursor:nwse-resize; }
 .odysseus-root .od-rz-se { bottom:-5px; right:-5px; width:14px; height:14px; cursor:nwse-resize; }
 .odysseus-root .od-rz-sw { bottom:-5px; left:-5px; width:14px; height:14px; cursor:nesw-resize; }
+
+
+/* ===== fix-wave-A: MemoryPanel ===== */
+
+/* ── MemoryPanel: bounded panel + tabs/toolbar/chips/meta/add (memory.js + index.html memory modal) ── */
+/* Bounded, scroll-inside-panel fix: the non-windowed panel is a flex column
+   capped to the viewport; the list owns the overflow so the panel's rounded
+   bottom border always stays on-screen (no mid-row clip past the fold). The
+   windowed (dragged/resized) panel sets its own inline height, which wins. */
+.odysseus-root .od-search-overlay:not(.od-windowed) > .od-search-panel.od-mem-panel {
+  max-height: 84vh; display: flex; flex-direction: column; }
+.odysseus-root .od-search-panel.od-mem-panel.od-windowed,
+.odysseus-root .od-windowed > .od-search-panel.od-mem-panel { display: flex; flex-direction: column; }
+.odysseus-root .od-mem-panel { display: flex; flex-direction: column; min-height: 0; }
+.odysseus-root .od-mem-list { flex: 1 1 auto; max-height: none; min-height: 0; }
+
+/* Tabs */
+.odysseus-root .od-mem-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); }
+.odysseus-root .od-mem-tab { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px 8px;
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: color-mix(in srgb, var(--fg) 55%, transparent); font-size: 12px; font-weight: 500; cursor: pointer; }
+.odysseus-root .od-mem-tab:hover { color: var(--fg); }
+.odysseus-root .od-mem-tab.active { color: var(--fg); border-bottom-color: var(--accent, var(--red)); }
+
+/* Description line under tabs */
+.odysseus-root .od-mem-desc { margin: 10px 16px 0; font-size: 11px; line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 55%, transparent); }
+
+/* Browse toolbar: sort select + search field */
+.odysseus-root .od-mem-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 8px; }
+.odysseus-root .od-mem-sort { flex-shrink: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--input-bg, var(--panel)); color: var(--fg); font-size: 12px; cursor: pointer; outline: none; }
+.odysseus-root .od-mem-sort:focus-visible { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-mem-search-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+.odysseus-root .od-mem-search-icon { position: absolute; left: 9px; color: color-mix(in srgb, var(--fg) 40%, transparent);
+  pointer-events: none; }
+.odysseus-root .od-mem-search { width: 100%; box-sizing: border-box; padding: 6px 10px 6px 28px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--input-bg, var(--panel)); color: var(--fg); font-size: 13px; outline: none; }
+.odysseus-root .od-mem-search::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-mem-search:focus-visible { border-color: var(--accent, var(--red)); }
+
+/* Category chips */
+.odysseus-root .od-mem-cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+.odysseus-root .od-mem-cat { padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; background: none;
+  color: color-mix(in srgb, var(--fg) 60%, transparent); font-size: 11px; cursor: pointer; text-transform: lowercase; }
+.odysseus-root .od-mem-cat:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 30%, transparent); }
+.odysseus-root .od-mem-cat.active { color: var(--accent, var(--red)); border-color: var(--accent, var(--red));
+  background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent); }
+
+/* List item: text + metadata row (overrides the old single-line .od-mem-item flex layout) */
+.odysseus-root .od-mem-item { display: block; align-items: initial; gap: 0; padding: 9px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-mem-item-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.odysseus-root .od-mem-item .od-mem-text { display: block; flex: initial; font-size: 13px; line-height: 1.4;
+  color: var(--fg); white-space: normal; overflow: visible; -webkit-line-clamp: initial; word-break: break-word; }
+.odysseus-root .od-mem-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.odysseus-root .od-mem-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px;
+  border-radius: 4px; background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  color: var(--accent, var(--red)); flex-shrink: 0; }
+.odysseus-root .od-mem-source { font-size: 10px; color: color-mix(in srgb, var(--fg) 50%, transparent);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+.odysseus-root .od-mem-item .od-mem-time { font-size: 10px; color: color-mix(in srgb, var(--fg) 45%, transparent);
+  flex-shrink: 0; }
+
+/* Empty-state link (switches to Add tab) */
+.odysseus-root .od-mem-empty-link { background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--accent, var(--red)); text-decoration: underline; }
+
+/* Add tab */
+.odysseus-root .od-mem-add { display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 16px; }
+.odysseus-root .od-mem-add-desc { margin: 8px 0 0; }
+.odysseus-root .od-mem-add-input { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--input-bg, var(--panel)); color: var(--fg); font-size: 13px; outline: none; }
+.odysseus-root .od-mem-add-input::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-mem-add-input:focus-visible { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-mem-add-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.odysseus-root .od-mem-add-error { font-size: 11px; color: var(--red); }
+.odysseus-root .od-mem-add-btn { padding: 6px 14px; border: 1px solid var(--accent, var(--red)); border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent); color: var(--accent, var(--red));
+  font-size: 12px; font-weight: 500; cursor: pointer; }
+.odysseus-root .od-mem-add-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, var(--red)) 22%, transparent); }
+.odysseus-root .od-mem-add-btn:disabled { opacity: .5; cursor: default; }
+
+/* ===== fix-wave-A: GalleryView ===== */
+/* ── GalleryView: honest empty-state layout (no image-library backend) ──
+   The default .od-gallery-grid uses flex:1 so a populated grid scrolls and
+   fills the panel. With no backend the grid is always empty; flex:1 would
+   stretch it and float the "No photos yet" caption into a centered void
+   (odysseus appends the caption right after the Upload tile, never centered).
+   This modifier stops the grid from stretching so the caption reads as a
+   caption directly under the Upload tile, matching odysseus's markup order. */
+.odysseus-root .od-gallery-grid.od-gallery-grid-empty {
+  flex: 0 0 auto;
+  overflow: visible;
+  align-content: start;
+  max-height: none;
+}
+/* Upload tile rendered as a disabled affordance (no upload endpoint exists),
+   consistent with the honest no-backend posture: dimmed, not-allowed, and no
+   hover-lift implying it is actionable. */
+.odysseus-root .od-gallery-card.od-gallery-card-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.odysseus-root .od-gallery-card.od-gallery-card-disabled:hover {
+  border-color: var(--border);
+  box-shadow: none;
+  transform: none;
+  opacity: 0.5;
+}
+/* Honest explainer under the empty grid — same muted register as
+   .od-gallery-settings-desc, scoped to the images container. */
+.odysseus-root .od-gallery-backend-note {
+  margin-top: 10px;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+/* ===== fix-wave-A: SkillsPanel ===== */
+
+/* ── skills panel (rewritten; mirrors the proven .od-doclib-* card/toolbar/
+   expand/edit/delete rules 1:1, scoped + theme-var driven). Replaces the old
+   singular .od-skill-* block. ── */
+.odysseus-root .od-skills-panel { width:560px; max-width:92%; display:flex; flex-direction:column; max-height:85vh; }
+.odysseus-root .od-skills-desc { margin:0; padding:2px 16px 0; font-size:11px; line-height:1.5;
+  color:color-mix(in srgb, var(--fg) 50%, transparent); }
+.odysseus-root .od-skills-toolbar { display:flex; align-items:center; gap:8px; padding:8px 16px 4px; flex-wrap:wrap; }
+.odysseus-root .od-skills-select { background:var(--bg); color:var(--fg); border:1px solid var(--border);
+  border-radius:6px; font-family:inherit; font-size:11px; height:24px; padding:0 6px; cursor:pointer; }
+.odysseus-root .od-skills-select:focus { outline:none; border-color:var(--red); }
+.odysseus-root .od-skills-toolbar-btn { margin-left:auto; background:none; border:1px solid var(--border);
+  color:color-mix(in srgb, var(--fg) 60%, transparent); font-size:11px; height:24px; padding:0 8px; border-radius:6px;
+  cursor:pointer; font-family:inherit; white-space:nowrap; display:inline-flex; align-items:center; gap:3px;
+  transition:all .15s; }
+.odysseus-root .od-skills-toolbar-btn:hover { border-color:var(--fg); color:var(--fg); }
+.odysseus-root .od-skills-search { height:26px; margin:4px 16px 6px; padding:0 8px; border-radius:6px;
+  border:1px solid var(--border); background:var(--bg); color:var(--fg); font-family:inherit; font-size:12px;
+  box-sizing:border-box; }
+.odysseus-root .od-skills-search:focus { outline:none; border-color:var(--red); }
+.odysseus-root .od-skills-search::placeholder { color:color-mix(in srgb, var(--fg) 40%, transparent); }
+.odysseus-root .od-skills-add { display:flex; flex-direction:column; gap:6px; margin:0 16px 8px; padding:10px;
+  border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--fg) 3%, transparent); }
+.odysseus-root .od-skills-add-input, .odysseus-root .od-skills-add-textarea { width:100%; box-sizing:border-box;
+  background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:6px; font-family:inherit;
+  font-size:12px; padding:5px 8px; resize:vertical; }
+.odysseus-root .od-skills-add-input:focus, .odysseus-root .od-skills-add-textarea:focus { outline:none; border-color:var(--red); }
+.odysseus-root .od-skills-add-input::placeholder, .odysseus-root .od-skills-add-textarea::placeholder { color:color-mix(in srgb, var(--fg) 40%, transparent); }
+.odysseus-root .od-skills-add-actions { display:flex; justify-content:flex-end; gap:6px; }
+.odysseus-root .od-skills-grid { display:flex; flex-direction:column; gap:4px; overflow-y:auto; padding:2px 16px 12px;
+  min-height:0; flex:1; }
+.odysseus-root .od-skills-empty { text-align:center; color:color-mix(in srgb, var(--fg) 35%, transparent);
+  padding:32px 16px; font-size:12px; font-style:italic; }
+.odysseus-root .od-skills-card { display:flex; align-items:flex-start; gap:8px; flex-direction:row; flex-wrap:wrap;
+  border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--fg) 3%, transparent);
+  position:relative; transition:all .15s; flex-shrink:0; }
+.odysseus-root .od-skills-card:hover { background:color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color:color-mix(in srgb, var(--fg) 16%, transparent); }
+.odysseus-root .od-skills-card-main { flex:1; min-width:0; display:flex; background:none; border:none; padding:9px 10px;
+  cursor:pointer; text-align:left; color:inherit; font-family:inherit; }
+.odysseus-root .od-skills-content { flex:1; min-width:0; }
+.odysseus-root .od-skills-titlerow { display:flex; align-items:center; gap:6px; width:100%; }
+.odysseus-root .od-skills-name { font-size:12.5px; font-weight:600; color:var(--fg); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; flex:0 1 auto; min-width:0; font-family:'Fira Code', ui-monospace, monospace; }
+.odysseus-root .od-skills-status { font-size:8px; text-transform:uppercase; letter-spacing:.04em; padding:1px 6px;
+  border-radius:8px; flex-shrink:0; font-weight:600;
+  background:color-mix(in srgb, var(--fg) 8%, transparent);
+  border:1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  color:color-mix(in srgb, var(--fg) 45%, transparent); }
+.odysseus-root .od-skills-status.on { background:color-mix(in srgb, var(--ok) 14%, transparent);
+  border-color:color-mix(in srgb, var(--ok) 45%, transparent); color:var(--ok); }
+.odysseus-root .od-skills-scan { font-size:8px; text-transform:uppercase; letter-spacing:.04em; padding:1px 5px;
+  border-radius:4px; flex-shrink:0; font-weight:600;
+  background:color-mix(in srgb, var(--warn) 20%, transparent); color:var(--warn); }
+.odysseus-root .od-skills-scan-critical, .odysseus-root .od-skills-scan-blocked {
+  background:color-mix(in srgb, var(--red) 20%, transparent); color:var(--red); }
+.odysseus-root .od-skills-chevron { margin-left:auto; align-self:center; opacity:.6; flex-shrink:0;
+  transition:transform .15s ease; }
+.odysseus-root .od-skills-card-expanded .od-skills-chevron { transform:rotate(180deg); }
+.odysseus-root .od-skills-desc-line { font-size:11px; margin-top:3px; line-height:1.4;
+  color:color-mix(in srgb, var(--fg) 55%, transparent); overflow:hidden; text-overflow:ellipsis;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.odysseus-root .od-skills-card-expanded .od-skills-desc-line { -webkit-line-clamp:none; }
+.odysseus-root .od-skills-actions { display:flex; gap:4px; flex-shrink:0; position:relative; padding:9px 8px 0 0; }
+.odysseus-root .od-skills-item-btn { background:none; border:1px solid transparent;
+  color:color-mix(in srgb, var(--fg) 50%, transparent); height:22px; padding:0 6px; border-radius:6px; cursor:pointer;
+  display:flex; align-items:center; opacity:0; transition:all .15s; }
+.odysseus-root .od-skills-card:hover .od-skills-item-btn, .odysseus-root .od-skills-card-expanded .od-skills-item-btn { opacity:1; }
+.odysseus-root .od-skills-item-btn:hover { color:var(--fg); border-color:var(--border);
+  background:color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-skills-dropdown { position:absolute; top:100%; right:0; z-index:1000; width:max-content; padding:4px;
+  background:var(--panel); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.3);
+  font-size:12px; }
+.odysseus-root .od-skills-dropdown-item { display:flex; align-items:center; gap:7px; width:100%; text-align:left;
+  padding:6px 10px; border:none; background:none; color:var(--fg); font-size:12px; border-radius:4px; cursor:pointer;
+  font-family:inherit; }
+.odysseus-root .od-skills-dropdown-item:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-skills-dropdown-danger { color:var(--red); }
+.odysseus-root .od-skills-card-expanded { flex-direction:column; }
+.odysseus-root .od-skills-preview { flex-basis:100%; width:100%; padding:8px 12px;
+  border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); margin:0; box-sizing:border-box; }
+.odysseus-root .od-skills-preview pre { margin:0; max-height:40vh; overflow-y:auto; white-space:pre-wrap;
+  word-break:break-word; font-family:'Fira Code', ui-monospace, monospace; font-size:10.5px; line-height:1.5;
+  color:var(--hl-fg, var(--fg)); }
+.odysseus-root .od-skills-preview code { background:none; padding:0; font-family:inherit; }
+.odysseus-root .od-skills-editor { width:100%; box-sizing:border-box; min-height:200px; max-height:40vh; resize:vertical;
+  background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:6px;
+  font-family:'Fira Code', ui-monospace, monospace; font-size:10.5px; line-height:1.5; padding:8px; }
+.odysseus-root .od-skills-editor:focus { outline:none; border-color:var(--red); }
+.odysseus-root .od-skills-expanded-actions { display:flex; align-items:flex-start; gap:6px; padding:8px 0 2px;
+  border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); margin-top:8px; }
+.odysseus-root .od-skills-action-group { display:flex; gap:6px; margin-left:auto; }
+.odysseus-root .od-skills-confirm { display:flex; align-items:center; gap:8px; padding:8px 0 2px;
+  border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); margin-top:8px; font-size:11px;
+  color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-skills-confirm > span:first-child { margin-right:auto; }
+.odysseus-root .od-skills-edit-cancel { display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+  background:none; border:none; color:color-mix(in srgb, var(--fg) 45%, transparent); font-size:10px; cursor:pointer;
+  font-family:inherit; padding:2px 0; }
+.odysseus-root .od-skills-edit-cancel:hover { color:var(--fg); }
+.odysseus-root .od-skills-text-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px;
+  box-sizing:border-box; font-size:10px; padding:3px 8px; border-radius:4px; background:none; border:1px solid var(--border);
+  color:color-mix(in srgb, var(--fg) 60%, transparent); cursor:pointer; font-family:inherit;
+  transition:border-color .15s, color .15s; }
+.odysseus-root .od-skills-text-btn:hover { border-color:var(--fg); color:var(--fg); }
+.odysseus-root .od-skills-text-btn:disabled { opacity:.35; cursor:not-allowed; }
+.odysseus-root .od-skills-text-btn-primary { border-color:color-mix(in srgb, var(--ok) 55%, transparent); color:var(--ok); }
+.odysseus-root .od-skills-text-btn-primary:hover { border-color:var(--ok); color:var(--ok); }
+.odysseus-root .od-skills-text-btn-danger { color:var(--red); border-color:color-mix(in srgb, var(--red) 60%, transparent); }
+.odysseus-root .od-skills-text-btn-danger:hover { border-color:var(--red); color:var(--red); }
+
+/* ===== fix-wave-A: NotesPanel ===== */
+
+/* ── notes panel (rebuilt to odysseus notes.js surface) ── */
+.odysseus-root .od-notes-panel { display:flex; flex-direction:column; }
+.odysseus-root .od-notes-panel.od-notes-archived { background:color-mix(in srgb, var(--accent, var(--red)) 5%, var(--panel)); }
+
+.odysseus-root .od-notes-head { display:flex; align-items:center; gap:8px; }
+.odysseus-root .od-notes-head-spacer { flex:1 1 auto; }
+.odysseus-root .od-notes-head-btn { background:none; border:1px solid transparent; cursor:pointer;
+  font-size:11px; font-weight:600; color:color-mix(in srgb, var(--fg) 70%, transparent);
+  padding:3px 9px; border-radius:6px; line-height:1.4; }
+.odysseus-root .od-notes-head-btn:hover { background:color-mix(in srgb, var(--fg) 7%, transparent); color:var(--fg); }
+.odysseus-root .od-notes-head-btn.active { color:var(--fg); border-color:var(--border); background:color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-notes-head-btn.primary { background:var(--accent, var(--red)); color:#fff; border-color:transparent; }
+.odysseus-root .od-notes-head-btn.primary:hover { filter:brightness(0.94); background:var(--accent, var(--red)); color:#fff; }
+
+.odysseus-root .od-notes-searchbar { display:flex; align-items:center; gap:8px; padding:4px 16px 8px; }
+.odysseus-root .od-notes-search { flex:1 1 auto; border:1px solid var(--border); border-radius:8px; }
+.odysseus-root .od-notes-select-trigger { flex-shrink:0; background:none; border:1px solid var(--border);
+  border-radius:8px; cursor:pointer; font-size:11px; font-weight:600; padding:6px 11px;
+  color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-notes-select-trigger:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-notes-select-trigger.active { color:var(--fg); background:color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.odysseus-root .od-notes-bulk-bar { display:flex; align-items:center; gap:10px; padding:6px 16px;
+  margin:0 16px 6px; border:1px solid var(--border); border-radius:8px;
+  background:color-mix(in srgb, var(--fg) 4%, transparent); font-size:11px; }
+.odysseus-root .od-notes-bulk-all { display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--fg); }
+.odysseus-root .od-notes-bulk-count { color:color-mix(in srgb, var(--fg) 60%, transparent); font-weight:600; }
+.odysseus-root .od-notes-bulk-btn { background:none; border:1px solid var(--border); border-radius:6px;
+  cursor:pointer; font-size:11px; font-weight:600; padding:4px 10px; color:var(--fg); }
+.odysseus-root .od-notes-bulk-btn:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 7%, transparent); }
+.odysseus-root .od-notes-bulk-btn.danger:hover:not(:disabled) { color:var(--red); border-color:color-mix(in srgb, var(--red) 50%, var(--border)); background:color-mix(in srgb, var(--red) 8%, transparent); }
+.odysseus-root .od-notes-bulk-btn:disabled { opacity:0.4; cursor:default; }
+
+.odysseus-root .od-notes-undo { display:flex; align-items:center; gap:10px; margin:0 16px 6px;
+  padding:6px 12px; border-radius:8px; font-size:12px; color:var(--fg);
+  background:color-mix(in srgb, var(--fg) 8%, transparent); border:1px solid var(--border); }
+.odysseus-root .od-notes-undo-btn { background:none; border:none; cursor:pointer; font-weight:700;
+  color:var(--accent, var(--red)); font-size:12px; padding:0; }
+.odysseus-root .od-notes-undo-btn:hover { text-decoration:underline; }
+.odysseus-root .od-notes-undo-dismiss { margin-left:auto; background:none; border:none; cursor:pointer;
+  font-size:11px; color:color-mix(in srgb, var(--fg) 45%, transparent); padding:2px 4px; }
+.odysseus-root .od-notes-undo-dismiss:hover { color:var(--fg); }
+
+.odysseus-root .od-notes-labels { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 8px; }
+.odysseus-root .od-notes-chip { background:none; border:1px solid var(--border); border-radius:999px;
+  cursor:pointer; font-size:11px; font-weight:600; padding:3px 10px;
+  color:color-mix(in srgb, var(--fg) 65%, transparent); display:inline-flex; align-items:center; gap:5px; }
+.odysseus-root .od-notes-chip:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-notes-chip.active { color:var(--fg); border-color:color-mix(in srgb, var(--fg) 40%, var(--border));
+  background:color-mix(in srgb, var(--fg) 9%, transparent); }
+.odysseus-root .od-notes-chip-count { font-size:10px; opacity:0.7; }
+
+.odysseus-root .od-notes-list { padding:0 16px 16px; }
+.odysseus-root .od-notes-list.od-notes-grid { column-count:2; column-gap:12px; }
+.odysseus-root .od-notes-list.od-notes-grid > * { break-inside:avoid; margin-bottom:12px; }
+.odysseus-root .od-notes-list.od-notes-list { display:flex; flex-direction:column; gap:10px; }
+
+/* quick-add bar + type pills */
+.odysseus-root .od-notes-quickadd { display:flex; align-items:center; gap:8px; margin-bottom:12px;
+  border:1px solid var(--border); border-radius:10px; padding:6px 8px;
+  background:color-mix(in srgb, var(--fg) 3%, transparent); }
+.odysseus-root .od-notes-quick-seg, .odysseus-root .od-note-form-seg { display:inline-flex; flex-shrink:0;
+  border:1px solid var(--border); border-radius:8px; overflow:hidden; padding:0; margin:0;
+  min-inline-size:auto; }
+.odysseus-root .od-notes-quick-pill { background:none; border:none; cursor:pointer; font-size:11px;
+  font-weight:600; padding:4px 10px; color:color-mix(in srgb, var(--fg) 55%, transparent); }
+.odysseus-root .od-notes-quick-pill + .od-notes-quick-pill { border-left:1px solid var(--border); }
+.odysseus-root .od-notes-quick-pill:hover { color:var(--fg); }
+.odysseus-root .od-notes-quick-pill.active { color:var(--fg); background:color-mix(in srgb, var(--fg) 10%, transparent); }
+.odysseus-root .od-notes-quick-input { flex:1 1 auto; background:none; border:none; outline:none;
+  font-size:13px; color:var(--fg); padding:4px 2px; font-family:inherit; }
+.odysseus-root .od-notes-quick-input::placeholder { color:color-mix(in srgb, var(--fg) 40%, transparent); }
+
+/* full edit form */
+.odysseus-root .od-note-form { display:flex; flex-direction:column; gap:8px; margin-bottom:12px;
+  border:1px solid color-mix(in srgb, var(--fg) 25%, var(--border)); border-radius:10px; padding:10px;
+  background:var(--card, var(--panel)); }
+.odysseus-root .od-note-form-seg { align-self:flex-start; }
+.odysseus-root .od-note-form-title, .odysseus-root .od-note-form-labels { background:none; border:none;
+  outline:none; font-size:14px; font-weight:600; color:var(--fg); padding:2px 0; font-family:inherit; }
+.odysseus-root .od-note-form-labels { font-size:12px; font-weight:500; color:color-mix(in srgb, var(--fg) 75%, transparent); }
+.odysseus-root .od-note-form-title::placeholder, .odysseus-root .od-note-form-labels::placeholder,
+.odysseus-root .od-note-form-body::placeholder { color:color-mix(in srgb, var(--fg) 38%, transparent); }
+.odysseus-root .od-note-form-body { background:none; border:none; outline:none; resize:vertical;
+  font-size:13px; color:var(--fg); font-family:inherit; line-height:1.5; min-height:60px; }
+.odysseus-root .od-note-form-items { display:flex; flex-direction:column; gap:4px; }
+.odysseus-root .od-note-form-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+
+/* note card */
+.odysseus-root .od-note-card { position:relative; border:1px solid var(--border); border-radius:10px;
+  padding:10px 12px; background:var(--card, var(--panel)); display:flex; flex-direction:column; gap:7px; }
+.odysseus-root .od-note-card.pinned { border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border)); }
+.odysseus-root .od-note-card.selected { border-color:var(--accent, var(--red));
+  box-shadow:0 0 0 1px var(--accent, var(--red)) inset; }
+.odysseus-root .od-note-card-cb { position:absolute; top:9px; left:9px; }
+.odysseus-root .od-note-pin { position:absolute; top:6px; right:8px; background:none; border:none;
+  cursor:pointer; font-size:13px; line-height:1; opacity:0.45; padding:2px; filter:grayscale(1); }
+.odysseus-root .od-note-pin:hover { opacity:0.9; }
+.odysseus-root .od-note-pin.active { opacity:1; filter:none; }
+.odysseus-root .od-note-card-head { display:flex; align-items:flex-start; gap:8px; padding-right:22px; }
+.odysseus-root .od-note-card-title { background:none; border:none; cursor:pointer; text-align:left;
+  font-size:14px; font-weight:600; color:var(--fg); padding:0; flex:1; font-family:inherit;
+  word-break:break-word; }
+.odysseus-root .od-note-card-title.empty { color:color-mix(in srgb, var(--fg) 40%, transparent); font-weight:500; font-style:italic; }
+.odysseus-root .od-note-card-body { background:none; border:none; cursor:pointer; text-align:left;
+  font-size:13px; color:var(--fg); white-space:pre-wrap; word-break:break-word; padding:0;
+  font-family:inherit; line-height:1.5; }
+
+/* checklist */
+.odysseus-root .od-note-checklist, .odysseus-root .od-note-form-items { display:flex; flex-direction:column; gap:3px; }
+.odysseus-root .od-note-cl-item { display:flex; align-items:center; gap:8px; }
+.odysseus-root .od-note-check { flex-shrink:0; width:16px; height:16px; border-radius:5px;
+  border:1.5px solid color-mix(in srgb, var(--fg) 35%, var(--border)); background:none; cursor:pointer;
+  padding:0; position:relative; }
+.odysseus-root .od-note-check:hover { border-color:var(--fg); }
+.odysseus-root .od-note-cl-item.done .od-note-check { background:var(--ok, #4caf50); border-color:var(--ok, #4caf50); }
+.odysseus-root .od-note-cl-item.done .od-note-check::after { content:""; position:absolute; left:4.5px; top:1px;
+  width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+.odysseus-root .od-note-check-text { flex:1; font-size:13px; color:var(--fg); word-break:break-word; }
+.odysseus-root .od-note-cl-item.done .od-note-check-text { text-decoration:line-through;
+  color:color-mix(in srgb, var(--fg) 45%, transparent); }
+.odysseus-root .od-note-cl-rm { flex-shrink:0; background:none; border:none; cursor:pointer; font-size:10px;
+  color:color-mix(in srgb, var(--fg) 35%, transparent); padding:2px 4px; opacity:0; }
+.odysseus-root .od-note-cl-item:hover .od-note-cl-rm { opacity:1; }
+.odysseus-root .od-note-cl-rm:hover { color:var(--red); }
+.odysseus-root .od-note-cl-add { background:none; border:none; outline:none; font-size:12px; color:var(--fg);
+  padding:2px 0 2px 24px; font-family:inherit; }
+.odysseus-root .od-note-cl-add::placeholder { color:color-mix(in srgb, var(--fg) 38%, transparent); }
+
+/* card labels (clickable #tag chips) */
+.odysseus-root .od-note-card-labels { display:flex; flex-wrap:wrap; gap:5px; }
+.odysseus-root .od-note-card-chip { background:color-mix(in srgb, var(--fg) 7%, transparent); border:none;
+  border-radius:999px; cursor:pointer; font-size:10.5px; font-weight:600; padding:2px 8px;
+  color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-note-card-chip:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 12%, transparent); }
+
+/* card footer: color dots + progress + time + actions */
+.odysseus-root .od-note-card-actions { display:flex; align-items:center; gap:8px; margin-top:1px; }
+.odysseus-root .od-note-card-colors, .odysseus-root .od-note-form-colors { display:flex; align-items:center; gap:5px; }
+.odysseus-root .od-note-card-spacer { flex:1 1 auto; }
+.odysseus-root .od-note-card-progress { font-size:11px; font-weight:700;
+  color:color-mix(in srgb, var(--fg) 55%, transparent); }
+.odysseus-root .od-note-card-act { background:none; border:none; cursor:pointer; font-size:13px; line-height:1;
+  padding:2px 5px; border-radius:5px; color:color-mix(in srgb, var(--fg) 45%, transparent); }
+.odysseus-root .od-note-card-act:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 7%, transparent); }
+.odysseus-root .od-note-card-act.danger:hover { color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
+
+/* color dots — pale palette mirrors notes.js COLOR_HEX (fixed semantic note tints) */
+.odysseus-root .od-note-color-dot { width:15px; height:15px; border-radius:50%; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--fg) 20%, transparent); padding:0; box-sizing:border-box;
+  background:var(--border); }
+.odysseus-root .od-note-color-dot.active { box-shadow:0 0 0 2px var(--panel), 0 0 0 3.5px var(--fg); }
+.odysseus-root .od-note-color-dot.od-note-color-red { background:#f0b5ba; }
+.odysseus-root .od-note-color-dot.od-note-color-orange { background:#e8ccb2; }
+.odysseus-root .od-note-color-dot.od-note-color-yellow { background:#f2dfbd; }
+.odysseus-root .od-note-color-dot.od-note-color-green { background:#cce0bc; }
+.odysseus-root .od-note-color-dot.od-note-color-blue { background:#b0d7f7; }
+.odysseus-root .od-note-color-dot.od-note-color-purple { background:#e2bcee; }
+
+/* whole-card tint when a color is set */
+.odysseus-root .od-note-card.od-note-color-red { background:color-mix(in srgb, #f0b5ba 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #f0b5ba 45%, var(--border)); }
+.odysseus-root .od-note-card.od-note-color-orange { background:color-mix(in srgb, #e8ccb2 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #e8ccb2 45%, var(--border)); }
+.odysseus-root .od-note-card.od-note-color-yellow { background:color-mix(in srgb, #f2dfbd 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #f2dfbd 45%, var(--border)); }
+.odysseus-root .od-note-card.od-note-color-green { background:color-mix(in srgb, #cce0bc 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #cce0bc 45%, var(--border)); }
+.odysseus-root .od-note-card.od-note-color-blue { background:color-mix(in srgb, #b0d7f7 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #b0d7f7 45%, var(--border)); }
+.odysseus-root .od-note-card.od-note-color-purple { background:color-mix(in srgb, #e2bcee 18%, var(--card, var(--panel))); border-color:color-mix(in srgb, #e2bcee 45%, var(--border)); }
+
+/* ===== fix-wave-A: Composer ===== */
+/* ── Composer: non-interactive model label ──────────────────────────────
+   When the model chip is not wired to a models surface (onOpenModels absent),
+   the composer renders it as a plain label, not a button. Strip the button
+   hover/cursor affordances so it doesn't masquerade as a clickable control.
+   Appends to ODYSSEUS_CSS in odysseus-theme.ts next to .od-model-picker-btn. */
+.odysseus-root .od-model-picker-btn.od-model-picker-static { cursor:default; }
+.odysseus-root .od-model-picker-btn.od-model-picker-static:hover {
+  border-color:transparent; background:none;
+  color:color-mix(in srgb, var(--fg) 40%, transparent); }
+
+/* ===== fix-wave-A: CompareView ===== */
+/* ===== CompareView fix wave (selector pre-flight, overflow, winner/confetti) ===== */
+
+/* HIGH — composer textarea clipped below viewport. The arena overlay is
+   inset:0 inside .odysseus-root (which sits below the top app bar), so the
+   shared .od-search-overlay's 12vh top padding + the panel's 86vh height
+   overflowed the overlay and pushed the composer past the viewport bottom.
+   Scope a tighter padding to the compare overlay and re-cap the panel
+   container-relative so it can never exceed the overlay it lives in.
+   These rules come AFTER the originals in the stylesheet, so at equal
+   specificity they win. */
+.odysseus-root .od-search-overlay.od-compare-overlay { padding: 2vh 0; }
+.odysseus-root .od-search-overlay.od-compare-overlay:not(.od-windowed) > .od-search-panel {
+  max-height: calc(100% - 28px);
+}
+.odysseus-root .od-compare-panel {
+  height: min(86vh, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+}
+
+/* The pane title caret is now a lucide <svg> rather than a glyph span. */
+.odysseus-root svg.od-pane-title-caret {
+  flex-shrink: 0;
+  opacity: 0.35;
+  position: relative;
+  top: 1px;
+}
+.odysseus-root .od-pane-title-btn:hover svg.od-pane-title-caret { opacity: 0.7; }
+.odysseus-root .od-pane-title-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.odysseus-root .od-pane-action-btn:disabled { opacity: 0.18; cursor: not-allowed; }
+.odysseus-root .od-pane-action-btn:disabled:hover { background: none; opacity: 0.18; }
+
+/* Winner / loser decoration — style.css .compare-pane.winner/.loser */
+.odysseus-root .od-compare-pane.winner .od-pane-header {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--red) 30%, var(--border));
+}
+.odysseus-root .od-compare-pane.winner .od-pane-title-name { color: var(--red); }
+.odysseus-root .od-compare-pane.loser .od-pane-header { opacity: 0.5; }
+.odysseus-root .od-pane-winner-star { color: var(--red); flex-shrink: 0; }
+.odysseus-root .od-pane-loser-mark { opacity: 0.5; flex-shrink: 0; }
+.odysseus-root .od-pane-winner-tag {
+  color: var(--red);
+  font-size: 0.82em;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  top: -1px;
+  flex-shrink: 0;
+}
+
+/* Confetti — style.css .confetti-piece (fixed-position particle, no color rule;
+   colors are set inline from the celebratory palette). */
+.odysseus-root ~ .od-confetti-piece,
+.od-confetti-piece {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000000;
+}
+
+/* Model-swap dropdown search input (odysseus _showModelSwapDropdown, >5 models) */
+.odysseus-root .od-pane-model-search {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.78em;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.odysseus-root .od-pane-model-search::placeholder { color: color-mix(in srgb, var(--fg) 40%, transparent); }
+.odysseus-root .od-pane-model-search:focus { outline: none; border-color: var(--accent, var(--fg)); }
+
+/* ── Pre-flight selector modal (compare/selector.js showModelSelector) ── */
+.odysseus-root .od-cmp-selector {
+  width: min(520px, 92vw);
+  max-width: 92vw;
+  max-height: 83vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.odysseus-root .od-cmp-sel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-cmp-sel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.odysseus-root .od-cmp-sel-close {
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.odysseus-root .od-cmp-sel-close:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cmp-sel-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.odysseus-root .od-cmp-sel-desc {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 0.85em;
+  margin: 0 0 12px;
+}
+.odysseus-root .od-cmp-sel-section { margin-bottom: 14px; }
+.odysseus-root .od-cmp-sel-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.5;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-cmp-sel-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
+.odysseus-root .od-cmp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s;
+}
+.odysseus-root .od-cmp-toggle:hover { opacity: 1; border-color: var(--fg); }
+.odysseus-root .od-cmp-toggle.active {
+  opacity: 1;
+  border-color: var(--accent, var(--fg));
+  background: color-mix(in srgb, var(--accent, var(--fg)) 12%, transparent);
+}
+.odysseus-root .od-cmp-sel-tabs { display: flex; gap: 4px; }
+.odysseus-root .od-cmp-sel-tab {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: default;
+}
+.odysseus-root .od-cmp-sel-tab.active {
+  border-color: var(--accent, var(--fg));
+  background: color-mix(in srgb, var(--accent, var(--fg)) 12%, transparent);
+}
+.odysseus-root .od-cmp-sel-rows { display: flex; flex-direction: column; gap: 6px; }
+.odysseus-root .od-cmp-sel-row { display: flex; align-items: center; gap: 6px; }
+.odysseus-root .od-cmp-sel-rowlabel {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.odysseus-root .od-cmp-form-control {
+  padding: 5px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.82em;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.odysseus-root .od-cmp-form-control:focus { outline: none; border-color: var(--accent, var(--fg)); }
+.odysseus-root .od-cmp-prov-select { flex-shrink: 0; width: 92px; }
+.odysseus-root .od-cmp-model-select { flex: 1 1 auto; min-width: 0; }
+.odysseus-root .od-cmp-sel-noslot {
+  flex: 1 1 auto;
+  font-size: 0.8em;
+  font-style: italic;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-cmp-picker { flex: 1 1 auto; position: relative; min-width: 0; }
+.odysseus-root .od-cmp-picker .od-cmp-form-control { width: 100%; }
+.odysseus-root .od-cmp-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  padding: 4px;
+}
+.odysseus-root .od-cmp-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 0.82em;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.odysseus-root .od-cmp-picker-item:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.odysseus-root .od-cmp-picker-item.current { color: var(--red); font-weight: 600; }
+.odysseus-root .od-cmp-picker-empty {
+  padding: 8px 12px;
+  font-size: 0.8em;
+  font-style: italic;
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.odysseus-root .od-cmp-rm-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.3;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  font-family: inherit;
+}
+.odysseus-root .od-cmp-rm-btn:hover { opacity: 1; color: var(--red); }
+.odysseus-root .od-cmp-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 0.82em;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-cmp-add-btn:hover { opacity: 1; }
+.odysseus-root .od-cmp-sel-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.odysseus-root .od-cmp-sel-timeout-label,
+.odysseus-root .od-cmp-sel-timeout-suffix {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 0.82em;
+}
+.odysseus-root .od-cmp-sel-timeout-input {
+  width: 60px;
+  padding: 4px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.82em;
+  font-family: inherit;
+  text-align: center;
+}
+.odysseus-root .od-cmp-sel-timeout-input:focus { outline: none; border-color: var(--accent, var(--fg)); }
+.odysseus-root .od-cmp-sel-score-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-family: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-cmp-sel-score-btn:hover { opacity: 1; }
+.odysseus-root .od-cmp-sel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-cmp-sel-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: var(--accent, var(--red));
+  color: var(--bg);
+  border: 1px solid var(--accent, var(--red));
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-cmp-sel-start:hover:not(:disabled) { opacity: 0.85; }
+.odysseus-root .od-cmp-sel-start:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Shuffle-pool editor (compare/index.js showShufflePoolEditor) */
+.odysseus-root .od-cmp-pool { width: min(420px, 92vw); }
+.odysseus-root .od-cmp-pool-list { max-height: 400px; overflow-y: auto; }
+.odysseus-root .od-cmp-pool-heading {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 4px 4px;
+}
+.odysseus-root .od-cmp-pool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--fg);
+  border-radius: 4px;
+}
+.odysseus-root .od-cmp-pool-row:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+/* ===== fix-wave-A: CalendarView ===== */
+/* ── Calendar: new surfaces (event form, settings modal, empty state, more-menu, week/year/agenda views). Scoped, theme vars only. ── */
+
+/* +New small variant used in the day-detail header */
+.odysseus-root button.od-cal-add-btn.od-cal-add-btn-text.od-cal-add-btn-sm { height:20px; padding:0 8px 0 5px; border-radius:10px; }
+.odysseus-root .od-cal-add-btn-sm .od-cal-add-label { font-size:10px; }
+
+/* refresh spin */
+@keyframes od-cal-spin { to { transform:rotate(360deg); } }
+.odysseus-root button.od-cal-nav.od-cal-syncing svg { animation:od-cal-spin 0.8s linear infinite; }
+
+/* +N more (renamed from od-cal-event-more to avoid colliding with the more-button) */
+.odysseus-root .od-cal-event-more-count { font-size:8px; opacity:0.4; padding-left:6px; display:block; }
+
+/* day-detail event row: clickable info + more button */
+.odysseus-root .od-cal-event-info-btn { background:none; border:none; text-align:left; cursor:pointer; font-family:inherit; padding:0; color:var(--fg); }
+.odysseus-root .od-cal-event-more-btn { background:none; border:none; color:var(--fg); opacity:0.4; cursor:pointer; font-size:15px; line-height:1; padding:0 4px; align-self:flex-start; border-radius:4px; }
+.odysseus-root .od-cal-event-more-btn:hover { opacity:0.9; background:color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* event more-menu dropdown */
+.odysseus-root .od-cal-event-dropdown { position:fixed; z-index:60; min-width:150px; background:var(--panel, var(--bg)); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.3); padding:4px; display:flex; flex-direction:column; }
+.odysseus-root .od-cal-dropdown-item { display:flex; align-items:center; gap:6px; width:100%; text-align:left; background:none; border:none; color:var(--fg); font-family:inherit; font-size:12px; padding:7px 10px; border-radius:5px; cursor:pointer; }
+.odysseus-root .od-cal-dropdown-item:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cal-dropdown-item.od-cal-dropdown-danger { color:var(--red); }
+
+/* event form (bespoke) */
+.odysseus-root .od-cal-form { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:4px 2px; }
+.odysseus-root .od-cal-hero { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 2px; }
+.odysseus-root .od-cal-hero-time { font-size:22px; font-weight:700; color:var(--accent, var(--fg)); font-variant-numeric:tabular-nums; }
+.odysseus-root .od-cal-hero-date { font-size:12px; opacity:0.6; color:var(--fg); }
+.odysseus-root .od-cal-title-wrap { display:flex; justify-content:center; }
+.odysseus-root .od-cal-hero-title { font-size:16px; font-weight:600; text-align:center; }
+.odysseus-root .od-cal-input { background:color-mix(in srgb, var(--fg) 5%, transparent); border:1px solid var(--border); border-radius:6px; padding:6px 8px; color:var(--fg); font-family:inherit; font-size:12px; box-sizing:border-box; }
+.odysseus-root .od-cal-input:focus { outline:none; border-color:var(--accent, var(--border)); }
+.odysseus-root textarea.od-cal-input { resize:vertical; min-height:42px; }
+.odysseus-root .od-cal-hero-title { background:none; border:none; border-bottom:1px solid var(--border); border-radius:0; }
+.odysseus-root .od-cal-form-details { display:flex; flex-direction:column; gap:8px; }
+.odysseus-root .od-cal-form-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.odysseus-root .od-cal-form-row .od-cal-input[type="date"], .odysseus-root .od-cal-form-row .od-cal-input[type="time"] { flex:1; min-width:90px; }
+.odysseus-root .od-cal-form-to { opacity:0.35; font-size:12px; }
+.odysseus-root .od-cal-allday-ctrl { display:inline-flex; align-items:center; gap:6px; font-size:11px; opacity:0.7; margin-left:auto; cursor:pointer; color:var(--fg); }
+.odysseus-root .od-cal-loc-map { font-size:11px; color:var(--accent, var(--red)); text-decoration:none; font-weight:600; flex-shrink:0; }
+.odysseus-root .od-cal-form-actions { display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:auto; padding-top:6px; }
+.odysseus-root .od-cal-btn { background:color-mix(in srgb, var(--fg) 8%, transparent); border:1px solid var(--border); color:var(--fg); border-radius:6px; padding:6px 14px; font-family:inherit; font-size:12px; cursor:pointer; }
+.odysseus-root .od-cal-btn:hover { background:color-mix(in srgb, var(--fg) 14%, transparent); }
+.odysseus-root .od-cal-btn.od-cal-btn-primary { background:var(--accent, var(--red)); border-color:var(--accent, var(--red)); color:var(--bg); font-weight:600; }
+.odysseus-root .od-cal-btn.od-cal-btn-primary:hover { filter:brightness(1.08); }
+.odysseus-root .od-cal-btn.od-cal-btn-danger { color:var(--red); margin-right:auto; }
+
+/* settings modal */
+.odysseus-root .od-cal-settings-overlay { position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center; }
+.odysseus-root .od-cal-settings-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.45); border:none; cursor:default; }
+.odysseus-root .od-cal-settings-modal { position:relative; z-index:1; width:420px; max-width:92vw; max-height:88vh; overflow-y:auto; background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,0.4); }
+.odysseus-root .od-cal-settings-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600; color:var(--fg); }
+.odysseus-root .od-cal-settings-close { background:none; border:none; color:var(--fg); opacity:0.6; cursor:pointer; display:inline-flex; padding:2px; border-radius:4px; }
+.odysseus-root .od-cal-settings-close:hover { opacity:1; background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cal-settings-body { padding:16px; display:flex; flex-direction:column; gap:16px; }
+.odysseus-root .od-cal-settings-divided { border-top:1px solid var(--border); padding-top:12px; }
+.odysseus-root .od-cal-settings-label { font-size:11px; opacity:0.5; margin-bottom:6px; color:var(--fg); }
+.odysseus-root .od-cal-settings-list { display:flex; flex-direction:column; gap:4px; }
+.odysseus-root .od-cal-settings-row { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; background:color-mix(in srgb, var(--fg) 4%, transparent); }
+.odysseus-root .od-cal-s-color { width:24px; height:24px; border:none; background:none; cursor:pointer; padding:0; border-radius:50%; overflow:hidden; flex-shrink:0; }
+.odysseus-root .od-cal-s-name-input { flex:1; min-width:0; background:none; border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--fg); font-size:12px; font-family:inherit; }
+.odysseus-root .od-cal-s-del { background:none; border:none; color:var(--red); opacity:0.75; cursor:pointer; padding:2px; display:inline-flex; flex-shrink:0; }
+.odysseus-root .od-cal-s-del:hover { opacity:1; }
+.odysseus-root .od-cal-settings-btn { display:inline-flex; align-items:center; gap:4px; background:color-mix(in srgb, var(--fg) 8%, transparent); border:1px solid var(--border); color:var(--fg); border-radius:6px; padding:5px 10px; font-size:11px; font-family:inherit; cursor:pointer; }
+.odysseus-root .od-cal-settings-btn:hover { background:color-mix(in srgb, var(--fg) 14%, transparent); }
+.odysseus-root .od-cal-settings-import-row, .odysseus-root .od-cal-settings-export-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.odysseus-root .od-cal-import-target { font-size:11px; padding:4px 6px; }
+.odysseus-root .od-cal-settings-status { font-size:11px; opacity:0.6; color:var(--fg); }
+.odysseus-root .od-cal-settings-hint { font-size:10px; opacity:0.4; margin-top:4px; color:var(--fg); }
+.odysseus-root .od-cal-hidden-file { display:none; }
+
+/* empty state */
+.odysseus-root .od-cal-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:24px; color:var(--fg); }
+.odysseus-root .od-cal-empty-ico { opacity:0.3; }
+.odysseus-root .od-cal-empty-title { font-size:14px; font-weight:600; }
+.odysseus-root .od-cal-empty-msg { font-size:12px; opacity:0.55; max-width:280px; }
+.odysseus-root .od-cal-empty-actions { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:4px; }
+
+/* week view */
+.odysseus-root .od-cal-wk-wrap { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; background:color-mix(in srgb, var(--fg) 8%, transparent); border-radius:6px; }
+.odysseus-root .od-cal-wk-rail { flex-shrink:0; width:46px; display:flex; flex-direction:column; }
+.odysseus-root .od-cal-wk-rail-spacer { height:38px; flex-shrink:0; }
+.odysseus-root .od-cal-wk-rail-cell { display:flex; justify-content:flex-end; padding-right:5px; box-sizing:border-box; }
+.odysseus-root .od-cal-wk-rail-cell span { font-size:9px; opacity:0.4; position:relative; top:-5px; color:var(--fg); }
+.odysseus-root .od-cal-wk-cols { flex:1; display:grid; grid-template-columns:repeat(7,1fr); gap:1px; min-width:0; }
+.odysseus-root .od-cal-wk-col { background:var(--bg); min-width:0; display:flex; flex-direction:column; }
+.odysseus-root .od-cal-wk-col.od-cal-wk-today { background:color-mix(in srgb, var(--accent, var(--red)) 7%, var(--bg)); }
+.odysseus-root .od-cal-wk-col-head { height:38px; display:flex; flex-direction:column; align-items:center; justify-content:center; border-bottom:1px solid var(--border); flex-shrink:0; }
+.odysseus-root .od-cal-wk-dn { font-size:9px; font-weight:600; opacity:0.45; color:var(--fg); }
+.odysseus-root .od-cal-wk-dt { font-size:13px; font-weight:600; color:var(--fg); }
+.odysseus-root .od-cal-wk-today .od-cal-wk-dt { color:var(--accent, var(--red)); }
+.odysseus-root .od-cal-wk-allday { display:flex; flex-direction:column; gap:1px; padding:1px; min-height:2px; }
+.odysseus-root .od-cal-wk-allday-event { font-size:9px; color:var(--bg); border:none; border-radius:3px; padding:1px 3px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; font-family:inherit; }
+.odysseus-root .od-cal-wk-grid { position:relative; flex:1; }
+.odysseus-root .od-cal-wk-cell { border-bottom:1px solid color-mix(in srgb, var(--fg) 6%, transparent); box-sizing:border-box; }
+.odysseus-root .od-cal-wk-event { position:absolute; left:1px; right:1px; border:none; border-left:3px solid; border-radius:3px; padding:1px 4px; text-align:left; overflow:hidden; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; color:var(--fg); }
+.odysseus-root .od-cal-wk-event-time { font-size:8px; opacity:0.6; font-variant-numeric:tabular-nums; }
+.odysseus-root .od-cal-wk-event-name { font-size:9px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* year view */
+.odysseus-root .od-cal-year { flex:1 1 auto; min-height:0; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; padding:2px; }
+.odysseus-root .od-cal-year-month { background:color-mix(in srgb, var(--fg) 4%, transparent); border:1px solid var(--border); border-radius:8px; padding:8px; cursor:pointer; font-family:inherit; text-align:left; color:var(--fg); }
+.odysseus-root .od-cal-year-month:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cal-year-month-title { font-size:11px; font-weight:600; margin-bottom:5px; color:var(--accent, var(--fg)); }
+.odysseus-root .od-cal-year-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
+.odysseus-root .od-cal-year-wd { font-size:7px; opacity:0.35; text-align:center; color:var(--fg); }
+.odysseus-root .od-cal-year-cell { font-size:8px; text-align:center; aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:50%; color:var(--fg); }
+.odysseus-root .od-cal-year-day { opacity:0.65; }
+.odysseus-root .od-cal-year-has { font-weight:700; opacity:1; background:color-mix(in srgb, var(--accent, var(--fg)) 22%, transparent); }
+.odysseus-root .od-cal-year-today { background:var(--accent, var(--red)); color:var(--bg); font-weight:800; opacity:1; }
+
+/* agenda view */
+.odysseus-root .od-cal-agenda { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding:2px; }
+.odysseus-root .od-cal-agenda-day { padding:4px 0; }
+.odysseus-root .od-cal-agenda-date { font-size:11px; font-weight:600; opacity:0.7; padding:4px 2px; display:flex; align-items:center; gap:8px; color:var(--fg); border-bottom:1px solid var(--border); margin-bottom:2px; }
+.odysseus-root .od-cal-agenda-day.is-today .od-cal-agenda-date { opacity:1; color:var(--accent, var(--fg)); }
+.odysseus-root .od-cal-agenda-today-badge { font-size:9px; font-weight:700; background:var(--accent, var(--red)); color:var(--bg); border-radius:8px; padding:1px 6px; }
+.odysseus-root .od-cal-agenda-empty { font-size:11px; opacity:0.3; padding:2px; color:var(--fg); }
+.odysseus-root .od-cal-agenda-event { display:flex; gap:8px; align-items:flex-start; padding:6px 8px; border-radius:5px; background:none; border:none; width:100%; text-align:left; cursor:pointer; font-family:inherit; color:var(--fg); }
+.odysseus-root .od-cal-agenda-event:hover { background:color-mix(in srgb, var(--fg) 6%, transparent); }
+/* ===== fix-wave-A: ChatMessages ===== */
+/* ===== wave4: ChatMessages (footer) =====
+   Replaces the old citation-box CSS that backed the now-deleted AgentSources
+   surface (see shellWiring — the integrator should remove the dead
+   .od-sources-section / .od-source-link / .od-rag-sources block, which also
+   used forbidden raw-unicode 'content:'\\NNNN'' escapes). Faithful to odysseus
+   style.css .msg-footer / .msg-actions / .footer-copy-btn, rescoped under
+   .odysseus-root with theme vars. The copy/check glyphs are lucide icons, so no
+   CSS 'content' escapes are used. */
+.odysseus-root .od-msg-group { display: flex; flex-direction: column; }
+
+/* Footer sits flush under the assistant bubble, indented to the bubble's left
+   edge (.od-msg-ai has margin-left:8px). Hidden at rest, revealed on group
+   hover / keyboard focus, and kept visible briefly after a copy. */
+.odysseus-root .od-msg-footer {
+  display: flex; align-items: center; gap: 6px;
+  margin: -2px 0 10px 8px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-size: 0.75rem;
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.odysseus-root .od-msg-group:hover .od-msg-footer,
+.odysseus-root .od-msg-footer:focus-within { opacity: 1; }
+.odysseus-root .od-msg-actions { display: inline-flex; align-items: center; gap: 4px; }
+.odysseus-root .od-footer-copy-btn {
+  background: none; border: none; cursor: pointer;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  padding: 2px 6px; border-radius: 4px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.15s ease;
+}
+.odysseus-root .od-footer-copy-btn:hover { color: var(--accent, var(--red)); }
+.odysseus-root .od-footer-copy-btn:focus-visible {
+  outline: none; color: var(--accent, var(--red));
+}
+/* Copied success state mirrors --ok and keeps the footer pinned visible. */
+.odysseus-root .od-footer-copy-btn[data-copied="true"] { color: var(--ok, var(--accent, var(--red))); }
+
+/* ===== fix-wave-A: GroupChatView ===== */
+/* ── GroupChatView fixwave: per-participant dots, run-stacking, participant mgmt ── */
+/* Finding #1: the .msg-group role already gets a generic ::before dot in
+   var(--model-dot); our explicit .od-group-role-dot span carries the real
+   per-participant colour, so suppress the generic pseudo-dot to avoid a double
+   dot and let the hashed colour be the single source of truth. */
+.odysseus-root .od-msg-group .od-role::before { display: none; }
+/* Finding #2: stacked .od-body blocks inside one coalesced group bubble flow as
+   one turn — separate the runs' paragraphs with a small gap, not a new bubble. */
+.odysseus-root .od-msg-group .od-body + .od-body { margin-top: 8px; }
+
+/* Finding #3: roster header becomes a flex row to seat the add (+) button. */
+.odysseus-root .od-group-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.odysseus-root .od-group-roster-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.odysseus-root .od-group-roster-add:hover {
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  color: var(--fg);
+}
+/* odysseus's faint per-row remove X (opacity 0.5, brightens on hover). */
+.odysseus-root .od-group-participant-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg);
+  opacity: 0.4;
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+}
+.odysseus-root .od-group-participant-remove:hover:not(:disabled) {
+  opacity: 1;
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+}
+.odysseus-root .od-group-participant-remove:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+/* Add-participant row — mirrors odysseus's inline picker (color-mix bg, 6px radius). */
+.odysseus-root .od-group-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 6px 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+}
+.odysseus-root .od-group-add-input {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: inherit;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--bg));
+  color: var(--fg);
+  outline: none;
+}
+.odysseus-root .od-group-add-input:focus {
+  border-color: var(--accent, var(--red));
+}
+.odysseus-root .od-group-add-error {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--red);
+}
+.odysseus-root .od-group-add-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.odysseus-root .od-group-add-cancel,
+.odysseus-root .od-group-add-submit {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: filter 0.12s, background 0.12s, opacity 0.12s;
+}
+.odysseus-root .od-group-add-cancel {
+  border: 1px solid var(--border);
+  background: none;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+.odysseus-root .od-group-add-cancel:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-group-add-submit {
+  border: none;
+  background: var(--accent, var(--red));
+  color: #fff;
+}
+.odysseus-root .od-group-add-submit:hover:not(:disabled) { filter: brightness(1.1); }
+.odysseus-root .od-group-add-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Finding #4: inline send-failure notice under the composer. */
+.odysseus-root .od-group-send-error {
+  padding: 0 14px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--red);
+  flex-shrink: 0;
+}
+/* ===== fix-wave-A: EmailView ===== */
+/* ── EmailView fix wave: empty-state symmetry, per-row done + ⋮ menu, bulk bar,
+   reader attachments, signature draw-new + capture pad. Overrides of existing
+   .od-email-list / .od-email-empty rely on later-in-cascade equal-specificity
+   winning (this block is appended after the base email rules). ── */
+
+/* med #1: list becomes a flex column so the empty state can center in the full
+   column height (was top-aligned with a void below). */
+.odysseus-root .od-email-list { display: flex; flex-direction: column; }
+.odysseus-root .od-email-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 28px 16px; text-align: center;
+}
+
+/* Row hosts the clickable open-button + done check + ⋮ menu as flex siblings. */
+.odysseus-root .od-email-item-open {
+  flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; text-align: left;
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer; color: inherit; font: inherit;
+}
+.odysseus-root .od-email-row-check {
+  flex-shrink: 0; margin-top: 4px; accent-color: var(--accent, var(--red)); cursor: pointer;
+}
+.odysseus-root .od-email-item.od-email-row-selected {
+  background: color-mix(in srgb, var(--accent, var(--red)) 8%, transparent);
+}
+
+/* high: per-row Mark-done check toggle. Dim by default, brightens on hover, accent when active. */
+.odysseus-root .od-email-done {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-top: 1px; padding: 0; border-radius: 5px;
+  background: none; border: 1px solid transparent; cursor: pointer;
+  color: color-mix(in srgb, var(--fg) 35%, transparent); opacity: 0; transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.odysseus-root .od-email-item:hover .od-email-done { opacity: 1; }
+.odysseus-root .od-email-done:hover { color: var(--fg); border-color: var(--border); }
+.odysseus-root .od-email-done.active {
+  opacity: 1; color: var(--ok, var(--accent, var(--red))); border-color: transparent;
+}
+
+/* ⋮ menu anchor (existing .od-email-item-menu keeps its hover-reveal; add the popover anchor). */
+.odysseus-root .od-email-item-menu { position: relative; }
+.odysseus-root .od-email-item-menu-btn {
+  display: inline-flex; align-items: center; justify-content: center; padding: 2px; border-radius: 5px;
+  background: none; border: 1px solid transparent; color: var(--fg); cursor: pointer; transition: border-color 0.15s;
+}
+.odysseus-root .od-email-item-menu-btn:hover { border-color: var(--border); }
+/* Keep the menu column visible while its dropdown is open even when not hovered. */
+.odysseus-root .od-email-menu-anchor { position: relative; }
+
+/* high: per-email ⋮ dropdown (mirrors emailLibrary.js _showCardMenu / .email-card-dropdown). */
+.odysseus-root .od-email-dropdown {
+  position: absolute; top: 100%; right: 0; z-index: 1000; width: max-content; min-width: 150px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  font-size: 12px; display: flex; flex-direction: column;
+}
+.odysseus-root .od-email-dropdown-item {
+  display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; padding: 6px 10px;
+  border: none; background: none; color: var(--fg); font-size: 12px; border-radius: 4px; cursor: pointer; font-family: inherit;
+}
+.odysseus-root .od-email-dropdown-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-email-dropdown-danger { color: var(--red); }
+.odysseus-root .od-email-dropdown-header {
+  padding: 6px 10px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  opacity: 0.5; color: var(--fg); pointer-events: none;
+}
+.odysseus-root .od-email-dropdown-sub { margin-left: auto; font-size: 10px; opacity: 0.5; }
+.odysseus-root .od-email-dropdown-arrow { margin-left: auto; opacity: 0.5; }
+.odysseus-root .od-email-dropdown-bullet {
+  display: inline-flex; width: 14px; justify-content: center; font-size: 15px; line-height: 1; color: var(--fg);
+}
+
+/* Text label sitting beside an icon inside a toolbar button (Clear / Delete). */
+.odysseus-root .od-email-tbtn-label { margin-left: 4px; font-size: 11px; }
+
+/* med: bulk-select bar (mirrors .memory-bulk-bar / email-lib-bulk). */
+.odysseus-root .od-email-bulk {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 11px;
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+}
+.odysseus-root .od-email-bulk-all { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); cursor: pointer; }
+.odysseus-root .od-email-bulk-all input { accent-color: var(--accent, var(--red)); cursor: pointer; }
+.odysseus-root .od-email-bulk-count { color: color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-email-bulk-actions-wrap { position: relative; }
+.odysseus-root .od-email-bulk-actions-wrap .od-email-dropdown { left: 0; right: auto; }
+.odysseus-root .od-email-bulk-delete { margin-left: auto; }
+.odysseus-root .od-email-bulk-delete:not(:disabled):hover { border-color: var(--red); color: var(--red); }
+.odysseus-root .od-email-tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* med: reader collapsible attachments (mirrors .email-reader-atts-wrap). */
+.odysseus-root .od-email-atts-wrap {
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); flex-shrink: 0;
+}
+.odysseus-root .od-email-atts-header {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 14px; font-size: 11px;
+  background: none; border: none; color: color-mix(in srgb, var(--fg) 75%, transparent); cursor: pointer; font-family: inherit;
+}
+.odysseus-root .od-email-atts-chevron { margin-left: auto; transition: transform 0.15s ease; }
+.odysseus-root .od-email-atts-wrap.collapsed .od-email-atts-chevron { transform: rotate(-90deg); }
+.odysseus-root .od-email-atts-wrap.collapsed .od-email-atts { display: none; }
+.odysseus-root .od-email-atts { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.odysseus-root .od-email-att-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 9px; border-radius: 14px;
+  font-size: 11px; background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border);
+  color: var(--fg); cursor: pointer; transition: border-color 0.15s;
+}
+.odysseus-root .od-email-att-chip:not(:disabled):hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-att-chip:disabled { cursor: default; opacity: 0.7; }
+.odysseus-root .od-email-att-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.odysseus-root .od-email-att-size { opacity: 0.5; font-size: 10px; }
+
+/* med: signature picker "Draw new" tile + per-tile delete (signature.js pick). */
+.odysseus-root .od-email-sig-new {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 10px 0 12px;
+  padding: 8px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  background: var(--accent, var(--red)); color: #fff; border: none; cursor: pointer; transition: opacity 0.15s;
+}
+.odysseus-root .od-email-sig-new:hover { opacity: 0.9; }
+.odysseus-root .od-email-sig-tile-wrap { position: relative; display: flex; }
+.odysseus-root .od-email-sig-tile-wrap .od-email-sig-tile { flex: 1; }
+.odysseus-root .od-email-sig-del {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: inline-flex; align-items: center;
+  justify-content: center; padding: 0; border-radius: 50%; background: var(--panel); border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--fg) 60%, transparent); cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.odysseus-root .od-email-sig-del:hover { color: var(--red); border-color: var(--red); }
+
+/* med: signature capture pad (signature.js capture). */
+.odysseus-root .od-email-sig-capture { width: min(560px, 92%); }
+.odysseus-root .od-email-sig-canvas {
+  width: 100%; height: auto; aspect-ratio: 900 / 280; margin-top: 12px; border-radius: 8px;
+  background: var(--card, var(--bg)); border: 1px solid var(--border); color: var(--fg); touch-action: none; cursor: crosshair;
+}
+.odysseus-root .od-email-sig-smooth { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 11px; }
+.odysseus-root .od-email-sig-smooth-label { white-space: nowrap; opacity: 0.8; color: var(--fg); }
+.odysseus-root .od-email-sig-smooth input { flex: 1; accent-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-sig-smooth-val {
+  width: 18px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.7; color: var(--fg);
+}
+.odysseus-root .od-email-sig-name-input {
+  width: 100%; height: 30px; margin-top: 10px; padding: 0 10px; border-radius: 6px; font-size: 12px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+}
+.odysseus-root .od-email-sig-name-input::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-email-sig-footer {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+/* ===== fix-wave-A: DocumentLibraryView ===== */
+/* ===== DocumentLibraryView — lib-tabs, subhead, chips, bulk bar (fix wave) ===== */
+/* In this view the header is just Title + Close; push Close to the right. */
+.odysseus-root .od-doclib-header .od-doclib-close { margin-left:auto; }
+
+/* odysseus .lib-tabs / .lib-tab (style.css L22130) — underline tab bar. */
+.odysseus-root .od-lib-tabs { display:flex; gap:0; padding:0 12px; margin:2px 0 4px;
+  border-bottom:1px solid var(--border); }
+.odysseus-root .od-lib-tab { background:none; border:none; border-bottom:2px solid transparent;
+  color:color-mix(in srgb, var(--fg) 55%, transparent); font-size:12px; font-family:inherit;
+  padding:6px 14px; cursor:pointer; transition:color .12s, border-color .12s; }
+.odysseus-root .od-lib-tab:hover { color:var(--fg); }
+.odysseus-root .od-lib-tab-active { color:var(--accent, var(--red));
+  border-bottom-color:var(--accent, var(--red)); }
+
+/* Honest empty panel for the non-Documents tabs (no eliza backend). */
+.odysseus-root .od-doclib-tab-empty { flex:1; display:flex; align-items:center; justify-content:center;
+  text-align:center; padding:40px 24px; font-size:12px; font-style:italic; line-height:1.6;
+  color:color-mix(in srgb, var(--fg) 38%, transparent); }
+
+/* Documents subhead: count on the left, Import + Create grouped on the right
+   (Import keeps its existing margin-left:auto). */
+.odysseus-root .od-doclib-subhead { display:flex; align-items:center; gap:8px; padding:6px 16px 0; }
+.odysseus-root .od-doclib-toolbar-btn:disabled { opacity:.45; cursor:default; }
+.odysseus-root .od-doclib-toolbar-btn-active { border-color:var(--red); color:var(--red); }
+
+/* Extension filter chips (odysseus .memory-cat-chip, style.css L10649). */
+.odysseus-root .od-doclib-chips { display:flex; gap:4px; flex-wrap:wrap; flex-basis:100%; }
+.odysseus-root .od-doclib-chip { background:none; border:1px solid var(--border);
+  color:color-mix(in srgb, var(--fg) 60%, transparent); font-size:10px; height:22px; padding:0 8px;
+  display:inline-flex; align-items:center; border-radius:10px; cursor:pointer; font-family:inherit;
+  transition:all .15s; }
+.odysseus-root .od-doclib-chip:hover { border-color:var(--red); color:var(--red); }
+.odysseus-root .od-doclib-chip-active { background:color-mix(in srgb, var(--red) 15%, transparent);
+  border-color:color-mix(in srgb, var(--red) 40%, transparent); color:var(--red); }
+
+/* Bulk-select bar (odysseus .memory-bulk-bar, style.css L10022). */
+.odysseus-root .od-doclib-bulk-bar { display:flex; align-items:center; gap:8px; margin:2px 16px 4px;
+  padding:6px 8px; font-size:11px; border-radius:8px;
+  border:1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  background:color-mix(in srgb, var(--red) 5%, transparent); }
+.odysseus-root .od-doclib-bulk-all { display:inline-flex; align-items:center; gap:4px;
+  color:var(--fg); cursor:pointer; }
+.odysseus-root .od-doclib-bulk-count { color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-doclib-bulk-actions { position:relative; margin-left:auto; }
+.odysseus-root .od-doclib-bulk-actions .od-doclib-dropdown { right:0; }
+.odysseus-root .od-doclib-bulk-cancel { background:none; border:1px solid transparent;
+  color:color-mix(in srgb, var(--fg) 60%, transparent); width:24px; height:24px; padding:0; border-radius:6px;
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; }
+.odysseus-root .od-doclib-bulk-cancel:hover { color:var(--fg); border-color:var(--border); }
+
+/* Per-card selection affordance. */
+.odysseus-root .od-doclib-card-check { display:flex; align-items:center; padding:10px 0 0 10px; flex-shrink:0; }
+.odysseus-root .od-doclib-card-selected { border-color:color-mix(in srgb, var(--red) 50%, transparent);
+  background:color-mix(in srgb, var(--red) 7%, transparent); }
+/* ===== fix-wave-A: SettingsPanel ===== */
+/* ── Settings · Appearance UI-visibility editor (odysseus .vis-*) ── */
+.odysseus-root .od-vis-toggles { display: flex; flex-direction: column; gap: 2px; }
+.odysseus-root .od-vis-row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; box-sizing: border-box;
+  padding: 6px 8px; border: none; border-radius: 6px;
+  background: transparent; color: var(--fg);
+  font: inherit; text-align: left; cursor: pointer;
+  transition: background 0.12s;
+}
+.odysseus-root .od-vis-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-vis-label { flex: 1; min-width: 0; font-size: 12px; color: var(--fg); user-select: none; }
+.odysseus-root .od-vis-hint { margin-left: 6px; font-size: 10px; color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-vis-switch {
+  position: relative; flex-shrink: 0;
+  width: 30px; height: 16px; border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  transition: background 0.18s;
+}
+.odysseus-root .od-vis-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--panel); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s;
+}
+.odysseus-root .od-vis-switch.on { background: var(--accent, var(--red)); }
+.odysseus-root .od-vis-switch.on::after { transform: translateX(14px); }
+.odysseus-root .od-vis-reset-row { justify-content: flex-end; }
+
+/* Shared reset button (Reset All / Reset) */
+.odysseus-root .od-settings-reset {
+  padding: 6px 12px; border-radius: 7px;
+  border: 1px solid var(--border); background: transparent;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 12px; font-family: inherit; cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.odysseus-root .od-settings-reset:hover {
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent, var(--red)) 8%, transparent);
+  color: var(--fg);
+}
+
+/* ── Settings · Keyboard Shortcuts (odysseus .shortcut-*) ── */
+.odysseus-root .od-shortcut-head-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.odysseus-root .od-shortcut-head-card .od-settings-card-title {
+  margin: 0; padding: 0; border-bottom: none;
+}
+.odysseus-root .od-shortcut-category {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  padding: 8px 0 4px; margin-top: 4px;
+}
+.odysseus-root .od-shortcut-category:first-child { margin-top: 0; padding-top: 0; }
+.odysseus-root .od-shortcut-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+}
+.odysseus-root .od-shortcut-row:last-child { border-bottom: none; }
+.odysseus-root .od-shortcut-row.conflict {
+  background: color-mix(in srgb, var(--red) 7%, transparent);
+  border-radius: 5px; padding: 5px 6px; border-bottom: none;
+}
+.odysseus-root .od-shortcut-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--fg);
+}
+.odysseus-root .od-shortcut-warn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--red); color: var(--bg);
+  font-size: 9px; font-weight: 700;
+}
+.odysseus-root .od-shortcut-controls { display: flex; align-items: center; gap: 4px; }
+.odysseus-root .od-shortcut-key {
+  display: flex; align-items: center; gap: 3px;
+  padding: 2px 4px; border: none; border-radius: 5px;
+  background: transparent; color: var(--fg);
+  font-family: inherit; cursor: pointer; transition: background 0.15s;
+}
+.odysseus-root .od-shortcut-key:hover {
+  background: color-mix(in srgb, var(--accent, var(--red)) 10%, transparent);
+}
+.odysseus-root .od-shortcut-key.listening {
+  background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);
+}
+.odysseus-root .od-shortcut-key kbd {
+  display: inline-block; min-width: 20px; padding: 2px 6px; text-align: center;
+  font-family: inherit; font-size: 10px; font-weight: 600; line-height: 1.4;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 40%, var(--border));
+  color: var(--accent, var(--red));
+}
+.odysseus-root .od-shortcut-listening {
+  font-size: 10px; color: var(--accent, var(--red));
+}
+.odysseus-root .od-shortcut-unset {
+  padding: 2px 8px; font-size: 10px; border-radius: 5px;
+  border: 1px dashed var(--border);
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-shortcut-key.unset:hover .od-shortcut-unset {
+  border-color: var(--accent, var(--red)); color: var(--fg);
+}
+.odysseus-root .od-shortcut-resetbtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid var(--border); background: transparent;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-size: 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.odysseus-root .od-shortcut-resetbtn:hover {
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border));
+  color: var(--fg);
+}
+/* ===== fix-wave-A: EmojiPicker ===== */
+/* ===== EmojiPicker (monochrome icon picker) — overrides for the SVG rewrite.
+   The picker no longer renders a category-tab strip, a "Recent" section, or
+   colored glyph cells; cells now host inline 24x24 stroke SVGs (matching
+   odysseus .emoji-picker-item svg { width:16px; height:16px }). Appended after
+   the original wave5 .od-emoji-* block so these win on equal specificity. The
+   old .od-emoji-tab* rules in that block are now dead (no .od-emoji-tab element
+   is rendered) and harmless; they can be deleted by the integrator. ===== */
+.odysseus-root .od-emoji-cell {
+  color: color-mix(in srgb, var(--fg) 78%, transparent);
+  font-size: 0; /* no glyph text — the cell hosts an SVG only */
+}
+.odysseus-root .od-emoji-cell:hover {
+  color: var(--fg);
+}
+.odysseus-root .od-emoji-cell svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+/* The body holds the whole stacked group list (no tab strip above it). Give the
+   first group label a little less top padding so it sits tight under search. */
+.odysseus-root .od-emoji-body > .od-emoji-section:first-child .od-emoji-section-label {
+  padding-top: 2px;
+}
+/* ===== fix-wave-A: ThemeMenu ===== */
+
+/* ===== wave: ThemeMenu — per-picker reset + advanced ("More Colours") editor =====
+   Ported from odysseus static/style.css (.color-reset-btn, .theme-adv-toggle,
+   .theme-adv-section/group, .theme-adv-clear-btn, .theme-save-error) onto the
+   theme-var system. All scoped under .odysseus-root. */
+
+/* per-row reset affordance — hidden until the value differs from the reference,
+   then a faint icon that brightens to accent on hover (theme.js .changed). The
+   button stays in layout when inert so row width never jumps. */
+.odysseus-root .od-theme-reset-btn { width:20px; height:20px; flex-shrink:0; padding:0;
+  display:flex; align-items:center; justify-content:center; border:none; background:none;
+  color:var(--fg); opacity:0; cursor:default; transition:opacity .15s, color .15s; }
+.odysseus-root .od-theme-reset-btn.changed { opacity:.4; cursor:pointer; }
+.odysseus-root .od-theme-reset-btn.changed:hover { opacity:1; color:var(--red); }
+
+/* advanced section disclosure toggle */
+.odysseus-root .od-theme-adv-toggle { display:flex; align-items:center; gap:4px;
+  margin:10px 0; padding:6px 8px; width:100%; text-align:left; cursor:pointer;
+  font-size:11px; font-family:inherit; color:var(--red); opacity:.8;
+  border:1px solid var(--border); border-radius:6px; background:transparent;
+  transition:opacity .15s, background .15s; user-select:none; }
+.odysseus-root .od-theme-adv-toggle:hover { opacity:1;
+  background:color-mix(in srgb, var(--fg) 4%, transparent); }
+.odysseus-root .od-theme-adv-arrow { flex-shrink:0; transition:transform .2s; }
+.odysseus-root .od-theme-adv-toggle.open .od-theme-adv-arrow { transform:rotate(90deg); }
+
+/* advanced groups */
+.odysseus-root .od-theme-adv-section { margin:8px 0 10px; display:flex;
+  flex-direction:column; gap:8px; }
+.odysseus-root .od-theme-adv-group { display:flex; flex-direction:column; gap:4px; }
+.odysseus-root .od-theme-adv-group-label { font-size:10px; opacity:.5;
+  text-transform:uppercase; letter-spacing:.04em;
+  color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-theme-adv-clear { margin-top:2px; width:100%; padding:5px;
+  border:1px solid var(--border); border-radius:6px; background:transparent;
+  color:var(--fg); opacity:.5; cursor:pointer; font-size:12px; font-family:inherit;
+  transition:opacity .15s; }
+.odysseus-root .od-theme-adv-clear:hover:not(:disabled) { opacity:1; }
+.odysseus-root .od-theme-adv-clear:disabled { opacity:.25; cursor:default; }
+
+/* inline save error (theme.js #theme-save-error) */
+.odysseus-root .od-theme-save-error { margin-top:4px; font-size:11px; color:var(--red); }
+
+/* ===== fix-wave-A: AdminView ===== */
+/* ── AdminView fixes (fixwave) ─────────────────────────────────────────────
+   1. Built-in Tools catalogue chrome (Agent Tools tab) — translates odysseus's
+      .admin-tool-* rules (style.css ~21857) to scoped .od-admin-tool-* classes.
+   2. Modal centering — odysseus's settings modal is centered (.modal
+      align-items/justify-content:center) at .modal-content max-height:85vh; the
+      shared .od-search-overlay is top-anchored at 12vh, so scope the admin
+      overlay back to centered and size the panel to content up to 85vh so the
+      composer no longer protrudes below and a sparse tab doesn't leave a void. */
+
+/* Center the admin overlay (override the shared 12vh top-anchored search overlay). */
+.odysseus-root .od-admin-overlay {
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 0;
+}
+/* Size the panel to its content up to odysseus's 85vh cap (was a fixed
+   min(86vh,760px) that ran the bottom to ~98vh / left a void on short tabs).
+   A windowed panel still sets its own height inline (win.panelStyle), which wins. */
+.odysseus-root .od-admin-overlay:not(.od-windowed) > .od-admin-panel {
+  height: auto;
+  max-height: 85vh;
+}
+
+/* ── Built-in Tools catalogue (admin.js loadBuiltinTools / #adm-builtin-tools-list) ── */
+.odysseus-root .od-admin-tool-list { margin-top: 6px; }
+
+.odysseus-root .od-admin-tool-category {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.odysseus-root .od-admin-tool-category:hover {
+  border-color: color-mix(in srgb, var(--fg) 20%, var(--border));
+}
+
+/* Header is a real <button> (click-to-collapse) — reset native button chrome. */
+.odysseus-root .od-admin-tool-cat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.odysseus-root .od-admin-tool-cat-header:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.odysseus-root .od-admin-tool-cat-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.odysseus-root .od-admin-tool-cat-count {
+  font-size: 10px;
+  opacity: 0.5;
+}
+.odysseus-root .od-admin-tool-cat-chevron {
+  opacity: 0.3;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.odysseus-root .od-admin-tool-cat-chevron.open {
+  transform: rotate(180deg);
+  opacity: 0.7;
+}
+
+.odysseus-root .od-admin-tool-cat-body {
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+.odysseus-root .od-admin-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* align toggles with the header toggle (chevron 12px + gap 6px + padding) */
+  padding: 5px 10px 5px 10px;
+  padding-right: 28px;
+  transition: background 0.08s;
+}
+.odysseus-root .od-admin-tool-row:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.odysseus-root .od-admin-tool-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.odysseus-root .od-admin-tool-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.odysseus-root .od-admin-tool-desc {
+  font-size: 10px;
+  opacity: 0.4;
+  color: var(--fg);
+}
+.odysseus-root .od-admin-tool-ctx {
+  font-size: 9px;
+  opacity: 0.3;
+  flex-shrink: 0;
+  min-width: 35px;
+  text-align: right;
+  color: var(--fg);
+  font-family: 'Berkeley Mono', 'SF Mono', 'Fira Code', monospace;
+}
+/* ===== fix-wave-A: MessageBubble ===== */
+/* ── Message footer (odysseus chatRenderer.js .msg-footer / .msg-actions /
+   .footer-copy-btn). Used by UserBubble.CopyFooter here AND already referenced
+   by ChatMessages.AgentFooter — these classes were used but never styled, so
+   adding them styles both the user and assistant copy footers. Faithful to
+   odysseus: a muted footer row with a copy button that tints to --accent on
+   hover; the user footer right-aligns because .od-msg-user is align-items:flex-end. */
+.odysseus-root .od-msg-footer {
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;
+  color:color-mix(in srgb, var(--fg) 45%, transparent); font-size:.75rem; position:relative;
+}
+.odysseus-root .od-msg-actions { display:inline-flex; align-items:center; gap:4px; }
+.odysseus-root .od-footer-copy-btn {
+  background:none; border:none; color:color-mix(in srgb, var(--fg) 45%, transparent);
+  cursor:pointer; padding:2px 6px; border-radius:4px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center; transition:color .15s;
+}
+.odysseus-root .od-footer-copy-btn:hover,
+.odysseus-root .od-footer-copy-btn[data-copied="true"] { color:var(--accent, var(--red)); }
+
+/* ── Sensitive-info censor (odysseus style.css .censored-item). Fixed semantic
+   tints: red while blurred (sensitive), green once revealed (acknowledged). */
+.odysseus-root .od-censored {
+  filter:blur(5px); cursor:pointer; transition:filter .2s; border-radius:2px;
+  padding:0 2px; background:color-mix(in srgb, var(--red) 8%, transparent); user-select:none;
+}
+.odysseus-root .od-censored:hover {
+  filter:blur(3px); background:color-mix(in srgb, var(--red) 15%, transparent);
+}
+.odysseus-root .od-censored.revealed {
+  filter:none; background:color-mix(in srgb, var(--ok) 8%, transparent);
+  user-select:auto; cursor:text;
+}
+/* ===== fix-wave-A: GalleryEditorView ===== */
+
+/* ── Gallery editor: wand Live-retune pill (controls.js .ge-wand-live-btn). ── */
+.odysseus-root .ge-wand-live-btn {
+  flex: 0 0 auto;
+  min-width: 46px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.6;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+}
+.odysseus-root .ge-wand-live-btn:hover:not(:disabled) { opacity: 0.85; }
+.odysseus-root .ge-wand-live-btn.active {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+  border-color: var(--accent, var(--red));
+  color: var(--accent, var(--red));
+  font-weight: 600;
+}
+
+/* Inpaint tear-off popover head — hidden when the section renders inline in the
+   right panel (odysseus only reveals it once the section is torn off into a
+   floating popover over the canvas). Kept faithful so it lights up 1:1. */
+.odysseus-root .ge-inpaint-popover-head { display: none; }
+.odysseus-root .ge-inpaint-popover-head .ge-inpaint-popover-title { margin: 0; flex: 1 1 auto; }
+.odysseus-root .ge-inpaint-popover-close {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--muted, var(--fg));
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.odysseus-root .ge-inpaint-popover-close:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+/* POSTPROCESS "Available after Generate." hint — dimmed, matches odysseus. */
+.odysseus-root .ge-ge-postedge-hint { opacity: 0.45; margin: 0 0 8px; }
+
+/* Honest disabled states for the editor's selection / edge controls. A control
+   with no eliza backend is disabled, not removed, so the surface stays 1:1. */
+.odysseus-root .ge-controls .ge-btn-iconlabel:disabled,
+.odysseus-root .ge-controls .ge-mask-vis-btn:disabled,
+.odysseus-root .ge-wand-live-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.odysseus-root .ge-controls input[type="range"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.odysseus-root .ge-sel-refine input[type="range"]:disabled { cursor: not-allowed; }
+
+/* ===== fix-wave-A: TasksView ===== */
+/* Tasks: mutation-failure inline bar (.od-tasks-error). Shown above the bulk bar when a pause/resume/delete server call fails, replacing the old silent-swallow behaviour. Mirrors the .od-tasks-bulk-bar red-tint treatment. */
+.odysseus-root .od-tasks-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  margin-bottom: 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  font-size: 11px;
+}
+.odysseus-root .od-tasks-error-text {
+  flex: 1;
+  color: var(--red);
+}
+.odysseus-root .od-tasks-error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--red) 80%, var(--fg));
+  border-radius: 5px;
+  cursor: pointer;
+}
+.odysseus-root .od-tasks-error-dismiss:hover {
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+}
+/* ===== fix-wave-A: SessionSidebar ===== */
+/* ===== SessionSidebar fixwave: type icon + activity dot, drag handle,
+   sort dropdown, section collapse. Scoped .odysseus-root, theme vars only. ===== */
+
+/* Chats section title is now a collapse toggle button (was a span). Reset the
+   button chrome and keep the odysseus section-title look; the chevron rotates
+   via swapped icons. */
+.odysseus-root .od-section-toggle { background:none; border:none; padding:0; cursor:pointer;
+  font-family:inherit; text-align:left; }
+.odysseus-root .od-section-chevron { flex-shrink:0; opacity:.55; transition:opacity .1s; }
+.odysseus-root .od-section-toggle:hover .od-section-chevron { opacity:.9; }
+/* Collapsed: hide the section body (the rows / folders / bulk bar). */
+.odysseus-root .od-section.od-collapsed .od-section-body { display:none; }
+
+/* Leading type icon + activity dot wrapper (odysseus .session-icon +
+   .session-star activity state). The dot sits at the icon's lower-right. */
+.odysseus-root .od-thread-icon-wrap { position:relative; flex-shrink:0; display:flex;
+  align-items:center; justify-content:center; width:16px; height:16px; }
+.odysseus-root .od-thread-type { opacity:.55; }
+.odysseus-root .od-list-item.active .od-thread-type { opacity:.85; }
+.odysseus-root .od-thread-dot { position:absolute; right:-2px; bottom:-2px; width:7px; height:7px;
+  border-radius:50%; box-sizing:border-box;
+  border:1.5px solid var(--panel, var(--bg)); }
+/* processing → accent pulse (odysseus .session-star.processing) */
+.odysseus-root .od-dot-processing { background:var(--accent, var(--red));
+  animation:od-thread-dot-pulse 1.1s ease-in-out infinite; }
+/* done → ok notify badge (odysseus .session-star.notify) */
+.odysseus-root .od-dot-done { background:var(--ok, var(--accent, var(--red))); }
+/* failed → red */
+.odysseus-root .od-dot-failed { background:var(--red); }
+@keyframes od-thread-dot-pulse {
+  0%, 100% { opacity:1; transform:scale(1); }
+  50% { opacity:.45; transform:scale(.72); }
+}
+
+/* Per-row drag handle (odysseus .item-drag-handle ⋮⋮). Occupies the same left
+   gutter as the select checkbox; only visible/active when reorder is allowed. */
+.odysseus-root .od-thread-drag { flex-shrink:0; width:16px; align-self:stretch; display:flex;
+  align-items:center; justify-content:center; color:var(--fg); opacity:0;
+  cursor:grab; touch-action:none; user-select:none; transition:opacity .1s; }
+.odysseus-root .od-thread-row:hover .od-thread-drag { opacity:.4; }
+.odysseus-root .od-thread-drag:hover { opacity:.8; }
+.odysseus-root .od-thread-drag:active { cursor:grabbing; }
+/* dragging row + magnetic drop indicator (odysseus .dragging / drag-placeholder) */
+.odysseus-root .od-thread-row.od-dragging { opacity:.5; }
+.odysseus-root .od-thread-row.od-drop-before { box-shadow:inset 0 2px 0 var(--accent, var(--red)); }
+
+/* Sort dropdown (odysseus #session-sort-dropdown). Anchored under the funnel
+   icon button in the section header. */
+.odysseus-root .od-sort-wrap { position:relative; flex-shrink:0; }
+.odysseus-root .od-sort-dropdown { position:absolute; top:calc(100% + 4px); right:0; z-index:40;
+  min-width:148px; padding:3px; border-radius:6px;
+  background:var(--card, var(--panel, var(--bg)));
+  border:1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow:0 6px 22px rgba(0,0,0,.32); }
+.odysseus-root .od-sort-option { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+  padding:6px 9px; border:none; background:none; color:var(--fg); font-family:inherit;
+  font-size:12px; border-radius:4px; cursor:pointer; }
+.odysseus-root .od-sort-option:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-sort-option.od-cur { color:var(--accent, var(--red)); }
+.odysseus-root .od-sort-check-spacer { display:inline-block; width:12px; height:12px; flex-shrink:0; }
+/* ===== fix-wave-A: SearchPalette ===== */
+/* ── search palette result rows (Ctrl+K) ── odysseus search-result-item /
+   search-result-snippet / search-result-time / mark.search-highlight (style.css
+   L5988-L6030). The shared .od-search-item already supplies flex/gap/padding;
+   these add the stacked title+snippet body, the muted time column, the selected
+   state, and the matched-query highlight. */
+.odysseus-root .od-search-item { min-width:0; }
+.odysseus-root .od-search-item.od-selected { background:color-mix(in srgb, var(--red) 10%, transparent); }
+.odysseus-root .od-search-item-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.odysseus-root .od-search-item-title { font-size:13px; color:var(--fg);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.odysseus-root .od-search-item-snippet { font-size:11px; color:color-mix(in srgb, var(--fg) 55%, transparent);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.odysseus-root .od-search-item-time { flex-shrink:0; align-self:center; font-size:10px;
+  color:color-mix(in srgb, var(--fg) 35%, transparent); white-space:nowrap; }
+.odysseus-root mark.od-search-highlight { background:var(--accent); color:var(--bg);
+  border-radius:2px; padding:0 2px; font-weight:600; }
+/* ===== fix-wave-A: ModelsView ===== */
+/* ── ModelsView fixes (audit wave) ───────────────────────────────────────── */
+
+/* Finding 1: provider-rail brand casing now comes from data (providerRailLabel),
+   not from text-transform. Override the earlier .od-models-provider-row rule so
+   labels render verbatim (OpenAI / xAI / OpenRouter / Ollama), not capitalized
+   ("Openai" / "Xai"). Equal specificity, declared later → wins by source order. */
+.odysseus-root .od-models-provider-row { text-transform: none; }
+
+/* Finding 2: odysseus spinner.js createLoadingRow / .lib-loading-row — an inline
+   loading row (label + whirlpool spinner) for list/empty-state loading. Upstream
+   paints a canvas whirlpool that self-stops once removed from the DOM; this CSS
+   ring is the faithful equivalent (it stops painting when React unmounts it). */
+.odysseus-root .od-loading-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-whirlpool {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: color-mix(in srgb, var(--red) 90%, transparent);
+  border-right-color: color-mix(in srgb, var(--red) 55%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--red) 25%, transparent);
+  animation: od-whirlpool-spin 0.85s linear infinite;
+}
+@keyframes od-whirlpool-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .odysseus-root .od-whirlpool { animation-duration: 2.4s; }
+}
+/* ===== fix-wave-A: CookbookView ===== */
+/* ── Cookbook panel overflow fix (audit: panel bottom clipped off-screen) ──
+   The shared .od-search-overlay reserves padding:12vh top + 5vh bottom (17vh).
+   The prior .od-cb-panel max-height:85vh pushed the total to ~102vh, so the
+   panel's bottom border + last card were clipped below the viewport. Cap the
+   panel so it fits within the reserved offset with a ~1vh safety margin; the
+   inner .od-cb-grid / .od-cb-running own the overflow and scroll internally. */
+.odysseus-root .od-cb-panel { max-height: calc(100vh - 18vh); }
+
+/* ── Cookbook tab count badge (cookbookRunning.js .cookbook-tab-count) ──
+   The Running tab carries the active-run count inline, so the tab itself must
+   be an inline-flex row (matching odysseus's .cookbook-tab display). */
+.odysseus-root .od-cb-tab { display: inline-flex; align-items: center; gap: 4px; }
+.odysseus-root .od-cb-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── Running tab list (cookbookRunning.js _renderRunningTab) ──
+   Scrollable column of run cards, like the recipe grid. */
+.odysseus-root .od-cb-running {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+.odysseus-root .od-cb-running::-webkit-scrollbar { width: 4px; }
+.odysseus-root .od-cb-running::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 4px;
+}
+
+/* Run card (.cookbook-task): bordered, left accent stripe coloured by status. */
+.odysseus-root .od-cb-run {
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--fg) 30%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+  transition: border-color 0.15s, background 0.15s;
+}
+.odysseus-root .od-cb-run:hover {
+  border-color: color-mix(in srgb, var(--fg) 25%, var(--border));
+  background: color-mix(in srgb, var(--fg) 5%, var(--bg));
+}
+/* Status-driven left stripe (cookbookRunning.js :has() stripe colors). */
+.odysseus-root .od-cb-run[data-status="running"],
+.odysseus-root .od-cb-run[data-status="done"] {
+  border-left-color: var(--green);
+}
+.odysseus-root .od-cb-run[data-status="stopping"] { border-left-color: var(--orange); }
+.odysseus-root .od-cb-run[data-status="queued"],
+.odysseus-root .od-cb-run[data-status="stopped"] { border-left-color: var(--warn); }
+.odysseus-root .od-cb-run[data-status="error"] {
+  border-color: var(--red);
+  border-left-color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--bg));
+}
+
+/* Header row: type chip · name · status pill · Stop (.cookbook-task-header). */
+.odysseus-root .od-cb-run-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.odysseus-root .od-cb-run-type {
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+  color: var(--green);
+  white-space: nowrap;
+}
+.odysseus-root .od-cb-run-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.odysseus-root .od-cb-run-status {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 16px;
+  flex-shrink: 0;
+  text-transform: lowercase;
+}
+.odysseus-root .od-cb-run-status-running {
+  background: color-mix(in srgb, var(--green) 20%, transparent);
+  color: var(--green);
+}
+.odysseus-root .od-cb-run-status-done {
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+  color: var(--green);
+}
+.odysseus-root .od-cb-run-status-stopping {
+  background: color-mix(in srgb, var(--orange) 22%, transparent);
+  color: var(--orange);
+}
+.odysseus-root .od-cb-run-status-queued,
+.odysseus-root .od-cb-run-status-stopped {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+}
+.odysseus-root .od-cb-run-status-error {
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+  color: var(--red);
+}
+/* Stop control (cookbookRunning.js Stop menu action — danger styled). */
+.odysseus-root .od-cb-run-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  transition: background 0.15s, opacity 0.15s;
+}
+.odysseus-root .od-cb-run-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 24%, transparent);
+}
+.odysseus-root .od-cb-run-stop:disabled { opacity: 0.45; cursor: default; }
+
+/* Sub row: plugin name + uptime (.cookbook-task-sub, monospace muted). */
+.odysseus-root .od-cb-run-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 2px;
+  line-height: 1;
+}
+.odysseus-root .od-cb-run-plugin {
+  font-size: 9px;
+  font-family: "Fira Code", ui-monospace, monospace;
+  color: var(--muted);
+  opacity: 0.6;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-cb-run-uptime {
+  font-size: 9px;
+  font-family: "Fira Code", ui-monospace, monospace;
+  color: var(--muted);
+  opacity: 0.5;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Summary / session-status line + non-healthy health line. */
+.odysseus-root .od-cb-run-summary {
+  padding: 0 10px 8px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  line-height: 1.4;
+}
+.odysseus-root .od-cb-run-health {
+  padding: 6px 10px;
+  margin: 0 8px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.odysseus-root .od-cb-run-health-degraded {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+}
+.odysseus-root .od-cb-run-health-offline {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+/* ===== fix-wave-A: ResearchView ===== */
+/* Research: empty-state under-title hint + the Library link (odysseus
+   static/style.css L34897-34906 + the #research-no-past-hint inline styles in
+   panel.js L356). The under-title hint is distinct from the existing
+   .research-library-hint (Past-section footer) — it sits under the title with
+   a small negative top margin so it tucks against the description line.
+   .research-library-link is missing from the theme entirely; added here. */
+.odysseus-root .research-no-past-hint {
+  margin-top: -2px; font-size: 11px; opacity: 0.7; line-height: 1.3;
+}
+.odysseus-root .research-library-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--accent, var(--red)); text-decoration: underline;
+}
+.odysseus-root .research-library-link:hover { opacity: 0.8; }
+/* ===== fix-wave-A: PresetsPanel ===== */
+/* ===== PresetsPanel: editor tab strip + inject fields (wave: PresetsPanel) =====
+   Append to ODYSSEUS_CSS in odysseus-theme.ts, directly after the existing
+   '.odysseus-root .od-preset-save-btn:disabled { ... }' rule (end of the
+   Presets block, before the EmojiPicker section). Mirrors odysseus
+   .preset-tabs / .preset-tab (static/style.css L9215-9258): full-width tabs,
+   muted resting color, accent underline when active. All theme-var driven. */
+.odysseus-root .od-preset-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 2px;
+}
+.odysseus-root .od-preset-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.odysseus-root .od-preset-tab:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.odysseus-root .od-preset-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+/* Inject prefix/suffix textareas are short by default (odysseus uses rows=2),
+   overriding the tall min-height of the shared .od-preset-textarea. */
+.odysseus-root .od-preset-inject-area {
+  min-height: 56px;
+}
+/* "inject" tag in the list-item meta row — keeps the meta line's small size,
+   tinted toward the accent so a preset carrying inject text reads as such. */
+.odysseus-root .od-preset-meta-inject {
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+  font-weight: 600;
+}
+/* ===== fix-wave-A: IconRail ===== */
+/* icon rail: New-chat action reads as available (primary affordance), not dimmed like the contextual launchers — mirrors odysseus rail-new-session prominence */
+.odysseus-root .od-rail-btn.od-rail-new-chat { opacity:.75; }
+.odysseus-root .od-rail-btn.od-rail-new-chat:hover { opacity:1; }
 `;

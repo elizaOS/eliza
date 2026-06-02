@@ -315,6 +315,7 @@ export function OdysseusShell(): ReactNode {
       <BgEffect pattern={bgPattern} />
       <IconRail
         onToggleSidebar={toggleSidebar}
+        onNewChat={onNewChat}
         onOpenTheme={() => setThemeMenuOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
         onOpenSkills={() => setSkillsOpen(true)}
@@ -422,6 +423,7 @@ export function OdysseusShell(): ReactNode {
         onNewChat={onNewChat}
         onSearch={() => setSearchOpen(true)}
         onOpenPanel={openPanel}
+        onOpenModels={() => setModelsOpen(true)}
       />
     </div>
   );

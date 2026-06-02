@@ -1,623 +1,521 @@
-// odysseus emoji picker (static/js/emojiPicker.js + .emoji-* rules in
-// static/style.css). A composer popover: a search box on top, a horizontal
-// category-tab strip, and a scrollable categorized emoji grid; clicking an
-// emoji inserts it into the draft. Mirrors odysseus's behaviour where the most
-// recently used emoji float to the top under a "Recent" section.
+// odysseus emoji picker (static/js/emojiPicker.js + .emoji-picker* rules in
+// static/style.css). Despite the "emoji" name, this is a MONOCHROME ICON picker
+// by design: a curated set of characters that have a genuine text (monochrome)
+// presentation, each rendered as an inline Lucide-style SVG. Pure colour emoji
+// (grin/cry/thumbs) are intentionally excluded because they have no flat text
+// form and so cannot be sent non-coloured. On insert we append U+FE0E
+// (VARIATION SELECTOR-15) for any codepoint >= 0x80 so the glyph renders flat
+// for the recipient too, not just in this (already-SVG) picker UI.
 //
-// elizaMapping: this surface is 100% client-side in odysseus too — the emoji
-// dataset is a static constant and recent picks live in localStorage — so there
-// is no eliza backend to wire and nothing is fabricated. It follows the
-// composer popover pattern (anchored above the input bar, dismiss on Escape /
-// outside-click) rather than the .od-search-overlay panel-view pattern, because
-// it is summoned from inside the Composer next to the other tool icons.
+// A composer popover: a search box on top and a single scrollable list of named
+// groups, each an 8-column grid of icon buttons (no category-tab strip and no
+// "Recent" section — odysseus has neither; the upstream picker stacks every
+// group and filters them live by the search box). Clicking an icon inserts its
+// character into the draft. elizaMapping: this surface is 100% client-side in
+// odysseus too — the icon dataset is a static constant — so there is no eliza
+// backend to wire and nothing is fabricated.
 
-import { Clock, Search, Smile } from "lucide-react";
+import { Search, Smile } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { readPref, writePref } from "./util/storage";
 
-// localStorage key for the recent-emoji ring, matching odysseus's
-// 'odysseus-recent-emojis'. Owned by this component (not a shared PREF_KEYS
-// entry) since nothing else reads it.
-const RECENT_EMOJIS_KEY = "recent-emojis";
-const MAX_RECENT = 24;
+// Text variation selector (U+FE0E) — appended on insert to characters that
+// might render as a colour emoji, asking the browser/recipient to use text
+// (monochrome) presentation. Matches emojiPicker.js VS15. Built from the
+// codepoint rather than an invisible literal so it survives editing/copy.
+const VS15 = String.fromCodePoint(0xfe0e);
 
-interface EmojiCategory {
-  id: string;
+interface IconItem {
+  // The character actually inserted into the draft (with VS-15 appended for
+  // codepoints >= 0x80, mirroring emojiPicker.js _insertEmoji).
+  char: string;
+  // Searchable label (matches emojiPicker.js item[1]).
   label: string;
-  // Lucide marker icon for the category tab (odysseus uses an emoji glyph; a
-  // lucide icon avoids a CSS unicode escape and stays crisp at tab size).
-  emojis: string[];
+  // Inline SVG path content for the cell glyph (the body of the I() helper in
+  // emojiPicker.js). Rendered inside a fixed 24x24 stroke SVG.
+  path: ReactNode;
 }
 
-// ── Emoji dataset, 1:1 in spirit with emojiPicker.js EMOJI_DATA. A curated set
-// per category (the upstream grid is the same hand-picked list, not the full
-// Unicode table). Keyword search matches against the per-emoji keyword map
-// below. ──
-const EMOJI_CATEGORIES: EmojiCategory[] = [
+interface IconGroup {
+  name: string;
+  items: IconItem[];
+}
+
+// ── Icon dataset, 1:1 with emojiPicker.js EMOJI_GROUPS. Each item is a
+// monochrome symbol with a real text presentation, drawn as a Lucide-style SVG
+// (24x24 viewBox, 2px stroke) so the picker shows flat icons rather than
+// system colour emoji. ──
+const ICON_GROUPS: IconGroup[] = [
   {
-    id: "smileys",
-    label: "Smileys & People",
-    emojis: [
-      "😀",
-      "😃",
-      "😄",
-      "😁",
-      "😆",
-      "😅",
-      "😂",
-      "🤣",
-      "😊",
-      "😇",
-      "🙂",
-      "🙃",
-      "😉",
-      "😌",
-      "😍",
-      "🥰",
-      "😘",
-      "😗",
-      "😙",
-      "😚",
-      "😋",
-      "😛",
-      "😝",
-      "😜",
-      "🤪",
-      "🤨",
-      "🧐",
-      "🤓",
-      "😎",
-      "🥸",
-      "🤩",
-      "🥳",
-      "😏",
-      "😒",
-      "😞",
-      "😔",
-      "😟",
-      "😕",
-      "🙁",
-      "😣",
-      "😖",
-      "😫",
-      "😩",
-      "🥺",
-      "😢",
-      "😭",
-      "😤",
-      "😠",
-      "😡",
-      "🤬",
-      "🤯",
-      "😳",
-      "🥵",
-      "🥶",
-      "😱",
-      "😨",
-      "😰",
-      "😥",
-      "😓",
-      "🤗",
-      "🤔",
-      "🤭",
-      "🤫",
-      "🤥",
-      "😶",
-      "😐",
-      "😑",
-      "😬",
-      "🙄",
-      "😯",
-      "😴",
-      "🤤",
-      "😪",
-      "😵",
-      "🤐",
-      "🥴",
-      "🤢",
-      "🤮",
-      "🤧",
-      "😷",
-      "🤒",
-      "🤕",
-      "🤑",
-      "🤠",
-      "👋",
-      "🤚",
-      "✋",
-      "🖐️",
-      "👌",
-      "🤌",
-      "✌️",
-      "🤞",
-      "🤟",
-      "🤘",
-      "👈",
-      "👉",
-      "👆",
-      "👇",
-      "👍",
-      "👎",
-      "✊",
-      "👊",
-      "👏",
-      "🙌",
-      "🙏",
-      "💪",
-      "🧠",
-      "👀",
-      "❤️",
-      "🔥",
+    name: "Faces & Hearts",
+    items: [
+      {
+        char: "☻",
+        label: "grin",
+        path: (
+          <>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M7 14 C 7 18, 17 18, 17 14 Z" />
+            <line x1="9" y1="9" x2="9.01" y2="9" />
+            <line x1="15" y1="9" x2="15.01" y2="9" />
+          </>
+        ),
+      },
+      {
+        char: "♡",
+        label: "heart-outline",
+        path: (
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+        ),
+      },
+      {
+        char: "★",
+        label: "star",
+        path: (
+          <polygon
+            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+            fill="currentColor"
+            stroke="none"
+          />
+        ),
+      },
+      {
+        char: "☆",
+        label: "star-outline",
+        path: (
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        ),
+      },
+      {
+        char: "✦",
+        label: "sparkle",
+        path: (
+          <polygon
+            points="12 2 14 10 22 12 14 14 12 22 10 14 2 12 10 10"
+            fill="currentColor"
+            stroke="none"
+          />
+        ),
+      },
+      {
+        char: "☽",
+        label: "moon",
+        path: <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" />,
+      },
     ],
   },
   {
-    id: "animals",
-    label: "Animals & Nature",
-    emojis: [
-      "🐶",
-      "🐱",
-      "🐭",
-      "🐹",
-      "🐰",
-      "🦊",
-      "🐻",
-      "🐼",
-      "🐨",
-      "🐯",
-      "🦁",
-      "🐮",
-      "🐷",
-      "🐸",
-      "🐵",
-      "🐔",
-      "🐧",
-      "🐦",
-      "🐤",
-      "🦆",
-      "🦅",
-      "🦉",
-      "🦇",
-      "🐺",
-      "🐗",
-      "🐴",
-      "🦄",
-      "🐝",
-      "🐛",
-      "🦋",
-      "🐌",
-      "🐞",
-      "🐜",
-      "🦗",
-      "🕷️",
-      "🦂",
-      "🐢",
-      "🐍",
-      "🦎",
-      "🐙",
-      "🦑",
-      "🦐",
-      "🦀",
-      "🐡",
-      "🐠",
-      "🐟",
-      "🐬",
-      "🐳",
-      "🐋",
-      "🦈",
-      "🌵",
-      "🎄",
-      "🌲",
-      "🌳",
-      "🌴",
-      "🌱",
-      "🌿",
-      "🍀",
-      "🎍",
-      "🌷",
-      "🌹",
-      "🥀",
-      "🌺",
-      "🌸",
-      "🌼",
-      "🌻",
-      "🌞",
-      "🌝",
-      "🌚",
-      "⭐",
+    name: "Checks & Marks",
+    items: [
+      {
+        char: "✓",
+        label: "check",
+        path: <polyline points="20 6 9 17 4 12" />,
+      },
+      {
+        char: "✗",
+        label: "cross",
+        path: (
+          <>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </>
+        ),
+      },
+      {
+        char: "✘",
+        label: "cross-heavy",
+        path: (
+          <>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </>
+        ),
+      },
+      {
+        char: "★",
+        label: "star-filled",
+        path: (
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        ),
+      },
+      {
+        char: "☆",
+        label: "star-empty",
+        path: (
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        ),
+      },
+      {
+        char: "●",
+        label: "dot",
+        path: (
+          <circle cx="12" cy="12" r="6" fill="currentColor" stroke="none" />
+        ),
+      },
+      {
+        char: "○",
+        label: "circle",
+        path: <circle cx="12" cy="12" r="8" />,
+      },
+      {
+        char: "■",
+        label: "square-filled",
+        path: (
+          <rect
+            x="6"
+            y="6"
+            width="12"
+            height="12"
+            fill="currentColor"
+            stroke="none"
+          />
+        ),
+      },
+      {
+        char: "□",
+        label: "square-empty",
+        path: <rect x="5" y="5" width="14" height="14" />,
+      },
+      {
+        char: "◆",
+        label: "diamond",
+        path: <polygon points="12 3 21 12 12 21 3 12" />,
+      },
+      {
+        char: "◇",
+        label: "diamond-empty",
+        path: <polygon points="12 3 21 12 12 21 3 12" />,
+      },
+      {
+        char: "†",
+        label: "dagger",
+        path: (
+          <>
+            <line x1="12" y1="4" x2="12" y2="20" />
+            <line x1="8" y1="8" x2="16" y2="8" />
+          </>
+        ),
+      },
     ],
   },
   {
-    id: "food",
-    label: "Food & Drink",
-    emojis: [
-      "🍏",
-      "🍎",
-      "🍐",
-      "🍊",
-      "🍋",
-      "🍌",
-      "🍉",
-      "🍇",
-      "🍓",
-      "🫐",
-      "🍈",
-      "🍒",
-      "🍑",
-      "🥭",
-      "🍍",
-      "🥥",
-      "🥝",
-      "🍅",
-      "🍆",
-      "🥑",
-      "🥦",
-      "🥬",
-      "🥒",
-      "🌶️",
-      "🌽",
-      "🥕",
-      "🧄",
-      "🧅",
-      "🥔",
-      "🍠",
-      "🥐",
-      "🥯",
-      "🍞",
-      "🥖",
-      "🧀",
-      "🥚",
-      "🍳",
-      "🥞",
-      "🧇",
-      "🥓",
-      "🍔",
-      "🍟",
-      "🍕",
-      "🌭",
-      "🥪",
-      "🌮",
-      "🌯",
-      "🥗",
-      "🍝",
-      "🍜",
-      "🍲",
-      "🍣",
-      "🍱",
-      "🍛",
-      "🍚",
-      "🍙",
-      "🍰",
-      "🎂",
-      "🍮",
-      "🍭",
-      "🍩",
-      "🍪",
-      "🌰",
-      "🍫",
-      "🍬",
-      "☕",
-      "🍵",
-      "🥤",
-      "🍺",
-      "🍷",
+    name: "Arrows",
+    items: [
+      {
+        char: "→",
+        label: "arrow-right",
+        path: (
+          <>
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+          </>
+        ),
+      },
+      {
+        char: "←",
+        label: "arrow-left",
+        path: (
+          <>
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </>
+        ),
+      },
+      {
+        char: "↑",
+        label: "arrow-up",
+        path: (
+          <>
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          </>
+        ),
+      },
+      {
+        char: "↓",
+        label: "arrow-down",
+        path: (
+          <>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </>
+        ),
+      },
+      {
+        char: "⇒",
+        label: "arrow-r-dbl",
+        path: (
+          <>
+            <polyline points="10 5 17 12 10 19" />
+            <polyline points="6 5 13 12 6 19" />
+          </>
+        ),
+      },
+      {
+        char: "⇐",
+        label: "arrow-l-dbl",
+        path: (
+          <>
+            <polyline points="14 5 7 12 14 19" />
+            <polyline points="18 5 11 12 18 19" />
+          </>
+        ),
+      },
     ],
   },
   {
-    id: "activities",
-    label: "Activities",
-    emojis: [
-      "⚽",
-      "🏀",
-      "🏈",
-      "⚾",
-      "🥎",
-      "🎾",
-      "🏐",
-      "🏉",
-      "🥏",
-      "🎱",
-      "🏓",
-      "🏸",
-      "🥅",
-      "🏒",
-      "🏑",
-      "🥍",
-      "🏏",
-      "⛳",
-      "🏹",
-      "🎣",
-      "🥊",
-      "🥋",
-      "🎽",
-      "⛸️",
-      "🥌",
-      "🛷",
-      "🎿",
-      "⛷️",
-      "🏂",
-      "🏋️",
-      "🤼",
-      "🤸",
-      "⛹️",
-      "🤺",
-      "🤾",
-      "🏌️",
-      "🏇",
-      "🧘",
-      "🏄",
-      "🏊",
-      "🚴",
-      "🚵",
-      "🎮",
-      "🎲",
-      "🧩",
-      "🎯",
-      "🎳",
-      "🎼",
-      "🎹",
-      "🥁",
-      "🎷",
-      "🎺",
-      "🎸",
-      "🎻",
-      "🎨",
-      "🎭",
-      "🎪",
-      "🎬",
-      "🎤",
-      "🏆",
+    name: "Math & Punctuation",
+    items: [
+      {
+        char: "±",
+        label: "plus-minus",
+        path: (
+          <>
+            <line x1="4" y1="10" x2="20" y2="10" />
+            <line x1="12" y1="2" x2="12" y2="18" />
+            <line x1="4" y1="20" x2="20" y2="20" />
+          </>
+        ),
+      },
+      {
+        char: "×",
+        label: "multiply",
+        path: (
+          <>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </>
+        ),
+      },
+      {
+        char: "÷",
+        label: "divide",
+        path: (
+          <>
+            <circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+          </>
+        ),
+      },
+      {
+        char: "≈",
+        label: "approx",
+        path: (
+          <>
+            <path d="M4 9 C 6 6, 8 12, 10 9 S 14 6, 16 9 S 20 12, 22 9" />
+            <path d="M4 15 C 6 12, 8 18, 10 15 S 14 12, 16 15 S 20 18, 22 15" />
+          </>
+        ),
+      },
+      {
+        char: "≠",
+        label: "not-equal",
+        path: (
+          <>
+            <line x1="5" y1="9" x2="19" y2="9" />
+            <line x1="5" y1="15" x2="19" y2="15" />
+            <line x1="16" y1="5" x2="8" y2="19" />
+          </>
+        ),
+      },
+      {
+        char: "≤",
+        label: "lte",
+        path: (
+          <>
+            <polyline points="17 5 7 11 17 17" />
+            <line x1="7" y1="20" x2="17" y2="20" />
+          </>
+        ),
+      },
+      {
+        char: "≥",
+        label: "gte",
+        path: (
+          <>
+            <polyline points="7 5 17 11 7 17" />
+            <line x1="7" y1="20" x2="17" y2="20" />
+          </>
+        ),
+      },
+      {
+        char: "∞",
+        label: "infinity",
+        path: (
+          <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.739-8z" />
+        ),
+      },
+      {
+        char: "π",
+        label: "pi",
+        path: (
+          <>
+            <line x1="4" y1="8" x2="20" y2="8" />
+            <line x1="9" y1="8" x2="9" y2="20" />
+            <line x1="15" y1="8" x2="15" y2="20" />
+          </>
+        ),
+      },
+      {
+        char: "Σ",
+        label: "sum",
+        path: <polyline points="6 4 18 4 10 12 18 20 6 20" />,
+      },
+      {
+        char: "∆",
+        label: "delta",
+        path: <polygon points="12 4 20 20 4 20" />,
+      },
+      {
+        char: "√",
+        label: "root",
+        path: <polyline points="4 14 8 20 14 4 22 4" />,
+      },
+      {
+        char: "°",
+        label: "degree",
+        path: <circle cx="12" cy="8" r="3" />,
+      },
+      {
+        char: "§",
+        label: "section",
+        path: <path d="M14 6 a4 3 0 1 0 -4 4 q-3 0 -3 3 t3 3 q3 0 3 -3" />,
+      },
+      {
+        char: "¶",
+        label: "pilcrow",
+        path: (
+          <>
+            <path d="M16 4 H 9 a4 4 0 0 0 0 8 H 12 V 20" />
+            <line x1="16" y1="4" x2="16" y2="20" />
+          </>
+        ),
+      },
+      {
+        char: "•",
+        label: "bullet",
+        path: (
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+        ),
+      },
+      {
+        char: "…",
+        label: "ellipsis",
+        path: (
+          <>
+            <circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          </>
+        ),
+      },
+      {
+        char: "—",
+        label: "em-dash",
+        path: <line x1="4" y1="12" x2="20" y2="12" />,
+      },
+      {
+        char: "«",
+        label: "quote-l",
+        path: (
+          <>
+            <polyline points="12 5 6 12 12 19" />
+            <polyline points="18 5 12 12 18 19" />
+          </>
+        ),
+      },
+      {
+        char: "»",
+        label: "quote-r",
+        path: (
+          <>
+            <polyline points="6 5 12 12 6 19" />
+            <polyline points="12 5 18 12 12 19" />
+          </>
+        ),
+      },
+      {
+        char: '"',
+        label: "quote-dbl",
+        path: (
+          <>
+            <line x1="8" y1="5" x2="8" y2="11" />
+            <line x1="11" y1="5" x2="11" y2="11" />
+            <line x1="13" y1="5" x2="13" y2="11" />
+            <line x1="16" y1="5" x2="16" y2="11" />
+          </>
+        ),
+      },
     ],
   },
   {
-    id: "travel",
-    label: "Travel & Places",
-    emojis: [
-      "🚗",
-      "🚕",
-      "🚙",
-      "🚌",
-      "🚎",
-      "🏎️",
-      "🚓",
-      "🚑",
-      "🚒",
-      "🚐",
-      "🚚",
-      "🚛",
-      "🚜",
-      "🛵",
-      "🏍️",
-      "🚲",
-      "🛴",
-      "🚏",
-      "🛣️",
-      "🚦",
-      "🚥",
-      "🚀",
-      "🛸",
-      "🚁",
-      "✈️",
-      "🛩️",
-      "🛫",
-      "🛬",
-      "⛵",
-      "🚤",
-      "🛳️",
-      "⛴️",
-      "🚢",
-      "⚓",
-      "🏝️",
-      "🏖️",
-      "🏔️",
-      "⛰️",
-      "🌋",
-      "🗻",
-      "🏕️",
-      "🏜️",
-      "🏞️",
-      "🏛️",
-      "🏰",
-      "🗼",
-      "🗽",
-      "⛩️",
-      "🕌",
-      "🏟️",
-      "🌃",
-      "🌆",
-      "🌇",
-      "🌉",
-      "🌁",
-      "🏙️",
-      "🗺️",
-      "🧭",
-      "🌍",
-      "🌎",
-    ],
-  },
-  {
-    id: "objects",
-    label: "Objects",
-    emojis: [
-      "⌚",
-      "📱",
-      "💻",
-      "⌨️",
-      "🖥️",
-      "🖨️",
-      "🖱️",
-      "💾",
-      "💿",
-      "📷",
-      "📹",
-      "🎥",
-      "📞",
-      "☎️",
-      "📟",
-      "📺",
-      "📻",
-      "🎙️",
-      "⏱️",
-      "⏰",
-      "🔋",
-      "🔌",
-      "💡",
-      "🔦",
-      "🕯️",
-      "🧯",
-      "🛢️",
-      "💸",
-      "💵",
-      "💳",
-      "🔧",
-      "🔨",
-      "⚙️",
-      "🧰",
-      "🧲",
-      "🔫",
-      "💣",
-      "🔪",
-      "🛡️",
-      "🔑",
-      "🔒",
-      "🔓",
-      "📿",
-      "💎",
-      "📦",
-      "📫",
-      "📮",
-      "✉️",
-      "📝",
-      "📚",
-      "📖",
-      "🔖",
-      "🔗",
-      "📎",
-      "📐",
-      "📏",
-      "✂️",
-      "🗑️",
-      "🔭",
-      "🔬",
-    ],
-  },
-  {
-    id: "symbols",
-    label: "Symbols",
-    emojis: [
-      "❤️",
-      "🧡",
-      "💛",
-      "💚",
-      "💙",
-      "💜",
-      "🖤",
-      "🤍",
-      "🤎",
-      "💔",
-      "❣️",
-      "💕",
-      "💞",
-      "💓",
-      "💗",
-      "💖",
-      "💘",
-      "💝",
-      "✨",
-      "⭐",
-      "🌟",
-      "💫",
-      "⚡",
-      "🔥",
-      "💥",
-      "💯",
-      "✅",
-      "❌",
-      "❓",
-      "❗",
-      "‼️",
-      "⁉️",
-      "💤",
-      "💢",
-      "♻️",
-      "⚠️",
-      "🚫",
-      "✔️",
-      "☑️",
-      "🔘",
-      "🔴",
-      "🟠",
-      "🟡",
-      "🟢",
-      "🔵",
-      "🟣",
-      "⚫",
-      "⚪",
-      "🟤",
-      "🔺",
-      "🔻",
-      "🔸",
-      "🔹",
-      "🔶",
-      "🔷",
-      "🔲",
-      "🔳",
-      "▶️",
-      "⏸️",
-      "⏹️",
+    name: "Currency & Misc",
+    // Currency/typographic glyphs drawn as their own character inside the SVG
+    // (matching emojiPicker.js, which uses <text> nodes for these so they keep
+    // the picker's monochrome look without bespoke vector art per symbol).
+    items: [
+      { char: "€", label: "euro", path: <CurrencyGlyph glyph="€" /> },
+      { char: "£", label: "pound", path: <CurrencyGlyph glyph="£" /> },
+      { char: "¥", label: "yen", path: <CurrencyGlyph glyph="¥" /> },
+      { char: "$", label: "dollar", path: <CurrencyGlyph glyph="$" /> },
+      { char: "¢", label: "cent", path: <CurrencyGlyph glyph="¢" /> },
+      { char: "%", label: "percent", path: <CurrencyGlyph glyph="%" /> },
+      {
+        char: "‰",
+        label: "per-mille",
+        path: <CurrencyGlyph glyph="‰" size={13} />,
+      },
+      {
+        char: "№",
+        label: "number",
+        path: <CurrencyGlyph glyph="№" size={12} />,
+      },
     ],
   },
 ];
 
-// Minimal keyword index so search matches names, not just raw glyphs (the only
-// emojis the textbox can otherwise filter are ones the user pastes). Mirrors the
-// curated emojiPicker.js keyword map for the common picks; an unmatched query
-// simply shows no results (honest — never a fabricated hit).
-const EMOJI_KEYWORDS: Record<string, string> = {
-  "😀": "grin happy smile face",
-  "😂": "joy laugh tears lol",
-  "🤣": "rofl rolling laugh",
-  "😊": "blush happy smile",
-  "😍": "love heart eyes",
-  "🥰": "love hearts adore",
-  "😘": "kiss love",
-  "😎": "cool sunglasses",
-  "🤔": "think hmm",
-  "😢": "cry sad tear",
-  "😭": "sob cry bawl",
-  "😡": "angry mad rage",
-  "🤯": "mind blown shock",
-  "🥳": "party celebrate",
-  "🙏": "pray thanks please",
-  "👍": "thumbs up yes ok like",
-  "👎": "thumbs down no dislike",
-  "👏": "clap applause",
-  "🙌": "raise hands praise",
-  "💪": "muscle strong flex",
-  "👀": "eyes look watch",
-  "❤️": "love heart red",
-  "🔥": "fire hot lit flame",
-  "✨": "sparkle shine magic",
-  "🎉": "party celebrate tada",
-  "💯": "hundred perfect score",
-  "✅": "check done yes ok",
-  "❌": "cross no wrong fail",
-  "🚀": "rocket launch ship fast",
-  "🐶": "dog puppy",
-  "🐱": "cat kitten",
-  "🦄": "unicorn",
-  "🍕": "pizza food",
-  "🍔": "burger food",
-  "☕": "coffee tea drink",
-  "⚽": "soccer football ball",
-  "🎮": "game gaming controller",
-  "💻": "laptop computer code",
-  "💡": "idea light bulb",
-  "🧠": "brain think smart",
-  "⚡": "zap lightning fast",
-  "💥": "boom bang explosion",
-  "🌟": "star glow",
-  "⭐": "star",
-};
+// SVG <text> glyph for currency/typographic symbols (emojiPicker.js renders
+// these as a <text> node inside the icon SVG rather than as vector strokes).
+function CurrencyGlyph({
+  glyph,
+  size = 16,
+}: {
+  glyph: string;
+  size?: number;
+}): ReactNode {
+  return (
+    <text
+      x="12"
+      y="16"
+      fontSize={size}
+      textAnchor="middle"
+      fill="currentColor"
+      stroke="none"
+    >
+      {glyph}
+    </text>
+  );
+}
+
+// The picker glyph: a Lucide-style 24x24 stroke SVG wrapping the item's path.
+function IconGlyph({ path }: { path: ReactNode }): ReactNode {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {path}
+    </svg>
+  );
+}
 
 export function EmojiPicker({
   open,
@@ -631,17 +529,13 @@ export function EmojiPicker({
   anchorClassName?: string;
 }): ReactNode {
   const [query, setQuery] = useState("");
-  const [activeCat, setActiveCat] = useState(EMOJI_CATEGORIES[0].id);
-  const [recent, setRecent] = useState<string[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load recent picks + focus the search box each time the popover opens.
+  // Reset the search + focus the search box each time the popover opens.
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    setActiveCat(EMOJI_CATEGORIES[0].id);
-    setRecent(readPref<string[]>(RECENT_EMOJIS_KEY, []));
     inputRef.current?.focus();
   }, [open]);
 
@@ -666,29 +560,31 @@ export function EmojiPicker({
     };
   }, [open, onClose]);
 
-  // Filtered result set for the search box: matches the keyword index OR the
-  // raw glyph. Empty query → null (show the categorized grid instead).
-  const searchResults = useMemo<string[] | null>(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    const hits: string[] = [];
-    for (const cat of EMOJI_CATEGORIES) {
-      for (const emoji of cat.emojis) {
-        const kw = EMOJI_KEYWORDS[emoji] ?? "";
-        if (kw.includes(q) || emoji === query.trim()) hits.push(emoji);
-      }
+  // Live filter across every group: match the item label (case-insensitive) or
+  // the raw character, dropping groups with no remaining items. Empty query
+  // shows all groups. Matches emojiPicker.js render(filter).
+  const groups = useMemo<IconGroup[]>(() => {
+    const raw = query.trim();
+    if (!raw) return ICON_GROUPS;
+    const f = raw.toLowerCase();
+    const filtered: IconGroup[] = [];
+    for (const group of ICON_GROUPS) {
+      const items = group.items.filter(
+        (item) =>
+          item.label.toLowerCase().includes(f) || item.char.includes(raw),
+      );
+      if (items.length > 0) filtered.push({ name: group.name, items });
     }
-    return hits;
+    return filtered;
   }, [query]);
 
-  const pick = (emoji: string) => {
-    const next = [emoji, ...recent.filter((e) => e !== emoji)].slice(
-      0,
-      MAX_RECENT,
-    );
-    setRecent(next);
-    writePref(RECENT_EMOJIS_KEY, next);
-    onPick(emoji);
+  // Insert the character. Append VS-15 for codepoints >= 0x80 so the recipient
+  // sees a flat/monochrome glyph, not a system colour emoji (emojiPicker.js
+  // _insertEmoji). The picker stays open so several can be picked.
+  const pick = (char: string) => {
+    const cp = char.codePointAt(0);
+    const out = cp !== undefined && cp >= 0x80 ? char + VS15 : char;
+    onPick(out);
   };
 
   if (!open) return null;
@@ -702,7 +598,7 @@ export function EmojiPicker({
       ref={rootRef}
       className={rootClass}
       role="dialog"
-      aria-label="Emoji picker"
+      aria-label="Icon picker"
     >
       <div className="od-emoji-search">
         <Search size={13} className="od-emoji-search-icon" aria-hidden="true" />
@@ -714,94 +610,31 @@ export function EmojiPicker({
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
           }}
-          placeholder="Search emoji…"
-          aria-label="Search emoji"
+          placeholder="Search…"
+          aria-label="Search icons"
         />
       </div>
 
-      {searchResults === null ? (
-        <div className="od-emoji-tabs" role="tablist" aria-label="Categories">
-          {recent.length > 0 ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeCat === "recent"}
-              className={`od-emoji-tab${activeCat === "recent" ? " active" : ""}`}
-              title="Recent"
-              onClick={() => setActiveCat("recent")}
-            >
-              <Clock size={15} />
-            </button>
-          ) : null}
-          {EMOJI_CATEGORIES.map((cat) => (
-            <button
-              type="button"
-              role="tab"
-              key={cat.id}
-              aria-selected={activeCat === cat.id}
-              className={`od-emoji-tab${activeCat === cat.id ? " active" : ""}`}
-              title={cat.label}
-              onClick={() => setActiveCat(cat.id)}
-            >
-              {cat.emojis[0]}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <div className="od-emoji-body">
-        {searchResults !== null ? (
-          searchResults.length === 0 ? (
-            <div className="od-emoji-empty">
-              <Smile size={18} aria-hidden="true" />
-              <span>No emoji match “{query.trim()}”.</span>
-            </div>
-          ) : (
-            <div className="od-emoji-grid">
-              {searchResults.map((emoji) => (
-                <button
-                  type="button"
-                  key={emoji}
-                  className="od-emoji-cell"
-                  title={EMOJI_KEYWORDS[emoji] ?? emoji}
-                  onClick={() => pick(emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )
-        ) : activeCat === "recent" && recent.length > 0 ? (
-          <div className="od-emoji-section">
-            <div className="od-emoji-section-label">Recent</div>
-            <div className="od-emoji-grid">
-              {recent.map((emoji) => (
-                <button
-                  type="button"
-                  key={`recent-${emoji}`}
-                  className="od-emoji-cell"
-                  title={EMOJI_KEYWORDS[emoji] ?? emoji}
-                  onClick={() => pick(emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+        {groups.length === 0 ? (
+          <div className="od-emoji-empty">
+            <Smile size={18} aria-hidden="true" />
+            <span>No icon matches “{query.trim()}”.</span>
           </div>
         ) : (
-          EMOJI_CATEGORIES.filter((cat) => cat.id === activeCat).map((cat) => (
-            <div className="od-emoji-section" key={cat.id}>
-              <div className="od-emoji-section-label">{cat.label}</div>
+          groups.map((group) => (
+            <div className="od-emoji-section" key={group.name}>
+              <div className="od-emoji-section-label">{group.name}</div>
               <div className="od-emoji-grid">
-                {cat.emojis.map((emoji) => (
+                {group.items.map((item) => (
                   <button
                     type="button"
-                    key={emoji}
+                    key={`${group.name}:${item.label}`}
                     className="od-emoji-cell"
-                    title={EMOJI_KEYWORDS[emoji] ?? emoji}
-                    onClick={() => pick(emoji)}
+                    title={item.label}
+                    onClick={() => pick(item.char)}
                   >
-                    {emoji}
+                    <IconGlyph path={item.path} />
                   </button>
                 ))}
               </div>

@@ -45,6 +45,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { formatIsoRelative, formatRelativeTime } from "../view-format";
@@ -111,11 +112,10 @@ function displayStatus(thread: CodingAgentTaskThread): DisplayStatus {
   if (thread.status === "failed" || thread.status === "interrupted") {
     return "error";
   }
-  if (
-    thread.status === "done" ||
-    thread.status === "archived" ||
-    thread.status === "blocked"
-  ) {
+  // Only genuinely finished states collapse onto "completed". A "blocked"
+  // task is active-but-stuck — it keeps its active badge + pause/history
+  // controls rather than being mislabelled as done.
+  if (thread.status === "done" || thread.status === "archived") {
     return "completed";
   }
   return "active";
@@ -166,30 +166,35 @@ export function TasksView({
     () => new Set<string>(),
   );
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<CodingAgentTaskThread | null>(
     null,
   );
   const [historyDetail, setHistoryDetail] =
     useState<CodingAgentTaskThreadDetail | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Monotonic token so only the most recent history fetch may settle the
+  // loading flag — a fast back-then-reopen (or switch-and-return) can't leave
+  // an intermediate request's resolution stuck on the wrong thread.
+  const historyTokenRef = useRef(0);
   const [clock, setClock] = useState("");
 
-  const refresh = useCallback(() => {
-    void Promise.all([
+  const refresh = useCallback(async () => {
+    const [list, st] = await Promise.all([
       client.listCodingAgentTaskThreads({ limit: 100 }).catch(() => []),
       client.getOrchestratorStatus().catch(() => null),
-    ]).then(([list, st]) => {
-      setThreads(list);
-      setStatus(st);
-      setFetched(true);
-    });
+    ]);
+    setThreads(list);
+    setStatus(st);
+    setFetched(true);
   }, []);
 
   useEffect(() => {
     if (!open) return;
     setTab("tasks");
     setHistoryFor(null);
-    refresh();
+    setError(null);
+    void refresh();
   }, [open, refresh]);
 
   // odysseus tasks.js _tickClock — a live "Weekday, Mon D, YYYY · HH:MM:SS".
@@ -267,22 +272,40 @@ export function TasksView({
   const hasPaused = threads.some((t) => displayStatus(t) === "paused");
 
   const runMutation = useCallback(
-    (fn: () => Promise<unknown>) => {
+    (fn: () => Promise<unknown>, failureMessage: string) => {
       if (busy) return;
       setBusy(true);
-      void fn()
-        .catch(() => undefined)
-        .then(() => {
-          refresh();
-          setBusy(false);
-        });
+      setError(null);
+      void (async () => {
+        let failed = false;
+        try {
+          await fn();
+        } catch {
+          failed = true;
+        }
+        // Always reflect server truth before releasing the busy guard, so the
+        // refetch lands while the controls are still disabled. Don't let a
+        // refresh failure mask a successful mutation.
+        await refresh().catch(() => undefined);
+        if (failed) setError(failureMessage);
+        setBusy(false);
+      })();
     },
     [busy, refresh],
   );
 
   const toggleAll = () => {
-    if (hasActive) runMutation(() => client.pauseAllOrchestratorTasks());
-    else if (hasPaused) runMutation(() => client.resumeAllOrchestratorTasks());
+    if (hasActive) {
+      runMutation(
+        () => client.pauseAllOrchestratorTasks(),
+        "Couldn't pause all tasks.",
+      );
+    } else if (hasPaused) {
+      runMutation(
+        () => client.resumeAllOrchestratorTasks(),
+        "Couldn't resume all tasks.",
+      );
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -306,15 +329,22 @@ export function TasksView({
   const bulkDelete = () => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    runMutation(async () => {
-      await Promise.allSettled(
-        ids.map((id) => client.deleteOrchestratorTask(id)),
-      );
-    });
+    runMutation(
+      async () => {
+        const results = await Promise.allSettled(
+          ids.map((id) => client.deleteOrchestratorTask(id)),
+        );
+        if (results.some((r) => r.status === "rejected")) {
+          throw new Error("bulk-delete-partial-failure");
+        }
+      },
+      `Couldn't delete ${ids.length === 1 ? "the task" : "some tasks"}.`,
+    );
     exitSelect();
   };
 
   const openHistory = (thread: CodingAgentTaskThread) => {
+    const token = ++historyTokenRef.current;
     setHistoryFor(thread);
     setHistoryDetail(null);
     setHistoryLoading(true);
@@ -322,9 +352,19 @@ export function TasksView({
       .getCodingAgentTaskThread(thread.id)
       .catch(() => null)
       .then((detail) => {
+        if (historyTokenRef.current !== token) return;
         setHistoryDetail(detail);
         setHistoryLoading(false);
       });
+  };
+
+  const closeHistory = () => {
+    // Invalidate any in-flight fetch so its resolution can't reopen/spin the
+    // history pane after the user has navigated away.
+    historyTokenRef.current++;
+    setHistoryFor(null);
+    setHistoryDetail(null);
+    setHistoryLoading(false);
   };
 
   if (!open) return null;
@@ -406,7 +446,7 @@ export function TasksView({
               detail={historyDetail}
               loading={historyLoading}
               locale={locale}
-              onBack={() => setHistoryFor(null)}
+              onBack={closeHistory}
             />
           ) : tab === "tasks" ? (
             <div className="od-tasks-card">
@@ -476,6 +516,21 @@ export function TasksView({
                   aria-label="Search tasks"
                 />
               </div>
+
+              {error ? (
+                <div className="od-tasks-error" role="alert">
+                  <span className="od-tasks-error-text">{error}</span>
+                  <button
+                    type="button"
+                    className="od-tasks-error-dismiss"
+                    aria-label="Dismiss error"
+                    title="Dismiss"
+                    onClick={() => setError(null)}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : null}
 
               {selectMode ? (
                 <div className="od-tasks-bulk-bar">
@@ -568,18 +623,21 @@ export function TasksView({
                       }
                       onToggleSelect={() => toggleSelect(thread.id)}
                       onPause={() =>
-                        runMutation(() =>
-                          client.pauseOrchestratorTask(thread.id),
+                        runMutation(
+                          () => client.pauseOrchestratorTask(thread.id),
+                          "Couldn't pause the task.",
                         )
                       }
                       onResume={() =>
-                        runMutation(() =>
-                          client.resumeOrchestratorTask(thread.id),
+                        runMutation(
+                          () => client.resumeOrchestratorTask(thread.id),
+                          "Couldn't resume the task.",
                         )
                       }
                       onDelete={() =>
-                        runMutation(() =>
-                          client.deleteOrchestratorTask(thread.id),
+                        runMutation(
+                          () => client.deleteOrchestratorTask(thread.id),
+                          "Couldn't delete the task.",
                         )
                       }
                       onHistory={() => openHistory(thread)}

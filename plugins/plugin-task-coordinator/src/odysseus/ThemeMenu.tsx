@@ -5,18 +5,31 @@
 // background-pattern pills, the five custom-colour rows (each opening odysseus's
 // IN-HOUSE HSV picker — hue strip + sat/val square + hex input + recent colours
 // + harmony suggestions, ported 1:1 from colorPicker.js, NO native
-// <input type=color>), a colour-harmony generator (generateHarmonyColors:
+// <input type=color>), the collapsible "More Colors" advanced editor (the 13
+// ADV_KEYS grouped Chat Bubbles / Sidebar / Input / Code / Controls, each row a
+// swatch + per-key reset that tracks the computed default, plus a "Clear
+// Advanced Overrides" button), a colour-harmony generator (generateHarmonyColors:
 // complementary / analogous / triadic / monochromatic from an accent + light/
 // dark mode), and JSON theme import/export.
 //
-// All writeback flows through the existing props — the in-house picker, harmony
-// generator and import each call onCustomChange(key, hex) per colour, so the
+// Base-colour writeback flows through onCustomChange(key, hex); advanced-colour
+// writeback flows through onAdvancedChange(key, hex) / onClearAdvanced(), so the
 // parent's single custom-palette pipeline (OdysseusShell setCustomColors →
 // writePref(customTheme) → setThemeName("custom")) stays the only source of
-// truth. Recent colours are the picker's own local pref (storage.ts NS), the
-// only persistence this component owns. Pure client-side, visual-only.
+// truth. Per-key reset compares the live value to the *reference* theme (the
+// active preset/custom theme) for base keys and to computeAdvancedDefaults() for
+// advanced keys, matching theme.js syncResetButtons. Recent colours are the
+// picker's own local pref (storage.ts NS), the only persistence this component
+// owns. Pure client-side, visual-only.
 
-import { Download, Pipette, Upload, Wand2 } from "lucide-react";
+import {
+  ChevronRight,
+  Download,
+  Pipette,
+  RotateCcw,
+  Upload,
+  Wand2,
+} from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -35,6 +48,8 @@ import { readPref, writePref } from "./util/storage";
 
 const FONTS: ThemeFont[] = ["mono", "sans", "serif"];
 const DENSITIES: ThemeDensity[] = ["compact", "comfortable", "spacious"];
+// theme.js MAX_CUSTOM_THEMES — must mirror the OdysseusShell saveCustomTheme cap.
+const MAX_CUSTOM_THEMES = 8;
 type CustomKey = "bg" | "fg" | "panel" | "border" | "red";
 const CUSTOM_KEYS: CustomKey[] = ["bg", "fg", "panel", "border", "red"];
 const BG_PATTERNS = [
@@ -56,6 +71,65 @@ const MAX_RECENT = 12;
 
 // Preview swatch order matches theme.js harmony-preview: bg, panel, fg, border, red.
 const PREVIEW_KEYS: CustomKey[] = ["bg", "panel", "fg", "border", "red"];
+
+// Advanced "More Colors" editor (theme.js ADV_KEYS), grouped exactly as the
+// odysseus index.html #themeAdvanced section. Each key maps to a CSS var the
+// expanded buildThemeVars emits (see odysseus-theme.ts). Ported 1:1.
+type AdvKey =
+  | "userBubbleBg"
+  | "aiBubbleBg"
+  | "bubbleBorder"
+  | "sidebarBg"
+  | "brandColor"
+  | "hamburgerColor"
+  | "inputBg"
+  | "inputBorder"
+  | "sendBtnBg"
+  | "sendBtnHover"
+  | "codeBg"
+  | "codeFg"
+  | "toggleActive";
+
+interface AdvKeyDef {
+  key: AdvKey;
+  label: string;
+  group: string;
+}
+
+const ADV_KEYS: AdvKeyDef[] = [
+  { key: "userBubbleBg", label: "User Chat Bubble", group: "Chat Bubbles" },
+  { key: "aiBubbleBg", label: "AI Chat Bubble", group: "Chat Bubbles" },
+  { key: "bubbleBorder", label: "Border Chat Bubble", group: "Chat Bubbles" },
+  { key: "sidebarBg", label: "Sidebar Bg", group: "Sidebar" },
+  { key: "brandColor", label: "Odysseus Logo", group: "Sidebar" },
+  { key: "hamburgerColor", label: "Hamburger Menu", group: "Sidebar" },
+  { key: "inputBg", label: "Input Bg", group: "Chat Input / Prompt Area" },
+  {
+    key: "inputBorder",
+    label: "Input Border",
+    group: "Chat Input / Prompt Area",
+  },
+  { key: "sendBtnBg", label: "Send Btn", group: "Chat Input / Prompt Area" },
+  {
+    key: "sendBtnHover",
+    label: "Send Hover",
+    group: "Chat Input / Prompt Area",
+  },
+  { key: "codeBg", label: "Code Bg", group: "Code Blocks" },
+  { key: "codeFg", label: "Code Text", group: "Code Blocks" },
+  { key: "toggleActive", label: "Toggle On", group: "Controls" },
+];
+
+// Stable group order (Map preserves insertion; ADV_KEYS is already grouped).
+const ADV_GROUP_ORDER = [
+  "Chat Bubbles",
+  "Sidebar",
+  "Chat Input / Prompt Area",
+  "Code Blocks",
+  "Controls",
+];
+
+type AdvancedPalette = Partial<Record<AdvKey, string>>;
 
 const HARMONY_TYPES = [
   "complementary",
@@ -299,6 +373,32 @@ function generateHarmonyColors(
     panel: hslToHex(bgH, bgS * 0.6, panelL),
     border: hslToHex(borderH, borderS, borderL),
     red: accentHex,
+  };
+}
+
+// theme.js computeAdvancedDefaults — the value each advanced key falls back to
+// when there is no override. Derives codeBg/codeFg the same way applyColors'
+// deriveSyntaxColors does (bg luminance ±4), so the advanced editor's swatches
+// track the base palette exactly. Ported 1:1.
+function computeAdvancedDefaults(c: ThemePalette): Record<AdvKey, string> {
+  const [bgH, bgS, bgL] = hexToHsl(c.bg);
+  const isDark = bgL < 50;
+  const codeBgL = isDark ? Math.max(bgL - 4, 0) : Math.min(bgL + 4, 100);
+  const red = HEX6.test(c.red) ? c.red : "#e06c75";
+  return {
+    userBubbleBg: c.bg,
+    aiBubbleBg: c.panel,
+    bubbleBorder: c.border,
+    sidebarBg: c.panel,
+    brandColor: red,
+    hamburgerColor: c.fg,
+    inputBg: c.panel,
+    inputBorder: c.border,
+    sendBtnBg: red,
+    sendBtnHover: red,
+    codeBg: hslToHex(bgH, bgS, codeBgL),
+    codeFg: c.fg,
+    toggleActive: red,
   };
 }
 
@@ -559,6 +659,9 @@ export function ThemeMenu({
   onSetDensity,
   custom,
   onCustomChange,
+  customAdvanced,
+  onAdvancedChange,
+  onClearAdvanced,
   bgPattern,
   onSetBg,
   customThemes,
@@ -575,6 +678,12 @@ export function ThemeMenu({
   onSetDensity: (density: ThemeDensity) => void;
   custom: ThemePalette;
   onCustomChange: (key: CustomKey, value: string) => void;
+  /** Current advanced overrides; absent keys fall back to computed defaults. */
+  customAdvanced?: AdvancedPalette;
+  /** Set one advanced override (theme.js adv-<key> input handler). */
+  onAdvancedChange?: (key: AdvKey, value: string) => void;
+  /** Strip all advanced overrides (theme.js #theme-adv-clear). */
+  onClearAdvanced?: () => void;
   bgPattern: string;
   onSetBg: (pattern: string) => void;
   customThemes: Record<string, ThemePalette>;
@@ -582,7 +691,10 @@ export function ThemeMenu({
   onDeleteCustom: (name: string) => void;
 }): ReactNode {
   const [saveName, setSaveName] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [pickerKey, setPickerKey] = useState<CustomKey | null>(null);
+  const [advPickerKey, setAdvPickerKey] = useState<AdvKey | null>(null);
+  const [advOpen, setAdvOpen] = useState(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [harmonyAccent, setHarmonyAccent] = useState(custom.red);
   const [harmonyType, setHarmonyType] = useState<HarmonyType>("complementary");
@@ -596,6 +708,13 @@ export function ThemeMenu({
   useEffect(() => {
     if (open) setRecents(readPref<string[]>(RECENT_COLORS_KEY, []));
   }, [open]);
+
+  // Keep the harmony accent in sync if the base "red" colour changes underneath
+  // us (e.g. the user edits the Accent custom colour while the menu stays
+  // mounted) — otherwise the harmony swatch + Generate preview go stale.
+  useEffect(() => {
+    setHarmonyAccent(custom.red);
+  }, [custom.red]);
 
   // colorPicker.js addRecent — newest first, deduped, capped at MAX_RECENT.
   const commitRecent = useCallback((hex: string) => {
@@ -624,6 +743,73 @@ export function ThemeMenu({
     harmonyType,
     harmonyMode,
   );
+
+  // ── Advanced editor support ──────────────────────────────────────────────
+  const adv: AdvancedPalette = customAdvanced ?? {};
+  const advDefaults = computeAdvancedDefaults(custom);
+  // The effective swatch value: an override if set, else the computed default.
+  const advValue = (key: AdvKey): string => adv[key] ?? advDefaults[key];
+
+  // Reference palette for per-key reset — the active preset/custom theme you
+  // started from (theme.js refColors). Base resets snap to it; advanced resets
+  // snap to that reference's computed defaults.
+  const refColors: ThemePalette =
+    ODYSSEUS_THEMES[current] ?? customThemes[current] ?? custom;
+  const refAdvDefaults = computeAdvancedDefaults(refColors);
+
+  // theme.js syncResetButtons — a base key is "changed" when it differs from
+  // the reference theme's value; an advanced key when it differs from the
+  // reference theme's computed default.
+  const baseChanged = (key: CustomKey): boolean => {
+    const ref = refColors[key];
+    return (
+      HEX6.test(ref) &&
+      HEX6.test(custom[key]) &&
+      custom[key].toLowerCase() !== ref.toLowerCase()
+    );
+  };
+  const advChanged = (key: AdvKey): boolean => {
+    const ref = refAdvDefaults[key];
+    const cur = advValue(key);
+    return cur.toLowerCase() !== ref.toLowerCase();
+  };
+
+  const resetBase = (key: CustomKey): void => {
+    const ref = refColors[key];
+    if (HEX6.test(ref)) onCustomChange(key, ref);
+  };
+  const resetAdv = (key: AdvKey): void => {
+    onAdvancedChange?.(key, refAdvDefaults[key]);
+  };
+
+  // theme.js doSave — name/slug/builtin/limit validation, surfaced inline.
+  const handleSave = (): void => {
+    setSaveError("");
+    const name = saveName.trim();
+    if (!name) {
+      setSaveError("Enter a name.");
+      return;
+    }
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+    if (!slug) {
+      setSaveError("Invalid name.");
+      return;
+    }
+    if (ODYSSEUS_THEMES[slug]) {
+      setSaveError("Cannot overwrite a built-in theme.");
+      return;
+    }
+    const isNew = !(slug in customThemes);
+    if (isNew && Object.keys(customThemes).length >= MAX_CUSTOM_THEMES) {
+      setSaveError(`Max ${MAX_CUSTOM_THEMES} custom themes. Delete one first.`);
+      return;
+    }
+    onSaveCustom(slug);
+    setSaveName("");
+  };
 
   const handleExport = (): void => {
     const name = current || "custom";
@@ -787,6 +973,16 @@ export function ThemeMenu({
               />
               <span className="od-theme-color-key">{k}</span>
               <span className="od-theme-color-hex">{custom[k]}</span>
+              <button
+                type="button"
+                className={`od-theme-reset-btn${baseChanged(k) ? " changed" : ""}`}
+                onClick={() => resetBase(k)}
+                disabled={!baseChanged(k)}
+                title={`Reset ${k} to ${current}`}
+                aria-label={`Reset ${k} colour`}
+              >
+                <RotateCcw size={11} />
+              </button>
               {pickerKey === k ? (
                 <ColorPickerPopover
                   value={HEX6.test(custom[k]) ? custom[k] : "#000000"}
@@ -802,6 +998,88 @@ export function ThemeMenu({
             </div>
           ))}
         </div>
+        {onAdvancedChange ? (
+          <>
+            <button
+              type="button"
+              className={`od-theme-adv-toggle${advOpen ? " open" : ""}`}
+              onClick={() => setAdvOpen((v) => !v)}
+              aria-expanded={advOpen}
+            >
+              <ChevronRight size={13} className="od-theme-adv-arrow" />
+              More Colours
+            </button>
+            {advOpen ? (
+              <div className="od-theme-adv-section">
+                {ADV_GROUP_ORDER.map((group) => (
+                  <div key={group} className="od-theme-adv-group">
+                    <div className="od-theme-adv-group-label">{group}</div>
+                    <div className="od-theme-custom-rows">
+                      {ADV_KEYS.filter((d) => d.group === group).map((def) => (
+                        <div key={def.key} className="od-theme-color-row">
+                          <button
+                            type="button"
+                            className="od-cp-swatch-trigger"
+                            style={{ background: advValue(def.key) }}
+                            onClick={() =>
+                              setAdvPickerKey((cur) =>
+                                cur === def.key ? null : def.key,
+                              )
+                            }
+                            aria-label={`Edit ${def.label}`}
+                            aria-expanded={advPickerKey === def.key}
+                          />
+                          <span className="od-theme-color-key">
+                            {def.label}
+                          </span>
+                          <span className="od-theme-color-hex">
+                            {advValue(def.key)}
+                          </span>
+                          <button
+                            type="button"
+                            className={`od-theme-reset-btn${advChanged(def.key) ? " changed" : ""}`}
+                            onClick={() => resetAdv(def.key)}
+                            disabled={!advChanged(def.key)}
+                            title={`Reset ${def.label}`}
+                            aria-label={`Reset ${def.label}`}
+                          >
+                            <RotateCcw size={11} />
+                          </button>
+                          {advPickerKey === def.key ? (
+                            <ColorPickerPopover
+                              value={
+                                HEX6.test(advValue(def.key))
+                                  ? advValue(def.key)
+                                  : "#000000"
+                              }
+                              recents={recents}
+                              onPreview={(hex) =>
+                                onAdvancedChange(def.key, hex)
+                              }
+                              onCommit={(hex) => {
+                                onAdvancedChange(def.key, hex);
+                                commitRecent(hex);
+                              }}
+                              onClose={() => setAdvPickerKey(null)}
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="od-theme-adv-clear"
+                  onClick={() => onClearAdvanced?.()}
+                  disabled={Object.keys(adv).length === 0}
+                >
+                  Clear Advanced Overrides
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         <div className="od-theme-section">Harmony</div>
         <div className="od-theme-harmony">
           <div className="od-theme-harmony-row">
@@ -868,24 +1146,24 @@ export function ThemeMenu({
           <input
             className="od-theme-save-input"
             value={saveName}
-            onChange={(e) => setSaveName(e.target.value)}
+            onChange={(e) => {
+              setSaveName(e.target.value);
+              if (saveError) setSaveError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSave();
+            }}
             placeholder="name…"
+            maxLength={32}
             aria-label="Custom theme name"
           />
-          <button
-            type="button"
-            className="od-theme-pill"
-            onClick={() => {
-              const n = saveName.trim();
-              if (n) {
-                onSaveCustom(n);
-                setSaveName("");
-              }
-            }}
-          >
+          <button type="button" className="od-theme-pill" onClick={handleSave}>
             Save
           </button>
         </div>
+        {saveError ? (
+          <div className="od-theme-save-error">{saveError}</div>
+        ) : null}
         <div className="od-theme-io">
           <button
             type="button"

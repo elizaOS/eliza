@@ -1,9 +1,10 @@
 // odysseus Group Chat — multi-participant conversation surface (static/js/group.js
 // + the group-chat rules in static/style.css). odysseus's group chat is a
 // multi-MODEL room: a participant roster (N models, each optionally wearing a
-// character), a parallel/round-robin mode toggle, a shared message stream where
-// every participant's reply is a labelled `.msg-group` bubble, and a composer
-// that fans one prompt out to all participants.
+// character) with ADD/REMOVE controls, a parallel/round-robin mode toggle, a
+// shared message stream where every participant's reply is a per-model labelled +
+// colour-tinted `.msg-group` bubble (group.js _createGroupBubble → applyModelColor),
+// and a composer that fans one prompt out to all participants.
 //
 // elizaMapping: eliza has no "N independent model sessions in one room" backend —
 // but the orchestrator DOES own real multi-participant task rooms, which is the
@@ -18,6 +19,17 @@
 // workbench composer uses. The task list comes from
 // client.listCodingAgentTaskThreads so a room can be picked.
 //
+// Participant management is REAL: odysseus's add-participant (model + optional
+// character) and per-row remove map to client.addOrchestratorAgent (spawn a
+// sub-agent into the room) and client.stopOrchestratorAgent (stop a sub-agent) —
+// the same endpoints the workbench's roster uses. odysseus's two-step
+// model→character picker has no eliza analogue (eliza agents pick framework +
+// model, not a character persona) so the add row exposes the real fields the
+// orchestrator accepts (framework / model / label) rather than fabricating a
+// character step. odysseus's saved GROUP PRESETS persist to /api/presets/groups,
+// which eliza has no client method for, so presets are intentionally NOT
+// rendered (no dead control) — see the deferred note in the handoff.
+//
 // odysseus's parallel/round-robin mode is a real UI affordance there but eliza's
 // orchestrator schedules its own sub-agents — there is no client-exposed
 // fan-out mode — so the mode toggle is a faithful local-only preference
@@ -28,13 +40,14 @@
 // messages. No demo rosters, no fake replies, no fake streaming.
 
 import {
+  type CodingAgentAddAgentInput,
   type CodingAgentTaskMessageRecord,
   type CodingAgentTaskSessionRecord,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
   client,
 } from "@elizaos/ui";
-import { ListTree, Rows3, Send, Users, X } from "lucide-react";
+import { ListTree, Plus, Rows3, Send, Users, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -73,15 +86,34 @@ interface Participant {
   label: string;
   sublabel: string;
   active: boolean;
+  /** For sub-agents only: the session id the orchestrator stops by. */
+  sessionId: string | null;
+  /** The role-dot colour. Stable-hashed per participant for sub-agents (odysseus
+   * applyModelColor) or a kind-fixed theme var for user/orchestrator/system. */
+  dot: string;
 }
 
-// odysseus colours each participant's role-dot per model; we map the dot to a
-// theme var per participant kind so it inherits the active odysseus palette.
-const KIND_DOT: Record<ParticipantKind, string> = {
+// odysseus tints the role-dot of user/coordinator participants with fixed
+// palette roles; sub-agents are hashed per-model below.
+const KIND_DOT: Record<"user" | "orchestrator" | "system", string> = {
   user: "color-mix(in srgb, var(--fg) 40%, transparent)",
   orchestrator: "var(--accent, var(--red))",
-  sub_agent: "var(--ok)",
+  system: "color-mix(in srgb, var(--fg) 30%, transparent)",
 };
+
+/** A stable per-participant colour, mirroring chatRenderer.modelColor: hash the
+ * key to a hue and emit an hsl() that reads on both dark and light odysseus
+ * themes. Used so each sub-agent gets its OWN role-dot tint (odysseus
+ * applyModelColor) instead of one shared green. */
+function participantColor(key: string): string {
+  let hash = 0;
+  const lower = key.toLowerCase();
+  for (let i = 0; i < lower.length; i++) {
+    hash = ((hash << 5) - hash + lower.charCodeAt(i)) | 0;
+  }
+  const hue = ((hash % 360) + 360) % 360;
+  return `hsl(${hue}, 55%, 65%)`;
+}
 
 /** A sub-agent session's display name — character/label first, else the
  * framework, mirroring group.js's `p.character ? name : model.display`. */
@@ -100,9 +132,21 @@ function sessionSublabel(session: CodingAgentTaskSessionRecord): string {
   return tail || model;
 }
 
+/** A sub-agent message that the backend never linked to a session still carries
+ * the speaking participant in metadata — odysseus stores the participant name
+ * under `group_model` (group.js _streamToHolder: metadata.group_model). Read it
+ * defensively (metadata is Record<string, unknown>) so an unlinked sub_agent
+ * bubble is still attributed to a real participant instead of "Agent". */
+function metadataGroupModel(metadata: Record<string, unknown>): string | null {
+  const value = metadata.group_model ?? metadata.model;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 /** Build the room roster: user + orchestrator coordinator + each sub-agent
  * session. odysseus seeds the user implicitly and lists models explicitly; the
- * orchestrator room has the same three participant classes. */
+ * orchestrator room has the same three participant classes. Sub-agent dots are
+ * hashed per session so the roster and the stream agree on each participant's
+ * colour. */
 function buildRoster(detail: CodingAgentTaskThreadDetail): Participant[] {
   const roster: Participant[] = [
     {
@@ -111,6 +155,8 @@ function buildRoster(detail: CodingAgentTaskThreadDetail): Participant[] {
       label: "You",
       sublabel: "",
       active: true,
+      sessionId: null,
+      dot: KIND_DOT.user,
     },
     {
       id: "participant-orchestrator",
@@ -118,43 +164,102 @@ function buildRoster(detail: CodingAgentTaskThreadDetail): Participant[] {
       label: "Orchestrator",
       sublabel: "coordinator",
       active: detail.status === "active",
+      sessionId: null,
+      dot: KIND_DOT.orchestrator,
     },
   ];
   for (const session of detail.sessions) {
+    const label = sessionLabel(session);
     roster.push({
       id: session.id,
       kind: "sub_agent",
-      label: sessionLabel(session),
+      label,
       sublabel: sessionSublabel(session),
       active: session.stoppedAt === null,
+      sessionId: session.sessionId,
+      dot: participantColor(label),
     });
   }
   return roster;
 }
 
-/** A stream message's sender label. user → "You"; sub_agent → the matching
- * session's label (falling back to the message's own sessionId); orchestrator /
- * system → fixed labels. Mirrors group.js's per-bubble `roleLabel`. */
-function senderLabel(
+/** Resolve a stream message to its speaking participant: a stable display name
+ * plus the role-dot colour, mirroring group.js's per-bubble roleLabel +
+ * applyModelColor. user/orchestrator/system use fixed labels + palette dots;
+ * a sub_agent resolves to its session label (else the metadata participant
+ * name) and gets its OWN hashed colour so the stream reads as distinct voices. */
+function resolveSender(
   message: CodingAgentTaskMessageRecord,
   sessionsById: ReadonlyMap<string, CodingAgentTaskSessionRecord>,
-): string {
-  if (message.senderKind === "user") return "You";
-  if (message.senderKind === "orchestrator") return "Orchestrator";
-  if (message.senderKind === "system") return "System";
+): { label: string; dot: string } {
+  if (message.senderKind === "user") {
+    return { label: "You", dot: KIND_DOT.user };
+  }
+  if (message.senderKind === "orchestrator") {
+    return { label: "Orchestrator", dot: KIND_DOT.orchestrator };
+  }
+  if (message.senderKind === "system") {
+    return { label: "System", dot: KIND_DOT.system };
+  }
   if (message.sessionId) {
     const session = sessionsById.get(message.sessionId);
-    if (session) return sessionLabel(session);
+    if (session) {
+      const label = sessionLabel(session);
+      return { label, dot: participantColor(label) };
+    }
   }
-  return "Agent";
+  const fromMetadata = metadataGroupModel(message.metadata);
+  if (fromMetadata) {
+    return { label: fromMetadata, dot: participantColor(fromMetadata) };
+  }
+  return { label: "Agent", dot: participantColor("agent") };
 }
 
-function senderDot(kind: CodingAgentTaskMessageRecord["senderKind"]): string {
-  if (kind === "user") return KIND_DOT.user;
-  if (kind === "orchestrator") return KIND_DOT.orchestrator;
-  if (kind === "system")
-    return "color-mix(in srgb, var(--fg) 30%, transparent)";
-  return KIND_DOT.sub_agent;
+// A run of consecutive messages from the same speaker — odysseus renders one
+// `.msg-group` bubble per turn, not one per delta. We coalesce same-sender runs
+// (same senderKind + sessionId + resolved label) into a single bubble and show
+// the role header (dot + name + time) once per run, mirroring the turn-grouping
+// done for the main workbench conversation surface.
+interface MessageRun {
+  key: string;
+  senderKind: CodingAgentTaskMessageRecord["senderKind"];
+  label: string;
+  dot: string;
+  /** First message's timestamp — the one time shown for the whole run. */
+  timestamp: number;
+  isUser: boolean;
+  messages: CodingAgentTaskMessageRecord[];
+}
+
+function coalesceRuns(
+  messages: readonly CodingAgentTaskMessageRecord[],
+  sessionsById: ReadonlyMap<string, CodingAgentTaskSessionRecord>,
+): MessageRun[] {
+  const runs: MessageRun[] = [];
+  for (const message of messages) {
+    const sender = resolveSender(message, sessionsById);
+    const last = runs[runs.length - 1];
+    const sameSpeaker =
+      last !== undefined &&
+      last.senderKind === message.senderKind &&
+      last.label === sender.label &&
+      // sessionId distinguishes two sub-agents that happen to share a label.
+      last.messages[0].sessionId === message.sessionId;
+    if (sameSpeaker) {
+      last.messages.push(message);
+      continue;
+    }
+    runs.push({
+      key: message.id,
+      senderKind: message.senderKind,
+      label: sender.label,
+      dot: sender.dot,
+      timestamp: message.timestamp,
+      isUser: message.senderKind === "user",
+      messages: [message],
+    });
+  }
+  return runs;
 }
 
 export function GroupChatView({
@@ -184,6 +289,15 @@ export function GroupChatView({
   const [mode, setMode] = useState<GroupMode>("parallel");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  // Participant management (odysseus add-participant / per-row remove).
+  const [adding, setAdding] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addFramework, setAddFramework] = useState("");
+  const [addModel, setAddModel] = useState("");
+  const [addLabel, setAddLabel] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Load the room list + restore the persisted mode when the view opens.
   useEffect(() => {
@@ -237,6 +351,10 @@ export function GroupChatView({
       setMessages([]);
       return;
     }
+    // Reset transient per-room UI when the selected room changes.
+    setSendError(null);
+    setAdding(false);
+    setAddError(null);
     reloadRoom(activeTaskId);
     const unsubscribe = client.streamOrchestratorTask(activeTaskId, () => {
       reloadRoom(activeTaskId);
@@ -257,6 +375,11 @@ export function GroupChatView({
     [detail],
   );
 
+  const runs = useMemo<MessageRun[]>(
+    () => coalesceRuns(messages, sessionsById),
+    [messages, sessionsById],
+  );
+
   const setModePersist = (next: GroupMode) => {
     setMode(next);
     writePref(GROUP_MODE_KEY, next);
@@ -266,13 +389,80 @@ export function GroupChatView({
     const content = draft.trim();
     if (!content || !activeTaskId || sending) return;
     setSending(true);
+    setSendError(null);
     void client
       .postOrchestratorTaskMessage(activeTaskId, content)
+      .then(
+        (ok) => {
+          if (ok) {
+            setDraft("");
+            reloadRoom(activeTaskId);
+          } else {
+            // The post was not fully delivered (recorded=false or a participant
+            // rejected it). Keep the user's text and tell them.
+            setSendError("Message could not be delivered to the room.");
+          }
+        },
+        () => {
+          setSendError("Failed to send. Check your connection and try again.");
+        },
+      )
+      .finally(() => {
+        setSending(false);
+      });
+  };
+
+  // odysseus add-participant: spawn a real sub-agent into the room via the
+  // orchestrator (client.addOrchestratorAgent — the same endpoint the workbench
+  // roster uses). The orchestrator chooses sensible defaults when a field is
+  // blank, so only the model/framework/label the user typed are sent.
+  const addParticipant = () => {
+    if (!activeTaskId || addBusy) return;
+    const input: CodingAgentAddAgentInput = {
+      framework: addFramework.trim() || undefined,
+      model: addModel.trim() || undefined,
+      label: addLabel.trim() || undefined,
+    };
+    setAddBusy(true);
+    setAddError(null);
+    void client
+      .addOrchestratorAgent(activeTaskId, input)
+      .then(
+        (updated) => {
+          if (updated) {
+            setDetail(updated);
+            setAdding(false);
+            setAddFramework("");
+            setAddModel("");
+            setAddLabel("");
+            reloadRoom(activeTaskId);
+          } else {
+            setAddError("This room no longer exists.");
+          }
+        },
+        () => {
+          setAddError("Failed to add participant.");
+        },
+      )
+      .finally(() => {
+        setAddBusy(false);
+      });
+  };
+
+  // odysseus per-row remove: stop the sub-agent participant (client
+  // .stopOrchestratorAgent). Only sub-agents are removable — the user and the
+  // orchestrator coordinator are structural and have no session to stop.
+  const removeParticipant = (participant: Participant) => {
+    if (!activeTaskId || !participant.sessionId || removingId) return;
+    setRemovingId(participant.id);
+    void client
+      .stopOrchestratorAgent(activeTaskId, participant.sessionId)
       .catch(() => false)
       .then(() => {
-        setDraft("");
-        setSending(false);
         reloadRoom(activeTaskId);
+      })
+      .finally(() => {
+        setRemovingId(null);
       });
   };
 
@@ -379,37 +569,122 @@ export function GroupChatView({
         <div className="od-group-body">
           {/* ── Participant roster (group.js _render participant rows) ── */}
           <aside className="od-group-roster" aria-label="Participants">
-            <div className="od-group-roster-head">Participants</div>
+            <div className="od-group-roster-head">
+              <span>Participants</span>
+              {activeTaskId && !noRoom ? (
+                <button
+                  type="button"
+                  className="od-group-roster-add"
+                  title="Add participant"
+                  aria-label="Add participant"
+                  aria-expanded={adding}
+                  onClick={() => {
+                    setAdding((v) => !v);
+                    setAddError(null);
+                  }}
+                >
+                  <Plus size={13} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
             {noRoom || !activeTaskId ? (
               <div className="od-group-roster-empty">No participants.</div>
             ) : detailLoading && roster.length === 0 ? (
               <div className="od-group-roster-empty">Loading…</div>
             ) : (
               <div className="od-group-roster-list">
-                {roster.map((p) => (
-                  <div
-                    className={`od-group-participant${p.active ? "" : " idle"}`}
-                    key={p.id}
-                  >
-                    <span
-                      className="od-group-participant-dot"
-                      style={{ background: KIND_DOT[p.kind] }}
-                      aria-hidden="true"
-                    />
-                    <span className="od-group-participant-text">
-                      <span className="od-group-participant-name">
-                        {p.label}
-                      </span>
-                      {p.sublabel && p.sublabel !== p.label ? (
-                        <span className="od-group-participant-sub">
-                          {p.sublabel}
+                {roster.map((p) => {
+                  const removable = p.kind === "sub_agent" && p.active;
+                  return (
+                    <div
+                      className={`od-group-participant${p.active ? "" : " idle"}`}
+                      key={p.id}
+                    >
+                      <span
+                        className="od-group-participant-dot"
+                        style={{ background: p.dot }}
+                        aria-hidden="true"
+                      />
+                      <span className="od-group-participant-text">
+                        <span className="od-group-participant-name">
+                          {p.label}
                         </span>
+                        {p.sublabel && p.sublabel !== p.label ? (
+                          <span className="od-group-participant-sub">
+                            {p.sublabel}
+                          </span>
+                        ) : null}
+                      </span>
+                      {removable ? (
+                        <button
+                          type="button"
+                          className="od-group-participant-remove"
+                          title="Stop this participant"
+                          aria-label={`Stop ${p.label}`}
+                          disabled={removingId !== null}
+                          onClick={() => removeParticipant(p)}
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
                       ) : null}
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
+            {/* Add-participant row — odysseus's two-select picker; eliza spawns a
+                real sub-agent so the fields are framework / model / label. */}
+            {adding && activeTaskId && !noRoom ? (
+              <div className="od-group-add">
+                <input
+                  className="od-group-add-input"
+                  value={addFramework}
+                  onChange={(e) => setAddFramework(e.target.value)}
+                  placeholder="Framework (optional)"
+                  aria-label="Participant framework"
+                />
+                <input
+                  className="od-group-add-input"
+                  value={addModel}
+                  onChange={(e) => setAddModel(e.target.value)}
+                  placeholder="Model (optional)"
+                  aria-label="Participant model"
+                />
+                <input
+                  className="od-group-add-input"
+                  value={addLabel}
+                  onChange={(e) => setAddLabel(e.target.value)}
+                  placeholder="Label (optional)"
+                  aria-label="Participant label"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addParticipant();
+                  }}
+                />
+                {addError ? (
+                  <span className="od-group-add-error">{addError}</span>
+                ) : null}
+                <div className="od-group-add-foot">
+                  <button
+                    type="button"
+                    className="od-group-add-cancel"
+                    onClick={() => {
+                      setAdding(false);
+                      setAddError(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="od-group-add-submit"
+                    disabled={addBusy}
+                    onClick={addParticipant}
+                  >
+                    {addBusy ? "Adding…" : "Add"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </aside>
 
           {/* ── Shared message stream (group.js chat-history .msg-group) ── */}
@@ -425,52 +700,51 @@ export function GroupChatView({
                 <div className="od-group-empty">No group conversation.</div>
               ) : messagesLoading && messages.length === 0 ? (
                 <div className="od-group-empty">Loading conversation…</div>
-              ) : messages.length === 0 ? (
+              ) : runs.length === 0 ? (
                 <div className="od-group-empty">
                   No messages in this room yet.
                 </div>
               ) : (
-                messages.map((message) => {
-                  const isUser = message.senderKind === "user";
-                  const tone = message.direction === "stderr";
-                  return (
-                    <div
-                      className={`od-msg od-msg-group${
-                        isUser ? " od-msg-user" : " od-msg-ai"
-                      }`}
-                      key={message.id}
-                    >
-                      {isUser ? null : (
-                        <div className="od-role">
-                          <span
-                            className="od-group-role-dot"
-                            style={{
-                              background: senderDot(message.senderKind),
-                            }}
-                            aria-hidden="true"
-                          />
-                          <span className="od-group-role-name">
-                            {senderLabel(message, sessionsById)}
-                          </span>
-                          <span className="od-group-role-time">
-                            {formatClockTime(message.timestamp, locale)}
-                          </span>
-                        </div>
-                      )}
+                runs.map((run) => (
+                  <div
+                    className={`od-msg od-msg-group${
+                      run.isUser ? " od-msg-user" : " od-msg-ai"
+                    }`}
+                    key={run.key}
+                  >
+                    {run.isUser ? null : (
+                      <div className="od-role">
+                        <span
+                          className="od-group-role-dot"
+                          style={{ background: run.dot }}
+                          aria-hidden="true"
+                        />
+                        <span className="od-group-role-name">{run.label}</span>
+                        <span className="od-group-role-time">
+                          {formatClockTime(run.timestamp, locale)}
+                        </span>
+                      </div>
+                    )}
+                    {run.messages.map((message) => (
                       <div
                         className="od-body"
-                        style={tone ? { color: "var(--red)" } : undefined}
+                        key={message.id}
+                        style={
+                          message.direction === "stderr"
+                            ? { color: "var(--red)" }
+                            : undefined
+                        }
                       >
                         <MarkdownText text={message.content} />
                       </div>
-                      {isUser ? (
-                        <div className="od-msg-time">
-                          {formatClockTime(message.timestamp, locale)}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
+                    ))}
+                    {run.isUser ? (
+                      <div className="od-msg-time">
+                        {formatClockTime(run.timestamp, locale)}
+                      </div>
+                    ) : null}
+                  </div>
+                ))
               )}
             </div>
 
@@ -479,7 +753,10 @@ export function GroupChatView({
               <textarea
                 className="od-group-input"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (sendError) setSendError(null);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     onClose();
@@ -509,6 +786,11 @@ export function GroupChatView({
                 <Send size={14} />
               </button>
             </div>
+            {sendError ? (
+              <div className="od-group-send-error" role="alert">
+                {sendError}
+              </div>
+            ) : null}
             {/* odysseus's mode toggle drives real fan-out scheduling; eliza's
                 orchestrator schedules its own sub-agents, so the toggle above is
                 a local preference and does not change room delivery. */}

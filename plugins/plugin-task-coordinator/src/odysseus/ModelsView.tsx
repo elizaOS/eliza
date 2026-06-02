@@ -1,6 +1,6 @@
 // odysseus model catalog + picker + provider management (static/js/models.js +
 // modelPicker.js + modelSort.js + providers.js). A model-browser panel: a
-// provider rail (left) that lets you pick which endpoint to scan, a sort menu
+// provider rail (left) that lets you pick which provider to scan, a sort menu
 // (Default / A→Z / Last used / Most used), and a catalogue body that mirrors
 // the reworked modelPicker.js browse model:
 //   • a search box (shown once a catalogue is large) that filters the whole
@@ -22,18 +22,26 @@
 // elizaMapping: the model lists are wired to the REAL model catalogue via
 // client.fetchModels(provider) — the same /api/models endpoint CompareView's
 // dropdowns use, returning ProviderModelRecord[]. odysseus's catalogue is a
-// server scan that returns endpoint-grouped items with online/offline state;
-// eliza's fetchModels returns a flat ProviderModelRecord[] per provider, so the
-// rail picks the endpoint and the in-body PROVIDER groups come from the model
+// server scan that returns endpoint-grouped items with category (local vs api)
+// and per-endpoint online/offline state; eliza's fetchModels returns a FLAT
+// ProviderModelRecord[] ({ id, name, category }) per provider, with NO endpoint
+// identity and NO online/offline signal — its `category` is the model modality
+// (chat / image / embedding / …), not odysseus's local-vs-API axis. So the rail
+// picks a PROVIDER (not an endpoint), and the in-body grouping is by the model
 // id's slug (modelPicker.js _providerSlug / _providerDisplayName), faithful to
-// upstream's provider-grouped browse. Favorites + recent + usage tracking are
-// per-browser localStorage, never agent state. odysseus's true model-switch
-// (createDirectChat) starts a new session against a specific endpoint URL; eliza
-// has no per-model session-spawn client method (the agent runs one configured
-// model), so the "+ Chat" action records local usage + recent + emits a DOM
-// event a host can wire later, and never fabricates a started session. Providers
-// eliza has no key configured for return the faithful empty state ("No models
-// available") rather than seeded/representative rows.
+// upstream's provider-grouped browse. odysseus's Local/API category headers and
+// per-endpoint collapsible sub-groups (models.js categoryOrder / multiEndpoints /
+// endpoint-offline-badge) are deliberately NOT reproduced: the underlying
+// endpoint/category(local-vs-api)/offline data does not exist in eliza's
+// contract, and synthesising it would be fabricated UI. The COLLAPSE_KEY group
+// keys are `ep:<provider>:<slug>` (real, used by the provider groups). Favorites
+// + recent + usage tracking are per-browser localStorage, never agent state.
+// odysseus's true model-switch (createDirectChat) starts a new session against a
+// specific endpoint URL; eliza has no per-model session-spawn client method (the
+// agent runs one configured model), so the "+ Chat" action records local usage +
+// recent + emits a DOM event a host can wire later, and never fabricates a
+// started session. Providers eliza has no key configured for return the faithful
+// empty state ("No models available") rather than seeded/representative rows.
 
 import type { ProviderModelRecord } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
@@ -206,6 +214,25 @@ function providerSlug(modelId: string): string {
   return PROVIDER_ALIAS[raw] ?? raw;
 }
 
+// ── Provider-scan-key → brand label (providers.js display names). The rail keys
+// are the /api/models fetch keys ("openai", "xai", …); some differ from the
+// PROVIDER_NAMES slugs ("xai" vs "x-ai"). Map each to the canonical brand label
+// (OpenAI, xAI, OpenRouter, Ollama, …) so casing comes from data, not CSS. ──
+const RAIL_SLUG_ALIAS: Record<Provider, string> = {
+  openai: "openai",
+  anthropic: "anthropic",
+  google: "google",
+  openrouter: "openrouter",
+  groq: "groq",
+  xai: "x-ai",
+  ollama: "ollama",
+};
+
+/** Brand-correct label for a provider-scan key (rail + header). */
+function providerRailLabel(p: Provider): string {
+  return providerDisplayName(RAIL_SLUG_ALIAS[p]);
+}
+
 // ── Provider-logo regex table (odysseus static/js/providers.js _PROVIDERS),
 // returning an SVG path-set keyed by a regex over the model id. Kept inline so
 // the model dot mirrors odysseus exactly without depending on @elizaos/ui's
@@ -348,6 +375,20 @@ function compareModels(a: ProviderModelRecord, b: ProviderModelRecord): number {
 /** Short display name: trailing path segment (odysseus displayName.split('/').pop()). */
 function shortName(name: string): string {
   return name.split("/").pop() || name;
+}
+
+// odysseus spinner.js `createLoadingRow`: a label + the whirlpool spinner, used
+// for list/empty-state loading. Upstream paints a canvas whirlpool that
+// self-stops once removed from the DOM; here the equivalent is a CSS-animated
+// ring that simply stops painting when React unmounts the node. Faithful to
+// `.lib-loading-row` (label + spinner side-by-side).
+function OdLoadingRow({ label }: { label: string }): ReactNode {
+  return (
+    <div className="od-loading-row">
+      <span>{label}</span>
+      <span className="od-whirlpool" aria-hidden="true" />
+    </div>
+  );
 }
 
 export function ModelsView({
@@ -711,8 +752,8 @@ export function ModelsView({
           ) : null}
           <span className="od-mem-stats">
             {hasModels
-              ? `${allModels.length} model${allModels.length === 1 ? "" : "s"} · ${provider}`
-              : provider}
+              ? `${allModels.length} model${allModels.length === 1 ? "" : "s"} · ${providerRailLabel(provider)}`
+              : providerRailLabel(provider)}
           </span>
         </div>
 
@@ -736,7 +777,9 @@ export function ModelsView({
                     loadProvider(p);
                   }}
                 >
-                  <span className="od-models-provider-name">{p}</span>
+                  <span className="od-models-provider-name">
+                    {providerRailLabel(p)}
+                  </span>
                   {count !== null ? (
                     <span className="od-models-provider-count">{count}</span>
                   ) : null}
@@ -796,13 +839,13 @@ export function ModelsView({
 
             <div className="od-models-scroll">
               {isLoading ? (
-                <div className="od-models-empty-state">
-                  <span className="od-models-muted">Scanning {provider}…</span>
-                </div>
+                <OdLoadingRow
+                  label={`Scanning ${providerRailLabel(provider)}…`}
+                />
               ) : isErrored ? (
                 <div className="od-models-empty-state">
                   <span className="od-models-muted">
-                    Couldn't reach {provider}
+                    Couldn't reach {providerRailLabel(provider)}
                   </span>
                   <br />
                   <button
@@ -830,7 +873,8 @@ export function ModelsView({
                   <span className="od-models-muted">No models available</span>
                   <br />
                   <span className="od-models-muted-sm">
-                    Configure a {provider} API key in Settings to scan models.
+                    Configure a {providerRailLabel(provider)} API key in
+                    Settings to scan models.
                   </span>
                 </div>
               ) : q ? (

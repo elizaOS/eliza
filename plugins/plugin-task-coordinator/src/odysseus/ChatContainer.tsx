@@ -21,6 +21,7 @@ export function ChatContainer({
   onNewChat,
   onSearch,
   onOpenPanel,
+  onOpenModels,
 }: {
   title: string;
   conversation: ConversationBlock[];
@@ -37,6 +38,7 @@ export function ChatContainer({
   onOpenPanel: (
     panel: "theme" | "memory" | "skills" | "notes" | "settings",
   ) => void;
+  onOpenModels?: () => void;
 }): ReactNode {
   return (
     <main className="od-chat-container" aria-label="Chat area">
@@ -75,6 +77,7 @@ export function ChatContainer({
         onNewChat={onNewChat}
         onSearch={onSearch}
         onOpenPanel={onOpenPanel}
+        onOpenModels={onOpenModels}
       />
     </main>
   );

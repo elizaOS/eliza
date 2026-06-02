@@ -62,6 +62,34 @@ function effectColor(canvas: HTMLCanvasElement): string {
   );
 }
 
+// getComputedStyle forces a style recalc, so reading the theme color on every
+// requestAnimationFrame frame (~60x/sec) is wasteful for a decorative layer.
+// odysseus only changes --bg-effect-color when the theme/color-picker changes,
+// not per frame. We therefore re-resolve on a throttled cadence (and a manual
+// refresh fires on resize, which already runs on layout changes) so a live
+// color-picker drag still updates within a few frames without the recalc cost.
+const COLOR_REFRESH_FRAMES = 30;
+function makeColorReader(canvas: HTMLCanvasElement): {
+  read: () => string;
+  refresh: () => void;
+} {
+  let cached = effectColor(canvas);
+  let frames = 0;
+  return {
+    read() {
+      if (++frames >= COLOR_REFRESH_FRAMES) {
+        frames = 0;
+        cached = effectColor(canvas);
+      }
+      return cached;
+    },
+    refresh() {
+      frames = 0;
+      cached = effectColor(canvas);
+    },
+  };
+}
+
 // Verbatim port of odysseus theme.js _initSparkles.
 function runSparkles(canvas: HTMLCanvasElement): () => void {
   const ctx = canvas.getContext("2d");
@@ -85,12 +113,14 @@ function runSparkles(canvas: HTMLCanvasElement): () => void {
     speed: 0.015 + Math.random() * 0.03,
     life: 0.5 + Math.random() * 0.5,
   });
+  const color = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
     if (sparkles.length === 0)
       for (let i = 0; i < 35; i++) sparkles.push(makeSpark());
   };
@@ -120,7 +150,7 @@ function runSparkles(canvas: HTMLCanvasElement): () => void {
   const draw = () => {
     raf = requestAnimationFrame(draw);
     ctx.clearRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     for (const s of sparkles) {
       s.phase += s.speed;
       const twinkle = Math.sin(s.phase);
@@ -166,12 +196,14 @@ function runPetals(canvas: HTMLCanvasElement): () => void {
     driftSpeed: 0.008 + Math.random() * 0.012,
     wobble: 0.3 + Math.random() * 0.8,
   });
+  const color = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
     if (petals.length === 0)
       for (let i = 0; i < 30; i++) {
         const p = make();
@@ -185,7 +217,7 @@ function runPetals(canvas: HTMLCanvasElement): () => void {
   const draw = () => {
     raf = requestAnimationFrame(draw);
     ctx.clearRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     for (const p of petals) {
       p.y += p.vy;
       p.rot += p.vr;
@@ -246,12 +278,14 @@ function runRain(canvas: HTMLCanvasElement): () => void {
     alpha: number;
   }[] = [];
   const MAX_DROPS = 130;
+  const color = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
   };
   resize();
   window.addEventListener("resize", resize);
@@ -269,7 +303,7 @@ function runRain(canvas: HTMLCanvasElement): () => void {
   const draw = () => {
     raf = requestAnimationFrame(draw);
     ctx.clearRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     if (drops.length < MAX_DROPS && Math.random() < 0.6) spawn();
     for (let i = drops.length - 1; i >= 0; i--) {
       const d = drops[i];
@@ -328,12 +362,14 @@ function runConstellations(canvas: HTMLCanvasElement): () => void {
         phase: Math.random() * Math.PI * 2,
       });
   };
+  const color = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
     if (stars.length === 0) initStars();
   };
   resize();
@@ -348,7 +384,7 @@ function runConstellations(canvas: HTMLCanvasElement): () => void {
     raf = requestAnimationFrame(draw);
     t += 0.01;
     ctx.clearRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     for (const s of stars) {
       s.x += s.vx;
       s.y += s.vy;
@@ -419,12 +455,14 @@ function runEmbers(canvas: HTMLCanvasElement): () => void {
     wobble: Math.random() * Math.PI * 2,
     spark: false,
   });
+  const colorReader = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    colorReader.refresh();
     if (embers.length === 0)
       for (let i = 0; i < 60; i++) {
         const e = make();
@@ -442,7 +480,7 @@ function runEmbers(canvas: HTMLCanvasElement): () => void {
     ctx.fillStyle = "rgba(0,0,0,0.18)";
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = "lighter";
-    const color = effectColor(canvas);
+    const color = colorReader.read();
     for (let i = embers.length - 1; i >= 0; i--) {
       const e = embers[i];
       e.wobble += 0.03;
@@ -505,12 +543,14 @@ function runSynapse(canvas: HTMLCanvasElement): () => void {
   let cols = 0;
   let rows = 0;
   const pulses: { x: number; y: number; dx: number; dy: number }[] = [];
+  const color = makeColorReader(canvas);
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
     cols = Math.ceil(w / GRID);
     rows = Math.ceil(h / GRID);
   };
@@ -537,7 +577,7 @@ function runSynapse(canvas: HTMLCanvasElement): () => void {
   const draw = () => {
     raf = requestAnimationFrame(draw);
     ctx.clearRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     if (pulses.length < MAX_PULSES && Math.random() < 0.12) spawn();
     for (let i = pulses.length - 1; i >= 0; i--) {
       const p = pulses[i];
@@ -583,12 +623,37 @@ function runPerlin(canvas: HTMLCanvasElement): () => void {
   let h = 0;
   let t = 0;
   const particles: { x: number; y: number; life: number }[] = [];
+  const color = makeColorReader(canvas);
+  // Cache the parsed --bg fade rgba and only re-parse when the bg string
+  // actually changes — odysseus's _initPerlinFlow does exactly this
+  // (_cachedBg / _fadeStyle) so the per-frame path never touches the parser.
+  let cachedBg = "";
+  let fadeStyle = "rgba(40,44,52,0.02)";
+  let bgFrames = 0;
+  const fade = () => {
+    if (++bgFrames < COLOR_REFRESH_FRAMES && cachedBg) return fadeStyle;
+    bgFrames = 0;
+    const bg =
+      getComputedStyle(canvas).getPropertyValue("--bg").trim() || "#282c34";
+    if (bg === cachedBg) return fadeStyle;
+    cachedBg = bg;
+    const hh = bg.replace("#", "");
+    if (hh.length < 6) {
+      fadeStyle = "rgba(40,44,52,0.02)";
+    } else {
+      const n = Number.parseInt(hh.slice(0, 6), 16);
+      fadeStyle = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.02)`;
+    }
+    return fadeStyle;
+  };
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    color.refresh();
+    bgFrames = COLOR_REFRESH_FRAMES;
     if (particles.length === 0)
       for (let i = 0; i < 200; i++)
         particles.push({
@@ -599,20 +664,12 @@ function runPerlin(canvas: HTMLCanvasElement): () => void {
   };
   resize();
   window.addEventListener("resize", resize);
-  const fade = () => {
-    const bg =
-      getComputedStyle(canvas).getPropertyValue("--bg").trim() || "#282c34";
-    const hh = bg.replace("#", "");
-    if (hh.length < 6) return "rgba(40,44,52,0.02)";
-    const n = Number.parseInt(hh.slice(0, 6), 16);
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.02)`;
-  };
   let raf = 0;
   const draw = () => {
     raf = requestAnimationFrame(draw);
     ctx.fillStyle = fade();
     ctx.fillRect(0, 0, w, h);
-    const c = effectColor(canvas);
+    const c = color.read();
     for (const p of particles) {
       const angle =
         bgSmoothNoise(p.x * 0.004 + t * 0.0008, p.y * 0.004 + 100) *
@@ -663,5 +720,15 @@ export function BgEffect({ pattern }: { pattern: string }): ReactNode {
   }, [pattern]);
 
   if (!(pattern in ANIMATIONS)) return null;
-  return <canvas ref={ref} className="od-bg-canvas" aria-hidden="true" />;
+  // Decorative, pointer-events:none layer. tabIndex={-1} keeps it out of the
+  // tab order so aria-hidden is valid (odysseus hides it from assistive tech
+  // so screen readers don't announce an empty canvas).
+  return (
+    <canvas
+      ref={ref}
+      className="od-bg-canvas"
+      tabIndex={-1}
+      aria-hidden="true"
+    />
+  );
 }

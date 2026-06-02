@@ -222,21 +222,36 @@ export function VoiceView({
   };
 
   // Sample the analyser into the bar meter on each animation frame, exactly the
-  // role odysseus's recording-indicator waveform played.
+  // role odysseus's recording-indicator waveform played. Only the
+  // local-inference backend taps the mic stream and exposes an analyser; the
+  // browser SpeechRecognition fallback has no audio graph (getAnalyser() →
+  // null), so we let the loop die instead of spinning a no-op rAF every frame
+  // for the whole recording.
   const pumpWave = () => {
     const handle = captureRef.current;
     const analyser = handle ? handle.getAnalyser() : null;
-    if (analyser) {
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      const step = Math.max(1, Math.floor(data.length / WAVE_BARS));
-      const next: number[] = [];
-      for (let i = 0; i < WAVE_BARS; i += 1) {
-        const v = data[i * step];
-        next.push(Math.min(1, v / 255));
-      }
-      setLevels(next);
+    if (!analyser) {
+      rafRef.current = null;
+      return;
     }
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const step = Math.max(1, Math.floor(data.length / WAVE_BARS));
+    const next: number[] = [];
+    for (let i = 0; i < WAVE_BARS; i += 1) {
+      const v = data[i * step];
+      next.push(Math.min(1, v / 255));
+    }
+    setLevels(next);
+    rafRef.current = window.requestAnimationFrame(pumpWave);
+  };
+
+  // Kick the waveform loop only once an analyser is actually live. The analyser
+  // is created by the backend during start(), so we arm the loop after start()
+  // resolves; if the backend exposes no analyser (browser fallback) pumpWave
+  // bails on its first tick and the loop stays dead.
+  const armWave = () => {
+    if (rafRef.current !== null) return;
     rafRef.current = window.requestAnimationFrame(pumpWave);
   };
 
@@ -282,14 +297,21 @@ export function VoiceView({
     });
     captureRef.current = handle;
 
-    void handle.start().catch(() => {
-      // start() already surfaced the error via onStateChange("error", …).
-    });
+    void handle
+      .start()
+      .then(() => {
+        // The backend creates its analyser during start(); arm the waveform
+        // loop now that one may be live. pumpWave self-terminates on the first
+        // tick when the active backend exposes none (browser fallback).
+        armWave();
+      })
+      .catch(() => {
+        // start() already surfaced the error via onStateChange("error", …).
+      });
 
     timerRef.current = window.setInterval(() => {
       setElapsed((prev) => prev + 1);
     }, 1000);
-    rafRef.current = window.requestAnimationFrame(pumpWave);
   };
 
   const stopRecording = () => {

@@ -4,9 +4,11 @@
 // "Open signup" toggle, the user list with a per-user privilege panel — feature
 // toggles, a daily-message limit, and an allowed-models checkbox list — plus an
 // Add User form), the System tab (Data Backup export/import + a per-category
-// Danger Zone wipe list), and the Agent Tools tab (feature toggles + built-in
-// tool catalogue). 1:1 chrome: .admin-card / .admin-switch / .admin-user-row /
-// .admin-badge / .admin-btn-* mirror odysseus's DOM and CSS classes.
+// Danger Zone wipe list), and the Agent Tools tab (the single "Built-in Tools"
+// card whose body is a categorized, collapsible tool catalogue — admin.js
+// loadBuiltinTools() rendering #adm-builtin-tools-list, index.html ~line 2121).
+// 1:1 chrome: .admin-card / .admin-switch / .admin-user-row / .admin-badge /
+// .admin-btn-* / .admin-tool-* mirror odysseus's DOM and CSS classes.
 //
 // elizaMapping: odysseus's admin panel is backed by a multi-user auth server
 // (GET/POST /api/auth/users, /api/auth/status, /api/auth/signup-toggle,
@@ -28,6 +30,7 @@
 import type { ProviderModelRecord } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import {
+  ChevronDown,
   Database,
   Download,
   Settings as SettingsIcon,
@@ -70,17 +73,264 @@ const PRIV_LABELS: ReadonlyArray<readonly [string, string]> = [
   ["can_manage_memory", "Memory & skills"],
 ];
 
-// odysseus admin.js featureLabels — the instance-wide feature toggles (Agent
-// Tools tab). 1:1 from the source map.
-const FEATURE_LABELS: ReadonlyArray<readonly [string, string]> = [
-  ["web_search", "Web Search"],
-  ["deep_research", "Deep Research"],
-  ["memory", "Memory"],
-  ["document_editor", "Document Editor"],
-  ["rag", "RAG Knowledge Base"],
-  ["sensitive_filter", "Sensitive Info Filter"],
-  ["gallery", "Gallery"],
+// odysseus admin.js TOOL_META — the built-in tool catalogue rendered into the
+// Agent Tools tab's single "Built-in Tools" card (loadBuiltinTools(), grouped
+// by `cat` in CATEGORY_ORDER). Each row is name + description + an approximate
+// context-token badge. This is static catalogue metadata describing odysseus's
+// tool surface — NOT fabricated runtime state — so the card reads exactly like
+// odysseus's while every toggle stays disabled until a /api/tools backend
+// exists to report and persist enabled/disabled state. (admin.js's dead
+// featureLabels/loadFeatures targeted #adm-featureToggles, which exists nowhere
+// in index.html, so it is intentionally omitted.)
+interface ToolMeta {
+  id: string;
+  name: string;
+  desc: string;
+  cat: string;
+  ctx: string;
+}
+
+const TOOL_META: readonly ToolMeta[] = [
+  {
+    id: "bash",
+    name: "Shell",
+    desc: "Execute bash commands",
+    cat: "Code",
+    ctx: "~200",
+  },
+  {
+    id: "python",
+    name: "Python",
+    desc: "Run Python scripts",
+    cat: "Code",
+    ctx: "~200",
+  },
+  {
+    id: "read_file",
+    name: "Read File",
+    desc: "Read files from disk",
+    cat: "Code",
+    ctx: "~150",
+  },
+  {
+    id: "write_file",
+    name: "Write File",
+    desc: "Write/create files",
+    cat: "Code",
+    ctx: "~150",
+  },
+  {
+    id: "web_search",
+    name: "Web Search",
+    desc: "Search the web via SearXNG",
+    cat: "Search",
+    ctx: "~300",
+  },
+  {
+    id: "search_chats",
+    name: "Search Chats",
+    desc: "Search conversation history",
+    cat: "Search",
+    ctx: "~150",
+  },
+  {
+    id: "create_document",
+    name: "Create Document",
+    desc: "Create new documents",
+    cat: "Documents",
+    ctx: "~200",
+  },
+  {
+    id: "update_document",
+    name: "Update Document",
+    desc: "Modify existing documents",
+    cat: "Documents",
+    ctx: "~200",
+  },
+  {
+    id: "edit_document",
+    name: "Edit Document",
+    desc: "Find & replace in documents",
+    cat: "Documents",
+    ctx: "~200",
+  },
+  {
+    id: "suggest_document",
+    name: "Suggest Changes",
+    desc: "Propose document edits",
+    cat: "Documents",
+    ctx: "~200",
+  },
+  {
+    id: "manage_documents",
+    name: "Manage Documents",
+    desc: "List, delete, organize docs",
+    cat: "Documents",
+    ctx: "~150",
+  },
+  {
+    id: "generate_image",
+    name: "Generate Image",
+    desc: "Create images via AI",
+    cat: "Media",
+    ctx: "~150",
+  },
+  {
+    id: "manage_memory",
+    name: "Memory",
+    desc: "Save and recall memories",
+    cat: "Knowledge",
+    ctx: "~200",
+  },
+  {
+    id: "manage_skills",
+    name: "Skills",
+    desc: "Learn and use procedures",
+    cat: "Knowledge",
+    ctx: "~200",
+  },
+  {
+    id: "manage_rag",
+    name: "RAG / Docs",
+    desc: "Query indexed documents",
+    cat: "Knowledge",
+    ctx: "~150",
+  },
+  {
+    id: "chat_with_model",
+    name: "Chat with Model",
+    desc: "Talk to another AI model",
+    cat: "Multi-Agent",
+    ctx: "~200",
+  },
+  {
+    id: "second_opinion",
+    name: "Second Opinion",
+    desc: "Get another model's take",
+    cat: "Multi-Agent",
+    ctx: "~150",
+  },
+  {
+    id: "pipeline",
+    name: "Pipeline",
+    desc: "Multi-step AI workflows",
+    cat: "Multi-Agent",
+    ctx: "~200",
+  },
+  {
+    id: "ask_teacher",
+    name: "Ask Teacher",
+    desc: "Query a more capable model",
+    cat: "Multi-Agent",
+    ctx: "~150",
+  },
+  {
+    id: "send_to_session",
+    name: "Send to Session",
+    desc: "Send message to another chat",
+    cat: "Sessions",
+    ctx: "~100",
+  },
+  {
+    id: "create_session",
+    name: "Create Session",
+    desc: "Start a new chat session",
+    cat: "Sessions",
+    ctx: "~100",
+  },
+  {
+    id: "list_sessions",
+    name: "List Sessions",
+    desc: "Browse existing sessions",
+    cat: "Sessions",
+    ctx: "~100",
+  },
+  {
+    id: "manage_session",
+    name: "Manage Session",
+    desc: "Rename, archive, configure",
+    cat: "Sessions",
+    ctx: "~100",
+  },
+  {
+    id: "list_models",
+    name: "List Models",
+    desc: "Show available models",
+    cat: "System",
+    ctx: "~100",
+  },
+  {
+    id: "ui_control",
+    name: "UI Control",
+    desc: "Change theme, layout, settings",
+    cat: "System",
+    ctx: "~150",
+  },
+  {
+    id: "manage_tasks",
+    name: "Tasks",
+    desc: "Schedule automated tasks",
+    cat: "System",
+    ctx: "~150",
+  },
+  {
+    id: "api_call",
+    name: "API Call",
+    desc: "Make HTTP requests",
+    cat: "System",
+    ctx: "~200",
+  },
+  {
+    id: "manage_endpoints",
+    name: "Endpoints",
+    desc: "Add/remove model endpoints",
+    cat: "System",
+    ctx: "~100",
+  },
+  {
+    id: "manage_mcp",
+    name: "MCP Servers",
+    desc: "Manage MCP connections",
+    cat: "System",
+    ctx: "~100",
+  },
+  {
+    id: "manage_webhooks",
+    name: "Webhooks",
+    desc: "Configure webhook events",
+    cat: "System",
+    ctx: "~100",
+  },
+  {
+    id: "manage_tokens",
+    name: "API Tokens",
+    desc: "Manage API access tokens",
+    cat: "System",
+    ctx: "~100",
+  },
+  {
+    id: "manage_settings",
+    name: "Settings",
+    desc: "Change app settings",
+    cat: "System",
+    ctx: "~100",
+  },
 ];
+
+// admin.js loadBuiltinTools() catOrder — the category render order. "Other" is
+// odysseus's catch-all for tools without TOOL_META; no catalogue rows fall into
+// it here, so it renders only if the list ever gains an unknown tool.
+const CATEGORY_ORDER = [
+  "Code",
+  "Search",
+  "Documents",
+  "Media",
+  "Knowledge",
+  "Multi-Agent",
+  "Sessions",
+  "System",
+  "Other",
+] as const;
 
 // odysseus index.html Danger Zone rows (data-wipe-kind + label + sub). 1:1.
 interface WipeRow {
@@ -193,7 +443,7 @@ export function AdminView({
 
   return (
     <div
-      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
+      className={`od-search-overlay od-admin-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Admin"
@@ -485,27 +735,109 @@ function UserRow({
   );
 }
 
+// odysseus Agent Tools tab — the single "Built-in Tools" card whose body is the
+// categorized, collapsible catalogue (admin.js loadBuiltinTools, index.html
+// #adm-builtin-tools-list). No eliza client method backs /api/tools (no
+// listTools/builtinTools on the @elizaos/ui client — see file header), so the
+// catalogue renders the real odysseus tool surface with every toggle disabled:
+// the chrome (category groups, count badges, collapsible bodies, per-tool rows
+// with a context-token badge) is pixel-exact and lights up the moment such a
+// backend exists, but no enabled/disabled runtime state is fabricated.
 function ToolsTab(): ReactNode {
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    // odysseus renders every category body with the `hidden` class — collapsed
+    // by default. Start every catalogue category collapsed to match.
+    () => new Set(CATEGORY_ORDER),
+  );
+
+  const categories = useMemo(
+    () =>
+      CATEGORY_ORDER.map((cat) => ({
+        cat,
+        tools: TOOL_META.filter((t) => t.cat === cat),
+      })).filter((g) => g.tools.length > 0),
+    [],
+  );
+
+  const toggleCategory = (cat: string): void => {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
   return (
     <div className="od-admin-card">
       <h2 className="od-admin-card-title">
         <Wrench size={14} aria-hidden="true" />
-        Instance Features
+        Built-in Tools
       </h2>
       <div className="od-admin-toggle-sub">
-        Enable or disable instance-wide features available to agents. Requires
-        an auth backend to persist.
+        Enable or disable tools available to the AI agent.
       </div>
-      <div className="od-admin-feature-list">
-        {FEATURE_LABELS.map(([key, label]) => (
-          <div className="od-admin-toggle-row od-admin-feature-row" key={key}>
-            <div className="od-admin-toggle-label">{label}</div>
-            <label className="od-admin-switch">
-              <input type="checkbox" disabled />
-              <span className="od-admin-slider" />
-            </label>
-          </div>
-        ))}
+      <div className="od-admin-tool-list">
+        {categories.length === 0 ? (
+          <div className="od-admin-empty">No tools found</div>
+        ) : (
+          categories.map(({ cat, tools }) => {
+            const isOpen = !collapsed.has(cat);
+            return (
+              <div className="od-admin-tool-category" key={cat}>
+                <button
+                  type="button"
+                  className="od-admin-tool-cat-header"
+                  aria-expanded={isOpen}
+                  onClick={() => toggleCategory(cat)}
+                >
+                  <span>{cat}</span>
+                  <span className="od-admin-tool-cat-right">
+                    {/* No backend reports enabled state, so the count reflects
+                        the catalogue size (every tool shown, none togglable). */}
+                    <span className="od-admin-tool-cat-count">
+                      {tools.length}/{tools.length}
+                    </span>
+                    <span
+                      className="od-admin-switch"
+                      title="Requires a tools backend"
+                    >
+                      <input type="checkbox" disabled />
+                      <span className="od-admin-slider" />
+                    </span>
+                    <ChevronDown
+                      size={12}
+                      aria-hidden="true"
+                      className={`od-admin-tool-cat-chevron${isOpen ? " open" : ""}`}
+                    />
+                  </span>
+                </button>
+                {isOpen ? (
+                  <div className="od-admin-tool-cat-body">
+                    {tools.map((t) => (
+                      <div className="od-admin-tool-row" key={t.id}>
+                        <div className="od-admin-tool-info">
+                          <span className="od-admin-tool-name">{t.name}</span>
+                          <span className="od-admin-tool-desc">{t.desc}</span>
+                        </div>
+                        <span
+                          className="od-admin-tool-ctx"
+                          title="Approximate context tokens used"
+                        >
+                          {t.ctx}
+                        </span>
+                        <label className="od-admin-switch">
+                          <input type="checkbox" disabled />
+                          <span className="od-admin-slider" />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

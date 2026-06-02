@@ -1,9 +1,9 @@
 // odysseus Settings panel (static/js/settings.js + search.js, settings-modal
 // rules in style.css). Tabbed surface — General / Web Search / Models / Persona
-// / Appearance — pinned to the TOP of the chat area (Issue #208: a centered
-// window jumps up and down between tabs whose content height differs, so we use
-// a fixed-height panel anchored to flex-start so the rail and window never
-// shift between tab switches).
+// / Appearance / Shortcuts — pinned to the TOP of the chat area (Issue #208: a
+// centered window jumps up and down between tabs whose content height differs,
+// so we use a fixed-height panel anchored to flex-start so the rail and window
+// never shift between tab switches).
 //
 // elizaMapping — real eliza wiring where the @elizaos/ui `client` exposes it,
 // honest local state where it does NOT:
@@ -11,7 +11,8 @@
 //   • Models  — installed plugins via client.getPlugins(); model-category
 //     plugins are surfaced as the "model chain" stand-in (eliza owns the model
 //     map; there is no per-endpoint model picker to wire here, so we render the
-//     real plugin list rather than fabricate odysseus's endpoint editor).
+//     real plugin list rather than fabricate odysseus's endpoint editor — see
+//     deferred note below).
 //   • Persona (odysseus +56 renamed "Character" → "Persona") — real
 //     client.getCharacter() / updateCharacter(CharacterData): name, bio, system
 //     prompt, adjectives, topics. Saved through the live agent config.
@@ -19,15 +20,28 @@
 //     serve controls are odysseus's /api/auth/settings surface, which eliza's
 //     client does NOT expose. Rather than invent a client method (tsgo would
 //     fail) or fake a backend, these persist locally via readPref/writePref
-//     under PREF_KEYS.searchSettings, with an honest note that they're a
-//     local preference until an eliza search-config endpoint exists.
-//   • Appearance — mirrors the live theme/font/density prefs (PREF_KEYS) that
-//     OdysseusShell owns. Read-only here (the shell is the single writer) so the
-//     two surfaces never desync; deep-links the user to the shell's theme rail.
+//     under SEARCH_SETTINGS_KEY, with an honest note that they're a local
+//     preference until an eliza search-config endpoint exists.
+//   • Appearance — odysseus's appearance panel (settings.js initAppearance +
+//     index.html data-settings-panel="appearance") is a pure-frontend UI
+//     VISIBILITY editor: per-element show/hide switches grouped Sidebar / Chat
+//     Area, plus a Reset All. odysseus persists them in localStorage
+//     ('odysseus-ui-visibility') and applies them via window.applyUIVis. We
+//     port that faithfully — the toggle set is scoped to the elements this
+//     clone's shell actually renders (the IconRail tools + sidebar pieces),
+//     persisted under UI_VIS_KEY and broadcast via an OdysseusUiVisEvent so the
+//     shell can hide/show the matching elements. The live theme/font/density
+//     prefs stay owned by the shell's theme rail (a small read-only summary +
+//     deep-link, since odysseus keeps those in the separate Theme tool).
+//   • Shortcuts — odysseus's keyboard-shortcuts panel (keyboard-shortcuts.js
+//     _defaultKeybinds + settings.js initShortcuts) is fully client-side. We
+//     port the rebindable list; odysseus persists via /api/auth/settings
+//     (absent in eliza), so keybinds persist locally under KEYBINDS_KEY and are
+//     broadcast via an OdysseusKeybindEvent for the shell's global key handler.
 
 import type { CharacterData, McpServerStatus, PluginInfo } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
@@ -46,7 +60,8 @@ type SettingsTab =
   | "web-search"
   | "models"
   | "persona"
-  | "appearance";
+  | "appearance"
+  | "shortcuts";
 
 const TABS: ReadonlyArray<{ id: SettingsTab; label: string }> = [
   { id: "general", label: "General" },
@@ -54,6 +69,7 @@ const TABS: ReadonlyArray<{ id: SettingsTab; label: string }> = [
   { id: "models", label: "Models" },
   { id: "persona", label: "Persona" },
   { id: "appearance", label: "Appearance" },
+  { id: "shortcuts", label: "Shortcuts" },
 ];
 
 // ── Web-search providers (search.js _labels + settings.js _searchProviderHints
@@ -178,6 +194,211 @@ function textToList(text: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+// ── Appearance: UI-visibility editor (odysseus initAppearance / applyUIVis) ──
+// odysseus keys hide DOM elements by data-ui-key; we scope the set to the
+// elements THIS clone's shell renders (IconRail tools + sidebar pieces) so each
+// toggle maps to a real surface the integrator can hide. Default is visible.
+const UI_VIS_KEY = "ui-visibility";
+
+// Broadcast on every visibility change so OdysseusShell can hide/show the
+// matching elements without this panel importing the shell (one-way contract,
+// mirrors odysseus's window.applyUIVis). The shell reads UI_VIS_KEY on mount
+// and listens for this event.
+const UI_VIS_EVENT = "odysseus:ui-visibility-change";
+
+interface VisToggle {
+  key: string;
+  label: string;
+  hint?: string;
+}
+
+interface VisGroup {
+  title: string;
+  rows: readonly VisToggle[];
+}
+
+// Grouped exactly as odysseus (Sidebar / Chat Area), trimmed to the surfaces
+// the clone shell owns. Keys match the shell's data-ui-key contract.
+const VIS_GROUPS: readonly VisGroup[] = [
+  {
+    title: "Sidebar",
+    rows: [
+      { key: "sidebar-brand", label: "Brand", hint: "App name" },
+      { key: "sidebar-search", label: "Search" },
+      { key: "sidebar-new-chat", label: "New Chat" },
+      {
+        key: "sessions-section",
+        label: "Chats",
+        hint: "Session history list",
+      },
+    ],
+  },
+  {
+    title: "Tools",
+    rows: [
+      { key: "tool-memory", label: "Memory" },
+      { key: "tool-skills", label: "Skills" },
+      { key: "tool-notes", label: "Notes" },
+      { key: "tool-library", label: "Documents" },
+      { key: "tool-compare", label: "Compare" },
+      { key: "tool-research", label: "Deep Research" },
+      { key: "tool-calendar", label: "Calendar" },
+      { key: "tool-tasks", label: "Tasks" },
+      { key: "tool-models", label: "Models" },
+      { key: "tool-email", label: "Email" },
+      { key: "tool-gallery", label: "Gallery" },
+      { key: "tool-cookbook", label: "Cookbook" },
+      { key: "tool-group", label: "Group Chat" },
+      { key: "tool-editor", label: "Image Editor" },
+      { key: "tool-admin", label: "Admin" },
+      { key: "tool-voice", label: "Voice" },
+      { key: "tool-presets", label: "Presets" },
+      { key: "tool-theme", label: "Theme" },
+    ],
+  },
+  {
+    title: "Chat Area",
+    rows: [
+      {
+        key: "chat-meta",
+        label: "Session Header",
+        hint: "Model name & controls above chat",
+      },
+      {
+        key: "show-thinking",
+        label: "Thinking Process",
+        hint: "Show reasoning collapsibles",
+      },
+    ],
+  },
+];
+
+// A row is visible unless explicitly set false (odysseus default-on semantics).
+function isVisOn(state: Record<string, boolean>, key: string): boolean {
+  return state[key] !== false;
+}
+
+// ── Shortcuts: rebindable keybinds (odysseus keyboard-shortcuts.js) ──
+// odysseus persists via /api/auth/settings (absent in eliza); we persist
+// locally and broadcast so the shell's global key handler can pick up changes.
+const KEYBINDS_KEY = "keybinds";
+const KEYBIND_EVENT = "odysseus:keybinds-change";
+
+// odysseus _defaultKeybinds (keyboard-shortcuts.js). Open-tool combos are
+// unbound by default except Calendar; the panel lets the user assign them.
+const SHORTCUT_DEFAULTS: Readonly<Record<string, string>> = {
+  search: "ctrl+k",
+  toggle_sidebar: "ctrl+alt+b",
+  new_session: "ctrl+alt+n",
+  fav_session: "ctrl+alt+f",
+  delete_session: "ctrl+alt+d",
+  cancel: "escape",
+  settings: "ctrl+,",
+  focus_input: "ctrl+/",
+  open_calendar: "ctrl+alt+c",
+  open_compare: "",
+  open_cookbook: "",
+  open_research: "",
+  open_gallery: "",
+  open_library: "",
+  open_memory: "",
+  open_notes: "",
+  open_tasks: "",
+  open_theme: "",
+};
+
+const SHORTCUT_LABELS: Readonly<Record<string, string>> = {
+  search: "Search conversations",
+  toggle_sidebar: "Toggle sidebar",
+  new_session: "New session",
+  fav_session: "Favorite session",
+  delete_session: "Delete session",
+  cancel: "Cancel / close",
+  settings: "Toggle Settings",
+  focus_input: "Focus chat input",
+  open_calendar: "Open Calendar",
+  open_compare: "Open Compare",
+  open_cookbook: "Open Cookbook",
+  open_research: "Open Deep Research",
+  open_gallery: "Open Gallery",
+  open_library: "Open Library",
+  open_memory: "Open Memory",
+  open_notes: "Open Notes",
+  open_tasks: "Open Tasks",
+  open_theme: "Open Theme",
+};
+
+// odysseus SHORTCUT_CATEGORIES (settings.js), trimmed to bound actions.
+const SHORTCUT_CATEGORIES: ReadonlyArray<{
+  name: string;
+  keys: readonly string[];
+}> = [
+  {
+    name: "Navigation",
+    keys: ["search", "toggle_sidebar", "focus_input", "settings"],
+  },
+  { name: "Sessions", keys: ["new_session", "fav_session", "delete_session"] },
+  { name: "General", keys: ["cancel"] },
+  {
+    name: "Open Tools",
+    keys: [
+      "open_calendar",
+      "open_compare",
+      "open_cookbook",
+      "open_research",
+      "open_gallery",
+      "open_library",
+      "open_memory",
+      "open_notes",
+      "open_tasks",
+      "open_theme",
+    ],
+  },
+];
+
+// Render a combo as keycap chips (odysseus _formatKeyCaps).
+function formatKeyCaps(combo: string): readonly string[] {
+  return combo.split("+").map((p) => {
+    if (p === "ctrl") return "Ctrl";
+    if (p === "alt") return "Alt";
+    if (p === "shift") return "Shift";
+    if (p === "meta") return "Cmd";
+    if (p === "escape") return "Esc";
+    if (p === "space") return "Space";
+    return p.length === 1
+      ? p.toUpperCase()
+      : p.charAt(0).toUpperCase() + p.slice(1);
+  });
+}
+
+// Build a combo string from a keydown (odysseus _comboFromEvent). Returns ""
+// for modifier-only presses so they are never recorded as a binding.
+function comboFromEvent(e: KeyboardEvent): string {
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push("ctrl");
+  if (e.altKey) parts.push("alt");
+  if (e.shiftKey) parts.push("shift");
+  const key = e.key.toLowerCase();
+  if (!["control", "alt", "shift", "meta"].includes(key)) {
+    parts.push(key === " " ? "space" : key);
+  }
+  const combo = parts.join("+");
+  // Reject modifier-only combos (odysseus guard).
+  if (
+    combo === "" ||
+    combo === "ctrl" ||
+    combo === "alt" ||
+    combo === "shift" ||
+    combo === "ctrl+alt" ||
+    combo === "ctrl+shift" ||
+    combo === "alt+shift" ||
+    combo === "ctrl+alt+shift"
+  ) {
+    return "";
+  }
+  return combo;
+}
+
 export function SettingsPanel({
   open,
   onClose,
@@ -210,10 +431,17 @@ export function SettingsPanel({
   const [personaSaving, setPersonaSaving] = useState(false);
   const [personaMsg, setPersonaMsg] = useState("");
 
-  // Appearance — read-only mirror of the live shell prefs.
+  // Appearance — read-only mirror of the live shell theme prefs (Theme rail is
+  // the writer), plus the editable UI-visibility toggle set.
   const [themeMode, setThemeMode] = useState("dark");
   const [font, setFont] = useState("mono");
   const [density, setDensity] = useState("comfortable");
+  const [vis, setVis] = useState<Record<string, boolean>>({});
+
+  // Shortcuts — editable keybinds + the action currently being rebound.
+  const [keybinds, setKeybinds] =
+    useState<Record<string, string>>(SHORTCUT_DEFAULTS);
+  const [rebinding, setRebinding] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -250,7 +478,77 @@ export function SettingsPanel({
     setThemeMode(readPref<string>(PREF_KEYS.themeMode, "dark"));
     setFont(readPref<string>(PREF_KEYS.font, "mono"));
     setDensity(readPref<string>(PREF_KEYS.density, "comfortable"));
+
+    setVis(readPref<Record<string, boolean>>(UI_VIS_KEY, {}));
+    setKeybinds({
+      ...SHORTCUT_DEFAULTS,
+      ...readPref<Record<string, string>>(KEYBINDS_KEY, {}),
+    });
+    setRebinding(null);
   }, [open]);
+
+  // Capture-phase rebind listener — active only while a shortcut row is armed.
+  // Escape cancels; any other combo commits immediately (odysseus startRebind,
+  // simplified to a single capture since each row is its own button here).
+  useEffect(() => {
+    if (!rebinding) return;
+    const action = rebinding;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setRebinding(null);
+        return;
+      }
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      setKeybinds((prev) => {
+        const next = { ...prev, [action]: combo };
+        writePref(KEYBINDS_KEY, next);
+        window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
+        return next;
+      });
+      setRebinding(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [rebinding]);
+
+  const persistVis = useCallback((next: Record<string, boolean>) => {
+    setVis(next);
+    writePref(UI_VIS_KEY, next);
+    window.dispatchEvent(new CustomEvent(UI_VIS_EVENT, { detail: next }));
+  }, []);
+
+  const toggleVis = useCallback((key: string) => {
+    setVis((prev) => {
+      const next = { ...prev, [key]: !isVisOn(prev, key) };
+      writePref(UI_VIS_KEY, next);
+      window.dispatchEvent(new CustomEvent(UI_VIS_EVENT, { detail: next }));
+      return next;
+    });
+  }, []);
+
+  const resetVis = useCallback(() => {
+    persistVis({});
+  }, [persistVis]);
+
+  const resetKeybind = useCallback((action: string) => {
+    setKeybinds((prev) => {
+      const next = { ...prev, [action]: SHORTCUT_DEFAULTS[action] ?? "" };
+      writePref(KEYBINDS_KEY, next);
+      window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
+      return next;
+    });
+  }, []);
+
+  const resetAllKeybinds = useCallback(() => {
+    const next = { ...SHORTCUT_DEFAULTS };
+    setKeybinds(next);
+    setRebinding(null);
+    writePref(KEYBINDS_KEY, next);
+    window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
+  }, []);
 
   if (!open) return null;
 
@@ -621,6 +919,13 @@ export function SettingsPanel({
                     ))
                   )}
                 </div>
+                <div className="od-settings-note">
+                  This agent's model map (default / utility / vision endpoints
+                  and fallback chains) is owned by the eliza runtime, which does
+                  not expose a per-endpoint editor to this client — so providers
+                  are shown read-only rather than offering an editor that cannot
+                  persist.
+                </div>
               </div>
             ) : null}
 
@@ -739,7 +1044,7 @@ export function SettingsPanel({
             {tab === "appearance" ? (
               <div className="od-settings-section" role="tabpanel">
                 <div className="od-settings-card">
-                  <div className="od-settings-card-title">Appearance</div>
+                  <div className="od-settings-card-title">Theme</div>
                   <div className="od-settings-row">
                     <span className="od-settings-label">Theme</span>
                     <span className="od-settings-value">{themeMode}</span>
@@ -757,6 +1062,157 @@ export function SettingsPanel({
                     rail so changes preview instantly; this tab mirrors the
                     active values.
                   </div>
+                </div>
+
+                {VIS_GROUPS.map((group) => (
+                  <div className="od-settings-card" key={group.title}>
+                    <div className="od-settings-card-title">{group.title}</div>
+                    <div className="od-vis-toggles">
+                      {group.rows.map((row) => {
+                        const on = isVisOn(vis, row.key);
+                        return (
+                          <button
+                            type="button"
+                            key={row.key}
+                            className="od-vis-row"
+                            aria-pressed={on}
+                            onClick={() => toggleVis(row.key)}
+                          >
+                            <span className="od-vis-label">
+                              {row.label}
+                              {row.hint ? (
+                                <span className="od-vis-hint">{row.hint}</span>
+                              ) : null}
+                            </span>
+                            <span
+                              className={`od-vis-switch${on ? " on" : ""}`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="od-settings-actions od-vis-reset-row">
+                  <button
+                    type="button"
+                    className="od-settings-reset"
+                    onClick={resetVis}
+                  >
+                    Reset All
+                  </button>
+                </div>
+                <div className="od-settings-note">
+                  Show or hide shell elements. Stored as a local browser
+                  preference and applied live to the sidebar and tool rail.
+                </div>
+              </div>
+            ) : null}
+
+            {tab === "shortcuts" ? (
+              <div className="od-settings-section" role="tabpanel">
+                <div className="od-settings-card od-shortcut-head-card">
+                  <div>
+                    <div className="od-settings-card-title">
+                      Keyboard Shortcuts
+                    </div>
+                    <div className="od-settings-hint">
+                      Click a shortcut to rebind. Press Escape to cancel.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="od-settings-reset"
+                    onClick={resetAllKeybinds}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="od-settings-card">
+                  {(() => {
+                    // Highlight any combo bound to more than one action
+                    // (odysseus _findConflicts): a combo is in conflicts when a
+                    // second action with the same combo is seen.
+                    const seen = new Set<string>();
+                    const conflicts = new Set<string>();
+                    for (const combo of Object.values(keybinds)) {
+                      if (!combo) continue;
+                      if (seen.has(combo)) conflicts.add(combo);
+                      else seen.add(combo);
+                    }
+                    return SHORTCUT_CATEGORIES.map((cat) => (
+                      <div key={cat.name}>
+                        <div className="od-shortcut-category">{cat.name}</div>
+                        {cat.keys.map((action) => {
+                          const combo = keybinds[action] ?? "";
+                          const isCustom =
+                            combo !== (SHORTCUT_DEFAULTS[action] ?? "");
+                          const isListening = rebinding === action;
+                          const conflict =
+                            combo.length > 0 && conflicts.has(combo);
+                          return (
+                            <div
+                              key={action}
+                              className={`od-shortcut-row${conflict ? " conflict" : ""}`}
+                            >
+                              <span className="od-shortcut-label">
+                                {SHORTCUT_LABELS[action] ?? action}
+                                {conflict ? (
+                                  <span
+                                    className="od-shortcut-warn"
+                                    title="Duplicate shortcut"
+                                  >
+                                    !
+                                  </span>
+                                ) : null}
+                              </span>
+                              <div className="od-shortcut-controls">
+                                <button
+                                  type="button"
+                                  className={`od-shortcut-key${combo ? "" : " unset"}${isListening ? " listening" : ""}`}
+                                  title="Click to rebind"
+                                  onClick={() =>
+                                    setRebinding(isListening ? null : action)
+                                  }
+                                >
+                                  {isListening ? (
+                                    <span className="od-shortcut-listening">
+                                      Press keys…
+                                    </span>
+                                  ) : combo ? (
+                                    formatKeyCaps(combo).map((cap, i) => (
+                                      // biome-ignore lint/suspicious/noArrayIndexKey: keycaps are positional within a fixed combo
+                                      <kbd key={`${action}-${i}`}>{cap}</kbd>
+                                    ))
+                                  ) : (
+                                    <span className="od-shortcut-unset">
+                                      Set
+                                    </span>
+                                  )}
+                                </button>
+                                {isCustom ? (
+                                  <button
+                                    type="button"
+                                    className="od-shortcut-resetbtn"
+                                    title="Reset to default"
+                                    aria-label={`Reset ${SHORTCUT_LABELS[action] ?? action}`}
+                                    onClick={() => resetKeybind(action)}
+                                  >
+                                    ↩
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
+                </div>
+                <div className="od-settings-note">
+                  Stored as a local browser preference. The shell applies these
+                  bindings to its global key handler.
                 </div>
               </div>
             ) : null}

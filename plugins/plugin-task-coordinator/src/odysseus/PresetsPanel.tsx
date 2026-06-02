@@ -1,19 +1,33 @@
 // odysseus conversation presets (static/js/presets.js + .preset-* rules in
 // static/style.css). A library of tuned conversation "characters": each preset
-// carries a system prompt, a temperature, and a max-tokens cap. odysseus ships
-// five built-in personas (Socrates / Razor / Nietzsche / Spark / Odysseus) and
-// lets the user create / edit / save / activate / delete their own.
+// carries a system prompt, a temperature, a max-tokens cap, and inject
+// prefix/suffix text. odysseus ships five built-in personas (Socrates / Razor /
+// Nietzsche / Spark / Odysseus) and lets the user create / edit / save /
+// activate / delete their own.
+//
+// The custom-preset modal (index.html #custom-preset-modal) is tabbed:
+//   - Inject  — inject_prefix / inject_suffix + the temperature & max-tokens
+//               sliders (a "tuned plain chat", no persona),
+//   - Persona — name + system prompt (the character),
+//   - Group   — multi-model fan-out.
+// The Group tab is NOT ported here: group fan-out is its own surface
+// (GroupChatView) and has no backend in this panel, so a Group tab here would
+// be a dead control. The editor mirrors the Inject + Persona split faithfully.
 //
 // elizaMapping: odysseus persists presets server-side (/api/presets/templates)
-// and routes the active preset's system_prompt + sampling params into every
-// chat request. The orchestrator client has NO preset/persona store and the
-// agent's system prompt is owned by its character file — so there is nothing on
-// the server to write a preset to. The honest port keeps the FULL editor and
-// library as real LOCAL state the user genuinely creates (localStorage, the
-// CompareView COMPARE_VOTES_KEY pattern). The built-ins are read-only seeds;
-// user presets are editable and deletable; "Activate" marks one active and
-// persists the choice. A footer note states plainly that activation is local
-// until an eliza preset backend exists — no fabricated server effect is implied.
+// and routes the active preset's system_prompt + sampling params + inject text
+// into every chat request. The orchestrator client has NO preset/persona store
+// and the agent's system prompt is owned by its character file — so there is
+// nothing on the server to write a preset to. The honest port keeps the FULL
+// editor and library as real LOCAL state the user genuinely creates
+// (localStorage, the CompareView COMPARE_VOTES_KEY pattern). The built-ins are
+// read-only seeds; user presets are editable and deletable; "Activate" marks
+// one active and persists the choice. A footer note states plainly that
+// activation is local until an eliza preset backend exists — no fabricated
+// server effect is implied. Two odysseus controls are intentionally omitted
+// rather than faked: "Expand with AI" (POST /api/presets/expand) and "Create
+// Persistent Chat" (POST /api/session) both require server endpoints the
+// orchestrator does not expose, so shipping disabled stubs would be slop.
 
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -48,9 +62,25 @@ interface Preset {
   temperature: number;
   // Max output tokens; 0 means "No limit" (odysseus convention).
   maxTokens: number;
+  // Inject text wrapped around each user message (odysseus inject_prefix /
+  // inject_suffix). Empty string = no injection on that side.
+  injectPrefix: string;
+  injectSuffix: string;
   // Built-in seeds are read-only (can be activated, never edited/deleted).
   builtin: boolean;
   createdAt: number;
+}
+
+// Older stored user presets (saved before inject fields existed) lack the
+// inject_* keys. Normalize on load so the rest of the view can treat the inject
+// fields as always-present strings — no `?? ""` masking scattered through the
+// render path.
+function normalizePreset(raw: Preset): Preset {
+  return {
+    ...raw,
+    injectPrefix: typeof raw.injectPrefix === "string" ? raw.injectPrefix : "",
+    injectSuffix: typeof raw.injectSuffix === "string" ? raw.injectSuffix : "",
+  };
 }
 
 // odysseus's five built-in personas, ported 1:1 from presets.js PROMPT_TEMPLATES
@@ -62,6 +92,8 @@ const BUILTIN_PRESETS: Preset[] = [
     name: "Socrates",
     temperature: 0.9,
     maxTokens: 0,
+    injectPrefix: "",
+    injectSuffix: "",
     builtin: true,
     createdAt: 0,
     systemPrompt:
@@ -72,6 +104,8 @@ const BUILTIN_PRESETS: Preset[] = [
     name: "Razor",
     temperature: 0.4,
     maxTokens: 0,
+    injectPrefix: "",
+    injectSuffix: "",
     builtin: true,
     createdAt: 0,
     systemPrompt:
@@ -82,6 +116,8 @@ const BUILTIN_PRESETS: Preset[] = [
     name: "Nietzsche",
     temperature: 1.2,
     maxTokens: 0,
+    injectPrefix: "",
+    injectSuffix: "",
     builtin: true,
     createdAt: 0,
     systemPrompt:
@@ -92,6 +128,8 @@ const BUILTIN_PRESETS: Preset[] = [
     name: "Spark",
     temperature: 1.0,
     maxTokens: 0,
+    injectPrefix: "",
+    injectSuffix: "",
     builtin: true,
     createdAt: 0,
     systemPrompt:
@@ -102,6 +140,8 @@ const BUILTIN_PRESETS: Preset[] = [
     name: "Odysseus",
     temperature: 1.0,
     maxTokens: 0,
+    injectPrefix: "",
+    injectSuffix: "",
     builtin: true,
     createdAt: 0,
     systemPrompt:
@@ -130,6 +170,8 @@ interface DraftForm {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
+  injectPrefix: string;
+  injectSuffix: string;
 }
 
 const EMPTY_DRAFT: DraftForm = {
@@ -137,7 +179,14 @@ const EMPTY_DRAFT: DraftForm = {
   systemPrompt: "",
   temperature: DEFAULT_TEMPERATURE,
   maxTokens: 0,
+  injectPrefix: "",
+  injectSuffix: "",
 };
+
+// Editor tabs, mirroring the odysseus #custom-preset-modal tab strip (Inject /
+// Persona). "inject" carries the prefix/suffix + sampling sliders; "persona"
+// carries the name + system prompt.
+type EditorTab = "inject" | "persona";
 
 export function PresetsPanel({
   open,
@@ -153,11 +202,12 @@ export function PresetsPanel({
   // editorId: null = closed, "" = creating new, else editing an existing user
   // preset by id. Mirrors odysseus's char-template-select __default__ / saved.
   const [editorId, setEditorId] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<EditorTab>("inject");
   const [draft, setDraft] = useState<DraftForm>(EMPTY_DRAFT);
 
   useEffect(() => {
     if (!open) return;
-    setUserPresets(readPref<Preset[]>(PRESETS_KEY, []));
+    setUserPresets(readPref<Preset[]>(PRESETS_KEY, []).map(normalizePreset));
     setActiveId(readPref<string | null>(ACTIVE_PRESET_KEY, null));
   }, [open]);
 
@@ -190,6 +240,7 @@ export function PresetsPanel({
 
   const openCreate = () => {
     setDraft(EMPTY_DRAFT);
+    setEditorTab("inject");
     setEditorId("");
   };
 
@@ -199,7 +250,14 @@ export function PresetsPanel({
       systemPrompt: preset.systemPrompt,
       temperature: preset.temperature,
       maxTokens: preset.maxTokens,
+      injectPrefix: preset.injectPrefix,
+      injectSuffix: preset.injectSuffix,
     });
+    // Open on the Persona tab when the preset carries a name/prompt, else on
+    // the Inject tab — match where the preset's content actually lives.
+    setEditorTab(
+      preset.systemPrompt.trim() || preset.name.trim() ? "persona" : "inject",
+    );
     setEditorId(preset.id);
   };
 
@@ -217,6 +275,8 @@ export function PresetsPanel({
       TEMP_MIN,
       Math.min(TEMP_MAX, draft.temperature),
     );
+    const injectPrefix = draft.injectPrefix.trim();
+    const injectSuffix = draft.injectSuffix.trim();
     if (editorId) {
       // Editing an existing user preset in place.
       persistUser(
@@ -228,6 +288,8 @@ export function PresetsPanel({
                 systemPrompt: draft.systemPrompt,
                 temperature,
                 maxTokens: draft.maxTokens,
+                injectPrefix,
+                injectSuffix,
               }
             : p,
         ),
@@ -241,6 +303,8 @@ export function PresetsPanel({
           systemPrompt: draft.systemPrompt,
           temperature,
           maxTokens: draft.maxTokens,
+          injectPrefix,
+          injectSuffix,
           builtin: false,
           createdAt: Date.now(),
         },
@@ -330,6 +394,14 @@ export function PresetsPanel({
                         <span>temp {preset.temperature.toFixed(1)}</span>
                         <span>·</span>
                         <span>{formatTokens(preset.maxTokens)} tokens</span>
+                        {preset.injectPrefix || preset.injectSuffix ? (
+                          <>
+                            <span>·</span>
+                            <span className="od-preset-meta-inject">
+                              inject
+                            </span>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                     <div className="od-preset-actions">
@@ -373,7 +445,8 @@ export function PresetsPanel({
             <div className="od-preset-foot">
               Presets are saved in this browser. Activation is local — the
               orchestrator agent has no preset backend yet, so the active
-              preset's prompt and sampling are not sent to the model.
+              preset's prompt, inject text, and sampling are not sent to the
+              model.
             </div>
           </>
         ) : (
@@ -394,85 +467,151 @@ export function PresetsPanel({
               />
             </div>
 
-            <div className="od-preset-field">
-              <div className="od-preset-slider-row">
-                <label
-                  className="od-preset-label"
-                  htmlFor="od-preset-temperature"
-                >
-                  Temperature
-                </label>
-                <span className="od-preset-slider-value">
-                  {draft.temperature.toFixed(1)}
-                </span>
-              </div>
-              <input
-                id="od-preset-temperature"
-                className="od-preset-range"
-                type="range"
-                min={TEMP_MIN}
-                max={TEMP_MAX}
-                step={TEMP_STEP}
-                value={draft.temperature}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    temperature: Number.parseFloat(e.target.value),
-                  }))
-                }
-                aria-label="Temperature"
-              />
-              <div className="od-preset-temp-hints">
-                <span>Precise</span>
-                <span>Balanced</span>
-                <span>Creative</span>
-              </div>
+            <div className="od-preset-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={editorTab === "inject"}
+                className={`od-preset-tab${editorTab === "inject" ? " active" : ""}`}
+                onClick={() => setEditorTab("inject")}
+              >
+                Inject
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={editorTab === "persona"}
+                className={`od-preset-tab${editorTab === "persona" ? " active" : ""}`}
+                onClick={() => setEditorTab("persona")}
+              >
+                Persona
+              </button>
             </div>
 
-            <div className="od-preset-field">
-              <div className="od-preset-slider-row">
-                <label className="od-preset-label" htmlFor="od-preset-tokens">
-                  Max tokens
-                </label>
-                <span className="od-preset-slider-value">
-                  {formatTokens(draft.maxTokens)}
-                </span>
-              </div>
-              <input
-                id="od-preset-tokens"
-                className="od-preset-range"
-                type="range"
-                min={TOKENS_MIN}
-                max={TOKENS_MAX}
-                step={TOKENS_STEP}
-                value={tokensToSlider(draft.maxTokens)}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    maxTokens: sliderToStored(
-                      Number.parseInt(e.target.value, 10),
-                    ),
-                  }))
-                }
-                aria-label="Max tokens"
-              />
-            </div>
+            {editorTab === "inject" ? (
+              <>
+                <div className="od-preset-field">
+                  <label
+                    className="od-preset-label"
+                    htmlFor="od-preset-inject-prefix"
+                  >
+                    Prefix
+                  </label>
+                  <textarea
+                    id="od-preset-inject-prefix"
+                    className="od-preset-textarea od-preset-inject-area"
+                    value={draft.injectPrefix}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, injectPrefix: e.target.value }))
+                    }
+                    placeholder="Added before your message"
+                    aria-label="Inject prefix"
+                  />
+                </div>
 
-            <div className="od-preset-field">
-              <label className="od-preset-label" htmlFor="od-preset-prompt">
-                System prompt
-              </label>
-              <textarea
-                id="od-preset-prompt"
-                className="od-preset-textarea"
-                value={draft.systemPrompt}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, systemPrompt: e.target.value }))
-                }
-                placeholder="Describe how the assistant should think and respond…"
-                aria-label="System prompt"
-              />
-            </div>
+                <div className="od-preset-field">
+                  <label
+                    className="od-preset-label"
+                    htmlFor="od-preset-inject-suffix"
+                  >
+                    Suffix
+                  </label>
+                  <textarea
+                    id="od-preset-inject-suffix"
+                    className="od-preset-textarea od-preset-inject-area"
+                    value={draft.injectSuffix}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, injectSuffix: e.target.value }))
+                    }
+                    placeholder="Added after your message"
+                    aria-label="Inject suffix"
+                  />
+                </div>
+
+                <div className="od-preset-field">
+                  <div className="od-preset-slider-row">
+                    <label
+                      className="od-preset-label"
+                      htmlFor="od-preset-temperature"
+                    >
+                      Temperature
+                    </label>
+                    <span className="od-preset-slider-value">
+                      {draft.temperature.toFixed(1)}
+                    </span>
+                  </div>
+                  <input
+                    id="od-preset-temperature"
+                    className="od-preset-range"
+                    type="range"
+                    min={TEMP_MIN}
+                    max={TEMP_MAX}
+                    step={TEMP_STEP}
+                    value={draft.temperature}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        temperature: Number.parseFloat(e.target.value),
+                      }))
+                    }
+                    aria-label="Temperature"
+                  />
+                  <div className="od-preset-temp-hints">
+                    <span>Precise</span>
+                    <span>Balanced</span>
+                    <span>Creative</span>
+                  </div>
+                </div>
+
+                <div className="od-preset-field">
+                  <div className="od-preset-slider-row">
+                    <label
+                      className="od-preset-label"
+                      htmlFor="od-preset-tokens"
+                    >
+                      Max tokens
+                    </label>
+                    <span className="od-preset-slider-value">
+                      {formatTokens(draft.maxTokens)}
+                    </span>
+                  </div>
+                  <input
+                    id="od-preset-tokens"
+                    className="od-preset-range"
+                    type="range"
+                    min={TOKENS_MIN}
+                    max={TOKENS_MAX}
+                    step={TOKENS_STEP}
+                    value={tokensToSlider(draft.maxTokens)}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        maxTokens: sliderToStored(
+                          Number.parseInt(e.target.value, 10),
+                        ),
+                      }))
+                    }
+                    aria-label="Max tokens"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="od-preset-field">
+                <label className="od-preset-label" htmlFor="od-preset-prompt">
+                  System prompt
+                </label>
+                <textarea
+                  id="od-preset-prompt"
+                  className="od-preset-textarea"
+                  value={draft.systemPrompt}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, systemPrompt: e.target.value }))
+                  }
+                  placeholder="Describe how the assistant should think and respond…"
+                  aria-label="System prompt"
+                />
+              </div>
+            )}
 
             <div className="od-preset-editor-foot">
               <button

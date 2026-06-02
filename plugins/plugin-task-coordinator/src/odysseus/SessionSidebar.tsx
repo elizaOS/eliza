@@ -2,32 +2,47 @@
 // chat), New Chat + Search actions, the Chats list mapped onto orchestrator
 // task threads with a hover ⋯ menu (Pin / Rename / Move to folder / Delete), a
 // bulk select-mode (checkbox + shift-range + bulk delete), collapsible FOLDERS,
-// and the user bar.
+// a collapsible section + sort picker, keyboard navigation, and drag-reorder.
 //
 // elizaMapping: thread data is the REAL orchestrator task list (props.threads).
 // Pin / rename / delete are the existing host callbacks (onTogglePin / onRename
 // / onDelete) — unchanged contract. Eliza task threads have no server-side
 // folder field (unlike odysseus sessions, which PATCH /api/session with a
-// `folder`), so folder ASSIGNMENTS and per-folder COLLAPSE state are persisted
-// client-side via util/storage (PREF_KEYS.sessionFolders / .sessionFolderState
-// / .sessionFolderRoster) — mirroring odysseus's loadFolderState/saveFolderState
-// while keeping the real thread rows untouched. No fabricated thread data.
+// `folder`), so folder ASSIGNMENTS, per-folder COLLAPSE state, the manual sort
+// ORDER, the active SORT MODE, and the Chats-section COLLAPSE are persisted
+// client-side via util/storage — mirroring odysseus's loadFolderState /
+// section-collapsed / odysseus-session-sort / session-order while keeping the
+// real thread rows untouched. No fabricated thread data.
+//
+// Faithful-to-odysseus mappings of session affordances onto thread fields:
+//   • type icon  ← thread.kind (chat / agent / research / group / fork)
+//   • activity dot ← thread.status + thread.paused (processing / done / failed)
+//   • sort modes  ← sessions.js _sortMode (active / newest / group / manual)
+//   • drag handle ← dragSort.js (pointer reorder, persisted manual order)
+// The odysseus "Tidy" AI auto-sort is intentionally NOT ported: it needs a
+// server LLM endpoint the orchestrator does not expose (see deferred notes).
 
 import type { CodingAgentTaskThread } from "@elizaos/ui";
 import {
+  ArrowUpDown,
+  Bot,
   Check,
   ChevronDown,
   ChevronRight,
   Folder,
   FolderPlus,
+  GitFork,
+  GripVertical,
   MessageSquare,
   MoreHorizontal,
   Pin,
   Plus,
   Search,
+  SearchCode,
   Settings,
   Star,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -44,19 +59,68 @@ import {
 import { readPref, writePref } from "./util/storage";
 
 // localStorage keys (added to PREF_KEYS — see integrationNotes). thread→folder
-// assignment map, the collapse state per folder, and the folder roster (so an
-// empty folder survives until explicitly deleted, matching odysseus where a
-// folder vanishes only when its last session leaves AND it is removed).
+// assignment map, the collapse state per folder, the folder roster (so an empty
+// folder survives until explicitly deleted, matching odysseus where a folder
+// vanishes only when its last session leaves AND it is removed), the manual
+// drag order, the active sort mode, and the Chats-section collapse.
 const FOLDERS_KEY = "session-folders";
 const FOLDER_STATE_KEY = "session-folder-state";
 const FOLDER_ROSTER_KEY = "session-folder-roster";
+const SORT_MODE_KEY = "session-sort";
+const MANUAL_ORDER_KEY = "session-order";
+const SECTION_COLLAPSED_KEY = "session-section-collapsed";
 
 // Sentinel folder name for the catch-all group rendered when real folders exist
 // (odysseus's "Unsorted" wrapper, keyed __unsorted__ in folder state).
 const UNFILED = "__unfiled__";
 
+// odysseus sessions.js _sortMode vocabulary. `null` (manual) is the default and
+// honours the user's drag order; the three explicit modes mirror the
+// #session-sort-dropdown options (index.html L715-L735).
+type SortMode = "active" | "newest" | "group" | null;
+const SORT_OPTIONS: { value: Exclude<SortMode, null>; label: string }[] = [
+  { value: "active", label: "Last Active" },
+  { value: "newest", label: "Newest First" },
+  { value: "group", label: "By Folder" },
+];
+
 type FolderAssignments = Record<string, string>;
 type FolderCollapse = Record<string, boolean>;
+
+// Activity-dot state derived from a thread's own status vocabulary, faithful to
+// odysseus's processing (.processing pulse) / done (.notify badge) semantics
+// (sessions.js L681-L696). Eliza thread statuses differ from session statuses,
+// so we map the orchestrator vocabulary directly rather than reuse STATUS_DOT.
+type ActivityState = "processing" | "done" | "failed" | null;
+function activityState(thread: CodingAgentTaskThread): ActivityState {
+  if (thread.paused) return null;
+  switch (thread.status) {
+    case "active":
+    case "validating":
+      return "processing";
+    case "done":
+      return "done";
+    case "failed":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+// Leading per-row type icon, varying by thread kind — mirrors odysseus's
+// session-icon block (sessions.js L268-L303). thread.kind is free-form on the
+// orchestrator, so we match the known kinds and fall back to the chat bubble.
+function TypeIcon({ kind }: { kind: string }): ReactNode {
+  const k = kind.toLowerCase();
+  if (k.includes("group"))
+    return <Users size={12} className="od-thread-type" />;
+  if (k.includes("fork"))
+    return <GitFork size={12} className="od-thread-type" />;
+  if (k.includes("research"))
+    return <SearchCode size={12} className="od-thread-type" />;
+  if (k.includes("agent")) return <Bot size={12} className="od-thread-type" />;
+  return <MessageSquare size={12} className="od-thread-type" />;
+}
 
 function ThreadRow({
   thread,
@@ -66,11 +130,16 @@ function ThreadRow({
   pinned,
   selectMode,
   selected,
+  draggable,
+  dragging,
+  dropBefore,
   folderNames,
   currentFolder,
+  rowRef,
   onSelect,
   onToggleSelect,
   onOpenMenu,
+  onCloseMenu,
   onStartRename,
   onCommitRename,
   onCancelRename,
@@ -78,6 +147,8 @@ function ThreadRow({
   onTogglePin,
   onMoveToFolder,
   onNewFolderWith,
+  onRowKeyDown,
+  onDragHandleDown,
 }: {
   thread: CodingAgentTaskThread;
   active: boolean;
@@ -86,11 +157,16 @@ function ThreadRow({
   pinned: boolean;
   selectMode: boolean;
   selected: boolean;
+  draggable: boolean;
+  dragging: boolean;
+  dropBefore: boolean;
   folderNames: string[];
   currentFolder: string | null;
+  rowRef: (el: HTMLButtonElement | null) => void;
   onSelect: (e: MouseEvent) => void;
   onToggleSelect: (e: MouseEvent) => void;
   onOpenMenu: () => void;
+  onCloseMenu: () => void;
   onStartRename: () => void;
   onCommitRename: (title: string) => void;
   onCancelRename: () => void;
@@ -98,16 +174,47 @@ function ThreadRow({
   onTogglePin: () => void;
   onMoveToFolder: (folder: string | null) => void;
   onNewFolderWith: () => void;
+  onRowKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  onDragHandleDown: (e: PointerEvent) => void;
 }): ReactNode {
   const [draft, setDraft] = useState(thread.title);
   const [folderSubOpen, setFolderSubOpen] = useState(false);
   const renameRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (editing) renameRef.current?.focus();
   }, [editing]);
   useEffect(() => {
     if (!menuOpen) setFolderSubOpen(false);
   }, [menuOpen]);
+
+  // Dismiss the ⋯ menu on an outside click or Escape (odysseus escMenuStack:
+  // outside-click + Escape both tear a transient menu down). The listeners are
+  // attached only while this row's menu is open and on the next tick so the
+  // opening click doesn't immediately close it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocPointer = (e: globalThis.PointerEvent) => {
+      const target = e.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      onCloseMenu();
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseMenu();
+      }
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onDocPointer, true);
+    }, 0);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", onDocPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [menuOpen, onCloseMenu]);
 
   if (editing) {
     const commit = () => {
@@ -132,8 +239,12 @@ function ThreadRow({
     );
   }
 
+  const activity = activityState(thread);
+
   return (
-    <div className={`od-thread-row${selected ? " od-row-selected" : ""}`}>
+    <div
+      className={`od-thread-row${selected ? " od-row-selected" : ""}${dragging ? " od-dragging" : ""}${dropBefore ? " od-drop-before" : ""}`}
+    >
       {selectMode ? (
         <button
           type="button"
@@ -147,18 +258,45 @@ function ThreadRow({
         >
           {selected ? "●" : "○"}
         </button>
+      ) : draggable ? (
+        <span
+          className="od-thread-drag"
+          title="Drag to reorder"
+          aria-hidden="true"
+          onPointerDown={onDragHandleDown}
+        >
+          <GripVertical size={11} />
+        </span>
       ) : null}
       <button
         type="button"
+        ref={rowRef}
         className={`od-list-item od-thread-main${active ? " active" : ""}`}
         onClick={selectMode ? onToggleSelect : onSelect}
+        onKeyDown={onRowKeyDown}
         title={thread.title}
+        data-thread-id={thread.id}
       >
+        <span className="od-thread-icon-wrap">
+          <TypeIcon kind={thread.kind} />
+          {activity ? (
+            <span
+              className={`od-thread-dot od-dot-${activity}`}
+              title={
+                activity === "processing"
+                  ? "Working"
+                  : activity === "done"
+                    ? "Completed"
+                    : "Failed"
+              }
+              aria-hidden="true"
+            />
+          ) : null}
+        </span>
         {pinned ? (
           <Star size={11} className="od-thread-pin-dot" fill="currentColor" />
         ) : null}
         <span className="od-grow">{thread.title}</span>
-        <span className="od-sub">{thread.status}</span>
       </button>
       {selectMode ? null : (
         <button
@@ -172,7 +310,7 @@ function ThreadRow({
         </button>
       )}
       {menuOpen && !selectMode ? (
-        <div className="od-thread-menu">
+        <div className="od-thread-menu" ref={menuRef}>
           <button type="button" onClick={onTogglePin}>
             <Pin size={13} />
             {pinned ? "Unpin" : "Pin"}
@@ -362,6 +500,20 @@ export function SessionSidebar({
     readPref<string[]>(FOLDER_ROSTER_KEY, []),
   );
 
+  // Active sort mode (odysseus _sortMode / odysseus-session-sort). null = the
+  // user's manual drag order. Section collapse (odysseus section-collapsed) and
+  // the persisted manual drag order (odysseus session-order).
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    readPref<SortMode>(SORT_MODE_KEY, null),
+  );
+  const [sortOpen, setSortOpen] = useState(false);
+  const [sectionCollapsed, setSectionCollapsed] = useState<boolean>(() =>
+    readPref<boolean>(SECTION_COLLAPSED_KEY, false),
+  );
+  const [manualOrder, setManualOrder] = useState<string[]>(() =>
+    readPref<string[]>(MANUAL_ORDER_KEY, []),
+  );
+
   // Bulk select mode (odysseus _selectMode). selectedIds + an anchor for
   // shift-range selection. lastIndex tracks the click anchor in the flat
   // visible order.
@@ -392,6 +544,21 @@ export function SessionSidebar({
     setRoster(next);
     writePref(FOLDER_ROSTER_KEY, next);
   }, []);
+  const persistSortMode = useCallback((next: SortMode) => {
+    setSortMode(next);
+    writePref(SORT_MODE_KEY, next);
+  }, []);
+  const persistManualOrder = useCallback((next: string[]) => {
+    setManualOrder(next);
+    writePref(MANUAL_ORDER_KEY, next);
+  }, []);
+  const toggleSection = useCallback(() => {
+    setSectionCollapsed((prev) => {
+      const next = !prev;
+      writePref(SECTION_COLLAPSED_KEY, next);
+      return next;
+    });
+  }, []);
 
   // Valid thread ids — prune any stale assignment whose thread is gone so
   // localStorage doesn't grow unbounded across the agent's lifetime.
@@ -408,16 +575,47 @@ export function SessionSidebar({
 
   const pinned = useMemo(() => new Set(pinnedIds), [pinnedIds]);
 
-  // Pinned threads float to the top, preserving their existing relative order;
-  // the server list is otherwise recency-ordered. A stable partition keeps the
-  // sort from reshuffling on every poll.
-  const ordered = useMemo(
-    () => [
-      ...threads.filter((t) => pinned.has(t.id)),
-      ...threads.filter((t) => !pinned.has(t.id)),
-    ],
-    [threads, pinned],
-  );
+  // Base order: when in manual sort, honour the persisted drag order (unknown
+  // ids — freshly-created threads — append in server order); otherwise the
+  // server recency order. Pinned threads always float to the top (odysseus
+  // starred-first), preserving relative order. A stable partition keeps the
+  // list from reshuffling on every poll.
+  const ordered = useMemo(() => {
+    let base: CodingAgentTaskThread[];
+    if (sortMode === null && manualOrder.length > 0) {
+      const rank = new Map(manualOrder.map((id, i) => [id, i]));
+      base = [...threads].sort((a, b) => {
+        const ra = rank.get(a.id);
+        const rb = rank.get(b.id);
+        if (ra === undefined && rb === undefined) return 0;
+        if (ra === undefined) return 1;
+        if (rb === undefined) return -1;
+        return ra - rb;
+      });
+    } else if (sortMode === "newest") {
+      base = [...threads].sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt),
+      );
+    } else if (sortMode === "active") {
+      // "Last Active" — by latest activity, falling back to updatedAt for rows
+      // with no recorded activity yet (odysseus last_message_at → updated_at).
+      base = [...threads].sort((a, b) => {
+        const av = a.latestActivityAt ?? Date.parse(a.updatedAt);
+        const bv = b.latestActivityAt ?? Date.parse(b.updatedAt);
+        return bv - av;
+      });
+    } else {
+      base = threads;
+    }
+    return [
+      ...base.filter((t) => pinned.has(t.id)),
+      ...base.filter((t) => !pinned.has(t.id)),
+    ];
+  }, [threads, pinned, sortMode, manualOrder]);
+
+  // Folders render only in manual mode and the explicit "By Folder" mode
+  // (odysseus: folders shown for _sortMode null or 'group', flat otherwise).
+  const showFolders = sortMode === null || sortMode === "group";
 
   // Folder names that should render: roster entries that still exist, plus any
   // folder referenced by a live assignment but missing from the roster (e.g.
@@ -441,7 +639,7 @@ export function SessionSidebar({
     const unfiled: CodingAgentTaskThread[] = [];
     for (const t of ordered) {
       const folder = assignments[t.id];
-      if (folder && byFolder.has(folder)) {
+      if (showFolders && folder && byFolder.has(folder)) {
         const arr = byFolder.get(folder);
         if (arr) arr.push(t);
       } else {
@@ -449,11 +647,13 @@ export function SessionSidebar({
       }
     }
     return { byFolder, unfiled };
-  }, [ordered, folderNames, assignments]);
+  }, [ordered, folderNames, assignments, showFolders]);
 
-  // Flat visible order (for shift-range selection): folders first (in roster
-  // order, only when expanded), then unfiled.
+  // Flat visible order (for shift-range selection + keyboard nav + drag): when
+  // folders render, folders first (in roster order, only when expanded), then
+  // unfiled; otherwise the plain ordered list.
   const flatOrder = useMemo(() => {
+    if (!showFolders) return ordered.map((t) => t.id);
     const flat: string[] = [];
     for (const name of folderNames) {
       if (collapse[name]) continue;
@@ -461,7 +661,19 @@ export function SessionSidebar({
     }
     for (const t of grouped.unfiled) flat.push(t.id);
     return flat;
-  }, [folderNames, collapse, grouped]);
+  }, [showFolders, ordered, folderNames, collapse, grouped]);
+
+  // Roving-focus refs for the session rows (odysseus _onSessionListKeydown
+  // moves focus + selects the next row). Keyed by thread id; the live set is
+  // rebuilt every render so stale rows drop out.
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const setRowRef = useCallback(
+    (id: string) => (el: HTMLButtonElement | null) => {
+      if (el) rowRefs.current.set(id, el);
+      else rowRefs.current.delete(id);
+    },
+    [],
+  );
 
   const exitSelectMode = useCallback(() => {
     setSelectMode(false);
@@ -470,7 +682,8 @@ export function SessionSidebar({
     setConfirmingBulkDelete(false);
   }, []);
 
-  // Escape exits select mode (odysseus parity).
+  // Escape exits select mode (odysseus parity). The sort dropdown handles its
+  // own Escape via the outside-click effect below.
   useEffect(() => {
     if (!selectMode) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -479,6 +692,34 @@ export function SessionSidebar({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectMode, exitSelectMode]);
+
+  // Sort dropdown dismissal (outside-click + Escape), mirroring odysseus's
+  // escMenuStack-managed dropdowns.
+  const sortWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDocPointer = (e: globalThis.PointerEvent) => {
+      const target = e.target;
+      if (target instanceof Node && sortWrapRef.current?.contains(target))
+        return;
+      setSortOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setSortOpen(false);
+      }
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onDocPointer, true);
+    }, 0);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", onDocPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [sortOpen]);
 
   const toggleSelect = useCallback(
     (id: string, shiftKey: boolean) => {
@@ -517,6 +758,125 @@ export function SessionSidebar({
     }
     exitSelectMode();
   }, [selectedIds, pinned, onDelete, exitSelectMode]);
+
+  // Keyboard navigation of the session list (odysseus _onSessionListKeydown):
+  // ArrowUp/Down move + select the adjacent row, Enter opens, Delete/Backspace
+  // deletes the focused row with the pinned guard. Roving focus follows.
+  const onRowKeyDown = useCallback(
+    (id: string) => (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const idx = flatOrder.indexOf(id);
+        if (idx < 0) return;
+        const nextId =
+          e.key === "ArrowDown" ? flatOrder[idx + 1] : flatOrder[idx - 1];
+        if (!nextId) return;
+        rowRefs.current.get(nextId)?.focus();
+        onSelect(nextId);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        onSelect(id);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        if (pinned.has(id)) return; // odysseus "Unfavorite before deleting"
+        const idx = flatOrder.indexOf(id);
+        const fallbackId = flatOrder[idx + 1] ?? flatOrder[idx - 1] ?? null;
+        onDelete(id);
+        if (fallbackId) rowRefs.current.get(fallbackId)?.focus();
+      }
+    },
+    [flatOrder, onSelect, onDelete, pinned],
+  );
+
+  // ── Drag reorder (odysseus dragSort.js). Pointer-based vertical reorder of
+  // the unfiled rows, persisted to the manual order; dragging snaps the list to
+  // manual sort (clears any active sort mode, like odysseus's Rearrange). Only
+  // unfiled rows reorder — in-folder ordering follows the folder's own list,
+  // and reordering inside a folder is not part of the eliza folder model. ──
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
+  const dragState = useRef<{
+    id: string;
+    pointerId: number;
+    order: string[];
+    rows: { id: string; mid: number }[];
+  } | null>(null);
+
+  const beginDrag = useCallback(
+    (id: string) => (e: PointerEvent) => {
+      if (selectMode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Drag operates on the unfiled list — the reorderable surface. Snapshot
+      // the current visible unfiled order so the drag is deterministic.
+      const order = grouped.unfiled.map((t) => t.id);
+      if (!order.includes(id)) return;
+      const rows: { id: string; mid: number }[] = [];
+      for (const tid of order) {
+        const el = rowRefs.current.get(tid);
+        if (el) {
+          const r = el.getBoundingClientRect();
+          rows.push({ id: tid, mid: r.top + r.height / 2 });
+        }
+      }
+      dragState.current = { id, pointerId: e.pointerId, order, rows };
+      setDragId(id);
+      const move = (ev: globalThis.PointerEvent) => {
+        const st = dragState.current;
+        if (!st || ev.pointerId !== st.pointerId) return;
+        let before: string | null = null;
+        for (const row of st.rows) {
+          if (row.id === st.id) continue;
+          if (ev.clientY < row.mid) {
+            before = row.id;
+            break;
+          }
+        }
+        setDropBeforeId(before === st.id ? null : before);
+      };
+      const up = (ev: globalThis.PointerEvent) => {
+        const st = dragState.current;
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        document.removeEventListener("pointercancel", up);
+        dragState.current = null;
+        setDragId(null);
+        setDropBeforeId(null);
+        if (!st || ev.pointerId !== st.pointerId) return;
+        // Resolve the drop target from the last hovered row.
+        let before: string | null = null;
+        for (const row of st.rows) {
+          if (row.id === st.id) continue;
+          if (ev.clientY < row.mid) {
+            before = row.id;
+            break;
+          }
+        }
+        const next = st.order.filter((x) => x !== st.id);
+        const at = before ? next.indexOf(before) : next.length;
+        next.splice(at < 0 ? next.length : at, 0, st.id);
+        if (next.join(" ") === st.order.join(" ")) return;
+        // Persist the full manual order: dragged unfiled list + any other
+        // threads (folder-assigned / not currently visible) appended in their
+        // existing relative order, so the saved order stays total.
+        const seen = new Set(next);
+        const tail = ordered.map((t) => t.id).filter((x) => !seen.has(x));
+        persistManualOrder([...next, ...tail]);
+        if (sortMode !== null) persistSortMode(null);
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+      document.addEventListener("pointercancel", up);
+    },
+    [
+      selectMode,
+      grouped,
+      ordered,
+      sortMode,
+      persistManualOrder,
+      persistSortMode,
+    ],
+  );
 
   const moveToFolder = useCallback(
     (threadId: string, folder: string | null) => {
@@ -615,7 +975,10 @@ export function SessionSidebar({
     persistCollapse,
   ]);
 
-  const renderThreadRow = (thread: CodingAgentTaskThread): ReactNode => (
+  const renderThreadRow = (
+    thread: CodingAgentTaskThread,
+    canDrag: boolean,
+  ): ReactNode => (
     <ThreadRow
       key={thread.id}
       thread={thread}
@@ -625,8 +988,12 @@ export function SessionSidebar({
       pinned={pinned.has(thread.id)}
       selectMode={selectMode}
       selected={selectedIds.has(thread.id)}
+      draggable={canDrag && !pinned.has(thread.id)}
+      dragging={dragId === thread.id}
+      dropBefore={dropBeforeId === thread.id}
       folderNames={folderNames}
       currentFolder={assignments[thread.id] ?? null}
+      rowRef={setRowRef(thread.id)}
       onTogglePin={() => {
         setMenuOpenId(null);
         onTogglePin(thread.id);
@@ -639,6 +1006,7 @@ export function SessionSidebar({
       onOpenMenu={() =>
         setMenuOpenId((prev) => (prev === thread.id ? null : thread.id))
       }
+      onCloseMenu={() => setMenuOpenId(null)}
       onStartRename={() => {
         setEditingId(thread.id);
         setMenuOpenId(null);
@@ -658,12 +1026,19 @@ export function SessionSidebar({
         setNewFolderFor(thread.id);
         setMenuOpenId(null);
       }}
+      onRowKeyDown={onRowKeyDown(thread.id)}
+      onDragHandleDown={beginDrag(thread.id)}
     />
   );
 
-  const hasFolders = folderNames.length > 0;
+  const hasFolders = showFolders && folderNames.length > 0;
   const selectableCount = flatOrder.length;
   const protectedSelected = [...selectedIds].some((id) => pinned.has(id));
+  // Unfiled rows reorder by drag only in manual mode (sortMode null), matching
+  // odysseus, where Rearrange is only meaningful against the manual order.
+  const canDragUnfiled = sortMode === null && !selectMode;
+  const activeSortLabel =
+    SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? "Manual";
 
   return (
     <nav className="od-sidebar" aria-label="Sidebar" style={{ width }}>
@@ -687,12 +1062,62 @@ export function SessionSidebar({
           <span className="od-grow">Search</span>
         </button>
 
-        <div className="od-section">
+        <div className={`od-section${sectionCollapsed ? " od-collapsed" : ""}`}>
           <div className="od-section-header-flex">
-            <span className="od-section-title">
+            <button
+              type="button"
+              className="od-section-title od-section-toggle"
+              onClick={toggleSection}
+              aria-expanded={!sectionCollapsed}
+              title={sectionCollapsed ? "Expand Chats" : "Collapse Chats"}
+            >
+              {sectionCollapsed ? (
+                <ChevronRight size={12} className="od-section-chevron" />
+              ) : (
+                <ChevronDown size={12} className="od-section-chevron" />
+              )}
               <MessageSquare size={13} />
               Chats
-            </span>
+            </button>
+            <div className="od-sort-wrap" ref={sortWrapRef}>
+              <button
+                type="button"
+                className={`od-section-icon-btn${sortMode !== null ? " active" : ""}`}
+                title={`Sort: ${activeSortLabel}`}
+                aria-label="Sort conversations"
+                aria-expanded={sortOpen}
+                onClick={() => setSortOpen((v) => !v)}
+              >
+                <ArrowUpDown size={13} />
+              </button>
+              {sortOpen ? (
+                <div className="od-sort-dropdown" role="menu">
+                  {SORT_OPTIONS.map((opt) => (
+                    <button
+                      type="button"
+                      key={opt.value}
+                      role="menuitemradio"
+                      aria-checked={sortMode === opt.value}
+                      className={`od-sort-option${sortMode === opt.value ? " od-cur" : ""}`}
+                      onClick={() => {
+                        // Toggle off → revert to manual (odysseus parity).
+                        persistSortMode(
+                          sortMode === opt.value ? null : opt.value,
+                        );
+                        setSortOpen(false);
+                      }}
+                    >
+                      {sortMode === opt.value ? (
+                        <Check size={12} />
+                      ) : (
+                        <span className="od-sort-check-spacer" />
+                      )}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="od-section-icon-btn"
@@ -723,151 +1148,155 @@ export function SessionSidebar({
             </button>
           </div>
 
-          {selectMode ? (
-            <div className="od-session-bulk-bar">
-              <button
-                type="button"
-                className="od-session-bulk-cb"
-                onClick={selectAll}
-                aria-label="Select all"
-                title="Select all"
-              >
-                {selectedIds.size > 0 && selectedIds.size === selectableCount
-                  ? "●"
-                  : "○"}
-              </button>
-              <span className="od-session-bulk-count">
-                {selectedIds.size} selected
-              </span>
-              {confirmingBulkDelete ? (
-                <>
+          <div className="od-section-body">
+            {selectMode ? (
+              <div className="od-session-bulk-bar">
+                <button
+                  type="button"
+                  className="od-session-bulk-cb"
+                  onClick={selectAll}
+                  aria-label="Select all"
+                  title="Select all"
+                >
+                  {selectedIds.size > 0 && selectedIds.size === selectableCount
+                    ? "●"
+                    : "○"}
+                </button>
+                <span className="od-session-bulk-count">
+                  {selectedIds.size} selected
+                </span>
+                {confirmingBulkDelete ? (
+                  <>
+                    <button
+                      type="button"
+                      className="od-session-bulk-btn od-danger"
+                      onClick={runBulkDelete}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      className="od-session-bulk-btn"
+                      onClick={() => setConfirmingBulkDelete(false)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
                     className="od-session-bulk-btn od-danger"
-                    onClick={runBulkDelete}
+                    disabled={selectedIds.size === 0}
+                    onClick={() => setConfirmingBulkDelete(true)}
+                    title={
+                      protectedSelected
+                        ? "Pinned conversations are skipped"
+                        : "Delete selected"
+                    }
                   >
-                    Confirm
+                    <Trash2 size={13} />
+                    Delete
                   </button>
-                  <button
-                    type="button"
-                    className="od-session-bulk-btn"
-                    onClick={() => setConfirmingBulkDelete(false)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
+                )}
                 <button
                   type="button"
-                  className="od-session-bulk-btn od-danger"
-                  disabled={selectedIds.size === 0}
-                  onClick={() => setConfirmingBulkDelete(true)}
-                  title={
-                    protectedSelected
-                      ? "Pinned conversations are skipped"
-                      : "Delete selected"
-                  }
+                  className="od-session-bulk-btn"
+                  onClick={exitSelectMode}
+                  aria-label="Close select mode"
+                  title="Done"
                 >
-                  <Trash2 size={13} />
-                  Delete
+                  <X size={13} />
                 </button>
-              )}
-              <button
-                type="button"
-                className="od-session-bulk-btn"
-                onClick={exitSelectMode}
-                aria-label="Close select mode"
-                title="Done"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {/* New-folder inline composer (odysseus styledPrompt replacement) */}
-          {newFolderFor !== null ? (
-            <input
-              ref={newFolderRef}
-              className="od-thread-rename od-folder-rename"
-              value={newFolderDraft}
-              placeholder="Folder name…"
-              onChange={(e) => setNewFolderDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitNewFolder();
-                else if (e.key === "Escape") {
-                  setNewFolderFor(null);
-                  setNewFolderDraft("");
-                }
-              }}
-              onBlur={commitNewFolder}
-              aria-label="New folder name"
-            />
-          ) : null}
+            {/* New-folder inline composer (odysseus styledPrompt replacement) */}
+            {newFolderFor !== null ? (
+              <input
+                ref={newFolderRef}
+                className="od-thread-rename od-folder-rename"
+                value={newFolderDraft}
+                placeholder="Folder name…"
+                onChange={(e) => setNewFolderDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitNewFolder();
+                  else if (e.key === "Escape") {
+                    setNewFolderFor(null);
+                    setNewFolderDraft("");
+                  }
+                }}
+                onBlur={commitNewFolder}
+                aria-label="New folder name"
+              />
+            ) : null}
 
-          {/* Folders first, then unfiled (odysseus group mode). */}
-          {hasFolders
-            ? folderNames.map((name) => {
-                const items = grouped.byFolder.get(name) ?? [];
-                const collapsed = Boolean(collapse[name]);
-                return (
-                  <div className="od-session-folder" key={name}>
-                    <FolderHeader
-                      name={name}
-                      label={name}
-                      count={items.length}
-                      collapsed={collapsed}
-                      deletable={true}
-                      editing={editingFolder === name}
-                      onToggle={() => toggleFolder(name)}
-                      onStartRename={() => setEditingFolder(name)}
-                      onCommitRename={(next) => renameFolder(name, next)}
-                      onCancelRename={() => setEditingFolder(null)}
-                      onDelete={() => deleteFolder(name)}
-                    />
-                    {collapsed ? null : (
-                      <div className="od-session-folder-content">
-                        {items.length === 0 ? (
-                          <div className="od-folder-empty">Empty</div>
-                        ) : (
-                          items.map(renderThreadRow)
-                        )}
-                      </div>
+            {/* Folders first, then unfiled (odysseus group/manual mode). */}
+            {hasFolders
+              ? folderNames.map((name) => {
+                  const items = grouped.byFolder.get(name) ?? [];
+                  const collapsed = Boolean(collapse[name]);
+                  return (
+                    <div className="od-session-folder" key={name}>
+                      <FolderHeader
+                        name={name}
+                        label={name}
+                        count={items.length}
+                        collapsed={collapsed}
+                        deletable={true}
+                        editing={editingFolder === name}
+                        onToggle={() => toggleFolder(name)}
+                        onStartRename={() => setEditingFolder(name)}
+                        onCommitRename={(next) => renameFolder(name, next)}
+                        onCancelRename={() => setEditingFolder(null)}
+                        onDelete={() => deleteFolder(name)}
+                      />
+                      {collapsed ? null : (
+                        <div className="od-session-folder-content">
+                          {items.length === 0 ? (
+                            <div className="od-folder-empty">Empty</div>
+                          ) : (
+                            items.map((t) => renderThreadRow(t, false))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : null}
+
+            {hasFolders && grouped.unfiled.length > 0 ? (
+              <div className="od-session-folder">
+                <FolderHeader
+                  name={UNFILED}
+                  label="Unsorted"
+                  count={grouped.unfiled.length}
+                  collapsed={Boolean(collapse[UNFILED])}
+                  deletable={false}
+                  editing={false}
+                  onToggle={() => toggleFolder(UNFILED)}
+                  onStartRename={() => undefined}
+                  onCommitRename={() => undefined}
+                  onCancelRename={() => undefined}
+                  onDelete={() => undefined}
+                />
+                {collapse[UNFILED] ? null : (
+                  <div className="od-session-folder-content">
+                    {grouped.unfiled.map((t) =>
+                      renderThreadRow(t, canDragUnfiled),
                     )}
                   </div>
-                );
-              })
-            : null}
+                )}
+              </div>
+            ) : (
+              grouped.unfiled.map((t) => renderThreadRow(t, canDragUnfiled))
+            )}
 
-          {hasFolders && grouped.unfiled.length > 0 ? (
-            <div className="od-session-folder">
-              <FolderHeader
-                name={UNFILED}
-                label="Unsorted"
-                count={grouped.unfiled.length}
-                collapsed={Boolean(collapse[UNFILED])}
-                deletable={false}
-                editing={false}
-                onToggle={() => toggleFolder(UNFILED)}
-                onStartRename={() => undefined}
-                onCommitRename={() => undefined}
-                onCancelRename={() => undefined}
-                onDelete={() => undefined}
-              />
-              {collapse[UNFILED] ? null : (
-                <div className="od-session-folder-content">
-                  {grouped.unfiled.map(renderThreadRow)}
-                </div>
-              )}
-            </div>
-          ) : (
-            grouped.unfiled.map(renderThreadRow)
-          )}
-
-          {threads.length === 0 ? (
-            <div className="od-folder-empty od-chats-empty">
-              No conversations yet
-            </div>
-          ) : null}
+            {threads.length === 0 ? (
+              <div className="od-folder-empty od-chats-empty">
+                No conversations yet
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
       <div className="od-sidebar-user-bar">

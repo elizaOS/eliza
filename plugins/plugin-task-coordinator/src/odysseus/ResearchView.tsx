@@ -9,7 +9,10 @@
 // research stream / report endpoint on the @elizaos/ui `client` singleton (the
 // odysseus version drives /api/research/* via fetch + EventSource). So this is a
 // pixel-exact clone of the FULL Deep Research surface that renders its honest
-// empty state by default ("No research yet …"); we never seed fabricated runs.
+// empty state by default — exactly like panel.js _renderJobs with zero jobs:
+// the query box is the call to action, the jobs list stays empty (no centered
+// placeholder copy), and the "All past research found in Library, Research"
+// link surfaces under the title. We never seed fabricated runs.
 // The job-card / synapse-graph / cited-report components below are complete and
 // light up unchanged once an eliza deep-research plugin + SSE progress stream is
 // wired — that wiring is the documented follow-up.
@@ -723,6 +726,7 @@ function JobSection({
   expandedId,
   onToggleExpand,
   onRemove,
+  onOpenLibrary,
 }: {
   sectionKey: "active" | "past";
   title: string;
@@ -733,6 +737,7 @@ function JobSection({
   expandedId: string | null;
   onToggleExpand: (id: string) => void;
   onRemove: (id: string) => void;
+  onOpenLibrary: () => void;
 }): ReactNode {
   if (jobs.length === 0) return null;
   const failed =
@@ -781,7 +786,14 @@ function JobSection({
       </div>
       {sectionKey === "past" ? (
         <div className="memory-desc research-library-hint">
-          All past research lives in the Library, Research tab.
+          All past research found in{" "}
+          <button
+            type="button"
+            className="research-library-link"
+            onClick={onOpenLibrary}
+          >
+            Library, Research
+          </button>
         </div>
       ) : null}
       <div className="research-section-body">
@@ -804,9 +816,15 @@ function JobSection({
 export function ResearchView({
   open,
   onClose,
+  onOpenLibrary,
 }: {
   open: boolean;
   onClose: () => void;
+  // Opens the Library on its Research tab — mirrors odysseus's
+  // documentModule.openLibrary({ tab: 'research' }) that the "Library,
+  // Research" hint link triggers. Optional: the shell wires it; without it the
+  // link still does the faithful first half (closes the Research panel).
+  onOpenLibrary?: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
   const win = useWindowControls("win-research", { w: 640, h: 780 });
@@ -845,6 +863,20 @@ export function ResearchView({
   };
   const toggleExpand = (id: string) =>
     setExpandedId((prev) => (prev === id ? null : id));
+
+  // panel.js _renderJobs: the "Library, Research" link closes the Research
+  // panel first (so the Library opens above it), then opens the Library on its
+  // Research tab. onOpenLibrary is the shell-supplied navigation; without it
+  // the link still performs the faithful close.
+  const openLibrary = () => {
+    onClose();
+    onOpenLibrary?.();
+  };
+
+  // panel.js: the Past section only renders when there are done jobs; when it
+  // doesn't, the "All past research found in Library, Research" line surfaces
+  // under the main title instead so the link is always discoverable.
+  const showNoPastHint = past.length === 0;
 
   return (
     <div
@@ -895,6 +927,18 @@ export function ResearchView({
               <FlaskConical size={14} strokeWidth={2} />
               <span>Multi-step web research with an LLM-in-the-loop agent</span>
             </p>
+            {showNoPastHint ? (
+              <div className="memory-desc research-no-past-hint">
+                All past research found in{" "}
+                <button
+                  type="button"
+                  className="research-library-link"
+                  onClick={openLibrary}
+                >
+                  Library, Research
+                </button>
+              </div>
+            ) : null}
             <textarea
               className="research-query"
               value={draft}
@@ -977,42 +1021,39 @@ export function ResearchView({
               </button>
             </div>
           </div>
+          {/* panel.js _renderJobs: with zero jobs the list body is simply
+              empty (the query box is the call to action; discoverability of
+              past research is the under-title hint). Each JobSection renders
+              null when its array is empty, so no centered empty-state text. */}
           <div className="research-jobs-list">
-            {jobs.length === 0 ? (
-              <div className="research-empty">
-                No research yet. All past research lives in the Library,
-                Research tab.
-              </div>
-            ) : (
-              <>
-                <JobSection
-                  sectionKey="active"
-                  title="Active"
-                  jobs={active}
-                  collapsed={collapsed.active}
-                  onToggleCollapsed={() =>
-                    setCollapsed((c) => ({ ...c, active: !c.active }))
-                  }
-                  onClearAll={() => setJobs([])}
-                  expandedId={expandedId}
-                  onToggleExpand={toggleExpand}
-                  onRemove={removeJob}
-                />
-                <JobSection
-                  sectionKey="past"
-                  title="Past research"
-                  jobs={past}
-                  collapsed={collapsed.past}
-                  onToggleCollapsed={() =>
-                    setCollapsed((c) => ({ ...c, past: !c.past }))
-                  }
-                  onClearAll={() => setJobs([])}
-                  expandedId={expandedId}
-                  onToggleExpand={toggleExpand}
-                  onRemove={removeJob}
-                />
-              </>
-            )}
+            <JobSection
+              sectionKey="active"
+              title="Active"
+              jobs={active}
+              collapsed={collapsed.active}
+              onToggleCollapsed={() =>
+                setCollapsed((c) => ({ ...c, active: !c.active }))
+              }
+              onClearAll={() => setJobs([])}
+              expandedId={expandedId}
+              onToggleExpand={toggleExpand}
+              onRemove={removeJob}
+              onOpenLibrary={openLibrary}
+            />
+            <JobSection
+              sectionKey="past"
+              title="Past research"
+              jobs={past}
+              collapsed={collapsed.past}
+              onToggleCollapsed={() =>
+                setCollapsed((c) => ({ ...c, past: !c.past }))
+              }
+              onClearAll={() => setJobs([])}
+              expandedId={expandedId}
+              onToggleExpand={toggleExpand}
+              onRemove={removeJob}
+              onOpenLibrary={openLibrary}
+            />
           </div>
         </div>
       </div>

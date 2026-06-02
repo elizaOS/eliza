@@ -1,6 +1,6 @@
-// 48px icon rail. Holds the sidebar toggle (hamburger), the chat glyph, the
-// theme picker, and settings; the remaining feature glyphs (memory, calendar,
-// gallery, …) fill in as their phases land. Always visible — it's what the
+// 48px icon rail. Holds the sidebar toggle (hamburger), the New-chat action
+// (odysseus rail-new-session), the theme picker, settings, and the feature
+// glyphs (memory, calendar, gallery, …). Always visible — it's what the
 // sidebar collapses down to.
 
 import {
@@ -14,12 +14,12 @@ import {
   Images,
   ListChecks,
   Mail,
-  MessageSquare,
   MessagesSquare,
   Mic,
   Palette,
   PanelLeft,
   Pencil,
+  Plus,
   Settings,
   ShieldAlert,
   SlidersHorizontal,
@@ -30,6 +30,7 @@ import type { ReactNode } from "react";
 
 export function IconRail({
   onToggleSidebar,
+  onNewChat,
   onOpenTheme,
   onOpenMemory,
   onOpenSkills,
@@ -51,6 +52,7 @@ export function IconRail({
   onOpenPresets,
 }: {
   onToggleSidebar: () => void;
+  onNewChat: () => void;
   onOpenTheme: () => void;
   onOpenMemory: () => void;
   onOpenSkills: () => void;
@@ -82,8 +84,14 @@ export function IconRail({
       >
         <PanelLeft size={18} />
       </button>
-      <button type="button" className="od-rail-btn active" title="Chat">
-        <MessageSquare size={18} />
+      <button
+        type="button"
+        className="od-rail-btn od-rail-new-chat"
+        onClick={onNewChat}
+        title="New chat"
+        aria-label="New chat"
+      >
+        <Plus size={18} />
       </button>
       <button
         type="button"

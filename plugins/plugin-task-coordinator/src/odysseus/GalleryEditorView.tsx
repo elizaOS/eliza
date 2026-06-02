@@ -55,6 +55,12 @@ const PROVIDERS = [
   "ollama",
 ] as const;
 
+// Honest disabled-control tooltip. eliza exposes no frontend image / canvas /
+// diffusion backend, so every control that would mutate pixels (menu actions,
+// AI buttons, selection-edit buttons) is disabled with this shared title
+// instead of rendering an enabled control that routes nowhere.
+const NO_BACKEND = "No image backend is connected yet";
+
 // odysseus editor/build/toolbar.js `tools` — the left tool palette, including
 // the AI-tools (✦) flag and the keyboard hint. `sep` rows render a labeled
 // separator (the label is blank in odysseus but the separator rule stays).
@@ -141,6 +147,58 @@ function ToolIcon({ id }: { id: ToolId }): ReactNode {
 // Log-scale brush slider position (controls.js: log(size)/log(800)*1000).
 function brushSliderValue(size: number): number {
   return Math.round((Math.log(Math.max(1, size)) / Math.log(800)) * 1000);
+}
+
+// Selection-action button icons — match odysseus controls.js inline SVGs for
+// the Lasso / Wand action rows (invert ↔ swap arrows, delete ↔ X, erase ↔
+// trash, copy ↔ overlapping rects, mask ↔ wand). 12×12 to sit in .ge-btn-sm.
+type SelectionIconKind = "invert" | "delete" | "erase" | "copy" | "mask";
+
+function SelectionIcon({ kind }: { kind: SelectionIconKind }): ReactNode {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label={kind}
+    >
+      {kind === "invert" ? (
+        <>
+          <polyline points="17 1 21 5 17 9" />
+          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <polyline points="7 23 3 19 7 15" />
+          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        </>
+      ) : null}
+      {kind === "delete" ? (
+        <>
+          <line x1="6" y1="6" x2="18" y2="18" />
+          <line x1="18" y1="6" x2="6" y2="18" />
+        </>
+      ) : null}
+      {kind === "erase" ? (
+        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      ) : null}
+      {kind === "copy" ? (
+        <>
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </>
+      ) : null}
+      {kind === "mask" ? (
+        <>
+          <path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08" />
+          <path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z" />
+        </>
+      ) : null}
+    </svg>
+  );
 }
 
 // A stroke-modifier slider row (Opacity / Flow / Softness) — shared by the
@@ -378,24 +436,49 @@ export function GalleryEditorView({
                 </button>
                 {imageMenuOpen ? (
                   <div className="ge-image-menu dropdown" role="menu">
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">⤢</span>
                       <span>Canvas…</span>
                     </button>
                     <div className="ge-filter-submenu-label">Transform</div>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">↻</span>
                       <span>Rotate 90° CW</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">↺</span>
                       <span>Rotate 180°</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">⇆</span>
                       <span>Flip horizontal</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">⇅</span>
                       <span>Flip vertical</span>
                     </button>
@@ -419,11 +502,21 @@ export function GalleryEditorView({
                 {filterMenuOpen ? (
                   <div className="ge-filter-menu dropdown" role="menu">
                     <div className="ge-filter-submenu-label">Blur</div>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">◍</span>
                       <span>Gaussian Blur…</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span className="dropdown-icon">◎</span>
                       <span>Zoom Blur…</span>
                     </button>
@@ -491,23 +584,48 @@ export function GalleryEditorView({
                 {saveMenuOpen ? (
                   <div className="ge-save-menu dropdown" role="menu">
                     <div className="dropdown-section-label">Image</div>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span>Save over original</span>
                       <span className="dropdown-shortcut">Ctrl+S</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span>Save as copy</span>
                       <span className="dropdown-shortcut">Ctrl+Shift+S</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span>Download PNG</span>
                     </button>
                     <div className="dropdown-section-divider" />
                     <div className="dropdown-section-label">Project</div>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span>Save project (.json)</span>
                     </button>
-                    <button type="button" className="dropdown-item-compact">
+                    <button
+                      type="button"
+                      className="dropdown-item-compact"
+                      disabled
+                      title={NO_BACKEND}
+                    >
                       <span>Load project…</span>
                     </button>
                   </div>
@@ -575,7 +693,7 @@ export function GalleryEditorView({
                     type="button"
                     className="ge-btn ge-ge-landing-btn"
                     disabled
-                    title="No image backend is connected yet"
+                    title={NO_BACKEND}
                   >
                     <Upload size={14} />
                     Import image
@@ -584,7 +702,7 @@ export function GalleryEditorView({
                     type="button"
                     className="ge-btn ge-ge-landing-btn"
                     disabled
-                    title="No image backend is connected yet"
+                    title={NO_BACKEND}
                   >
                     <Sparkles size={14} />
                     Generate image
@@ -726,36 +844,46 @@ export function GalleryEditorView({
                   </div>
                 ) : null}
 
-                {/* Lasso section */}
+                {/* Lasso section (controls.js #ge-lasso-section). The
+                    selection-edit actions operate on a live mask, so without a
+                    canvas backend they are honestly disabled. */}
                 {tool === "lasso" ? (
                   <div className="ge-lasso-section">
                     <div className="ge-control-row ge-actions ge-ge-actions-wrap">
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Invert selection"
+                        title={NO_BACKEND}
+                        disabled
                       >
+                        <SelectionIcon kind="invert" />
                         Invert
                       </button>
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Delete selected pixels"
+                        title={NO_BACKEND}
+                        disabled
                       >
+                        <SelectionIcon kind="delete" />
                         Delete
                       </button>
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Copy selection to new layer"
+                        title={NO_BACKEND}
+                        disabled
                       >
+                        <SelectionIcon kind="copy" />
                         Copy Layer
                       </button>
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Convert selection to inpaint mask"
+                        title={NO_BACKEND}
+                        disabled
                       >
+                        <SelectionIcon kind="mask" />
                         To Mask
                       </button>
                     </div>
@@ -800,7 +928,21 @@ export function GalleryEditorView({
                         id="ge-wand-tol-preview"
                         aria-hidden="true"
                       />
-                      <label htmlFor="ge-wand-tolerance">Tolerance</label>
+                      <label htmlFor="ge-wand-tolerance">
+                        Tolerance <span className="ge-slider-value">32</span>
+                      </label>
+                      {/* Live retune toggle — re-runs the flood fill while the
+                          tolerance slider drags. Needs an active selection, so
+                          honestly disabled without a canvas backend. */}
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-wand-live-btn"
+                        title={NO_BACKEND}
+                        aria-pressed="false"
+                        disabled
+                      >
+                        Live
+                      </button>
                       <input
                         id="ge-wand-tolerance"
                         type="range"
@@ -809,7 +951,120 @@ export function GalleryEditorView({
                         value={32}
                         readOnly
                       />
-                      <span className="ge-slider-value">32</span>
+                    </div>
+                    {/* Selection-edge refine rows (controls.js #ge-wand-refine-*).
+                        They retune an existing selection's mask alpha, so without
+                        a canvas backend they sit in their honest disabled state. */}
+                    <div className="ge-control-row ge-eraser-row ge-sel-refine">
+                      <span
+                        className="ge-eraser-preview"
+                        id="ge-wand-feather-preview"
+                        aria-hidden="true"
+                      />
+                      <label htmlFor="ge-wand-feather">
+                        Feather <span className="ge-slider-value">0px</span>
+                      </label>
+                      <input
+                        id="ge-wand-feather"
+                        type="range"
+                        min={0}
+                        max={200}
+                        value={0}
+                        title={NO_BACKEND}
+                        disabled
+                      />
+                    </div>
+                    <div className="ge-control-row ge-eraser-row ge-sel-refine">
+                      <span
+                        className="ge-eraser-preview"
+                        id="ge-wand-grow-preview"
+                        aria-hidden="true"
+                      />
+                      <label htmlFor="ge-wand-grow">
+                        Edge stroke <span className="ge-slider-value">0px</span>
+                      </label>
+                      <input
+                        id="ge-wand-grow"
+                        type="range"
+                        min={-40}
+                        max={40}
+                        value={0}
+                        title={NO_BACKEND}
+                        disabled
+                      />
+                    </div>
+                    {/* Visibility toggle + selection-edit action row
+                        (controls.js #ge-wand-vis / clear / invert / delete /
+                        copy / mask). All operate on a live selection. */}
+                    <div className="ge-control-row ge-actions ge-ge-actions-wrap">
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-mask-vis-btn visible"
+                        title={NO_BACKEND}
+                        aria-label="Toggle selection overlay"
+                        disabled
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          role="img"
+                          aria-label="Selection overlay"
+                        >
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-btn-iconlabel"
+                        title={NO_BACKEND}
+                        disabled
+                      >
+                        <SelectionIcon kind="delete" />
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-btn-iconlabel"
+                        title={NO_BACKEND}
+                        disabled
+                      >
+                        <SelectionIcon kind="invert" />
+                        Invert
+                      </button>
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-btn-iconlabel"
+                        title={NO_BACKEND}
+                        disabled
+                      >
+                        <SelectionIcon kind="erase" />
+                        Erase
+                      </button>
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-btn-iconlabel"
+                        title={NO_BACKEND}
+                        disabled
+                      >
+                        <SelectionIcon kind="copy" />
+                        Copy Layer
+                      </button>
+                      <button
+                        type="button"
+                        className="ge-btn ge-btn-sm ge-btn-iconlabel"
+                        title={NO_BACKEND}
+                        disabled
+                      >
+                        <SelectionIcon kind="mask" />
+                        To Mask
+                      </button>
                     </div>
                     <p className="ge-ge-tiny-hint">
                       Click a region to select similar pixels. Shift+click to
@@ -821,6 +1076,25 @@ export function GalleryEditorView({
                 {/* Inpaint section (controls.js .ge-inpaint-section) */}
                 {tool === "inpaint" ? (
                   <div className="ge-inpaint-section">
+                    {/* Popover drag-head (controls.js .ge-inpaint-popover-head).
+                        In odysseus this header only shows once the section is
+                        torn off into a floating popover over the canvas; inline
+                        in the right panel it stays hidden (matched in CSS). The
+                        close control returns to the Move tool. */}
+                    <div className="ge-inpaint-popover-head">
+                      <div className="ge-section-title ge-section-title-with-help ge-inpaint-popover-title">
+                        <span>INPAINT</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ge-inpaint-popover-close"
+                        title="Close inpaint panel"
+                        aria-label="Close inpaint panel"
+                        onClick={() => setTool("move")}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                     <div className="ge-section-title ge-section-title-with-help">
                       <span>INPAINT</span>
                       <span
@@ -967,7 +1241,7 @@ export function GalleryEditorView({
                         type="button"
                         className="ge-btn ge-btn-primary ge-btn-ai ge-ge-ai-btn"
                         disabled
-                        title="No image backend is connected yet"
+                        title={NO_BACKEND}
                       >
                         <span className="ge-btn-ai-mark" aria-hidden="true">
                           ✦
@@ -978,7 +1252,7 @@ export function GalleryEditorView({
                         type="button"
                         className="ge-btn ge-btn-ai ge-ge-ai-btn"
                         disabled
-                        title="No image backend is connected yet"
+                        title={NO_BACKEND}
                       >
                         <span className="ge-btn-ai-mark" aria-hidden="true">
                           ✦
@@ -989,13 +1263,72 @@ export function GalleryEditorView({
                         type="button"
                         className="ge-btn ge-btn-ai ge-ge-ai-btn"
                         disabled
-                        title="No image backend is connected yet"
+                        title={NO_BACKEND}
                       >
                         <span className="ge-btn-ai-mark" aria-hidden="true">
                           ✦
                         </span>
                         Outpaint
                       </button>
+                    </div>
+                    {/* POSTPROCESS group (controls.js #ge-inpaint-postedge-*).
+                        Live edge-trimming of the last inpaint-result layer. The
+                        sliders only exist once a Generate has produced a result
+                        layer — so honestly they sit in the "Available after
+                        Generate" state, with the edit sliders disabled. */}
+                    <hr className="ge-section-divider" />
+                    <div className="ge-section-title ge-section-title-with-help">
+                      <span>POSTPROCESS</span>
+                      <span
+                        className="ge-section-help"
+                        role="img"
+                        aria-label="What this does"
+                        title="Live edge trimming for the last Inpaint Result layer. Edge feather softens the alpha boundary; Edge stroke expands (+) or contracts (−) the visible edge into the AI buffer generated around your brush."
+                      >
+                        ?
+                      </span>
+                    </div>
+                    <p className="ge-section-hint ge-ge-postedge-hint">
+                      Available after Generate.
+                    </p>
+                    <div className="ge-control-row ge-eraser-row">
+                      <span
+                        className="ge-eraser-preview"
+                        id="ge-feather-preview"
+                        aria-hidden="true"
+                      />
+                      <label htmlFor="ge-feather-slider">
+                        Edge feather{" "}
+                        <span className="ge-slider-value">0px</span>
+                      </label>
+                      <input
+                        id="ge-feather-slider"
+                        type="range"
+                        min={0}
+                        max={200}
+                        value={0}
+                        title={NO_BACKEND}
+                        disabled
+                      />
+                    </div>
+                    <div className="ge-control-row ge-eraser-row">
+                      <span
+                        className="ge-eraser-preview"
+                        id="ge-edgestroke-preview"
+                        aria-hidden="true"
+                      />
+                      <label htmlFor="ge-edgestroke-slider">
+                        Edge stroke <span className="ge-slider-value">0px</span>
+                      </label>
+                      <input
+                        id="ge-edgestroke-slider"
+                        type="range"
+                        min={-80}
+                        max={80}
+                        value={0}
+                        title={NO_BACKEND}
+                        disabled
+                      />
                     </div>
                   </div>
                 ) : null}
@@ -1019,7 +1352,7 @@ export function GalleryEditorView({
                         type="button"
                         className="ge-btn ge-btn-primary ge-btn-ai ge-ge-ai-btn"
                         disabled
-                        title="No image backend is connected yet"
+                        title={NO_BACKEND}
                       >
                         <span className="ge-btn-ai-mark" aria-hidden="true">
                           ✦
@@ -1093,7 +1426,7 @@ export function GalleryEditorView({
                         type="button"
                         className="ge-btn ge-btn-primary ge-ge-ai-btn"
                         disabled
-                        title="No image backend is connected yet"
+                        title={NO_BACKEND}
                       >
                         Sharpen
                       </button>

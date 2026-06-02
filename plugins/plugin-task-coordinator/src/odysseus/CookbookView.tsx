@@ -27,7 +27,7 @@
 // cached models, or program output. When no skills are installed the grid shows
 // odysseus's honest empty state ("No recipes yet."); no sample recipes are seeded.
 
-import type { SkillInfo } from "@elizaos/ui";
+import type { AppRunSummary, SkillInfo } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import {
   ChevronUp,
@@ -38,6 +38,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Square,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -252,12 +253,15 @@ interface RecipeSource {
 
 const EMPTY_SOURCE: RecipeSource = { status: "idle", content: "" };
 
-// cookbook.js v2 tab row. Recipes is the real eliza-backed surface; Serve and
-// What-Fits are odysseus's local-runtime serve workbench tabs that eliza has no
-// backend for — rendered honestly (see each panel's empty state).
-type CookbookTab = "recipes" | "serve" | "fit";
+// cookbook.js v2 tab row. Recipes is the real eliza-backed surface; Running is
+// the real launched-run surface (client.listAppRuns); Serve and What-Fits are
+// odysseus's local-runtime serve workbench tabs that eliza has no backend for —
+// rendered honestly (see each panel's empty state). The Running tab is inserted
+// only when there are runs to show (cookbookRunning.js inserts/removes its tab
+// dynamically), so the resting tab set never shows an empty Running tab.
+type CookbookTab = "recipes" | "running" | "serve" | "fit";
 
-const COOKBOOK_TABS: ReadonlyArray<{ id: CookbookTab; label: string }> = [
+const BASE_COOKBOOK_TABS: ReadonlyArray<{ id: CookbookTab; label: string }> = [
   { id: "recipes", label: "Recipes" },
   { id: "serve", label: "Serve" },
   { id: "fit", label: "What Fits?" },
@@ -297,6 +301,50 @@ const FIT_COLUMNS: ReadonlyArray<FitColumn> = [
   { sortKey: null, label: "Mode", cls: "od-cb-fit-mode" },
 ];
 
+// cookbookRunning.js Running tab. odysseus's Running tab lists launched/serving
+// tasks (serve + download) with a status pill, the session id, live output, and
+// a per-task menu (Stop / Restart / Reconnect). eliza has no model-serve runtime,
+// but it DOES launch app/skill runs (client.listAppRuns → AppRunSummary[]), which
+// are the same concept: a launched process with a status, a summary, a health
+// state, a start time, and a real Stop control (client.stopAppRun). We render
+// those honestly — no fabricated serve tasks, no invented output.
+
+// Map an AppRunSummary.status string onto the cookbook task-status pill classes
+// (_taskBadge / _statusLabel in cookbookRunning.js). Unknown statuses fall back
+// to the neutral "running"-style pill rather than inventing an error.
+type RunPill = "running" | "queued" | "stopping" | "done" | "stopped" | "error";
+
+function runPillFor(status: string): RunPill {
+  const s = status.toLowerCase();
+  if (s === "queued" || s === "pending" || s === "starting") return "queued";
+  if (s === "stopping") return "stopping";
+  if (s === "done" || s === "completed" || s === "finished") return "done";
+  if (s === "stopped" || s === "cancelled" || s === "canceled")
+    return "stopped";
+  if (s === "error" || s === "failed" || s === "crashed") return "error";
+  return "running";
+}
+
+// A run is "active" (Stop is meaningful, the notif/count badge applies) while it
+// is still running/queued/stopping — mirrors cookbookRunning.js's activeCount.
+function runIsActive(status: string): boolean {
+  const pill = runPillFor(status);
+  return pill === "running" || pill === "queued" || pill === "stopping";
+}
+
+// Compact relative uptime, matching cookbookRunning.js's "uptime: Xm Ys" / "Xh Ym"
+// cadence. Pure display; never throws on a malformed timestamp.
+function uptimeSince(startedAt: string): string {
+  const started = Date.parse(startedAt);
+  if (Number.isNaN(started)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `uptime: ${h}h ${String(m).padStart(2, "0")}m`;
+  return `uptime: ${m}m ${String(s).padStart(2, "0")}s`;
+}
+
 export function CookbookView({
   open,
   onClose,
@@ -320,6 +368,18 @@ export function CookbookView({
   const [engine, setEngine] = useState("");
   const [fitSort, setFitSort] = useState("score");
   const [fitReverse, setFitReverse] = useState(false);
+  // Running tab: live launched app/skill runs (client.listAppRuns). The tab is
+  // only shown when there are runs (cookbookRunning.js inserts/removes its tab
+  // dynamically); `stoppingId` disables a card's Stop while its POST is inflight.
+  const [runs, setRuns] = useState<AppRunSummary[]>([]);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+
+  const loadRuns = useCallback(() => {
+    void client
+      .listAppRuns()
+      .then((r) => setRuns(r))
+      .catch(() => setRuns([]));
+  }, []);
 
   const loadRecipes = useCallback(() => {
     setRefreshing(true);
@@ -343,7 +403,17 @@ export function CookbookView({
     if (!open) return;
     setExpandedId(null);
     loadRecipes();
-  }, [open, loadRecipes]);
+    loadRuns();
+  }, [open, loadRecipes, loadRuns]);
+
+  // Poll launched runs while the modal is open so the Running tab reflects live
+  // status changes (cookbookRunning.js runs a background monitor for the same
+  // reason). Cleared on close. 4s matches a calm, non-chatty refresh cadence.
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(loadRuns, 4000);
+    return () => window.clearInterval(id);
+  }, [open, loadRuns]);
 
   // Lazy-load the SKILL.md detail/preview the first time a recipe expands —
   // mirrors cookbook.js filling a card body on expand.
@@ -428,9 +498,42 @@ export function CookbookView({
     }
   };
 
+  // Real Stop, wired to client.stopAppRun (the cookbookRunning.js "Stop" menu
+  // action's eliza analogue). Optimistically flips the card to "stopping", then
+  // re-syncs from the server so the pill reflects the true post-stop status.
+  const stopRun = (run: AppRunSummary) => {
+    if (stoppingId) return;
+    setStoppingId(run.runId);
+    void client
+      .stopAppRun(run.runId)
+      .catch(() => {
+        /* stop failed — the next poll re-syncs the true status */
+      })
+      .finally(() => {
+        setStoppingId(null);
+        loadRuns();
+      });
+  };
+
   const total = recipes.length;
   const shown = filtered.length;
-  const showSearch = tab === "recipes" || tab === "fit";
+  const activeRuns = runs.filter((r) => runIsActive(r.status)).length;
+  const hasRuns = runs.length > 0;
+  // cookbookRunning.js inserts the Running tab only when there are tasks, and
+  // removes it (flipping back to the prior tab) when the last one clears.
+  const cookbookTabs: ReadonlyArray<{ id: CookbookTab; label: string }> =
+    hasRuns
+      ? [
+          BASE_COOKBOOK_TABS[0],
+          { id: "running", label: "Running" },
+          ...BASE_COOKBOOK_TABS.slice(1),
+        ]
+      : BASE_COOKBOOK_TABS;
+  // If the Running tab was active and its last run cleared, fall back to Recipes
+  // so we never sit on a tab that no longer exists.
+  const activeTab: CookbookTab =
+    tab === "running" && !hasRuns ? "recipes" : tab;
+  const showSearch = activeTab === "recipes" || activeTab === "fit";
 
   return (
     <div
@@ -453,16 +556,20 @@ export function CookbookView({
           onPointerDown={win.onDragStart}
         >
           <span className="od-mem-title">Cookbook</span>
-          {tab === "recipes" ? (
+          {activeTab === "recipes" ? (
             <span className="od-mem-stats">
               {query.trim() && shown !== total
                 ? `${shown} of ${total}`
                 : `${total} recipe${total === 1 ? "" : "s"}`}
             </span>
+          ) : activeTab === "running" ? (
+            <span className="od-mem-stats">
+              {activeRuns} active · {runs.length} total
+            </span>
           ) : (
             <span className="od-mem-stats" />
           )}
-          {tab === "recipes" ? (
+          {activeTab === "recipes" ? (
             <button
               type="button"
               className="od-cb-refresh"
@@ -473,21 +580,35 @@ export function CookbookView({
             >
               <RefreshCw size={13} className={refreshing ? "od-cb-spin" : ""} />
             </button>
+          ) : activeTab === "running" ? (
+            <button
+              type="button"
+              className="od-cb-refresh"
+              title="Refresh running"
+              aria-label="Refresh running"
+              onClick={loadRuns}
+            >
+              <RefreshCw size={13} />
+            </button>
           ) : null}
         </div>
 
-        {/* ── Tab row (cookbook.js .cookbook-tab set) ── */}
+        {/* ── Tab row (cookbook.js .cookbook-tab set; Running inserted only when
+            there are launched runs, per cookbookRunning.js) ── */}
         <div className="od-cb-tabs" role="tablist" aria-label="Cookbook tabs">
-          {COOKBOOK_TABS.map((t) => (
+          {cookbookTabs.map((t) => (
             <button
               key={t.id}
               type="button"
               role="tab"
-              aria-selected={tab === t.id}
-              className={`od-cb-tab${tab === t.id ? " od-cb-tab-active" : ""}`}
+              aria-selected={activeTab === t.id}
+              className={`od-cb-tab${activeTab === t.id ? " od-cb-tab-active" : ""}`}
               onClick={() => setTab(t.id)}
             >
               {t.label}
+              {t.id === "running" && activeRuns > 0 ? (
+                <span className="od-cb-tab-count">{activeRuns}</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -502,14 +623,18 @@ export function CookbookView({
               onKeyDown={(e) => {
                 if (e.key === "Escape") onClose();
               }}
-              placeholder={tab === "fit" ? "Search models…" : "Search recipes…"}
-              aria-label={tab === "fit" ? "Search models" : "Search recipes"}
+              placeholder={
+                activeTab === "fit" ? "Search models…" : "Search recipes…"
+              }
+              aria-label={
+                activeTab === "fit" ? "Search models" : "Search recipes"
+              }
             />
           </div>
         ) : null}
 
         {/* ── Recipes tab: doclib-grid of skill-card recipe cards ── */}
-        {tab === "recipes" ? (
+        {activeTab === "recipes" ? (
           <div className="od-cb-grid">
             {!loaded ? (
               <div className="od-cb-loading">Loading recipes…</div>
@@ -635,10 +760,81 @@ export function CookbookView({
           </div>
         ) : null}
 
+        {/* ── Running tab: cookbookRunning.js _renderRunningTab. odysseus lists
+            launched serve/download tasks; eliza's real analogue is launched app/
+            skill runs (client.listAppRuns → AppRunSummary[]) — each a process with
+            a status pill, a summary, a health line, an uptime, and a real Stop
+            (client.stopAppRun). No fabricated tasks; the tab only exists when
+            there are runs, so an empty state is unreachable here. ── */}
+        {activeTab === "running" ? (
+          <div className="od-cb-running">
+            {runs.map((run) => {
+              const pill = runPillFor(run.status);
+              const active = runIsActive(run.status);
+              const stopping = stoppingId === run.runId;
+              const health = run.health;
+              const sessionStatus = run.session?.status;
+              return (
+                <div
+                  className="od-cb-run"
+                  key={run.runId}
+                  data-status={pill}
+                  data-health={health.state}
+                >
+                  <div className="od-cb-run-header">
+                    <span className="od-cb-run-type">{run.launchType}</span>
+                    <span className="od-cb-run-name" title={run.displayName}>
+                      {run.displayName}
+                    </span>
+                    <span
+                      className={`od-cb-run-status od-cb-run-status-${pill}`}
+                    >
+                      {run.status}
+                    </span>
+                    {active ? (
+                      <button
+                        type="button"
+                        className="od-cb-run-stop"
+                        title="Stop this run"
+                        aria-label={`Stop ${run.displayName}`}
+                        onClick={() => stopRun(run)}
+                        disabled={stopping || stoppingId !== null}
+                      >
+                        <Square size={10} />
+                        {stopping ? "Stopping…" : "Stop"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="od-cb-run-sub">
+                    <span className="od-cb-run-plugin">{run.pluginName}</span>
+                    {active ? (
+                      <span className="od-cb-run-uptime">
+                        {uptimeSince(run.startedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {run.summary ? (
+                    <div className="od-cb-run-summary">{run.summary}</div>
+                  ) : sessionStatus ? (
+                    <div className="od-cb-run-summary">{sessionStatus}</div>
+                  ) : null}
+                  {health.message && health.state !== "healthy" ? (
+                    <div
+                      className={`od-cb-run-health od-cb-run-health-${health.state}`}
+                    >
+                      {health.message}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
         {/* ── Serve tab: cookbookServe.js serve panel chrome (engine filter,
             saved-config split badge, GPU chip, serve diagnostics/recommendations)
             rendered honestly — eliza has no local serve runtime / cached models. ── */}
-        {tab === "serve" ? (
+        {activeTab === "serve" ? (
           <div className="od-cb-serve">
             <div className="od-cb-serve-controls">
               {/* Engine filter (cookbookServe._backendChoices). Wired + interactive,
@@ -729,7 +925,7 @@ export function CookbookView({
             header (incl. the Fit column with quant classification) renders
             faithfully; eliza has no hardware probe, so the body is the honest
             empty state rather than fabricated fit rows. ── */}
-        {tab === "fit" ? (
+        {activeTab === "fit" ? (
           <div className="od-cb-fit">
             <div className="od-cb-serve-controls">
               <span

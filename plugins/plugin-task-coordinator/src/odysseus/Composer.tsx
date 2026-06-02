@@ -1,18 +1,21 @@
 // odysseus composer (static/index.html .chat-input-bar): a borderless textarea
-// with a model-picker chip pinned top-right, a bottom row of tool icons (left) +
-// Agent/Chat mode toggle and the send/stop action (right), and a slash-command
-// menu (type "/" → filtered commands). The send button swaps to a stop control
+// with a model-picker chip pinned top-right, a bottom row with the emoji
+// control (left) and the send/stop action (right), and a slash-command menu
+// (type "/" → filtered commands). The send button swaps to a stop control
 // while the agent is working — matching odysseus and the eliza ChatComposer.
+//
+// Faithfulness note — what the orchestrator backend actually supports:
+// `postOrchestratorTaskMessage(taskId, content)` and `createOrchestratorTask`
+// take a plain message; there is no attachment, web/shell/rag toggle, mode, or
+// per-message model-switch path on the orchestrator client. Odysseus's chatbox
+// surfaces those because its backend has them. Rather than ship dead controls
+// that route nowhere (the previous web/shell/"+ more"/Agent-Chat-mode buttons
+// and the static model label did exactly that), this composer only renders
+// surfaces wired to a real client method or shell handler. The attach strip,
+// paste/drop, tool toggles, and mode toggle are intentionally absent until the
+// orchestrator backend grows those request fields.
 
-import {
-  ArrowUp,
-  ChevronUp,
-  Globe,
-  Plus,
-  Smile,
-  Square,
-  Terminal,
-} from "lucide-react";
+import { ArrowUp, ChevronUp, Smile, Square } from "lucide-react";
 import {
   Fragment,
   type KeyboardEvent,
@@ -70,6 +73,7 @@ export function Composer({
   onNewChat,
   onSearch,
   onOpenPanel,
+  onOpenModels,
 }: {
   input: string;
   onInput: (value: string) => void;
@@ -83,9 +87,14 @@ export function Composer({
   onOpenPanel: (
     panel: "theme" | "memory" | "skills" | "notes" | "settings",
   ) => void;
+  // Opens the models surface (the clone's ModelsView). Mirrors odysseus's
+  // model-picker "Add models" / model-management entry point — the orchestrator
+  // has no per-message model-switch endpoint, so the chip opens the management
+  // surface rather than a fabricated inline switcher. Optional so the contract
+  // stays backward-compatible; the chip only renders when it's wired.
+  onOpenModels?: () => void;
 }): ReactNode {
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const [mode, setMode] = useState<"agent" | "chat">("agent");
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -120,11 +129,15 @@ export function Composer({
   }, [input]);
 
   // The command registry, ordered by category so the grouped headers render in
-  // a stable order (slashAutocomplete.js groups by `category`). Metadata
-  // (category/help/usage/aliases) is ported from slashCommands.js COMMANDS;
-  // every `run` maps to a real Composer prop — the "direct tool slash commands"
-  // (/memory, /skills, /notes, /settings) open their panels via onOpenPanel,
-  // and /theme opens the theme picker.
+  // a stable, contiguous order (slashAutocomplete.js groups by `category`, and
+  // its _flatten keeps the COMMANDS definition order intact). Metadata
+  // (category/help/usage/aliases) is ported from slashCommands.js COMMANDS +
+  // the PROMOTED_ALIASES short forms (/new, /clear, /web…). Only commands whose
+  // target surface exists in the clone are included — every `run` maps to a
+  // real Composer prop (onNewChat / onInput / onSearch / onOpenPanel /
+  // onOpenModels). Odysseus's tool-opener commands for surfaces the clone does
+  // not host (cookbook/email/gallery/research/compare/todo/event/setup) are
+  // omitted rather than shipped as dead rows.
   const commands: SlashCommand[] = [
     {
       token: "/new",
@@ -145,7 +158,7 @@ export function Composer({
     {
       token: "/search",
       aliases: ["/find"],
-      category: "Utility",
+      category: "Chats",
       help: "Search conversations",
       usage: "/search query",
       run: onSearch,
@@ -168,12 +181,25 @@ export function Composer({
     },
     {
       token: "/notes",
-      aliases: [],
+      aliases: ["/note"],
       category: "Tools",
       help: "Open notes",
       usage: "/notes",
       run: () => onOpenPanel("notes"),
     },
+    // /models is only offered when the models surface is wired (onOpenModels).
+    ...(onOpenModels
+      ? [
+          {
+            token: "/models",
+            aliases: ["/model"],
+            category: "Tools",
+            help: "Browse and manage models",
+            usage: "/models",
+            run: onOpenModels,
+          },
+        ]
+      : []),
     {
       token: "/theme",
       aliases: [],
@@ -197,21 +223,22 @@ export function Composer({
   // command is allowed so a typed-out command still resolves to its row.
   const query =
     input.startsWith("/") && !input.includes("\n") ? input.trim() : null;
-  const matches: SlashCommand[] =
+  // A bare "/" is the "show everything" case: render the whole registry in
+  // definition order (which keeps categories contiguous), exactly like
+  // slashAutocomplete.js's `all.slice(MAX_VISIBLE)` fallback. Scoring a bare
+  // "/" would reorder rows by token length and scatter the category headers
+  // (TOOLS appearing twice, etc.), so we skip scoring entirely for it.
+  const visible: SlashCommand[] =
     query === null
       ? []
-      : commands
-          .map((entry) => ({ entry, score: scoreMatch(entry, query) }))
-          .filter((scored) => scored.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, MAX_VISIBLE)
-          .map((scored) => scored.entry);
-  // Bare "/" with no scored hits falls back to the full list (capped), matching
-  // upstream's "show everything" behavior for the empty query.
-  const visible: SlashCommand[] =
-    query === "/" && matches.length === 0
-      ? commands.slice(0, MAX_VISIBLE)
-      : matches;
+      : query === "/"
+        ? commands.slice(0, MAX_VISIBLE)
+        : commands
+            .map((entry) => ({ entry, score: scoreMatch(entry, query) }))
+            .filter((scored) => scored.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, MAX_VISIBLE)
+            .map((scored) => scored.entry);
   const slashOpen = visible.length > 0 && !dismissed;
   const selClamped = Math.min(sel, Math.max(0, visible.length - 1));
 
@@ -328,26 +355,24 @@ export function Composer({
           rows={1}
           aria-label="Message input"
         />
-        <button
-          type="button"
-          className="od-model-picker-btn"
-          title="Switch model"
-        >
-          <span>{modelLabel}</span>
-          <ChevronUp size={10} />
-        </button>
+        {onOpenModels ? (
+          <button
+            type="button"
+            className="od-model-picker-btn"
+            title="Manage models"
+            onClick={onOpenModels}
+          >
+            <span>{modelLabel}</span>
+            <ChevronUp size={10} />
+          </button>
+        ) : (
+          <span className="od-model-picker-btn od-model-picker-static">
+            {modelLabel}
+          </span>
+        )}
       </div>
       <div className="od-input-bottom">
         <div className="od-input-left">
-          <button type="button" className="od-icon-btn" title="More tools">
-            <Plus size={16} />
-          </button>
-          <button type="button" className="od-icon-btn" title="Web search">
-            <Globe size={16} />
-          </button>
-          <button type="button" className="od-icon-btn" title="Shell access">
-            <Terminal size={16} />
-          </button>
           <button
             type="button"
             className={`od-icon-btn${emojiOpen ? " active" : ""}`}
@@ -359,24 +384,6 @@ export function Composer({
           </button>
         </div>
         <div className="od-input-right">
-          <div
-            className={`od-mode-toggle${mode === "chat" ? " od-mode-chat" : ""}`}
-          >
-            <button
-              type="button"
-              className={`od-mode-btn${mode === "agent" ? " active" : ""}`}
-              onClick={() => setMode("agent")}
-            >
-              Agent
-            </button>
-            <button
-              type="button"
-              className={`od-mode-btn${mode === "chat" ? " active" : ""}`}
-              onClick={() => setMode("chat")}
-            >
-              Chat
-            </button>
-          </div>
           {isActive ? (
             <button
               type="button"
