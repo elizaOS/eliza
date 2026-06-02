@@ -154,6 +154,22 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/agent/src/services/shell-execution-router.ts packages/agent/src/services/shell-execution-router.test.ts`
   - marker scan on the touched shell-router files
 
+### packages/alberta
+
+- Replaced the runtime "shifted-observation placeholder" wording in
+  `alberta_framework/pipeline.py` with an explicit
+  `observation_channel_cumulant_fn` compatibility helper. The default Step 3
+  cumulant path is now a named, exported contract that validates dimensions and
+  maps demons deterministically onto next-observation channels.
+- Added `tests/test_pipeline.py` coverage for channel wrapping and invalid
+  dimensions.
+- Verified with:
+  - marker scan on the touched Alberta files
+- Not verified with pytest in this workspace: both the system Python and the
+  bundled Codex Python are missing `jax`, so
+  `python -m pytest packages/alberta/tests/test_pipeline.py -q` fails during
+  conftest import before tests run.
+
 ### packages/ui
 
 - Fixed `WidgetHost` declarative `uiSpec` fallback. It now renders via

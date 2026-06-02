@@ -1744,6 +1744,13 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^use-sync-external-store\/shim$/,
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
+      {
+        find: /^use-sync-external-store\/shim\/with-selector(?:\.js)?$/,
+        replacement: path.resolve(
+          here,
+          "src/shims/use-sync-external-store-with-selector.ts",
+        ),
+      },
       { find: /^json5$/, replacement: json5EsmEntry },
       {
         // Per-icon deep imports (emitted by the lucide-per-icon-imports plugin)
