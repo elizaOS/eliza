@@ -293,6 +293,9 @@ async function expectMainShellReadyForRoute(
   await expect(page.getByTestId("first-run-shell")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
+  await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
 }
 
 async function replayNavigationAfterStartup(page: Page): Promise<void> {
