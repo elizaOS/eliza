@@ -516,6 +516,7 @@ function findRemoteViewForRoute(
   appSlug: string | null,
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
+  if (normalizedPath === "/views") return undefined;
   return (
     views.find(
       (view) => remoteViewAvailable(view) && view.path === normalizedPath,

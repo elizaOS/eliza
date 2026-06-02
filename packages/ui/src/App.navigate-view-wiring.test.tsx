@@ -51,6 +51,22 @@ const remoteLedgerView = {
   viewType: "gui" as const,
 };
 
+const viewsManagerView = {
+  id: "views-manager",
+  label: "View Manager",
+  available: true,
+  pluginName: "@elizaos/plugin-app-control",
+  path: "/views",
+  bundleUrl: "/api/views/views-manager/bundle.js",
+  viewType: "gui" as const,
+};
+
+const viewsManagerTuiView = {
+  ...viewsManagerView,
+  path: "/views/tui",
+  viewType: "tui" as const,
+};
+
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
@@ -73,7 +89,9 @@ vi.mock("./hooks/useDesktopTabs", () => ({
 }));
 
 vi.mock("./hooks/useAvailableViews", () => ({
-  useAvailableViews: () => ({ views: [remoteLedgerView] }),
+  useAvailableViews: () => ({
+    views: [remoteLedgerView, viewsManagerView, viewsManagerTuiView],
+  }),
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
@@ -200,6 +218,10 @@ vi.mock("./components/pages/ChatView", () => ({
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
 
+vi.mock("./components/pages/ViewManagerPage", () => ({
+  ViewManagerPage: () => <div data-testid="view-manager-page" />,
+}));
+
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   SecretsManagerModalRoot: () => null,
 }));
@@ -310,5 +332,18 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+  });
+
+  it("keeps /views on the built-in manager page instead of the remote manager bundle", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(getByTestId("view-manager-page")).toBeTruthy();
+    });
+    expect(queryByTestId("dynamic-view-loader")).toBeNull();
+    expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
   });
 });

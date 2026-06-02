@@ -16,7 +16,7 @@ import {
   sendTwilioVoiceCall,
   type TwilioCredentials,
   type TwilioDeliveryResult,
-} from "@elizaos/plugin-phone";
+} from "@elizaos/plugin-phone/twilio";
 import {
   errorToDispatchResult,
   isConnectorSendPayload,

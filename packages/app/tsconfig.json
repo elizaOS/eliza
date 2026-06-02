@@ -15,6 +15,7 @@
       ],
       "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-shopify-ui": [
         "../../plugins/plugin-shopify-ui/src/index.ts"
       ],
