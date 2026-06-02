@@ -3955,6 +3955,7 @@ export async function startApiServer(opts?: {
    */
   const wsSeenMessageIds = new Map<string, number>();
   const WS_DEDUPE_TTL_MS = 30_000;
+  let wsSeenLastSweepAt = 0;
   const isDuplicateWsMessage = (
     clientId: string | undefined,
     msgId: unknown,
@@ -3962,13 +3963,22 @@ export async function startApiServer(opts?: {
     if (typeof msgId !== "string" || msgId.length === 0) return false;
     const key = `${clientId ?? "anon"}:${msgId}`;
     const now = Date.now();
-    if (wsSeenMessageIds.size > 0) {
-      for (const [seenKey, seenAt] of wsSeenMessageIds) {
-        if (now - seenAt > WS_DEDUPE_TTL_MS) wsSeenMessageIds.delete(seenKey);
+    // O(1) TTL-aware dedupe: a still-fresh entry means this id was already seen
+    // within the window. Correctness no longer depends on first scanning the
+    // whole map — the previous full-scan-on-every-message was O(n) per message
+    // (O(n^2) under a burst).
+    const seenAt = wsSeenMessageIds.get(key);
+    if (seenAt !== undefined && now - seenAt <= WS_DEDUPE_TTL_MS) return true;
+    wsSeenMessageIds.set(key, now);
+    // Amortized eviction: sweep expired entries at most once per TTL window
+    // instead of on every message; keeps the map bounded without the per-
+    // message scan.
+    if (now - wsSeenLastSweepAt > WS_DEDUPE_TTL_MS) {
+      wsSeenLastSweepAt = now;
+      for (const [seenKey, ts] of wsSeenMessageIds) {
+        if (now - ts > WS_DEDUPE_TTL_MS) wsSeenMessageIds.delete(seenKey);
       }
     }
-    if (wsSeenMessageIds.has(key)) return true;
-    wsSeenMessageIds.set(key, now);
     return false;
   };
   bindRuntimeStreams(opts?.runtime ?? null);
