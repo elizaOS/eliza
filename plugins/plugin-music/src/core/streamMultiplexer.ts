@@ -73,6 +73,8 @@ export class StreamMultiplexer {
   private isActive = false;
   private sourceErrorHandler: ((error: Error) => void) | null = null;
   private sourceEndHandler: (() => void) | null = null;
+  private blockedConsumers: Set<string> = new Set();
+  private blockedDrainHandlers: Map<string, () => void> = new Map();
 
   /**
    * Ogg header cache: the first N bytes containing OpusHead + OpusTags pages.
@@ -209,6 +211,14 @@ export class StreamMultiplexer {
       consumer.stream.destroy();
     }
 
+    const drainHandler = this.blockedDrainHandlers.get(id);
+    if (drainHandler) {
+      consumer.stream.removeListener("drain", drainHandler);
+      this.blockedDrainHandlers.delete(id);
+      this.blockedConsumers.delete(id);
+      this.resumeSourceIfUnblocked();
+    }
+
     this.consumers.delete(id);
     logger.debug(
       `[StreamMultiplexer] Removed consumer: ${id} (remaining: ${this.consumers.size})`,
@@ -323,7 +333,7 @@ export class StreamMultiplexer {
    *     If consumer's buffer is full (returns false):
    *       - LIVE_DROP: Drop frame immediately (radio-style)
    *       - BUFFER_THEN_DROP: Drop only if buffer >90% full
-   *       - BLOCKING: Wait (not implemented fully - would need async)
+   *       - BLOCKING: Pause source until slow consumers drain
    *
    * WHY TRACK STATS:
    * Knowing drop rates helps debug. If Discord shows 50% drops, it's a Discord
@@ -373,15 +383,56 @@ export class StreamMultiplexer {
         case "BLOCKING":
           // Wait for drain before continuing (blocks source)
           if (!consumer.stream.write(chunk)) {
-            // In blocking mode, we'd need to pause source
-            // This is complex, so for now just log and continue
-            logger.warn(
-              `[StreamMultiplexer] Consumer ${consumer.id} causing backpressure in BLOCKING mode`,
-            );
+            this.pauseSourceUntilConsumerDrains(consumer);
           }
           break;
       }
     }
+  }
+
+  private pauseSourceUntilConsumerDrains(consumer: Consumer): void {
+    if (consumer.stream.destroyed || consumer.stream.writableEnded) {
+      return;
+    }
+
+    if (!this.blockedConsumers.has(consumer.id)) {
+      this.blockedConsumers.add(consumer.id);
+
+      const onDrain = () => {
+        this.blockedConsumers.delete(consumer.id);
+        this.blockedDrainHandlers.delete(consumer.id);
+        this.resumeSourceIfUnblocked();
+      };
+
+      this.blockedDrainHandlers.set(consumer.id, onDrain);
+      consumer.stream.once("drain", onDrain);
+
+      logger.warn(
+        `[StreamMultiplexer] Consumer ${consumer.id} causing backpressure in BLOCKING mode`,
+      );
+    }
+
+    this.source?.pause();
+  }
+
+  private resumeSourceIfUnblocked(): void {
+    if (this.policy !== "BLOCKING" || this.blockedConsumers.size > 0) {
+      return;
+    }
+
+    if (this.isActive) {
+      this.source?.resume();
+    }
+  }
+
+  private clearBlockingBackpressure(): void {
+    for (const [id, drainHandler] of this.blockedDrainHandlers.entries()) {
+      const consumer = this.consumers.get(id);
+      consumer?.stream.removeListener("drain", drainHandler);
+    }
+
+    this.blockedDrainHandlers.clear();
+    this.blockedConsumers.clear();
   }
 
   /**
@@ -408,6 +459,8 @@ export class StreamMultiplexer {
     if (!this.source) {
       return;
     }
+
+    this.clearBlockingBackpressure();
 
     if (this.sourceErrorHandler) {
       this.source.removeListener("error", this.sourceErrorHandler);

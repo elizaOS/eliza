@@ -5,25 +5,33 @@ import { defineConfig } from "vitest/config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+const testingLibraryRequire = createRequire(
+  require.resolve("@testing-library/react/package.json"),
+);
+const reactRoot = dirname(testingLibraryRequire.resolve("react/package.json"));
+const reactDomRoot = dirname(
+  testingLibraryRequire.resolve("react-dom/package.json"),
+);
 
 export default defineConfig({
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
       {
         find: /^react$/,
-        replacement: dirname(require.resolve("react/package.json")),
+        replacement: reactRoot,
       },
       {
         find: /^react\/jsx-runtime$/,
-        replacement: require.resolve("react/jsx-runtime"),
+        replacement: testingLibraryRequire.resolve("react/jsx-runtime"),
       },
       {
         find: /^react-dom$/,
-        replacement: dirname(require.resolve("react-dom/package.json")),
+        replacement: reactDomRoot,
       },
       {
         find: /^react-dom\/client$/,
-        replacement: require.resolve("react-dom/client"),
+        replacement: testingLibraryRequire.resolve("react-dom/client"),
       },
       {
         find: /^@elizaos\/ui$/,

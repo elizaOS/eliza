@@ -5,6 +5,10 @@ const mockGetPerformance = mock();
 const mockGetAgentConfig = mock();
 const mockIsAutonomousTradingEnabled = mock();
 const mockLoggerWarn = mock();
+let mockAgentRegistryRows: Array<{
+  agentId: string;
+  agent0TokenId: string | null;
+}> = [];
 
 mock.module("@feed/agents", () => ({
   agentService: {
@@ -24,6 +28,24 @@ mock.module("@feed/shared", () => ({
     value ? value.toISOString() : null,
 }));
 
+mock.module("@feed/db", () => ({
+  agentRegistries: {
+    agentId: "agentId",
+    agent0TokenId: "agent0TokenId",
+  },
+  db: {
+    select: mock(() => ({
+      from: mock(() => ({
+        where: mock(async () => mockAgentRegistryRows),
+      })),
+    })),
+  },
+  inArray: mock((column: unknown, values: unknown[]) => ({
+    column,
+    values,
+  })),
+}));
+
 const { listOwnedAgentSummaries } = await import("./owned-agent-summaries");
 
 describe("listOwnedAgentSummaries", () => {
@@ -33,6 +55,7 @@ describe("listOwnedAgentSummaries", () => {
     mockGetAgentConfig.mockReset();
     mockIsAutonomousTradingEnabled.mockReset();
     mockLoggerWarn.mockReset();
+    mockAgentRegistryRows = [];
     mockIsAutonomousTradingEnabled.mockImplementation(
       (config: { autonomousTrading?: boolean } | null) =>
         config?.autonomousTrading ?? false,
@@ -68,6 +91,10 @@ describe("listOwnedAgentSummaries", () => {
         updatedAt: new Date("2026-03-02T00:00:00.000Z"),
       },
     ]);
+    mockAgentRegistryRows = [
+      { agentId: "agent-1", agent0TokenId: "101" },
+      { agentId: "agent-2", agent0TokenId: null },
+    ];
     mockGetPerformance
       .mockRejectedValueOnce(new Error("broken trade row"))
       .mockResolvedValueOnce({
@@ -98,6 +125,7 @@ describe("listOwnedAgentSummaries", () => {
         profitableTrades: 0,
         winRate: 0,
         autonomousTrading: false,
+        agent0TokenId: 101,
       }),
     );
     expect(summaries[1]).toEqual(
@@ -108,6 +136,7 @@ describe("listOwnedAgentSummaries", () => {
         winRate: 0.75,
         autonomousTrading: true,
         modelTier: "pro",
+        agent0TokenId: null,
       }),
     );
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1);

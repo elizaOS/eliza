@@ -34,6 +34,12 @@
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
 			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
 			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../plugin-task-coordinator/src/index.ts"
+			],
+			"@elizaos/plugin-task-coordinator/*": [
+				"../plugin-task-coordinator/src/*"
+			],
 			"@elizaos/plugin-remote-manifest": [
 				"../../packages/plugin-remote-manifest/src/index.ts"
 			],

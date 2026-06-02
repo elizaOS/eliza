@@ -12,7 +12,7 @@ import { cn } from "../../lib/utils";
 const BrandTabs = TabsPrimitive.Root;
 
 const BrandTabsList = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.List>,
+  HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
@@ -27,7 +27,7 @@ const BrandTabsList = React.forwardRef<
 BrandTabsList.displayName = TabsPrimitive.List.displayName;
 
 const BrandTabsTrigger = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  HTMLButtonElement,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Trigger
@@ -46,7 +46,7 @@ const BrandTabsTrigger = React.forwardRef<
 BrandTabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
 const BrandTabsContent = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Content>,
+  HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content

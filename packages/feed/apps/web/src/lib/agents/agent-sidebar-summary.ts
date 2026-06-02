@@ -5,6 +5,7 @@ import {
 } from "@feed/agents";
 import { calculatePortfolioBreakdown } from "@feed/engine";
 import { toISO, toISOOrNull } from "@feed/shared";
+import { getAgent0TokenIdByAgentId } from "./agent0-token-ids";
 import { getUserPositionsSnapshot } from "@/lib/markets/user-positions";
 
 function normalizeModelTier(value: string | null | undefined): "free" | "pro" {
@@ -19,17 +20,19 @@ export async function getAgentSidebarSummary({
   agentId: string;
 }) {
   // `getAgent(agentId, ownerId)` is the ownership gate for the entire summary.
-  const [agent, performance, config, portfolio, positions] = await Promise.all([
-    agentService.getAgent(agentId, ownerId),
-    agentService.getPerformance(agentId),
-    getAgentConfig(agentId),
-    calculatePortfolioBreakdown(agentId),
-    getUserPositionsSnapshot({
-      userId: agentId,
-      type: "all",
-      status: "all",
-    }),
-  ]);
+  const [agent, performance, config, portfolio, positions, agent0TokenId] =
+    await Promise.all([
+      agentService.getAgent(agentId, ownerId),
+      agentService.getPerformance(agentId),
+      getAgentConfig(agentId),
+      calculatePortfolioBreakdown(agentId),
+      getUserPositionsSnapshot({
+        userId: agentId,
+        type: "all",
+        status: "all",
+      }),
+      getAgent0TokenIdByAgentId(agentId),
+    ]);
 
   if (!agent) {
     throw new Error(`Agent ${agentId} not found`);
@@ -72,7 +75,7 @@ export async function getAgentSidebarSummary({
       lastTickAt: toISOOrNull(config?.lastTickAt),
       lastChatAt: toISOOrNull(config?.lastChatAt),
       walletAddress: agent.walletAddress,
-      agent0TokenId: null, // TODO: source from AgentRegistry table
+      agent0TokenId,
       createdAt: toISO(agent.createdAt),
       updatedAt: toISO(agent.updatedAt),
     },
