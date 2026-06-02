@@ -45,6 +45,22 @@ describe("view-action-affinity", () => {
     expect(viewScopedActionNames(undefined).size).toBe(0);
   });
 
+  it("covers the major plugin views (expanded map)", () => {
+    // wallet / trading / xr surfaces now boost their plugin actions.
+    expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
+    expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
+    expect(viewScopedActionNames("polymarket").has("POLYMARKET_STATUS")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames("hyperliquid").has("PERPETUAL_MARKET")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames("facewear").has("XR_OPEN_VIEW")).toBe(true);
+    expect(viewScopedActionNames("scape").has("SCAPE")).toBe(true);
+    expect(viewScopedActionNames("2004scape").has("RS_2004")).toBe(true);
+    expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
+  });
+
   it("merges view-scoped actions into the full-param set", () => {
     const set = buildFullParamActionSet([], viewScopedActionNames("companion"));
     // Universal actions are always present…
@@ -85,6 +101,9 @@ describe("view-action-affinity", () => {
     expect(block).toContain('"Wallet"');
     expect(block).toContain("list-elements");
     expect(block).toContain("agent-fill");
+    // The wallet view scopes actions → the block names them for the planner.
+    expect(block).toContain("most relevant while on this view");
+    expect(block).toContain("EVM_SWAP");
   });
 });
 
