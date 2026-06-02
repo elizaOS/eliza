@@ -1183,6 +1183,7 @@ function AcceptanceSection({
       <ul className="space-y-1">
         {criteria.map((criterion, index) => (
           <li
+            // biome-ignore lint/suspicious/noArrayIndexKey: criteria strings may repeat, so index disambiguates the composite key
             key={`${criterion}-${index}`}
             className="flex items-start gap-1.5 text-xs-tight text-txt"
           >
@@ -3043,12 +3044,21 @@ export function OrchestratorWorkbench() {
             onReopen={() =>
               runMutation(() => client.reopenCodingAgentTaskThread(detail.id))
             }
-            onDelete={() =>
+            onDelete={() => {
+              const confirmed =
+                typeof window === "undefined" ||
+                window.confirm(
+                  t("orchestrator.confirmDelete", {
+                    defaultValue:
+                      "Delete this task and its transcript? This can't be undone.",
+                  }),
+                );
+              if (!confirmed) return;
               runMutation(async () => {
                 await client.deleteOrchestratorTask(detail.id);
                 setSelectedId(null);
-              })
-            }
+              });
+            }}
             onFork={() =>
               runMutation(async () => {
                 const forked = await client.forkOrchestratorTask(detail.id);

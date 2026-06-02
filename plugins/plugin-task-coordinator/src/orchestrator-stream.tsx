@@ -44,6 +44,9 @@ type ToolStatus = "running" | "done" | "failed";
 
 export interface ToolView {
   id: string;
+  /** Task event ids merged into this rendered tool call. */
+  eventIds: string[];
+  sessionId: string | null;
   /** The tool's own name, e.g. `write`, `bash`, `read`. */
   title: string;
   /** ACP tool kind, e.g. `edit`, `execute`, `read`, `search`. */
@@ -64,7 +67,14 @@ export interface ToolView {
 }
 
 export type ConversationBlock =
-  | { kind: "user"; key: string; at: number; content: string }
+  | {
+      kind: "user";
+      key: string;
+      at: number;
+      content: string;
+      messageIds: string[];
+      sessionId: string | null;
+    }
   | {
       kind: "agent";
       key: string;
@@ -72,12 +82,17 @@ export type ConversationBlock =
       senderName: string;
       content: string;
       tone: "normal" | "error";
+      messageIds: string[];
+      sessionId: string | null;
     }
   | { kind: "tool"; key: string; at: number; tool: ToolView }
   | {
       kind: "notice";
       key: string;
       at: number;
+      eventId: string;
+      eventType: string;
+      sessionId: string | null;
       icon: LucideIcon;
       tone: string;
       text: string;
@@ -221,6 +236,8 @@ function toToolView(
   }
   return {
     id,
+    eventIds: events.map((event) => event.id),
+    sessionId: events[0]?.sessionId ?? null,
     title,
     kind,
     status,
@@ -251,6 +268,8 @@ type Atom =
       at: number;
       order: number;
       type: "notice";
+      eventId: string;
+      sessionId: string | null;
       eventType: string;
       summary: string;
     };
@@ -261,7 +280,9 @@ type Atom =
 function messageLane(message: CodingAgentTaskMessageRecord): string {
   if (message.senderKind === "user") return "user";
   const stream = message.direction === "stderr" ? "err" : "out";
-  return `${message.senderKind}:${message.sessionId ?? ""}:${stream}`;
+  // Fall back to the message id, not a shared empty string, so unrelated
+  // session-less output never coalesces into one rendered turn.
+  return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
 }
 
 /** Turn the polled message + event records into the ordered conversation the
@@ -311,6 +332,8 @@ export function buildConversation(
       at: event.timestamp,
       order: order++,
       type: "notice",
+      eventId: event.id,
+      sessionId: event.sessionId,
       eventType: event.eventType,
       summary: event.summary,
     });
@@ -351,6 +374,7 @@ export function buildConversation(
       const text = stripAnsi(atom.message.content);
       if (openLane && openLane.lane === lane) {
         openLane.block.content += text;
+        openLane.block.messageIds.push(atom.message.id);
         continue;
       }
       if (lane === "user") {
@@ -359,6 +383,8 @@ export function buildConversation(
           key: `msg-${atom.message.id}`,
           at: atom.at,
           content: text,
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -370,6 +396,8 @@ export function buildConversation(
           senderName: resolveSenderName(atom.message),
           content: text,
           tone: atom.message.direction === "stderr" ? "error" : "normal",
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -388,8 +416,11 @@ export function buildConversation(
       const meta = noticeMeta(atom.eventType);
       blocks.push({
         kind: "notice",
-        key: `evt-${atom.order}`,
+        key: `evt-${atom.eventId}`,
         at: atom.at,
+        eventId: atom.eventId,
+        eventType: atom.eventType,
+        sessionId: atom.sessionId,
         icon: meta.icon,
         tone: meta.tone,
         text: atom.summary.trim() || meta.label,
@@ -407,11 +438,30 @@ export function buildConversation(
 // in-repo precedent (config-field's preview renderer).
 
 const FENCE = /```([\w-]*)\n?([\s\S]*?)```/g;
+const SAFE_MARKDOWN_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+function hasUnsafeControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+}
+
+export function sanitizeMarkdownUrl(href: string): string | null {
+  const value = href.trim();
+  if (!value || hasUnsafeControlCharacter(value)) return null;
+
+  const protocolMatch = /^[a-z][a-z0-9+.-]*:/i.exec(value);
+  if (!protocolMatch) return value;
+
+  const protocol = protocolMatch[0].toLowerCase();
+  return SAFE_MARKDOWN_LINK_PROTOCOLS.has(protocol) ? value : null;
+}
 
 function renderInline(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern =
-    /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^\s)]+)\)/g;
   let last = 0;
   let index = 0;
   let match = pattern.exec(text);
@@ -433,10 +483,18 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
         </code>,
       );
     } else if (match[3] !== undefined) {
+      const href = sanitizeMarkdownUrl(match[4]);
+      if (!href) {
+        nodes.push(<span key={`${keyBase}-l${index}`}>{match[3]}</span>);
+        last = match.index + match[0].length;
+        index += 1;
+        match = pattern.exec(text);
+        continue;
+      }
       nodes.push(
         <a
           key={`${keyBase}-l${index}`}
-          href={match[4]}
+          href={href}
           target="_blank"
           rel="noreferrer"
           className="text-accent underline underline-offset-2"
