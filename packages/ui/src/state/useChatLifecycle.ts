@@ -5,7 +5,7 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
