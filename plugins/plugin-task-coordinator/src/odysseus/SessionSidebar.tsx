@@ -11,7 +11,13 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 function ThreadRow({
   thread,
@@ -37,6 +43,10 @@ function ThreadRow({
   onDelete: () => void;
 }): ReactNode {
   const [draft, setDraft] = useState(thread.title);
+  const renameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing) renameRef.current?.focus();
+  }, [editing]);
 
   if (editing) {
     const commit = () => {
@@ -49,11 +59,10 @@ function ThreadRow({
       else if (e.key === "Escape") onCancelRename();
     };
     return (
-      // biome-ignore lint/a11y/noAutofocus: rename field should take focus immediately
       <input
+        ref={renameRef}
         className="od-thread-rename"
         value={draft}
-        autoFocus
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKey}
         onBlur={commit}
