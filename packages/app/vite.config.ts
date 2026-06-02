@@ -1063,6 +1063,21 @@ function resolveManualChunk(id: string): string | undefined {
     return "vendor-lucide";
   }
 
+  // Phonemizer (eSpeak NG WASM, ~1.3MB) is dynamically imported through the
+  // kokoro `phonemizer.ts` adapter (packages/shared/.../kokoro/phonemizer.ts).
+  // Because that adapter is the dynamic-import boundary, Rolldown otherwise emits
+  // a second async chunk auto-named "phonemizer" and inlines its own copy of the
+  // npm package — shipping eSpeak NG twice (a "phonemizer" chunk *and* a
+  // "vendor-phonemizer" chunk). Routing BOTH the npm package and the adapter
+  // source to one chunk collapses them into a single ~650KB (brotli) chunk.
+  // Kept outside the /node_modules/ gate below so the adapter source matches too.
+  if (
+    normalizedId.includes("/phonemizer/") ||
+    normalizedId.includes("/kokoro/phonemizer")
+  ) {
+    return "vendor-phonemizer";
+  }
+
   if (normalizedId.includes("/node_modules/")) {
     if (
       pathIncludesAny(normalizedId, [
@@ -1088,11 +1103,6 @@ function resolveManualChunk(id: string): string | undefined {
       return "vendor-three";
     }
 
-    // Heavy single-purpose libs that only specific surfaces use. Splitting them
-    // into their own async chunks keeps them out of the initial entry chunk.
-    if (normalizedId.includes("/phonemizer/")) {
-      return "vendor-phonemizer";
-    }
     if (pathIncludesAny(normalizedId, ["/draco3d/", "/draco3dgltf/"])) {
       return "vendor-draco";
     }

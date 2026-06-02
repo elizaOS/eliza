@@ -60,16 +60,75 @@ function detectInitialEntries() {
   return entries;
 }
 
+/**
+ * Compute the EAGER graph — every chunk the browser parses before first paint.
+ * Starting from the entry/modulepreload chunks, follow only STATIC import edges
+ * (bare `"…chunk.js"` string references) and skip dynamic `import("…")` edges,
+ * which are lazy. This is what actually gates first load; the rest of dist is
+ * lazy (route chunks, worker/wasm blobs like phonemizer, three on companion
+ * mount) and must not be conflated with the critical path.
+ */
+function computeEagerGraph(assets, entryNames) {
+  const byName = new Map(assets.map((a) => [a.name, a]));
+  // Set of every chunk filename referenced anywhere via a dynamic import call,
+  // so we can exclude those edges when walking statics.
+  const dynamicTargets = new Set();
+  const staticEdges = new Map(); // name -> Set(staticallyReferenced names)
+  const CHUNK_REF = /['"`]([\w./-]+\.(?:js|css))['"`]/g;
+  const DYN_IMPORT = /import\(\s*['"`]([^'"`]+\.js)['"`]\s*\)/g;
+  for (const a of assets) {
+    if (a.ext !== ".js") continue;
+    const src = readFileSync(join(APP_DIST, a.path), "utf8");
+    const dyn = new Set();
+    for (const m of src.matchAll(DYN_IMPORT)) dyn.add(basename(m[1]));
+    for (const d of dyn) dynamicTargets.add(d);
+    const statics = new Set();
+    for (const m of src.matchAll(CHUNK_REF)) {
+      const ref = basename(m[1]);
+      if (ref !== a.name && byName.has(ref) && !dyn.has(ref)) statics.add(ref);
+    }
+    staticEdges.set(a.name, statics);
+  }
+  // BFS over static edges from the entry set.
+  const eager = new Set(entryNames);
+  const queue = [...entryNames];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const next of staticEdges.get(cur) ?? []) {
+      if (!eager.has(next)) {
+        eager.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return { eager, dynamicTargets };
+}
+
 function main() {
   if (!existsSync(APP_DIST)) {
     console.error(`[bundle-kpi] no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`);
     process.exit(2);
   }
 
+  // Measure each asset. A concurrent build can delete/replace files between the
+  // directory walk and the read (ENOENT); partial numbers would be misleading,
+  // so treat an unstable dist as "skipped" (exit 2) rather than crashing or
+  // silently under-counting. Only ENOENT is tolerated here — any other read
+  // error is a real fault and must propagate.
+  const vanished = [];
   const assets = walk(APP_DIST)
     .filter((f) => [".js", ".css"].includes(extname(f)))
     .map((f) => {
-      const m = measureFile(f);
+      let m;
+      try {
+        m = measureFile(f);
+      } catch (err) {
+        if (err?.code === "ENOENT") {
+          vanished.push(relative(APP_DIST, f));
+          return null;
+        }
+        throw err;
+      }
       return {
         path: relative(APP_DIST, f),
         name: basename(f),
@@ -78,7 +137,17 @@ function main() {
         ...m,
       };
     })
+    .filter(Boolean)
     .sort((a, b) => b.brotli - a.brotli);
+
+  if (vanished.length > 0) {
+    console.error(
+      `[bundle-kpi] dist unstable: ${vanished.length} file(s) vanished mid-scan ` +
+        `(concurrent build?). Numbers would be partial — skipping. ` +
+        `Re-run against a finished, stable build. e.g.: ${vanished[0]}`,
+    );
+    process.exit(2);
+  }
 
   const totalRaw = assets.reduce((s, a) => s + a.raw, 0);
   const totalBrotli = assets.reduce((s, a) => s + a.brotli, 0);
@@ -121,6 +190,14 @@ function main() {
   const initialEntryBrotli = entryAssets.reduce((s, a) => s + a.brotli, 0);
   const largest = assets[0];
 
+  // Eager graph: everything parsed before first paint (entry + its static deps).
+  // This is the honest "JS loaded up front" number; the rest is lazy.
+  const { eager, dynamicTargets } = computeEagerGraph(assets, entryNames);
+  const eagerAssets = assets.filter((a) => eager.has(a.name));
+  const eagerBrotli = eagerAssets.reduce((s, a) => s + a.brotli, 0);
+  const eagerRaw = eagerAssets.reduce((s, a) => s + a.raw, 0);
+  const lazyBrotli = totalBrotli - eagerBrotli;
+
   const budgets = loadBudgets().bundle;
   const maxDup = duplicates[0]?.wastedBrotli ?? 0;
   const checks = [
@@ -128,7 +205,12 @@ function main() {
     { name: "totalAssetsBrotli", value: totalBrotli, budget: budgets.totalAssetsBrotliBytes },
     { name: "largestChunkBrotli", value: largest?.brotli ?? 0, budget: budgets.largestChunkBrotliBytes },
     { name: "maxDuplicateLibBytes", value: maxDup, budget: budgets.maxDuplicateLibBytes },
-  ].map((c) => ({ ...c, pass: c.value <= c.budget }));
+  ];
+  // Eager-graph budget is opt-in (only checked when a budget is declared) so this
+  // stays backward-compatible with existing budgets.json files.
+  if (budgets.eagerGraphBrotliBytes != null)
+    checks.push({ name: "eagerGraphBrotli", value: eagerBrotli, budget: budgets.eagerGraphBrotliBytes });
+  for (const c of checks) c.pass = c.value <= c.budget;
 
   const offenders = assets.filter((a) => a.brotli > budgets.perChunkWarnBrotliBytes);
 
@@ -139,10 +221,14 @@ function main() {
       totalBrotli,
       initialEntryBrotli,
       initialEntryFiles: entryAssets.map((a) => a.name),
+      eagerChunkCount: eagerAssets.length,
+      eagerRaw,
+      eagerBrotli,
+      lazyBrotli,
       largestChunk: largest ? { name: largest.name, raw: largest.raw, brotli: largest.brotli } : null,
       duplicateWastedBrotli: duplicates.reduce((s, d) => s + d.wastedBrotli, 0),
     },
-    topChunks: assets.slice(0, 25).map((a) => ({ name: a.name, raw: a.raw, brotli: a.brotli })),
+    topChunks: assets.slice(0, 25).map((a) => ({ name: a.name, raw: a.raw, brotli: a.brotli, eager: eager.has(a.name) })),
     duplicates: duplicates.slice(0, 20),
     libSpread,
     offendersOverWarn: offenders.map((a) => ({ name: a.name, brotli: a.brotli })),
@@ -166,14 +252,16 @@ function print(r, file) {
   console.log(`assets:            ${s.assetCount} JS/CSS files`);
   console.log(`total raw:         ${mb(s.totalRaw)}`);
   console.log(`total brotli:      ${mb(s.totalBrotli)}`);
+  console.log(`EAGER (first paint): ${kb(s.eagerBrotli)} brotli / ${mb(s.eagerRaw)} raw across ${s.eagerChunkCount} chunks`);
+  console.log(`lazy (on demand):  ${kb(s.lazyBrotli)} brotli`);
   console.log(`initial entry:     ${kb(s.initialEntryBrotli)} brotli  (${s.initialEntryFiles.join(", ") || "?"})`);
   if (s.largestChunk)
     console.log(`largest chunk:     ${s.largestChunk.name}  ${kb(s.largestChunk.brotli)} brotli / ${mb(s.largestChunk.raw)} raw`);
   console.log(`dup waste:         ${mb(s.duplicateWastedBrotli)} brotli (same chunk emitted per entry point)`);
 
-  console.log("\n-- top 12 chunks by brotli --");
+  console.log("\n-- top 12 chunks by brotli  (E=eager / lazy) --");
   for (const c of r.topChunks.slice(0, 12)) {
-    console.log(`  ${kb(c.brotli).padStart(11)}  ${pct(c.brotli, s.totalBrotli).padStart(6)}  ${c.name}`);
+    console.log(`  ${c.eager ? "E" : " "} ${kb(c.brotli).padStart(11)}  ${pct(c.brotli, s.totalBrotli).padStart(6)}  ${c.name}`);
   }
 
   console.log("\n-- duplicate chunks (wasted = extra copies) --");
