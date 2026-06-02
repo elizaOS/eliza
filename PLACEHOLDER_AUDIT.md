@@ -39,10 +39,20 @@ platform no-ops are separated from actionable runtime gaps.
   clear without deleting.
 - Added `src/__tests__/pairing-migration.test.ts` for real clear behavior,
   dry-run behavior, and delete-before-import ordering.
+- Finished the advanced-planning `PLAN` subactions in
+  `src/features/advanced-planning/actions/plan.ts`. `create` now returns the
+  generated plan body and honors `goal` / `phaseCount`; `update`, `review`, and
+  `finalize` now perform concrete plan transformations, structural review, or
+  persistence-ready patch/finalization generation instead of returning
+  `not_implemented`.
+- Added `src/features/advanced-planning/actions/plan.test.ts` covering all four
+  subactions.
 - Verified with:
   - `bun run --cwd packages/core test src/__tests__/pairing-migration.test.ts`
+  - `bun run --cwd packages/core test src/features/advanced-planning/actions/plan.test.ts`
   - `bun run --cwd packages/core typecheck`
   - `bunx biome check packages/core/src/services/pairing-migration.ts packages/core/src/__tests__/pairing-migration.test.ts`
+  - `bunx biome check packages/core/src/features/advanced-planning/actions/plan.ts packages/core/src/features/advanced-planning/actions/plan.test.ts`
 
 ### packages/plugin-worker-runtime
 
