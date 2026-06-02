@@ -1574,7 +1574,7 @@ function makeEsToolkitCompatEsmPlugin(
     name: `es-toolkit-compat-esm-${pluginName}`,
     enforce: isRaw ? ("pre" as const) : undefined,
     resolveId(source, importer) {
-      const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)$/.exec(source);
+      const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)(?:\.js)?$/.exec(source);
       if (!m) return null;
       let dir: string | null = null;
       try {
