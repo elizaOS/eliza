@@ -3697,11 +3697,11 @@ export async function startEliza(
     }
   }
 
-  // 5-pre. Per-agent EVM + Solana wallet bootstrap is FULLY LAZY — wallets are
-  // generated on first read (when the in-app browser wallet tab opens or a
-  // signing flow requests a key via ensureAgentWalletsLazy()), not during boot.
-  // This eliminates the ~50s EVM/Solana crypto import + vault-write cost for
-  // users who never open the wallet. The opt-out
+  // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
+  // critical path: it runs after the runtime is reachable (fired fire-and-forget
+  // from the deferred boot phase via ensureAgentWalletsLazy()), not during
+  // essential boot. This keeps the ~50s EVM/Solana crypto import + vault-write
+  // cost out of the time-to-reachable window. The opt-out
   // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP) and cloud-container skip
   // (ELIZA_CLOUD_PROVISIONED) are checked inside ensureAgentWalletsLazy();
   // the TEE-gate suppression lives inside bridgeAgentWalletsToProcessEnv
@@ -4604,21 +4604,22 @@ export async function startEliza(
     });
   };
 
-  // Per-agent EVM + Solana wallet bootstrap is FULLY LAZY — wallets are
-  // generated on first read (when the in-app browser wallet tab opens or a
-  // signing flow requests a key), not during boot. This eliminates the ~50s
-  // crypto import cost (EVM + Solana keypair generation + encrypted vault
-  // writes) entirely for users who never open the wallet UI.
+  // Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot critical
+  // path: it runs after the runtime is reachable (fired fire-and-forget from
+  // the deferred boot phase below), not synchronously during essential boot.
+  // This keeps the ~50s crypto import cost (EVM + Solana keypair generation +
+  // encrypted vault writes) out of the time-to-reachable window.
   //
   // The opt-out (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), cloud-container skip
   // (ELIZA_CLOUD_PROVISIONED), and TEE-gate suppression (inside
   // bridgeAgentWalletsToProcessEnv and revealAgentWalletPrivateKey in
   // agent-wallets.ts) all still apply.
   //
-  // The lazy init is a singleton: once the first call resolves, subsequent
-  // calls return the cached descriptors. Exported via
-  // runtime.ensureAgentWalletsLazy() for the vault-signer and wallet API
-  // routes to consume.
+  // The init is a singleton: once the first call resolves, subsequent calls
+  // return the cached descriptors; a failure clears the singleton so the next
+  // call retries. This closure is local to startEliza — it is not attached to
+  // the runtime object. If a wallet route or signer needs true on-demand
+  // generation, wire it onto the runtime and call it from that path.
   let walletInitPromise: Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> | null = null;
   const ensureAgentWalletsLazy = (): Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> => {
     if (
