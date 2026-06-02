@@ -3,6 +3,7 @@ import { containersEnv } from "../config/containers-env";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import {
   buildCodingContainerCreatePayload,
+  buildCodingContainerSessionResponse,
   isCodingContainerImageAllowed,
 } from "./coding-containers";
 
@@ -38,6 +39,43 @@ describe("coding container payloads", () => {
     );
 
     expect(payload.image).toBe("ghcr.io/example/custom-coding-image:latest");
+  });
+});
+
+describe("coding container session response url", () => {
+  it("prefers the per-agent public HTTPS url over the internal bridge url", () => {
+    const request = { agent: "claude" } as const;
+    const createPayload = buildCodingContainerCreatePayload(request);
+    const session = buildCodingContainerSessionResponse({
+      request,
+      createPayload,
+      upstreamData: {
+        id: "abc123de-0000-0000-0000-000000000000",
+        status: "running",
+        publicUrl: "https://abc123de-0000-0000-0000-000000000000.waifu.fun",
+        url: "http://10.0.0.5:3000",
+      },
+    });
+
+    expect(session.url).toBe(
+      "https://abc123de-0000-0000-0000-000000000000.waifu.fun",
+    );
+  });
+
+  it("falls back to the internal url when no public url is present", () => {
+    const request = { agent: "claude" } as const;
+    const createPayload = buildCodingContainerCreatePayload(request);
+    const session = buildCodingContainerSessionResponse({
+      request,
+      createPayload,
+      upstreamData: {
+        id: "abc123de-0000-0000-0000-000000000000",
+        status: "running",
+        url: "http://10.0.0.5:3000",
+      },
+    });
+
+    expect(session.url).toBe("http://10.0.0.5:3000");
   });
 });
 

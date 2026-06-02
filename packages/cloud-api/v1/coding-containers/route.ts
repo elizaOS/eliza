@@ -36,15 +36,22 @@
  *      bootstrap/volume columns, so honoring this needs daemon + schema work.
  *   2. Custom `container.cpu` / `container.memory` are NOT plumbed to
  *      `provision()` (it uses node defaults). Same schema limitation.
- *   3. The returned `url` is the agent bridge/health URL, NOT the browser IDE
- *      URL the old control-plane returned. UI-facing callers must resolve the
- *      public coding-UI URL separately until the daemon surfaces it.
+ *   3. The browser coding-IDE URL (if any) is a separate concern the daemon
+ *      does not yet surface; the returned `url` is the per-agent public HTTPS
+ *      URL (https://<id>.<agent-domain>).
+ *
+ * PUBLIC_BASE_URL: before provisioning we inject `https://<id>.<agent-domain>`
+ * into the container's env (unless the caller pinned one) so a self-contained
+ * agent like Nancy boots knowing its own public URL — needed for webhooks, deep
+ * links, and signing pages. The sandbox id exists pre-provision and the
+ * per-agent gateway serves that host, so there is no chicken-and-egg.
  */
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
@@ -78,6 +85,23 @@ function validationError(c: AppContext, message: string): Response {
 }
 
 /**
+ * Per-agent public HTTPS URL (`https://<id>.<agent-domain>`), resolving the base
+ * domain from the container control-plane config (`containersEnv`, which reads
+ * the Worker's bindings) — NOT `process.env`. This route runs in the Cloudflare
+ * Worker, where `process.env` is not populated, so calling
+ * `getElizaAgentPublicWebUiUrl` without an explicit domain would silently fall
+ * back to the default brand domain and yield an unreachable host. Returns null
+ * when no base domain is configured.
+ */
+function resolveAgentPublicUrl(sandbox: {
+  id: string;
+  headscale_ip: string | null;
+}): string | null {
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
+}
+
+/**
  * Build the session response from a running sandbox row. Mirrors the upstream
  * shape the old control-plane returned, sourced from the daemon-provisioned
  * sandbox instead of the dead HTTP origin.
@@ -90,6 +114,7 @@ function buildSessionFromSandbox(
     status: string;
     bridge_url: string | null;
     health_url: string | null;
+    headscale_ip: string | null;
     created_at?: Date | string | null;
   },
 ) {
@@ -99,6 +124,10 @@ function buildSessionFromSandbox(
     upstreamData: {
       id: sandbox.id,
       status: sandbox.status,
+      // Prefer the reachable per-agent HTTPS URL (https://<id>.<domain>) so the
+      // session reports where the container is actually served; fall back to the
+      // internal bridge/health URL.
+      publicUrl: resolveAgentPublicUrl(sandbox) ?? undefined,
       url: sandbox.bridge_url ?? sandbox.health_url ?? null,
       createdAt:
         sandbox.created_at instanceof Date
@@ -153,17 +182,38 @@ async function createCodingContainer(
     dockerImage: payload.image,
   });
 
+  // ── Inject the container's own public URL as PUBLIC_BASE_URL ──────────────
+  // The sandbox id exists now (pre-provision) and the per-agent gateway serves
+  // `https://<id>.<agent-domain>`, so we can set the agent's public URL before
+  // the daemon docker-runs it — `provision()` forwards `environment_vars` into
+  // the container (eliza-sandbox.ts). A self-contained image like Nancy needs
+  // this for webhooks / deep links / signing pages. We never override a
+  // PUBLIC_BASE_URL the caller pinned explicitly.
+  let provisionRow = sandbox;
+  const publicWebUrl = resolveAgentPublicUrl(sandbox);
+  if (publicWebUrl && !payload.environment_vars["PUBLIC_BASE_URL"]) {
+    payload.environment_vars["PUBLIC_BASE_URL"] = publicWebUrl;
+    const updated = await elizaSandboxService.updateAgentEnvironment(
+      sandbox.id,
+      user.organization_id,
+      payload.environment_vars,
+    );
+    if (updated) provisionRow = updated;
+  }
+
   // ── Enqueue the (existing, image-capable) provision job + kick the daemon ──
+  // Enqueue against `provisionRow` — updateAgentEnvironment bumps `updated_at`,
+  // and enqueueAgentProvisionOnce gates on `expectedUpdatedAt`.
   let enqueue: Awaited<
     ReturnType<typeof provisioningJobService.enqueueAgentProvisionOnce>
   >;
   try {
     enqueue = await provisioningJobService.enqueueAgentProvisionOnce({
-      agentId: sandbox.id,
+      agentId: provisionRow.id,
       organizationId: user.organization_id,
       userId: user.id,
-      agentName: sandbox.agent_name ?? sandbox.id,
-      expectedUpdatedAt: sandbox.updated_at,
+      agentName: provisionRow.agent_name ?? provisionRow.id,
+      expectedUpdatedAt: provisionRow.updated_at,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -263,6 +313,8 @@ async function createCodingContainer(
         containerId: sandbox.id,
         status: "pending",
         agent: request.agent,
+        // Known pre-provision (id-derived); lets the caller wire up the URL now.
+        url: publicWebUrl ?? undefined,
       },
       jobId: job.id,
       polling: {
