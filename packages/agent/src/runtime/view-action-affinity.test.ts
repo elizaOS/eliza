@@ -121,6 +121,37 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     // The unrelated action is still stubbed.
     expect(out).not.toContain("foo: string");
   });
+
+  // Mirrors the exact pipeline installPromptOptimizations runs on a planner
+  // prompt: read the active view, weight its scoped actions through
+  // compactActionsForIntent, then inject the awareness block. Locks the
+  // integration contract the prompt-optimization wiring implements.
+  it("end-to-end: active view weights its action AND injects awareness", () => {
+    setActiveViewContext({
+      viewId: "companion",
+      viewLabel: "Companion",
+      viewType: "gui",
+      viewPath: "/companion",
+    });
+    const active = getActiveViewContext();
+    let prompt = compactActionsForIntent(
+      PROMPT,
+      viewScopedActionNames(active?.viewId),
+    );
+    if (active && prompt.includes("# Available Actions")) {
+      prompt = applyActiveViewAwareness(prompt, active);
+    }
+    // Weighting: the companion view's PLAY_EMOTE keeps full params…
+    expect(prompt).toContain("emote: string, intensity: number");
+    // …unrelated action stays stubbed…
+    expect(prompt).not.toContain("foo: string");
+    // …and awareness is injected once, before the action catalogue.
+    expect(prompt).toContain("# Active View");
+    expect(prompt.indexOf("# Active View")).toBeLessThan(
+      prompt.indexOf("# Available Actions"),
+    );
+    expect(prompt.match(/# Active View/g)).toHaveLength(1);
+  });
 });
 
 describe("applyActiveViewAwareness", () => {
