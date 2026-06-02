@@ -48,6 +48,11 @@ def test_report_records_non_release_claim_flags() -> None:
     ):
         if report.get(key) is not False:
             raise AssertionError(f"{key} must be exactly false")
+    if set(report["false_claim_flags"]) != set(gate.FALSE_CLAIM_FLAGS):
+        raise AssertionError("false_claim_flags keys must match DMA engine claim flags")
+    for key, value in report["false_claim_flags"].items():
+        if value is not False:
+            raise AssertionError(f"false_claim_flags.{key} must be exactly false")
     boundary = report.get("claim_boundary", "")
     for token in (
         "Does NOT cover SoC-fabric wiring",

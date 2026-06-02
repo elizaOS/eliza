@@ -322,7 +322,7 @@ cross_checks:
   factory_and_enclosure_coupling_remains_fail_closed: true
 
 release_blockers:
-  - routed KiCad PCB, DRC, ERC, and zone-fill evidence are missing
+  - local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2304 DRC rows, 366 ERC rows, and no signed waivers
   - post-route SI/PI length, skew, impedance, return-path, current-density, and load-step evidence is missing
   - RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing
   - USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing

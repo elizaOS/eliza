@@ -30,6 +30,11 @@ REQUIRED_MODELS = {
     "evolve-verilog",
     "veriagent",
 }
+FALSE_CLAIM_FLAGS = {
+    "generated_rtl_committed": False,
+    "generated_rtl_enters_source": False,
+    "model_quality_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -90,6 +95,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         for key in expected_false:
             if policy.get(key) is not False:
                 errors.append(f"evaluation_policy.{key} must be false")
+        if policy.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+            errors.append("evaluation_policy.false_claim_flags must match denied RTL model claims")
         expected_true = {
             "release_use_blocked",
             "requires_human_review",

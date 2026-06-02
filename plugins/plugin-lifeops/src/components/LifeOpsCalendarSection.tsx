@@ -18,6 +18,7 @@ import {
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -816,6 +817,55 @@ function MonthGrid({
   );
 }
 
+function AgendaEventButton({
+  event,
+  isSelected,
+  onSelectEvent,
+}: {
+  event: LifeOpsCalendarEvent;
+  isSelected: boolean;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  const color = paletteFor(event);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `calendar-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-calendar-events",
+    status: isSelected ? "active" : "inactive",
+    description: `Open the event ${event.title}`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelectEvent(event)}
+      onContextMenu={(mouseEvent) => {
+        mouseEvent.preventDefault();
+        onSelectEvent(event);
+      }}
+      aria-pressed={isSelected}
+      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+        isSelected ? "bg-white/5" : "hover:bg-white/3"
+      }`}
+      {...agentProps}
+    >
+      <span
+        aria-hidden
+        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {event.title}
+        </span>
+        <span className="mt-1 block text-xs text-muted">
+          {formatAgendaEventMeta(event)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function AgendaView({
   days,
   eventsByDay,
@@ -863,38 +913,14 @@ function AgendaView({
             {formatAgendaDayLabel(section.day)}
           </div>
           <div className="divide-y divide-border/10">
-            {section.events.map((event) => {
-              const color = paletteFor(event);
-              const isSelected = event.id === selectedEventId;
-              return (
-                <button
-                  key={event.id}
-                  type="button"
-                  onClick={() => onSelectEvent(event)}
-                  onContextMenu={(mouseEvent) => {
-                    mouseEvent.preventDefault();
-                    onSelectEvent(event);
-                  }}
-                  aria-pressed={isSelected}
-                  className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
-                    isSelected ? "bg-white/5" : "hover:bg-white/3"
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-txt">
-                      {event.title}
-                    </span>
-                    <span className="mt-1 block text-xs text-muted">
-                      {formatAgendaEventMeta(event)}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+            {section.events.map((event) => (
+              <AgendaEventButton
+                key={event.id}
+                event={event}
+                isSelected={event.id === selectedEventId}
+                onSelectEvent={onSelectEvent}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -1007,6 +1033,49 @@ export function LifeOpsCalendarSection(
     },
   ];
 
+  const prevNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-prev",
+    role: "button",
+    label: t("lifeopsCalendar.previous", { defaultValue: "Previous" }),
+    group: "lifeops-calendar",
+    description: "Go to the previous calendar range",
+  });
+  const todayNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-today",
+    role: "button",
+    label: t("lifeopsCalendar.today", { defaultValue: "Today" }),
+    group: "lifeops-calendar",
+    description: "Jump the calendar to today",
+  });
+  const nextNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-next",
+    role: "button",
+    label: t("lifeopsCalendar.next", { defaultValue: "Next" }),
+    group: "lifeops-calendar",
+    description: "Go to the next calendar range",
+  });
+  const newEvent = useAgentElement<HTMLButtonElement>({
+    id: "calendar-new-event",
+    role: "button",
+    label: t("lifeopsCalendar.newEvent", { defaultValue: "New event" }),
+    group: "lifeops-calendar",
+    description: "Create a new calendar event",
+  });
+  const viewMode = useAgentElement<HTMLDivElement>({
+    id: "calendar-view-mode",
+    role: "select",
+    label: t("lifeopsCalendar.viewModeAria", { defaultValue: "Calendar view" }),
+    group: "lifeops-calendar",
+    status: calendar.viewMode,
+    description: "Switch between day, week, and month calendar views",
+    options: VIEW_ITEMS.map((item) => item.value),
+    getValue: () => calendar.viewMode,
+    onFill: (value: string) => {
+      const match = VIEW_ITEMS.find((item) => item.value === value);
+      if (match) calendar.setViewMode(match.value);
+    },
+  });
+
   return (
     <>
       <section
@@ -1017,29 +1086,35 @@ export function LifeOpsCalendarSection(
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden rounded-xl border border-border/16 bg-card/22">
               <button
+                ref={prevNav.ref}
                 type="button"
                 className="flex h-8 w-8 items-center justify-center text-muted hover:bg-bg-muted/40 hover:text-txt"
                 aria-label={t("lifeopsCalendar.previous", {
                   defaultValue: "Previous",
                 })}
                 onClick={calendar.goPrevious}
+                {...prevNav.agentProps}
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden />
               </button>
               <button
+                ref={todayNav.ref}
                 type="button"
                 className="h-8 px-2.5 text-xs font-medium text-txt hover:bg-bg-muted/40"
                 onClick={calendar.goToToday}
+                {...todayNav.agentProps}
               >
                 {t("lifeopsCalendar.today", { defaultValue: "Today" })}
               </button>
               <button
+                ref={nextNav.ref}
                 type="button"
                 className="flex h-8 w-8 items-center justify-center text-muted hover:bg-bg-muted/40 hover:text-txt"
                 aria-label={t("lifeopsCalendar.next", {
                   defaultValue: "Next",
                 })}
                 onClick={calendar.goNext}
+                {...nextNav.agentProps}
               >
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </button>
@@ -1059,8 +1134,10 @@ export function LifeOpsCalendarSection(
               items={VIEW_ITEMS}
               className="w-full border-border/24 bg-card/24 p-0.5"
               buttonClassName="min-h-8 flex-1 px-3 py-1 text-xs"
+              {...viewMode.agentProps}
             />
             <Button
+              ref={newEvent.ref}
               size="sm"
               className="h-8 shrink-0 gap-1 rounded-xl px-3 text-xs font-semibold"
               onClick={() => {
@@ -1068,6 +1145,7 @@ export function LifeOpsCalendarSection(
                 setCreateOpen(true);
               }}
               data-testid="lifeops-calendar-new-event"
+              {...newEvent.agentProps}
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
               {t("lifeopsCalendar.newEvent", { defaultValue: "New" })}

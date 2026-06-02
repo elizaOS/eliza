@@ -29,6 +29,28 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+LIVE_APP_BRIDGE_TEXT = """
+class ElizaAndroidSystemBridge {
+  static final String MARKER = "AndroidSystemProvider: live-state";
+  String unavailable() { return "privileged_android_system_bridge_not_bound"; }
+  String snapshot(String channel) {
+    switch (channel) {
+      case "eliza.android.wifi.state":
+      case "eliza.android.cell.state":
+      case "eliza.android.audio.state":
+      case "eliza.android.battery.state":
+      case "eliza.android.time.state":
+      case "eliza.android.connectivity.state":
+      case "eliza.android.lockscreen.state":
+        return "{}";
+      default:
+        return unavailable();
+    }
+  }
+}
+"""
+
+
 class AndroidSystemBridgeContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         system_ui = tmp / "os/android/system-ui"
@@ -170,6 +192,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_privapp_permissions_not_granted", codes)
         self.assertIn("chip_local_manifest_does_not_project_system_ui", codes)
         self.assertIn("chip_local_manifest_missing_system_bridge_service", codes)
+        self.assertIn("launcher_app_bridge_live_state_surface_incomplete", codes)
         self.assertIn("system_bridge_runtime_evidence_missing", codes)
         self.assertEqual(
             report["summary"]["blocker_dependency_counts"],
@@ -193,8 +216,13 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             " ".join(runtime_batch["commands"]),
         )
         runtime_commands = " ".join(runtime_batch["commands"])
+        self.assertIn(
+            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+            runtime_commands,
+        )
         self.assertIn("--adb-connect 127.0.0.1:6520", runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
+        self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', runtime_commands)
         self.assertIn(
             "--output packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json",
             runtime_commands,
@@ -202,6 +230,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn(
             "--logcat packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log",
             runtime_commands,
+        )
+        missing_runtime = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "system_bridge_runtime_evidence_missing"
+        )
+        self.assertEqual(missing_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            " ".join(missing_runtime["next_commands"]),
         )
 
     def test_implemented_packaged_bridge_contract_passes_static_checks(self) -> None:
@@ -226,6 +264,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
+                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -329,6 +368,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
+                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -397,6 +437,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_runtime_claim_boundary_mismatch", codes)
         self.assertIn("system_bridge_runtime_status_not_pass", codes)
         self.assertIn("system_bridge_runtime_result_not_zero", codes)
+        blocked_runtime = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "system_bridge_runtime_status_not_pass"
+        )
+        self.assertEqual(blocked_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            " ".join(blocked_runtime["next_commands"]),
+        )
 
     def test_local_manifest_permission_xmls_must_be_copyfiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

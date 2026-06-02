@@ -5,7 +5,7 @@
  * Probes for an existing install/connection and dispatches the result.
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
 import { client, type FirstRunOptions } from "../api";
 import {

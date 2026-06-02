@@ -162,6 +162,16 @@ export default defineConfig({
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
         replacement: appCoreNativeLibraryPolicy,
       },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "core",
+          "src",
+          "index.node.ts",
+        ),
+      },
       // These packages are imported by @elizaos/core while this suite inlines
       // core. Resolve them through Bun's real package-store path so their own
       // nested dependencies remain visible with preserveSymlinks enabled.
@@ -250,6 +260,26 @@ export default defineConfig({
           "plugin-calendly",
           "src",
           "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-browser\/password-manager-bridge$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-browser",
+          "src",
+          "password-manager-bridge.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-x\/lifeops-message-adapter$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-x",
+          "src",
+          "lifeops-message-adapter.ts",
         ),
       },
       {

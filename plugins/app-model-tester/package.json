@@ -45,6 +45,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test": "vitest run --config vitest.config.ts",
     "test:e2e": "node scripts/model-tester-e2e.mjs"
   },
   "files": [
@@ -52,6 +53,7 @@
   ],
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
   }
 }

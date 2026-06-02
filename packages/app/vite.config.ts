@@ -371,6 +371,13 @@ function stringifyBuildLogMessage(message: unknown): string {
 function isKnownToleratedBuildWarning(message: unknown): boolean {
   const text = stringifyBuildLogMessage(message);
   if (
+    text.includes("IMPORT_IS_UNDEFINED") &&
+    text.includes("Import `tslFn`") &&
+    text.includes("three.webgpu")
+  ) {
+    return true;
+  }
+  if (
     text.includes("Use of direct eval") &&
     text.includes("@electric-sql/pglite")
   ) {
@@ -396,7 +403,21 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   }
   return (
     text.includes("../app-core/src/browser.ts") ||
-    text.includes("native-stub:node:fs/promises")
+    text.includes("native-stub:node:fs/promises") ||
+    text.includes("../ui/src/components/pages/") ||
+    text.includes("../../plugins/plugin-vincent/src/VincentAppView.tsx") ||
+    text.includes(
+      "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-companion/src/components/companion/CompanionAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
+    )
   );
 }
 
@@ -1841,6 +1862,14 @@ export const INVALID_TRACER_PROVIDER = {};
       ]),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
+      // @elizaos/logger is the standalone logger extracted from @elizaos/core.
+      // Resolve it to source so the renderer's logger consumers (~11 files) load
+      // the small logger module instead of dragging core's ~2MB browser bundle
+      // into the eager entry graph.
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
+      },
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {

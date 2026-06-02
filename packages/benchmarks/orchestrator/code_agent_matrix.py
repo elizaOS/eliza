@@ -1318,6 +1318,8 @@ def default_command(
             cmd.extend(["--use-sample-tasks", "--local-sandbox", "--mock"])
         elif no_docker:
             cmd.append("--local-sandbox")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, b_root / "terminal-bench"
 
     if benchmark == "mind2web":
@@ -1408,6 +1410,8 @@ def default_command(
                 cmd.extend(["--provider_name", provider_name])
             if path_to_vm:
                 cmd.extend(["--path_to_vm", path_to_vm])
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, b_root / "OSWorld"
 
     if benchmark == "nl2repo":
@@ -1668,6 +1672,8 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "claw_eval":
@@ -1696,6 +1702,8 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "swe_bench_pro":

@@ -49,6 +49,10 @@ describe("lmstudio config", () => {
     );
   });
 
+  it("treats blank base URL settings as the default endpoint", () => {
+    expect(getBaseURL(makeRuntime({ LMSTUDIO_BASE_URL: "   " }))).toBe(DEFAULT_LMSTUDIO_URL);
+  });
+
   it("derives api base by stripping /v1", () => {
     expect(getApiBase(makeRuntime({ LMSTUDIO_BASE_URL: "http://host:1234/v1" }))).toBe(
       "http://host:1234"

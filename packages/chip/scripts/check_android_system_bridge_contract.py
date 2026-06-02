@@ -113,6 +113,12 @@ FALSE_CLAIM_FLAGS = {
 RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
 DEFAULT_RUNTIME_OUTPUT = "packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
 DEFAULT_RUNTIME_LOGCAT = "packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
+RUNTIME_CAPTURE_BASE_COMMAND = (
+    f"python3 {RUNTIME_CAPTURE_SCRIPT} "
+    f"--launcher-package {APP_PACKAGE} "
+    f"--output {DEFAULT_RUNTIME_OUTPUT} "
+    f"--logcat {DEFAULT_RUNTIME_LOGCAT}"
+)
 RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
 )
@@ -310,17 +316,18 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "commands": [
                     "adb devices",
                     (
-                        f"{RUNTIME_CAPTURE_SCRIPT} "
+                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
-                        + " "
-                        f"--launcher-package {APP_PACKAGE} "
-                        f"--output {DEFAULT_RUNTIME_OUTPUT} "
-                        f"--logcat {DEFAULT_RUNTIME_LOGCAT}"
+                    ),
+                    (
+                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
+                        "--adb-serial \"$CHIP_ANDROID_ADB_SERIAL\""
                     ),
                     RECHECK_COMMAND,
                 ],
                 "requires": [
                     "exactly one booted Android target or explicit adb serial",
+                    "set CHIP_ANDROID_ADB_SERIAL for lab targets that are already visible in adb devices",
                     "sys.boot_completed=1",
                     "installed privileged system bridge app and launcher package",
                     "bridge service/log markers and live-state UI consumption",
@@ -353,6 +360,30 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
             }
         )
     return plan
+
+
+def command_plan_commands(command_plan: list[dict[str, object]]) -> list[str]:
+    commands: list[str] = []
+    for batch in command_plan:
+        values = batch.get("commands")
+        if isinstance(values, list):
+            commands.extend(command for command in values if isinstance(command, str) and command)
+        command = batch.get("command")
+        if isinstance(command, str) and command:
+            commands.append(command)
+    return list(dict.fromkeys(commands))
+
+
+def finding_payload(
+    finding: Finding,
+    command_plan: list[dict[str, object]],
+) -> dict[str, Any]:
+    row = asdict(finding)
+    commands = command_plan_commands(command_plan)
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
 
 
 def run_check(args: argparse.Namespace) -> dict[str, object]:
@@ -452,6 +483,34 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "launcher WebView does not bind the native system bridge as window.__elizaAndroidBridge",
         rel(LAUNCHER_MAIN_ACTIVITY),
         "Bind the real SystemBridge transport into the launcher WebView under __elizaAndroidBridge before AndroidSystemProvider mounts.",
+    )
+    required_app_bridge_channels = {
+        "eliza.android.wifi.state",
+        "eliza.android.cell.state",
+        "eliza.android.audio.state",
+        "eliza.android.battery.state",
+        "eliza.android.time.state",
+        "eliza.android.connectivity.state",
+        "eliza.android.lockscreen.state",
+    }
+    missing_app_bridge_channels = sorted(
+        channel for channel in required_app_bridge_channels if channel not in app_bridge_text
+    )
+    add_if(
+        findings,
+        not app_bridge_path.is_file()
+        or missing_app_bridge_channels
+        or "AndroidSystemProvider: live-state" not in app_bridge_text
+        or "privileged_android_system_bridge_not_bound" not in app_bridge_text,
+        "launcher_app_bridge_live_state_surface_incomplete",
+        "launcher app-side bridge does not expose live Android state channels with a stable runtime marker and fail-closed unavailable path",
+        (
+            f"path={rel(app_bridge_path)} "
+            f"missing_channels={missing_app_bridge_channels} "
+            f"live_marker={'AndroidSystemProvider: live-state' in app_bridge_text} "
+            f"fail_closed_marker={'privileged_android_system_bridge_not_bound' in app_bridge_text}"
+        ),
+        "Implement app-side Android manager snapshots for every SystemProvider state channel and emit the live-state marker only when the bridge is actively consumed.",
     )
     add_if(
         findings,
@@ -691,6 +750,12 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "bridge_service": rel(BRIDGE_SERVICE_KT),
         "bridge_service_present": BRIDGE_SERVICE_KT.is_file(),
         "launcher_main_activity": rel(LAUNCHER_MAIN_ACTIVITY),
+        "launcher_app_bridge": rel(app_bridge_path),
+        "launcher_app_bridge_live_state_channels": sorted(
+            channel for channel in required_app_bridge_channels if channel in app_bridge_text
+        ),
+        "launcher_app_bridge_live_state_marker": "AndroidSystemProvider: live-state"
+        in app_bridge_text,
         "launcher_binds_system_bridge": (
             "__elizaAndroidBridge" in launcher_text and "addJavascriptInterface" in launcher_text
         )
@@ -738,7 +803,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
             "next_command_batch_count": len(command_plan),
         },
         "blocker_dependency_counts": dependency_counts,
-        "findings": [asdict(finding) for finding in findings],
+        "findings": [finding_payload(finding, command_plan) for finding in findings],
         "next_command_plan": command_plan,
         "evidence": evidence,
     }

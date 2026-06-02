@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-lifeops",
   "version": "2.0.3-beta.0",
   "type": "module",
-  "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "description": "LifeOps personal assistant plugin: chat-first executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
   "sideEffects": [
     "./src/widgets/index.ts",
     "./src/api/client-lifeops.ts",
@@ -116,8 +116,6 @@
       "permissions": [
         "reminders",
         "calendar",
-        "health",
-        "screentime",
         "notes"
       ]
     }

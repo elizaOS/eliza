@@ -196,6 +196,15 @@ export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-cred-types.js";
 export * from "./connectors.js";
+export {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderFamily,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
+  normalizeFirstRunProviderId,
+  sortFirstRunProviders,
+} from "./contracts/first-run-options.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public

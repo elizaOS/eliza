@@ -133,11 +133,12 @@ def test_training_inputs_report_accepts_contact_reward_keys(monkeypatch) -> None
                     "foot_clearance_weight": 0.4,
                     "alternating_contact_weight": 4.0,
                     "locomotion_no_progress_penalty": 5.0,
-                    "late_hold_progress_start": 0.65,
-                    "goal_hold_progress_start": 0.65,
+                    "late_hold_progress_start": 0.95,
+                    "goal_hold_progress_start": 1.0,
                     "no_support_weight": 3.0,
                     "double_support_weight": 2.0,
-                    "foot_slip_weight": -1.0,
+                    "foot_slip_weight": -2.0,
+                    "max_foot_slip_margin_weight": 25.0,
                     "foot_spacing_weight": 1.0,
                     "self_collision_weight": 2.0,
                 },
@@ -189,5 +190,5 @@ def test_hiwonder_launch_resets_have_declared_biped_support() -> None:
     ]
     assert launch_rows
     assert all(row["biped_support"] is True for row in launch_rows)
-    assert all(row["left_foot_contact"] is True for row in launch_rows)
-    assert all(row["right_foot_contact"] is True for row in launch_rows)
+    assert all(row["left_foot_support"] is True for row in launch_rows)
+    assert all(row["right_foot_support"] is True for row in launch_rows)

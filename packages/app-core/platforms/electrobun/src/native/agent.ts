@@ -216,14 +216,23 @@ export function applyPackagedStartupEmbeddingWarmupPolicy(
   childEnv: Record<string, string>,
   packagedRuntime: boolean,
 ): void {
+  if (!packagedRuntime) {
+    return;
+  }
+
+  const explicitSkip = childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP?.trim();
+  if (explicitSkip) {
+    childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP = explicitSkip;
+    return;
+  }
+
   if (
-    !packagedRuntime ||
     isTruthyDesktopEnv(childEnv.ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP)
   ) {
     return;
   }
-  childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP =
-    childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP?.trim() || "1";
+
+  childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP = "1";
 }
 
 export function prependDesktopChildPathDirectory(

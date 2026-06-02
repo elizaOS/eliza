@@ -94,8 +94,12 @@ function parsePositiveInt(value: string | undefined): number {
   if (value === undefined) {
     return 0;
   }
-  const parsed = parseInt(value, 10);
-  return !Number.isNaN(parsed) && parsed > 0 ? parsed : 0;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return 0;
+  }
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): number {

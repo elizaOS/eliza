@@ -40,6 +40,15 @@ def assert_equal(actual: object, expected: object, message: str) -> None:
         raise AssertionError(f"{message}: expected {expected!r}, got {actual!r}")
 
 
+def contract_artifacts() -> dict[str, object]:
+    contract = ROOT / run_benchmarks.TARGET_METADATA_CONTRACT_PATH
+    return {
+        "target_metadata_contract": run_benchmarks.TARGET_METADATA_CONTRACT_PATH,
+        "target_metadata_contract_sha256": run_benchmarks.sha256_file(contract),
+        "target_metadata_contract_bytes": contract.stat().st_size,
+    }
+
+
 def valid_l5_l6_report() -> dict[str, Any]:
     return {
         "schema": "eliza.benchmark_run.v1",
@@ -58,6 +67,7 @@ def valid_l5_l6_report() -> dict[str, Any]:
             "host": "target",
             "host_system": "linux",
         },
+        "artifacts": contract_artifacts(),
         "target_execution": {
             "runner": "prototype",
             "transcript_sha256": "1" * 64,
@@ -726,6 +736,8 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
     if result.returncode != 2:
         raise AssertionError(result.stdout)
     assert_equal(status["status"], "blocked", "proof readiness status")
+    if not status.get("claim_boundary") or not status.get("generated_utc"):
+        raise AssertionError(json.dumps(status, indent=2))
     assert_equal(status["can_generate_locally"], False, "local proof generation")
     blockers = status.get("local_blockers", [])
     if not any(
@@ -738,6 +750,20 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
         for finding in findings
     ):
         raise AssertionError(json.dumps(status, indent=2))
+    if not findings or not all(finding.get("next_command") for finding in findings):
+        raise AssertionError(json.dumps(status, indent=2))
+    command_text = "\n".join(
+        command
+        for finding in findings
+        for command in finding.get("next_commands", [])
+    )
+    for token in (
+        "adb devices",
+        "capture_e1_npu_nnapi_evidence.sh",
+        "check_e1_npu_nnapi_proof.py --probe-adb",
+    ):
+        if token not in command_text:
+            raise AssertionError(command_text)
 
 
 def test_e1_npu_nnapi_proof_rejects_tops_and_capture_command_drift() -> None:

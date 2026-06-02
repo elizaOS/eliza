@@ -19,6 +19,9 @@
 		"paths": {
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/app-core/agent-bridge": [
+				"../../packages/app-core/src/agent-bridge.ts"
+			],
 			"@elizaos/app-core/api/auth": ["../../packages/app-core/src/api/auth.ts"],
 			"@elizaos/app-core/api/compat-route-shared": [
 				"../../packages/app-core/src/api/compat-route-shared.ts"
@@ -33,6 +36,7 @@
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],

@@ -1,4 +1,14 @@
 import crypto from "node:crypto";
+import type {
+  LifeOpsScheduleDeviceKind,
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+  LifeOpsScheduleObservationOrigin,
+  LifeOpsScheduleObservationSnapshot,
+  LifeOpsScheduleStateScope,
+  SyncLifeOpsScheduleObservationInput,
+  SyncLifeOpsScheduleObservationsRequest,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import {
   asRecord,
   type LifeOpsAwakeProbability,
@@ -12,16 +22,6 @@ import {
 } from "@elizaos/shared";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
-import type {
-  LifeOpsScheduleDeviceKind,
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-  LifeOpsScheduleObservationOrigin,
-  LifeOpsScheduleObservationSnapshot,
-  LifeOpsScheduleStateScope,
-  SyncLifeOpsScheduleObservationInput,
-  SyncLifeOpsScheduleObservationsRequest,
-} from "./schedule-sync-contracts.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

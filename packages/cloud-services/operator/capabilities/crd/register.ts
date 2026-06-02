@@ -2,6 +2,10 @@ import { K8s, kind, Log } from "pepr";
 import { ServerCRD } from "./source/server.crd";
 
 function RegisterCRD() {
+  if (process.env.ELIZA_OPERATOR_SKIP_CRD_REGISTER === "1") {
+    return;
+  }
+
   K8s(kind.CustomResourceDefinition)
     .Apply(ServerCRD, { force: true })
     .then(() => Log.info("Server CRD registered"))

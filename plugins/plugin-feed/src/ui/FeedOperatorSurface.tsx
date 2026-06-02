@@ -101,11 +101,12 @@ function FeedSuggestedPromptButton({
   disabled: boolean;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `suggested-prompt-${index}`,
+    id: `steering-suggested-prompt-${index}`,
     role: "button",
     label: prompt,
-    group: "feed-steering",
+    group: "Steering",
     description: `Send the suggested prompt "${prompt}" to Feed`,
+    onActivate: () => onSelect(prompt),
   });
   return (
     <Button
@@ -181,27 +182,32 @@ export function FeedOperatorSurface({
         ? "pause"
         : "resume";
 
+  const autonomyActive = controlAction === "pause";
   const toggleAgentButton = useAgentElement<HTMLButtonElement>({
-    id: "action-toggle-autonomy",
-    role: "button",
-    label: controlAction === "pause" ? "Pause agent" : "Resume agent",
-    group: "feed-steering",
-    status: controlAction === "pause" ? "active" : "inactive",
+    id: "steering-toggle-autonomy",
+    role: "toggle",
+    label: autonomyActive ? "Pause agent" : "Resume agent",
+    group: "Steering",
+    status: autonomyActive ? "active" : "inactive",
     description: "Pause or resume Feed autonomous play",
+    onActivate: () => void handleToggleAgent(),
   });
   const chatInputElement = useAgentElement<HTMLInputElement>({
-    id: "input-operator-message",
+    id: "steering-operator-message",
     role: "text-input",
     label: "Operator message",
-    group: "feed-steering",
+    group: "Steering",
     description: "Tell Feed what to prioritize, avoid, or explain",
+    getValue: () => chatInput,
+    onFill: (value) => setChatInput(value),
   });
   const sendChatButton = useAgentElement<HTMLButtonElement>({
-    id: "action-send-message",
+    id: "steering-send-message",
     role: "button",
     label: "Send",
-    group: "feed-steering",
+    group: "Steering",
     description: "Send the operator message to Feed",
+    onActivate: () => void handleSendChat(),
   });
 
   const loadDashboard = useCallback(async () => {
@@ -576,6 +582,7 @@ export function FeedOperatorSurface({
               variant="outline"
               size="sm"
               className="min-h-10 rounded-xl px-3 shadow-sm"
+              aria-current={autonomyActive}
               onClick={() => void handleToggleAgent()}
               {...toggleAgentButton.agentProps}
             >

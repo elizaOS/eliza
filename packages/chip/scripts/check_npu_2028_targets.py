@@ -179,6 +179,8 @@ def check_template_statuses(
     for flag, expected in FALSE_TEMPLATE_CLAIM_FLAGS.items():
         if template.get(flag) is not expected:
             errors.append(f"{name} template must keep {flag}=false")
+    if template.get("false_claim_flags") != FALSE_TEMPLATE_CLAIM_FLAGS:
+        errors.append(f"{name} template false_claim_flags must match denied claim fields")
 
     statuses = template.get("required_statuses", {})
     if not isinstance(statuses, dict):

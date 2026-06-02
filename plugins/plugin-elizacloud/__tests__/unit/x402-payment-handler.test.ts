@@ -23,11 +23,15 @@ describe("parseX402Response", () => {
 
     const requirements = await parseX402Response(response);
     expect(requirements).not.toBeNull();
-    expect(requirements).toHaveLength(1);
-    if (!requirements?.[0]) {
-      throw new Error("expected one payment requirement");
+    if (!requirements) {
+      throw new Error("expected payment requirements");
     }
+    expect(requirements).toHaveLength(1);
     const req = requirements[0];
+    expect(req).toBeDefined();
+    if (!req) {
+      throw new Error("expected first payment requirement");
+    }
     expect(req.amount).toBe("1500000");
     expect(req.asset).toBe("USDC");
     expect(req.network).toBe("base");

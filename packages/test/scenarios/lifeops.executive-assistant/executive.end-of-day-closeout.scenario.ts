@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "executive.end-of-day-closeout",
-  title: "End-of-day closeout compresses unresolved decisions and tomorrow risks",
+  title:
+    "End-of-day closeout compresses unresolved decisions and tomorrow risks",
   domain: "lifeops.executive-assistant",
   tags: ["lifeops", "executive-assistant", "closeout", "chat-first"],
   isolation: "per-scenario",
@@ -22,7 +23,14 @@ export default scenario({
       room: "main",
       text: "Run end-of-day closeout: unresolved decisions, tomorrow risks, waiting-on items, promises I made today, and tasks worth moving. Keep it tight.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["BRIEF", "LIFE", "INBOX", "MESSAGE", "CALENDAR", "RELATIONSHIP"],
+        acceptedActions: [
+          "BRIEF",
+          "LIFE",
+          "INBOX",
+          "MESSAGE",
+          "CALENDAR",
+          "RELATIONSHIP",
+        ],
         description: "end-of-day closeout",
         includesAny: ["unresolved", "tomorrow", "waiting", "promises", "tasks"],
       }),
@@ -35,12 +43,29 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["BRIEF", "LIFE", "INBOX", "MESSAGE", "CALENDAR", "RELATIONSHIP"] },
+    {
+      type: "selectedAction",
+      actionName: [
+        "BRIEF",
+        "LIFE",
+        "INBOX",
+        "MESSAGE",
+        "CALENDAR",
+        "RELATIONSHIP",
+      ],
+    },
     {
       type: "custom",
       name: "closeout-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["BRIEF", "LIFE", "INBOX", "MESSAGE", "CALENDAR", "RELATIONSHIP"],
+        acceptedActions: [
+          "BRIEF",
+          "LIFE",
+          "INBOX",
+          "MESSAGE",
+          "CALENDAR",
+          "RELATIONSHIP",
+        ],
         description: "end-of-day closeout",
         includesAny: ["unresolved", "tomorrow", "waiting", "promises", "tasks"],
       }),

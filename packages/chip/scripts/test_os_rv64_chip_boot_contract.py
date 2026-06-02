@@ -118,6 +118,27 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             variant / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh",
             "#!/bin/sh\nelizaos tui-smoke --api http://127.0.0.1:31337\n",
         )
+        runtime_smoke_log = write(
+            variant / "evidence/riscv64_agent_runtime_smoke.log",
+            "elizaos-riscv64-bun-eval-ok riscv64\n"
+            "elizaos-riscv64-bun-script-file-ok riscv64\n"
+            "elizaos-riscv64-agent-runtime-artifact-ok\n",
+        )
+        runtime_smoke = write_json(
+            variant / "evidence/riscv64_agent_runtime_smoke.json",
+            {
+                "schema": "eliza.os.linux.riscv64_agent_runtime_smoke.v1",
+                "status": "pass",
+                "runtime_mode": "bun",
+                "claim_boundary": (
+                    "static_staged_runtime_artifact_check_only_not_iso_boot_or_live_agent_health"
+                ),
+                "generated_utc": "2026-06-02T00:00:00Z",
+                "transcript": str(runtime_smoke_log),
+                "transcript_sha256": "0" * 64,
+                "failures": [],
+            },
+        )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
             mock.patch.object(gate, "VARIANT", variant),
@@ -134,6 +155,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             mock.patch.object(gate, "RELEASE_CHECK", release_check),
             mock.patch.object(gate, "TUI_SMOKE_UNIT", tui_unit),
             mock.patch.object(gate, "TUI_SMOKE_SCRIPT", tui_script),
+            mock.patch.object(gate, "RISCV64_AGENT_RUNTIME_SMOKE", runtime_smoke),
         ]
         return patches, manifest, qemu, variant
 
@@ -183,6 +205,31 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             report["summary"]["next_command_count"],
             len(report["next_command_plan"]),
         )
+        missing_boot = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "missing_chip_target_boot_evidence_row"
+        )
+        self.assertIn("wire_cpu_ap_capture_commands.py", missing_boot["next_command"])
+        self.assertIn("capture-generated-ap-chip-evidence.sh", missing_boot["next_commands"][1])
+        missing_agent = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "missing_agent_live_evidence_row"
+        )
+        self.assertIn("stage-agent-artifacts ARCH=riscv64", missing_agent["next_command"])
+        self.assertTrue(
+            any(
+                "capture-generated-ap-chip-evidence.sh" in command
+                for command in missing_agent["next_commands"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "systemctl is-active elizaos-agent.service" in command
+                for command in missing_agent["next_commands"]
+            )
+        )
         blocked_boot = next(
             item
             for item in report["next_command_plan"]
@@ -207,6 +254,140 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             if item["id"] == "derive_generated_ap_boot_command"
         )
         self.assertIn("wire_cpu_ap_capture_commands.py --format json", derive["command"])
+        assert_no_product_claims(report)
+
+    def test_firemarshal_boot_smoke_transcript_names_full_agent_staging_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            patches, manifest, qemu, variant = self._patch_tree(tmp)
+            transcript = write(
+                variant / "evidence/generated_ap_firemarshal.transcript.log",
+                "OpenSBI v1.2\n"
+                "Linux version 6.6.0\n"
+                "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-linux-smoke\n"
+                "initramfs start: firemarshal command running\n"
+                "e1-npu-ml-smoke: PASS workload=gemm_s8_int8_2x2x3\n"
+                "eliza-evidence: status=PASS\n",
+            )
+            write_json(
+                manifest,
+                {
+                    "target": {
+                        "platform": "linux",
+                        "architecture": "riscv64",
+                        "device": "eliza-e1-generated-ap",
+                        "hypervisor": "chipyard-verilator",
+                        "firmware": "opensbi",
+                    },
+                    "validation": {
+                        "requiredEvidence": [
+                            "generated-eliza-ap-boot",
+                            "elizaos-agent-live",
+                        ],
+                        "evidence": [
+                            {
+                                "id": "generated-eliza-ap-boot",
+                                "status": "blocked",
+                                "path": "evidence/generated_ap_firemarshal_boot.json",
+                            },
+                            {
+                                "id": "elizaos-agent-live",
+                                "status": "blocked",
+                                "path": "evidence/generated_ap_firemarshal_agent.json",
+                            },
+                        ],
+                    },
+                },
+            )
+            write_json(
+                variant / "evidence/generated_ap_firemarshal_boot.json",
+                {
+                    "schema": "eliza.os.linux.chip_boot.v1",
+                    "boot_completed": False,
+                    "provenance": "generated_eliza_ap",
+                    "claim_boundary": "generated_eliza_ap_chip_emulator_boot_evidence_blocked",
+                    "transcript_path": str(transcript),
+                },
+            )
+            write_json(
+                variant / "evidence/generated_ap_firemarshal_agent.json",
+                {
+                    "schema": "eliza.os.linux.agent_live.v1",
+                    "provenance": "generated_eliza_ap",
+                    "claim_boundary": "generated_eliza_ap_chip_emulator_agent_live_evidence_blocked",
+                    "transcript_path": str(transcript),
+                    "fallback_payload_used": None,
+                    "full_agent_bundle": False,
+                    "service": {
+                        "name": "elizaos-agent.service",
+                        "active": False,
+                        "systemctl_is_active": "unknown",
+                    },
+                    "process": {
+                        "pid": 0,
+                        "command": "",
+                        "executable": "",
+                    },
+                    "health": {
+                        "url": "http://127.0.0.1:31337/api/health",
+                        "http_status": 0,
+                        "ready": False,
+                        "response": {},
+                    },
+                },
+            )
+            write_json(
+                qemu,
+                {
+                    "schema": "eliza.os.linux.qemu_virt_boot.v1",
+                    "boot_completed": True,
+                    "provenance": "qemu_virt",
+                    "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+                    "transcript_path": str(transcript),
+                },
+            )
+            with PatchStack(patches):
+                report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
+
+        self.assertEqual(report["status"], "blocked")
+        findings = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn("generated_ap_payload_boot_smoke_only", findings)
+        self.assertIn(
+            "FireMarshal boot/NPU smoke payload",
+            findings["generated_ap_payload_boot_smoke_only"]["message"],
+        )
+        stage = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "stage_riscv64_full_agent_runtime"
+        )
+        self.assertIn("stage-agent-artifacts ARCH=riscv64", stage["command"])
+        self.assertIn("RISCV64_RUNTIME=node", stage["command"])
+        self.assertIn("riscv64-agent-runtime-smoke", stage["command"])
+        self.assertEqual(
+            report["evidence"]["riscv64_agent_runtime_smoke"]["passed"],
+            True,
+        )
+        smoke_only = findings["generated_ap_payload_boot_smoke_only"]
+        self.assertIn(stage["command"], smoke_only["next_commands"])
+        assert_no_product_claims(report)
+
+    def test_missing_riscv64_agent_runtime_smoke_is_prerequisite_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, _, _, variant = self._patch_tree(Path(tmpdir))
+            (variant / "evidence/riscv64_agent_runtime_smoke.json").unlink()
+            with PatchStack(patches):
+                report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
+
+        findings = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn("riscv64_agent_runtime_smoke_not_pass", findings)
+        runtime = report["evidence"]["riscv64_agent_runtime_smoke"]
+        self.assertEqual(runtime["status"], "missing")
+        self.assertIs(runtime["passed"], False)
+        self.assertIn(
+            "stage-agent-artifacts ARCH=riscv64",
+            "\n".join(findings["riscv64_agent_runtime_smoke_not_pass"]["next_commands"]),
+        )
         assert_no_product_claims(report)
 
     def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:

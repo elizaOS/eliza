@@ -85,6 +85,7 @@ E1_NPU_REQUIRED_CAPTURE_COMMANDS = {
     "dma_trace": "adb shell cat /sys/bus/platform/devices/10020000.npu/dma_trace",
 }
 PROCESS_EFFECTS_CONTRACT_PATH = "docs/spec-db/process-14a-effects.yaml"
+TARGET_METADATA_CONTRACT_PATH = "benchmarks/configs/target-metadata.contract.json"
 PROCESS_PDK_SIGNOFF_PASSED = "pdk_extracted_timing_power_thermal_signoff_passed"
 REAL_METADATA_SECTIONS = (
     "software",
@@ -555,6 +556,93 @@ def is_utc_timestamp(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None and parsed.utcoffset() == dt.timedelta(0)
+
+
+def contract_type_name(expected: Any) -> str:
+    if expected is str:
+        return "string"
+    if expected is int:
+        return "integer"
+    if expected == (int, float):
+        return "number"
+    if expected is dict:
+        return "object"
+    return str(expected)
+
+
+def load_target_metadata_contract(root: Path | None = None) -> dict[str, Any] | None:
+    base = root or ROOT
+    path = base / TARGET_METADATA_CONTRACT_PATH
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(contract, dict):
+        return [f"{TARGET_METADATA_CONTRACT_PATH} is missing or invalid JSON"]
+    if contract.get("schema") != "eliza.benchmark_target_metadata_contract.v1":
+        errors.append("target metadata contract schema must be eliza.benchmark_target_metadata_contract.v1")
+    boundary = str(contract.get("claim_boundary", ""))
+    for token in ("not benchmark evidence", "not calibrated target evidence", "not a release efficiency claim"):
+        if token not in boundary:
+            errors.append(f"target metadata contract claim_boundary missing {token}")
+    required_sections = contract.get("required_sections")
+    if set(required_sections if isinstance(required_sections, list) else []) != set(
+        REAL_METADATA_SECTIONS
+    ):
+        errors.append("target metadata contract required_sections must match runner real metadata sections")
+    required_fields = contract.get("required_fields")
+    if not isinstance(required_fields, dict):
+        errors.append("target metadata contract required_fields must be an object")
+        required_fields = {}
+    for section, fields in REAL_METADATA_REQUIRED_FIELDS.items():
+        section_contract = required_fields.get(section)
+        if not isinstance(section_contract, dict):
+            errors.append(f"target metadata contract required_fields.{section} must be an object")
+            continue
+        for field, expected_type in fields.items():
+            expected_name = (
+                "utc_timestamp"
+                if section == "calibration" and field == "last_calibrated_utc"
+                else contract_type_name(expected_type)
+            )
+            if section_contract.get(field) != expected_name:
+                errors.append(
+                    f"target metadata contract required_fields.{section}.{field} must be {expected_name}"
+                )
+    assets = contract.get("required_calibration_assets")
+    if set(assets if isinstance(assets, list) else []) != {"clock_source", "power_meter"}:
+        errors.append("target metadata contract required_calibration_assets must require clock_source and power_meter")
+    asset_fields = contract.get("calibration_asset_required_fields")
+    if set(asset_fields if isinstance(asset_fields, list) else []) != {
+        "status",
+        "source",
+        "sha256",
+        "evidence",
+    }:
+        errors.append("target metadata contract calibration_asset_required_fields must match runner requirements")
+    process_contract = contract.get("process_effects_contract")
+    if not isinstance(process_contract, dict):
+        errors.append("target metadata contract process_effects_contract must be an object")
+    else:
+        if process_contract.get("path") != PROCESS_EFFECTS_CONTRACT_PATH:
+            errors.append(
+                "target metadata contract process_effects_contract.path must be "
+                + PROCESS_EFFECTS_CONTRACT_PATH
+            )
+        if "64-character lowercase SHA-256" not in str(process_contract.get("sha256", "")):
+            errors.append("target metadata contract process_effects_contract.sha256 must describe SHA-256 evidence")
+    forbidden = contract.get("forbidden_release_values")
+    if not isinstance(forbidden, list) or not {"placeholder", "blocked", "missing", "todo", "tbd"}.issubset(
+        {str(item).lower() for item in forbidden}
+    ):
+        errors.append("target metadata contract forbidden_release_values must include blocked placeholder terms")
+    return errors
 
 
 def record_artifact_hash(result: dict[str, Any], key: str, path: Path) -> None:
@@ -1323,6 +1411,7 @@ def selected_benchmarks(config: dict[str, Any], names: set[str]) -> list[dict[st
 
 
 def base_report(args: argparse.Namespace, config: dict[str, Any], root: Path) -> dict[str, Any]:
+    contract_path = root / TARGET_METADATA_CONTRACT_PATH
     report: dict[str, Any] = {
         "schema": "eliza.benchmark_run.v1",
         "report_id": args.report_id,
@@ -1340,6 +1429,15 @@ def base_report(args: argparse.Namespace, config: dict[str, Any], root: Path) ->
             "path": str(args.config),
             "version": config.get("version", "unknown"),
         },
+        "artifacts": {
+            "target_metadata_contract": display_path(contract_path, root),
+            "target_metadata_contract_sha256": sha256_file(contract_path)
+            if contract_path.is_file()
+            else None,
+            "target_metadata_contract_bytes": contract_path.stat().st_size
+            if contract_path.is_file()
+            else None,
+        },
         "results": [],
     }
     metadata_path = args.metadata if getattr(args, "metadata", None) else None
@@ -1347,11 +1445,13 @@ def base_report(args: argparse.Namespace, config: dict[str, Any], root: Path) ->
         resolved = metadata_path if metadata_path.is_absolute() else root / metadata_path
         with resolved.open("r", encoding="utf-8") as f:
             metadata = json.load(f)
-        report["artifacts"] = {
-            "target_metadata": display_path(resolved, root),
-            "target_metadata_sha256": sha256_file(resolved),
-            "target_metadata_bytes": resolved.stat().st_size,
-        }
+        report["artifacts"].update(
+            {
+                "target_metadata": display_path(resolved, root),
+                "target_metadata_sha256": sha256_file(resolved),
+                "target_metadata_bytes": resolved.stat().st_size,
+            }
+        )
         for key in REAL_METADATA_SECTIONS:
             if key in metadata:
                 report[key] = metadata[key]
@@ -1790,6 +1890,8 @@ def check_result_raw_output_artifact(
 
 def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -> list[str]:
     errors: list[str] = []
+    contract = load_target_metadata_contract(ROOT)
+    errors.extend(validate_target_metadata_contract(contract))
     for field, expected_type in REQUIRED_REPORT_FIELDS.items():
         if field not in report:
             errors.append(f"report missing {field}")
@@ -1798,6 +1900,36 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
 
     if report.get("schema") != "eliza.benchmark_run.v1":
         errors.append("report.schema must be eliza.benchmark_run.v1")
+    artifacts = report.get("artifacts")
+    contract_path = ROOT / TARGET_METADATA_CONTRACT_PATH
+    if not isinstance(artifacts, dict):
+        errors.append("report.artifacts must record target metadata contract provenance")
+    else:
+        if artifacts.get("target_metadata_contract") != TARGET_METADATA_CONTRACT_PATH:
+            errors.append(
+                "report.artifacts.target_metadata_contract must be "
+                + TARGET_METADATA_CONTRACT_PATH
+            )
+        recorded_contract_sha = artifacts.get("target_metadata_contract_sha256")
+        if not is_sha256(recorded_contract_sha):
+            errors.append(
+                "report.artifacts.target_metadata_contract_sha256 must be lowercase SHA-256 hex"
+            )
+        elif not contract_path.is_file() or sha256_file(contract_path) != recorded_contract_sha:
+            errors.append(
+                "report.artifacts.target_metadata_contract_sha256 must match current "
+                + TARGET_METADATA_CONTRACT_PATH
+            )
+        recorded_contract_bytes = artifacts.get("target_metadata_contract_bytes")
+        if not isinstance(recorded_contract_bytes, int) or isinstance(
+            recorded_contract_bytes, bool
+        ):
+            errors.append("report.artifacts.target_metadata_contract_bytes must be integer")
+        elif not contract_path.is_file() or contract_path.stat().st_size != recorded_contract_bytes:
+            errors.append(
+                "report.artifacts.target_metadata_contract_bytes must match current "
+                + TARGET_METADATA_CONTRACT_PATH
+            )
     if report.get("status") not in {"passed", "blocked", "failed"}:
         errors.append("report.status must be passed, blocked, or failed")
     if report.get("claim_level") not in VALID_CLAIM_LEVELS:

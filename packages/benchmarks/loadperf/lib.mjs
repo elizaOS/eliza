@@ -116,12 +116,15 @@ export async function waitForReady(baseUrl, { timeoutMs = 300_000, intervalMs = 
         } catch {
           body = null;
         }
-        // ready === true wins; if the endpoint returns 200 with no `ready`
-        // field, treat 200 as ready (compat with builds that lack the field).
-        if (body == null || body.ready === undefined || body.ready === true) {
+        // Require an explicit `ready === true`. The agent's /api/health returns
+        // 200 (and { ready:false, startup:{phase} }) as soon as the API server
+        // binds — long before the runtime is actually ready. Treating a 200 or
+        // a missing `ready` field as ready (the previous behavior) timed the
+        // API bind (~70ms), not agent readiness (~28s), producing a false PASS.
+        if (body?.ready === true) {
           return { readyMs: Date.now() - begin, health: body };
         }
-        lastErr = `health.ready=${body.ready} phase=${body.startup?.phase ?? "?"}`;
+        lastErr = `health.ready=${body?.ready ?? "?"} phase=${body?.startup?.phase ?? "?"}`;
       } else {
         lastErr = `HTTP ${res.status}`;
       }

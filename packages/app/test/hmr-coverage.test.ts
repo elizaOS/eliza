@@ -29,7 +29,9 @@ function readGuiVisualCases(): GuiViewCase[] {
   const viewCasesSource = match?.[1] ?? "";
 
   return Array.from(
-    viewCasesSource.matchAll(/\["([^"]+)",\s*"gui",\s*"([^"]+)"(?:,\s*\{[^}]*\})?\]/g),
+    viewCasesSource.matchAll(
+      /\["([^"]+)",\s*"gui",\s*"([^"]+)"(?:,\s*\{[^}]*\})?\]/g,
+    ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];
     const viewPath = caseMatch[2];

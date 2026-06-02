@@ -91,6 +91,13 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
       },
       {
+        find: /^@elizaos\/scenario-runner\/schema$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/scenario-runner/schema/index.js",
+        ),
+      },
+      {
         find: /^@elizaos\/core\/node$/,
         replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
       },

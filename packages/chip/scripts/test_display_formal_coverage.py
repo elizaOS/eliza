@@ -73,6 +73,10 @@ class DisplayFormalCoverageTests(unittest.TestCase):
             "production_framebuffer_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(
+            {key for key, value in payload["false_claim_flags"].items() if value is False},
+            set(payload["false_claim_flags"]),
+        )
 
     def test_missing_underflow_assertion_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

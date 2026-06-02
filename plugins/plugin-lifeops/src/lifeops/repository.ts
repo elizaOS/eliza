@@ -10,6 +10,10 @@ import {
   browserBridgeSchema,
 } from "@elizaos/plugin-browser";
 import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
@@ -92,10 +96,6 @@ import {
   normalizeLifeOpsEgressDataClasses,
 } from "./privacy-egress.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
-import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "./schedule-sync-contracts.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
   DEFAULT_WORKFLOW_PERMISSION_POLICY,

@@ -308,13 +308,13 @@ cross_checks:
   alternate_display_production_release_gate_fail_closed: true
   ready_flags_remain_false: true
 release_blockers:
-  - routed KiCad PCB, ERC, DRC, zones, and route reports are missing
+  - local routed KiCad PCB candidate has tracks and filled zones, but release ERC, clean or waived DRC, route reports, and approval are missing
   - supplier response packs, signed drawings, pinouts, footprints, STEP models, and AVL are missing
   - fabrication, assembly, stackup, impedance, DFM/DFA, and quote outputs are missing
   - fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter production release until BOM/AVL, assembly, fixture limits, first-article traceability, and promotion evidence exist
-  - routed board STEP and enclosure clearance rerun are missing
+  - local routed board STEP candidate exists for review only; supplier-approved routed STEP and enclosure clearance rerun are missing
 forbidden_claims:
   - production_factory_release_ready
   - fabrication_ready

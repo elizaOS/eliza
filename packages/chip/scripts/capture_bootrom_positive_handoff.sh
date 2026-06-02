@@ -27,6 +27,8 @@ export ELIZA_BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT='${transcript}'
 export ELIZA_BOOTROM_POSITIVE_HANDOFF_REPORT='${report}'
 
 # Required transcript markers:
+# - claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation
+# - ## command_exit_code: 0
 # - reset-vector-fetch <_start>
 # - <e1_secure_boot_main>
 # - authenticated-image-verified

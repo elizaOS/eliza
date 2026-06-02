@@ -137,6 +137,18 @@ def test_next_command_plan_covers_blocked_aosp_evidence() -> None:
     ):
         if token not in joined:
             raise AssertionError(f"missing {token!r} in {joined}")
+    aosp_findings = [
+        finding
+        for finding in report.get("findings", [])
+        if finding.get("target") == "aosp"
+    ]
+    if not aosp_findings:
+        raise AssertionError("missing AOSP structured findings")
+    if not all(finding.get("next_command") for finding in aosp_findings):
+        raise AssertionError(f"AOSP findings must include row-level commands: {aosp_findings}")
+    first_commands = "\n".join(aosp_findings[0].get("next_commands", []))
+    if "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage" not in first_commands:
+        raise AssertionError(first_commands)
     print("PASS next-command plan covers blocked AOSP evidence")
 
 

@@ -33,8 +33,35 @@ function getSettingString(
 ): string | undefined {
   const value = runtime.getSetting(key);
   return typeof value === "string" && value.trim().length > 0
-    ? value
+    ? value.trim()
     : undefined;
+}
+
+function normalizeBaseUrl(value: unknown): string {
+  const raw =
+    typeof value === "string" && value.trim() ? value.trim() : XAI_API_BASE;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("XAI_BASE_URL must be a valid URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("XAI_BASE_URL must use http or https");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function normalizeModelName(
+  value: unknown,
+  fallback: string,
+  settingName: string,
+): string {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${settingName} must be a non-empty string`);
+  }
+  return value.trim();
 }
 
 function getConfig(runtime: IAgentRuntime): GrokConfig {
@@ -53,15 +80,22 @@ function getConfig(runtime: IAgentRuntime): GrokConfig {
 
   return {
     apiKey,
-    baseUrl: typeof baseUrl === "string" ? baseUrl : XAI_API_BASE,
-    smallModel:
-      typeof smallModel === "string" ? smallModel : DEFAULT_MODELS.small,
-    largeModel:
-      typeof largeModel === "string" ? largeModel : DEFAULT_MODELS.large,
-    embeddingModel:
-      typeof embeddingModel === "string"
-        ? embeddingModel
-        : DEFAULT_MODELS.embedding,
+    baseUrl: normalizeBaseUrl(baseUrl),
+    smallModel: normalizeModelName(
+      smallModel,
+      DEFAULT_MODELS.small,
+      "XAI_SMALL_MODEL",
+    ),
+    largeModel: normalizeModelName(
+      largeModel,
+      DEFAULT_MODELS.large,
+      "XAI_MODEL",
+    ),
+    embeddingModel: normalizeModelName(
+      embeddingModel,
+      DEFAULT_MODELS.embedding,
+      "XAI_EMBEDDING_MODEL",
+    ),
   };
 }
 
@@ -327,6 +361,74 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
   };
 }
 
+function sanitizeTemperature(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("temperature must be a finite number");
+  }
+  return Math.min(2, Math.max(0, value));
+}
+
+function sanitizeMaxTokens(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    !Number.isInteger(value) ||
+    value < 1
+  ) {
+    throw new Error("maxTokens must be a positive finite integer");
+  }
+  return value;
+}
+
+function sanitizeStopSequences(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("stopSequences must be an array of strings");
+  }
+  return value;
+}
+
+function normalizePrompt(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string") {
+    throw new Error("prompt must be a string");
+  }
+  return value;
+}
+
+function normalizeEmbeddingText(
+  params: TextEmbeddingParams | string | null,
+): string {
+  if (params === null) {
+    throw new Error("Null params provided for embedding");
+  }
+  if (typeof params === "string") return params.trim();
+  if (
+    !params ||
+    typeof params !== "object" ||
+    typeof params.text !== "string"
+  ) {
+    throw new Error("Embedding text must be a string");
+  }
+  return params.text.trim();
+}
+
+function validateEmbeddingVector(embedding: unknown): number[] {
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error("No embedding in Grok response");
+  }
+  if (
+    embedding.some(
+      (value) => typeof value !== "number" || !Number.isFinite(value),
+    )
+  ) {
+    throw new Error("Grok embedding response contained non-finite values");
+  }
+  return embedding;
+}
+
 function emitModelUsed(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -366,7 +468,7 @@ async function generateText(
     toolChoice?: XaiToolChoice;
     responseSchema?: unknown;
   };
-  const promptText = params.prompt ?? "";
+  const promptText = normalizePrompt(params.prompt);
   const tools = normalizeXaiTools(paramsWithNative.tools);
   const toolChoice = normalizeXaiToolChoice(paramsWithNative.toolChoice);
   const responseFormat = buildXaiResponseFormat(
@@ -388,14 +490,17 @@ async function generateText(
     messages,
   };
 
-  if (params.temperature !== undefined) {
-    body.temperature = params.temperature;
+  const temperature = sanitizeTemperature(params.temperature);
+  if (temperature !== undefined) {
+    body.temperature = temperature;
   }
-  if (params.maxTokens !== undefined) {
-    body.max_tokens = params.maxTokens;
+  const maxTokens = sanitizeMaxTokens(params.maxTokens);
+  if (maxTokens !== undefined) {
+    body.max_tokens = maxTokens;
   }
-  if (params.stopSequences) {
-    body.stop = params.stopSequences;
+  const stopSequences = sanitizeStopSequences(params.stopSequences);
+  if (stopSequences) {
+    body.stop = stopSequences;
   }
   if (tools) {
     body.tools = tools;
@@ -651,9 +756,7 @@ async function createEmbedding(
 
   const data = (await response.json()) as EmbeddingResponse;
 
-  if (!data.data?.[0]?.embedding) {
-    throw new Error("No embedding in Grok response");
-  }
+  const embedding = validateEmbeddingVector(data.data?.[0]?.embedding);
 
   emitModelUsed(
     runtime,
@@ -661,7 +764,7 @@ async function createEmbedding(
     data.model || config.embeddingModel,
     normalizeTokenUsage(data.usage) ?? estimateEmbeddingUsage(text),
   );
-  return data.data[0].embedding;
+  return embedding;
 }
 
 export async function handleTextSmall(
@@ -703,13 +806,9 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
-  if (params === null) {
-    throw new Error("Null params provided for embedding");
-  }
   const config = getConfig(runtime);
-  const text =
-    typeof params === "string" ? params : (params as TextEmbeddingParams).text;
-  if (!text || text.trim().length === 0) {
+  const text = normalizeEmbeddingText(params);
+  if (!text) {
     throw new Error("Empty text provided for embedding");
   }
   logger.debug(

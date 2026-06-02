@@ -38,6 +38,22 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Three.js TSL shader nodes are opaque chainable objects with no exported types.
 type TslNode = any;
+type TslModule = {
+  uniform(value: number): TslNode;
+  positionWorld: { x: TslNode; y: TslNode; z: TslNode };
+  sin(value: unknown): TslNode;
+  cos(value: unknown): TslNode;
+  step(edge: unknown, value: unknown): TslNode;
+  float(value: number): TslNode;
+  fract(value: unknown): TslNode;
+  smoothstep(edge0: unknown, edge1: unknown, value: unknown): TslNode;
+  vec3(x: unknown, y: unknown, z: unknown): TslNode;
+};
+type WebGpuRendererConstructor = new (options: {
+  canvas: HTMLCanvasElement;
+  alpha: boolean;
+  antialias: boolean;
+}) => unknown;
 type VrmLoaderParser = ConstructorParameters<
   typeof MToonMaterialLoaderPlugin
 >[0];
@@ -527,7 +543,12 @@ async function createRenderer(
     navigator.gpu
   ) {
     try {
-      const { WebGPURenderer } = await import("three/webgpu");
+      const { WebGPURenderer } = (await import("three/webgpu")) as unknown as {
+        WebGPURenderer?: WebGpuRendererConstructor;
+      };
+      if (!WebGPURenderer) {
+        throw new Error("three/webgpu did not expose WebGPURenderer");
+      }
       const renderer = new WebGPURenderer({
         canvas,
         alpha: true,
@@ -1877,7 +1898,7 @@ export class VrmEngine {
     let appliedNodeDissolve = false;
 
     try {
-      const tsl = await import("three/tsl");
+      const tsl = (await import("three/tsl")) as unknown as TslModule;
 
       const uProgress = tsl.uniform(0.0);
       this.teleportProgressUniform = uProgress;

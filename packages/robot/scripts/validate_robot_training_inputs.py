@@ -17,6 +17,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 PKG_ROOT = Path(__file__).resolve().parents[1]
 if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
@@ -57,6 +59,8 @@ SUPPORTED_REWARD_KEYS = {
     "no_support_weight",
     "double_support_weight",
     "foot_slip_weight",
+    "max_foot_slip_margin_start_ratio",
+    "max_foot_slip_margin_weight",
     "foot_spacing_weight",
     "self_collision_weight",
     "action_rate_weight",
@@ -147,9 +151,23 @@ def _start_state_smoke(
             foot = getattr(env, "_last_foot_telemetry", None)
             is_launch_task = task_id in launch_tasks
             expects_foot_support = (task.init_state or "stand") in ("stand", "crouch")
-            has_biped_support = bool(
-                step_info.get("left_foot_contact", False)
-            ) and bool(step_info.get("right_foot_contact", False))
+            support_state = (
+                env._foot_floor_support_state()  # noqa: SLF001
+                if hasattr(env, "_foot_floor_support_state")
+                else {"left": False, "right": False}
+            )
+            has_left_support = bool(step_info.get("left_foot_contact", False)) or bool(
+                support_state["left"]
+            )
+            has_right_support = bool(step_info.get("right_foot_contact", False)) or bool(
+                support_state["right"]
+            )
+            has_biped_support = has_left_support and has_right_support
+            foot_min_z = (
+                env._current_foot_aabb_min_z()  # noqa: SLF001
+                if hasattr(env, "_current_foot_aabb_min_z")
+                else None
+            )
             row.update(
                 {
                     "ok": (
@@ -164,9 +182,14 @@ def _start_state_smoke(
                     "ncon": int(getattr(env._data, "ncon", 0)),  # noqa: SLF001
                     "left_foot_contact": bool(step_info.get("left_foot_contact", False)),
                     "right_foot_contact": bool(step_info.get("right_foot_contact", False)),
+                    "left_foot_support": has_left_support,
+                    "right_foot_support": has_right_support,
                     "requires_biped_support": expects_foot_support,
                     "biped_support": has_biped_support,
                     "min_foot_z": float(min(foot[2], foot[3])) if foot is not None else None,
+                    "min_foot_aabb_z": (
+                        float(np.nanmin(foot_min_z)) if foot_min_z is not None else None
+                    ),
                     "first_step_terminated": bool(terminated),
                     "first_step_truncated": bool(truncated),
                     "done_reason": step_info.get("done_reason"),

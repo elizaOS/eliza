@@ -9,6 +9,7 @@ blockers when proof cannot be produced from this machine.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import shutil
 import subprocess
@@ -158,6 +159,11 @@ def blocker_code(blocker: dict[str, Any]) -> str:
 def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     seen: set[str] = set()
+    commands = [
+        CAPTURE_COMMANDS["adb_devices"],
+        "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh",
+        "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
+    ]
     for blocker in local_blockers:
         code = blocker_code(blocker)
         if code in seen:
@@ -180,6 +186,8 @@ def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, 
                     "resolution",
                     "Capture the required e1-npu NNAPI target proof and rerun make e1-npu-nnapi-proof-check.",
                 ),
+                "next_command": commands[0],
+                "next_commands": commands,
             }
         )
     return findings
@@ -255,6 +263,11 @@ def main(argv: list[str]) -> int:
 
     status = {
         "schema": "eliza.e1_npu_nnapi_proof_readiness.v1",
+        "claim_boundary": "readiness_status_only_not_nnapi_acceleration_or_release_evidence",
+        "generated_utc": dt.datetime.now(dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "benchmark": "tflite_e1_npu",
         "status": "proof_valid" if artifact_status.get("available") else "blocked",
         "proof_json_state": proof_json_state(artifact_status),

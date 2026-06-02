@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
@@ -55,6 +56,105 @@ const EVENT_KIND_OPTIONS = [
     defaultLabel: "Calendar event ended",
   },
 ] as const;
+
+// ── Agent-surface select wrapper ────────────────────────────────────
+// FormSelect is a Radix Select and forwards neither a ref nor DOM props, so we
+// wrap it in a registered element that drives its controlled state via onFill.
+function AgentSelectField({
+  id,
+  label,
+  group,
+  description,
+  value,
+  options,
+  onFill,
+  children,
+}: {
+  id: string;
+  label: string;
+  group: string;
+  description?: string;
+  value: string;
+  options?: readonly string[];
+  onFill: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
+    id,
+    role: "select",
+    label,
+    group,
+    description,
+    options,
+    getValue: () => value,
+    onFill,
+  });
+  return (
+    <div ref={ref} {...agentProps}>
+      {children}
+    </div>
+  );
+}
+
+function DurationValueInput({
+  form,
+  setField,
+}: {
+  form: TriggerFormState;
+  setField: HeartbeatFormProps["setField"];
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-duration-value",
+    role: "number-input",
+    label: "Repeat interval value",
+    group: "heartbeat-schedule",
+    description: "How many duration units between runs",
+    getValue: () => form.durationValue,
+    onFill: (value) => setField("durationValue", value),
+  });
+  return (
+    <Input
+      ref={ref}
+      type="number"
+      min="1"
+      variant="form"
+      value={form.durationValue}
+      onChange={(event) => setField("durationValue", event.target.value)}
+      placeholder="1"
+      {...agentProps}
+    />
+  );
+}
+
+function ScheduledAtInput({
+  form,
+  setField,
+  t,
+}: {
+  form: TriggerFormState;
+  setField: HeartbeatFormProps["setField"];
+  t: TranslateFn;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-scheduled-at",
+    role: "text-input",
+    label: t("heartbeatform.runAt", { defaultValue: "Run at" }),
+    group: "heartbeat-schedule",
+    description: "Date and time to run a one-time trigger",
+    getValue: () => form.scheduledAtIso,
+    onFill: (value) => setField("scheduledAtIso", value),
+  });
+  return (
+    <Input
+      ref={ref}
+      type="datetime-local"
+      variant="form"
+      value={form.scheduledAtIso}
+      onChange={(event) => setField("scheduledAtIso", event.target.value)}
+      {...agentProps}
+    />
+  );
+}
 
 // ── Props ──────────────────────────────────────────────────────────
 
@@ -150,6 +250,90 @@ export function HeartbeatForm({
     form.triggerType === "cron" &&
     !validateCronExpression(form.cronExpression).ok;
 
+  const runNowButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-run-now",
+    role: "button",
+    label: t("triggersview.RunNow"),
+    group: "heartbeat-toolbar",
+    description: "Run the trigger being edited immediately",
+    onActivate: () => {
+      if (editingId) void onRunSelectedTrigger(editingId);
+    },
+  });
+  const toggleEnabledButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-toggle-enabled",
+    role: "button",
+    label: editorEnabled ? t("common.disable") : t("common.enable"),
+    group: "heartbeat-toolbar",
+    status: editorEnabled ? "active" : "inactive",
+    description: "Enable or disable the trigger being edited",
+    onActivate: () => {
+      if (editingId) void onToggleTriggerEnabled(editingId, editorEnabled);
+    },
+  });
+  const deleteButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-delete",
+    role: "button",
+    label: t("common.delete"),
+    group: "heartbeat-toolbar",
+    description: "Delete the trigger being edited",
+    onActivate: () => void onDelete(),
+  });
+  const displayNameInput = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-display-name",
+    role: "text-input",
+    label: t("heartbeatform.taskName", { defaultValue: "Task name" }),
+    group: "heartbeat-form",
+    description: "Display name for this scheduled task or workflow",
+    getValue: () => form.displayName,
+    onFill: (value) => setField("displayName", value),
+  });
+  const maxRunsInput = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-max-runs",
+    role: "text-input",
+    label: t("heartbeatform.stopAfter", { defaultValue: "Stop after" }),
+    group: "heartbeat-form",
+    description: "Maximum number of runs before the trigger stops",
+    getValue: () => form.maxRuns,
+    onFill: (value) => setField("maxRuns", value),
+  });
+  const enabledSwitch = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-enabled",
+    role: "toggle",
+    label: t("heartbeatform.enabled", { defaultValue: "Enabled" }),
+    group: "heartbeat-form",
+    status: form.enabled ? "active" : "inactive",
+    description: "Whether this trigger is enabled",
+    onActivate: () => setField("enabled", !form.enabled),
+  });
+  const saveTemplateButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-save-template",
+    role: "button",
+    label: t("heartbeatsview.SaveAsTemplate", {
+      defaultValue: "Save as template",
+    }),
+    group: "heartbeat-form",
+    description: "Save the current form as a reusable template",
+    onActivate: () => saveFormAsTemplate(),
+  });
+  const submitButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-submit",
+    role: "button",
+    label: editingId
+      ? (submitLabelEdit ?? t("heartbeatsview.saveChanges"))
+      : (submitLabelCreate ?? t("heartbeatsview.createHeartbeat")),
+    group: "heartbeat-form",
+    description: "Save the trigger (create or update)",
+    onActivate: () => void onSubmit(),
+  });
+  const cancelButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-cancel",
+    role: "button",
+    label: t("common.cancel"),
+    group: "heartbeat-form",
+    description: "Cancel editing and revert changes",
+  });
+
   return (
     <div className="w-full px-4 pb-8 pt-0 sm:px-5 sm:pb-8 sm:pt-1 lg:px-7 lg:pb-8 lg:pt-1 xl:px-8">
       {templateNotice && (
@@ -174,30 +358,36 @@ export function HeartbeatForm({
           {editingId && (
             <>
               <Button
+                ref={runNowButton.ref}
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 text-xs"
                 disabled={triggersSaving}
                 onClick={() => void onRunSelectedTrigger(editingId)}
+                {...runNowButton.agentProps}
               >
                 {t("triggersview.RunNow")}
               </Button>
               <Button
+                ref={toggleEnabledButton.ref}
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 text-xs"
                 onClick={() =>
                   void onToggleTriggerEnabled(editingId, editorEnabled)
                 }
+                {...toggleEnabledButton.agentProps}
               >
                 {editorEnabled ? t("common.disable") : t("common.enable")}
               </Button>
               <div className="w-px h-6 bg-border/50 mx-1 hidden sm:block" />
               <Button
+                ref={deleteButton.ref}
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10 hover:text-danger"
                 onClick={() => void onDelete()}
+                {...deleteButton.agentProps}
               >
                 {t("common.delete")}
               </Button>
@@ -227,10 +417,12 @@ export function HeartbeatForm({
                 : t("heartbeatform.taskName", { defaultValue: "Task name" })}
             </FieldLabel>
             <Input
+              ref={displayNameInput.ref}
               variant="form"
               value={form.displayName}
               onChange={(event) => setField("displayName", event.target.value)}
               placeholder={t("triggersview.eGDailyDigestH")}
+              {...displayNameInput.agentProps}
             />
           </div>
 
@@ -266,35 +458,54 @@ export function HeartbeatForm({
                     defaultValue: "Trigger type",
                   })}
                 </FieldLabel>
-                <FormSelect
+                <AgentSelectField
+                  id="heartbeat-trigger-type"
+                  label={t("heartbeatform.triggerType", {
+                    defaultValue: "Trigger type",
+                  })}
+                  group="heartbeat-form"
+                  description="How the trigger fires (interval, once, cron, or event)"
                   value={form.triggerType}
-                  onValueChange={(value: string) =>
+                  options={["interval", "once", "cron", "event"]}
+                  onFill={(value) =>
                     setField(
                       "triggerType",
                       value as TriggerFormState["triggerType"],
                     )
                   }
-                  placeholder={t("heartbeatform.repeatingInterval", {
-                    defaultValue: "Repeating interval",
-                  })}
                 >
-                  <FormSelectItem value="interval">
-                    {t("heartbeatform.repeatingInterval", {
+                  <FormSelect
+                    value={form.triggerType}
+                    onValueChange={(value: string) =>
+                      setField(
+                        "triggerType",
+                        value as TriggerFormState["triggerType"],
+                      )
+                    }
+                    placeholder={t("heartbeatform.repeatingInterval", {
                       defaultValue: "Repeating interval",
                     })}
-                  </FormSelectItem>
-                  <FormSelectItem value="once">
-                    {t("heartbeatform.oneTime", { defaultValue: "One time" })}
-                  </FormSelectItem>
-                  <FormSelectItem value="cron">
-                    {t("heartbeatform.cronSchedule", {
-                      defaultValue: "Cron schedule",
-                    })}
-                  </FormSelectItem>
-                  <FormSelectItem value="event">
-                    {t("heartbeatform.event.label", { defaultValue: "Event" })}
-                  </FormSelectItem>
-                </FormSelect>
+                  >
+                    <FormSelectItem value="interval">
+                      {t("heartbeatform.repeatingInterval", {
+                        defaultValue: "Repeating interval",
+                      })}
+                    </FormSelectItem>
+                    <FormSelectItem value="once">
+                      {t("heartbeatform.oneTime", { defaultValue: "One time" })}
+                    </FormSelectItem>
+                    <FormSelectItem value="cron">
+                      {t("heartbeatform.cronSchedule", {
+                        defaultValue: "Cron schedule",
+                      })}
+                    </FormSelectItem>
+                    <FormSelectItem value="event">
+                      {t("heartbeatform.event.label", {
+                        defaultValue: "Event",
+                      })}
+                    </FormSelectItem>
+                  </FormSelect>
+                </AgentSelectField>
               </div>
 
               <div>
@@ -303,26 +514,43 @@ export function HeartbeatForm({
                     defaultValue: "When it fires",
                   })}
                 </FieldLabel>
-                <FormSelect
+                <AgentSelectField
+                  id="heartbeat-wake-mode"
+                  label={t("heartbeatform.whenItFires", {
+                    defaultValue: "When it fires",
+                  })}
+                  group="heartbeat-form"
+                  description="Whether to interrupt now or queue for the next cycle"
                   value={form.wakeMode}
-                  onValueChange={(value: string) =>
+                  options={["inject_now", "next_autonomy_cycle"]}
+                  onFill={(value) =>
                     setField("wakeMode", value as TriggerFormState["wakeMode"])
                   }
-                  placeholder={t("heartbeatform.interruptAndRunNow", {
-                    defaultValue: "Interrupt and run now",
-                  })}
                 >
-                  <FormSelectItem value="inject_now">
-                    {t("heartbeatform.interruptAndRunNow", {
+                  <FormSelect
+                    value={form.wakeMode}
+                    onValueChange={(value: string) =>
+                      setField(
+                        "wakeMode",
+                        value as TriggerFormState["wakeMode"],
+                      )
+                    }
+                    placeholder={t("heartbeatform.interruptAndRunNow", {
                       defaultValue: "Interrupt and run now",
                     })}
-                  </FormSelectItem>
-                  <FormSelectItem value="next_autonomy_cycle">
-                    {t("heartbeatform.queueForNextCycle", {
-                      defaultValue: "Queue for next cycle",
-                    })}
-                  </FormSelectItem>
-                </FormSelect>
+                  >
+                    <FormSelectItem value="inject_now">
+                      {t("heartbeatform.interruptAndRunNow", {
+                        defaultValue: "Interrupt and run now",
+                      })}
+                    </FormSelectItem>
+                    <FormSelectItem value="next_autonomy_cycle">
+                      {t("heartbeatform.queueForNextCycle", {
+                        defaultValue: "Queue for next cycle",
+                      })}
+                    </FormSelectItem>
+                  </FormSelect>
+                </AgentSelectField>
               </div>
             </div>
 
@@ -334,32 +562,38 @@ export function HeartbeatForm({
                   })}
                 </FieldLabel>
                 <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
-                  <Input
-                    type="number"
-                    min="1"
-                    variant="form"
-                    value={form.durationValue}
-                    onChange={(event) =>
-                      setField("durationValue", event.target.value)
-                    }
-                    placeholder="1"
-                  />
-                  <FormSelect
+                  <DurationValueInput form={form} setField={setField} />
+                  <AgentSelectField
+                    id="heartbeat-duration-unit"
+                    label="Repeat interval unit"
+                    group="heartbeat-schedule"
+                    description="The unit of time between runs (minutes, hours, days…)"
                     value={form.durationUnit}
-                    onValueChange={(value: string) =>
+                    options={DURATION_UNITS.map((unit) => unit.unit)}
+                    onFill={(value) =>
                       setField(
                         "durationUnit",
                         value as TriggerFormState["durationUnit"],
                       )
                     }
-                    placeholder={durationUnitLabel(form.durationUnit, t)}
                   >
-                    {DURATION_UNITS.map((unit) => (
-                      <FormSelectItem key={unit.unit} value={unit.unit}>
-                        {durationUnitLabel(unit.unit, t)}
-                      </FormSelectItem>
-                    ))}
-                  </FormSelect>
+                    <FormSelect
+                      value={form.durationUnit}
+                      onValueChange={(value: string) =>
+                        setField(
+                          "durationUnit",
+                          value as TriggerFormState["durationUnit"],
+                        )
+                      }
+                      placeholder={durationUnitLabel(form.durationUnit, t)}
+                    >
+                      {DURATION_UNITS.map((unit) => (
+                        <FormSelectItem key={unit.unit} value={unit.unit}>
+                          {durationUnitLabel(unit.unit, t)}
+                        </FormSelectItem>
+                      ))}
+                    </FormSelect>
+                  </AgentSelectField>
                 </div>
                 <IntervalHostWarningBanner form={form} />
               </div>
@@ -370,14 +604,7 @@ export function HeartbeatForm({
                 <FieldLabel variant="form">
                   {t("heartbeatform.runAt", { defaultValue: "Run at" })}
                 </FieldLabel>
-                <Input
-                  type="datetime-local"
-                  variant="form"
-                  value={form.scheduledAtIso}
-                  onChange={(event) =>
-                    setField("scheduledAtIso", event.target.value)
-                  }
-                />
+                <ScheduledAtInput form={form} setField={setField} t={t} />
               </div>
             )}
 
@@ -407,17 +634,20 @@ export function HeartbeatForm({
                   })}
                 </FieldLabel>
                 <Input
+                  ref={maxRunsInput.ref}
                   variant="form"
                   value={form.maxRuns}
                   onChange={(event) => setField("maxRuns", event.target.value)}
                   placeholder={t("heartbeatform.unlimited", {
                     defaultValue: "Unlimited",
                   })}
+                  {...maxRunsInput.agentProps}
                 />
               </div>
 
               <div className="flex items-end">
                 <FieldSwitch
+                  ref={enabledSwitch.ref}
                   checked={form.enabled}
                   aria-label={t("heartbeatform.enabled", {
                     defaultValue: "Enabled",
@@ -427,6 +657,7 @@ export function HeartbeatForm({
                     defaultValue: "Enabled",
                   })}
                   onCheckedChange={(checked) => setField("enabled", checked)}
+                  {...enabledSwitch.agentProps}
                 />
               </div>
             </div>
@@ -436,9 +667,11 @@ export function HeartbeatForm({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {form.displayName.trim() && (
             <button
+              ref={saveTemplateButton.ref}
               type="button"
               className="text-xs font-medium text-muted transition-colors hover:text-accent underline-offset-2 hover:underline"
               onClick={saveFormAsTemplate}
+              {...saveTemplateButton.agentProps}
             >
               {t("heartbeatsview.SaveAsTemplate", {
                 defaultValue: "Save as template",
@@ -448,6 +681,7 @@ export function HeartbeatForm({
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Button
+              ref={submitButton.ref}
               variant="default"
               size="sm"
               className="h-10 px-6 text-sm text-white hover:text-white dark:text-white dark:hover:text-white"
@@ -457,6 +691,7 @@ export function HeartbeatForm({
                 cronInvalid
               }
               onClick={() => void onSubmit()}
+              {...submitButton.agentProps}
             >
               {triggersSaving
                 ? t("common.saving")
@@ -466,6 +701,7 @@ export function HeartbeatForm({
             </Button>
 
             <Button
+              ref={cancelButton.ref}
               variant="outline"
               size="sm"
               className="h-10 px-6 text-sm"
@@ -482,6 +718,7 @@ export function HeartbeatForm({
                   closeEditor();
                 }
               }}
+              {...cancelButton.agentProps}
             >
               {t("common.cancel")}
             </Button>
@@ -550,6 +787,42 @@ function TriggerKindSection({
 
   const toggleLabelId = "trigger-kind-toggle-label";
 
+  const promptKindButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-kind-prompt",
+    role: "tab",
+    label: t("heartbeatform.prompt", { defaultValue: "Prompt" }),
+    group: "heartbeat-kind",
+    status: form.kind === "text" ? "active" : "inactive",
+    description: "Run a free-text prompt when this trigger fires",
+    onActivate: () => setField("kind", "text"),
+  });
+  const workflowKindButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-kind-workflow",
+    role: "tab",
+    label: t("heartbeatform.workflow", { defaultValue: "Workflow" }),
+    group: "heartbeat-kind",
+    status: form.kind === "workflow" ? "active" : "inactive",
+    description: "Run a saved workflow when this trigger fires",
+    onActivate: () => setField("kind", "workflow"),
+  });
+  const instructionsTextarea = useAgentElement<HTMLTextAreaElement>({
+    id: "heartbeat-instructions",
+    role: "textarea",
+    label: t("heartbeatform.prompt", { defaultValue: "Prompt" }),
+    group: "heartbeat-kind",
+    description: "Prompt text the agent runs when this trigger fires",
+    getValue: () => form.instructions,
+    onFill: (value) => setField("instructions", value),
+  });
+  const goToWorkflowsButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-go-to-workflows",
+    role: "button",
+    label: t("triggers.goToWorkflows"),
+    group: "heartbeat-kind",
+    description: "Navigate to the workflows list to create a workflow",
+    onActivate: () => onGoToWorkflows(),
+  });
+
   return (
     <div>
       <FieldLabel variant="form" id={toggleLabelId}>
@@ -557,6 +830,7 @@ function TriggerKindSection({
       </FieldLabel>
       <div className="mt-1.5 flex gap-2">
         <button
+          ref={promptKindButton.ref}
           type="button"
           aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
@@ -565,10 +839,12 @@ function TriggerKindSection({
               ? "border-accent bg-accent/10 text-accent"
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
+          {...promptKindButton.agentProps}
         >
           {t("heartbeatform.prompt", { defaultValue: "Prompt" })}
         </button>
         <button
+          ref={workflowKindButton.ref}
           type="button"
           aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
@@ -577,6 +853,7 @@ function TriggerKindSection({
               ? "border-accent bg-accent/10 text-accent"
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
+          {...workflowKindButton.agentProps}
         >
           {t("heartbeatform.workflow", { defaultValue: "Workflow" })}
         </button>
@@ -588,10 +865,12 @@ function TriggerKindSection({
             {t("heartbeatform.prompt", { defaultValue: "Prompt" })}
           </FieldLabel>
           <Textarea
+            ref={instructionsTextarea.ref}
             variant="form"
             value={form.instructions}
             onChange={(event) => setField("instructions", event.target.value)}
             placeholder={t("triggersview.WhatShouldTheAgen")}
+            {...instructionsTextarea.agentProps}
           />
         </div>
       )}
@@ -607,9 +886,11 @@ function TriggerKindSection({
             >
               <p>{t("triggers.workflowUnavailable")}</p>
               <button
+                ref={goToWorkflowsButton.ref}
                 type="button"
                 className="mt-2 text-xs font-medium text-accent underline-offset-2 hover:underline"
                 onClick={onGoToWorkflows}
+                {...goToWorkflowsButton.agentProps}
               >
                 {t("triggers.goToWorkflows")}
               </button>
@@ -619,25 +900,41 @@ function TriggerKindSection({
               <FieldLabel variant="form" htmlFor="trigger-workflow-select">
                 {t("heartbeatform.workflow", { defaultValue: "Workflow" })}
               </FieldLabel>
-              <FormSelect
+              <AgentSelectField
+                id="heartbeat-workflow-select"
+                label={t("heartbeatform.workflow", {
+                  defaultValue: "Workflow",
+                })}
+                group="heartbeat-kind"
+                description="The saved workflow to run when this trigger fires"
                 value={form.workflowId}
-                onValueChange={(value: string) => {
+                options={workflows.map((wf) => wf.id)}
+                onFill={(value) => {
                   const wf = workflows.find((w) => w.id === value);
                   setField("workflowId", value);
                   setField("workflowName", wf?.name ?? "");
                 }}
-                placeholder={
-                  workflowsLoading
-                    ? t("appsview.Loading")
-                    : t("triggers.workflowPlaceholder")
-                }
               >
-                {workflows.map((wf) => (
-                  <FormSelectItem key={wf.id} value={wf.id}>
-                    {wf.name}
-                  </FormSelectItem>
-                ))}
-              </FormSelect>
+                <FormSelect
+                  value={form.workflowId}
+                  onValueChange={(value: string) => {
+                    const wf = workflows.find((w) => w.id === value);
+                    setField("workflowId", value);
+                    setField("workflowName", wf?.name ?? "");
+                  }}
+                  placeholder={
+                    workflowsLoading
+                      ? t("appsview.Loading")
+                      : t("triggers.workflowPlaceholder")
+                  }
+                >
+                  {workflows.map((wf) => (
+                    <FormSelectItem key={wf.id} value={wf.id}>
+                      {wf.name}
+                    </FormSelectItem>
+                  ))}
+                </FormSelect>
+              </AgentSelectField>
             </>
           )}
         </div>
@@ -653,6 +950,39 @@ const CRON_EXAMPLES = [
   { expr: "*/15 * * * *", labelKey: "triggers.cronExample.every15min" },
   { expr: "0 0 1 * *", labelKey: "triggers.cronExample.monthly" },
 ] as const;
+
+function CronExampleButton({
+  expr,
+  labelKey,
+  setField,
+  t,
+}: {
+  expr: string;
+  labelKey: string;
+  setField: HeartbeatFormProps["setField"];
+  t: TranslateFn;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `heartbeat-cron-example-${expr.replace(/[^a-z0-9]+/gi, "-")}`,
+    role: "button",
+    label: `${t(labelKey)} (${expr})`,
+    group: "heartbeat-cron",
+    description: `Fill the cron expression with ${expr}`,
+    onActivate: () => setField("cronExpression", expr),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="h-6 px-2 py-0 text-xs font-mono"
+      onClick={() => setField("cronExpression", expr)}
+      {...agentProps}
+    >
+      {t(labelKey)}
+    </Button>
+  );
+}
 
 function CronInputSection({
   form,
@@ -670,12 +1000,24 @@ function CronInputSection({
   const validationResult = validateCronExpression(form.cronExpression);
   const isInvalid = !validationResult.ok;
 
+  const cronInput = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-cron-expression",
+    role: "text-input",
+    label: t("heartbeatform.cronSchedule", { defaultValue: "Cron schedule" }),
+    group: "heartbeat-cron",
+    status: isInvalid ? "error" : undefined,
+    description: "Cron expression controlling when the trigger fires",
+    getValue: () => form.cronExpression,
+    onFill: (value) => setField("cronExpression", value),
+  });
+
   return (
     <div>
       <FieldLabel variant="form">
         {t("heartbeatform.cronSchedule", { defaultValue: "Cron schedule" })}
       </FieldLabel>
       <Input
+        ref={cronInput.ref}
         variant="form"
         className="font-mono"
         value={form.cronExpression}
@@ -683,6 +1025,7 @@ function CronInputSection({
         placeholder="*/15 * * * *"
         aria-invalid={isInvalid}
         aria-describedby={isInvalid ? cronErrorId : undefined}
+        {...cronInput.agentProps}
       />
       {isInvalid ? (
         <p
@@ -704,15 +1047,13 @@ function CronInputSection({
           {t("triggers.cronExampleHint")}
         </span>
         {CRON_EXAMPLES.map(({ expr, labelKey }) => (
-          <Button
+          <CronExampleButton
             key={expr}
-            variant="outline"
-            size="sm"
-            className="h-6 px-2 py-0 text-xs font-mono"
-            onClick={() => setField("cronExpression", expr)}
-          >
-            {t(labelKey)}
-          </Button>
+            expr={expr}
+            labelKey={labelKey}
+            setField={setField}
+            t={t}
+          />
         ))}
       </div>
     </div>
@@ -734,34 +1075,63 @@ function EventInputSection({
   const isCustomEvent = !EVENT_KIND_OPTIONS.some(
     (option) => option.value === form.eventKind,
   );
+
+  const customEventInput = useAgentElement<HTMLInputElement>({
+    id: "heartbeat-event-name",
+    role: "text-input",
+    label: t("heartbeatform.event.name", { defaultValue: "Event name" }),
+    group: "heartbeat-event",
+    description: "Custom event name in namespace.subject.verb form",
+    getValue: () => form.eventKind,
+    onFill: (value) => setField("eventKind", value),
+  });
+
   return (
     <div className="grid gap-3">
       <div>
         <FieldLabel variant="form">
           {t("heartbeatform.event.label", { defaultValue: "Event" })}
         </FieldLabel>
-        <FormSelect
+        <AgentSelectField
+          id="heartbeat-event-kind"
+          label={t("heartbeatform.event.label", { defaultValue: "Event" })}
+          group="heartbeat-event"
+          description="The event that fires this trigger"
           value={isCustomEvent ? "__custom" : form.eventKind}
-          onValueChange={(value: string) => {
+          options={[...EVENT_KIND_OPTIONS.map((o) => o.value), "__custom"]}
+          onFill={(value) => {
             if (value === "__custom") {
               setField("eventKind", "");
               return;
             }
             setField("eventKind", value);
           }}
-          placeholder={t("heartbeatform.event.messageReceived", {
-            defaultValue: "Message received",
-          })}
         >
-          {EVENT_KIND_OPTIONS.map((option) => (
-            <FormSelectItem key={option.value} value={option.value}>
-              {t(option.labelKey, { defaultValue: option.defaultLabel })}
+          <FormSelect
+            value={isCustomEvent ? "__custom" : form.eventKind}
+            onValueChange={(value: string) => {
+              if (value === "__custom") {
+                setField("eventKind", "");
+                return;
+              }
+              setField("eventKind", value);
+            }}
+            placeholder={t("heartbeatform.event.messageReceived", {
+              defaultValue: "Message received",
+            })}
+          >
+            {EVENT_KIND_OPTIONS.map((option) => (
+              <FormSelectItem key={option.value} value={option.value}>
+                {t(option.labelKey, { defaultValue: option.defaultLabel })}
+              </FormSelectItem>
+            ))}
+            <FormSelectItem value="__custom">
+              {t("heartbeatform.event.custom", {
+                defaultValue: "Custom event",
+              })}
             </FormSelectItem>
-          ))}
-          <FormSelectItem value="__custom">
-            {t("heartbeatform.event.custom", { defaultValue: "Custom event" })}
-          </FormSelectItem>
-        </FormSelect>
+          </FormSelect>
+        </AgentSelectField>
       </div>
 
       {isCustomEvent && (
@@ -770,11 +1140,13 @@ function EventInputSection({
             {t("heartbeatform.event.name", { defaultValue: "Event name" })}
           </FieldLabel>
           <Input
+            ref={customEventInput.ref}
             variant="form"
             className="font-mono"
             value={form.eventKind}
             onChange={(event) => setField("eventKind", event.target.value)}
             placeholder="namespace.subject.verb"
+            {...customEventInput.agentProps}
           />
         </div>
       )}
@@ -948,6 +1320,14 @@ function HeartbeatRunHistory({
   loadTriggerRuns: (triggerId: string) => Promise<void>;
   t: TranslateFn;
 }) {
+  const refreshRunsButton = useAgentElement<HTMLButtonElement>({
+    id: "heartbeat-refresh-runs",
+    role: "button",
+    label: t("common.refresh"),
+    group: "heartbeat-history",
+    description: "Reload the run history for the trigger being edited",
+    onActivate: () => void loadTriggerRuns(editingId),
+  });
   return (
     <div className="mt-10 grid gap-8 pt-8">
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -1004,10 +1384,12 @@ function HeartbeatRunHistory({
             {t("triggersview.RunHistory")}
           </div>
           <Button
+            ref={refreshRunsButton.ref}
             variant="outline"
             size="sm"
             className="h-7 px-3 text-xs-tight"
             onClick={() => void loadTriggerRuns(editingId)}
+            {...refreshRunsButton.agentProps}
           >
             {t("common.refresh")}
           </Button>

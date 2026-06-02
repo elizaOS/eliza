@@ -32,6 +32,7 @@ def valid_payload(gate):
             "DSI PHY, compositor, or display PHY coverage."
         ),
         **{flag: False for flag in gate.FALSE_CLAIM_FLAGS},
+        "false_claim_flags": {flag: False for flag in gate.FALSE_CLAIM_FLAGS},
     }
 
 
@@ -61,6 +62,16 @@ def test_rejects_missing_or_true_false_claim_flag():
 
     assert any("dsi_phy_claim_allowed" in error for error in errors)
     assert any("release_claim_allowed" in error for error in errors)
+
+
+def test_rejects_nested_false_claim_flag_drift():
+    gate = load_gate()
+    payload = valid_payload(gate)
+    payload["false_claim_flags"]["panel_bringup_claim_allowed"] = True
+
+    errors = gate.validate_coverage(payload)
+
+    assert any("false_claim_flags.panel_bringup_claim_allowed" in error for error in errors)
 
 
 def test_cli_rejects_missing_boundary(tmp_path):

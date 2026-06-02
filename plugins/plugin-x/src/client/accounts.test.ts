@@ -81,6 +81,62 @@ describe("X account config", () => {
     });
   });
 
+  it("ignores malformed TWITTER_ACCOUNTS JSON without leaking default credentials to requested accounts", async () => {
+    const runtime = createRuntime({
+      TWITTER_DEFAULT_ACCOUNT_ID: "primary",
+      TWITTER_ACCOUNTS: "{not valid json",
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET_KEY: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
+    });
+
+    const state = await resolveTwitterAccountConfig(runtime, {
+      accountId: "secondary",
+    });
+
+    expect(state).toMatchObject({
+      accountId: "secondary",
+      TWITTER_API_KEY: "",
+      TWITTER_API_SECRET_KEY: "",
+      TWITTER_ACCESS_TOKEN: "",
+      TWITTER_ACCESS_TOKEN_SECRET: "",
+    });
+  });
+
+  it("skips account records with empty ids and non-object values", async () => {
+    const runtime = createRuntime({
+      TWITTER_DEFAULT_ACCOUNT_ID: "primary",
+      TWITTER_ACCOUNTS: JSON.stringify([
+        null,
+        "bad",
+        { id: "   ", apiKey: "empty-id-key" },
+        {
+          accountId: "secondary",
+          credentials: {
+            authMode: "env",
+            apiKey: "api-key-2",
+            apiSecretKey: "api-secret-2",
+            accessToken: "access-token-2",
+            accessTokenSecret: "access-secret-2",
+          },
+        },
+      ]),
+    });
+
+    const state = await resolveTwitterAccountConfig(runtime, {
+      accountId: "secondary",
+    });
+
+    expect(state).toMatchObject({
+      accountId: "secondary",
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "api-key-2",
+      TWITTER_ACCESS_TOKEN: "access-token-2",
+    });
+  });
+
   it("rejects the removed broker auth mode", () => {
     const runtime = createRuntime({ TWITTER_AUTH_MODE: "broker" });
 

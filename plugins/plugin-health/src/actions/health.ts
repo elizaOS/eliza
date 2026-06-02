@@ -1,4 +1,5 @@
 import type {
+  Action,
   ActionParameter,
   ActionResult,
   HandlerCallback,
@@ -367,6 +368,47 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
     examples: [1, 7, 30],
   },
 ];
+
+export const OWNER_HEALTH_ACTIONS = [
+  "today",
+  "trend",
+  "by_metric",
+  "status",
+] as const;
+
+export interface CreateOwnerHealthActionOptions {
+  validate: Action["validate"];
+  handler: Action["handler"];
+}
+
+export function createOwnerHealthAction({
+  validate,
+  handler,
+}: CreateOwnerHealthActionOptions): Action {
+  return {
+    name: "OWNER_HEALTH",
+    similes: ["HEALTH", "FITNESS", "WELLNESS", ...HEALTH_SIMILES],
+    description:
+      "Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
+    descriptionCompressed:
+      "owner health: today|trend|by_metric|status; read-only telemetry",
+    routingHint:
+      'owner health/wearable reads ("step count", "sleep last night", heart rate, workouts) -> OWNER_HEALTH',
+    parameters: [
+      {
+        name: "action",
+        description: "Owner health read op: today|trend|by_metric|status.",
+        required: false,
+        schema: { type: "string" as const, enum: [...OWNER_HEALTH_ACTIONS] },
+      },
+      ...HEALTH_PARAMETERS.filter(
+        (parameter) => parameter.name !== "subaction",
+      ),
+    ],
+    validate,
+    handler,
+  };
+}
 
 export function createHealthActionRunner(
   adapters: CreateHealthActionRunnerOptions,

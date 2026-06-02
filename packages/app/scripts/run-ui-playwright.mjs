@@ -14,9 +14,9 @@ function resolvePlaywrightCommand() {
   const binaryName =
     process.platform === "win32" ? "playwright.cmd" : "playwright";
   for (const candidate of [
-    path.join(workspaceRoot, "node_modules", ".bin", binaryName),
     path.join(repoRoot, "node_modules", ".bin", binaryName),
     path.join(appDir, "node_modules", ".bin", binaryName),
+    path.join(workspaceRoot, "node_modules", ".bin", binaryName),
   ]) {
     if (fs.existsSync(candidate)) {
       return candidate;

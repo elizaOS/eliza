@@ -32,6 +32,12 @@ REQUIRED_CANDIDATE_FIELDS = (
     "bind_status",
     "promotion_gate",
 )
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "formal_pass_claim_allowed",
+    "rtl_bind_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -130,6 +136,9 @@ def validate_manifest(path: Path) -> list[str]:
         errors.append(f"{rel(path)} schema mismatch")
     if manifest.get("claim_boundary") != EXPECTED_CLAIM_BOUNDARY:
         errors.append(f"{rel(path)} claim_boundary mismatch")
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if manifest.get(field) is not False:
+            errors.append(f"{rel(path)} {field} must be false")
     if not isinstance(manifest.get("dut"), str) or not manifest["dut"]:
         errors.append(f"{rel(path)} dut must be non-empty")
     if not isinstance(manifest.get("source_ids"), list) or not manifest["source_ids"]:
@@ -140,6 +149,7 @@ def validate_manifest(path: Path) -> list[str]:
             "generated_assertions_committed_to_rtl",
             "generated_assertions_bound_to_rtl",
             "source_tree_write_allowed",
+            *REQUIRED_FALSE_CLAIM_FLAGS,
         ):
             if policy.get(field) is not False:
                 errors.append(f"{rel(path)} review_policy.{field} must be false")

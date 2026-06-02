@@ -350,6 +350,16 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fuse_otp_claim_allowed": False,
+            "foundry_claim_allowed": False,
+        },
         "claim_boundary": (
             "Checks that the normal and high-failure boot-programmable repair ROMs contain "
             "the remap words required by every committed resident payload shard, and links "

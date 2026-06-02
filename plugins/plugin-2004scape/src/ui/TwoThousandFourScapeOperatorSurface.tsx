@@ -59,6 +59,105 @@ function Button({
   );
 }
 
+function TuiSuggestedPromptButton({
+  prompt,
+  index,
+  disabled,
+  onSelect,
+}: {
+  prompt: string;
+  index: number;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "tui-steering-suggestions",
+    description: `Send the suggested instruction "${prompt}" to the bot`,
+    onActivate: () => onSelect(prompt),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(prompt)}
+      style={tuiButtonStyle}
+      {...agentProps}
+    >
+      {prompt}
+    </button>
+  );
+}
+
+function TuiCommandInput({
+  value,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "tui-command",
+    role: "text-input",
+    label: "Operator command",
+    group: "tui-steering",
+    description: "Type an operator instruction to send to the bot",
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <input
+      ref={ref}
+      aria-label="2004scape command"
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSubmit();
+      }}
+      placeholder="Send an operator instruction..."
+      style={tuiInputStyle}
+      {...agentProps}
+    />
+  );
+}
+
+function TuiSendCommandButton({
+  disabled,
+  onActivate,
+}: {
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "tui-send-command",
+    role: "button",
+    label: "Send command",
+    group: "tui-steering",
+    description: "Send the typed operator command to the bot",
+    onActivate,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={onActivate}
+      style={tuiButtonStyle}
+      {...agentProps}
+    >
+      send command
+    </button>
+  );
+}
+
 export function TwoThousandFourScapeTuiView() {
   const { appRuns, setActionNotice } = useApp();
   const { run, matchingRuns } = useMemo(
@@ -156,35 +255,25 @@ export function TwoThousandFourScapeTuiView() {
           : ["check status", "continue tutorial", "pause"]
         )
           .slice(0, 6)
-          .map((prompt) => (
-            <button
+          .map((prompt, index) => (
+            <TuiSuggestedPromptButton
               key={prompt}
-              type="button"
+              prompt={prompt}
+              index={index}
               disabled={!session?.canSendCommands || sending}
-              onClick={() => void sendDraft(prompt)}
-              style={tuiButtonStyle}
-            >
-              {prompt}
-            </button>
+              onSelect={(value) => void sendDraft(value)}
+            />
           ))}
-        <input
-          aria-label="2004scape command"
+        <TuiCommandInput
           value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void sendDraft(draft);
-          }}
-          placeholder="Send an operator instruction..."
-          style={tuiInputStyle}
+          disabled={!session?.canSendCommands || sending}
+          onChange={setDraft}
+          onSubmit={() => void sendDraft(draft)}
         />
-        <button
-          type="button"
+        <TuiSendCommandButton
           disabled={!session?.canSendCommands || sending || !draft.trim()}
-          onClick={() => void sendDraft(draft)}
-          style={tuiButtonStyle}
-        >
-          send command
-        </button>
+          onActivate={() => void sendDraft(draft)}
+        />
       </section>
     </div>
   );

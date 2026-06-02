@@ -229,6 +229,9 @@ def build_report() -> dict[str, Any]:
     cad_rows: list[dict[str, Any]] = []
     incomplete_connections: list[str] = []
     for record in connection_records:
+        mechanical_envelope = record.get("mechanical_envelope")
+        if not isinstance(mechanical_envelope, dict):
+            mechanical_envelope = {}
         row = {
             "id": record.get("id"),
             "cad_part": record.get("cad_part"),
@@ -287,6 +290,10 @@ def build_report() -> dict[str, Any]:
             "bend_radius_requirement_defined": bool(
                 record.get("bend_radius_requirement_defined", False)
             ),
+            "mechanical_envelope": mechanical_envelope,
+            "mechanical_envelope_defined": bool(mechanical_envelope),
+            "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit")
+            is True,
             "release_credit": record.get("release_credit"),
             "pass": record.get("pass") is True,
         }
@@ -300,6 +307,8 @@ def build_report() -> dict[str, Any]:
             != int(row.get("represented_route_count") or 0)
             or int(row.get("represented_route_classification_gap_count") or 0) != 0
             or row.get("all_represented_routes_have_layer_source_and_class") is not True
+            or row.get("mechanical_envelope_defined") is not True
+            or row.get("mechanical_envelope_release_credit") is True
         ):
             incomplete_connections.append(str(row["id"]))
         cad_rows.append(row)
@@ -482,6 +491,44 @@ def build_report() -> dict[str, Any]:
             ),
             "cad_connection_bend_radius_requirement_defined_count": int(
                 connections.get("bend_radius_requirement_defined_count", 0) or 0
+            ),
+            "cad_connection_mechanical_envelope_defined_count": sum(
+                1 for record in cad_rows if record.get("mechanical_envelope_defined") is True
+            ),
+            "cad_connection_all_records_have_mechanical_envelope": bool(cad_rows)
+            and all(record.get("mechanical_envelope_defined") is True for record in cad_rows),
+            "cad_connection_mechanical_envelope_release_credit": any(
+                record.get("mechanical_envelope_release_credit") is True for record in cad_rows
+            ),
+            "cad_connection_manufacturing_detail_defined_count": int(
+                connections.get("manufacturing_detail_defined_count", 0) or 0
+            ),
+            "cad_connection_geometry_defined_count": int(
+                connections.get("connection_geometry_defined_count", 0) or 0
+            ),
+            "cad_connection_bend_or_connector_basis_defined_count": int(
+                connections.get("connection_bend_or_connector_basis_defined_count", 0) or 0
+            ),
+            "cad_connection_impedance_or_current_basis_defined_count": int(
+                connections.get("connection_impedance_or_current_basis_defined_count", 0) or 0
+            ),
+            "cad_connection_all_records_have_manufacturing_geometry": bool(
+                connections.get("all_connections_have_manufacturing_geometry")
+            ),
+            "cad_connection_all_records_have_bend_or_connector_basis": bool(
+                connections.get("all_connections_have_bend_or_connector_basis")
+            ),
+            "cad_connection_all_records_have_impedance_or_current_basis": bool(
+                connections.get("all_connections_have_impedance_or_current_basis")
+            ),
+            "cad_connection_all_records_have_endpoint_distance": bool(
+                connections.get("all_connections_have_endpoint_distance")
+            ),
+            "cad_connection_supplier_drawing_requirement_medium_count": int(
+                connections.get("supplier_drawing_requirement_medium_count", 0) or 0
+            ),
+            "cad_connection_supplier_drawing_requirements_by_medium": connections.get(
+                "supplier_drawing_requirements_by_medium", {}
             ),
             "cad_connection_supplier_release_required_count": int(
                 connections.get("supplier_release_required_connection_count", 0) or 0

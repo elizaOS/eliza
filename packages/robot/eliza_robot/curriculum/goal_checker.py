@@ -322,6 +322,16 @@ class GoalChecker:
                 return fail()
             reasons.append(f"foot_contact_switches={switches}")
 
+        for side in ("left", "right"):
+            key = f"{side}_foot_contact_required"
+            if key in crit:
+                matched = True
+                required = bool(crit[key])
+                contact = _bool_or_none(sample.extra.get(f"{side}_foot_contact"))
+                if contact is None or contact is not required:
+                    return fail()
+                reasons.append(f"{side}_foot_contact={contact}")
+
         if "min_swing_foot_clearance_m" in crit:
             matched = True
             clearance = self._max_swing_foot_clearance_m()

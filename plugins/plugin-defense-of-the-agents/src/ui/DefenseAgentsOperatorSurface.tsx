@@ -313,37 +313,192 @@ export function DefenseAgentsOperatorSurface({
   const events = collectRunEvents(run, telemetry, localEvents);
 
   return (
-    <GameOperatorShell
-      surfaceTestId={
-        variant === "live"
-          ? "defense-live-operator-surface"
-          : "defense-detail-operator-surface"
-      }
-      title="Defense command"
-      statusLabel={statusLabel(run.status)}
-      statusTone={statusTone(run.status)}
-      objective={run.session?.goalLabel ?? run.session?.summary ?? run.summary}
-      detailItems={[
-        { label: "Hero", value: formatHeroLine(telemetry) },
-        { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
-      ]}
-      primaryActions={primaryActions}
-      suggestedActions={suggestedActions}
-      events={events}
-      emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
-      draft={draft}
-      inputPlaceholder="Command the hero..."
-      canSend={canSend}
-      sending={Boolean(sendingCommand)}
-      chatInputTestId="defense-chat-input"
-      chatSendTestId="defense-chat-send"
-      noticeTestId="defense-command-notice"
-      variant={variant}
-      onDraftChange={setDraft}
-      onSendDraft={() => void sendCommand(draft, true)}
-      onCommand={(command) => void sendCommand(command)}
-    />
+    <>
+      <DefenseOperatorRegistrar
+        primaryActions={primaryActions}
+        suggestedActions={suggestedActions}
+        getDraft={() => draft}
+        onDraftChange={setDraft}
+        onCommand={(command) => void sendCommand(command)}
+        onSendDraft={() => void sendCommand(draft, true)}
+      />
+      <GameOperatorShell
+        surfaceTestId={
+          variant === "live"
+            ? "defense-live-operator-surface"
+            : "defense-detail-operator-surface"
+        }
+        title="Defense command"
+        statusLabel={statusLabel(run.status)}
+        statusTone={statusTone(run.status)}
+        objective={
+          run.session?.goalLabel ?? run.session?.summary ?? run.summary
+        }
+        detailItems={[
+          { label: "Hero", value: formatHeroLine(telemetry) },
+          { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
+        ]}
+        primaryActions={primaryActions}
+        suggestedActions={suggestedActions}
+        events={events}
+        emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
+        draft={draft}
+        inputPlaceholder="Command the hero..."
+        canSend={canSend}
+        sending={Boolean(sendingCommand)}
+        chatInputTestId="defense-chat-input"
+        chatSendTestId="defense-chat-send"
+        noticeTestId="defense-command-notice"
+        variant={variant}
+        onDraftChange={setDraft}
+        onSendDraft={() => void sendCommand(draft, true)}
+        onCommand={(command) => void sendCommand(command)}
+      />
+    </>
   );
+}
+
+function primaryActionRole(id: string): "toggle" | "tab" | "button" {
+  if (id === "autoplay") return "toggle";
+  if (id.startsWith("lane-")) return "tab";
+  return "button";
+}
+
+function DefensePrimaryActionRegistrar({
+  action,
+  onCommand,
+}: {
+  action: GameOperatorAction;
+  onCommand: (command: string) => void;
+}) {
+  const role = primaryActionRole(action.id);
+  useAgentElement<HTMLButtonElement>({
+    id: `command-${action.id}`,
+    role,
+    label: action.label,
+    group: "defense-primary-commands",
+    description: `Send the Defense command: ${action.command}`,
+    status:
+      role === "toggle" || role === "tab"
+        ? action.active
+          ? "active"
+          : "inactive"
+        : undefined,
+    onActivate: () => onCommand(action.command),
+  });
+  return null;
+}
+
+function DefenseSuggestedActionRegistrar({
+  action,
+  index,
+  onCommand,
+}: {
+  action: GameOperatorAction;
+  index: number;
+  onCommand: (command: string) => void;
+}) {
+  useAgentElement<HTMLButtonElement>({
+    id: `suggested-command-${slugifyPrompt(action.command, index)}`,
+    role: "button",
+    label: action.label,
+    group: "defense-suggested-commands",
+    description: `Send the suggested Defense command: ${action.command}`,
+    onActivate: () => onCommand(action.command),
+  });
+  return null;
+}
+
+function DefenseDraftInputRegistrar({
+  getDraft,
+  onDraftChange,
+}: {
+  getDraft: () => string;
+  onDraftChange: (value: string) => void;
+}) {
+  useAgentElement<HTMLInputElement>({
+    id: "chat-command-input",
+    role: "text-input",
+    label: "Defense command",
+    group: "defense-chat",
+    description: "Type a command for the hero, then send it",
+    getValue: getDraft,
+    onFill: onDraftChange,
+  });
+  return null;
+}
+
+function DefenseSendDraftRegistrar({
+  onSendDraft,
+}: {
+  onSendDraft: () => void;
+}) {
+  useAgentElement<HTMLButtonElement>({
+    id: "chat-send",
+    role: "button",
+    label: "Send command",
+    group: "defense-chat",
+    description: "Send the typed command to the hero",
+    onActivate: onSendDraft,
+  });
+  return null;
+}
+
+/**
+ * Registers the operator surface's interactive controls with the agent surface.
+ * GameOperatorShell renders these controls and does not forward refs, so each is
+ * registered as a callback-driven element wired to the same handlers the shell
+ * invokes (primary lane/recall/autoplay commands, suggested commands, the chat
+ * input, and the send button).
+ */
+function DefenseOperatorRegistrar({
+  primaryActions,
+  suggestedActions,
+  getDraft,
+  onDraftChange,
+  onCommand,
+  onSendDraft,
+}: {
+  primaryActions: GameOperatorAction[];
+  suggestedActions: GameOperatorAction[];
+  getDraft: () => string;
+  onDraftChange: (value: string) => void;
+  onCommand: (command: string) => void;
+  onSendDraft: () => void;
+}) {
+  return (
+    <>
+      {primaryActions.map((action) => (
+        <DefensePrimaryActionRegistrar
+          key={action.id}
+          action={action}
+          onCommand={onCommand}
+        />
+      ))}
+      {suggestedActions.map((action, index) => (
+        <DefenseSuggestedActionRegistrar
+          key={action.id}
+          action={action}
+          index={index}
+          onCommand={onCommand}
+        />
+      ))}
+      <DefenseDraftInputRegistrar
+        getDraft={getDraft}
+        onDraftChange={onDraftChange}
+      />
+      <DefenseSendDraftRegistrar onSendDraft={onSendDraft} />
+    </>
+  );
+}
+
+function slugifyPrompt(prompt: string, index: number): string {
+  const slug = prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug ? `${slug}-${index}` : `prompt-${index}`;
 }
 
 function DefenseTacticalPromptButton({
@@ -356,7 +511,10 @@ function DefenseTacticalPromptButton({
   onSend: (prompt: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `prompt-${prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    id: `prompt-${prompt
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`,
     role: "button",
     label: prompt,
     group: "defense-tactical-prompts",

@@ -218,7 +218,18 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
             if finding["code"] == "opensbi_handoff_command_placeholder"
         )
         self.assertEqual(placeholder["blocker_dependency"], "live_device_validation")
-        self.assertIn("ELIZA_OPENSBI_HANDOFF_CMD", placeholder["next_command"])
+        self.assertIn("check_software_bsp.py external-preflight opensbi", placeholder["next_command"])
+        self.assertIn("--opensbi-handoff-cmd", placeholder["next_command"])
+        self.assertNotIn("check_software_bsp_external_preflight.py", placeholder["next_command"])
+        reference_only = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "buildroot_qemu_virt_reference_only"
+        )
+        self.assertEqual(
+            reference_only["next_command"],
+            "python3 scripts/check_software_bsp.py buildroot --evidence-plan",
+        )
         self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 1)
         self.assertEqual(report["summary"]["next_command_batch_count"], 4)
         commands = {batch["id"]: batch for batch in report["next_command_plan"]}
@@ -229,9 +240,10 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
         )
         self.assertEqual(handoff_batch["blocker_dependency"], "live_device_validation")
         self.assertIn(
-            "ELIZA_OPENSBI_HANDOFF_CMD='<exact qemu, renode, or board handoff command>'",
+            "python3 scripts/check_software_bsp.py external-preflight opensbi",
             handoff_batch["commands"][0],
         )
+        self.assertIn("--opensbi-handoff-cmd", handoff_batch["commands"][0])
         self.assertNotIn(
             "resolve_u_boot_alternate_boot_chain_not_selected",
             commands,

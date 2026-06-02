@@ -81,7 +81,6 @@ export {
 	type EotClassifier,
 	HeuristicEotClassifier,
 	LIVEKIT_TURN_DETECTOR_EN_REVISION,
-	LIVEKIT_TURN_DETECTOR_HF_REPO,
 	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
 	RemoteEotClassifier,
 	type RemoteEotClassifierOptions,

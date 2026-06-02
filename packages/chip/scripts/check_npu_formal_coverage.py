@@ -12,6 +12,16 @@ FORMAL_MANIFEST = ROOT / "build/reports/formal_manifest.json"
 HARNESS = ROOT / "verify/formal/e1_npu_formal.sv"
 RTL = ROOT / "rtl/npu/e1_npu.sv"
 REPORT = ROOT / "build/reports/npu_formal_coverage.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "full_npu_correctness_claim_allowed": False,
+    "driver_claim_allowed": False,
+    "soc_fabric_claim_allowed": False,
+}
 
 TARGET = "e1_npu"
 EXPECTED = {
@@ -78,6 +88,9 @@ def write_report(status: str, errors: list[str], manifest: dict | None) -> None:
                 "nnapi_claim_allowed": False,
                 "performance_claim_allowed": False,
                 "full_npu_correctness_claim_allowed": False,
+                "driver_claim_allowed": False,
+                "soc_fabric_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Checks that the formal manifest records the NPU SBY target as "
                     "passing with expected covered files, bitwuzla engine metadata, "

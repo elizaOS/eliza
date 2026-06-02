@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json"
 DEFAULT_STATUS_JSON = ROOT / "build/reports/e1_npu_android_proof_manifest_check.json"
 TEMPLATE_CLAIM_BOUNDARY = "template_only_not_android_boot_cts_vts_or_nnapi_evidence"
+REPORT_CLAIM_BOUNDARY = "manifest_check_status_only_not_android_boot_cts_vts_or_nnapi_evidence"
 SCHEMA = "eliza.e1_npu_android_proof_manifest.v1"
 REQUIRED_STATUSES = {
     "aidl_or_hidl_hal_declared",
@@ -73,6 +75,10 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise SystemExit(f"{path}: manifest must be a JSON object")
     return data
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def is_sha256(value: Any) -> bool:
@@ -222,6 +228,8 @@ def validate_manifest(data: dict[str, Any], require_pass: bool) -> tuple[int, di
     return_code = 1 if errors else (2 if require_pass and blockers else 0)
     report = {
         "schema": "eliza.e1_npu_android_proof_manifest_check.v1",
+        "generated_utc": utc_now(),
+        "claim_boundary": REPORT_CLAIM_BOUNDARY,
         "status": result_status,
         "manifest_status": status,
         "template": is_template,

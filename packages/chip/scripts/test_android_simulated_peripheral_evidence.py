@@ -143,7 +143,6 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         self.assertIn("peripheral_result_not_pass:wifi", codes)
         self.assertIn("peripheral_status_not_pass:bluetooth", codes)
         self.assertIn("peripheral_marker_missing:cellular_5g_lte", codes)
-        self.assertIn("peripheral_log_provenance_missing:rear_camera", codes)
         self.assertIn("peripheral_capture_probe_wifi_disabled", codes)
         self.assertIn("aosp_chip_product_declares_no_audio_hal", codes)
         self.assertIn("cuttlefish_e1_missing_phone_hals", codes)
@@ -170,6 +169,26 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         capture_commands = " ".join(capture_batch["commands"])
         self.assertIn("--adb-connect 127.0.0.1:6520", capture_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", capture_commands)
+        self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', capture_commands)
+        rear_camera = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "peripheral_evidence_blocked:rear_camera"
+        )
+        self.assertEqual(rear_camera["next_command"], "adb devices")
+        self.assertIn(
+            "capture_simulated_peripheral_evidence.py",
+            " ".join(rear_camera["next_commands"]),
+        )
+        wifi_disabled = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "peripheral_capture_probe_wifi_disabled"
+        )
+        self.assertEqual(
+            wifi_disabled["next_command"],
+            "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
+        )
 
     def test_all_pass_logs_and_consistent_sources_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -219,7 +238,7 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         assert_false_claim_flags(self, report)
         self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
-    def test_pass_log_from_env_override_is_rejected(self) -> None:
+    def test_pass_log_from_env_override_must_still_use_canonical_probe(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             patches = self._patch_tree(tmp)
@@ -267,8 +286,102 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         codes = {finding["code"] for finding in report["findings"]}
         self.assertEqual(report["status"], "blocked")
         assert_false_claim_flags(self, report)
-        self.assertIn("peripheral_log_provenance_missing:wifi", codes)
         self.assertIn("peripheral_log_not_canonical_probe:wifi", codes)
+
+    def test_pass_log_from_env_override_with_canonical_probe_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            patches = self._patch_tree(tmp)
+            with PatchStack(patches):
+                gate.LAUNCH_CVD.write_text("launch_cvd --enable_wifi=true\n", encoding="utf-8")
+                gate.ELIZA_AI_SOC_README.write_text(
+                    "Audio HAL, microphone, and speaker are wired for simulator evidence.\n",
+                    encoding="utf-8",
+                )
+                gate.CUTTLEFISH_E1_README.write_text(
+                    "Phone HAL evidence is captured by the simulator probes.\n",
+                    encoding="utf-8",
+                )
+                for component, (evidence, markers) in COMPONENTS.items():
+                    write(
+                        gate.ROOT / evidence,
+                        "\n".join(
+                            [
+                                f"eliza-evidence: target=android_simulated_peripheral component={component}",
+                                "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
+                                "eliza-evidence: command_env=ELIZA_TEST",
+                                "eliza-evidence: command_source=env",
+                                f"eliza-evidence: command=ADB_SERIAL=127.0.0.1:6520 {gate.ROOT / CANONICAL_PROBES[component]}",
+                                "eliza-evidence: started_utc=2026-05-19T20:06:41Z",
+                                f"COMPONENT={component}",
+                                "COMMAND_OUTPUT_BEGIN",
+                                "ADB_PREP_BEGIN",
+                                "SELECTED_ADB_SERIAL=127.0.0.1:6520",
+                                "ADB_PREP_END",
+                                *markers,
+                                "COMMAND_OUTPUT_END",
+                                "eliza-evidence: ended_utc=2026-05-19T20:06:42Z",
+                                "eliza-evidence: status=PASS",
+                                "RESULT=0",
+                            ]
+                        )
+                        + "\n",
+                    )
+                report = gate.run_check(Namespace())
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["findings"], [])
+
+    def test_pass_log_with_only_requested_adb_serial_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            patches = self._patch_tree(tmp)
+            with PatchStack(patches):
+                gate.LAUNCH_CVD.write_text("launch_cvd --enable_wifi=true\n", encoding="utf-8")
+                gate.ELIZA_AI_SOC_README.write_text(
+                    "Audio HAL, microphone, and speaker are wired for simulator evidence.\n",
+                    encoding="utf-8",
+                )
+                gate.CUTTLEFISH_E1_README.write_text(
+                    "Phone HAL evidence is captured by the simulator probes.\n",
+                    encoding="utf-8",
+                )
+                for component, (evidence, markers) in COMPONENTS.items():
+                    write(
+                        gate.ROOT / evidence,
+                        "\n".join(
+                            [
+                                f"eliza-evidence: target=android_simulated_peripheral component={component}",
+                                "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
+                                "eliza-evidence: command_env=ELIZA_TEST",
+                                "eliza-evidence: command_source=env",
+                                f"eliza-evidence: command=ADB_SERIAL=127.0.0.1:6520 {gate.ROOT / CANONICAL_PROBES[component]}",
+                                "eliza-evidence: started_utc=2026-05-19T20:06:41Z",
+                                f"COMPONENT={component}",
+                                "COMMAND_OUTPUT_BEGIN",
+                                "ADB_PREP_BEGIN",
+                                "ADB_SERIAL=127.0.0.1:6520",
+                                "ADB_PREP_END",
+                                *markers,
+                                "COMMAND_OUTPUT_END",
+                                "eliza-evidence: ended_utc=2026-05-19T20:06:42Z",
+                                "eliza-evidence: status=PASS",
+                                "RESULT=0",
+                            ]
+                        )
+                        + "\n",
+                    )
+                report = gate.run_check(Namespace())
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertEqual(
+            codes,
+            {
+                f"peripheral_pass_log_adb_target_not_validated:{component}"
+                for component in COMPONENTS
+            },
+        )
 
 
 class PatchStack:

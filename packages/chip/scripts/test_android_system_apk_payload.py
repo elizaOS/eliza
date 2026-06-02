@@ -158,7 +158,19 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertTrue(report["evidence"]["has_llama_kernel_diagnostic"])
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T.*\+00:00$")
         assert_no_runtime_or_release_claims(report)
+
+    def test_report_provenance_sanitizer_strips_host_local_package_tool_path(self) -> None:
+        raw = {
+            "evidence": {
+                "package_name_source": "/home/shaw/Android/Sdk/cmdline-tools/latest/bin/apkanalyzer"
+            }
+        }
+        sanitized = gate.provenance_safe_value(raw)
+        encoded = json.dumps(sanitized, sort_keys=True)
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertIn("apkanalyzer", encoded)
 
     def test_stale_aosp_build_provenance_apk_name_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

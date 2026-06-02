@@ -90,6 +90,14 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             payload["findings"][0]["blocker_dependency"],
             "live_device_validation",
         )
+        self.assertEqual(
+            payload["findings"][0]["next_command"],
+            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+        )
+        self.assertIn(
+            "python3 packages/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+            payload["findings"][0]["next_commands"],
+        )
         inventory = payload["runtime_evidence_collection_inventory"]
         self.assertEqual(len(inventory), 1)
         self.assertEqual(inventory[0]["scope"], "media")
@@ -188,6 +196,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                 "planned_evidence_missing"
             ],
             1,
+        )
+        self.assertTrue(payload["findings"][0]["next_command"])
+        self.assertIn(
+            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            payload["findings"][0]["next_commands"],
         )
 
     def test_unavailable_live_capture_is_distinct_from_missing_planned_evidence(self) -> None:

@@ -21,6 +21,12 @@ LICENSE_STATUS_COMPLETE = "training_only_review_complete_apache-2.0_repo_cc-by-4
 FLOORSET_VERIFY_RUN_ID = "codex-floorset-verify-20260521"
 DECLARED_INTAKE_STATUS = "DECLARED_IN_REVIEWED_INTAKE"
 RECORDED_INTAKE_STATUS = "RECORDED_IN_REVIEWED_INTAKE"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "commercial_use_allowed": False,
+    "model_weight_release_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -226,6 +232,7 @@ def main() -> int:
             "commercial_use_allowed": False,
             "model_weight_release_allowed": False,
             "e1_signoff_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
         "required_controls": [
             "preserve Apache-2.0 repository and CC BY 4.0 dataset attribution",

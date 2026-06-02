@@ -1,10 +1,18 @@
 # @elizaos/plugin-lifeops
 
-Owner operations plugin: routines, goals, scheduled tasks, calendar, messaging, connectors, website/app blocking, credentials, voice calls, and browser companion control for an Eliza agent.
+Personal assistant plugin: chat-first owner operations, executive workflows, scheduled tasks, calendar, inbox, documents, reminders, money admin, approvals, and owner-facing views for an Eliza agent.
 
 ## Purpose / role
 
-Adds the full owner-operations surface to an Eliza agent: it registers action umbrellas for every owner-facing domain (reminders, alarms, goals, todos, routines, health, finances, calendar, inbox, documents, screen-time, voice calls, connectors), a persistent scheduled-task runner, website/app blocking via hosts-file manipulation (SelfControl) and OS-level APIs, and a browser-bridge service for companion browser extension pairing. The plugin is opt-in; add `@elizaos/plugin-lifeops` to the agent's plugin list. It depends on `@elizaos/plugin-google` (auto-registered at init if absent).
+LifeOps is the personal and executive assistant interface. It owns the assistant workspace, cross-domain planning, owner approvals, scheduled-task operating loops, calendar/inbox/document/reminder/money workflows, and the chat/voice-first UI that lets Eliza act like a chief-of-staff for the owner.
+
+LifeOps must not become the implementation home for adjacent domains:
+
+- **Health / sleep / circadian / screen-time planning** belongs in `@elizaos/plugin-health`. LifeOps may expose thin owner-access wrappers and assistant intents that call plugin-health factories.
+- **Connector, adapter, bridge, and transport clients** belong in their relevant plugins (`plugin-google`, `plugin-whatsapp`, `plugin-x`, `plugin-browser`, `plugin-phone`, `plugin-calendly`, etc.). LifeOps may keep registries, owner policies, and normalized personal-assistant projections.
+- **Personal assistant code, views, scenarios, default packs, owner policy, approvals, and executive workflows** belong here.
+
+The plugin is opt-in; add `@elizaos/plugin-lifeops` to the agent's plugin list. It depends on `@elizaos/plugin-google` for current calendar/inbox projections (auto-registered at init if absent).
 
 ## Plugin surface
 
@@ -14,7 +22,7 @@ Adds the full owner-operations surface to an Eliza agent: it registers action um
 |---|---|---|
 | `BLOCK` | `src/actions/block.ts` | Website/app block and unblock (SelfControl + OS APIs) |
 | `CALENDAR` | `src/actions/calendar.ts` | Calendar read/write, event creation, scheduling |
-| `CONNECTOR` | `src/actions/connector.ts` | Connect/disconnect/query external service connectors |
+| `CONNECTOR` | `src/actions/connector.ts` | Personal-assistant connector status/control facade; connector clients live in their plugins |
 | `CREDENTIALS` | `src/actions/credentials.ts` | Credential lookup and autofill |
 | `OWNER_DOCUMENTS` | `src/actions/document.ts` | Document search, review, signature workflows |
 | `INBOX` | `src/actions/inbox.ts` | Email/messaging inbox triage |
@@ -23,8 +31,8 @@ Adds the full owner-operations surface to an Eliza agent: it registers action um
 | `OWNER_GOALS` | `src/actions/owner-surfaces.ts` | Goals CRUD |
 | `OWNER_TODOS` | `src/actions/owner-surfaces.ts` | Todos |
 | `OWNER_ROUTINES` | `src/actions/owner-surfaces.ts` | Daily routines |
-| `OWNER_HEALTH` | `src/actions/owner-surfaces.ts` | Health metrics |
-| `OWNER_SCREENTIME` | `src/actions/owner-surfaces.ts` | Screen-time (macOS only; platform-gated) |
+| `OWNER_HEALTH` | `src/actions/owner-surfaces.ts` | Thin wrapper around `@elizaos/plugin-health` health actions |
+| `OWNER_SCREENTIME` | `src/actions/owner-surfaces.ts` | Thin wrapper around `@elizaos/plugin-health` screen-time planning (macOS only; platform-gated) |
 | `OWNER_FINANCES` | `src/actions/owner-surfaces.ts` | Finance dashboard, transactions |
 | `PERSONAL_ASSISTANT` | `src/actions/owner-surfaces.ts` | Cross-domain assistant orchestration |
 | `ENTITY` | `src/actions/entity.ts` | Entity (contact/person/org) CRUD |
@@ -41,16 +49,16 @@ Adds the full owner-operations surface to an Eliza agent: it registers action um
 
 | Provider name | File | What it injects |
 |---|---|---|
-| `lifeops_browser` | `src/provider.ts` | Browser-bridge companion context |
+| `lifeops_browser` | `src/provider.ts` | Browser companion projection; browser bridge implementation lives in `@elizaos/plugin-browser` |
 | `websiteBlocker` | `src/providers/website-blocker.ts` | Current website-blocker status |
 | `appBlocker` | `src/providers/app-blocker.ts` | Current app-blocker status |
 | `firstRun` | `src/providers/first-run.ts` | First-run completion state and affordances |
 | `roomPolicy` | `src/providers/room-policy.ts` | Per-room handoff/policy state |
-| `lifeops` | `src/providers/lifeops.ts` | Aggregated owner context (schedule, goals, reminders, health) |
+| `lifeops` | `src/providers/lifeops.ts` | Aggregated owner context for assistant planning |
 | `pendingPrompts` | `src/providers/pending-prompts.ts` | Pending questions waiting for owner input |
 | `workThreads` | `src/providers/work-threads.ts` | Active work-thread state |
 | `recentTaskStates` | `src/providers/recent-task-states.ts` | Recent scheduled-task execution results |
-| `lifeops-health` | `src/providers/health.ts` | Health metrics from plugin-health |
+| `lifeops-health` | `src/providers/health.ts` | Thin provider wrapper created by `@elizaos/plugin-health` |
 | `inboxTriage` | `src/providers/inbox-triage.ts` | Unresolved inbox items for triage |
 | `crossChannelContext` | `src/providers/cross-channel-context.ts` | Cross-channel conversation context |
 | `activity-profile` | `src/providers/activity-profile.ts` | Owner activity/presence profile |
@@ -59,9 +67,9 @@ Adds the full owner-operations surface to an Eliza agent: it registers action um
 
 | Service type | Class | File | Role |
 |---|---|---|---|
-| `lifeops_browser_plugin` | `BrowserBridgePluginService` | `src/service.ts` | Browser extension companion pairing and session management |
+| `lifeops_browser_plugin` | `BrowserBridgePluginService` | `src/service.ts` | Legacy LifeOps facade for browser companion state; implementation should continue moving to `@elizaos/plugin-browser` |
 | `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
-| `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | macOS activity/screen-time tracking |
+| `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | Legacy activity projection for assistant context; health/screen-time domain logic belongs in `@elizaos/plugin-health` |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
 | `lifeops_scheduled_task_runner` | `ScheduledTaskRunnerService` | `src/lifeops/scheduled-task/service.ts` | Scheduled-task execution engine |
 
@@ -89,12 +97,12 @@ src/
   actions/
     block.ts                    BLOCK (website/app blocking umbrella)
     calendar.ts                 CALENDAR
-    connector.ts                CONNECTOR
+    connector.ts                CONNECTOR facade over plugin-owned connector surfaces
     credentials.ts              CREDENTIALS
     document.ts                 OWNER_DOCUMENTS
     inbox.ts                    INBOX
     owner-surfaces.ts           OWNER_REMINDERS / OWNER_ALARMS / OWNER_GOALS / OWNER_TODOS
-                                / OWNER_ROUTINES / OWNER_HEALTH / OWNER_SCREENTIME
+                                / OWNER_ROUTINES / health wrappers / screen-time wrappers
                                 / OWNER_FINANCES / PERSONAL_ASSISTANT
     entity.ts                   ENTITY
     brief.ts                    BRIEF
@@ -115,9 +123,8 @@ src/
     relationships/              RelationshipStore
     registries/                 AnchorRegistry, EventKindRegistry, FamilyRegistry, BlockerRegistry
     channels/                   ChannelRegistry + priority-posture map
-    connectors/                 ConnectorRegistry + per-connector adapters
-                                (calendly, discord, duffel, google, imessage,
-                                 signal, telegram, twilio, whatsapp, x)
+    connectors/                 ConnectorRegistry + owner policy projections.
+                                Connector clients/adapters belong in their plugins.
     send-policy/                Per-connector send-policy contract + registry
     owner/                      OwnerFactStore, profile-extraction-evaluator
     first-run/                  FirstRunService, first-run state store
@@ -125,7 +132,8 @@ src/
     global-pause/               GlobalPauseStore
     handoff/                    Per-room HandoffStore
     i18n/                       MultilingualPromptRegistry, localized examples provider
-    messaging/                  Messaging adapters (Gmail, X DM, Calendly, BrowserBridge)
+    messaging/                  Assistant messaging projections and policies.
+                                Transport adapters belong in connector plugins.
     checkin/                    CheckinService + schedule resolver
     work-threads/               WorkThreadStore + threadOps field evaluator
     service.ts                  LifeOpsService (large service composed from service-mixin-*.ts)
@@ -189,14 +197,14 @@ bun run --cwd plugins/plugin-lifeops clean              # Remove dist/
 | `WEBSITE_BLOCKER_HOSTS_FILE_PATH` | No | Alternative hosts-file path override |
 | `ELIZA_DISABLE_ACTIVITY_TRACKER` | No | Set to `1` to skip native activity tracker |
 | `ELIZA_NATIVE_PERMISSIONS_DYLIB` | No | Path to native permissions dylib (macOS screen-time) |
-| `ELIZA_HEALTHKIT_CLI_PATH` | No | Path to HealthKit CLI binary |
+| `ELIZA_HEALTHKIT_CLI_PATH` | No | HealthKit CLI path consumed by plugin-health; LifeOps may only observe its projections |
 | `ELIZA_IMESSAGE_BACKEND` | No | iMessage backend selector |
 | `ELIZA_REMOTE_ACCESS_TOKEN` | No | Token for remote desktop access |
 | `ELIZA_REMOTE_LOCAL_MODE` | No | Set to `1` for local-only remote desktop mode |
 | `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | No | TTL for browser-bridge companion tokens |
 | `ELIZA_WHATSAPP_ACCESS_TOKEN` | No | WhatsApp API access token |
 | `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp phone number ID |
-| `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | No | Google Fit access token (health) |
+| `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | No | Google Fit token consumed by plugin-health |
 | `GOOGLE_MAPS_API_KEY` | No | Google Maps API key (travel-time calculations) |
 | `TWILIO_SMS_COST_PER_SEGMENT_USD` | No | Override Twilio SMS cost estimate |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key (cloud features route) |

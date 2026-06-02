@@ -42,7 +42,10 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["BRIEF", "LIFE", "INBOX", "MESSAGE", "CALENDAR"] },
+    {
+      type: "selectedAction",
+      actionName: ["BRIEF", "LIFE", "INBOX", "MESSAGE", "CALENDAR"],
+    },
     {
       type: "custom",
       name: "command-brief-action-coverage",

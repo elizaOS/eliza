@@ -1,11 +1,13 @@
 import type { GenerateTextResult, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateTextMock, streamTextMock, createOpenAICompatibleMock } = vi.hoisted(() => ({
-  generateTextMock: vi.fn(),
-  streamTextMock: vi.fn(),
-  createOpenAICompatibleMock: vi.fn(),
-}));
+const { generateTextMock, streamTextMock, createOpenAICompatibleMock, detectLMStudioMock } =
+  vi.hoisted(() => ({
+    generateTextMock: vi.fn(),
+    streamTextMock: vi.fn(),
+    createOpenAICompatibleMock: vi.fn(),
+    detectLMStudioMock: vi.fn(),
+  }));
 
 vi.mock("ai", () => ({
   embed: vi.fn(),
@@ -23,11 +25,7 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 }));
 
 vi.mock("../utils/detect", () => ({
-  detectLMStudio: vi.fn(async () => ({
-    available: true,
-    baseURL: "http://localhost:1234/v1",
-    models: [{ id: "auto-detected-model" }],
-  })),
+  detectLMStudio: (...args: unknown[]) => detectLMStudioMock(...args),
 }));
 
 import {
@@ -76,6 +74,12 @@ describe("LM Studio text plumbing shape", () => {
         textEmbeddingModel: vi.fn((modelId: string) => ({ modelId })),
         imageModel: vi.fn((modelId: string) => ({ modelId })),
       });
+    });
+    detectLMStudioMock.mockReset();
+    detectLMStudioMock.mockResolvedValue({
+      available: true,
+      baseURL: "http://localhost:1234/v1",
+      models: [{ id: "auto-detected-model" }],
     });
   });
 
@@ -154,6 +158,21 @@ describe("LM Studio text plumbing shape", () => {
     expect(args.model.modelId).toBe("auto-detected-model");
   });
 
+  it("returns a provider error string when model discovery has no usable models", async () => {
+    detectLMStudioMock.mockResolvedValueOnce({
+      available: false,
+      baseURL: "http://localhost:1234/v1",
+      error: "unexpected /v1/models response shape",
+    });
+    const runtime = createRuntime();
+    (runtime.getSetting as ReturnType<typeof vi.fn>).mockImplementation(() => null);
+
+    const result = await handleTextSmall(runtime, { prompt: "p" } as never);
+
+    expect(result).toMatch(/Error generating text/i);
+    expect(generateTextMock).not.toHaveBeenCalled();
+  });
+
   it("forwards native tools to generateText and returns a GenerateTextResult shape", async () => {
     generateTextMock.mockResolvedValue({
       text: "ack",
@@ -196,6 +215,31 @@ describe("LM Studio text plumbing shape", () => {
       type: "array",
       items: { type: "string" },
     });
+  });
+
+  it("rejects native tool arrays with nameless entries before calling the provider", () => {
+    expect(() => normalizeNativeTools([{ description: "missing name" }])).toThrow(
+      /missing a name/i
+    );
+  });
+
+  it("serializes circular native message content instead of aborting generation", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    });
+    const circular: Record<string, unknown> = { value: "x" };
+    circular.self = circular;
+
+    const result = await handleTextSmall(createRuntime(), {
+      messages: [{ role: "user", content: circular }],
+    } as never);
+
+    expect(result).toEqual(expect.objectContaining({ text: "ok" }));
+    const callArg = generateTextMock.mock.calls[0][0] as { messages: Array<{ content: unknown }> };
+    expect(callArg.messages[0]?.content).toBe("[unserializable content]");
   });
 
   it("omits structured output when tools and responseSchema are both set", async () => {

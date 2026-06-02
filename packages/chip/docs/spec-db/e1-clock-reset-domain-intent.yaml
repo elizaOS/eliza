@@ -54,8 +54,8 @@ external_interface_assumptions:
       - JTAG_TMS
       - JTAG_TDI
       - JTAG_TDO
-    assumption: unused_tied_off_in_current_top
-    evidence_boundary: e1_chip_top reduces JTAG inputs into an unused lint sink and ties JTAG_TDO low
+    assumption: tap_driven_in_current_top
+    evidence_boundary: e1_chip_top instantiates e1_jtag_tap and drives JTAG_TDO from the TAP only when tdo_oe is asserted, otherwise low
     cdc_signoff_claim: false
   - id: test_mode
     ports:
@@ -84,4 +84,10 @@ ai_use_policy:
   generated_rtl_allowed: false
   cdc_signoff_claim_allowed: false
   rdc_signoff_claim_allowed: false
+  false_claim_flags:
+    generated_constraints_allowed: false
+    generated_waivers_allowed: false
+    generated_rtl_allowed: false
+    cdc_signoff_claim_allowed: false
+    rdc_signoff_claim_allowed: false
   advisory_triage_allowed_after_deterministic_report: true

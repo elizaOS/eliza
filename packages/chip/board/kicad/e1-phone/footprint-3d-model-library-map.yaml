@@ -347,6 +347,35 @@ summary:
   routed_local_development_footprint_count: 89
   routed_local_development_placeholder_marker_count: 0
   routed_local_development_non_release_pattern_count: 89
+  local_development_pattern_coverage:
+    claim_boundary: >
+      Instance-level coverage for the routed local-development board and component-model
+      manifest. This proves every local development pattern has a generated STEP envelope
+      and terminal/provenance accounting where applicable; it does not approve supplier
+      land patterns, supplier STEP/B-rep, schematic/ERC, DRC, or fabrication release.
+    footprint_type_count_from_pad_audit: 32
+    footprint_type_pinout_bound_count_from_pad_audit: 21
+    all_pinout_bound_footprint_types_have_terminal_contract: true
+    explicit_support_pattern_type_count_from_pad_audit: 11
+    all_support_pattern_types_have_explicit_provenance: true
+    component_model_instance_count: 89
+    component_model_pinout_bound_instance_count: 22
+    component_model_support_instance_count: 67
+    component_model_visual_package_class_counts:
+      pinout_bound_package_or_connector: 22
+      discrete_passive_land_pattern: 22
+      test_access_land_pattern: 18
+      protection_land_pattern: 11
+      rf_matching_land_pattern: 5
+      passive_array_land_pattern: 4
+      mechanical_land_pattern: 4
+      fiducial_land_pattern: 3
+    all_component_models_have_local_discrete_step_file: true
+    all_component_models_import_as_solid: true
+    all_component_model_bboxes_match_envelope: true
+    supplier_approved_component_model_count: 0
+    release_credit_component_model_count: 0
+    blocked_pending_supplier_step_or_verified_package_drawing_count: 89
   matched_footprint_and_3d_model_lines:
     - line 17 GCT USB4105 USB-C receptacle
     - line 12 display 40-pin FPC mating connector (Hirose FH12-40S candidate)

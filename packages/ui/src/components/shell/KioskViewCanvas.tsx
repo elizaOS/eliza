@@ -101,43 +101,58 @@ function FloatingViewWindow({
 /**
  * The kiosk view-manager canvas. Mounts agent-spawned dynamic-view sessions as
  * in-window surfaces (positioned iframes) on the single fullscreen kiosk
- * surface. Full-bleed placements (`canvas`/`panel`/`chat-inline`) stack to fill
- * the canvas with the most-recent view on top; `floating` placements render as
- * draggable in-canvas windows above them.
+ * surface.
+ *
+ * Only ONE surface is ever mounted at a time so exactly one view runs (one
+ * iframe = one render tree, RAF loop, and WebGL context). The surface registry
+ * (`useKioskViewSurfaces`) keeps every mounted/unmounted surface in its list,
+ * but this canvas renders only the single active one and leaves the rest fully
+ * unmounted so they stop executing.
+ *
+ * Active surface selection: surfaces arrive in mount order (newest appended
+ * last by `useKioskViewSurfaces`), so the last entry is the most recently
+ * opened — the one the user is looking at. A `floating` (`alwaysOnTop`) view
+ * wins over a full-bleed view when both exist, since the agent opened it to sit
+ * on top; otherwise the newest full-bleed view is shown.
  */
 export function KioskViewCanvas({
   surfaces,
 }: {
   surfaces: KioskViewSurface[];
 }): React.JSX.Element {
-  const fullBleed = surfaces.filter((s) => !s.alwaysOnTop);
-  const floating = surfaces.filter((s) => s.alwaysOnTop);
+  // Newest surface is last. A floating view, if any, is the intended
+  // foreground; otherwise the newest full-bleed view is the active one.
+  const activeSurface = React.useMemo(() => {
+    let activeFullBleed: KioskViewSurface | null = null;
+    let activeFloating: KioskViewSurface | null = null;
+    for (const surface of surfaces) {
+      if (surface.alwaysOnTop) {
+        activeFloating = surface;
+      } else {
+        activeFullBleed = surface;
+      }
+    }
+    return activeFloating ?? activeFullBleed;
+  }, [surfaces]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
-      {fullBleed.length === 0 && floating.length === 0 ? (
+      {activeSurface === null ? (
         <div className="flex h-full w-full items-center justify-center">
           <p className="text-sm text-muted">
             Ask Eliza below to open something.
           </p>
         </div>
-      ) : null}
-
-      {fullBleed.map((surface, index) => (
-        <div
-          key={surface.windowId}
-          className="absolute inset-0"
-          // Stack full-bleed surfaces so the most recently opened view is on
-          // top; older surfaces stay mounted underneath (state preserved).
-          style={{ zIndex: index + 1 }}
-        >
-          <ViewFrame surface={surface} />
+      ) : activeSurface.alwaysOnTop ? (
+        <FloatingViewWindow
+          key={activeSurface.windowId}
+          surface={activeSurface}
+        />
+      ) : (
+        <div key={activeSurface.windowId} className="absolute inset-0">
+          <ViewFrame surface={activeSurface} />
         </div>
-      ))}
-
-      {floating.map((surface) => (
-        <FloatingViewWindow key={surface.windowId} surface={surface} />
-      ))}
+      )}
     </div>
   );
 }

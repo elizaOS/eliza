@@ -143,6 +143,11 @@ import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
+import {
+  isPerfInstrumentEnabled,
+  normalizeRouteKey,
+  recordRouteTiming,
+} from "./perf-instrument";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
@@ -649,6 +654,27 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
 // plugin.ts → compatLoopbackConfigPut + makeCloudRouteHandler).
 
 async function handleCompatRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean> {
+  if (!isPerfInstrumentEnabled()) {
+    return handleCompatRouteInner(req, res, state);
+  }
+  const start = performance.now();
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const routeKey = normalizeRouteKey(
+    (req.method ?? "GET").toUpperCase(),
+    url.pathname,
+  );
+  const handled = await handleCompatRouteInner(req, res, state);
+  if (handled) {
+    recordRouteTiming(routeKey, performance.now() - start);
+  }
+  return handled;
+}
+
+async function handleCompatRouteInner(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,

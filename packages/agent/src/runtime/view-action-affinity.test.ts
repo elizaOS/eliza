@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildFullParamActionSet,
@@ -45,6 +48,22 @@ describe("view-action-affinity", () => {
     expect(viewScopedActionNames(undefined).size).toBe(0);
   });
 
+  it("covers the major plugin views (expanded map)", () => {
+    // wallet / trading / xr surfaces now boost their plugin actions.
+    expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
+    expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
+    expect(viewScopedActionNames("polymarket").has("POLYMARKET_STATUS")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames("hyperliquid").has("PERPETUAL_MARKET")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames("facewear").has("XR_OPEN_VIEW")).toBe(true);
+    expect(viewScopedActionNames("scape").has("SCAPE")).toBe(true);
+    expect(viewScopedActionNames("2004scape").has("RS_2004")).toBe(true);
+    expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
+  });
+
   it("merges view-scoped actions into the full-param set", () => {
     const set = buildFullParamActionSet([], viewScopedActionNames("companion"));
     // Universal actions are always present…
@@ -85,6 +104,37 @@ describe("view-action-affinity", () => {
     expect(block).toContain('"Wallet"');
     expect(block).toContain("list-elements");
     expect(block).toContain("agent-fill");
+    // The wallet view scopes actions → the block names them for the planner.
+    expect(block).toContain("most relevant while on this view");
+    expect(block).toContain("EVM_SWAP");
+  });
+});
+
+// Drift guard: every action name in VIEW_ACTION_MAP must still exist as a
+// declared `name: "X"` in source. Catches an upstream rename/removal turning a
+// mapped action into a silent no-op (the runtime validator is advisory-only and
+// not wired at boot). Source-static so it needs no running runtime.
+describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.resolve(here, "../../../..");
+  const names = [
+    ...new Set(Object.values(VIEW_ACTION_MAP).flatMap((a) => [...a])),
+  ];
+
+  it.each(names)("action %s is declared somewhere in source", (name) => {
+    let found = "";
+    try {
+      found = execFileSync(
+        "grep",
+        ["-rlF", `name: "${name}"`, "plugins", "packages/agent/src"],
+        { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+    } catch {
+      // grep exits 1 (no match) → found stays empty → assertion fails below.
+    }
+    expect(found, `no \`name: "${name}"\` found under plugins/ or packages/agent/src`).not.toBe(
+      "",
+    );
   });
 });
 
@@ -120,6 +170,37 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     expect(out).toContain("emote: string, intensity: number");
     // The unrelated action is still stubbed.
     expect(out).not.toContain("foo: string");
+  });
+
+  // Mirrors the exact pipeline installPromptOptimizations runs on a planner
+  // prompt: read the active view, weight its scoped actions through
+  // compactActionsForIntent, then inject the awareness block. Locks the
+  // integration contract the prompt-optimization wiring implements.
+  it("end-to-end: active view weights its action AND injects awareness", () => {
+    setActiveViewContext({
+      viewId: "companion",
+      viewLabel: "Companion",
+      viewType: "gui",
+      viewPath: "/companion",
+    });
+    const active = getActiveViewContext();
+    let prompt = compactActionsForIntent(
+      PROMPT,
+      viewScopedActionNames(active?.viewId),
+    );
+    if (active && prompt.includes("# Available Actions")) {
+      prompt = applyActiveViewAwareness(prompt, active);
+    }
+    // Weighting: the companion view's PLAY_EMOTE keeps full params…
+    expect(prompt).toContain("emote: string, intensity: number");
+    // …unrelated action stays stubbed…
+    expect(prompt).not.toContain("foo: string");
+    // …and awareness is injected once, before the action catalogue.
+    expect(prompt).toContain("# Active View");
+    expect(prompt.indexOf("# Active View")).toBeLessThan(
+      prompt.indexOf("# Available Actions"),
+    );
+    expect(prompt.match(/# Active View/g)).toHaveLength(1);
   });
 });
 

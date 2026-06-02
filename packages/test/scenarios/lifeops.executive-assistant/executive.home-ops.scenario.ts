@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "executive.home-ops",
-  title: "Home ops review covers deliveries, errands, reservations, and support tickets",
+  title:
+    "Home ops review covers deliveries, errands, reservations, and support tickets",
   domain: "lifeops.executive-assistant",
   tags: ["lifeops", "executive-assistant", "home-ops", "personal-admin"],
   isolation: "per-scenario",
@@ -24,9 +25,18 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["LIFE", "MESSAGE", "CALENDAR", "OWNER_DOCUMENTS"],
         description: "home operations decision review",
-        includesAny: ["delivery", "maintenance", "errand", "appointment", "reservation", "support"],
+        includesAny: [
+          "delivery",
+          "maintenance",
+          "errand",
+          "appointment",
+          "reservation",
+          "support",
+        ],
       }),
-      responseIncludesAny: [/delivery|maintenance|errand|appointment|reservation|support/i],
+      responseIncludesAny: [
+        /delivery|maintenance|errand|appointment|reservation|support/i,
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -35,14 +45,24 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["LIFE", "MESSAGE", "CALENDAR", "OWNER_DOCUMENTS"] },
+    {
+      type: "selectedAction",
+      actionName: ["LIFE", "MESSAGE", "CALENDAR", "OWNER_DOCUMENTS"],
+    },
     {
       type: "custom",
       name: "home-ops-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: ["LIFE", "MESSAGE", "CALENDAR", "OWNER_DOCUMENTS"],
         description: "home operations decision review",
-        includesAny: ["delivery", "maintenance", "errand", "appointment", "reservation", "support"],
+        includesAny: [
+          "delivery",
+          "maintenance",
+          "errand",
+          "appointment",
+          "reservation",
+          "support",
+        ],
       }),
     },
     judgeRubric({

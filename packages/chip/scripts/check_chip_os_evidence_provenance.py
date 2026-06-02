@@ -63,6 +63,7 @@ EXCLUDED_FILENAMES = {
 EXCLUDED_SUFFIXES = (
     ".schema.json",
     ".example.json",
+    ".status-test.json",
 )
 EXCLUDED_PATH_PARTS = (("firmware", "usr", "share", "qemu", "firmware"),)
 LINE_MARKER_EXCLUDED_FILENAMES = {
@@ -93,6 +94,7 @@ LINE_MARKER_EXCLUDED_FILENAMES = {
 }
 LINE_MARKER_EXCLUDED_SUFFIXES = (
     "gap_keyword_inventory.json",
+    ".run.log",
     ".template.log",
 )
 MAX_FILE_BYTES = 750_000
@@ -104,7 +106,8 @@ KERNEL_BUILD_PLACEHOLDER_PATH_RE = re.compile(
 )
 KERNEL_BUILD_OUTPUT_RE = re.compile(r"^\s*(?:CC|AR|LD|STUBCPY)(?:\s|\[)", re.I)
 LINUX_RUNTIME_PLACEHOLDER_FALSE_POSITIVE_RE = re.compile(
-    r"(EFI stub:|Console: colour dummy device|dummy_hcd(?:\.|\s)|Dummy host controller|"
+    r"(EFI stub:|Console: (?:switching to )?colour dummy device|"
+    r"dummy_hcd(?:\.|\s)|Dummy host controller|"
     r"dummy-cpufreq\.ko|\bFAKE/|\bFake: out/target/product/)",
     re.I,
 )
@@ -112,8 +115,36 @@ REPORT_REFERENCE_PLACEHOLDER_FALSE_POSITIVE_RE = re.compile(
     r"(stub[-_ ]audit|stub_audit|pd/(?:n2p|a14|intel-14a|sf2p)-stub/access-gate\.yaml)",
     re.I,
 )
+TECHNICAL_PLACEHOLDER_FALSE_POSITIVE_RE = re.compile(
+    r"(model-shard sample payload has \d+ contiguous shard words plus one sentinel and checksum|"
+    r"CPU subsystem is the CVA6-disabled stub unless E1_HAVE_CVA6|"
+    r"dispatch-boundary stub for unsupported ops \(rtl/cpu/rvv/rvv_unit_stub\.sv\)|"
+    r"current Sky130 e1 release contains the chip-top stub only)",
+    re.I,
+)
 LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE = re.compile(
     r"(fail-safe mode|serial port \d+ not yet initialized)",
+    re.I,
+)
+TECHNICAL_BLOCKED_FALSE_POSITIVE_RE = re.compile(
+    r"("
+    r"\bavoid blocked (?:cores|links|physical targets)\b|"
+    r"\bblocked (?:cores|links)\b|"
+    r"\bblocked-no-calibrated-assets\b|"
+    r"\bfail address/bit\b|"
+    r"\bfail address\b|"
+    r"\binjection-test hooks\b"
+    r")",
+    re.I,
+)
+ZERO_BLOCKED_FAIL_COUNTER_RE = re.compile(
+    r'^\s*"(?:blocked|fail|failed)"\s*:\s*(?:0|\[\]|\{\})\s*,?\s*$',
+    re.I,
+)
+STRUCTURED_SCOPE_BLOCKED_FALSE_POSITIVE_RE = re.compile(
+    r'^\s*"(?:claim_boundary|reason)"\s*:\s*".*'
+    r"(?:claims? remain blocked until|remain blocked until|remain BLOCKED follow-ons)"
+    r".*",
     re.I,
 )
 REFERENCE_ONLY_RE = re.compile(
@@ -135,6 +166,54 @@ TIMESTAMP_KEYS = {
     "date",
     "result_recorded_at",
 }
+
+GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_evidence_provenance.py"
+
+
+def provenance_commands(category: str, path: Path) -> list[str]:
+    path_text = rel(path)
+    path_parts = set(path.parts)
+    commands: list[str] = []
+    if category == "host_local_path":
+        commands.append(f"python3 packages/chip/scripts/provenance_sanitize.py {path_text}")
+    if category in {"missing_timestamp", "missing_claim_boundary"}:
+        commands.append(
+            f"python3 packages/chip/scripts/normalize_report_provenance.py {path_text}"
+        )
+
+    if "peripherals" in path_parts or path_text.endswith("_sim.log"):
+        commands.append("python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py")
+    elif "eliza_launcher_runtime" in path.name or "android_launcher_runtime" in path_text:
+        commands.append("python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py")
+    elif "android_system_bridge" in path_text:
+        commands.append("python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py")
+    elif "android" in path_parts:
+        commands.append(
+            "AOSP_DIR=/path/to/aosp packages/chip/scripts/boot_android_simulator.sh "
+            "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
+        )
+    elif "e1-npu" in path_parts or "npu" in path_text.lower():
+        commands.append(
+            "E1_NPU_WRITE_PROOF_JSON=1 "
+            "packages/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
+        )
+    elif path.name == "mvp_simulator.json":
+        commands.append("python3 packages/chip/scripts/run_mvp_simulator.py")
+    elif path.name == "os_rv64_chip_boot_contract.json" or "elizaos" in path_parts:
+        commands.append(
+            "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+        )
+    elif path.name == "chip-os-optimization-gap-inventory.json":
+        commands.append("python3 packages/chip/scripts/check_chip_os_optimization_gap_inventory.py")
+    elif path_text.startswith("packages/chip/build/reports/"):
+        commands.append("python3 packages/chip/scripts/check_chip_os_report_freshness.py")
+
+    commands.append(GENERIC_RECHECK_COMMAND)
+    deduped: list[str] = []
+    for command in commands:
+        if command not in deduped:
+            deduped.append(command)
+    return deduped
 
 
 def rel(path: Path) -> str:
@@ -232,6 +311,7 @@ def finding(
     line: int | None = None,
     severity: str = "blocker",
 ) -> dict[str, Any]:
+    commands = provenance_commands(category, path)
     row: dict[str, Any] = {
         "category": category,
         "code": code,
@@ -243,6 +323,8 @@ def finding(
             "Regenerate, replace, or explicitly scope this artifact before using it "
             "as Linux/AOSP chip boot, launcher, agent, or no-issues runtime evidence."
         ),
+        "next_command": commands[0],
+        "next_commands": commands,
     }
     if line is not None:
         row["line"] = line
@@ -285,12 +367,76 @@ def code_slug(text: str) -> str:
     return "_".join(part for part in cleaned.split("_") if part)[:120] or "value"
 
 
+def nested_nonpassing_statuses(
+    value: object,
+    path: tuple[str, ...] = (),
+    *,
+    limit: int = 25,
+    reportable_only: bool = False,
+) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = (*path, str(key))
+            key_text = str(key)
+            status_key = key_text.endswith("status")
+            if reportable_only:
+                status_key = key_text == "evidence_status"
+            if (
+                child_path != ("status",)
+                and isinstance(child, str)
+                and status_key
+                and is_nonpassing_status(child)
+            ):
+                rows.append((".".join(child_path), child))
+                if len(rows) >= limit:
+                    return rows
+            rows.extend(
+                nested_nonpassing_statuses(
+                    child,
+                    child_path,
+                    limit=limit - len(rows),
+                    reportable_only=reportable_only,
+                )
+            )
+            if len(rows) >= limit:
+                return rows
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            rows.extend(
+                nested_nonpassing_statuses(
+                    child,
+                    (*path, str(index)),
+                    limit=limit - len(rows),
+                    reportable_only=reportable_only,
+                )
+            )
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
 def has_claim_boundary(value: object) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, (dict, list)):
         return bool(value)
     return False
+
+
+def has_positive_chip_runtime_claim(data: dict[str, Any]) -> bool:
+    """True when a mixed claim boundary also carries positive chip runtime proof."""
+
+    positive_booleans = (
+        "on_chip_os_boot_claim",
+        "minimum_linux_npu_target_claim",
+        "integrated_linux_npu_ml_claim",
+    )
+    if any(data.get(key) is True for key in positive_booleans):
+        return True
+    evidence = str(data.get("best_executable_evidence", ""))
+    tier = str(data.get("best_executable_tier", ""))
+    return evidence.startswith("chipyard_") and tier in {"os_boot", "os_prereq", "npu_ml"}
 
 
 def load_structured(path: Path, text: str) -> object | None:
@@ -357,6 +503,17 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
             )
         )
 
+    for status_path, nested_status in nested_nonpassing_statuses(data, reportable_only=True):
+        rows.append(
+            finding(
+                category="nonpassing_status",
+                code=f"nested_nonpassing_status_{code_slug(status_path)}_{code_slug(nested_status)}",
+                path=path,
+                message=f"nested structured evidence status {status_path} is {nested_status}",
+                evidence=f"{status_path}={nested_status}",
+            )
+        )
+
     boundary = data.get("claim_boundary")
     if not has_claim_boundary(boundary):
         rows.append(
@@ -368,7 +525,11 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
                 evidence=rel(path),
             )
         )
-    elif isinstance(boundary, str) and REFERENCE_ONLY_RE.search(boundary):
+    elif (
+        isinstance(boundary, str)
+        and REFERENCE_ONLY_RE.search(boundary)
+        and not has_positive_chip_runtime_claim(data)
+    ):
         rows.append(
             finding(
                 category="weak_reference_scope",
@@ -392,10 +553,9 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
     return rows
 
 
-def line_findings(
-    path: Path, text: str, structured_status_value: str | None = None
-) -> list[dict[str, Any]]:
+def line_findings(path: Path, text: str, structured: object | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    structured_status_value = structured_status(structured)
     skip_marker_lines = (
         path.name in LINE_MARKER_EXCLUDED_FILENAMES
         or path.name.endswith(LINE_MARKER_EXCLUDED_SUFFIXES)
@@ -403,6 +563,7 @@ def line_findings(
             isinstance(structured_status_value, str)
             and is_nonpassing_status(structured_status_value)
         )
+        or bool(nested_nonpassing_statuses(structured))
     )
     for line_number, line in enumerate(text.splitlines(), start=1):
         host_match = HOST_PATH_RE.search(line)
@@ -457,11 +618,22 @@ def is_false_positive_placeholder_line(line: str) -> bool:
         is_kernel_build_placeholder_output(line)
         or LINUX_RUNTIME_PLACEHOLDER_FALSE_POSITIVE_RE.search(line)
         or REPORT_REFERENCE_PLACEHOLDER_FALSE_POSITIVE_RE.search(line)
+        or TECHNICAL_PLACEHOLDER_FALSE_POSITIVE_RE.search(line)
     )
 
 
 def is_false_positive_blocked_line(line: str) -> bool:
-    return bool(LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE.search(line))
+    lowered = line.lower()
+    fail_closed_posture = (
+        "fail-closed" in lowered and "blocked" not in lowered and "status:" not in lowered
+    )
+    return bool(
+        LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or TECHNICAL_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or ZERO_BLOCKED_FAIL_COUNTER_RE.search(line)
+        or STRUCTURED_SCOPE_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or fail_closed_posture
+    )
 
 
 def scan_path(path: Path) -> list[dict[str, Any]]:
@@ -470,7 +642,7 @@ def scan_path(path: Path) -> list[dict[str, Any]]:
     except OSError:
         return []
     structured = load_structured(path, text)
-    rows = line_findings(path, text, structured_status(structured))
+    rows = line_findings(path, text, structured)
     if structured is not None:
         rows.extend(structured_findings(path, structured))
     return rows
@@ -484,6 +656,10 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_category = Counter(str(item["category"]) for item in findings)
     by_path = Counter(str(item["path"]) for item in findings)
     by_root = scan_root_summary(findings, roots)
+    command_batches = {
+        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
+        for item in findings
+    }
     return {
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
@@ -495,6 +671,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
             "findings": len(findings),
             "paths_with_findings": len(by_path),
             "categories": dict(sorted(by_category.items())),
+            "next_command_batch_count": len(command_batches),
         },
         "scan_roots": roots,
         "scan_root_summary": by_root,

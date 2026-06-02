@@ -2,25 +2,23 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";
 import {
-  type FrequencyAnalyser,
-  sampleFrequencyLevels,
-  summarizeLevels,
-  type VoiceWaveformMode,
-} from "@ui-src/components/voice/VoiceWaveform.tsx";
-import { makeOscillatingAnalyser } from "./stories/voice.tsx";
-import {
   type ConceptBuilder,
   type ConceptDescriptor,
   type ConceptFamily,
+  type FrequencyAnalyser,
   makeChromeGem,
   makeCrystalGlass,
   makeFacetedIcosa,
   makeGlass,
   makeOrbitParticles,
+  makeOscillatingAnalyser,
   makeStudioEnv,
   type OrbUniforms,
+  sampleFrequencyLevels,
+  summarizeLevels,
   type TSLModule,
   type VariantHandle,
+  type VoiceWaveformMode,
   type WebGPUModule,
 } from "./orb-kit.ts";
 import { CONCEPTS } from "./concepts/index.ts";

@@ -36,6 +36,16 @@ from compiler.runtime.e1x_wafer_model import (  # noqa: E402
 from scripts.chip_utils import load_json_object  # noqa: E402
 
 REPORT = ROOT / "build/reports/e1x_kernel_codegen.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_output_claim_allowed": False,
+    "cycle_accurate_execution_claim_allowed": False,
+}
 MANIFEST = ROOT / "benchmarks/models/llama13b-w4a8-manifest.json"
 PLACEMENT_OUT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 KERNEL_PLAN_OUT = ROOT / "benchmarks/results/e1x-real-graph-kernel-dispatch-plan.json"
@@ -489,6 +499,7 @@ def main() -> int:
         "as_of": _now(),
         "generated_utc": _now(),
         "subsystem": "compiler_runtime",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X real-graph RV64IM layer-dispatch code generation only: emits "
             "concrete PE boot words and wavelet dispatch tokens from the checked "

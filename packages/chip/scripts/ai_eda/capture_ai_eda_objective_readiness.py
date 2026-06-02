@@ -27,6 +27,13 @@ SCHEMA = "eliza.ai_eda.objective_readiness.v1"
 CLAIM_BOUNDARY = "objective_readiness_audit_only_no_completion_or_release_claim"
 
 
+def false_claim_flags(status: str) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if status != "COMPLETE_READY":
+        flags["completion_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -530,6 +537,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "completion_claim_allowed": status == "COMPLETE_READY",
+        "false_claim_flags": false_claim_flags(status),
         "status": status,
         "evidence_run_ids": {
             "readiness": readiness_run_id,

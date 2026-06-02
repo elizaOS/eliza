@@ -11,8 +11,76 @@ import {
   isNative,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Activity, Monitor, RefreshCw, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+function DeviceSetupRefreshButton({
+  disabled,
+  label,
+  onRefresh,
+}: {
+  disabled: boolean;
+  label: string;
+  onRefresh: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-device-refresh",
+    role: "button",
+    label,
+    group: "lifeops-device-setup",
+    description: "Refresh device data permission status",
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      variant="outline"
+      className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+      disabled={disabled}
+      onClick={onRefresh}
+      {...agentProps}
+    >
+      <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+      {label}
+    </Button>
+  );
+}
+
+function DeviceSetupActionButton({
+  action,
+  disabled,
+  label,
+  onAct,
+}: {
+  action: MobileSignalsSetupAction;
+  disabled: boolean;
+  label: string;
+  onAct: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-device-action-${action.id}`,
+    role: "button",
+    label: `${label}: ${action.label}`,
+    group: "lifeops-device-setup",
+    description: `${label} for ${action.label}`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      variant={action.canRequest ? "default" : "outline"}
+      className="min-h-8 shrink-0 rounded-xl px-2.5 text-2xs font-semibold"
+      disabled={disabled}
+      onClick={onAct}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
 
 type TranslateOptions = { defaultValue?: string } & Record<
   string,
@@ -245,19 +313,13 @@ export function MobileSignalsSetupCard() {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
           {nativeMobile && plugin ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            <DeviceSetupRefreshButton
               disabled={busy !== null}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              {t("lifeopssettings.deviceSetupRefresh", {
+              label={t("lifeopssettings.deviceSetupRefresh", {
                 defaultValue: "Refresh",
               })}
-            </Button>
+              onRefresh={() => void refresh()}
+            />
           ) : null}
         </div>
       </div>
@@ -291,20 +353,16 @@ export function MobileSignalsSetupCard() {
                   ) : null}
                 </div>
                 {canAct ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={action.canRequest ? "default" : "outline"}
-                    className="min-h-8 shrink-0 rounded-xl px-2.5 text-2xs font-semibold"
+                  <DeviceSetupActionButton
+                    action={action}
                     disabled={busy !== null}
-                    onClick={() =>
+                    label={primaryActionLabel(action, t)}
+                    onAct={() =>
                       action.canRequest
                         ? void requestPermissions(action)
                         : void openSettings(action)
                     }
-                  >
-                    {primaryActionLabel(action, t)}
-                  </Button>
+                  />
                 ) : null}
               </div>
             );

@@ -19,7 +19,15 @@ function warnOnce(): void {
   console.warn(`[ElizaWiFi] ${UNAVAILABLE_MESSAGE}`);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function normalizeListOptions(options?: ListNetworksOptions): void {
+  if (options === undefined) return;
+  if (!isRecord(options)) {
+    throw new Error("options must be an object");
+  }
   if (options?.maxAge !== undefined) {
     if (
       typeof options.maxAge !== "number" ||
@@ -33,9 +41,10 @@ function normalizeListOptions(options?: ListNetworksOptions): void {
     if (
       typeof options.limit !== "number" ||
       !Number.isFinite(options.limit) ||
+      !Number.isInteger(options.limit) ||
       options.limit < 0
     ) {
-      throw new Error("limit must be a non-negative finite number");
+      throw new Error("limit must be a non-negative finite integer");
     }
   }
 }

@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Meeting prep" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Meeting prep",
+    },
   ],
   turns: [
     {
@@ -22,7 +27,13 @@ export default scenario({
       room: "main",
       text: "Prep me for my next meeting with Dana: pull related docs, recent threads, people context, decisions needed, and likely follow-ups.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "MESSAGE", "OWNER_DOCUMENTS", "RELATIONSHIP", "LIFE"],
+        acceptedActions: [
+          "CALENDAR",
+          "MESSAGE",
+          "OWNER_DOCUMENTS",
+          "RELATIONSHIP",
+          "LIFE",
+        ],
         description: "meeting prep context assembly",
         includesAny: ["Dana", "docs", "threads", "decisions", "follow-ups"],
       }),
@@ -35,12 +46,27 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["CALENDAR", "MESSAGE", "OWNER_DOCUMENTS", "RELATIONSHIP", "LIFE"] },
+    {
+      type: "selectedAction",
+      actionName: [
+        "CALENDAR",
+        "MESSAGE",
+        "OWNER_DOCUMENTS",
+        "RELATIONSHIP",
+        "LIFE",
+      ],
+    },
     {
       type: "custom",
       name: "meeting-prep-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "MESSAGE", "OWNER_DOCUMENTS", "RELATIONSHIP", "LIFE"],
+        acceptedActions: [
+          "CALENDAR",
+          "MESSAGE",
+          "OWNER_DOCUMENTS",
+          "RELATIONSHIP",
+          "LIFE",
+        ],
         description: "meeting prep context assembly",
         includesAny: ["Dana", "docs", "threads", "decisions", "follow-ups"],
       }),

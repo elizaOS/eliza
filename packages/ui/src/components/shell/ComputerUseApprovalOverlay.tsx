@@ -50,14 +50,24 @@ export function ComputerUseApprovalOverlay() {
     let pollingTimer: number | null = null;
     let eventSource: EventSource | null = null;
 
+    // Fallback polling (only used when the EventSource stream is unavailable).
+    // Skip the network refresh while the document is hidden so a backgrounded
+    // window stops hitting /api/computer-use/approvals.
+    const pollRefresh = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      void refresh();
+    };
     const startPolling = () => {
       if (pollingTimer !== null) {
         return;
       }
-      void refresh();
-      pollingTimer = window.setInterval(() => {
-        void refresh();
-      }, POLL_MS);
+      pollRefresh();
+      pollingTimer = window.setInterval(pollRefresh, POLL_MS);
     };
 
     try {

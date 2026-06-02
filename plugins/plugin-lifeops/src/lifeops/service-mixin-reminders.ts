@@ -12,6 +12,12 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import {
+  LIFEOPS_SCHEDULE_DEVICE_KINDS,
+  type SyncLifeOpsScheduleObservationInput,
+  type SyncLifeOpsScheduleObservationsRequest,
+  type SyncLifeOpsScheduleObservationsResponse,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import {
   buildSleepRecapFromSchedule,
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
@@ -19,6 +25,11 @@ import {
   shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
 } from "@elizaos/plugin-health";
+import {
+  readTwilioCredentialsFromEnv,
+  sendTwilioSms,
+  sendTwilioVoiceCall,
+} from "@elizaos/plugin-phone";
 import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
@@ -108,12 +119,6 @@ import {
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
 } from "./schedule-state.js";
-import {
-  LIFEOPS_SCHEDULE_DEVICE_KINDS,
-  type SyncLifeOpsScheduleObservationInput,
-  type SyncLifeOpsScheduleObservationsRequest,
-  type SyncLifeOpsScheduleObservationsResponse,
-} from "./schedule-sync-contracts.js";
 import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
@@ -164,7 +169,6 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
-  isReminderBusyDay,
   isReminderChannel,
   isReminderReviewClosed,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
@@ -204,16 +208,7 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "./telemetry-retention.js";
-import {
-  addMinutes,
-  getWeekdayForLocalDate,
-  getZonedDateParts,
-} from "./time.js";
-import {
-  readTwilioCredentialsFromEnv,
-  sendTwilioSms,
-  sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone";
+import { addMinutes, getZonedDateParts } from "./time.js";
 
 const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 

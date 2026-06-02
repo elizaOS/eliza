@@ -7,9 +7,19 @@ interface MeshStandardMaterialWithNodeProps {
   opacityNode?: unknown | null;
 }
 
-type TslNodeLike = {
-  add(value: unknown): unknown;
-  mul(value: unknown): unknown;
+// biome-ignore lint/suspicious/noExplicitAny: Three.js TSL shader nodes are opaque chainable objects with no exported types.
+type TslNodeLike = any;
+
+type TslModule = {
+  uniform(value: number): TslNodeLike;
+  positionWorld: { x: TslNodeLike; y: TslNodeLike; z: TslNodeLike };
+  sin(value: unknown): TslNodeLike;
+  cos(value: unknown): TslNodeLike;
+  step(edge: unknown, value: unknown): TslNodeLike;
+  float(value: number): TslNodeLike;
+  fract(value: unknown): TslNodeLike;
+  smoothstep(edge0: unknown, edge1: unknown, value: unknown): TslNodeLike;
+  vec3(x: unknown, y: unknown, z: unknown): TslNodeLike;
 };
 
 export type TeleportFallbackShader = {
@@ -102,7 +112,7 @@ export class VrmTeleportEffect {
     let appliedNodeDissolve = false;
 
     try {
-      const tsl = await import("three/tsl");
+      const tsl = (await import("three/tsl")) as unknown as TslModule;
       const uProgress = tsl.uniform(0.0);
       this.progressUniform = uProgress;
 

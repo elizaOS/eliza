@@ -138,6 +138,14 @@
     }
   ],
   "checked_case_count": 18,
+  "false_claim_flags": {
+    "claim_allowed": false,
+    "release_claim_allowed": false,
+    "production_claim_allowed": false,
+    "phone_release_claim_allowed": false,
+    "fabrication_claim_allowed": false,
+    "supplier_release_claim_allowed": false
+  },
   "boolean_engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
   "full_assembly_boolean_pass": true,
   "full_assembly_unintentional_clash_count": 0,

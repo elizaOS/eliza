@@ -73,9 +73,9 @@ import {
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
-import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
-import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
-import { XDmAdapter } from "@elizaos/plugin-x";
+import { CalendlyAdapter } from "@elizaos/plugin-calendly";
+import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import {
   createOwnerFactStore,
@@ -613,7 +613,7 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/plugin-lifeops",
   description:
-    "Owner operations: routines, goals, scheduled tasks, calendar, messaging, connectors, credentials, voice calls, browser companions, website/app blocking, and related owner-only surfaces.",
+    "Personal assistant workspace: executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
@@ -808,7 +808,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     // First-party adapters backed by LifeOps services. Gmail and X replace the
     // core placeholders so MESSAGE triage operations operate on real connected data.
     const triage = getDefaultTriageService();
-    triage.register(new LifeOpsGmailAdapter());
+    triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
     triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
@@ -941,12 +941,12 @@ const rawAppLifeOpsPlugin: Plugin = {
       id: "lifeops",
       label: "LifeOps",
       description:
-        "Owner operations dashboard — routines, goals, inbox, calendar, and health",
-      icon: "LayoutDashboard",
+        "Personal assistant workspace — command briefs, inbox, calendar, reminders, documents, money admin, and owner operations",
+      icon: "MessageSquareText",
       path: "/lifeops",
       bundlePath: "dist/views/bundle.js",
       componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "productivity", "health", "calendar"],
+      tags: ["lifeops", "assistant", "productivity", "calendar"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -954,13 +954,13 @@ const rawAppLifeOpsPlugin: Plugin = {
       id: "lifeops",
       label: "LifeOps XR",
       description:
-        "Owner operations dashboard — routines, goals, inbox, calendar, and health",
-      icon: "LayoutDashboard",
+        "Personal assistant workspace — command briefs, inbox, calendar, reminders, documents, money admin, and owner operations",
+      icon: "MessageSquareText",
       path: "/lifeops",
       viewType: "xr",
       bundlePath: "dist/views/bundle.js",
       componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "productivity", "health", "calendar"],
+      tags: ["lifeops", "assistant", "productivity", "calendar"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -968,13 +968,13 @@ const rawAppLifeOpsPlugin: Plugin = {
       id: "lifeops",
       label: "LifeOps TUI",
       description:
-        "Terminal LifeOps routines, goals, inbox, calendar, and health",
-      icon: "LayoutDashboard",
+        "Terminal LifeOps personal assistant for inbox, calendar, reminders, documents, and owner operations",
+      icon: "MessageSquareText",
       path: "/lifeops/tui",
       viewType: "tui",
       bundlePath: "dist/views/bundle.js",
       componentExport: "LifeOpsTuiView",
-      tags: ["lifeops", "productivity", "health", "calendar", "terminal"],
+      tags: ["lifeops", "assistant", "productivity", "calendar", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

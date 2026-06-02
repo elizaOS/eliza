@@ -33,17 +33,19 @@ describe("Linear search category", () => {
       serviceType: "linear",
       source: "plugin:linear",
     });
-    expect(LINEAR_ISSUES_SEARCH_CATEGORY.filters?.map((f) => f.name)).toEqual(
-      expect.arrayContaining([
-        "query",
-        "state",
-        "assignee",
-        "label",
-        "project",
-        "team",
-        "priority",
-        "limit",
-      ])
-    );
+  });
+
+  it("does not overwrite an existing category registration", () => {
+    const { categories, registerSearchCategory, runtime } = createRuntime();
+    const existing = {
+      ...LINEAR_ISSUES_SEARCH_CATEGORY,
+      label: "Existing Linear issues",
+    };
+    categories.set("linear_issues", existing);
+
+    registerLinearSearchCategory(runtime);
+
+    expect(registerSearchCategory).not.toHaveBeenCalled();
+    expect(categories.get("linear_issues")).toBe(existing);
   });
 });

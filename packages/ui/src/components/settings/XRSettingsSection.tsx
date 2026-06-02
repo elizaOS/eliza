@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { useTranslation } from "../../state/TranslationContext";
 import { openExternalUrl } from "../../utils";
@@ -15,17 +16,40 @@ function XRSimulatorEmbed() {
     setEmbedUrl(`${base}/api/xr/connect`);
   }, []);
 
+  const previewLabel = t("xrsettings.previewConnect", {
+    defaultValue: "Preview connect page",
+  });
+  const { ref: previewRef, agentProps: previewAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "xr-preview-connect",
+      role: "button",
+      label: previewLabel,
+      group: "xr-desktop",
+      status: showEmbed ? "active" : "inactive",
+      onActivate: () => setShowEmbed(true),
+    });
+  const { ref: closePreviewRef, agentProps: closePreviewAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "xr-close-preview",
+      role: "button",
+      label: t("xrsettings.closeConnectPreview", {
+        defaultValue: "Close XR connect preview",
+      }),
+      group: "xr-desktop",
+      onActivate: () => setShowEmbed(false),
+    });
+
   if (!showEmbed) {
     return (
       <Button
+        ref={previewRef}
         variant="outline"
         size="sm"
         className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
         onClick={() => setShowEmbed(true)}
+        {...previewAgentProps}
       >
-        {t("xrsettings.previewConnect", {
-          defaultValue: "Preview connect page",
-        })}
+        {previewLabel}
       </Button>
     );
   }
@@ -39,9 +63,11 @@ function XRSimulatorEmbed() {
           })}
         </span>
         <button
+          ref={closePreviewRef}
           type="button"
           className="text-xs text-muted hover:text-txt"
           onClick={() => setShowEmbed(false)}
+          {...closePreviewAgentProps}
         >
           ✕
         </button>
@@ -75,6 +101,18 @@ function WebXRLauncher() {
     void openExternalUrl(xrAppUrl);
   }, []);
 
+  const launchLabel = t("xrsettings.launchInBrowser", {
+    defaultValue: "Launch XR app in browser",
+  });
+  const { ref: launchRef, agentProps: launchAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "xr-launch-browser",
+      role: "button",
+      label: launchLabel,
+      group: "xr-desktop",
+      onActivate: launch,
+    });
+
   return (
     <div className="rounded-sm border border-border/40 bg-card/40 p-4">
       <p className="mb-3 text-xs text-muted leading-relaxed">
@@ -85,14 +123,14 @@ function WebXRLauncher() {
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
+          ref={launchRef}
           variant="default"
           size="sm"
           className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
           onClick={launch}
+          {...launchAgentProps}
         >
-          {t("xrsettings.launchInBrowser", {
-            defaultValue: "Launch XR app in browser",
-          })}
+          {launchLabel}
         </Button>
         <XRSimulatorEmbed />
       </div>

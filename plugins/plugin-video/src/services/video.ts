@@ -1,3 +1,5 @@
+/// <reference path="../types/fluent-ffmpeg.d.ts" />
+
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -48,6 +50,22 @@ interface YtDlpFormatRow {
   resolution?: string;
   fps?: number;
   tbr?: number;
+}
+
+interface CaptionSegment {
+  utf8?: string;
+}
+
+interface CaptionEvent {
+  segs?: CaptionSegment[];
+}
+
+interface CaptionJson {
+  events?: CaptionEvent[];
+}
+
+function loggableError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
@@ -177,7 +195,7 @@ export class VideoService extends IVideoService {
       await this.binaries.runYtDlp(url, downloadOptions);
       return outputFile;
     } catch (error) {
-      elizaLogger.log("Error downloading video:", error);
+      elizaLogger.log("Error downloading video:", loggableError(error));
       throw new Error("Failed to download video");
     }
   }
@@ -201,7 +219,7 @@ export class VideoService extends IVideoService {
           resolve(audioFile);
         })
         .on("error", (err) => {
-          elizaLogger.log("Error extracting audio:", err);
+          elizaLogger.log("Error extracting audio:", loggableError(err));
           reject(err);
         })
         .run();
@@ -233,7 +251,7 @@ export class VideoService extends IVideoService {
           resolve(thumbnailFile);
         })
         .on("error", (err) => {
-          elizaLogger.log("Error generating thumbnail:", err);
+          elizaLogger.log("Error generating thumbnail:", loggableError(err));
           reject(err);
         });
     });
@@ -288,7 +306,7 @@ export class VideoService extends IVideoService {
           resolve(outputPath);
         })
         .on("error", (err) => {
-          elizaLogger.log("Error converting video:", err);
+          elizaLogger.log("Error converting video:", loggableError(err));
           reject(err);
         })
         .run();
@@ -334,7 +352,7 @@ export class VideoService extends IVideoService {
 
       return [];
     } catch (error) {
-      elizaLogger.log("Error getting available formats:", error);
+      elizaLogger.log("Error getting available formats:", loggableError(error));
       throw new Error("Failed to get available formats");
     }
   }
@@ -378,7 +396,7 @@ export class VideoService extends IVideoService {
       });
       return outputFile;
     } catch (error) {
-      elizaLogger.log("Error downloading media:", error);
+      elizaLogger.log("Error downloading media:", loggableError(error));
       throw new Error("Failed to download media");
     }
   }
@@ -452,7 +470,7 @@ export class VideoService extends IVideoService {
           };
         }
       } catch (error) {
-        elizaLogger.log("Error downloading MP4 file:", error);
+        elizaLogger.log("Error downloading MP4 file:", loggableError(error));
         // Fall back to using youtube-dl if direct download fails
       }
     }
@@ -472,7 +490,7 @@ export class VideoService extends IVideoService {
       });
       return result as YtDlpJson;
     } catch (error) {
-      elizaLogger.log("Error fetching video info:", error);
+      elizaLogger.log("Error fetching video info:", loggableError(error));
       throw new Error("Failed to fetch video information");
     }
   }
@@ -513,7 +531,7 @@ export class VideoService extends IVideoService {
       );
       return this.transcribeAudio(url, runtime);
     } catch (error) {
-      elizaLogger.log("Error in getTranscript:", error);
+      elizaLogger.log("Error in getTranscript:", loggableError(error));
       throw error;
     }
   }
@@ -530,19 +548,24 @@ export class VideoService extends IVideoService {
   private parseCaption(captionContent: string): string {
     elizaLogger.log("Parsing caption");
     try {
-      const jsonContent = JSON.parse(captionContent);
-      if (jsonContent.events) {
+      const jsonContent = JSON.parse(captionContent) as CaptionJson;
+      if (Array.isArray(jsonContent.events)) {
         return jsonContent.events
-          .filter((event) => event.segs)
-          .map((event) => event.segs.map((seg) => seg.utf8).join(""))
+          .filter((event): event is { segs: CaptionSegment[] } =>
+            Array.isArray(event.segs),
+          )
+          .map((event) => event.segs.map((seg) => seg.utf8 ?? "").join(""))
           .join("")
           .replace("\n", " ");
       } else {
-        elizaLogger.log("Unexpected caption format:", jsonContent);
+        elizaLogger.log(
+          "Unexpected caption format:",
+          JSON.stringify(jsonContent),
+        );
         return "Error: Unable to parse captions";
       }
     } catch (error) {
-      elizaLogger.log("Error parsing caption:", error);
+      elizaLogger.log("Error parsing caption:", loggableError(error));
       return "Error: Unable to parse captions";
     }
   }
@@ -619,7 +642,7 @@ export class VideoService extends IVideoService {
           resolve();
         })
         .on("error", (err) => {
-          elizaLogger.log("Error converting to MP3:", err);
+          elizaLogger.log("Error converting to MP3:", loggableError(err));
           reject(err);
         })
         .run();
@@ -677,7 +700,7 @@ export class VideoService extends IVideoService {
       }
       return outputFile;
     } catch (error) {
-      elizaLogger.log("Error downloading audio:", error);
+      elizaLogger.log("Error downloading audio:", loggableError(error));
       throw new Error("Failed to download audio");
     }
   }

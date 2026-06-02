@@ -59,6 +59,15 @@ sidecar validation, with:
 python3 scripts/check_e1x_benchmark.py
 ```
 
+Run the dedicated E1/E1X comparison audit, which cross-checks the canonical E1
+baseline, E1X local-SRAM residency ratio, repaired normal/high execution
+traces, and planning power/thermal dimensions without upgrading the claim
+beyond architecture-model evidence, with:
+
+```sh
+python3 scripts/check_e1x_e1_comparison_audit.py
+```
+
 Run the real-graph kernel-dispatch codegen gate, which emits concrete PE boot
 words from the checked 13B W4A8 graph placement, validates a deterministic
 signed W4A8 microkernel numerical proof, and emits a tensor tile / K-wave
@@ -127,6 +136,15 @@ budget, and sampled repaired routes, with:
 
 ```sh
 python3 scripts/check_e1x_yield_repair_margin.py
+```
+
+Run the clustered repair stress gate, which audits deterministic row/column
+stripe failure cases against the 16 spare rows, 16 spare columns, and repair
+capacity envelope while also proving over-budget clustered cases are detected,
+with:
+
+```sh
+python3 scripts/check_e1x_clustered_repair_stress.py
 ```
 
 Run the tensor-numerics gate, which independently recomputes every sampled W4A8
@@ -204,6 +222,31 @@ blocker, with:
 python3 scripts/check_e1x_expanded_real_weight_rows.py
 ```
 
+Run the stratified full-K real-weight row gate, which executes 16 output rows
+per placed real-graph layer across the full K dimension and records the
+remaining full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_stratified_full_k_real_weight_rows.py
+```
+
+Run the stratified full-K repair execution gate, which routes the 16-row-per-
+layer full-K evidence set through both normal and high-failure repair manifests
+and checks logical output invariance against distinct physical route checksums,
+with:
+
+```sh
+python3 scripts/check_e1x_stratified_full_k_repair_execution.py
+```
+
+Run the dense stratified full-K repair execution gate, which doubles the
+repair-aware full-K evidence to 32 rows per placed layer while preserving the
+full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_dense_stratified_full_k_repair_execution.py
+```
+
 Run the full norm real-weight row gate, which executes every output row for the
 complete `norm` layer class across its full K dimension and records the
 remaining matmul-heavy full-output checksum blocker, with:
@@ -227,6 +270,15 @@ checksums differ, with:
 
 ```sh
 python3 scripts/check_e1x_repaired_real_weight_execution.py
+```
+
+Run the real-weight coverage ladder gate, which accounts for every current
+real-weight row executor against the full-output workplan and separates 100%
+represented row/full-K MAC identity coverage from the remaining sampled-K
+execution blocker, with:
+
+```sh
+python3 scripts/check_e1x_real_weight_coverage_ladder.py
 ```
 
 Run the attention-output sampled-K real-weight row gate, which executes every

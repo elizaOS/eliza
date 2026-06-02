@@ -11,10 +11,10 @@
  * (plugin-health → app-lifeops). Wave-2 (W2-D: Signal-bus + anchors +
  * identity-observation cleanup) is the right home for that decoupling.
  *
- * For now, plugin-health publishes the `LifeOpsScreenTimeSummaryPayload`
- * contract (re-exported from `../contracts/health.ts`); app-lifeops
- * continues to host the aggregator and emits payloads on the W2-D bus once
- * it lands.
+ * plugin-health owns the screen-time taxonomy/classification helpers and
+ * publishes the `LifeOpsScreenTimeSummaryPayload` contract (re-exported from
+ * `../contracts/health.ts`); app-lifeops continues to host the remaining
+ * aggregator and emits payloads on the W2-D bus once it lands.
  *
  * No runtime exports here — the type re-export carries the canonical
  * contract surface.
@@ -24,3 +24,6 @@ export type {
   LifeOpsScreenTimePerAppUsage,
   LifeOpsScreenTimeSummaryPayload,
 } from "../contracts/health.js";
+export * from "./ranges.js";
+export * from "./social-taxonomy.js";
+export * from "./system-inactivity-apps.js";

@@ -21,9 +21,9 @@ intake_metadata:
   routed_board_step_size_bytes: 33644081
   enclosure_cad_revision: null
   component_model_bundle_path: packages/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
-  component_model_bundle_sha256: 0f2a9e13b7c44a2eaa291da2ddcd132ea9cb614ce5434bc8bf3d8450d1cd5113
+  component_model_bundle_sha256: 4bd9ef77187cbc6aeacf3bca81b1553831004dde7266bfb06e12a31358e82fcd
   component_model_manifest_path: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-  component_model_manifest_sha256: 395d050132bf05751d35f29afe398162bd07e9edee634d56a64ceefd01326694
+  component_model_manifest_sha256: 98ebde08ea7dc06aba2e3731264d0b2d9110be2d74b23c074cf6f41825fa2817
   reviewer: null
   review_date: null
   unit_or_fixture_serials: []

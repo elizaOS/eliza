@@ -34,6 +34,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -54,9 +55,22 @@ _MALFORMED_INPUT_ERRORS: tuple[type[BaseException], ...] = (
 
 VARIANT_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = VARIANT_DIR.parents[3]
+DEFAULT_REPORT = REPO_ROOT / "packages/chip/build/reports/release_manifest.json"
 RELEASE_SCHEMA = (
     REPO_ROOT / "packages/os/release/schema/elizaos-os-release-manifest.schema.json"
 )
+REPORT_SCHEMA = "eliza.os_linux_elizaos_release_manifest_gate.v1"
+CLAIM_BOUNDARY = (
+    "os_rv64_release_manifest_gate_only_not_generated_eliza_ap_chip_phone_or_silicon_boot_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "generated_ap_boot_claim_allowed": False,
+    "chip_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 # Required-evidence ids match the manifest template's emulator-release scope;
 # do not edit one without editing the other. Promotion past ``planned`` requires
@@ -127,6 +141,109 @@ class GateResult:
 
     status: Status
     message: str
+
+
+def _rel(path: Path) -> str:
+    try:
+        return path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _code_from_text(text: str, fallback: str = "release_manifest_gate") -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:12]) or fallback
+
+
+def _recapture_commands(manifest_path: Path, message: str) -> list[str]:
+    variant_dir = manifest_path.parent
+    try:
+        manifest = _load_json(manifest_path)
+    except (OSError, json.JSONDecodeError):
+        manifest = {}
+    filename = manifest.get("filename")
+    iso = f"packages/os/linux/elizaos/out/{filename}" if isinstance(filename, str) else "<iso>"
+    qemu_evidence = "packages/os/linux/elizaos/evidence/qemu_virt_boot.json"
+    transcript = "packages/os/linux/elizaos/evidence/qemu_virt_boot.transcript.log"
+    qemu_report = "packages/chip/build/reports/qemu_virt_smoke.json"
+    commands = [
+        (
+            "python3 packages/os/linux/elizaos/scripts/qemu_virt_smoke.py "
+            f"--iso {iso} --evidence {qemu_evidence} --transcript {transcript} "
+            f"--report {qemu_report}"
+        ),
+        (
+            "python3 packages/os/linux/elizaos/scripts/check_release_manifest.py "
+            "--report packages/chip/build/reports/release_manifest.json"
+        ),
+    ]
+    if "manifest" in message and "evidence" not in message:
+        commands.insert(
+            0,
+            (
+                "cd packages/os/linux/elizaos && "
+                "make build ARCH=riscv64 PROFILE=gui"
+            ),
+        )
+    if variant_dir != VARIANT_DIR:
+        commands[-1] += f" --variant-dir {_rel(variant_dir)}"
+    return commands
+
+
+def _finding_for_result(result: GateResult, manifest_path: Path) -> dict[str, object] | None:
+    if result.status == "PASS":
+        return None
+    commands = _recapture_commands(manifest_path, result.message)
+    severity = "blocker" if result.status == "FAIL" else "info"
+    return {
+        "code": _code_from_text(result.message),
+        "severity": severity,
+        "message": result.message,
+        "evidence": result.message,
+        "next_step": (
+            "Regenerate or recapture the OS RV64 release evidence so the manifest, "
+            "qemu-virt evidence, GRUB evidence, transcript, runtime-smoke evidence, "
+            "and local ISO hash agree."
+        ),
+        "next_command": commands[0],
+        "next_commands": commands,
+    }
+
+
+def report_payload(status: Status, results: list[GateResult], manifest_path: Path) -> dict[str, object]:
+    findings = [
+        finding
+        for result in results
+        if (finding := _finding_for_result(result, manifest_path)) is not None
+    ]
+    return {
+        "schema": REPORT_SCHEMA,
+        "status": status.lower(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": (
+            datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        ),
+        "summary": {
+            "results": len(results),
+            "passes": sum(1 for result in results if result.status == "PASS"),
+            "blocked": sum(1 for result in results if result.status == "BLOCKED"),
+            "failures": sum(1 for result in results if result.status == "FAIL"),
+            "findings": len(findings),
+        },
+        "manifest": _rel(manifest_path),
+        "results": [
+            {"status": result.status, "message": result.message}
+            for result in results
+        ],
+        "findings": findings,
+    }
+
+
+def write_report(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _load_json(path: Path) -> dict:
@@ -843,6 +960,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=VARIANT_DIR,
         help="Override the variant directory (default: this script's parent dir).",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_REPORT,
+        help="Write a structured report for chip OS boot inventory.",
+    )
+    parser.add_argument("--json-only", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -853,9 +977,14 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as exc:
         # A missing manifest or schema is an unbuilt-release state, not a
         # regression: the artifact has not been produced yet.
-        print("release-manifest gate: BLOCKED")
-        print(f"  [BLOCKED] {exc}")
-        print("STATUS: BLOCKED")
+        results = [GateResult("BLOCKED", str(exc))]
+        write_report(args.report, report_payload("BLOCKED", results, args.variant_dir / "manifest.json"))
+        if args.json_only:
+            print(json.dumps(report_payload("BLOCKED", results, args.variant_dir / "manifest.json"), indent=2, sort_keys=True))
+        else:
+            print("release-manifest gate: BLOCKED")
+            print(f"  [BLOCKED] {exc}")
+            print("STATUS: BLOCKED")
         return 1 if args.strict else 0
     except _MALFORMED_INPUT_ERRORS as exc:
         # A present-but-malformed manifest or schema is a release blocker: the
@@ -864,11 +993,21 @@ def main(argv: list[str] | None = None) -> int:
         # bare FAIL with no actionable evidence). ``jsonschema.SchemaError`` is
         # included because an invalid schema fragment is raised, not collected,
         # by ``Draft202012Validator``.
-        print("release-manifest gate: FAIL")
-        print(f"  [FAIL   ] manifest or schema is malformed: {exc}")
-        print("STATUS: FAIL")
+        results = [GateResult("FAIL", f"manifest or schema is malformed: {exc}")]
+        write_report(args.report, report_payload("FAIL", results, args.variant_dir / "manifest.json"))
+        if args.json_only:
+            print(json.dumps(report_payload("FAIL", results, args.variant_dir / "manifest.json"), indent=2, sort_keys=True))
+        else:
+            print("release-manifest gate: FAIL")
+            print(f"  [FAIL   ] manifest or schema is malformed: {exc}")
+            print("STATUS: FAIL")
         return 1
-    _emit(results, status, manifest_path)
+    payload = report_payload(status, results, manifest_path)
+    write_report(args.report, payload)
+    if args.json_only:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        _emit(results, status, manifest_path)
     if status == "FAIL":
         return 1
     if status == "BLOCKED" and args.strict:

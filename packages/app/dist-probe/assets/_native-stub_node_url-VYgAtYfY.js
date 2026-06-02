@@ -1,0 +1,2 @@
+function r(){return r}const o={},u={get(t,e){if(e==="prototype"||e==="name"||e==="length"||typeof e=="symbol")return Reflect.get(t,e);if(e==="__esModule")return!0;if(e==="default")return t;const n=Reflect.get(t,e);return n!==void 0?n:r},has(){return!0},ownKeys(t){return Reflect.ownKeys(t)},getOwnPropertyDescriptor(t,e){return Reflect.getOwnPropertyDescriptor(t,e)??{configurable:!0,enumerable:!0,writable:!0,value:r}}};new Proxy(o,u);const l=r,s=r;export{s as f,l as p};
+//# sourceMappingURL=_native-stub_node_url-VYgAtYfY.js.map

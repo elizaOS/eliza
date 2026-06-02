@@ -34,6 +34,7 @@ def main() -> int:
         '"hil_bandwidth_trace_claim_allowed": False',
         '"production_framebuffer_claim_allowed": False',
         '"e1_soc_top_replacement_claim_allowed": False',
+        '"false_claim_flags": FALSE_CLAIM_FLAGS',
         "Does NOT",
         "cover the DSI analog PHY",
         "panel DCS init",

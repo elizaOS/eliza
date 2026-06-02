@@ -18,6 +18,9 @@ describe("@elizaos/plugin-groq behavior", () => {
 
   it("requires GROQ_API_KEY during node init", async () => {
     await expect(groqPlugin.init?.({}, runtime())).rejects.toThrow("GROQ_API_KEY is required");
+    await expect(groqPlugin.init?.({}, runtime({ GROQ_API_KEY: " \t\n " }))).rejects.toThrow(
+      "GROQ_API_KEY is required"
+    );
     await expect(
       groqPlugin.init?.({}, runtime({ GROQ_API_KEY: "gsk-test" }))
     ).resolves.toBeUndefined();
@@ -58,6 +61,20 @@ describe("@elizaos/plugin-groq behavior", () => {
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("model")).toBe("whisper-large-v3-turbo");
     expect((init.body as FormData).get("file")).toBeInstanceOf(File);
+  });
+
+  it("rejects empty or malformed transcription input before calling the API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      groqPlugin.models?.[ModelType.TRANSCRIPTION]?.(runtime({ GROQ_API_KEY: "gsk-test" }), {})
+    ).rejects.toThrow("Groq TRANSCRIPTION requires non-empty audio data.");
+    await expect(
+      groqPlugin.models?.[ModelType.TRANSCRIPTION]?.(runtime({ GROQ_API_KEY: "gsk-test" }), "")
+    ).rejects.toThrow("Groq TRANSCRIPTION requires non-empty audio data.");
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("throws transcription response details on non-ok responses", async () => {
@@ -110,6 +127,63 @@ describe("@elizaos/plugin-groq behavior", () => {
         response_format: "wav",
       }),
     });
+  });
+
+  it("rejects malformed text-to-speech input before calling the API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const params of [null, undefined, {}, { text: "" }, { text: " \n\t " }]) {
+      await expect(
+        groqPlugin.models?.[ModelType.TEXT_TO_SPEECH]?.(
+          runtime({ GROQ_API_KEY: "gsk-test" }),
+          params
+        )
+      ).rejects.toThrow("Groq TEXT_TO_SPEECH requires non-empty text.");
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid GROQ_BASE_URL values before calling the API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const baseURL of ["not a url", "ftp://groq.test/v1", "javascript:alert(1)"]) {
+      await expect(
+        groqPlugin.models?.[ModelType.TEXT_TO_SPEECH]?.(
+          runtime({ GROQ_API_KEY: "gsk-test", GROQ_BASE_URL: baseURL }),
+          { text: "hello" }
+        )
+      ).rejects.toThrow("GROQ_BASE_URL must be a valid http(s) URL");
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("trims trailing slash from GROQ_BASE_URL when building audio endpoints", async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1]).buffer, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await groqPlugin.models?.[ModelType.TEXT_TO_SPEECH]?.(
+      runtime({ GROQ_API_KEY: "gsk-test", GROQ_BASE_URL: "https://groq.test/v1/" }),
+      { text: "hello" }
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://groq.test/v1/audio/speech");
+  });
+
+  it("throws text-to-speech response details on non-ok responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("voice unavailable", { status: 422 }))
+    );
+
+    await expect(
+      groqPlugin.models?.[ModelType.TEXT_TO_SPEECH]?.(runtime({ GROQ_API_KEY: "gsk-test" }), {
+        text: "hello",
+      })
+    ).rejects.toThrow("TTS failed: 422 voice unavailable");
   });
 
   it("keeps text-to-speech defaults aligned with plugin metadata", async () => {

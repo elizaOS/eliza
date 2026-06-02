@@ -9,6 +9,14 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE = ROOT / "docs/project/aosp-simulator-completion-gate.yaml"
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "phone_runtime_claim_allowed",
+    "android_boot_claim_allowed",
+    "simulator_completion_claim_allowed",
+    "production_readiness_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -92,6 +100,12 @@ def check_spec_floor(data: dict[str, Any], errors: list[str]) -> None:
         numeric_gt(target, baseline, key, errors)
     for key in ("expandable_storage_tb", "usb_major_version"):
         numeric_gt(target, baseline, key, errors, allow_equal=True)
+
+
+def check_false_claim_flags(data: dict[str, Any], errors: list[str]) -> None:
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if data.get(key) is not False:
+            errors.append(f"{key} must be false")
 
 
 def require_text_markers(
@@ -313,6 +327,7 @@ def main() -> int:
             errors.append("completion gate schema mismatch")
         if "not implementation evidence" not in str(data.get("claim_boundary", "")):
             errors.append("claim boundary must say the gate is not implementation evidence")
+        check_false_claim_flags(data, errors)
         check_spec_floor(data, errors)
         check_mvp_report(data, blockers)
         check_android_report(data, blockers)

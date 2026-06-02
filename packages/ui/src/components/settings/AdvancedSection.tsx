@@ -1,5 +1,6 @@
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -69,16 +70,116 @@ export function AdvancedSection() {
     resetImportState();
   }, [resetImportState]);
 
+  const { ref: exportOpenRef, agentProps: exportOpenAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-export-open",
+      role: "button",
+      label: t("settings.exportAgent"),
+      group: "advanced",
+      onActivate: openExportModal,
+    });
+  const { ref: importOpenRef, agentProps: importOpenAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-import-open",
+      role: "button",
+      label: t("settings.importAgent"),
+      group: "advanced",
+      onActivate: openImportModal,
+    });
+  const { ref: developerModeRef, agentProps: developerModeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-developer-mode",
+      role: "toggle",
+      label: "Developer Mode",
+      group: "advanced",
+      status: developerMode ? "active" : "inactive",
+      onActivate: () => setDeveloperMode(!developerMode),
+    });
+  const { ref: resetOpenRef, agentProps: resetOpenAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-reset-open",
+      role: "button",
+      label: t("settings.resetEverything"),
+      group: "advanced",
+      onActivate: () => setResetConfirmOpen(true),
+    });
+  const { ref: exportPasswordRef, agentProps: exportPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "advanced-export-password",
+      role: "text-input",
+      label: t("settingsview.Password"),
+      group: "advanced-export",
+      getValue: () => exportPassword,
+      onFill: (value) => setState("exportPassword", value),
+    });
+  const { ref: exportIncludeLogsRef, agentProps: exportIncludeLogsAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-export-include-logs",
+      role: "toggle",
+      label: t("settingsview.IncludeRecentLogs"),
+      group: "advanced-export",
+      status: exportIncludeLogs ? "active" : "inactive",
+      onActivate: () => setState("exportIncludeLogs", !exportIncludeLogs),
+    });
+  const { ref: exportSubmitRef, agentProps: exportSubmitAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-export-submit",
+      role: "button",
+      label: t("common.export"),
+      group: "advanced-export",
+      status: exportBusy ? "inactive" : "active",
+      onActivate: () => void handleAgentExport(),
+    });
+  const { ref: importBrowseRef, agentProps: importBrowseAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-import-browse",
+      role: "button",
+      label: t("settingsview.BackupFile"),
+      group: "advanced-import",
+      onActivate: () => importFileInputRef.current?.click(),
+    });
+  const { ref: importPasswordRef, agentProps: importPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "advanced-import-password",
+      role: "text-input",
+      label: t("settingsview.Password"),
+      group: "advanced-import",
+      getValue: () => importPassword,
+      onFill: (value) => setState("importPassword", value),
+    });
+  const { ref: importSubmitRef, agentProps: importSubmitAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-import-submit",
+      role: "button",
+      label: t("settings.import"),
+      group: "advanced-import",
+      status: importBusy ? "inactive" : "active",
+      onActivate: () => void handleAgentImport(),
+    });
+  const { ref: resetConfirmRef, agentProps: resetConfirmAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "advanced-reset-confirm",
+      role: "button",
+      label: t("settings.resetConfirmAction"),
+      group: "advanced-reset",
+      onActivate: () => {
+        setResetConfirmOpen(false);
+        void handleReset();
+      },
+    });
+
   return (
     <>
       <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Button
+            ref={exportOpenRef}
             variant="outline"
             type="button"
             onClick={openExportModal}
             className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
             aria-haspopup="dialog"
+            {...exportOpenAgentProps}
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
               <Download className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
@@ -91,11 +192,13 @@ export function AdvancedSection() {
           </Button>
 
           <Button
+            ref={importOpenRef}
             variant="outline"
             type="button"
             onClick={openImportModal}
             className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
             aria-haspopup="dialog"
+            {...importOpenAgentProps}
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
               <Upload className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
@@ -119,10 +222,13 @@ export function AdvancedSection() {
               </div>
               <Label className="flex items-center gap-2 font-normal text-muted whitespace-nowrap">
                 <Checkbox
+                  ref={developerModeRef}
                   checked={developerMode}
                   onCheckedChange={(checked: boolean | "indeterminate") =>
                     setDeveloperMode(!!checked)
                   }
+                  aria-current={developerMode ? "true" : undefined}
+                  {...developerModeAgentProps}
                 />
                 <span>{developerMode ? "Enabled" : "Disabled"}</span>
               </Label>
@@ -147,11 +253,13 @@ export function AdvancedSection() {
                 </div>
               </div>
               <Button
+                ref={resetOpenRef}
                 variant="destructive"
                 size="sm"
                 className="rounded-sm whitespace-nowrap"
                 aria-haspopup="dialog"
                 onClick={() => setResetConfirmOpen(true)}
+                {...resetOpenAgentProps}
               >
                 {t("settings.resetEverything")}
               </Button>
@@ -179,19 +287,24 @@ export function AdvancedSection() {
                 {t("settingsview.Password")}
               </Label>
               <Input
+                ref={exportPasswordRef}
                 id="settings-export-password"
                 type="password"
                 value={exportPassword}
                 onChange={(e) => setState("exportPassword", e.target.value)}
                 placeholder={t("settingsview.EnterExportPasswor")}
                 className="rounded-sm bg-bg"
+                {...exportPasswordAgentProps}
               />
               <Label className="flex items-center gap-2 font-normal text-muted">
                 <Checkbox
+                  ref={exportIncludeLogsRef}
                   checked={exportIncludeLogs}
                   onCheckedChange={(checked: boolean | "indeterminate") =>
                     setState("exportIncludeLogs", !!checked)
                   }
+                  aria-current={exportIncludeLogs ? "true" : undefined}
+                  {...exportIncludeLogsAgentProps}
                 />
 
                 {t("settingsview.IncludeRecentLogs")}
@@ -227,11 +340,13 @@ export function AdvancedSection() {
                 {t("common.cancel")}
               </Button>
               <Button
+                ref={exportSubmitRef}
                 variant="default"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
                 disabled={exportBusy}
                 onClick={() => void handleAgentExport()}
+                {...exportSubmitAgentProps}
               >
                 {exportBusy && <Spinner size={16} />}
                 {t("common.export")}
@@ -267,9 +382,11 @@ export function AdvancedSection() {
                 {t("settingsview.BackupFile")}
               </div>
               <Button
+                ref={importBrowseRef}
                 variant="outline"
                 className="min-h-[2.625rem] px-4 rounded-sm flex w-full items-center justify-between gap-3 text-left"
                 onClick={() => importFileInputRef.current?.click()}
+                {...importBrowseAgentProps}
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-txt">
                   {importFile?.name ?? t("settingsview.ChooseAnExportedBack")}
@@ -290,12 +407,14 @@ export function AdvancedSection() {
                 {t("settingsview.Password")}
               </Label>
               <Input
+                ref={importPasswordRef}
                 id="settings-import-password"
                 type="password"
                 value={importPassword}
                 onChange={(e) => setState("importPassword", e.target.value)}
                 placeholder={t("settingsview.EnterImportPasswor")}
                 className="rounded-sm bg-bg"
+                {...importPasswordAgentProps}
               />
             </div>
 
@@ -328,11 +447,13 @@ export function AdvancedSection() {
                 {t("common.cancel")}
               </Button>
               <Button
+                ref={importSubmitRef}
                 variant="default"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
                 disabled={importBusy}
                 onClick={() => void handleAgentImport()}
+                {...importSubmitAgentProps}
               >
                 {importBusy && <Spinner size={16} />}
                 {t("settings.import")}
@@ -371,6 +492,7 @@ export function AdvancedSection() {
                 {t("common.cancel")}
               </Button>
               <Button
+                ref={resetConfirmRef}
                 variant="destructive"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
@@ -378,6 +500,7 @@ export function AdvancedSection() {
                   setResetConfirmOpen(false);
                   void handleReset();
                 }}
+                {...resetConfirmAgentProps}
               >
                 {t("settings.resetConfirmAction")}
               </Button>

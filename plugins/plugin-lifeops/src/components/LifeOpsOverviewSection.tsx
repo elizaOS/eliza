@@ -12,6 +12,7 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { client, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowRight,
   AtSign,
@@ -34,6 +35,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
@@ -402,6 +404,15 @@ function DashboardPanel({
   );
 }
 
+function overviewSlug(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "action"
+  );
+}
+
 function IconAction({
   label,
   icon,
@@ -411,15 +422,50 @@ function IconAction({
   icon: ReactNode;
   onClick: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-action-${overviewSlug(label)}`,
+    role: "button",
+    label,
+    group: "lifeops-overview",
+    description: label,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label}
       title={label}
       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg/40 hover:text-txt"
       onClick={onClick}
+      {...agentProps}
     >
       {icon}
+    </button>
+  );
+}
+
+function OverviewNavButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<"button">) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-overview",
+    description,
+  });
+  return (
+    <button ref={ref} type="button" {...buttonProps} {...agentProps}>
+      {children}
     </button>
   );
 }
@@ -533,11 +579,20 @@ function CalendarEventRow({
   event: LifeOpsCalendarEvent;
   onClick: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-overview-agenda",
+    description: `Open the event ${event.title}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
       <span className="min-w-0 flex-1">
@@ -561,11 +616,20 @@ function ReminderAgendaRow({
 }) {
   const urgency = classifyReminder(reminder.scheduledFor);
   const style = URGENCY_STYLES[urgency];
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-reminder-${reminder.ownerId}`,
+    role: "list-item",
+    label: reminder.title,
+    group: "lifeops-overview-agenda",
+    description: `Open the reminder ${reminder.title}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span
         className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`}
@@ -595,11 +659,20 @@ function InboxMessageRow({
     subject === `${style.label} message`
       ? message.sender.displayName
       : `${message.sender.displayName} - ${subject}`;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-message-${message.id}`,
+    role: "list-item",
+    label: rowTitle,
+    group: "lifeops-overview-inbox",
+    description: `Open the message from ${message.sender.displayName}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span
         className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${style.bg} ${style.text}`}
@@ -1076,8 +1149,10 @@ export function LifeOpsOverviewSection({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <BrowserBridgeStatusChip onNavigate={onNavigate} />
-            <button
-              type="button"
+            <OverviewNavButton
+              agentId="overview-refresh"
+              label="Refresh LifeOps dashboard"
+              description="Refresh the LifeOps overview dashboard"
               aria-label="Refresh LifeOps dashboard"
               title="Refresh"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
@@ -1096,7 +1171,7 @@ export function LifeOpsOverviewSection({
                 }`}
                 aria-hidden
               />
-            </button>
+            </OverviewNavButton>
           </div>
         </div>
 
@@ -1151,8 +1226,10 @@ export function LifeOpsOverviewSection({
               </div>
             </div>
           </div>
-          <button
-            type="button"
+          <OverviewNavButton
+            agentId="overview-open-setup"
+            label="Open LifeOps setup"
+            description="Open the LifeOps setup section"
             aria-label="Open LifeOps settings"
             title="Open setup"
             className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
@@ -1160,7 +1237,7 @@ export function LifeOpsOverviewSection({
           >
             Open setup
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </OverviewNavButton>
         </div>
       ) : null}
 
@@ -1182,14 +1259,16 @@ export function LifeOpsOverviewSection({
           <h2 className="mt-4 text-base font-semibold text-txt">
             Connect a source
           </h2>
-          <button
-            type="button"
+          <OverviewNavButton
+            agentId="overview-open-settings"
+            label="Open LifeOps settings"
+            description="Open the LifeOps setup section to connect a source"
             className="mt-4 inline-flex h-9 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
             Open Settings
             <ArrowRight className="h-4 w-4" aria-hidden />
-          </button>
+          </OverviewNavButton>
         </div>
       ) : null}
 

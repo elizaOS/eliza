@@ -7,6 +7,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_mesh_liveness_evidence.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_network_liveness_claim_allowed": False,
+    "deadlock_proof_claim_allowed": False,
+}
 
 MESH_REPORT = ROOT / "build/reports/e1x_mesh_fabric_cocotb.json"
 CREDIT_REPORT = ROOT / "build/reports/e1x_credit_router_cocotb.json"
@@ -209,6 +219,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X mesh route-discipline and liveness evidence aggregation: validates "
             "strict XY route-discipline documentation, production mesh/credit-router "
