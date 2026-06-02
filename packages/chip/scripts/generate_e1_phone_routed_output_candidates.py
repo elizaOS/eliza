@@ -1790,14 +1790,18 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
     for model in models:
         if not isinstance(model, dict):
             continue
-        matched_record: dict[str, Any] | None = records_by_reference.get(str(model.get("reference", "")))
+        matched_record: dict[str, Any] | None = records_by_reference.get(
+            str(model.get("reference", ""))
+        )
         if not matched_record:
             continue
         model["local_discrete_step_file"] = matched_record["local_discrete_step_file"]
         model["local_discrete_step_sha256"] = matched_record["local_discrete_step_sha256"]
         model["local_discrete_step_bytes"] = matched_record["local_discrete_step_bytes"]
         model["local_discrete_step_status"] = matched_record["local_discrete_step_status"]
-        model["local_discrete_step_import_status"] = matched_record["local_discrete_step_import_status"]
+        model["local_discrete_step_import_status"] = matched_record[
+            "local_discrete_step_import_status"
+        ]
         model["local_discrete_step_solid_type"] = matched_record["local_discrete_step_solid_type"]
         model["local_discrete_step_imported_as_solid"] = matched_record[
             "local_discrete_step_imported_as_solid"

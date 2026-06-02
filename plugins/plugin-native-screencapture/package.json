@@ -39,7 +39,7 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
