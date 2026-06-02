@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
+import {
+  bindReadyPhase,
+  type HydratingDeps,
+  type ReadyPhaseDeps,
+  runHydrating,
+} from "./startup-phase-hydrate";
 
 const clientMock = vi.hoisted(() => {
   const handlers = new Map<string, (data: Record<string, unknown>) => void>();
@@ -9,6 +14,11 @@ const clientMock = vi.hoisted(() => {
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
     getCodingAgentStatus: vi.fn(async () => ({ tasks: [] })),
+    getConfig: vi.fn(async () => ({ ui: {} })),
+    getStreamSettings: vi.fn(async () => ({ settings: {} })),
+    getWalletAddresses: vi.fn(async () => ({})),
+    hasCustomBackground: vi.fn(async () => false),
+    hasCustomVrm: vi.fn(async () => false),
     handlers,
     onWsEvent: vi.fn(
       (event: string, handler: (data: Record<string, unknown>) => void) => {
@@ -31,6 +41,10 @@ vi.mock("../api", () => ({
 }));
 
 vi.mock("../components/views/view-interact-registry", () => viewInteractMock);
+
+vi.mock("../components/apps/load-apps-catalog", () => ({
+  prefetchAppsCatalog: vi.fn(),
+}));
 
 function makeDeps(): ReadyPhaseDeps {
   return {
@@ -57,6 +71,60 @@ function makeDeps(): ReadyPhaseDeps {
     elizaCloudLoginPollTimer: { current: null },
   };
 }
+
+function makeHydratingDeps(): HydratingDeps {
+  return {
+    setStartupError: vi.fn(),
+    setFirstRunLoading: vi.fn(),
+    hydrateInitialConversationState: vi.fn(async () => null),
+    requestGreetingWhenRunningRef: { current: vi.fn(async () => {}) },
+    loadWorkbench: vi.fn(async () => {}),
+    loadPlugins: vi.fn(async () => {}),
+    loadSkills: vi.fn(async () => {}),
+    loadCharacter: vi.fn(async () => {}),
+    loadWalletConfig: vi.fn(async () => {}),
+    loadInventory: vi.fn(async () => {}),
+    loadUpdateStatus: vi.fn(async () => {}),
+    checkExtensionStatus: vi.fn(async () => {}),
+    pollCloudCredits: vi.fn(),
+    fetchAutonomyReplay: vi.fn(async () => {}),
+    setSelectedVrmIndex: vi.fn(),
+    setCustomVrmUrl: vi.fn(),
+    setCustomBackgroundUrl: vi.fn(),
+    setWalletAddresses: vi.fn(),
+    setTab: vi.fn(),
+    setTabRaw: vi.fn(),
+    firstRunCompletionCommittedRef: { current: false },
+    initialTabSetRef: { current: false },
+    firstRunMode: "basic",
+  };
+}
+
+describe("runHydrating route selection", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+    clientMock.connectWs.mockClear();
+    clientMock.getConfig.mockClear();
+    clientMock.getStreamSettings.mockClear();
+    clientMock.getWalletAddresses.mockClear();
+    clientMock.hasCustomBackground.mockClear();
+    clientMock.hasCustomVrm.mockClear();
+  });
+
+  it("does not override an explicit /chat route after first-run completes", async () => {
+    window.history.replaceState(null, "", "/chat");
+    const deps = makeHydratingDeps();
+    deps.firstRunCompletionCommittedRef.current = true;
+    const dispatch = vi.fn();
+
+    await runHydrating(deps, dispatch, { current: false });
+
+    expect(deps.setTab).not.toHaveBeenCalledWith("character-select");
+    expect(deps.setTabRaw).not.toHaveBeenCalledWith("character-select");
+    expect(deps.firstRunCompletionCommittedRef.current).toBe(false);
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATION_COMPLETE" });
+  });
+});
 
 describe("bindReadyPhase pty hydration readiness gate", () => {
   it("only polls coding-agent status once the agent is running", () => {

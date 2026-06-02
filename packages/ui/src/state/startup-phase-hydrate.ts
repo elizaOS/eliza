@@ -233,8 +233,10 @@ export async function runHydrating(
   const navPath = getWindowNavigationPath();
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);
+  const shouldForcePostFirstRunCharacterSelect =
+    deps.firstRunCompletionCommittedRef.current && isRoot;
   const shouldCharSelect =
-    deps.firstRunCompletionCommittedRef.current ||
+    shouldForcePostFirstRunCharacterSelect ||
     shouldStartAtCharacterSelectOnLaunch({
       firstRunNeedsOptions: false,
       firstRunMode: deps.firstRunMode,
@@ -247,7 +249,12 @@ export async function runHydrating(
       deps.firstRunCompletionCommittedRef.current = false;
       deps.setTab("character-select");
       void deps.loadCharacter();
-    } else if (isRoot) deps.setTab(resolveDefaultLandingTab());
+    } else {
+      if (deps.firstRunCompletionCommittedRef.current) {
+        deps.firstRunCompletionCommittedRef.current = false;
+      }
+      if (isRoot) deps.setTab(resolveDefaultLandingTab());
+    }
   }
   if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
     deps.setTabRaw(urlTab);
