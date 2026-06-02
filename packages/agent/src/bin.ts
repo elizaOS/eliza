@@ -7,29 +7,35 @@
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 
-// Enable Node 24's persistent V8 compile cache before any heavy import so the
-// 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin source.
-// Anchored to a stable per-user dir under the state root so the cache survives
-// across runs; falls back to Node's default temp location when the state dir
-// isn't resolvable this early. Wrapped defensively: a missing API (older Node)
-// or any failure must never break boot.
+// Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
+// the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
+// source. Anchored to <stateDir>/cache/node-compile — the SAME dir the dev
+// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.mjs) — so the packaged CLI
+// path and the dev path share one warm cache instead of two.
+//
+// When NODE_COMPILE_CACHE is already set (dev path), Node enables the cache
+// from the env var before any user code runs, so we skip — calling it again
+// would be redundant. Wrapped defensively: a missing API (older Node) or any
+// failure must never break boot.
 (() => {
   try {
-    if (typeof enableCompileCache !== "function") {
+    if (
+      typeof enableCompileCache !== "function" ||
+      process.env.NODE_COMPILE_CACHE?.trim()
+    ) {
       return;
     }
-    const stateDir = process.env.ELIZA_STATE_DIR?.trim();
     const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
     const home = process.env.HOME?.trim();
     const resolvedStateDir =
-      stateDir ||
+      process.env.ELIZA_STATE_DIR?.trim() ||
       (xdgStateHome
         ? `${xdgStateHome}/eliza`
         : home
           ? `${home}/.local/state/eliza`
           : undefined);
     if (resolvedStateDir) {
-      enableCompileCache(`${resolvedStateDir}/.compile-cache`);
+      enableCompileCache(`${resolvedStateDir}/cache/node-compile`);
     } else {
       enableCompileCache();
     }
