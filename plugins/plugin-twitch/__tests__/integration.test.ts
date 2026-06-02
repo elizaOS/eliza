@@ -9,31 +9,22 @@ import { describe, expect, test, vi } from "vitest";
 import twitchPlugin, {
   formatChannelForDisplay,
   getTwitchUserDisplayName,
-  listTwitchAccountIds,
   MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
-  normalizeTwitchAccountId,
-  readTwitchAccountId,
-  resolveDefaultTwitchAccountId,
-  resolveTwitchAccountSettings,
   splitMessageForTwitch,
   stripMarkdownForTwitch,
-  TWITCH_SERVICE_NAME,
   TwitchApiError,
   TwitchConfigurationError,
-  TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
   TwitchNotConnectedError,
   TwitchPluginError,
-  type TwitchRole,
   type TwitchSendResult,
   TwitchService,
   TwitchServiceNotInitializedError,
   type TwitchSettings,
   type TwitchUserInfo,
 } from "../src/index.ts";
-import { createTwitchConnectorAccountProvider } from "../src/connector-account-provider.ts";
 import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";
 
 // ---------------------------------------------------------------------------
@@ -128,7 +119,7 @@ function makeTwitchServiceHarness(
   ) as TwitchService & TwitchServiceHarnessFields;
 }
 
-function makeUser(overrides: Partial<TwitchUserInfo> = {}): TwitchUserInfo {
+function _makeUser(overrides: Partial<TwitchUserInfo> = {}): TwitchUserInfo {
   return {
     userId: "1",
     username: "alice",
