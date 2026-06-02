@@ -66,7 +66,7 @@ function createFakeRuntime(settings: Record<string, string> = {}): FakeRuntime {
 }
 
 function setGlobalValue(key: string, value: unknown): () => void {
-  const hadValue = Object.prototype.hasOwnProperty.call(globalThis, key);
+  const hadValue = Object.hasOwn(globalThis, key);
   const previous = (globalThis as Record<string, unknown>)[key];
   Object.defineProperty(globalThis, key, {
     configurable: true,
@@ -237,7 +237,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         audio,
       ),
     ).resolves.toBe("transcribed buffer");
@@ -274,7 +276,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         { audioUrl: "https://audio.example/file.wav" },
       ),
     ).resolves.toBe("left\nright");
@@ -305,7 +309,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         "https://audio.example/missing.wav",
       ),
     ).rejects.toThrow(
@@ -327,7 +333,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         Buffer.from([1]),
       ),
     ).rejects.toThrow("Unsupported ElevenLabs STT model: bad_model");
@@ -346,7 +354,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         Buffer.from([1]),
       ),
     ).rejects.toThrow(
@@ -378,7 +388,9 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     await expect(
       transcriptionHandler?.(
-        runtime as unknown as Parameters<NonNullable<typeof transcriptionHandler>>[0],
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
         { audioUrl: "https://audio.example/browser.wav" },
       ),
     ).resolves.toBe("browser transcript");

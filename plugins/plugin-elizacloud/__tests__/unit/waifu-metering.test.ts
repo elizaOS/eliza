@@ -22,10 +22,19 @@ const CONFIG: WaifuMeteringConfig = {
   usdPer1kOutput: 0.015,
 };
 
-function makeRuntime(env: Record<string, string>): any {
+function makeRuntime(env: Record<string, string>): ModelUsageEventPayload["runtime"] {
   return {
     getSetting: (key: string) => env[key],
-  };
+  } as ModelUsageEventPayload["runtime"];
+}
+
+function requireInferencePayload(
+  payload: ReturnType<typeof buildInferenceSpentPayload>
+): NonNullable<ReturnType<typeof buildInferenceSpentPayload>> {
+  if (!payload) {
+    throw new Error("expected inference payload to be built");
+  }
+  return payload;
 }
 
 function makePayload(
@@ -33,7 +42,7 @@ function makePayload(
   extra: Partial<ModelUsageEventPayload> = {}
 ): ModelUsageEventPayload {
   return {
-    runtime: makeRuntime({}) as ModelUsageEventPayload["runtime"],
+    runtime: makeRuntime({}),
     source: "elizacloud",
     type: "TEXT_LARGE" as ModelUsageEventPayload["type"],
     tokens: {
@@ -195,13 +204,14 @@ describe("postInferenceSpent", () => {
       CONFIG,
       makePayload({ prompt: 100, completion: 50 }, { costUsd: 0.01 })
     );
-    const result = await postInferenceSpent(CONFIG, payload!, fakeFetch);
+    const inferencePayload = requireInferencePayload(payload);
+    const result = await postInferenceSpent(CONFIG, inferencePayload, fakeFetch);
 
     expect(result.ok).toBe(true);
     expect(calls).toHaveLength(1);
     const sentBody = String(calls[0].init.body);
     const headers = calls[0].init.headers as Record<string, string>;
-    const expectedSig = signWaifuWebhook(sentBody, payload?.timestamp, CONFIG.secret);
+    const expectedSig = signWaifuWebhook(sentBody, inferencePayload.timestamp, CONFIG.secret);
     expect(headers["X-Waifu-Webhook-Signature"]).toBe(expectedSig);
     // Only the canonical header is sent; the legacy duplicate is dropped.
     expect(headers["X-Waifu-Signature"]).toBeUndefined();
@@ -215,7 +225,7 @@ describe("postInferenceSpent", () => {
     }) as unknown as typeof fetch;
 
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 10, completion: 5 }));
-    await postInferenceSpent(CONFIG, payload!, fakeFetch);
+    await postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch);
     expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -226,7 +236,9 @@ describe("postInferenceSpent", () => {
       throw err;
     }) as unknown as typeof fetch;
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 1, completion: 1 }));
-    await expect(postInferenceSpent(CONFIG, payload!, fakeFetch)).resolves.toMatchObject({
+    await expect(
+      postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch)
+    ).resolves.toMatchObject({
       ok: false,
     });
   });
@@ -236,7 +248,9 @@ describe("postInferenceSpent", () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 1, completion: 1 }));
-    await expect(postInferenceSpent(CONFIG, payload!, fakeFetch)).resolves.toMatchObject({
+    await expect(
+      postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch)
+    ).resolves.toMatchObject({
       ok: false,
     });
   });

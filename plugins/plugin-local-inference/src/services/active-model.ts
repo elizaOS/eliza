@@ -963,25 +963,36 @@ export class ActiveModelCoordinator {
 		// it down, so a failed switch can restore it instead of leaving zero
 		// models loaded under the requested id.
 		const previous = this.lastReady;
+		let previousDisplaced = false;
 
 		try {
-			const ready = await this.performLoad(loader, installed, overrides, opts);
+			const ready = await this.performLoad(
+				loader,
+				installed,
+				overrides,
+				opts,
+				() => {
+					previousDisplaced = true;
+				},
+			);
 			this.state = ready;
 			this.lastReady = { installed, overrides, state: ready };
-			if (installed.source === "eliza-download") {
-				await touchElizaModel(installed.id);
-			}
 		} catch (err) {
 			const failure = err instanceof Error ? err.message : String(err);
+			if (!loader && previous) {
+				previousDisplaced =
+					localInferenceEngine.currentModelPath() !== previous.installed.path;
+			}
 			// Attempt to restore the previously-active model. The unload-then-load
 			// already tore it down, so without this the host has no model loaded.
-			if (previous && previous.installed.id !== installed.id) {
+			if (previous && previousDisplaced) {
 				try {
 					const restored = await this.performLoad(
 						loader,
 						previous.installed,
 						previous.overrides,
 						opts,
+						() => {},
 					);
 					this.state = restored;
 					this.lastReady = {
@@ -1003,6 +1014,17 @@ export class ActiveModelCoordinator {
 						`[local-inference] Failed to switch to "${installed.id}" (${failure}) AND failed to restore "${previous.installed.id}" (${restoreFailure}). No model is loaded.`,
 					);
 				}
+			} else if (previous) {
+				// Admission/load-arg errors happen before unload, so the previous
+				// model is still live. Restore the coordinator state without touching
+				// the loader and surface the failed request only as a warning.
+				this.state = previous.state;
+				this.lastReady = previous;
+				console.warn(
+					`[local-inference] Refused to switch to "${installed.id}" before unloading the active model "${previous.installed.id}" (${failure}).`,
+				);
+				this.emit();
+				return this.snapshot();
 			}
 			// No prior model to restore (or restore also failed): report honestly
 			// that nothing is loaded rather than attributing a phantom id.
@@ -1016,6 +1038,15 @@ export class ActiveModelCoordinator {
 		}
 
 		this.emit();
+		if (installed.source === "eliza-download") {
+			try {
+				await touchElizaModel(installed.id);
+			} catch (err) {
+				console.warn(
+					`[local-inference] Model "${installed.id}" loaded, but failed to update last-used metadata: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
 		return this.snapshot();
 	}
 
@@ -1029,6 +1060,7 @@ export class ActiveModelCoordinator {
 		installed: InstalledModel,
 		overrides: LocalInferenceLoadOverrides | undefined,
 		opts: { hardware?: HardwareProbe; manifestLoader?: ManifestLoader },
+		markPreviousDisplaced: () => void,
 	): Promise<ActiveModelState> {
 		// RAM-budget admission control (W10 / J1): refuse a model that won't
 		// fit this host *before* touching the loader, so we never half-load
@@ -1048,6 +1080,7 @@ export class ActiveModelCoordinator {
 		// (plugin-vision falls back to its Florence-2 path).
 		this.warnIfVisionDegraded(installed, resolved.mmprojPath);
 		if (loader) {
+			markPreviousDisplaced();
 			await loader.unloadModel();
 			await loader.loadModel(resolved);
 		} else {

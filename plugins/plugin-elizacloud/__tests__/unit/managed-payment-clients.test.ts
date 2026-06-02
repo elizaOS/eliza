@@ -16,7 +16,7 @@ describe("managed payment clients", () => {
     expect(
       resolveEnvElizaCloudManagedClientConfig({
         ELIZAOS_CLOUD_API_KEY: " [REDACTED] ",
-      }).configured,
+      }).configured
     ).toBe(false);
 
     const config = resolveEnvElizaCloudManagedClientConfig({
@@ -35,7 +35,7 @@ describe("managed payment clients", () => {
         linkToken: "link-token",
         expiration: "2026-01-01T00:00:00.000Z",
         environment: "sandbox",
-      }),
+      })
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -56,7 +56,7 @@ describe("managed payment clients", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer eliza_test",
         }),
-      }),
+      })
     );
   });
 
@@ -64,8 +64,8 @@ describe("managed payment clients", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async () =>
-        Response.json({ message: "Plaid unavailable" }, { status: 503 }),
-      ),
+        Response.json({ message: "Plaid unavailable" }, { status: 503 })
+      )
     );
 
     const client = new PlaidManagedClient(() => ({
@@ -75,9 +75,7 @@ describe("managed payment clients", () => {
       siteUrl: "https://cloud.example",
     }));
 
-    await expect(client.createLinkToken()).rejects.toBeInstanceOf(
-      PlaidManagedClientError,
-    );
+    await expect(client.createLinkToken()).rejects.toBeInstanceOf(PlaidManagedClientError);
     await expect(client.createLinkToken()).rejects.toMatchObject({
       status: 503,
       message: "Plaid unavailable",
@@ -88,11 +86,8 @@ describe("managed payment clients", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async () =>
-        Response.json(
-          { message: "Reporting unavailable", fallback: "csv_export" },
-          { status: 403 },
-        ),
-      ),
+        Response.json({ message: "Reporting unavailable", fallback: "csv_export" }, { status: 403 })
+      )
     );
 
     const client = new PaypalManagedClient(() => ({
@@ -107,7 +102,7 @@ describe("managed payment clients", () => {
         accessToken: "paypal-token",
         startDate: "2026-01-01T00:00:00Z",
         endDate: "2026-01-31T00:00:00Z",
-      }),
+      })
     ).rejects.toMatchObject({
       status: 403,
       message: "Reporting unavailable",
@@ -127,7 +122,7 @@ describe("managed payment clients", () => {
     }));
 
     await expect(paypal.buildAuthorizeUrl({ state: "state" })).rejects.toThrow(
-      PaypalManagedClientError,
+      PaypalManagedClientError
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
