@@ -3,8 +3,8 @@
  *
  * Covers the V-A-D → `ExpressiveEmotion` projection table and the 7-class
  * logit interpreter. The ONNX-backed `VoiceEmotionClassifier` class was
- * removed when `onnxruntime-node` was dropped; inference now goes through
- * `VoiceEmotionGgmlClassifier` in `voice-emotion-classifier-ggml.ts`.
+ * removed when `onnxruntime-node` was dropped; only these pure projection
+ * helpers remain.
  */
 
 import { describe, expect, it } from "vitest";
