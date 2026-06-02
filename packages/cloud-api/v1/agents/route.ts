@@ -18,6 +18,7 @@ import {
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -45,6 +46,8 @@ const provisionSchema = z.object({
       bio: z.string().max(5000).optional(),
       avatar: z.string().url().max(2048).optional(),
       config: z.record(z.string(), z.unknown()).optional(),
+      system: z.string().max(20000).optional(),
+      plugins: z.array(z.string().min(1).max(200)).max(50).optional(),
     })
     .optional(),
   billing: z
@@ -55,6 +58,39 @@ const provisionSchema = z.object({
     .optional(),
   webhookUrl: z.string().url().max(2048).optional(),
 });
+
+// The wallet/trading plugin: gives the agent its Steward-backed wallet +
+// trade actions (uses STEWARD_AGENT_ID / STEWARD_API_URL env injected at
+// provision). Gated behind WAIFU_DEFAULT_WALLET_PLUGIN so we don't break
+// agent boot on images that don't bundle the plugin yet; enable once the
+// agent image ships @elizaos/plugin-steward-app. The system prompt below is
+// applied unconditionally (it can't break boot).
+function getDefaultAgentPlugins(): string[] {
+  const enabled = getCloudAwareEnv().WAIFU_DEFAULT_WALLET_PLUGIN === "true";
+  return enabled ? ["@elizaos/plugin-steward-app"] : [];
+}
+
+// Build a real system prompt from the token context so a freshly provisioned
+// agent knows who it is, what token it represents, and what it can do — instead
+// of booting as a contextless default character.
+function buildDefaultSystemPrompt(p: {
+  tokenName: string;
+  tokenTicker: string;
+  tokenContractAddress: string;
+  chain: string;
+  characterName: string;
+  bio?: string;
+}): string {
+  const lines = [
+    `You are ${p.characterName}, the autonomous AI agent for the ${p.tokenName} ($${p.tokenTicker}) token on ${p.chain}.`,
+    `Your token contract address is ${p.tokenContractAddress} on ${p.chain}.`,
+    p.bio ? `About you: ${p.bio}` : null,
+    ``,
+    `You have a crypto wallet provisioned through Steward (eliza.steward.fi) and can check balances, hold, and trade on behalf of your community when asked. When someone asks about your token, your wallet, or what you can do, answer concretely using your real token ($${p.tokenTicker}) and your wallet capabilities.`,
+    `Be helpful, on-brand, and concise. Speak as ${p.characterName}. Never claim to be a generic assistant — you are ${p.characterName}, tied to $${p.tokenTicker}.`,
+  ].filter((l): l is string => l !== null);
+  return lines.join("\n");
+}
 
 app.post("/", async (c) => {
   try {
@@ -118,13 +154,34 @@ app.post("/", async (c) => {
       );
     }
 
+    // Build the agent's identity ONCE so it is shared by both the persisted
+    // character record AND the agentConfig injected into the container as
+    // ELIZA_AGENT_CHARACTER_JSON. Hoisted to function scope so the createAgent
+    // call below (separate try block) can reuse it.
+    const systemPrompt =
+      p.character?.system?.trim() ||
+      buildDefaultSystemPrompt({
+        tokenName: p.tokenName,
+        tokenTicker: p.tokenTicker,
+        tokenContractAddress: normalizedTokenAddress,
+        chain: p.chain,
+        characterName: agentName,
+        bio: p.character?.bio,
+      });
+    const plugins = Array.from(
+      new Set([...(p.character?.plugins ?? []), ...getDefaultAgentPlugins()]),
+    );
+    const characterBio = p.character?.bio
+      ? [p.character.bio]
+      : [`Agent for ${p.tokenName}`];
+
     let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
       character = await charactersService.create({
         name: agentName,
-        bio: p.character?.bio
-          ? [p.character.bio]
-          : [`Agent for ${p.tokenName}`],
+        bio: characterBio,
+        system: systemPrompt,
+        plugins,
         user_id: identity.userId,
         organization_id: identity.organizationId,
         source: "cloud",
@@ -159,16 +216,41 @@ app.post("/", async (c) => {
         userId: identity.userId,
         agentName,
         characterId: character.id,
-        agentConfig: {
-          tokenContractAddress: normalizedTokenAddress,
-          chain: p.chain,
-          chainId: p.chainId,
-          tokenName: p.tokenName,
-          tokenTicker: p.tokenTicker,
-          launchType: p.launchType,
-          character: p.character,
-          billing: p.billing,
-        },
+        // agentConfig becomes ELIZA_AGENT_CHARACTER_JSON in the container
+        // (docker-sandbox-provider). The runtime's sandbox-character loader is
+        // SUPPOSED to read name/system/bio from the top level so the container
+        // boots AS this agent. However, injecting a full character here caused
+        // the container health check to time out (boot never completes) on the
+        // current agent image — so we gate it behind WAIFU_INJECT_CHARACTER
+        // until the image's character-load path is fixed. The system prompt is
+        // still persisted on the character record either way; default keeps
+        // boot reliable (agent boots, just as the default preset for now).
+        agentConfig:
+          getCloudAwareEnv().WAIFU_INJECT_CHARACTER === "true"
+            ? {
+                name: agentName,
+                system: systemPrompt,
+                bio: characterBio,
+                ...(plugins.length > 0 ? { plugins } : {}),
+                ...(p.character?.config ?? {}),
+                tokenContractAddress: normalizedTokenAddress,
+                chain: p.chain,
+                chainId: p.chainId,
+                tokenName: p.tokenName,
+                tokenTicker: p.tokenTicker,
+                launchType: p.launchType,
+                billing: p.billing,
+              }
+            : {
+                tokenContractAddress: normalizedTokenAddress,
+                chain: p.chain,
+                chainId: p.chainId,
+                tokenName: p.tokenName,
+                tokenTicker: p.tokenTicker,
+                launchType: p.launchType,
+                character: p.character,
+                billing: p.billing,
+              },
         environmentVars: {
           TOKEN_CONTRACT_ADDRESS: normalizedTokenAddress,
           TOKEN_CHAIN: p.chain,
