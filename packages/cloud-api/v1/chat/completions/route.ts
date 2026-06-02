@@ -33,6 +33,7 @@ import {
   calculateCost,
   getProviderFromModel,
   getSafeModelParams,
+  modelUsesReasoningTokens,
   normalizeModelName,
 } from "@/lib/pricing";
 import {
@@ -119,13 +120,24 @@ function buildProviderBillingFields(
 }
 
 /**
- * Computes effective max_tokens when Anthropic CoT is enabled.
- * When thinking is active, max_tokens must be >= budgetTokens or Anthropic API rejects.
- * Additionally, we must reserve capacity for the actual response (not just thinking).
+ * Computes effective max_tokens, reserving response capacity for reasoning models.
+ *
+ * Reasoning models (Anthropic extended-thinking, OpenAI o-series, DeepSeek R,
+ * MiniMax M, Qwen think, etc.) spend output tokens on hidden chain-of-thought
+ * BEFORE emitting any visible answer. If max_tokens only covers the reasoning,
+ * the model truncates mid-thought and returns empty content while still billing
+ * the consumed tokens. To prevent that:
+ *   - Anthropic CoT: max_tokens must be >= thinking budget + response capacity
+ *     (the API also hard-rejects max_tokens < thinking budget).
+ *   - Any other reasoning model: floor max_tokens at MIN_RESPONSE_TOKENS so there
+ *     is always room for an answer after the reasoning.
+ *
+ * `model` is the requested model id (provider-prefixed is fine).
  */
 function computeEffectiveMaxTokens(
   requestMaxTokens: number | undefined,
   cotBudget: number | null,
+  model: string,
 ): number | undefined {
   if (cotBudget !== null) {
     // When CoT is active, ensure max_tokens covers both thinking budget AND response capacity
@@ -133,6 +145,16 @@ function computeEffectiveMaxTokens(
     return Math.max(
       requestMaxTokens ?? MIN_RESPONSE_TOKENS,
       cotBudget + MIN_RESPONSE_TOKENS,
+    );
+  }
+  if (modelUsesReasoningTokens(model)) {
+    // Non-Anthropic reasoning model. Guarantee at least MIN_RESPONSE_TOKENS so the
+    // model does not truncate mid-reasoning and return empty (but billed) output.
+    // If the caller asked for more, honor it; if they asked for less (or nothing),
+    // raise it to the floor.
+    return Math.max(
+      requestMaxTokens ?? MIN_RESPONSE_TOKENS,
+      MIN_RESPONSE_TOKENS,
     );
   }
   return requestMaxTokens;
@@ -771,6 +793,7 @@ export async function handleChatCompletionsPOST(
     const effectiveMaxTokens = computeEffectiveMaxTokens(
       request.max_tokens,
       cotBudget,
+      model,
     );
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
@@ -1502,6 +1525,34 @@ async function handleNonStreamingRequest(
       totalCost: billing.totalCost,
     });
 
+    // Reasoning-model empty-output guard.
+    // A reasoning model can spend its whole output budget on hidden
+    // chain-of-thought and return empty visible text while still billing the
+    // consumed tokens. The budget floor in computeEffectiveMaxTokens prevents
+    // the common case, but if it still happens, surface it honestly: report
+    // finish_reason "length" (so OpenAI-compatible clients retry with a higher
+    // max_tokens) instead of a misleading "stop" with null content.
+    const hasToolCalls = Boolean(result.toolCalls?.length);
+    const visibleText = result.text || "";
+    const emptyButBilled =
+      !visibleText && !hasToolCalls && (result.usage?.outputTokens ?? 0) > 0;
+    const finishReason: "tool_calls" | "length" | "content_filter" | "stop" =
+      hasToolCalls || result.finishReason === "tool-calls"
+        ? "tool_calls"
+        : result.finishReason === "length" || emptyButBilled
+          ? "length"
+          : result.finishReason === "content-filter"
+            ? "content_filter"
+            : "stop";
+    if (emptyButBilled) {
+      logger.warn("[Chat Completions] Empty completion despite billed tokens", {
+        model,
+        outputTokens: result.usage?.outputTokens,
+        sdkFinishReason: result.finishReason,
+        isReasoningModel: modelUsesReasoningTokens(model),
+      });
+    }
+
     // Return OpenAI-compatible response
     return addCorsHeaders(
       Response.json({
@@ -1515,7 +1566,7 @@ async function handleNonStreamingRequest(
             message: {
               role: "assistant",
               content: result.text || null,
-              ...(result.toolCalls?.length
+              ...(hasToolCalls
                 ? {
                     tool_calls: result.toolCalls.map((toolCall) => ({
                       id: toolCall.toolCallId,
@@ -1528,14 +1579,7 @@ async function handleNonStreamingRequest(
                   }
                 : {}),
             },
-            finish_reason:
-              result.toolCalls?.length || result.finishReason === "tool-calls"
-                ? "tool_calls"
-                : result.finishReason === "length"
-                  ? "length"
-                  : result.finishReason === "content-filter"
-                    ? "content_filter"
-                    : "stop",
+            finish_reason: finishReason,
           },
         ],
         usage: formatOpenAIUsage(billing, result.usage),
@@ -1574,4 +1618,5 @@ export default honoRouter;
 export const __nativeToolingTestHooks = {
   mapToolChoice,
   convertTools,
+  computeEffectiveMaxTokens,
 } as const;
