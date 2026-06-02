@@ -21,6 +21,9 @@ type MacEffectsSymbols = {
   startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
   stopAccessingSecurityScopedBookmarks(): void;
   freeNativeCString(value: Pointer): void;
+  elizaOnboardingNotificationPost(title: Pointer, body: Pointer): boolean;
+  elizaOnboardingGetChoice(): number;
+  elizaOnboardingNotificationDismiss(): void;
 };
 
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
@@ -87,6 +90,15 @@ function loadLib(): MacEffectsLib {
         returns: FFIType.void,
       },
       freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
+      elizaOnboardingNotificationPost: {
+        args: [FFIType.ptr, FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      elizaOnboardingGetChoice: { args: [], returns: FFIType.i32 },
+      elizaOnboardingNotificationDismiss: {
+        args: [],
+        returns: FFIType.void,
+      },
     }) as MacEffectsLib;
   } catch (err) {
     console.warn("[MacEffects] Failed to load dylib:", err);
@@ -193,4 +205,35 @@ export function startAccessingSecurityScopedBookmark(
 
 export function stopAccessingSecurityScopedBookmarks(): void {
   getLib()?.symbols.stopAccessingSecurityScopedBookmarks();
+}
+
+/**
+ * Onboarding notification choice codes returned by getOnboardingChoice().
+ * 0 = pending, 1 = local-on-device, 2 = local-cloud-ai, 3 = eliza-cloud, 4 = dismissed.
+ */
+export type OnboardingChoice = 0 | 1 | 2 | 3 | 4;
+
+/** Post a native macOS notification with onboarding action buttons. */
+export function postOnboardingNotification(
+  title: string,
+  body: string,
+): boolean {
+  const lib = getLib();
+  if (!lib) return false;
+  const titleBuf = cStringBuffer(title);
+  const bodyBuf = cStringBuffer(body);
+  return lib.symbols.elizaOnboardingNotificationPost(
+    ptr(titleBuf),
+    ptr(bodyBuf),
+  );
+}
+
+/** Poll the onboarding notification choice. */
+export function getOnboardingChoice(): OnboardingChoice {
+  return (getLib()?.symbols.elizaOnboardingGetChoice() ?? 0) as OnboardingChoice;
+}
+
+/** Dismiss the onboarding notification if still showing. */
+export function dismissOnboardingNotification(): void {
+  getLib()?.symbols.elizaOnboardingNotificationDismiss();
 }

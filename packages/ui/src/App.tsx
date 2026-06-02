@@ -58,6 +58,7 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
+import { OnboardingVoicePill } from "./first-run/OnboardingVoicePill";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -304,11 +305,12 @@ function ChatOverlayShell() {
 }
 
 /**
- * First-run onboarding overlay surface. Renders ONLY the floating
- * CompactOnboarding card over a transparent, click-through background — no app
+ * First-run onboarding overlay surface. Renders the floating
+ * CompactOnboarding card (top-right) and the OnboardingVoicePill
+ * (bottom-center) over a transparent, click-through background — no app
  * chrome. The native overlay window is `transparent` + `passthrough`, so the
  * empty (pointer-events-none) region lets clicks fall through to the desktop
- * behind while the card stays interactive.
+ * behind while the interactive elements stay clickable.
  */
 function OnboardingOverlayShell() {
   return (
@@ -316,7 +318,8 @@ function OnboardingOverlayShell() {
       data-testid="onboarding-overlay-shell"
       className="pointer-events-none fixed inset-0 bg-transparent"
     >
-      <CompactOnboarding showVoicePill />
+      <CompactOnboarding />
+      <OnboardingVoicePill />
     </div>
   );
 }
