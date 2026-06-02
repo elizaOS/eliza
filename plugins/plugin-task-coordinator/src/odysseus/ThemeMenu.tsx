@@ -3,7 +3,7 @@
 // one applies it (buildThemeVars) and persists. Custom themes + the color-picker
 // editor + font/density are a later refinement.
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import {
   ODYSSEUS_THEMES,
   type ThemeDensity,
@@ -31,6 +31,9 @@ export function ThemeMenu({
   onCustomChange,
   bgPattern,
   onSetBg,
+  customThemes,
+  onSaveCustom,
+  onDeleteCustom,
 }: {
   open: boolean;
   current: ThemeName;
@@ -44,7 +47,11 @@ export function ThemeMenu({
   onCustomChange: (key: CustomKey, value: string) => void;
   bgPattern: string;
   onSetBg: (pattern: string) => void;
+  customThemes: Record<string, ThemePalette>;
+  onSaveCustom: (name: string) => void;
+  onDeleteCustom: (name: string) => void;
 }): ReactNode {
+  const [saveName, setSaveName] = useState("");
   if (!open) return null;
   return (
     <div role="dialog" aria-modal="true" aria-label="Theme">
@@ -63,7 +70,10 @@ export function ThemeMenu({
       />
       <div className="od-theme-menu">
         <div className="od-theme-grid">
-          {Object.entries(ODYSSEUS_THEMES).map(([name, palette]) => (
+          {[
+            ...Object.entries(ODYSSEUS_THEMES),
+            ...Object.entries(customThemes),
+          ].map(([name, palette]) => (
             <button
               type="button"
               key={name}
@@ -137,6 +147,54 @@ export function ThemeMenu({
             </label>
           ))}
         </div>
+        <div className="od-theme-save">
+          <input
+            className="od-theme-save-input"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            placeholder="name…"
+            aria-label="Custom theme name"
+          />
+          <button
+            type="button"
+            className="od-theme-pill"
+            onClick={() => {
+              const n = saveName.trim();
+              if (n) {
+                onSaveCustom(n);
+                setSaveName("");
+              }
+            }}
+          >
+            Save
+          </button>
+        </div>
+        {Object.keys(customThemes).length > 0 ? (
+          <div className="od-theme-saved">
+            {Object.keys(customThemes).map((name) => (
+              <span key={name} className="od-theme-saved-item">
+                <button
+                  type="button"
+                  className="od-theme-saved-name"
+                  onClick={() => {
+                    onPick(name);
+                    onClose();
+                  }}
+                >
+                  {name}
+                </button>
+                <button
+                  type="button"
+                  className="od-theme-saved-del"
+                  onClick={() => onDeleteCustom(name)}
+                  aria-label={`Delete ${name}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

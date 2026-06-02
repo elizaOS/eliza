@@ -490,6 +490,17 @@ export const ODYSSEUS_CSS = `
   color:color-mix(in srgb, var(--fg) 55%, transparent); text-transform:capitalize; cursor:pointer; }
 .odysseus-root .od-theme-color input[type=color] { width:34px; height:24px; border:1px solid var(--border);
   border-radius:6px; background:none; padding:0; cursor:pointer; }
+.odysseus-root .od-theme-save { display:flex; gap:6px; margin-top:8px; }
+.odysseus-root .od-theme-save-input { flex:1; min-width:0; padding:5px 8px; border:1px solid var(--border);
+  border-radius:8px; background:var(--bg); color:var(--fg); font-size:11px; outline:none; }
+.odysseus-root .od-theme-saved { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.odysseus-root .od-theme-saved-item { display:inline-flex; align-items:center; border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; }
+.odysseus-root .od-theme-saved-name { background:none; border:none; color:var(--fg); font-size:11px;
+  padding:4px 8px; cursor:pointer; text-transform:capitalize; }
+.odysseus-root .od-theme-saved-del { background:none; border:none; border-left:1px solid var(--border);
+  color:color-mix(in srgb, var(--fg) 45%, transparent); font-size:10px; padding:4px 7px; cursor:pointer; }
+.odysseus-root .od-theme-saved-del:hover { color:var(--red); }
 
 /* ── welcome ── */
 .odysseus-root .od-welcome { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;

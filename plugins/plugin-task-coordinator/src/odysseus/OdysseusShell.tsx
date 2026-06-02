@@ -71,6 +71,9 @@ export function OdysseusShell(): ReactNode {
   const [bgPattern, setBgPattern] = useState<string>(() =>
     readPref<string>(PREF_KEYS.bgPattern, "none"),
   );
+  const [customThemes, setCustomThemes] = useState<
+    Record<string, ThemePalette>
+  >(() => readPref<Record<string, ThemePalette>>(PREF_KEYS.customThemes, {}));
 
   const refreshThreads = useCallback(async () => {
     const next = await client
@@ -161,6 +164,30 @@ export function OdysseusShell(): ReactNode {
     setBgPattern(next);
   }, []);
 
+  const saveCustomTheme = useCallback(
+    (name: string) => {
+      setCustomThemes((prev) => {
+        if (!prev[name] && Object.keys(prev).length >= 8) return prev;
+        const next = { ...prev, [name]: customColors };
+        writePref(PREF_KEYS.customThemes, next);
+        return next;
+      });
+      writePref(PREF_KEYS.themeMode, name);
+      setThemeName(name);
+    },
+    [customColors],
+  );
+
+  const deleteCustomTheme = useCallback((name: string) => {
+    setCustomThemes((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      writePref(PREF_KEYS.customThemes, next);
+      return next;
+    });
+    setThemeName((cur) => (cur === name ? "dark" : cur));
+  }, []);
+
   const onCustomChange = useCallback(
     (key: "bg" | "fg" | "panel" | "border" | "red", value: string) => {
       setCustomColors((prev) => {
@@ -190,7 +217,9 @@ export function OdysseusShell(): ReactNode {
   const themeStyle =
     themeName === "custom"
       ? buildThemeVars(customColors)
-      : themeVars(themeName);
+      : customThemes[themeName]
+        ? buildThemeVars(customThemes[themeName])
+        : themeVars(themeName);
 
   return (
     <div
@@ -222,6 +251,9 @@ export function OdysseusShell(): ReactNode {
         onCustomChange={onCustomChange}
         bgPattern={bgPattern}
         onSetBg={pickBg}
+        customThemes={customThemes}
+        onSaveCustom={saveCustomTheme}
+        onDeleteCustom={deleteCustomTheme}
       />
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SkillsPanel open={skillsOpen} onClose={() => setSkillsOpen(false)} />

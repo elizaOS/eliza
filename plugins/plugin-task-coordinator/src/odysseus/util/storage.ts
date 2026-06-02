@@ -34,4 +34,5 @@ export const PREF_KEYS = {
   customTheme: "custom-theme",
   notes: "notes",
   bgPattern: "bg-pattern",
+  customThemes: "custom-themes",
 } as const;
