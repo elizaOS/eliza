@@ -1,5 +1,5 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { OrchestratorTuiView } from "./CodingAgentTasksPanel";
+import { OdysseusTuiView, OrchestratorTuiView } from "./CodingAgentTasksPanel";
 import { OrchestratorWorkbench } from "./OrchestratorWorkbench";
 import { OdysseusShell } from "./odysseus/OdysseusShell";
 
@@ -36,4 +36,15 @@ registerAppShellPage({
   order: 71,
   group: "developer",
   Component: OrchestratorTuiView,
+});
+
+registerAppShellPage({
+  id: "odysseus.tui",
+  pluginId: "@elizaos/plugin-task-coordinator",
+  label: "Odysseus TUI",
+  icon: "Terminal",
+  path: "/odysseus/tui",
+  order: 72,
+  group: "developer",
+  Component: OdysseusTuiView,
 });

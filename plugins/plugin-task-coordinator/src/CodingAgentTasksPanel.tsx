@@ -1089,6 +1089,34 @@ export function OrchestratorTuiView() {
   );
 }
 
+export function OdysseusTuiView() {
+  return (
+    <TerminalPluginView
+      id="odysseus"
+      label="Odysseus TUI"
+      description="Terminal Odysseus operator workbench"
+      commands={[
+        "orchestrator-status",
+        "orchestrator-list-tasks",
+        "orchestrator-open-task",
+        "orchestrator-create-task",
+        "orchestrator-pause-task",
+        "orchestrator-resume-task",
+        "orchestrator-pause-all",
+        "orchestrator-resume-all",
+        "orchestrator-delete-task",
+        "orchestrator-fork-task",
+        "orchestrator-update-task",
+        "orchestrator-validate-task",
+        "orchestrator-add-agent",
+        "orchestrator-stop-agent",
+        "orchestrator-send-message",
+      ]}
+      endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
+    />
+  );
+}
+
 export async function interact(
   capability: string,
   params?: Record<string, unknown>,

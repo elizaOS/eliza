@@ -714,7 +714,10 @@ export function FirstRunShell({
       data-testid="first-run-shell"
       className="first-run-screen relative flex min-h-[100dvh] w-full overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
     >
-      <div className="relative z-10 flex min-h-[100dvh] w-full flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div
+        data-testid="pre-agent-cloud-shell"
+        className="relative z-10 flex min-h-[100dvh] w-full flex-col px-4 py-4 sm:px-6 sm:py-6"
+      >
         <div className="flex h-12 items-center">
           {canBack ? (
             <button
