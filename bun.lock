@@ -1507,6 +1507,16 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/examples/plugin-echo": {
+      "name": "elizaos-plugin-echo",
+      "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+      },
+    },
     "packages/examples/react": {
       "name": "eliza-react-example",
       "version": "2.0.0-beta.0",
@@ -2581,6 +2591,13 @@
     "packages/prompts": {
       "name": "@elizaos/prompts",
       "version": "2.0.3-beta.0",
+    },
+    "packages/registry": {
+      "name": "@elizaos/registry",
+      "version": "2.0.0-beta.0",
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+      },
     },
     "packages/robot": {
       "name": "@elizaos/robot",
@@ -6503,6 +6520,8 @@
     "@elizaos/plugin-zai": ["@elizaos/plugin-zai@workspace:plugins/plugin-zai"],
 
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
+
+    "@elizaos/registry": ["@elizaos/registry@workspace:packages/registry"],
 
     "@elizaos/robot": ["@elizaos/robot@workspace:packages/robot"],
 
@@ -10739,6 +10758,8 @@
     "elizaos": ["elizaos@workspace:packages/elizaos"],
 
     "elizaos-cloudflare-worker": ["elizaos-cloudflare-worker@workspace:packages/examples/cloudflare"],
+
+    "elizaos-plugin-echo": ["elizaos-plugin-echo@workspace:packages/examples/plugin-echo"],
 
     "elliptic": ["elliptic@6.6.1", "", { "dependencies": { "bn.js": "^4.11.9", "brorand": "^1.1.0", "hash.js": "^1.0.0", "hmac-drbg": "^1.0.1", "inherits": "^2.0.4", "minimalistic-assert": "^1.0.1", "minimalistic-crypto-utils": "^1.0.1" } }, "sha512-RaddvvMatK2LJHqFJ+YA4WysVN5Ita9E35botqIYspQ4TkRAlCicdzKOjlyv/1Za5RyTNn7di//eEV0uTAfe3g=="],
 
