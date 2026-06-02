@@ -584,7 +584,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     validateAgentId(agentId);
 
     const env = getCloudAwareEnv();
-    const headscaleRouteRequired = requiresHeadscaleRoute(env);
+    // requiresHeadscaleRoute() pins its own narrow getCloudAwareEnv() snapshot
+    // internally (see its default param), so pass no arg here — handing it the
+    // broad NodeJS.ProcessEnv would not satisfy its HeadscaleRouteEnv shape.
+    const headscaleRouteRequired = requiresHeadscaleRoute();
     const headscaleEnabled = !!env.HEADSCALE_API_KEY?.trim();
     if (headscaleRouteRequired && !headscaleEnabled) {
       const errorMessage =
