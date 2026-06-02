@@ -180,6 +180,8 @@ export interface OpenAIModel {
   pricing?: Record<string, unknown>;
   recommended?: boolean;
   free?: boolean;
+  /** Provider/gateway-advertised parameters (e.g. "reasoning"). */
+  supported_parameters?: string[];
 }
 
 /**

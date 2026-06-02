@@ -154,4 +154,31 @@ describe("computeEffectiveMaxTokens", () => {
       computeEffectiveMaxTokens(20000, 8000, "anthropic/claude-opus-4.8"),
     ).toBe(20000);
   });
+
+  test("catalog reasoning signal: floors even when the id has no reasoning pattern", () => {
+    // glm-5.1 / kimi-k2.6 / deepseek-v4-pro have no "think"/"reasoning" id but
+    // advertise reasoning in supported_parameters. These were the
+    // production-reported failures.
+    expect(
+      computeEffectiveMaxTokens(50, null, "z-ai/glm-5.1", [
+        "max_tokens",
+        "reasoning",
+      ]),
+    ).toBe(MIN_RESPONSE_TOKENS);
+    expect(
+      computeEffectiveMaxTokens(50, null, "deepseek/deepseek-v4-pro", [
+        "max_tokens",
+        "include_reasoning",
+      ]),
+    ).toBe(MIN_RESPONSE_TOKENS);
+  });
+
+  test("catalog non-reasoning signal: passes small max_tokens through", () => {
+    expect(
+      computeEffectiveMaxTokens(50, null, "openai/gpt-4o-mini", [
+        "max_tokens",
+        "temperature",
+      ]),
+    ).toBe(50);
+  });
 });

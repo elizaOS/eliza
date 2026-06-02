@@ -56,6 +56,56 @@ describe("modelUsesReasoningTokens", () => {
     expect(modelUsesReasoningTokens("gpt-4o-mini")).toBe(false);
   });
 
+  describe("catalog supported_parameters signal (authoritative)", () => {
+    // These models do NOT carry a "think"/"reasoning" id, so name patterns miss
+    // them, but the catalog advertises a reasoning parameter. They were the
+    // exact models reported broken in production (kimi-k2.6, glm-5.1,
+    // deepseek-v4-pro): at low max_tokens they spent the whole budget on hidden
+    // reasoning and returned null content while billing the tokens.
+    test.each([
+      "moonshotai/kimi-k2.6",
+      "z-ai/glm-5.1",
+      "deepseek/deepseek-v4-pro",
+    ])("%s is NOT caught by name pattern alone", (model) => {
+      expect(modelUsesReasoningTokens(model)).toBe(false);
+    });
+
+    test.each([
+      "moonshotai/kimi-k2.6",
+      "z-ai/glm-5.1",
+      "deepseek/deepseek-v4-pro",
+    ])("%s IS caught when the catalog advertises reasoning", (model) => {
+      expect(
+        modelUsesReasoningTokens(model, [
+          "max_tokens",
+          "temperature",
+          "reasoning",
+          "include_reasoning",
+        ]),
+      ).toBe(true);
+    });
+
+    test("reasoning_effort alone is enough", () => {
+      expect(modelUsesReasoningTokens("some/model", ["max_tokens", "reasoning_effort"])).toBe(true);
+    });
+
+    test("a non-reasoning catalog model stays false", () => {
+      expect(
+        modelUsesReasoningTokens("openai/gpt-4o-mini", [
+          "max_tokens",
+          "temperature",
+          "tools",
+          "response_format",
+        ]),
+      ).toBe(false);
+    });
+
+    test("empty/undefined supported_parameters falls back to name pattern", () => {
+      expect(modelUsesReasoningTokens("minimax/minimax-m3", [])).toBe(true);
+      expect(modelUsesReasoningTokens("openai/gpt-4o-mini", undefined)).toBe(false);
+    });
+  });
+
   test("is case-insensitive", () => {
     expect(modelUsesReasoningTokens("DeepSeek/DeepSeek-R1")).toBe(true);
   });

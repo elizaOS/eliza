@@ -68,6 +68,7 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
+import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -138,6 +139,7 @@ function computeEffectiveMaxTokens(
   requestMaxTokens: number | undefined,
   cotBudget: number | null,
   model: string,
+  supportedParameters?: readonly string[],
 ): number | undefined {
   if (cotBudget !== null) {
     // When CoT is active, ensure max_tokens covers both thinking budget AND response capacity
@@ -147,7 +149,7 @@ function computeEffectiveMaxTokens(
       cotBudget + MIN_RESPONSE_TOKENS,
     );
   }
-  if (modelUsesReasoningTokens(model)) {
+  if (modelUsesReasoningTokens(model, supportedParameters)) {
     // Non-Anthropic reasoning model. Guarantee at least MIN_RESPONSE_TOKENS so the
     // model does not truncate mid-reasoning and return empty (but billed) output.
     // If the caller asked for more, honor it; if they asked for less (or nothing),
@@ -790,10 +792,28 @@ export async function handleChatCompletionsPOST(
       cotBudget != null
         ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
         : {};
+    // Authoritative reasoning detection: many reasoning models (kimi-k2.6,
+    // glm-5.1, deepseek-v4-pro, ...) do not carry a "think"/"reasoning" id but
+    // do advertise a reasoning parameter in the catalog. Best-effort lookup;
+    // on any failure we fall back to id name-pattern detection.
+    let modelSupportedParameters: string[] | undefined;
+    try {
+      const catalogModel = await getCachedGatewayModelById(model);
+      modelSupportedParameters = catalogModel?.supported_parameters;
+    } catch (error) {
+      logger.warn(
+        "[Chat Completions] reasoning-detection catalog lookup failed; using name patterns",
+        {
+          model,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
     const effectiveMaxTokens = computeEffectiveMaxTokens(
       request.max_tokens,
       cotBudget,
       model,
+      modelSupportedParameters,
     );
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
@@ -1549,6 +1569,8 @@ async function handleNonStreamingRequest(
         model,
         outputTokens: result.usage?.outputTokens,
         sdkFinishReason: result.finishReason,
+        // Name-pattern only here (logging metadata); the budget decision upstream
+        // uses the authoritative catalog supported_parameters signal.
         isReasoningModel: modelUsesReasoningTokens(model),
       });
     }

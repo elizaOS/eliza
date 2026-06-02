@@ -145,11 +145,41 @@ const REASONING_MODEL_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * Authoritative signal: a model is a reasoning model if the upstream catalog
+ * advertises a reasoning parameter for it. Many reasoning models (kimi-k2.6,
+ * glm-5.1, deepseek-v4-pro, minimax-m3, ...) do NOT carry "think"/"reasoning"
+ * in their id, so name patterns alone miss them — but they all list
+ * "reasoning" / "include_reasoning" in supported_parameters.
+ */
+function supportedParametersIndicateReasoning(
+  supportedParameters: readonly string[] | undefined,
+): boolean {
+  if (!supportedParameters || supportedParameters.length === 0) return false;
+  return supportedParameters.some((p) => {
+    const k = p.toLowerCase();
+    return k === "reasoning" || k === "include_reasoning" || k === "reasoning_effort";
+  });
+}
+
+/**
  * Whether a model spends output tokens on hidden reasoning before answering.
  * Used to guarantee a minimum response-token budget so reasoning models do not
  * truncate mid-thought and return empty (but billed) completions.
+ *
+ * Prefers the authoritative catalog signal (supported_parameters); falls back to
+ * id name patterns when catalog metadata is unavailable (e.g. the catalog fetch
+ * failed or the model is not listed). Either signal being positive is enough —
+ * a false positive only nudges the token floor up; a false negative silently
+ * bills the caller for empty output.
+ *
+ * @param model The model id (provider-prefixed is fine).
+ * @param supportedParameters Optional catalog-advertised parameters for the model.
  */
-export function modelUsesReasoningTokens(model: string): boolean {
+export function modelUsesReasoningTokens(
+  model: string,
+  supportedParameters?: readonly string[],
+): boolean {
+  if (supportedParametersIndicateReasoning(supportedParameters)) return true;
   const name = normalizeModelName(model).toLowerCase();
   return REASONING_MODEL_PATTERNS.some((re) => re.test(name));
 }
