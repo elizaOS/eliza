@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./MessagesAppView-CIzUMsQy.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./index-B9cNINFW.js","./index-DxJKmpt-.js"])))=>i.map(i=>d[i]);
+import{b as s,_ as a,g5 as i}from"./index-Bfd-e4HW.js";const o="@elizaos/plugin-messages",r={name:o,displayName:"Messages",description:"SMS inbox, threads, and compose for Android",category:"system",icon:null,androidOnly:!0,loader:()=>a(()=>import("./MessagesAppView-CIzUMsQy.js"),__vite__mapDeps([0,1,2,3,4]),import.meta.url).then(e=>({default:e.MessagesAppView}))};function t(){s(r)}i()&&t();
+//# sourceMappingURL=register-Dixldadd.js.map

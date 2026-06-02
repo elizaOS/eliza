@@ -377,6 +377,8 @@ def runner_enforces_release_boundaries(text: str) -> bool:
             "geekbench_score",
             "not calibrated benchmark evidence",
             "calibration.last_calibrated_utc",
+            "TARGET_METADATA_CONTRACT_PATH",
+            "target_metadata_contract_sha256",
             "energy_joules_per_inference",
             "copy.deepcopy(energy_metadata)",
         ),

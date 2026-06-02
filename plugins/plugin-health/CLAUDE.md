@@ -79,6 +79,7 @@ src/
   screen-time/
     index.ts                    Screen-time exports and LifeOpsScreenTimeSummaryPayload contract
     social-taxonomy.ts          Screen-time target classification by category / device / service / browser
+    system-inactivity-apps.ts   OS lock / screen-saver app classification for screen-time filtering
   sleep/
     index.ts                    Barrel: all sleep/circadian domain helpers
     awake-probability.ts        computeAwakeProbability — logistic awake-probability model
@@ -149,6 +150,6 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `plugin-lifeops` may register host-adapted health actions only by calling plugin-health factories.
 - **No `app-lifeops` build-time dep.** `src/util/time.ts` and `src/util/time-util.ts` are local copies of same-named helpers to avoid a circular dependency. Do not replace them with imports from `app-lifeops`.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
-- **screen-time aggregation is still being decoupled.** `src/screen-time/` owns taxonomy/classification and shared payload contracts. The remaining repository-backed aggregator still lives in `plugin-lifeops` pending Wave-2 (W2-D) signal-bus decoupling.
+- **screen-time aggregation is still being decoupled.** `src/screen-time/` owns taxonomy/classification, system-inactivity filtering, and shared payload contracts. The remaining repository-backed aggregator still lives in `plugin-lifeops` pending Wave-2 (W2-D) signal-bus decoupling.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
 - See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.

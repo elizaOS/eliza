@@ -1692,7 +1692,7 @@ class TextConditionedProfileEnv(gym.Env):
         )
         slip = slip * contacts
         self._prev_foot_xy = foot_xy.copy()
-        foot_z = self._current_foot_z()
+        foot_z = self._current_foot_clearance_z()
         return np.array(
             [
                 contacts[0],
@@ -1743,6 +1743,15 @@ class TextConditionedProfileEnv(gym.Env):
             if geom_ids.size:
                 z[side_idx] = float(np.min(self._data.geom_xpos[geom_ids, 2]))
         return z
+
+    def _current_foot_clearance_z(self) -> np.ndarray:
+        """Bottom clearance of each foot above the floor, not geom center z."""
+        floor_z = self._floor_height_m()
+        min_z = self._current_foot_aabb_min_z()
+        out = np.zeros(2, dtype=np.float32)
+        finite = np.isfinite(min_z)
+        out[finite] = np.maximum(0.0, min_z[finite] - floor_z)
+        return out
 
     def _current_foot_aabb_min_z(self) -> np.ndarray:
         z = np.full(2, np.nan, dtype=np.float32)
@@ -2894,7 +2903,7 @@ class TextConditionedProfileEnv(gym.Env):
         swing_mask = self._last_foot_telemetry[:2] <= 0.5
         if not bool(np.any(swing_mask)):
             return 0.0
-        return float(np.max(self._last_foot_telemetry[2:4][swing_mask]))
+        return float(np.max(self._current_foot_clearance_z()[swing_mask]))
 
     def _foot_spacing_penalty(self) -> float:
         foot_xy = self._current_foot_xy()

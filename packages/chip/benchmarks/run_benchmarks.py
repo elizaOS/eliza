@@ -606,7 +606,11 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
             errors.append(f"target metadata contract required_fields.{section} must be an object")
             continue
         for field, expected_type in fields.items():
-            expected_name = contract_type_name(expected_type)
+            expected_name = (
+                "utc_timestamp"
+                if section == "calibration" and field == "last_calibrated_utc"
+                else contract_type_name(expected_type)
+            )
             if section_contract.get(field) != expected_name:
                 errors.append(
                     f"target metadata contract required_fields.{section}.{field} must be {expected_name}"

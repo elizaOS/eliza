@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./TrajectoryLoggerView-COePHB1A.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./TerminalPluginView-bNWVsfye.js","./history-Domz5P6D.js","./inbox-C2irFVBA.js"])))=>i.map(i=>d[i]);
+import{b as t,_ as o}from"./index-Bfd-e4HW.js";const a="@elizaos/plugin-trajectory-logger",i={name:a,displayName:"Trajectory Logger",description:"Realtime view of the agent's last and pending turns — HANDLE / PLAN / ACTION / EVALUATE.",category:"developer",icon:null,loader:()=>o(()=>import("./TrajectoryLoggerView-COePHB1A.js"),__vite__mapDeps([0,1,2,3,4,5]),import.meta.url).then(r=>({default:r.TrajectoryLoggerView}))};let e=!1;function g(){e||(t(i),e=!0)}g();
+//# sourceMappingURL=register-CoNO_vZt.js.map

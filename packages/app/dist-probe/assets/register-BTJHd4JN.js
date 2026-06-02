@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./ContactsAppView-F2boYwWl.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./index-CjAJBntu.js","./upload-DwusXGqM.js"])))=>i.map(i=>d[i]);
+import{b as e,_ as a,g5 as o}from"./index-Bfd-e4HW.js";const i="@elizaos/plugin-contacts",n={name:i,displayName:"Contacts",description:"Read and create entries in the Android address book",category:"system",icon:null,androidOnly:!0,loader:()=>a(()=>import("./ContactsAppView-F2boYwWl.js"),__vite__mapDeps([0,1,2,3,4]),import.meta.url).then(t=>({default:t.ContactsAppView}))};function r(){e(n)}o()&&r();
+//# sourceMappingURL=register-BTJHd4JN.js.map

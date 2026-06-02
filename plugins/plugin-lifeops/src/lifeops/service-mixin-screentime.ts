@@ -5,6 +5,7 @@ import type {
 } from "@elizaos/plugin-browser";
 import {
   classifyScreenTimeTarget,
+  isSystemInactivityApp,
   isSocialCategory,
 } from "@elizaos/plugin-health";
 import type {
@@ -24,7 +25,6 @@ import type {
   LifeOpsSocialHabitSummary as SocialHabitSummary,
 } from "@elizaos/shared";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
-import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import {
   browserBridgeCompanionIsRecent,
   browserBridgePermissionsReady,
