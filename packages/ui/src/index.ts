@@ -226,6 +226,7 @@ export {
   ChatSurface,
   type ChatSurfaceProps,
 } from "./components/shell/ChatSurface";
+export { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 export { HomePill, type HomePillProps } from "./components/shell/HomePill";
 export {
   initialShellState,
