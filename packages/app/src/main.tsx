@@ -98,6 +98,7 @@ import { isElizaOS } from "@elizaos/ui/platform/init";
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
+  isOnboardingOverlayWindowShell,
   isStandaloneWindowShell,
   resolveWindowShellRoute,
   shouldInstallMainWindowFirstRunPatches,
@@ -1577,6 +1578,30 @@ function setupPlatformStyles(): void {
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);
   root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
   document.body.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
+
+  // First-run onboarding overlay: same transparent-surface treatment as the
+  // chat overlay so the native transparent/passthrough window shows the desktop
+  // through everything except the floating onboarding card.
+  const onboardingOverlayShell =
+    isOnboardingOverlayWindowShell(windowShellRoute);
+  root.classList.toggle(
+    "eliza-onboarding-overlay-shell",
+    onboardingOverlayShell,
+  );
+  document.body.classList.toggle(
+    "eliza-onboarding-overlay-shell",
+    onboardingOverlayShell,
+  );
+
+  // Record the resolved window shell mode once at boot. Detached/overlay
+  // windows route on `?shellMode=`; logging it makes a mis-routed surface
+  // (e.g. an overlay window that fell back to the full dashboard) obvious in
+  // the desktop dev console instead of only visible as a wrong-looking window.
+  console.info(
+    `[shell] window shell mode: ${windowShellRoute.mode} (search="${
+      typeof window !== "undefined" ? window.location.search : ""
+    }")`,
+  );
 
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
   root.style.setProperty(

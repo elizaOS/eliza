@@ -1710,6 +1710,13 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/mammoth.ts"),
       },
       {
+        // Node-only eSpeak-NG build; crashes at module-eval in WKWebView. The
+        // Kokoro TTS adapter falls back to its bundled G2P phonemizer in the
+        // browser. See src/shims/phonemizer.ts.
+        find: /^phonemizer$/,
+        replacement: path.resolve(here, "src/shims/phonemizer.ts"),
+      },
+      {
         find: /^unpdf$/,
         replacement: path.resolve(here, "src/shims/unpdf.ts"),
       },

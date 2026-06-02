@@ -62,11 +62,15 @@ body {
 
 html.eliza-chat-overlay-shell,
 html.eliza-chat-overlay-shell body,
-html.eliza-chat-overlay-shell #root {
+html.eliza-chat-overlay-shell #root,
+html.eliza-onboarding-overlay-shell,
+html.eliza-onboarding-overlay-shell body,
+html.eliza-onboarding-overlay-shell #root {
   background: transparent;
 }
 
-html.eliza-chat-overlay-shell #root {
+html.eliza-chat-overlay-shell #root,
+html.eliza-onboarding-overlay-shell #root {
   pointer-events: none;
 }
 
