@@ -154,7 +154,7 @@ function stableCoreActions(): string[] {
  * This baseline may only shrink: cover one and delete it here; add a new
  * stable-core action and either cover it or add it here.
  */
-const KNOWN_UNCOVERED: readonly string[] = ["HOMESCREEN"];
+const KNOWN_UNCOVERED: readonly string[] = [];
 
 /**
  * Actions with deterministic keyless scenario coverage today. This is the
@@ -309,10 +309,8 @@ const BOOTED_PLUGIN_ACTION_SURFACE: Record<
       "OWNER_DOCUMENTS",
       "OWNER_FINANCES",
       "OWNER_GOALS",
-      "OWNER_HEALTH",
       "OWNER_REMINDERS",
       "OWNER_ROUTINES",
-      "OWNER_SCREENTIME",
       "OWNER_TODOS",
       "PERSONAL_ASSISTANT",
       "PRIORITIZE",
