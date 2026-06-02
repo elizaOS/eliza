@@ -834,7 +834,7 @@ function isPortListening(port) {
 
 async function waitForAgentReady(
   port,
-  { timeout = 300_000, interval = 1000 } = {},
+  { timeout = 300_000, interval = 400 } = {},
 ) {
   const deadline = Date.now() + timeout;
   const url = `http://127.0.0.1:${port}/api/health`;

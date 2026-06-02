@@ -395,29 +395,45 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
 }
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  for (const { id, load } of getAppRoutePluginLoaders()) {
-    try {
-      const plugin = await load();
-      // Push rawPath routes directly onto runtime.routes to avoid the core's
-      // registerPlugin() path mangling (which prepends /<pluginName>/ to every
-      // route path). The rawPath flag means these routes already have their
-      // final absolute paths (e.g. /api/lifeops/app-state).
-      if (plugin.routes?.length) {
-        for (const route of plugin.routes) {
-          const routePath = route.path.startsWith("/")
-            ? route.path
-            : `/${route.path}`;
-          runtime.routes.push({ ...route, path: routePath });
-        }
+  // Load all app-route plugin modules concurrently. This runs on the gated
+  // ready-path (repairRuntimeAfterBoot is awaited before the runtime is handed
+  // back and /api/health flips ready), so the previous sequential await-loop
+  // serialized ~11 independent dynamic imports (lifeops alone registers 188
+  // routes) and dominated time-to-ready. Imports are independent; loading them
+  // together overlaps their I/O and module resolution. Route registration is
+  // still applied in loader order after all settle, so dispatch order is
+  // unchanged, and per-plugin failures stay isolated (a rejected load logs and
+  // contributes no routes rather than aborting the rest).
+  const loaded = await Promise.all(
+    getAppRoutePluginLoaders().map(async ({ id, load }) => {
+      try {
+        return await load();
+      } catch (err) {
+        logger.warn(
+          `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
+        );
+        return null;
       }
-      logger.info(
-        `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
-      );
-    } catch (err) {
-      logger.warn(
-        `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
-      );
+    }),
+  );
+
+  for (const plugin of loaded) {
+    if (!plugin) continue;
+    // Push rawPath routes directly onto runtime.routes to avoid the core's
+    // registerPlugin() path mangling (which prepends /<pluginName>/ to every
+    // route path). The rawPath flag means these routes already have their
+    // final absolute paths (e.g. /api/lifeops/app-state).
+    if (plugin.routes?.length) {
+      for (const route of plugin.routes) {
+        const routePath = route.path.startsWith("/")
+          ? route.path
+          : `/${route.path}`;
+        runtime.routes.push({ ...route, path: routePath });
+      }
     }
+    logger.info(
+      `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
+    );
   }
 }
 
