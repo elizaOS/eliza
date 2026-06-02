@@ -148,4 +148,21 @@ describe("LifeOpsAssistantSection", () => {
       );
     }
   });
+
+  it("launches every full-grid assistant intent from the actual assistant surface", () => {
+    render(<LifeOpsAssistantSection />);
+
+    for (const intent of LIFEOPS_ASSISTANT_INTENTS) {
+      fireEvent.click(screen.getByRole("button", { name: intent.label }));
+      expect(openLifeOpsChat).toHaveBeenLastCalledWith(
+        intent.prompt,
+        {},
+        { select: true },
+      );
+    }
+
+    expect(openLifeOpsChat).toHaveBeenCalledTimes(
+      LIFEOPS_ASSISTANT_INTENTS.length,
+    );
+  });
 });
