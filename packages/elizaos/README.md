@@ -50,11 +50,11 @@ elizaos info --language typescript
 
 ### `elizaos plugins submit`
 
-Open a pull request that registers the current plugin package in the elizaOS plugin registry. Requires `git` and an authenticated `gh` CLI.
+Generate third-party plugin metadata and, when maintainers provide a writable registry repository, open a pull request for that registry. The public discovery path is npm publication with the `elizaos` keyword.
 
 ```bash
-elizaos plugins submit
 elizaos plugins submit --dry-run
+elizaos plugins submit --registry owner/repo
 ```
 
 ### `elizaos deploy`

@@ -3668,6 +3668,31 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  async getMemoriesByServerId(params: {
+    serverId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
+    return this.withDatabase(async () => {
+      const rooms = await this.db
+        .select({ id: roomTable.id })
+        .from(roomTable)
+        .where(
+          and(eq(roomTable.messageServerId, params.serverId), eq(roomTable.agentId, this.agentId))
+        );
+
+      if (rooms.length === 0) {
+        return [];
+      }
+
+      return this.getMemoriesByRoomIds({
+        roomIds: rooms.map((room) => room.id as UUID),
+        tableName: params.tableName || "messages",
+        limit: params.count,
+      });
+    });
+  }
+
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       const rooms = await this.db

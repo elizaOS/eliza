@@ -4,8 +4,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
 const sharedSrc = path.resolve(here, "../../shared/src");
+const coreSrc = path.resolve(repoRoot, "packages/core/src");
+const coreBrowserEntry = path.join(coreSrc, "index.browser.ts");
+const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
 
 export default defineConfig({
   root: here,
@@ -37,7 +41,29 @@ export default defineConfig({
   resolve: {
     alias: {
       "@ui-src": uiSrc,
+      "@elizaos/core": coreBrowserEntry,
+      "@elizaos/logger": loggerSrc,
       "@elizaos/shared": sharedSrc,
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      plugins: [
+        {
+          name: "elizaos-core-browser-entry",
+          setup(build) {
+            build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+              path: coreBrowserEntry,
+            }));
+            build.onResolve({ filter: /^@elizaos\/core\/browser$/ }, () => ({
+              path: coreBrowserEntry,
+            }));
+            build.onResolve({ filter: /^@elizaos\/logger$/ }, () => ({
+              path: loggerSrc,
+            }));
+          },
+        },
+      ],
     },
   },
   server: {

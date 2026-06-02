@@ -216,13 +216,19 @@ The TypeScript implementation is always required. Python and Rust implementation
 
 The public plugin registry is served at [`plugins.elizacloud.ai`](https://plugins.elizacloud.ai). The runtime discovers community plugins by fetching `https://plugins.elizacloud.ai/generated-registry.json` (falling back to `index.json`), and recognizes any npm package whose `keywords` include `elizaos` as a plugin.
 
-After publishing to npm and making your GitHub repository public, submit your plugin from the plugin project directory:
+After publishing to npm and making your GitHub repository public, verify the registry metadata the CLI would generate:
 
 ```bash
-elizaos plugins submit .
+elizaos plugins submit . --dry-run
 ```
 
-This opens a pull request that adds a single schema-valid metadata file under `entries/third-party/`. Before submitting, make sure your package:
+There is no public GitHub repository accepting community registry pull requests at the moment. If maintainers give you a writable registry repository for a specific listing flow, pass it explicitly:
+
+```bash
+elizaos plugins submit . --registry owner/repo
+```
+
+Before requesting a listing, make sure your package:
 
 1. Is published to npm (the `@elizaos/*` scope is reserved — use your own scope)
 2. Includes the `elizaos` keyword in `package.json` (this is what the runtime uses to auto-recognize it as a plugin)
@@ -230,7 +236,7 @@ This opens a pull request that adds a single schema-valid metadata file under `e
 4. Has a public GitHub repository
 5. Includes a README with setup instructions and required environment variables
 
-Community plugins are reviewed for security, functionality, and documentation quality before listing. See [Registry Documentation](/tracks/plugin/publish) for details.
+Community plugins are reviewed for security, functionality, and documentation quality before listing. npm keyword discovery remains the default path until a public submission repository is announced. See [Registry Documentation](/tracks/plugin/publish) for details.
 
 ## Related
 

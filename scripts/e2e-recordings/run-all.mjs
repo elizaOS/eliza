@@ -19,27 +19,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { RECORDINGS_DIR, REPO_ROOT, UI_E2E_SUITES } from './suites.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const RECORDINGS_DIR = path.join(REPO_ROOT, 'e2e-recordings');
 const SCRIPTS_DIR = __dirname;
-
-// ─── Package registry ───────────────────────────────────────────────────────
-// name         : display name and recording subdirectory
-// configDir    : path relative to repo root where `bun run <script>` is invoked
-// script       : bun script name
-const PACKAGES = [
-  { name: 'homepage',       configDir: 'packages/homepage',       script: 'test:e2e' },
-  { name: 'os-homepage',    configDir: 'packages/os-homepage',    script: 'test:e2e' },
-  { name: 'cloud-frontend', configDir: 'packages/cloud-frontend', script: 'test:e2e' },
-  // Use stub stack so recordings work without real API keys
-  { name: 'app',            configDir: 'packages/app',            script: 'test:e2e',
-    recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: '1' } },
-  { name: 'app-xr',         configDir: 'plugins/plugin-facewear/app-xr', script: 'test:e2e' },
-];
+const PACKAGES = UI_E2E_SUITES;
 
 // ─── CLI argument parsing ────────────────────────────────────────────────────
 const args = process.argv.slice(2);
