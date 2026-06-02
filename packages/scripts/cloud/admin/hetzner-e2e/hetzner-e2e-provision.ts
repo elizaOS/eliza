@@ -63,8 +63,17 @@ function isRetryableCombo(err: unknown): boolean {
   if (err instanceof HetznerCloudError && err.code === "quota_exceeded") {
     return true;
   }
+  // "error during placement" (HTTP 412) is Hetzner's transient signal that the
+  // requested type can't be placed in that location right now — a different
+  // location usually succeeds, so keep walking the fallback ladder instead of
+  // aborting the whole provision on the first capacity hiccup.
+  if (err instanceof HetznerCloudError && err.status === 412) {
+    return true;
+  }
   const message = err instanceof Error ? err.message.toLowerCase() : "";
   return (
+    message.includes("error during placement") ||
+    message.includes("placement") ||
     message.includes("unsupported_server_type_for_location") ||
     message.includes("unsupported location for server type") ||
     message.includes("unsupported_location_for_server_type") ||

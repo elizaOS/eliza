@@ -34,6 +34,11 @@ jobs:
       CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
       CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
       HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+      # cx22 is now deprecated on Hetzner; start at a current ARM shared type.
+      # The provision script's fallback ladder + placement-412 retry will walk
+      # cax11 across nbg1/hel1/fsn1 if the first location lacks capacity.
+      HETZNER_E2E_SERVER_TYPE: cax11
+      HETZNER_E2E_LOCATION: nbg1
     steps:
       - name: Check secret configuration
         run: |
