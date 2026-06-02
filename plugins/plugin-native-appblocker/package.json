@@ -31,10 +31,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-appblocker -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "author": "elizaOS",
   "license": "MIT",
