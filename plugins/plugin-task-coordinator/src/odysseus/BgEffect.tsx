@@ -6,13 +6,14 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
-type CanvasPattern = "sparkles" | "petals";
+type CanvasPattern = "sparkles" | "petals" | "rain";
 const ANIMATIONS: Record<
   CanvasPattern,
   (canvas: HTMLCanvasElement) => () => void
 > = {
   sparkles: runSparkles,
   petals: runPetals,
+  rain: runRain,
 };
 
 function effectColor(canvas: HTMLCanvasElement): string {
@@ -193,7 +194,78 @@ function runPetals(canvas: HTMLCanvasElement): () => void {
   };
 }
 
-export const CANVAS_BG_PATTERNS: CanvasPattern[] = ["sparkles", "petals"];
+// Verbatim port of odysseus theme.js _initRain — falling gradient streaks.
+function runRain(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0;
+  let h = 0;
+  const drops: {
+    x: number;
+    y: number;
+    len: number;
+    speed: number;
+    alpha: number;
+  }[] = [];
+  const MAX_DROPS = 130;
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  resize();
+  window.addEventListener("resize", resize);
+  const spawn = () => {
+    const len = 20 + Math.random() * 40;
+    drops.push({
+      x: Math.random() * w,
+      y: -len,
+      len,
+      speed: 4 + Math.random() * 8,
+      alpha: 0.32 + Math.random() * 0.28,
+    });
+  };
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, w, h);
+    const c = effectColor(canvas);
+    if (drops.length < MAX_DROPS && Math.random() < 0.6) spawn();
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i];
+      d.y += d.speed;
+      if (d.y > h + d.len) {
+        drops.splice(i, 1);
+        continue;
+      }
+      const grad = ctx.createLinearGradient(d.x, d.y - d.len, d.x, d.y);
+      grad.addColorStop(0, "transparent");
+      grad.addColorStop(1, c);
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = d.alpha;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y - d.len);
+      ctx.lineTo(d.x, d.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+  };
+}
+
+export const CANVAS_BG_PATTERNS: CanvasPattern[] = [
+  "sparkles",
+  "petals",
+  "rain",
+];
 
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {
   const ref = useRef<HTMLCanvasElement>(null);
