@@ -97,12 +97,14 @@ def validate_target(name: str, entry: dict, expected: dict) -> list[str]:
     if entry.get("evidence_class") != expected["evidence_class"]:
         errors.append(f"{name} evidence_class must be {expected['evidence_class']}")
 
-    paths = entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+    _paths_raw = entry.get("paths")
+    paths: dict = _paths_raw if isinstance(_paths_raw, dict) else {}
     for key in ("status", "status_sha256", "log", "log_sha256"):
         if key not in paths:
             errors.append(f"{name} paths missing {key}")
 
-    sby = entry.get("sby") if isinstance(entry.get("sby"), dict) else {}
+    _sby_raw = entry.get("sby")
+    sby: dict = _sby_raw if isinstance(_sby_raw, dict) else {}
     if sby.get("spec") != expected["spec"]:
         errors.append(f"{name} spec must be {expected['spec']}")
     covered = set(sby.get("covered_files") or [])

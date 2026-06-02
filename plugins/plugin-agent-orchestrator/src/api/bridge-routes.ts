@@ -217,6 +217,23 @@ async function handleGet(
     );
     return;
   }
+  // Defense-in-depth ownership gate, mirroring handlePost: only redeem a
+  // credential for a session that is real and still active in this parent
+  // runtime. A scopedToken can only exist if a POST already passed this gate,
+  // but re-checking here keeps both halves of the bridge consistent and closes
+  // the window where a session goes terminal mid-redemption.
+  const session = await resolveActiveSession(ctx, sessionId);
+  if (!session) {
+    sendJson(
+      res,
+      {
+        error: "no active sub-agent session for this id in this parent runtime",
+        code: "session_not_active",
+      },
+      410,
+    );
+    return;
+  }
   const url = new URL(req.url ?? "", "http://localhost");
   const scopedToken = (url.searchParams.get("token") ?? "").trim();
   if (!scopedToken) {

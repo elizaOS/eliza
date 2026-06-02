@@ -482,7 +482,7 @@ export const useSkillAction: Action = {
 					? unwrapSkillStdoutEnvelope(result.stdout)
 					: undefined;
 
-			if (callback) await callback({ text });
+			if (callback) await callback({ text: userFacingText ?? text });
 
 			await recordSkillInvocation(runtime, hasActiveStep ? activeStepId : null, {
 				skillSlug: skill.slug,

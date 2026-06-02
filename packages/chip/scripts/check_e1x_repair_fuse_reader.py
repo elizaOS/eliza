@@ -132,7 +132,7 @@ def marker_check(
 
 def simulate_fuse_stream(
     words: list[str], max_words: int, timeout_cycles: int
-) -> dict[str, object]:
+) -> dict[str, bool | str | int]:
     if not words or len(words) > max_words:
         return {"ok": False, "reason": "word count outside fuse-reader bounds"}
     emitted: list[str] = []
@@ -202,7 +202,7 @@ def main() -> int:
         {"id": "e1x_repair_fuse_reader_capacity_report_pass", "status": status, "detail": detail}
     )
 
-    case_summaries: list[dict[str, object]] = []
+    case_summaries: list[dict[str, str | int]] = []
     for case_id, paths in ROM_CASES.items():
         rom = load_json(paths["json"]) if paths["json"].is_file() else {}
         hex_words = (

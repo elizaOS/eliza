@@ -221,6 +221,8 @@ interface ShimSymbols {
 	 * `llama_get_embeddings_seq` to return a pooled vector.
 	 */
 	eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
 	eliza_llama_context_params_set_offload_kqv: (p: Pointer, v: boolean) => void;
 	eliza_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
@@ -547,6 +549,14 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 			args: [T.ptr, T.i32],
 			returns: T.void,
 		},
+		eliza_llama_context_params_set_type_k: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
+		eliza_llama_context_params_set_type_v: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
 		eliza_llama_context_params_set_offload_kqv: {
 			args: [T.ptr, T.bool],
 			returns: T.void,
@@ -708,12 +718,45 @@ function normalizeEmbedding(vec: Float32Array, embdNormalize: number): void {
  */
 const LLAMA_POOLING_TYPE_MEAN = 1;
 
+const GGML_KV_CACHE_TYPES = new Map<string, number>([
+	["f32", 0],
+	["f16", 1],
+	["q4_0", 2],
+	["q4_1", 3],
+	["q5_0", 6],
+	["q5_1", 7],
+	["q8_0", 8],
+	["q4_k", 12],
+	["q5_k", 13],
+	["q6_k", 14],
+	["q8_k", 15],
+	["iq4_nl", 20],
+	["bf16", 30],
+	["tbq3_0", 44],
+	["tbq4_0", 45],
+	["qjl1_256", 46],
+	["q4_polar", 47],
+	["tbq3_tcq", 48],
+]);
+
+function ggmlKvCacheType(name: string | undefined): number | undefined {
+	if (!name) return undefined;
+	const normalized = name.trim().toLowerCase();
+	const value = GGML_KV_CACHE_TYPES.get(normalized);
+	if (value === undefined) {
+		throw new Error(`[desktop-llama] unsupported KV cache type: ${name}`);
+	}
+	return value;
+}
+
 export interface DesktopLlamaLoadOptions {
 	modelPath: string;
 	contextSize?: number;
 	nBatch?: number;
 	nUBatch?: number;
 	gpuLayers?: number;
+	cacheTypeK?: string;
+	cacheTypeV?: string;
 	threads?: number;
 	useMmap?: boolean;
 	useMlock?: boolean;
@@ -1061,6 +1104,14 @@ export class DesktopLlamaAdapter {
 					this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 					this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 					this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+					const cacheTypeK = ggmlKvCacheType(this.loadOpts.cacheTypeK);
+					const cacheTypeV = ggmlKvCacheType(this.loadOpts.cacheTypeV);
+					if (cacheTypeK !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+					}
+					if (cacheTypeV !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+					}
 					this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
 					nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
 				} finally {
@@ -1200,6 +1251,14 @@ export class DesktopLlamaAdapter {
 			this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 			this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 			this.shim.eliza_llama_context_params_set_embeddings(cp, embedding);
+			const cacheTypeK = ggmlKvCacheType(opts.cacheTypeK);
+			const cacheTypeV = ggmlKvCacheType(opts.cacheTypeV);
+			if (cacheTypeK !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+			}
+			if (cacheTypeV !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+			}
 			if (embedding) {
 				this.shim.eliza_llama_context_params_set_pooling_type(
 					cp,

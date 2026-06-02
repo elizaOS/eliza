@@ -79,6 +79,8 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 				typeof plan.overrides?.gpuLayers === "number"
 					? plan.overrides.gpuLayers
 					: undefined,
+			cacheTypeK: plan.overrides?.cacheTypeK,
+			cacheTypeV: plan.overrides?.cacheTypeV,
 			useMmap: plan.overrides?.mmap,
 			useMlock: plan.overrides?.mlock,
 		});
@@ -158,8 +160,7 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 		try {
 			this.active.adapter.close();
 		} catch (err) {
-			this.poisonedError =
-				err instanceof Error ? err : new Error(String(err));
+			this.poisonedError = err instanceof Error ? err : new Error(String(err));
 			throw err;
 		} finally {
 			this.active = null;

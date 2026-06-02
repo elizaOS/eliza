@@ -6,7 +6,7 @@
     "dev": "next dev --port 3012",
     "typecheck": "tsgo --noEmit",
     "test": "bun run typecheck",
-    "build": "node scripts/build.mjs",
+    "build": "node ../../../scripts/with-package-build-lock.mjs packages/examples/cloud/clone-ur-crush -- node scripts/build.mjs",
     "start": "next start --port 3012",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

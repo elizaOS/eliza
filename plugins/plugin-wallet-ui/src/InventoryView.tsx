@@ -185,6 +185,7 @@ function summarizeWalletBalances(
     chain: string;
     symbol: string;
     name: string;
+    contractAddress: string | null;
     balance: string;
     valueUsd: number;
     isNative: boolean;
@@ -195,6 +196,7 @@ function summarizeWalletBalances(
     chain: string;
     symbol: string;
     name: string;
+    contractAddress: string | null;
     balance: string;
     valueUsd: number;
     isNative: boolean;
@@ -207,6 +209,7 @@ function summarizeWalletBalances(
       chain: chain.chain,
       symbol: chain.nativeSymbol,
       name: `${chain.chain} native`,
+      contractAddress: null,
       balance: chain.nativeBalance,
       valueUsd: nativeValueUsd,
       isNative: true,
@@ -220,6 +223,7 @@ function summarizeWalletBalances(
         chain: chain.chain,
         symbol: token.symbol,
         name: token.name,
+        contractAddress: token.contractAddress,
         balance: token.balance,
         valueUsd: parseUsd(token.valueUsd),
         isNative: false,
@@ -232,6 +236,7 @@ function summarizeWalletBalances(
       chain: "Solana",
       symbol: "SOL",
       name: "Solana native",
+      contractAddress: null,
       balance: walletBalances.solana.solBalance,
       valueUsd: parseUsd(walletBalances.solana.solValueUsd),
       isNative: true,
@@ -241,6 +246,7 @@ function summarizeWalletBalances(
         chain: "Solana",
         symbol: token.symbol,
         name: token.name,
+        contractAddress: token.mint,
         balance: token.balance,
         valueUsd: parseUsd(token.valueUsd),
         isNative: false,

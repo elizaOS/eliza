@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMAL_MANIFEST = ROOT / "build/reports/formal_manifest.json"
@@ -14,7 +15,7 @@ RTL = ROOT / "rtl/display/e1_display_scanout.sv"
 REPORT = ROOT / "build/reports/display_formal_coverage.json"
 
 TARGET = "e1_display_scanout"
-EXPECTED = {
+EXPECTED: dict[str, Any] = {
     "status": "pass",
     "evidence_class": "sby_bmc",
     "spec": "verify/formal/e1_display_scanout.sby",
@@ -144,7 +145,8 @@ def validate_manifest(manifest: dict) -> list[str]:
     if manifest.get("strict_release_claim_allowed") is not False:
         errors.append("display formal coverage check requires non-release routine formal manifest")
 
-    entries = manifest.get("entries") if isinstance(manifest.get("entries"), dict) else {}
+    _entries_raw = manifest.get("entries")
+    entries: dict[str, Any] = _entries_raw if isinstance(_entries_raw, dict) else {}
     entry = entries.get(TARGET)
     if not isinstance(entry, dict):
         return errors + [f"formal manifest missing {TARGET}"]
@@ -154,26 +156,32 @@ def validate_manifest(manifest: dict) -> list[str]:
     if entry.get("evidence_class") != EXPECTED["evidence_class"]:
         errors.append(f"{TARGET} evidence_class must be {EXPECTED['evidence_class']}")
 
-    paths = entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+    _paths_raw = entry.get("paths")
+    paths: dict[str, Any] = _paths_raw if isinstance(_paths_raw, dict) else {}
     for key in ("status", "status_sha256", "log", "log_sha256"):
         if key not in paths:
             errors.append(f"{TARGET} paths missing {key}")
 
-    sby = entry.get("sby") if isinstance(entry.get("sby"), dict) else {}
+    _sby_raw = entry.get("sby")
+    sby: dict[str, Any] = _sby_raw if isinstance(_sby_raw, dict) else {}
     if sby.get("spec") != EXPECTED["spec"]:
         errors.append(f"{TARGET} spec must be {EXPECTED['spec']}")
     if EXPECTED["engine"] not in set(sby.get("engines") or []):
         errors.append(f"{TARGET} must record {EXPECTED['engine']} engine")
-    covered = set(sby.get("covered_files") or [])
-    missing_files = sorted(EXPECTED["covered_files"] - covered)
+    covered: set[str] = set(sby.get("covered_files") or [])
+    expected_covered: set[str] = set(EXPECTED["covered_files"])
+    missing_files = sorted(expected_covered - covered)
     if missing_files:
         errors.append(f"{TARGET} missing covered_files: {', '.join(missing_files)}")
 
-    task_meta = (sby.get("tasks") or {}).get("bmc")
+    _tasks_raw = sby.get("tasks")
+    tasks: dict[str, Any] = _tasks_raw if isinstance(_tasks_raw, dict) else {}
+    task_meta = tasks.get("bmc")
     if not isinstance(task_meta, dict):
         errors.append(f"{TARGET} missing bmc task")
     else:
-        for key, value in EXPECTED["task"].items():
+        expected_task: dict[str, str] = EXPECTED["task"]
+        for key, value in expected_task.items():
             if str(task_meta.get(key)) != value:
                 errors.append(f"{TARGET} bmc task {key} must be {value}")
     return errors

@@ -110,6 +110,13 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/shared/src/types/index.ts"),
       },
       {
+        find: /^@elizaos\/ui\/agent-surface$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/agent-surface/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui\/components\/ui\/(.*)$/,
         replacement: path.join(
           repoRoot,

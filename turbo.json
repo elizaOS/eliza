@@ -264,6 +264,10 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-coding-tools#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": ["dist/**"]
@@ -351,6 +355,14 @@
       "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
+    "@elizaos/plugin-contacts#typecheck": {
+      "dependsOn": [
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/ui#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-autonomous#typecheck": {
       "dependsOn": [
         "@elizaos/app-core#build",
@@ -361,6 +373,18 @@
     },
     "@elizaos/example-telegram#typecheck": {
       "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/example-edad#typecheck": {
+      "dependsOn": ["@elizaos/cloud-sdk#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-sub-agent-claude-code#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-remote-manifest#build",
+        "@elizaos/plugin-worker-runtime#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/example-farcaster#build": {

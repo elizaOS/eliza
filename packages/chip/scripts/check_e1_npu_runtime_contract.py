@@ -312,11 +312,11 @@ def main() -> int:
     base = hex_to_int(contract["mmio"]["base"])
     registers = contract["mmio"]["registers"]
     for name, offset in registers.items():
-        expected = base + hex_to_int(offset)
+        expected_addr: int = base + hex_to_int(offset)
         actual = getattr(runtime, name, None)
-        if actual != expected:
+        if actual != expected_addr:
             actual_text = f"0x{actual:08x}" if isinstance(actual, int) else repr(actual)
-            errors.append(f"runtime {name} address {actual_text} != contract 0x{expected:08x}")
+            errors.append(f"runtime {name} address {actual_text} != contract 0x{expected_addr:08x}")
 
     if getattr(runtime, "SCRATCH_BYTES", None) != contract["mmio"].get("scratch_bytes"):
         errors.append("runtime scratch size does not match contract")
@@ -571,7 +571,7 @@ def main() -> int:
         if token not in runtime_sim_text:
             errors.append(f"runtime simulator missing low-precision token {token!r}")
 
-    for name, expected in (
+    _desc_constants: list[tuple[str, int]] = [
         ("DESC_RING_ENTRIES", 8),
         ("DESC_STATUS_EMPTY", 0x1),
         ("DESC_STATUS_DONE", 0x2),
@@ -584,9 +584,10 @@ def main() -> int:
         ("DESC_FLAG_STREAM_TO_SCRATCH", 1 << 8),
         ("DESC_FLAG_WRITEBACK_REQUEST", 1 << 30),
         ("DESC_FLAG_VALID_OWNER", 1 << 31),
-    ):
-        if getattr(runtime, name, None) != expected:
-            errors.append(f"runtime {name}={getattr(runtime, name, None)!r} != {expected!r}")
+    ]
+    for name, expected_val in _desc_constants:
+        if getattr(runtime, name, None) != expected_val:
+            errors.append(f"runtime {name}={getattr(runtime, name, None)!r} != {expected_val!r}")
 
     lowering = contract.get("matmul_lowering_smoke", {})
     if lowering.get("runtime_api") != "lower_matmul_smoke":

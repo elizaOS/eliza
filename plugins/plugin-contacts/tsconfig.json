@@ -30,10 +30,13 @@
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/agent-surface": [
+        "../../packages/ui/src/agent-surface/index.ts"
+      ],
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

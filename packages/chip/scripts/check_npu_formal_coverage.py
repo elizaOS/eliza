@@ -114,7 +114,8 @@ def validate_manifest(manifest: dict) -> list[str]:
     if manifest.get("strict_release_claim_allowed") is not False:
         errors.append("NPU formal coverage check requires non-release routine formal manifest")
 
-    entries = manifest.get("entries") if isinstance(manifest.get("entries"), dict) else {}
+    raw_entries = manifest.get("entries")
+    entries: dict[str, object] = raw_entries if isinstance(raw_entries, dict) else {}
     entry = entries.get(TARGET)
     if not isinstance(entry, dict):
         return errors + [f"formal manifest missing {TARGET}"]
@@ -124,26 +125,37 @@ def validate_manifest(manifest: dict) -> list[str]:
     if entry.get("evidence_class") != EXPECTED["evidence_class"]:
         errors.append(f"{TARGET} evidence_class must be {EXPECTED['evidence_class']}")
 
-    paths = entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+    raw_paths = entry.get("paths")
+    paths: dict[str, object] = raw_paths if isinstance(raw_paths, dict) else {}
     for key in ("status", "status_sha256", "log", "log_sha256"):
         if key not in paths:
             errors.append(f"{TARGET} paths missing {key}")
 
-    sby = entry.get("sby") if isinstance(entry.get("sby"), dict) else {}
+    raw_sby = entry.get("sby")
+    sby: dict[str, object] = raw_sby if isinstance(raw_sby, dict) else {}
     if sby.get("spec") != EXPECTED["spec"]:
         errors.append(f"{TARGET} spec must be {EXPECTED['spec']}")
-    if EXPECTED["engine"] not in set(sby.get("engines") or []):
+    raw_engines = sby.get("engines")
+    engines_list: list[object] = (
+        list(raw_engines) if isinstance(raw_engines, (list, tuple, set)) else []
+    )
+    if EXPECTED["engine"] not in engines_list:
         errors.append(f"{TARGET} must record {EXPECTED['engine']} engine")
-    covered = set(sby.get("covered_files") or [])
-    missing_files = sorted(EXPECTED["covered_files"] - covered)
+    raw_covered = sby.get("covered_files")
+    covered: set[str] = set(raw_covered) if isinstance(raw_covered, (list, tuple, set)) else set()
+    expected_files: set[str] = EXPECTED["covered_files"]  # type: ignore[assignment]
+    missing_files = sorted(expected_files - covered)
     if missing_files:
         errors.append(f"{TARGET} missing covered_files: {', '.join(missing_files)}")
 
-    task_meta = (sby.get("tasks") or {}).get("default")
+    raw_tasks = sby.get("tasks")
+    tasks_dict: dict[str, object] = raw_tasks if isinstance(raw_tasks, dict) else {}
+    task_meta = tasks_dict.get("default")
     if not isinstance(task_meta, dict):
         errors.append(f"{TARGET} missing default task")
     else:
-        for key, value in EXPECTED["task"].items():
+        expected_task: dict[str, str] = EXPECTED["task"]  # type: ignore[assignment]
+        for key, value in expected_task.items():
             if str(task_meta.get(key)) != value:
                 errors.append(f"{TARGET} default task {key} must be {value}")
     return errors

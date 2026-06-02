@@ -9,7 +9,7 @@
 		"composite": false,
 		"incremental": false,
 		"tsBuildInfoFile": null,
-		"types": ["node", "bun-types"]
+		"types": ["bun-types"]
 	},
 	"include": ["index.ts", "index.node.ts", "index.browser.ts"],
 	"exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts"]

@@ -172,7 +172,7 @@ def main() -> int:
         "merged_group_count": int(window_summary.get("merged_group_count", 0)),
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-execution-coverage-ladder",
         "status": "PASS" if not failures else "BLOCKED",

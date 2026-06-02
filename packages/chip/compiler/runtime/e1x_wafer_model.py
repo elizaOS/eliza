@@ -484,7 +484,7 @@ def repair_hop_penalty_for_scenario(config: E1XConfig, scenario: DefectScenario)
     return float(mesh["average_extra_hops_per_neighbor"])
 
 
-def mesh_validation_fields(mesh: dict[str, object]) -> dict[str, int | float | str]:
+def mesh_validation_fields(mesh: dict[str, int | float | str]) -> dict[str, int | float | str]:
     return {
         "logical_neighbor_paths_checked": int(mesh["logical_neighbor_paths_checked"]),
         "logical_neighbor_paths_total": int(mesh["logical_neighbor_paths_total"]),

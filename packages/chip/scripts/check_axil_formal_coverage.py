@@ -143,22 +143,26 @@ def validate_target(name: str, entry: dict, expected: dict) -> list[str]:
     if entry.get("evidence_class") != expected["evidence_class"]:
         errors.append(f"{name} evidence_class must be {expected['evidence_class']}")
 
-    paths = entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+    _paths_raw = entry.get("paths")
+    paths: dict[str, object] = _paths_raw if isinstance(_paths_raw, dict) else {}
     for key in ("status", "status_sha256", "log", "log_sha256"):
         if key not in paths:
             errors.append(f"{name} paths missing {key}")
 
-    sby = entry.get("sby") if isinstance(entry.get("sby"), dict) else {}
+    _sby_raw = entry.get("sby")
+    sby: dict[str, object] = _sby_raw if isinstance(_sby_raw, dict) else {}
     if sby.get("spec") != expected["spec"]:
         errors.append(f"{name} spec must be {expected['spec']}")
-    covered = set(sby.get("covered_files") or [])
+    _covered_raw = sby.get("covered_files")
+    covered = set(_covered_raw) if isinstance(_covered_raw, (list, set)) else set()
     missing_files = sorted(expected["covered_files"] - covered)
     if missing_files:
         errors.append(f"{name} missing covered_files: {', '.join(missing_files)}")
     if not sby.get("engines"):
         errors.append(f"{name} must record at least one formal engine")
 
-    tasks = sby.get("tasks") if isinstance(sby.get("tasks"), dict) else {}
+    _tasks_raw = sby.get("tasks")
+    tasks: dict[str, object] = _tasks_raw if isinstance(_tasks_raw, dict) else {}
     for task, task_expected in expected["tasks"].items():
         task_meta = tasks.get(task)
         if not isinstance(task_meta, dict):

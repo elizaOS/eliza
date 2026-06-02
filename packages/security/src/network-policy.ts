@@ -33,7 +33,7 @@ export function decodeIpv6MappedHex(mapped: string): string | null {
   });
   if (parsed.some((value) => !Number.isFinite(value))) return null;
 
-  const [hi, lo] = parsed.length === 1 ? [0, parsed[0]] : parsed;
+  const [hi = 0, lo = 0] = parsed.length === 1 ? [0, parsed[0]] : parsed;
   const octets = [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff];
   return octets.join(".");
 }
@@ -47,7 +47,7 @@ function canonicalizeIpv6(ip: string): string | null {
 }
 
 export function normalizeIpForPolicy(ip: string): string {
-  const base = normalizeHostLike(ip).split("%")[0];
+  const base = normalizeHostLike(ip).split("%")[0] ?? "";
   if (!base) return base;
 
   let normalized = base;

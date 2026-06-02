@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_rom_linkage.json"
@@ -88,7 +89,7 @@ def case_window_remap_words(
         for entry in repair.get("remapped_cores", [])
     }
     expected_words = []
-    sampled_words = []
+    sampled_words: list[str] = []
     for logical_core_index in touched_cores:
         logical = (
             logical_core_index // int(placement["logical_cols"]),
@@ -125,7 +126,7 @@ def main() -> int:
     checks: list[dict[str, str]] = []
     paths = [PLACEMENT, WINDOW_REPAIR, WINDOW_ROUTE, REPAIR_ROM_COCOTB, BOOT_REPAIR_FW]
     for case_paths in CASES.values():
-        paths.extend([case_paths["repair"], case_paths["rom"]])
+        paths.extend([cast(Path, case_paths["repair"]), cast(Path, case_paths["rom"])])
     missing = [str(path.relative_to(ROOT)) for path in paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,

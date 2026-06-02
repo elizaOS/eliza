@@ -72,7 +72,13 @@ def _evaluate(artifact: dict[str, object]) -> tuple[list[dict[str, str]], dict[s
     fit = artifact["fit"]
     totals = artifact["totals"]
     per_tier = artifact["per_tier"]
-    assert isinstance(fit, dict) and isinstance(totals, dict) and isinstance(per_tier, list)
+    model_assumptions = artifact["model_assumptions"]
+    assert (
+        isinstance(fit, dict)
+        and isinstance(totals, dict)
+        and isinstance(per_tier, list)
+        and isinstance(model_assumptions, dict)
+    )
 
     stable = not bool(fit["thermal_runaway"]) and bool(fit["fixed_point_converged"])
     tj_ok = bool(fit["all_tier_junction_le_max"])
@@ -99,7 +105,7 @@ def _evaluate(artifact: dict[str, object]) -> tuple[list[dict[str, str]], dict[s
             "status": "pass" if stable else "fail",
             "detail": (
                 f"converged={fit['fixed_point_converged']} runaway={fit['thermal_runaway']} "
-                f"iterations={artifact['model_assumptions']['fixed_point_iterations_run']}"
+                f"iterations={model_assumptions['fixed_point_iterations_run']}"
             ),
         },
         {

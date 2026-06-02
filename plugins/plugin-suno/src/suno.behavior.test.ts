@@ -72,7 +72,10 @@ describe('SunoProvider', () => {
     });
 
     it('throws a normalized error for non-ok API responses', async () => {
-        vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 429, statusText: 'Too Many' })));
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => new Response('nope', { status: 429, statusText: 'Too Many' }))
+        );
         const provider = new SunoProvider({ apiKey: 'sk-test', baseUrl: 'https://suno.test/v1' });
 
         await expect(provider.request(runtime(), '/generate')).rejects.toThrow(

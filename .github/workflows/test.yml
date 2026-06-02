@@ -206,6 +206,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-plugin-tests-
 
+      # plugin-xr's xr-bundle-coverage test asserts every view plugin has a
+      # built dist/views/bundle.js; build them before running plugin tests.
+      - name: Build view bundles
+        run: bun run build:views
+
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
         # (most recently plugin-shell rust PTY tests in run 25234887145)

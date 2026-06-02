@@ -143,6 +143,15 @@ export function validateLocalInferenceLoadArgs(
 				`${field}="${value}" is not a recognised KV cache type. Stock builds accept ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
 			);
 		}
+		if (
+			allowFork &&
+			!isStockKvCacheType(value) &&
+			!isForkOnlyKvCacheType(value)
+		) {
+			throw new Error(
+				`${field}="${value}" is not a recognised KV cache type. Accepted stock types: ${[...STOCK_KV_CACHE_TYPES].join(", ")}. Accepted elizaOS fork types: ${[...FORK_ONLY_KV_CACHE_TYPES].join(", ")}.`,
+			);
+		}
 	}
 	if (args.contextSize !== undefined) {
 		if (
@@ -981,7 +990,8 @@ export class ActiveModelCoordinator {
 			const failure = err instanceof Error ? err.message : String(err);
 			if (previous) {
 				previousDisplaced =
-					(loader?.currentModelPath() ?? localInferenceEngine.currentModelPath()) !==
+					(loader?.currentModelPath() ??
+						localInferenceEngine.currentModelPath()) !==
 					previous.installed.path;
 			}
 			// Attempt to restore the previously-active model. The unload-then-load

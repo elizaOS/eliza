@@ -30,9 +30,7 @@ describe("WebSearchService", () => {
         // recoverable error only when search() is actually invoked.
         const inert = await WebSearchService.start(runtime({}));
         expect(tavilyMock).not.toHaveBeenCalled();
-        await expect(inert.search("anything")).rejects.toThrow(
-            "Web search is not configured"
-        );
+        await expect(inert.search("anything")).rejects.toThrow("Web search is not configured");
 
         await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
         expect(tavilyMock).toHaveBeenCalledWith({ apiKey: "tvly-test" });

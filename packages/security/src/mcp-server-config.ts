@@ -8,7 +8,7 @@ import net from "node:net";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
-} from "./network-policy.ts";
+} from "./network-policy.js";
 
 function isBlockedObjectKey(key: string): boolean {
   return (

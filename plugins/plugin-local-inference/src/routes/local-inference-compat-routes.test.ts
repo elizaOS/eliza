@@ -245,7 +245,13 @@ describe("POST /api/local-inference/active", () => {
 		});
 	});
 
-	it("rejects fork-only KV cache types from desktop callers", async () => {
+	it("forwards fork-only KV cache types to the optimized backend gate", async () => {
+		setActiveMock.mockResolvedValue({
+			modelId: "eliza-1-2b",
+			loadedAt: "2026-05-09T00:00:00.000Z",
+			status: "ready",
+		});
+
 		const res = fakeRes();
 		await handleLocalInferenceCompatRoutes(
 			fakeReq({
@@ -253,19 +259,18 @@ describe("POST /api/local-inference/active", () => {
 				pathname: "/api/local-inference/active",
 				body: {
 					modelId: "eliza-1-2b",
-					overrides: { cacheTypeK: "tbq4_0" },
+					overrides: { cacheTypeK: "tbq4_0", cacheTypeV: "tbq3_0" },
 				},
 			}),
 			res.res,
 			STATE,
 		);
 
-		expect(res.status()).toBe(400);
-		const { error } = res.body() as { error: string };
-		expect(error).toContain('cacheTypeK="tbq4_0"');
-		expect(error).toMatch(/elizaOS\/llama\.cpp kernel/i);
-		expect(error).toContain("Stock-only types accepted here:");
-		expect(setActiveMock).not.toHaveBeenCalled();
+		expect(res.status()).toBe(200);
+		expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", {
+			cacheTypeK: "tbq4_0",
+			cacheTypeV: "tbq3_0",
+		});
 	});
 
 	it("rejects illegal contextSize", async () => {

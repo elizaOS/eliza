@@ -96,10 +96,11 @@ def utc_now() -> str:
 
 
 def ensure_generated_rom() -> None:
-    required = [
+    required: list[Path] = [
         path
         for case in ROM_CASES
         for path in (case["rom_json"], case["rom_hex"], case["manifest_json"])
+        if isinstance(path, Path)
     ]
     if all(path.is_file() for path in required):
         return

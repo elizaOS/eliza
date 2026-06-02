@@ -262,7 +262,7 @@ def main() -> int:
         "sampled_layer_commitments": sampled_layer_commitments,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-full-output-checksum-manifest",
         "status": "PASS" if not failures else "BLOCKED",
