@@ -57,6 +57,7 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { MINIMAL_SHELL } from "./components/shell/shell-chrome";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
@@ -877,14 +878,54 @@ function MobileChatSurfaceButton({
   );
 }
 
+/** Time-of-day greeting for the minimal home's ambient backdrop (Her-style). */
+function minimalHomeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return "still up?";
+  if (h < 12) return "good morning";
+  if (h < 18) return "good afternoon";
+  return "good evening";
+}
+
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
-  // Full chat workspace: ConversationsSidebar (left) | ChatView (center) |
-  // TasksEventsPanel widgets (right), under the standard Header. Self-contained
-  // (activity events, widget-collapse, and the mobile surface live here), so the
-  // ShellContent contract stays unchanged. On narrow screens it collapses to a
-  // single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
-  // is suppressed on this tab — a full in-view chat already lives here, so there
-  // is no duplicate composer.
+  // Minimal (conversational-OS) home: just ambient space under a chrome-light
+  // header — the always-present ContinuousChatOverlay (mounted at the shell
+  // root) is the whole experience. Ask it anything, or ask it to open a view
+  // ("show me the coding view") which surfaces over this base. No in-view chat
+  // panels, no primary nav. Toggle off via localStorage eliza:minimal-shell=0.
+  if (MINIMAL_SHELL) {
+    return (
+      <div key="chat-shell-minimal" className={APP_SHELL_CLASS}>
+        <Header />
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
+            {minimalHomeGreeting()}
+          </p>
+          <CustomActionsPanel
+            open={props.customActionsPanelOpen}
+            onClose={() => props.setCustomActionsPanelOpen(false)}
+            onOpenEditor={(action) => {
+              props.setEditingAction(action ?? null);
+              props.setCustomActionsEditorOpen(true);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return <FullChatWorkspaceShellContent {...props} />;
+}
+
+// Full chat workspace: ConversationsSidebar (left) | ChatView (center) |
+// TasksEventsPanel widgets (right), under the standard Header. Self-contained
+// (activity events, widget-collapse, and the mobile surface live here), so the
+// ShellContent contract stays unchanged. On narrow screens it collapses to a
+// single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
+// is suppressed on this tab — a full in-view chat already lives here, so there
+// is no duplicate composer. Rendered only when MINIMAL_SHELL is off; kept in its
+// own component so its hooks are never called conditionally.
+function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
   const isMobile = useMediaQuery(CHAT_MOBILE_MEDIA_QUERY);
   const { events: activityEvents, clearEvents } = useActivityEvents();
   const [widgetsCollapsed, setWidgetsCollapsed] = useState(false);

@@ -31,6 +31,7 @@ import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
+import { MINIMAL_SHELL } from "./shell-chrome";
 
 const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";
 const DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY = "(max-width: 1380px)";
@@ -488,7 +489,7 @@ export function Header({
   );
 
   const mobileBottomNav =
-    isMobileViewport && !hideNav ? (
+    isMobileViewport && !hideNav && !MINIMAL_SHELL ? (
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] "
         style={{
@@ -659,49 +660,51 @@ export function Header({
               </>
             ) : (
               <>
-                <nav
-                  className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto pr-2"
-                  aria-label={t("aria.navMenu")}
-                  data-no-camera-drag="true"
-                >
-                  {primaryDesktopGroups.map((group) => {
-                    const primaryTab = group.tabs[0];
-                    const isActive = group.tabs.includes(tab);
-                    const localizedGroup = localizeTabGroup(group);
+                {MINIMAL_SHELL ? null : (
+                  <nav
+                    className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto pr-2"
+                    aria-label={t("aria.navMenu")}
+                    data-no-camera-drag="true"
+                  >
+                    {primaryDesktopGroups.map((group) => {
+                      const primaryTab = group.tabs[0];
+                      const isActive = group.tabs.includes(tab);
+                      const localizedGroup = localizeTabGroup(group);
 
-                    return (
-                      <Button
-                        variant="ghost"
-                        key={group.label}
-                        data-testid={`header-nav-button-${primaryTab}`}
-                        className={`${TOPBAR_NAV_BUTTON_CLASSNAME} ${
-                          isActive ? TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME : ""
-                        }`}
-                        onClick={() => setTab(primaryTab)}
-                        onPointerDown={stopHeaderPointerPropagation}
-                        aria-label={localizedGroup.label}
-                        title={
-                          collapseDesktopNavLabels
-                            ? localizedGroup.label
-                            : (localizedGroup.description ??
-                              localizedGroup.label)
-                        }
-                        style={HEADER_BUTTON_STYLE}
-                        data-no-camera-drag="true"
-                      >
-                        <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
-                        <span
-                          data-testid={`header-nav-label-${primaryTab}`}
-                          className={`pointer-events-none truncate ${
-                            collapseDesktopNavLabels ? "hidden" : "inline"
+                      return (
+                        <Button
+                          variant="ghost"
+                          key={group.label}
+                          data-testid={`header-nav-button-${primaryTab}`}
+                          className={`${TOPBAR_NAV_BUTTON_CLASSNAME} ${
+                            isActive ? TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME : ""
                           }`}
+                          onClick={() => setTab(primaryTab)}
+                          onPointerDown={stopHeaderPointerPropagation}
+                          aria-label={localizedGroup.label}
+                          title={
+                            collapseDesktopNavLabels
+                              ? localizedGroup.label
+                              : (localizedGroup.description ??
+                                localizedGroup.label)
+                          }
+                          style={HEADER_BUTTON_STYLE}
+                          data-no-camera-drag="true"
                         >
-                          {localizedGroup.label}
-                        </span>
-                      </Button>
-                    );
-                  })}
-                </nav>
+                          <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
+                          <span
+                            data-testid={`header-nav-label-${primaryTab}`}
+                            className={`pointer-events-none truncate ${
+                              collapseDesktopNavLabels ? "hidden" : "inline"
+                            }`}
+                          >
+                            {localizedGroup.label}
+                          </span>
+                        </Button>
+                      );
+                    })}
+                  </nav>
+                )}
                 {breadcrumbNode ? (
                   <div
                     className="flex h-[2.375rem] min-w-0 items-center justify-center"
