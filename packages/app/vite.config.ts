@@ -573,8 +573,12 @@ function createAppPluginBrowserAliases() {
     for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
       const candidate = path.join(pkgDir, uiEntry);
       if (!fs.existsSync(candidate)) continue;
+      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form (the
+      // latter is what the package.json `./*` export maps to src/ui/index.ts);
+      // without `/index` here vite falls through to the unbuilt dist/ui/index.js
+      // in dev and the client bundle fails to resolve.
       aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/ui$`),
+        find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
         replacement: candidate,
       });
       break;
