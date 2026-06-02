@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildFullParamActionSet,
@@ -104,6 +107,34 @@ describe("view-action-affinity", () => {
     // The wallet view scopes actions → the block names them for the planner.
     expect(block).toContain("most relevant while on this view");
     expect(block).toContain("EVM_SWAP");
+  });
+});
+
+// Drift guard: every action name in VIEW_ACTION_MAP must still exist as a
+// declared `name: "X"` in source. Catches an upstream rename/removal turning a
+// mapped action into a silent no-op (the runtime validator is advisory-only and
+// not wired at boot). Source-static so it needs no running runtime.
+describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.resolve(here, "../../../..");
+  const names = [
+    ...new Set(Object.values(VIEW_ACTION_MAP).flatMap((a) => [...a])),
+  ];
+
+  it.each(names)("action %s is declared somewhere in source", (name) => {
+    let found = "";
+    try {
+      found = execFileSync(
+        "grep",
+        ["-rlF", `name: "${name}"`, "plugins", "packages/agent/src"],
+        { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+    } catch {
+      // grep exits 1 (no match) → found stays empty → assertion fails below.
+    }
+    expect(found, `no \`name: "${name}"\` found under plugins/ or packages/agent/src`).not.toBe(
+      "",
+    );
   });
 });
 
