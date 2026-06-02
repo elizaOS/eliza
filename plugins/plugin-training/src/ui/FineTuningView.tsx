@@ -180,7 +180,7 @@ function formatModelInventorySummary(
   const trained = modelInventory.filter(
     (model) => model.variant === "trained",
   ).length;
-  const parts = [];
+  const parts: string[] = [];
   if (base || trained) parts.push(`base:${base} trained:${trained}`);
   if (tiers.length) parts.push(`tiers:${tiers.join(",")}`);
   return parts.length ? ` ${parts.join(" ")}` : "";
