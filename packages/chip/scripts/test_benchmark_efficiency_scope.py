@@ -81,6 +81,8 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
         )
     joined = "\n".join(findings[0].get("next_commands", []))
     for token in (
+        "benchmarks/metadata/strict-blocked-template.json",
+        "--strict-missing",
         "benchmarks/run_benchmarks.py run",
         "capture_e1_npu_nnapi_evidence.sh",
         "E1_NPU_CPU_FALLBACK_PERCENT=0",
@@ -90,6 +92,34 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
     ):
         if token not in joined:
             raise AssertionError(f"benchmark finding commands missing {token!r}: {joined}")
+    by_message = {str(item.get("message")): item for item in findings}
+    metadata_finding = by_message.get(
+        "prototype-silicon or complete-phone target identity, board serial, SoC revision, and OS/BSP build ID"
+    )
+    if not isinstance(metadata_finding, dict):
+        raise AssertionError(f"metadata blocker finding missing: {findings}")
+    if metadata_finding.get("next_command") != (
+        check_benchmark_efficiency_scope.target_metadata_preflight_command()
+    ):
+        raise AssertionError(f"metadata blocker must lead with preflight: {metadata_finding}")
+    report_finding = by_message.get(
+        "schema-valid benchmark report generated with dry_run false and claim level L5 or L6 as appropriate"
+    )
+    if not isinstance(report_finding, dict):
+        raise AssertionError(f"report blocker finding missing: {findings}")
+    if report_finding.get("next_command") != (
+        check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["target_benchmark_report"]
+    ):
+        raise AssertionError(f"report blocker must lead with benchmark capture: {report_finding}")
+    npu_finding = by_message.get(
+        "NPU NNAPI proof showing e1-npu selection, zero unsupported ops, and zero CPU fallback"
+    )
+    if not isinstance(npu_finding, dict):
+        raise AssertionError(f"NPU blocker finding missing: {findings}")
+    if npu_finding.get("next_command") != (
+        check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["npu_nnapi_proof"]
+    ):
+        raise AssertionError(f"NPU blocker must lead with NNAPI capture: {npu_finding}")
     print("PASS structured benchmark efficiency findings cover blocked real evidence")
 
 
@@ -195,6 +225,8 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
         raise AssertionError(f"target-phone benchmark command plan missing: {plans!r}")
     target_commands = "\n".join(str(item) for item in target_plan.get("commands", []))
     for token in (
+        "benchmarks/metadata/strict-blocked-template.json",
+        "--strict-missing",
         "run_benchmarks.py run",
         "benchmarks/results/target-phone",
         "run_benchmarks.py validate-report",
@@ -207,6 +239,11 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
         != check_benchmark_efficiency_scope.TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY
     ):
         raise AssertionError(f"target-phone claim boundary drifted: {target_plan!r}")
+    if (
+        target_plan.get("preflight_claim_boundary")
+        != check_benchmark_efficiency_scope.TARGET_PHONE_METADATA_PREFLIGHT_CLAIM_BOUNDARY
+    ):
+        raise AssertionError(f"target-phone metadata preflight boundary drifted: {target_plan!r}")
     npu_plan = plans_by_id.get("capture_measured_npu_nnapi_proof")
     if not isinstance(npu_plan, dict):
         raise AssertionError(f"NPU NNAPI command plan missing: {plans!r}")
