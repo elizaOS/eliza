@@ -36,6 +36,7 @@ import {
 } from "./odysseus-theme";
 import { SearchPalette } from "./SearchPalette";
 import { SessionSidebar } from "./SessionSidebar";
+import { SkillsPanel } from "./SkillsPanel";
 import { ThemeMenu } from "./ThemeMenu";
 import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
@@ -53,6 +54,7 @@ export function OdysseusShell(): ReactNode {
   );
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -191,6 +193,7 @@ export function OdysseusShell(): ReactNode {
         onToggleSidebar={toggleSidebar}
         onOpenTheme={() => setThemeMenuOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
+        onOpenSkills={() => setSkillsOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -205,6 +208,7 @@ export function OdysseusShell(): ReactNode {
         onCustomChange={onCustomChange}
       />
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+      <SkillsPanel open={skillsOpen} onClose={() => setSkillsOpen(false)} />
       <SearchPalette
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

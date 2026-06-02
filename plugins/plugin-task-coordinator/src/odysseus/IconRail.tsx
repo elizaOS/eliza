@@ -9,6 +9,7 @@ import {
   Palette,
   PanelLeft,
   Settings,
+  Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -16,10 +17,12 @@ export function IconRail({
   onToggleSidebar,
   onOpenTheme,
   onOpenMemory,
+  onOpenSkills,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
   onOpenMemory: () => void;
+  onOpenSkills: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -43,6 +46,15 @@ export function IconRail({
         aria-label="Memory"
       >
         <Brain size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenSkills}
+        title="Skills"
+        aria-label="Skills"
+      >
+        <Zap size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button
