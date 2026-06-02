@@ -583,7 +583,9 @@ test.describe("assistant home app flow", () => {
     const assistantApi = await installAssistantFlowRoutes(page);
 
     await openReadyChat(page);
-    const rootChatInput = page.locator('[data-testid="chat-composer-textarea"]');
+    const rootChatInput = page.locator(
+      '[data-testid="chat-composer-textarea"]',
+    );
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "02-assistant-chat-root");
 
@@ -599,74 +601,13 @@ test.describe("assistant home app flow", () => {
 
     await openAppPath(page, "/views");
     await expect(page.getByText("Views").first()).toBeVisible();
-    await expect(page.getByTestId("shell-home-pill")).toBeVisible();
-    await screenshot(page, "05-views-with-pill");
-
-    await page.getByTestId("shell-home-pill").click();
-    await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-    await expect(page.getByLabel("Message Eliza")).toBeVisible();
-    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
-      "aria-label",
-      "Close Eliza",
-    );
-
-    await page.getByLabel("Message Eliza").fill("open wallet from the pill");
-    await page.getByRole("button", { name: "Send message" }).click();
-    await expect(page.getByLabel("Message Eliza")).toHaveValue("");
-    await expect(page.getByText("open wallet from the pill")).toBeVisible();
-    await expect(page.getByText("I heard you.")).toBeVisible();
-    await expect(
-      page.getByText("Opening the right view now and keeping voice ready."),
-    ).toBeVisible();
-    expect(assistantApi.streamRequests).toEqual(["open wallet from the pill"]);
-    await screenshot(page, "06-views-pill-open");
-
-    await page.getByTestId("shell-home-pill").click();
-    await expect(page.getByTestId("shell-assistant-overlay")).toHaveCount(0);
-    await expect(page.getByLabel("Message Eliza")).toHaveCount(0);
-    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
-      "aria-label",
-      "Open Eliza",
-    );
-    await screenshot(page, "06b-views-pill-closed");
-
-    await page.getByTestId("shell-home-pill").click();
-    await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-    await expect(page.getByLabel("Message Eliza")).toBeVisible();
-    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
-      "aria-label",
-      "Close Eliza",
-    );
-    await screenshot(page, "06c-views-pill-reopened");
-
-    await page.getByLabel("Message Eliza").fill("open terminal after reopen");
-    await page.getByRole("button", { name: "Send message" }).click();
-    await expect(page.getByLabel("Message Eliza")).toHaveValue("");
-    await expect(page.getByText("open terminal after reopen")).toBeVisible();
-    await expect(page.getByText("I heard you.").last()).toBeVisible();
-    await expect(
-      page
-        .getByText("Opening the right view now and keeping voice ready.")
-        .last(),
-    ).toBeVisible();
-    expect(assistantApi.streamRequests).toEqual([
-      "open wallet from the pill",
-      "open terminal after reopen",
-    ]);
-    await screenshot(page, "06d-views-pill-second-send");
-
-    await page.getByTestId("shell-home-pill").click();
-    await expect(page.getByTestId("shell-assistant-overlay")).toHaveCount(0);
-    await expect(page.getByLabel("Message Eliza")).toHaveCount(0);
-    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
-      "aria-label",
-      "Open Eliza",
-    );
-    await screenshot(page, "06e-views-pill-reclosed");
+    await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+    expect(assistantApi.streamRequests).toEqual([]);
+    await screenshot(page, "05-views-desktop-no-embedded-pill");
 
     await openAppPath(page, "/wallet");
-    await expect(page.getByTestId("shell-home-pill")).toBeVisible();
-    await screenshot(page, "07-wallet-view-with-pill");
+    await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+    await screenshot(page, "07-wallet-view-no-embedded-pill");
   });
 
   test("drives the assistant home voice path with a scripted browser STT turn", async ({

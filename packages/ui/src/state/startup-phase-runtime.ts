@@ -110,6 +110,24 @@ function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
   );
 }
 
+async function hydrateReadyAgentStatus(
+  deps: StartingRuntimeDeps,
+): Promise<void> {
+  try {
+    const status = await client.getStatus();
+    if (!status) return;
+
+    deps.setAgentStatus(status);
+    if (status.pendingRestart) {
+      deps.setPendingRestart(true);
+      deps.setPendingRestartReasons(status.pendingRestartReasons ?? []);
+    }
+  } catch {
+    // Progress snapshots are already enough to leave startup; full status
+    // hydration is only needed when the status endpoint is ready too.
+  }
+}
+
 /**
  * Runs the starting-runtime phase.
  * Polls /status until the agent reaches "running", then dispatches AGENT_RUNNING.
@@ -207,6 +225,7 @@ export async function runStartingRuntime(
         }
 
         if (isRuntimeReadyFromLaunchProgress(launchProgress)) {
+          await hydrateReadyAgentStatus(deps);
           deps.setConnected(true);
           dispatch({ type: "AGENT_RUNNING" });
           return;
@@ -254,6 +273,7 @@ export async function runStartingRuntime(
         lastDiag = bootStatus.startup;
 
         if (isRuntimeReadyFromBootProgress(bootProgress)) {
+          await hydrateReadyAgentStatus(deps);
           deps.setConnected(true);
           dispatch({ type: "AGENT_RUNNING" });
           return;
