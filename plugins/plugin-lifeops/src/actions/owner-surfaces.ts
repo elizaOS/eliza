@@ -9,11 +9,7 @@ import type {
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { runBookTravelHandler } from "./book-travel.js";
-import {
-  HEALTH_PARAMETERS,
-  HEALTH_SIMILES,
-  runHealthHandler,
-} from "./health.js";
+import { createOwnerHealthAction, runHealthHandler } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
 import {
   OWNER_OPERATION_CONTEXTS,
@@ -30,9 +26,8 @@ import {
 } from "./money.js";
 import { runScheduleHandler } from "./schedule.js";
 import {
+  createOwnerScreenTimeAction,
   runScreenTimeHandler,
-  SCREEN_TIME_PARAMETERS,
-  SCREEN_TIME_SIMILES,
 } from "./screen-time.js";
 
 const OWNER_LIFE_ACTIONS = [
@@ -47,19 +42,6 @@ const OWNER_LIFE_ACTIONS = [
 
 type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number];
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
-const OWNER_HEALTH_ACTIONS = ["today", "trend", "by_metric", "status"] as const;
-const OWNER_SCREENTIME_ACTIONS = [
-  "summary",
-  "today",
-  "weekly",
-  "weekly_average_by_app",
-  "by_app",
-  "by_website",
-  "activity_report",
-  "time_on_app",
-  "time_on_site",
-  "browser_activity",
-] as const;
 const OWNER_FINANCE_ACTIONS = [
   "dashboard",
   "list_sources",
@@ -424,24 +406,7 @@ export const ownerRoutinesAction: Action = {
   },
 };
 
-export const ownerHealthAction: Action = {
-  name: "OWNER_HEALTH",
-  similes: ["HEALTH", "FITNESS", "WELLNESS", ...HEALTH_SIMILES],
-  description:
-    "Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
-  descriptionCompressed:
-    "owner health: today|trend|by_metric|status; read-only telemetry",
-  routingHint:
-    'owner health/wearable reads ("step count", "sleep last night", heart rate, workouts) -> OWNER_HEALTH',
-  parameters: [
-    {
-      name: "action",
-      description: "Owner health read op: today|trend|by_metric|status.",
-      required: false,
-      schema: { type: "string" as const, enum: [...OWNER_HEALTH_ACTIONS] },
-    },
-    ...HEALTH_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
-  ],
+export const ownerHealthAction: Action = createOwnerHealthAction({
   validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runHealthHandler(
@@ -451,31 +416,9 @@ export const ownerHealthAction: Action = {
       mirrorActionToSubaction(options),
       callback,
     ),
-};
+});
 
-export const ownerScreenTimeAction: Action = {
-  name: "OWNER_SCREENTIME",
-  similes: [
-    "SCREENTIME",
-    "SCREEN_TIME",
-    "ACTIVITY_REPORT",
-    ...SCREEN_TIME_SIMILES,
-  ],
-  description:
-    "Owner screen-time/activity analytics: local activity, app usage, browser.",
-  descriptionCompressed:
-    "owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
-  parameters: [
-    {
-      name: "action",
-      description: "Owner screentime op.",
-      required: false,
-      schema: { type: "string" as const, enum: [...OWNER_SCREENTIME_ACTIONS] },
-    },
-    ...SCREEN_TIME_PARAMETERS.filter(
-      (parameter) => parameter.name !== "subaction",
-    ),
-  ],
+export const ownerScreenTimeAction: Action = createOwnerScreenTimeAction({
   validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runScreenTimeHandler(
@@ -485,7 +428,7 @@ export const ownerScreenTimeAction: Action = {
       mirrorActionToSubaction(options),
       callback,
     ),
-};
+});
 
 export const ownerFinancesAction: Action = {
   name: "OWNER_FINANCES",

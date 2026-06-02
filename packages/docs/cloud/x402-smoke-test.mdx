@@ -1,0 +1,240 @@
+---
+title: Payment & x402 Smoke Test
+description: How to verify the cloud_authenticated_link payment adapter and the app-charge credit flow end-to-end, plus the canonical automated tests that gate them.
+---
+
+# Payment & x402 Smoke Test
+
+This page explains how the agent runtime turns a payment request into a Cloud
+charge URL, how the Cloud charge/credit flow settles it, and how to verify both
+without guessing at API shapes. The **canonical, always-current verification is
+the automated test suite** — the curl recipes here are for interactive
+sanity-checking, and the response shapes are pulled straight from source so use
+the linked code as the source of truth if anything drifts.
+
+Use this when:
+
+- Verifying a fresh agent install can produce a Cloud charge URL at all.
+- Bisecting a regression in the `cloud_authenticated_link` adapter or a Cloud
+  charge/credit route.
+- Onboarding a new monetized app and checking the round-trip before promoting it.
+
+## Two distinct flows
+
+Don't conflate them — the title says "x402" because both are payment surfaces,
+but they are separate code paths:
+
+1. **App-charge (credit-debit) flow** — an agent asks the user to authorize a
+   Cloud-side charge against a monetized app. The runtime emits a `payment`
+   sensitive request, the `cloud_authenticated_link` adapter builds a charge
+   URL, the payer checks out, and the org credit ledger / creator earnings move.
+   This is what most "the agent wants you to pay for X" flows use.
+2. **x402 crypto flow** — HTTP 402 + `X-PAYMENT` settlement. Lives entirely in
+   Cloud: the facilitator discovery endpoint `GET /api/v1/x402` and the topup
+   endpoints `POST /api/v1/topup/{10,50,100}` (a missing `X-PAYMENT` header
+   returns a 402 quote; a valid payment is settled into the org credit ledger).
+   See [Billing → x402 Crypto Payment](./billing.mdx#x402-crypto-payment).
+
+The sensitive-request adapter (flow 1) does **not** speak x402; it produces a
+hosted charge URL the user opens in their Cloud session.
+
+## What the adapter actually does
+
+The `payment` sensitive request never touches the local
+`/api/sensitive-requests` HTTP route — that route only accepts `secret` and
+`private_info` kinds (it explicitly rejects anything else with
+`local sensitive requests support only secret and private_info`). The `payment`
+kind is handled in-process by a runtime
+[`SensitiveRequestDeliveryAdapter`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts),
+not over HTTP.
+
+When an action dispatches a `DispatchSensitiveRequest` with `kind: "payment"`,
+the adapter (`target: "cloud_authenticated_link"`) resolves the Cloud base from
+`runtime.getSetting("ELIZAOS_CLOUD_API_KEY")` /
+`runtime.getSetting("ELIZAOS_CLOUD_BASE_URL")` (with `process.env` fallbacks)
+and returns a charge URL:
+
+```
+${cloudBase}/payment/app-charge/${appId}/${requestId}
+```
+
+The `appId` is read from `request.target.appId`, falling back to
+`request.callback.appId`. Failure modes the adapter returns directly:
+
+- `{ delivered: false, error: "cloud not paired" }` — no `ELIZAOS_CLOUD_API_KEY`.
+- `{ delivered: false, error: "payment request missing appId" }` — no appId in
+  target or callback.
+
+## Verify with the automated tests (canonical)
+
+These two suites are the source of truth. Prose restating API shapes rots; the
+tests run against the real adapter and real Cloud routes.
+
+**Adapter unit test** — confirms target, URL shape, appId fallback, and error
+modes:
+
+```bash
+bun run --cwd packages/app-core test src/services/sensitive-requests/cloud-link-adapter.test.ts
+```
+
+It asserts, among others, that a `payment` request with `target.appId: "app-42"`
+and id `req-pay` produces
+`https://www.elizacloud.ai/payment/app-charge/app-42/req-pay`.
+
+**Cloud app-charge e2e** — exercises the full charge create → public read →
+list round-trip against a running Cloud API
+(`packages/cloud-api/test/e2e/group-l-app-charges.test.ts`):
+
+```bash
+# requires a reachable Cloud API and TEST_API_KEY; skips cleanly otherwise
+TEST_API_KEY="sk-elc_..." bun run --cwd packages/cloud-api test test/e2e/group-l-app-charges.test.ts
+```
+
+It asserts the charge response shape
+(`charge.appId`, `charge.amountUsd`, `charge.status === "requested"`,
+`charge.providers`, and `charge.paymentUrl` containing
+`/payment/app-charge/${appId}/`).
+
+## Interactive sanity-check (optional)
+
+### Prerequisites
+
+1. **A working agent install.** `bun run dev` (or `bun run dev:desktop`) boots
+   cleanly and the chat surface responds.
+2. **An Eliza Cloud API key**, exported so the runtime resolves it:
+   ```bash
+   export ELIZAOS_CLOUD_API_KEY="sk-elc_..."
+   # optional override; defaults to https://www.elizacloud.ai
+   # export ELIZAOS_CLOUD_BASE_URL="https://staging.elizacloud.ai"
+   ```
+3. **A monetized Cloud app to target.** Provision one per
+   [Monetized Apps → Register and Configure](./monetized-apps.mdx#register-and-configure)
+   and note its `id`. Set a non-zero `inferenceMarkupPercentage` so creator
+   earnings are visible.
+4. **Credits on the org** so the charge can settle. Top up via the dashboard,
+   [Billing → Top Up Credits](./billing.mdx#top-up-credits), or the x402 flow above.
+
+### Steps
+
+<Steps>
+
+<Step title="Produce a charge URL from the runtime">
+
+The adapter runs in-process, so the recipe is "dispatch a payment sensitive
+request and observe the resulting charge URL," not an HTTP call to the local
+sensitive-requests route. Trigger an action that dispatches a `payment`
+`DispatchSensitiveRequest` against your monetized app (for a chat-priced app,
+chatting against it is enough).
+
+Expected: the runtime emits a charge URL of the form
+`${ELIZAOS_CLOUD_BASE_URL}/payment/app-charge/<APP_ID>/<REQUEST_ID>` and
+surfaces it in the sensitive-request UI. If you instead see `cloud not paired`,
+`ELIZAOS_CLOUD_API_KEY` is not reaching the runtime; if you see
+`payment request missing appId`, the action dispatched without
+`target.appId`/`callback.appId`.
+
+To assert the URL shape directly without running the agent, run the adapter
+unit test above.
+
+</Step>
+
+<Step title="Complete the charge in Cloud">
+
+In a browser signed into Eliza Cloud, open the charge URL. The page reads the
+charge via the public route `GET /api/v1/apps/{appId}/charges/{chargeId}` and
+starts checkout via `POST /api/v1/apps/{appId}/charges/{chargeId}/checkout`
+(`provider: "stripe" | "oxapay"`). Completing checkout debits the payer org and
+credits the creator's app-credit earnings ledger.
+
+</Step>
+
+<Step title="Verify the credit ledger">
+
+Pull recent org credit transactions:
+
+```bash
+curl -s "${ELIZAOS_CLOUD_BASE_URL:-https://www.elizacloud.ai}/api/credits/transactions?limit=5" \
+  -H "Authorization: Bearer $ELIZAOS_CLOUD_API_KEY"
+```
+
+The response is `{ transactions, total, period }` where each transaction is:
+
+```json
+{
+  "id": "…",
+  "organization_id": "…",
+  "amount": 5,
+  "type": "debit",
+  "description": "…",
+  "metadata": { },
+  "stripe_payment_intent_id": "…",
+  "created_at": "2026-01-01T00:00:00.000Z"
+}
+```
+
+There is **no** top-level `appId` field. Correlate the charge via `metadata`
+(e.g. the callback metadata / charge id you set), not a dedicated app field. If
+no matching transaction appears, the checkout never settled — check the Cloud
+charge logs for the `app-charge/${APP_ID}/${REQUEST_ID}` request.
+
+</Step>
+
+<Step title="Verify the creator earnings ledger">
+
+If the app has a non-zero `inferenceMarkupPercentage`/`purchaseSharePercentage`,
+the creator share lands in the app's earnings:
+
+```bash
+curl -s "${ELIZAOS_CLOUD_BASE_URL:-https://www.elizacloud.ai}/api/v1/apps/$APP_ID/earnings" \
+  -H "Authorization: Bearer $ELIZAOS_CLOUD_API_KEY"
+```
+
+The response is:
+
+```json
+{
+  "success": true,
+  "earnings": { "summary": {}, "breakdown": {}, "recentTransactions": [], "chartData": [] },
+  "monetization": {
+    "enabled": true,
+    "inferenceMarkupPercentage": 15,
+    "purchaseSharePercentage": 10,
+    "platformOffsetAmount": 0,
+    "totalCreatorEarnings": 0,
+    "totalPlatformRevenue": 0
+  }
+}
+```
+
+The lifetime creator total is `monetization.totalCreatorEarnings`; per-period
+numbers live under `earnings.breakdown`. There is no `availableEarnings` field.
+From here, [Earnings → Redeem for elizaOS Tokens](./earnings.mdx#redeem-for-elizaos-tokens)
+takes over.
+
+</Step>
+
+</Steps>
+
+## Failure-mode quick reference
+
+| Symptom | Likely cause |
+|---|---|
+| Adapter returns `cloud not paired` | `ELIZAOS_CLOUD_API_KEY` is not set on the runtime (or `runtime.getSetting` returns empty). Re-source the env, restart the agent. |
+| Adapter returns `payment request missing appId` | The `payment` request had no `target.appId` and no `callback.appId`. Fix the action's request shape; the adapter has no further fallback. |
+| Charge URL returns 404 | The `appId` doesn't exist in Cloud, or `ELIZAOS_CLOUD_BASE_URL` points at a different tenant than the one the app was created in. |
+| Charge completes but no credit transaction | Checkout never settled, or you're querying a different org than the payer. Check the Cloud charge logs for the request id. |
+| Charge settles but no earnings | App monetization is disabled or all markup/share percentages are 0. See [Monetized Apps → Register and Configure](./monetized-apps.mdx#register-and-configure). |
+
+## Code references
+
+- Adapter: [`packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts)
+- Adapter test: [`packages/app-core/src/services/sensitive-requests/cloud-link-adapter.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.test.ts)
+- Local sensitive-request route (secret/private_info only): [`packages/app-core/src/api/sensitive-request-routes.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/api/sensitive-request-routes.ts)
+- Cloud charge routes: [`packages/cloud-api/v1/apps/[id]/charges/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/route.ts), [`charges/[chargeId]/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/route.ts), [`charges/[chargeId]/checkout/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/checkout/route.ts)
+- Credit transactions: [`packages/cloud-api/credits/transactions/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/credits/transactions/route.ts)
+- App earnings: [`packages/cloud-api/v1/apps/[id]/earnings/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/earnings/route.ts)
+- x402 facilitator + topups: [`packages/cloud-api/v1/x402/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/x402/route.ts), [`v1/topup/10/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/topup/10/route.ts)
+- Charge e2e: [`packages/cloud-api/test/e2e/group-l-app-charges.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/test/e2e/group-l-app-charges.test.ts)
+- Monetization model: [Monetized Apps](./monetized-apps.mdx)
+
+Refs: elizaOS/eliza#8124

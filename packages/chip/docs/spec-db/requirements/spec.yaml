@@ -72,7 +72,7 @@ requirements:
     title: NPU runtime contract pins descriptor ABI and MMIO map
     owner: npu
     source_doc: docs/spec-db/e1-npu-runtime-contract.json
-    source_doc_sha: 12cb5c395cf9c7b2ce105bf8ac81f6a8b27286a735179aa7e2321a745784445d
+    source_doc_sha: 4dee0396b8f1a89a5bea616096b05ce87f37e478bd2e109ce768a0851a7561e4
     status: contract
     claim_boundary: runtime_contract_no_production_accelerator_claim
     links:
@@ -121,7 +121,7 @@ requirements:
     title: Clock/reset-domain intent captures top-level CDC/RDC assumptions
     owner: cpu
     source_doc: docs/spec-db/e1-clock-reset-domain-intent.yaml
-    source_doc_sha: e0139bd7ac4955260e7bc2560112f266a5ad767f190b8facf3580e7b316b1afd
+    source_doc_sha: 184c5f3783ef255dfaf5ce2db214deea4c3caaa6fe3d6174e288791a19705328
     status: draft_capture_only
     claim_boundary: intent_manifest_only_not_cdc_rdc_signoff
     links:

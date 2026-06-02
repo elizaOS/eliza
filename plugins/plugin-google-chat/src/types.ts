@@ -266,7 +266,7 @@ export function normalizeSpaceTarget(target: string): string | null {
     return null;
   }
   if (trimmed.startsWith("spaces/")) {
-    return trimmed;
+    return isValidGoogleChatSpaceName(trimmed) ? trimmed : null;
   }
   if (/^[A-Za-z0-9_-]+$/.test(trimmed)) {
     return `spaces/${trimmed}`;
@@ -281,7 +281,7 @@ export function normalizeUserTarget(target: string): string | null {
     return null;
   }
   if (trimmed.startsWith("users/")) {
-    return trimmed;
+    return isValidGoogleChatUserName(trimmed) ? trimmed : null;
   }
   if (/^[A-Za-z0-9_-]+$/.test(trimmed)) {
     return `users/${trimmed}`;

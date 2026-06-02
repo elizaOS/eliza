@@ -105,6 +105,9 @@ def file_sha256(path: Path) -> str:
 
 def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
     """Keep wire/flex/coax CAD evidence reviewable without duplicating full route rows."""
+    mechanical_envelope = record.get("mechanical_envelope")
+    if not isinstance(mechanical_envelope, dict):
+        mechanical_envelope = {}
     return {
         "id": record.get("id"),
         "connection_type": record.get("connection_type"),
@@ -143,6 +146,26 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         ),
         "all_represented_routes_have_layer_source_and_class": (
             record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "mechanical_envelope": mechanical_envelope,
+        "mechanical_envelope_defined": bool(mechanical_envelope),
+        "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
         ),
         "release_credit": record.get("release_credit") is True,
     }
@@ -589,6 +612,8 @@ def review_gate_inventory() -> dict[str, Any]:
             "controlled_impedance_connection_count",
             "controlled_impedance_requirement_defined_count",
             "bend_radius_requirement_defined_count",
+            "mechanical_envelope_defined_count",
+            "mechanical_envelope_release_credit",
             "supplier_release_required_connection_count",
             "routed_development_net_count",
             "release_credit",
@@ -658,6 +683,15 @@ def review_gate_inventory() -> dict[str, Any]:
             ) and all(int(item.get("cad_step_bytes") or 0) > 1000 for item in connection_records)
             gate["cad_connection_all_records_have_cad_parts"] = bool(connection_records) and all(
                 item.get("cad_part_present") is True for item in connection_records
+            )
+            gate["cad_connection_mechanical_envelope_defined_count"] = sum(
+                1 for item in compact_records if item["mechanical_envelope_defined"]
+            )
+            gate["cad_connection_all_records_have_mechanical_envelope"] = bool(
+                compact_records
+            ) and all(item["mechanical_envelope_defined"] for item in compact_records)
+            gate["cad_connection_mechanical_envelope_release_credit"] = any(
+                item["mechanical_envelope_release_credit"] for item in compact_records
             )
             gate["cad_connection_all_records_release_credit_false"] = bool(
                 connection_records
@@ -946,6 +980,12 @@ def build_report() -> dict[str, Any]:
             ),
             "cad_connection_bend_radius_requirement_defined_count": connection_coverage.get(
                 "bend_radius_requirement_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_defined_count": connection_coverage.get(
+                "mechanical_envelope_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_release_credit": connection_coverage.get(
+                "mechanical_envelope_release_credit"
             ),
             "cad_connection_supplier_release_required_count": connection_coverage.get(
                 "supplier_release_required_connection_count"

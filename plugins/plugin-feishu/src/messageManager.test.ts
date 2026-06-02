@@ -16,8 +16,12 @@ function createRuntime() {
 	});
 }
 
-function createManager(runtime = createRuntime()) {
-	const client = Object.create(null);
+function createManager(
+	runtime = createRuntime(),
+	client = Object.create(null) as ConstructorParameters<
+		typeof MessageManager
+	>[0],
+) {
 	const config: FeishuConfig = {
 		appId: "cli_test",
 		appSecret: "secret",
@@ -119,5 +123,58 @@ describe("MessageManager inbound event handling", () => {
 			message: { createdAt: number };
 		};
 		expect(Number.isFinite(payload.message.createdAt)).toBe(true);
+	});
+});
+
+describe("MessageManager outbound sending", () => {
+	it("does not call Feishu for blank text-only sends or replies", async () => {
+		const create = vi.fn();
+		const reply = vi.fn();
+		const manager = createManager(createRuntime(), {
+			im: {
+				message: {
+					create,
+					reply,
+				},
+			},
+		} as never);
+
+		await expect(
+			manager.sendMessage("oc_test", { text: " \n\t " }),
+		).resolves.toEqual([]);
+		await expect(
+			manager.replyToMessage("om_parent", { text: "" }),
+		).resolves.toEqual([]);
+
+		expect(create).not.toHaveBeenCalled();
+		expect(reply).not.toHaveBeenCalled();
+	});
+
+	it("still sends cards even when text is blank", async () => {
+		const create = vi
+			.fn()
+			.mockResolvedValue({ data: { message_id: "om_card" } });
+		const manager = createManager(createRuntime(), {
+			im: {
+				message: {
+					create,
+				},
+			},
+		} as never);
+
+		await expect(
+			manager.sendMessage("oc_test", {
+				text: "",
+				card: { header: { title: { tag: "plain_text", content: "Update" } } },
+			}),
+		).resolves.toEqual(["om_card"]);
+
+		expect(create).toHaveBeenCalledWith({
+			params: { receive_id_type: "chat_id" },
+			data: expect.objectContaining({
+				receive_id: "oc_test",
+				msg_type: "interactive",
+			}),
+		});
 	});
 });

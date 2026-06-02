@@ -121,6 +121,50 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
+  "pages/ViewManagerPage",
+] as const;
+
+/**
+ * Sub-components rendered inside an already-wrapped parent surface. Each
+ * registers its interactive controls via useAgentElement (controls-only mode)
+ * so the agent can address every element of a view, not just the page shell.
+ * Their ancestor (SettingsView, CharacterEditor, PluginsPageView,
+ * DatabasePageView, AutomationsFeed, AppsPageView, RelationshipsView, …)
+ * provides the registry; these must keep at least one registered control.
+ */
+const CONVERTED_SUBCOMPONENTS = [
+  "character/CharacterEditorPanels",
+  "character/CharacterExperienceWorkspace",
+  "character/CharacterLearnedSkillsSection",
+  "pages/documents-upload",
+  "pages/HeartbeatForm",
+  "pages/PluginCard",
+  "pages/plugin-view-connectors",
+  "pages/plugin-view-dialogs",
+  "pages/plugin-view-modal",
+  "pages/plugin-view-sidebar",
+  "pages/RelationshipsGraphPanel",
+  "pages/relationships/RelationshipsPersonPanels",
+  "pages/skill-detail-panel",
+  "pages/skill-marketplace",
+  "pages/WorkflowGraphViewer",
+  "settings/AdvancedSection",
+  "settings/AppearanceSettingsSection",
+  "settings/AppsManagementSection",
+  "settings/DesktopWorkspaceSection",
+  "settings/LoadContentPackForm",
+  "settings/PolicyControlsView",
+  "settings/RemotePluginHostSection",
+  "settings/SecuritySettingsSection",
+  "settings/VaultInventoryPanel",
+  "settings/vault-tabs/LoginsTab",
+  "settings/vault-tabs/OverviewTab",
+  "settings/vault-tabs/RoutingTab",
+  "settings/VoiceConfigView",
+  "settings/VoiceProfileSection",
+  "settings/VoiceSection",
+  "settings/WalletKeysSection",
+  "settings/XRSettingsSection",
 ] as const;
 
 function isAgentControllable(pageFile: string): boolean {
@@ -152,6 +196,12 @@ describe("agent-surface view coverage", () => {
     CONVERTED_SHELL_PAGES,
   )("shell view %s is agent-controllable (bridge or registered controls)", (page) => {
     expect(isAgentControllable(page)).toBe(true);
+  });
+
+  it.each(
+    CONVERTED_SUBCOMPONENTS,
+  )("sub-component %s registers controls into its parent surface", (file) => {
+    expect(isAgentControllable(file)).toBe(true);
   });
 
   it("has zero unconverted plugin views (lifeops now included)", () => {

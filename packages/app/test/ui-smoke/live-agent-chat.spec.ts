@@ -128,6 +128,41 @@ test("app chat sends a message to the deterministic keyless agent and renders pa
   });
 });
 
+test("app chat rejects intentionally broken deterministic mock LLM output", async ({
+  page,
+}) => {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const prompt =
+    "BROKEN_LLM_RESPONSE Open the wallet inventory view from this smoke test.";
+  await page.getByTestId("chat-composer-textarea").fill(prompt);
+  await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
+  await page.getByTestId("chat-composer-action").click();
+
+  await expect(
+    page
+      .locator('[data-testid="chat-message"][data-role="user"]')
+      .filter({ hasText: prompt })
+      .last(),
+  ).toBeVisible({ timeout: 30_000 });
+
+  const assistantMessage = page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .last();
+  await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
+  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+
+  expect(assistantText).toContain("BROKEN_MOCK_LLM_RESPONSE");
+  expect(() => parseAssistantFixtureText(assistantText)).toThrow();
+  expect(assistantText).not.toMatch(/}\s*$/);
+});
+
 test.describe("live agent chat", () => {
   test.skip(
     !LIVE_AGENT_CHAT_ENABLED,

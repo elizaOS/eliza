@@ -27,7 +27,7 @@
     "start:local": "NODE_ENV=production bun --env-file=.env run start",
     "start:staging": "NODE_ENV=production bun --env-file=.env.staging.local run start",
     "start:production": "NODE_ENV=production bun --env-file=.env.production.local run start",
-    "check": "biome check --write .",
+    "check": "bunx @biomejs/biome check --write .",
     "lint": "echo skip (feed) >&2",
     "typecheck": "echo skip (feed) >&2",
     "validate:all": "bun run typecheck && bun run lint",
@@ -146,7 +146,7 @@
   },
   "lint-staged": {
     "*.{js,ts,cjs,mjs,jsx,tsx,json,jsonc}": [
-      "biome check --write --no-errors-on-unmatched"
+      "bunx @biomejs/biome check --write --no-errors-on-unmatched"
     ]
   },
   "packageManager": "bun@1.4.0-canary.1",

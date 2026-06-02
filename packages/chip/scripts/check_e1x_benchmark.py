@@ -763,6 +763,16 @@ def main() -> int:
         "generated_utc": datetime.now(UTC).isoformat(),
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fpga_claim_allowed": False,
+            "full_wafer_rtl_claim_allowed": False,
+        },
         "claim_boundary": "E1X L2 architecture-simulator benchmark only; not silicon, FPGA, board, PD, DFT, package, or full-wafer RTL benchmark evidence.",
         "evidence_paths": [
             "benchmarks/configs/benchmark_plan.json",

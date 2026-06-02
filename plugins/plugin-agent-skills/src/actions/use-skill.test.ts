@@ -146,12 +146,13 @@ describe("useSkillAction", () => {
 		};
 
 		try {
+			const callback = vi.fn();
 			const result = await useSkillAction.handler(
 				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
 				{ content: { text: "use weather skill" } } as Memory,
 				undefined,
 				{ parameters: { slug: "weather", mode: "script" } },
-				vi.fn(),
+				callback,
 			);
 
 			expect(result?.success).toBe(true);
@@ -162,6 +163,9 @@ describe("useSkillAction", () => {
 			});
 			expect(result?.userFacingText).toBe("New York: 72F and clear.");
 			expect(result?.verifiedUserFacing).toBe(true);
+			expect(callback).toHaveBeenCalledWith({
+				text: "New York: 72F and clear.",
+			});
 		} finally {
 			await fs.rm(tempDir, { recursive: true, force: true });
 		}
@@ -216,17 +220,22 @@ describe("useSkillAction", () => {
 		};
 
 		try {
+			const callback = vi.fn();
 			const result = await useSkillAction.handler(
 				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
 				{ content: { text: "use city skill" } } as Memory,
 				undefined,
 				{ parameters: { slug: "city", mode: "script" } },
-				vi.fn(),
+				callback,
 			);
 
 			expect(result?.success).toBe(true);
 			expect(result?.userFacingText).toBe("Paris: clear.");
 			expect(result?.verifiedUserFacing).toBe(true);
+			const callbackText = callback.mock.calls[0]?.[0]?.text ?? "";
+			expect(callbackText).toBe("Paris: clear.");
+			expect(callbackText).not.toContain('"cmd"');
+			expect(callbackText).not.toContain('"output"');
 		} finally {
 			await fs.rm(tempDir, { recursive: true, force: true });
 		}

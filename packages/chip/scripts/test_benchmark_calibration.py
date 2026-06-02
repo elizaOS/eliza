@@ -39,6 +39,15 @@ def write_config(path: Path, benchmark: dict[str, object]) -> None:
     )
 
 
+def contract_artifacts() -> dict[str, object]:
+    contract = ROOT / bench.TARGET_METADATA_CONTRACT_PATH
+    return {
+        "target_metadata_contract": bench.TARGET_METADATA_CONTRACT_PATH,
+        "target_metadata_contract_sha256": bench.sha256_file(contract),
+        "target_metadata_contract_bytes": contract.stat().st_size,
+    }
+
+
 def test_target_measured_l5_l6_report_provenance_validates() -> None:
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -69,6 +78,7 @@ def test_target_measured_l5_l6_report_provenance_validates() -> None:
                 "host_system": "linux",
             },
             "config": {"path": "test", "version": "test"},
+            "artifacts": contract_artifacts(),
             "target_execution": {
                 "runner": "phone",
                 "transcript_path": "target-session.log",
@@ -196,6 +206,132 @@ def test_target_measured_l5_l6_report_provenance_validates() -> None:
     ):
         raise AssertionError(empty_errors)
     print("PASS target-measured L5/L6 provenance validates")
+
+
+def test_report_rejects_target_metadata_contract_hash_drift() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        transcript = root / "target-session.log"
+        transcript.write_text("target benchmark session\n", encoding="utf-8")
+        raw_output = root / "coremark.log"
+        raw_output.write_text("CoreMark/MHz: 1.0\n", encoding="utf-8")
+        process_contract = root / "docs/spec-db/process-14a-effects.yaml"
+        process_contract.parent.mkdir(parents=True, exist_ok=True)
+        process_contract.write_text("process effects contract fixture\n", encoding="utf-8")
+        report = {
+            "schema": "eliza.benchmark_run.v1",
+            "report_id": "target-contract-drift",
+            "status": "passed",
+            "date_utc": "2026-05-23T00:00:00Z",
+            "dry_run": False,
+            "claim_allowed": True,
+            "phone_claim_allowed": True,
+            "release_claim_allowed": False,
+            "claim_level": "L5_PROTOTYPE_SILICON",
+            "platform": {
+                "name": "e1-phone-prototype",
+                "revision": "rev-a",
+                "source_tree_sha": "abc123",
+                "host": "host",
+                "host_system": "linux",
+            },
+            "config": {"path": "test", "version": "test"},
+            "artifacts": {
+                **contract_artifacts(),
+                "target_metadata_contract_sha256": "1" * 64,
+            },
+            "target_execution": {
+                "runner": "phone",
+                "transcript_path": "target-session.log",
+                "transcript_sha256": bench.sha256_file(transcript),
+            },
+            "software": {
+                "os": "android",
+                "kernel": "6.12",
+                "firmware": "opensbi",
+                "runtime": "native",
+                "build_id": "build-1",
+            },
+            "clocks": {
+                "source": "counter",
+                "cpu_hz": 1,
+                "npu_hz": 1,
+                "memory_hz": 1,
+                "governor": "fixed",
+            },
+            "memory": {
+                "type": "lpddr",
+                "capacity_bytes": 1,
+                "bandwidth_bytes_per_second": 1,
+                "channels": 1,
+            },
+            "thermal": {
+                "ambient_c": 25,
+                "die_c": 35,
+                "cooling": "passive",
+                "throttle_state": "none",
+            },
+            "power": {
+                "source": "meter",
+                "watts": 1,
+                "measurement_method": "inline",
+                "sample_count": 1,
+                "averaging_window_seconds": 1,
+            },
+            "process": {
+                "node": "14A",
+                "pdk": "pdk",
+                "process_effects_contract": {
+                    "path": "docs/spec-db/process-14a-effects.yaml",
+                    "sha256": bench.sha256_file(process_contract),
+                },
+                "process_corner_count": 1,
+                "worst_process_corner": "14a_ss_0p63v_105c",
+                "pdk_signoff_claim": "pdk_extracted_timing_power_thermal_signoff_passed",
+            },
+            "calibration": {
+                "status": "calibrated",
+                "source": "lab",
+                "ground_truth_reference": "meter",
+                "last_calibrated_utc": "2026-05-23T00:00:00Z",
+                "assets": {},
+            },
+            "results": [
+                {
+                    "name": "coremark",
+                    "suite": "CoreMark",
+                    "version": "1.0",
+                    "command": ["coremark"],
+                    "input_dataset": "native",
+                    "primary_metric": "CoreMark/MHz",
+                    "units": "score_per_mhz",
+                    "dependencies": [],
+                    "artifacts": {
+                        "raw_output": "coremark.log",
+                        "raw_output_sha256": bench.sha256_file(raw_output),
+                    },
+                    "status": "passed",
+                    "provenance": "target-measured",
+                    "parser": "coremark_v1",
+                    "metrics": {"coremark_per_mhz": 1.0},
+                    "run_metadata": {
+                        "runs": 1,
+                        "warmup_runs": 0,
+                        "required_metadata": ["software", "clocks", "memory"],
+                        "required_metrics": ["coremark_per_mhz"],
+                        "metric_gates": [],
+                        "required_calibration_assets": [],
+                    },
+                    "target_execution": {
+                        "runner": "phone",
+                        "transcript_sha256": bench.sha256_file(raw_output),
+                    },
+                }
+            ],
+        }
+        errors = bench.validate_report(report, artifact_root=root)
+    if not any("target_metadata_contract_sha256 must match current" in error for error in errors):
+        raise AssertionError(errors)
 
 
 def test_parsed_metric_with_blocked_calibration_fails_schema() -> None:
@@ -637,6 +773,7 @@ def test_l5_l6_calibration_evidence_must_be_archived_under_chip() -> None:
 def main() -> int:
     for test in (
         test_target_measured_l5_l6_report_provenance_validates,
+        test_report_rejects_target_metadata_contract_hash_drift,
         test_parsed_metric_with_blocked_calibration_fails_schema,
         test_uncalibrated_simulator_metrics_fail_instead_of_passing,
         test_calibrated_result_requires_utc_timestamp_and_sha256_assets,

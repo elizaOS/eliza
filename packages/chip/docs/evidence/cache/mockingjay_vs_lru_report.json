@@ -61,6 +61,10 @@
   },
   "mode": "mockingjay-vs-lru",
   "phone_claim_allowed": false,
+  "false_claim_flags": {
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
   "provenance": {
     "source_artifacts": [
       {

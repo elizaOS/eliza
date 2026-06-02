@@ -72,7 +72,6 @@ export class RLMClient {
     totalRequests: 0,
     successfulRequests: 0,
     failedRequests: 0,
-    stubResponses: 0,
     totalRetries: 0,
     averageLatencyMs: 0,
     p95LatencyMs: 0,
@@ -266,18 +265,11 @@ export class RLMClient {
     this.metricsCallback = callback;
   }
 
-  private updateMetrics(
-    latencyMs: number,
-    success: boolean,
-    isStub: boolean,
-    error?: string,
-  ): void {
+  private updateMetrics(latencyMs: number, success: boolean, error?: string): void {
     this.metrics.totalRequests++;
     this.metrics.lastRequestTimestamp = Date.now();
 
-    if (isStub) {
-      this.metrics.stubResponses++;
-    } else if (success) {
+    if (success) {
       this.metrics.successfulRequests++;
     } else {
       this.metrics.failedRequests++;
@@ -323,8 +315,7 @@ export class RLMClient {
         await this.ensureServer();
 
         if (!this.isReady) {
-          this.updateMetrics(Date.now() - startTime, true, true);
-          return stubResult();
+          throw new Error("RLM backend is not available");
         }
 
         const result = await this.sendRequest<RLMResult>("infer", {
@@ -332,7 +323,7 @@ export class RLMClient {
           opts: opts ?? {},
         });
 
-        this.updateMetrics(Date.now() - startTime, true, false);
+        this.updateMetrics(Date.now() - startTime, true);
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -342,8 +333,8 @@ export class RLMClient {
 
         if (!isRetryable || attempt === maxRetries - 1) {
           this.logger.error(`RLM inference failed after ${attempt + 1} attempts: ${error}`);
-          this.updateMetrics(Date.now() - startTime, true, true, lastError.message);
-          return stubResult(lastError.message);
+          this.updateMetrics(Date.now() - startTime, false, lastError.message);
+          throw lastError;
         }
 
         const delay =
@@ -356,8 +347,8 @@ export class RLMClient {
       }
     }
 
-    this.updateMetrics(Date.now() - startTime, false, false, lastError?.message);
-    return stubResult(lastError?.message);
+    this.updateMetrics(Date.now() - startTime, false, lastError?.message);
+    throw lastError ?? new Error("RLM inference failed");
   }
 
   async getStatus(): Promise<RLMStatusResponse> {
@@ -388,11 +379,4 @@ export class RLMClient {
     this.isReady = false;
     this.isAvailable = false;
   }
-}
-
-export function stubResult(error?: string): RLMResult {
-  return {
-    text: "[RLM STUB] RLM backend not available",
-    metadata: { stub: true, error },
-  };
 }

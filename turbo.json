@@ -12,6 +12,38 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos-benchmarks/lib#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/cloud-api#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-browser-extension-safari#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-clone-ur-crush#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/ios-native-deps#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/prompts#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "eliza-vrm-demo#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "evm-skill-runner#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/agent#build": {
       "dependsOn": [
         "@elizaos/core#build",
@@ -21,8 +53,11 @@
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
+        "@elizaos/plugin-mcp#build",
         "@elizaos/plugin-pdf#build",
         "@elizaos/plugin-streaming#build",
+        "@elizaos/plugin-workflow#build",
+        "@elizaos/security#build",
         "@elizaos/capacitor-contacts#build",
         "@elizaos/capacitor-phone#build",
         "@elizaos/capacitor-wifi#build"
@@ -170,12 +205,16 @@
       "outputs": ["chrome/dist/**", "safari/Chat with Webpage/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": ["@elizaos/contracts#build"],
+      "dependsOn": ["@elizaos/contracts#build", "@elizaos/logger#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
     "@elizaos/contracts#build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/logger#build": {
       "dependsOn": [],
       "outputs": ["dist/**"]
     },
@@ -264,6 +303,10 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-coding-tools#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": ["dist/**"]
@@ -347,8 +390,27 @@
       ],
       "outputs": []
     },
+    "@elizaos/app-core#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/agent#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/app#typecheck": {
       "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-contacts#typecheck": {
+      "dependsOn": [
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/ui#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/example-autonomous#typecheck": {
@@ -361,6 +423,18 @@
     },
     "@elizaos/example-telegram#typecheck": {
       "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/example-edad#typecheck": {
+      "dependsOn": ["@elizaos/cloud-sdk#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-sub-agent-claude-code#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-remote-manifest#build",
+        "@elizaos/plugin-worker-runtime#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/example-farcaster#build": {

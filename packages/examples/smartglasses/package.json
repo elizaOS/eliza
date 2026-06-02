@@ -25,12 +25,12 @@
     "simulator": "npx @evenrealities/evenhub-simulator@latest http://127.0.0.1:5178/evenhub-smoke.html --automation-port 9898",
     "smoke:simulator": "bun run simulator-automation-smoke.ts",
     "smoke:package": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run package-smoke.ts",
-    "smoke:runtime": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run eliza-runtime-smoke.ts",
+    "smoke:runtime": "node ../../../packages/scripts/run-turbo.mjs run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run eliza-runtime-smoke.ts",
     "lint": "bunx @biomejs/biome check .",
     "start": "bun run smartglasses.ts",
     "test": "bun test smartglasses.test.ts smartglasses-protocol.test.ts",
     "test:protocol": "bun test smartglasses-protocol.test.ts",
-    "typecheck": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --ignoreConfig --noEmit --moduleResolution bundler --allowImportingTsExtensions --module ESNext --target ES2022 --lib ES2022,DOM --types node --skipLibCheck --strict false eliza-runtime-smoke.ts evenhub-smoke.ts hardware-evidence.ts hardware-local-bluetooth.ts hardware-report-status.ts hardware-smoke.ts noble-hardware-smoke.ts package-smoke.ts simulator-automation-smoke.ts validate-hardware-report.ts",
+    "typecheck": "node ../../../packages/scripts/run-turbo.mjs run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --ignoreConfig --noEmit --moduleResolution bundler --allowImportingTsExtensions --module ESNext --target ES2022 --lib ES2022,DOM --types node --skipLibCheck --strict false eliza-runtime-smoke.ts evenhub-smoke.ts hardware-evidence.ts hardware-local-bluetooth.ts hardware-report-status.ts hardware-smoke.ts noble-hardware-smoke.ts package-smoke.ts simulator-automation-smoke.ts validate-hardware-report.ts",
     "verify:software": "bun run lint && bun run test && bun run test:protocol && bun run hardware:test-bleak-parser && bun run hardware:test-doctor && bun run typecheck && bun run smoke:package && bun run smoke:runtime && bun run smoke:simulator",
     "clean": "rm -rf .turbo node_modules/.vite node_modules/.vite-temp"
   },
@@ -41,6 +41,7 @@
     "@evenrealities/even_hub_sdk": "0.0.10"
   },
   "devDependencies": {
+    "@types/node": "^25.0.3",
     "bun-types": "1.3.14",
     "pngjs": "^7.0.0",
     "typescript": "^6.0.3",

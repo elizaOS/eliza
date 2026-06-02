@@ -1,7 +1,7 @@
 import { PageContent } from "./client";
 
 export function generateStaticParams() {
-  return [{ tag: "_placeholder" }];
+  return [];
 }
 
 export default function Page() {

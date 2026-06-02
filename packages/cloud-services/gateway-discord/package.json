@@ -5,8 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
     "dev": "PORT=3001 bun run --env-file ../../.env.local --watch src/index.ts",
     "dev:local": "PORT=3001 bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node --external zlib-sync",

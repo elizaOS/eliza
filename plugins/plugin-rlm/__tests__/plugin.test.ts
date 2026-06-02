@@ -177,22 +177,6 @@ describe("RLM Client", () => {
     });
   });
 
-  describe("stubResult", () => {
-    it("should return stub result", async () => {
-      const { stubResult } = await import("../client");
-      const result = stubResult();
-      expect(result.metadata.stub).toBe(true);
-      expect(result.text).toContain("[RLM STUB]");
-    });
-
-    it("should include error in stub result", async () => {
-      const { stubResult } = await import("../client");
-      const result = stubResult("Test error");
-      expect(result.metadata.stub).toBe(true);
-      expect(result.metadata.error).toBe("Test error");
-    });
-  });
-
   describe("RLMClient Metrics", () => {
     it("should initialize with zero metrics", async () => {
       const { RLMClient } = await import("../client");
@@ -202,7 +186,6 @@ describe("RLM Client", () => {
       expect(metrics.totalRequests).toBe(0);
       expect(metrics.successfulRequests).toBe(0);
       expect(metrics.failedRequests).toBe(0);
-      expect(metrics.stubResponses).toBe(0);
       expect(metrics.totalRetries).toBe(0);
       expect(metrics.averageLatencyMs).toBe(0);
     });
@@ -217,22 +200,21 @@ describe("RLM Client", () => {
         expect(metrics.totalRequests).toBeGreaterThan(0);
       });
 
-      // Trigger a request (will fail/stub)
-      await client.infer("test");
+      await expect(client.infer("test")).rejects.toThrow();
 
       expect(callbackCalled).toBe(true);
     });
 
-    it("should track stub responses in metrics", async () => {
+    it("should track backend failures in metrics", async () => {
       const { RLMClient } = await import("../client");
       const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-      await client.infer("test1");
-      await client.infer("test2");
+      await expect(client.infer("test1")).rejects.toThrow();
+      await expect(client.infer("test2")).rejects.toThrow();
 
       const metrics = client.getMetrics();
       expect(metrics.totalRequests).toBe(2);
-      expect(metrics.stubResponses).toBe(2);
+      expect(metrics.failedRequests).toBe(2);
     });
   });
 });
@@ -447,29 +429,11 @@ describe("Error Handling", () => {
       expect(client).toBeDefined();
     });
 
-    it("should return stub result when python unavailable", async () => {
+    it("should reject when python is unavailable", async () => {
       const { RLMClient } = await import("../client");
       const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-      const result = await client.infer("test");
-      expect(result.metadata.stub).toBe(true);
-    });
-  });
-
-  describe("Stub Result Error Messages", () => {
-    it("should include specific error message in stub", async () => {
-      const { stubResult } = await import("../client");
-      const errorMsg = "Custom error message";
-      const result = stubResult(errorMsg);
-
-      expect(result.metadata.error).toBe(errorMsg);
-    });
-
-    it("should have undefined error for default stub", async () => {
-      const { stubResult } = await import("../client");
-      const result = stubResult();
-
-      expect(result.metadata.error).toBeUndefined();
+      await expect(client.infer("test")).rejects.toThrow();
     });
   });
 });
@@ -488,11 +452,11 @@ describe("Concurrent Behavior", () => {
       client.infer("Message 5"),
     ];
 
-    const results = await Promise.all(promises);
+    const results = await Promise.allSettled(promises);
 
     expect(results).toHaveLength(5);
     for (const result of results) {
-      expect(result.metadata.stub).toBe(true);
+      expect(result.status).toBe("rejected");
     }
   });
 
@@ -500,24 +464,21 @@ describe("Concurrent Behavior", () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    await Promise.all([client.infer("test1"), client.infer("test2"), client.infer("test3")]);
+    await Promise.allSettled([client.infer("test1"), client.infer("test2"), client.infer("test3")]);
 
     const metrics = client.getMetrics();
     expect(metrics.totalRequests).toBe(3);
-    expect(metrics.stubResponses).toBe(3);
+    expect(metrics.failedRequests).toBe(3);
   });
 });
 
 describe("Output Verification", () => {
-  describe("Stub Response Format", () => {
-    it("should have exact stub format", async () => {
-      const { stubResult } = await import("../client");
-      const result = stubResult();
+  describe("Unavailable Backend Errors", () => {
+    it("should fail explicitly instead of returning generated text", async () => {
+      const { RLMClient } = await import("../client");
+      const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-      expect(result.text).toMatch(/^\[RLM STUB\]/);
-      expect(result.metadata.stub).toBe(true);
-      expect(result.metadata.iterations).toBeUndefined();
-      expect(result.metadata.depth).toBeUndefined();
+      await expect(client.infer("test")).rejects.toThrow();
     });
   });
 
@@ -531,7 +492,6 @@ describe("Output Verification", () => {
       expect(typeof metrics.totalRequests).toBe("number");
       expect(typeof metrics.successfulRequests).toBe("number");
       expect(typeof metrics.failedRequests).toBe("number");
-      expect(typeof metrics.stubResponses).toBe("number");
       expect(typeof metrics.totalRetries).toBe("number");
       expect(typeof metrics.averageLatencyMs).toBe("number");
       expect(typeof metrics.p95LatencyMs).toBe("number");
@@ -543,7 +503,7 @@ describe("Output Verification", () => {
       const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
       const before = Date.now();
-      await client.infer("test");
+      await expect(client.infer("test")).rejects.toThrow();
       const metrics = client.getMetrics();
 
       expect(metrics.lastRequestTimestamp).toBeGreaterThanOrEqual(before);
@@ -618,61 +578,51 @@ describe("RLMInferOptions Per-Request Overrides", () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept per-request maxIterations
-    const result = await client.infer("test", { maxIterations: 10 });
-    expect(result.metadata.stub).toBe(true);
+    await expect(client.infer("test", { maxIterations: 10 })).rejects.toThrow();
   });
 
   it("should support maxDepth override", async () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept per-request maxDepth
-    const result = await client.infer("test", { maxDepth: 5 });
-    expect(result.metadata.stub).toBe(true);
+    await expect(client.infer("test", { maxDepth: 5 })).rejects.toThrow();
   });
 
   it("should support rootModel override", async () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept per-request rootModel
-    const result = await client.infer("test", { rootModel: "gpt-5" });
-    expect(result.metadata.stub).toBe(true);
+    await expect(client.infer("test", { rootModel: "gpt-5" })).rejects.toThrow();
   });
 
   it("should support subcallModel override", async () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept per-request subcallModel
-    const result = await client.infer("test", { subcallModel: "gpt-5-mini" });
-    expect(result.metadata.stub).toBe(true);
+    await expect(client.infer("test", { subcallModel: "gpt-5-mini" })).rejects.toThrow();
   });
 
   it("should support logTrajectories override", async () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept per-request logTrajectories
-    const result = await client.infer("test", { logTrajectories: true });
-    expect(result.metadata.stub).toBe(true);
+    await expect(client.infer("test", { logTrajectories: true })).rejects.toThrow();
   });
 
   it("should support multiple overrides simultaneously", async () => {
     const { RLMClient } = await import("../client");
     const client = new RLMClient({ pythonPath: "/nonexistent/python" });
 
-    // Should accept multiple per-request overrides
-    const result = await client.infer("test", {
-      maxIterations: 10,
-      maxDepth: 3,
-      rootModel: "gpt-5",
-      subcallModel: "gpt-5-mini",
-      logTrajectories: true,
-      trackCosts: true,
-    });
-    expect(result.metadata.stub).toBe(true);
+    await expect(
+      client.infer("test", {
+        maxIterations: 10,
+        maxDepth: 3,
+        rootModel: "gpt-5",
+        subcallModel: "gpt-5-mini",
+        logTrajectories: true,
+        trackCosts: true,
+      }),
+    ).rejects.toThrow();
   });
 
   // NOTE: Custom REPL tool injection is NOT supported by the upstream RLM library.

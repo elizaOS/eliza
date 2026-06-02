@@ -1,6 +1,11 @@
 schema: eliza.ai_eda.external_method_wrapper_readiness.v1
 updated: "2026-05-21"
 claim_boundary: external_method_wrapper_readiness_only_no_inference_training_replay_or_release_claim
+claim_allowed: false
+release_claim_allowed: false
+training_claim_allowed: false
+inference_claim_allowed: false
+e1_signoff_claim_allowed: false
 policy:
   metadata_only: true
   imports_external_code: false
@@ -11,6 +16,11 @@ policy:
   runs_openlane: false
   writes_design_files: false
   release_use_allowed: false
+  claim_allowed: false
+  release_claim_allowed: false
+  training_claim_allowed: false
+  inference_claim_allowed: false
+  e1_signoff_claim_allowed: false
   deterministic_e1_replay_required: true
 source:
   proxy_implementation: scripts/ai_eda/train_macro_placement_policy.py

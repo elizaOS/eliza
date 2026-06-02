@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/r_zoo_legality_baseline/validation/training_run.json"
 CLAIM_BOUNDARY = "r_zoo_legality_baseline_training_only_no_e1_signoff_or_release_claim"
 REQUIRED_SPLITS = {"train", "val", "test"}
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -47,12 +54,21 @@ def finite(value: Any) -> bool:
     )
 
 
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
+
+
 def validate(report: dict[str, Any], report_path: Path) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.ai_eda.r_zoo_legality_training_run.v1":
         errors.append("report schema mismatch")
     if report.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("report claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(report, "report"))
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("policy must be mapping")
@@ -63,6 +79,9 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
             errors.append("policy.e1_signoff_evidence must be false")
         if policy.get("runs_openlane_or_openroad") is not False:
             errors.append("policy.runs_openlane_or_openroad must be false")
+        for field in REQUIRED_FALSE_CLAIM_FLAGS:
+            if policy.get(field) is not False:
+                errors.append(f"policy.{field} must be false")
     if report.get("sample_count") != 14:
         errors.append("sample_count must be 14")
     split_manifest = report.get("split_manifest")
@@ -108,6 +127,7 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("model schema mismatch")
     if model.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("model claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(model, "model"))
     weights = model.get("weights")
     if not isinstance(weights, dict) or len(weights) < 5:
         errors.append("model weights must be non-empty")
@@ -117,6 +137,7 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("metrics schema mismatch")
     if metrics.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("metrics claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(metrics, "metrics"))
     splits = metrics.get("splits")
     if (
         not isinstance(splits, list)

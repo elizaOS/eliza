@@ -149,7 +149,7 @@ scorecard:
     status: pass_for_concept_blocked_for_release
     cad_fit_status: pass
     assembly_clearance_status: pass
-    checked_clearance_cases: 14
+    checked_clearance_cases: 18
     step_artifact_count: 25
     blocker_to_release: routed_board_step_with_supplier_models_and_tolerance_stack_missing
   factory_test_access:
@@ -194,11 +194,11 @@ cross_checks:
   enclosure_fit_matches_enclosure_placement_closure: true
   release_outputs_fail_closed: true
 release_blockers:
-  - routed KiCad PCB, DRC, filled zones, and post-route reports are missing
+  - local routed KiCad PCB candidate has tracks and filled zones for review only; release DRC and post-route reports are missing
   - real supplier footprints, courtyards, and STEP models are missing
   - routed-courtyard utilization and escape-density reports are missing
   - SI/PI, power efficiency, thermal soak, RF, coexistence, and SAR evidence are missing
-  - routed board STEP and formal enclosure tolerance stack are missing
+  - local routed board STEP candidate exists for review only; supplier-approved routed STEP and formal enclosure tolerance stack are missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot rebaseline size or layout optimization until supplier, routed validation, STEP, enclosure, and promotion evidence exist
   - factory probe coordinates, limits, and first-article transcript are missing
 forbidden_claims:

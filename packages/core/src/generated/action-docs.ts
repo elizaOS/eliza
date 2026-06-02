@@ -6506,37 +6506,6 @@ export const allActionsSpec = {
 			similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
 		},
 		{
-			name: "OWNER_HEALTH",
-			description:
-				"Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
-			parameters: [
-				{
-					name: "action",
-					description: "Owner health read op: today|trend|by_metric|status.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Owner health read op: today|trend|by_metric|status.",
-				},
-			],
-			descriptionCompressed:
-				"owner health: today|trend|by_metric|status; read-only telemetry",
-			similes: ["FITNESS", "WELLNESS"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_HEALTH with the provided parameters.",
-					actions: ["OWNER_HEALTH"],
-					params: {
-						OWNER_HEALTH: {
-							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "OWNER_REMINDERS",
 			description:
 				"Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",

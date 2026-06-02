@@ -15,6 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/floorset_lite_splits"
 SCHEMA = "eliza.ai_eda.floorset_lite_split_manifest.v1"
 CLAIM_BOUNDARY = "floorset_lite_split_manifest_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "e1_signoff_evidence": False,
+    "optimization_claim_allowed": False,
+}
 CONVERSION_SCHEMA = "eliza.ai_eda.floorset_lite_conversion_report.v1"
 
 
@@ -138,6 +143,7 @@ def main() -> int:
         "training_use_allowed": not blockers,
         "e1_signoff_evidence": False,
         "optimization_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "evidence_run_ids": {"conversion": conversion_run_id},
         "source_conversion": artifact(conversion_path),
         "split_policy": {

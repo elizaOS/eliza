@@ -1,5 +1,11 @@
 schema: eliza.pipeline_handoff_work_order.v1
 status: fail_closed_open_work
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
 source_goal: Android-capable RISC-V AI phone SoC with WiFi, NPU/GPU/display, FPGA/prototype, and tapeout path.
 handoffs:
   - id: spec_to_contract

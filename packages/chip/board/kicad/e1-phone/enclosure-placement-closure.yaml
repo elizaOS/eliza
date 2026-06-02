@@ -28,7 +28,7 @@ envelope_cross_check:
   cad_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 12.7
+    max_thickness: 11.8
   display_primary_fits_current_envelope: true
   display_clearance_mm:
     width_clearance_mm: 0.9
@@ -38,20 +38,20 @@ component_height_stack_vs_interior_depth:
     carried to an end-of-life worst case with explicit LiPo swell and the molded/placement tolerance stack-up.
     This is a CAD-estimate proof using datasheet-typical tolerances, not a measured tolerance stack with
     gasket compression, foam compression set, or supplier z-height signoff.
-  device_thickness_mm: 12.7
+  device_thickness_mm: 11.8
   wall_thickness_mm: 1.15
-  interior_depth_between_walls_mm: 10.4
+  interior_depth_between_walls_mm: 9.5
   front_to_back_z_coordinates_mm:
-    display_lcm_back_z: 1.15
-    battery_front_z: 1.0
-    battery_back_z: -4.6
-    back_inner_wall_z: -5.2
+    display_lcm_back_z: 1.63
+    battery_front_z: 1.45
+    battery_back_z: -4.15
+    back_inner_wall_z: -4.75
   derived_stack_mm:
     battery_thickness: 5.6
-    display_to_battery_gap: 0.15
+    display_to_battery_gap: 0.18
     battery_to_back_wall_gap: 0.6
-    occupied_display_back_to_back_wall: 6.35
-    display_back_to_back_wall_span: 6.35
+    occupied_display_back_to_back_wall: 6.38
+    display_back_to_back_wall_span: 6.38
     nominal_interior_residual_margin: 0.0
     front_static_gap_required: 0.15
     back_swell_gap_required: 0.6
@@ -75,14 +75,14 @@ component_height_stack_vs_interior_depth:
       component_datasheet_typical: 0.05
       solder_reflow_connector_float: 0.03
     back_void_tolerance_arithmetic_mm: 0.182
-    back_void_tolerance_rss_mm: 0.084
+    back_void_tolerance_rss_mm: 0.083
     front_gap_tolerance_arithmetic_mm: 0.12
     front_gap_tolerance_rss_mm: 0.073
   worst_case_residual_mm:
     back_swell_void_arithmetic: -0.142
-    back_swell_void_rss: -0.044
-    display_static_gap_arithmetic: 0.03
-    display_static_gap_rss: 0.077
+    back_swell_void_rss: -0.043
+    display_static_gap_arithmetic: 0.06
+    display_static_gap_rss: 0.107
     gate_basis: arithmetic worst case (fail-closed); RSS shown for reference only
   interface_z_stack_battery_target_mm: 5.6
   fits_flush_back_budget: true
@@ -98,9 +98,7 @@ component_height_stack_vs_interior_depth:
       the tolerance class, or specify a back-void compressible foam pad with a documented compression
       set that absorbs the over-budget without preloading the cell'
   gaps_meet_minimum: true
-  discrepancies:
-    - enclosure_interface device_envelope max_thickness 11.8_mm differs from fit-check CAD envelope 12.7_mm;
-      the enclosure-interface baseline must be raised to the swell-void depth before tolerance-stack signoff
+  discrepancies: []
 pcb_to_cad_handoff:
   pcb_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   kicad_outline_check:
@@ -157,127 +155,128 @@ step_artifacts:
   e1-phone-solid-assembly.step:
     path: mechanical/e1-phone/out/e1-phone-solid-assembly.step
     present: true
-    bytes: 1953430
+    bytes: 5697447
   main_pcb.step:
     path: mechanical/e1-phone/out/main_pcb.step
     present: true
-    bytes: 32739
+    bytes: 15531
   display_lcm.step:
     path: mechanical/e1-phone/out/display_lcm.step
     present: true
-    bytes: 15663
+    bytes: 15681
   screen_cover_glass.step:
     path: mechanical/e1-phone/out/screen_cover_glass.step
     present: true
-    bytes: 32228
+    bytes: 131089
   battery_pouch.step:
     path: mechanical/e1-phone/out/battery_pouch.step
     present: true
-    bytes: 15521
+    bytes: 15570
   usb_c_receptacle.step:
     path: mechanical/e1-phone/out/usb_c_receptacle.step
     present: true
-    bytes: 15643
+    bytes: 15657
   usb_c_external_aperture.step:
     path: mechanical/e1-phone/out/usb_c_external_aperture.step
     present: true
-    bytes: 15627
+    bytes: 15639
   power_button_cap.step:
     path: mechanical/e1-phone/out/power_button_cap.step
     present: true
-    bytes: 15546
+    bytes: 15560
   volume_button_cap.step:
     path: mechanical/e1-phone/out/volume_button_cap.step
     present: true
-    bytes: 15581
+    bytes: 15595
   rear_camera_module.step:
     path: mechanical/e1-phone/out/rear_camera_module.step
     present: true
-    bytes: 15522
+    bytes: 15512
   front_camera_module.step:
     path: mechanical/e1-phone/out/front_camera_module.step
     present: true
-    bytes: 15602
+    bytes: 15616
   bottom_speaker_module.step:
     path: mechanical/e1-phone/out/bottom_speaker_module.step
     present: true
-    bytes: 15533
+    bytes: 15547
   bottom_speaker_acoustic_chamber.step:
     path: mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.step
     present: true
-    bytes: 15550
+    bytes: 15566
   bottom_mic.step:
     path: mechanical/e1-phone/out/bottom_mic.step
     present: true
-    bytes: 15663
+    bytes: 15677
   top_mic.step:
     path: mechanical/e1-phone/out/top_mic.step
     present: true
-    bytes: 15611
+    bytes: 15625
   earpiece_receiver.step:
     path: mechanical/e1-phone/out/earpiece_receiver.step
     present: true
-    bytes: 15511
+    bytes: 15525
   haptic_lra.step:
     path: mechanical/e1-phone/out/haptic_lra.step
     present: true
-    bytes: 15555
+    bytes: 15571
   split_interconnect_top_connector.step:
     path: mechanical/e1-phone/out/split_interconnect_top_connector.step
     present: true
-    bytes: 15507
+    bytes: 15521
   split_interconnect_bottom_connector.step:
     path: mechanical/e1-phone/out/split_interconnect_bottom_connector.step
     present: true
-    bytes: 15533
+    bytes: 15547
   split_interconnect_side_flex.step:
     path: mechanical/e1-phone/out/split_interconnect_side_flex.step
     present: true
-    bytes: 15580
+    bytes: 15594
   split_interconnect_top_flex_tail.step:
     path: mechanical/e1-phone/out/split_interconnect_top_flex_tail.step
     present: true
-    bytes: 15546
+    bytes: 15560
   split_interconnect_bottom_flex_tail.step:
     path: mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.step
     present: true
-    bytes: 15572
+    bytes: 15586
   cellular_top_antenna_keepout.step:
     path: mechanical/e1-phone/out/cellular_top_antenna_keepout.step
     present: true
-    bytes: 15516
+    bytes: 15532
   cellular_bottom_antenna_keepout.step:
     path: mechanical/e1-phone/out/cellular_bottom_antenna_keepout.step
     present: true
-    bytes: 15542
+    bytes: 15558
   wifi_bt_side_antenna_keepout.step:
     path: mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.step
     present: true
-    bytes: 15482
+    bytes: 15498
 missing_step_artifacts: []
-assembly_manifest_part_count: 95
+assembly_manifest_part_count: 258
 solid_cad_handoff:
   status: generated
   tool_available: true
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
-  assembly_step_bytes: 1953430
-  part_count: 95
+  assembly_step_bytes: 5697447
+  part_count: 258
   linked_fit_status: pass
   remaining_blockers:
     - Solids are parametric envelopes, not final supplier STEP models.
-    - PCB is still the concept KiCad outline, not a routed board STEP with component models.
+    - PCB is still the concept KiCad outline, not a release-approved routed board STEP.
     - Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture.
 fit_and_clearance:
   fit_status: pass
   failed_fit_checks: []
   assembly_clearance_status: pass
-  checked_clearance_cases: 14
+  checked_clearance_cases: 18
   failed_clearance_cases: []
 manufacturing_readiness_context:
   overall_status: cad_package_pass
   manufacturing_release_ready: false
   why_not_release_ready:
-    - KiCad phone board remains concept/floorplan-level, not routed and fabricated.
+    - Local routed KiCad PCB and routed STEP candidates exist for visual review only; supplier-approved
+      production routing, fabrication outputs, and first-article evidence are not released.
     - Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers
       are not locked.
     - No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical
@@ -296,7 +295,7 @@ placement_interfaces_closed_for_concept:
 release_blockers:
   - routed KiCad board STEP with final component 3D models
   - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
-  - 'formal tolerance stack for battery swelling is OVER BUDGET by 0.142 mm on the back swell void: UPSTREAM
+  - 'formal tolerance stack with battery swelling worst case is OVER BUDGET by 0.142 mm on the back swell void: UPSTREAM
     FIX REQUIRED in mechanical/e1-phone/cad/e1_phone_params.yaml battery.battery_swell_gap_mm: raise from
     0.6 mm to >= 0.742 mm (and grow device envelope_mm[2] by the same delta), or tighten the tolerance
     class, or specify a back-void compressible foam pad with a documented compression set that absorbs

@@ -63,6 +63,13 @@ interface GitHubUserPayload {
   type?: string;
 }
 
+interface GitHubFetchResponse {
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -131,7 +138,7 @@ async function exchangeCodeForToken(args: {
   redirectUri: string;
   code: string;
 }): Promise<GitHubTokenResponse> {
-  const response = await fetch(GITHUB_TOKEN_ENDPOINT, {
+  const response = (await fetch(GITHUB_TOKEN_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -143,7 +150,7 @@ async function exchangeCodeForToken(args: {
       code: args.code,
       redirect_uri: args.redirectUri,
     }).toString(),
-  });
+  })) as GitHubFetchResponse;
   if (!response.ok) {
     const body = await response.text();
     throw new Error(
@@ -165,13 +172,13 @@ async function exchangeCodeForToken(args: {
 async function fetchGitHubUser(
   accessToken: string,
 ): Promise<GitHubUserPayload> {
-  const response = await fetch(GITHUB_USER_ENDPOINT, {
+  const response = (await fetch(GITHUB_USER_ENDPOINT, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
-  });
+  })) as GitHubFetchResponse;
   if (!response.ok) {
     throw new Error(`GitHub /user request failed with ${response.status}`);
   }

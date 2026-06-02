@@ -639,7 +639,7 @@ export class InMemoryConnectorAccountStorage
 		const key = flowKey(provider, state);
 		if (this.consumedFlows.has(key)) return null;
 		const flow = this.flows.get(key);
-		if (!flow || flow.status !== "pending") return null;
+		if (flow?.status !== "pending") return null;
 		if (flow.expiresAt && flow.expiresAt <= nowMs()) return null;
 		this.consumedFlows.add(flowKey(flow.provider, flow.id));
 		this.consumedFlows.add(flowKey(flow.provider, flow.state));

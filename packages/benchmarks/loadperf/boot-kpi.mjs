@@ -39,6 +39,11 @@ import {
 const NOW = new Date().toISOString();
 const ATTACH = process.argv.includes("--attach");
 const JSON_ONLY = process.argv.includes("--json");
+// Cold boot varies run-to-run (CPU contention, JIT warmup). --runs=N spawns N
+// cold boots and reports the median (the budget is checked against it) plus
+// p95/min/max so a single noisy run can't be mistaken for a real delta.
+const RUNS_ARG = process.argv.find((a) => a.startsWith("--runs="));
+const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(Number(RUNS_ARG?.split("=")[1]) || 1));
 
 const API_PORT = Number(process.env.ELIZA_API_PORT ?? process.env.MILADY_API_PORT ?? 31337);
 const BASE_URL = (process.env.LOADPERF_BASE_URL ?? `http://127.0.0.1:${API_PORT}`).replace(/\/$/, "");
@@ -136,28 +141,67 @@ async function measureSpawned() {
   }
 }
 
+function median(values) {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+function percentile(values, p) {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(s.length * p))];
+}
+
 async function main() {
-  let measurement;
-  try {
-    measurement = ATTACH ? await measureAttached() : await measureSpawned();
-  } catch (err) {
-    const payload = { skipped: true, mode: ATTACH ? "attach" : "spawn", error: err?.message ?? String(err) };
+  // Collect 1 (attach) or N (spawn) measurements. A run that fails to boot is
+  // recorded but doesn't abort the others; we only "skip" if EVERY run failed.
+  const runs = [];
+  let lastError = null;
+  const total = ATTACH ? 1 : RUNS;
+  for (let i = 0; i < total; i++) {
+    try {
+      runs.push(ATTACH ? await measureAttached() : await measureSpawned());
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (runs.length === 0) {
+    const payload = {
+      skipped: true,
+      mode: ATTACH ? "attach" : "spawn",
+      error: lastError?.message ?? String(lastError),
+    };
     const { file } = recordResult("boot", payload, NOW);
     if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
     else console.error(`[boot-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
     process.exit(2);
   }
 
-  const { readyMs, peakRssBytes, health, mode } = measurement;
-  const checks = checkBudgets(readyMs, peakRssBytes);
+  const mode = runs[0].mode;
+  const readyMsRuns = runs.map((r) => r.readyMs);
+  const rssRuns = runs.map((r) => r.peakRssBytes).filter((v) => v != null);
+  // The median is the canonical readyMs; peak RSS is the worst observed.
+  const medianReadyMs = median(readyMsRuns);
+  const peakRssBytes = rssRuns.length > 0 ? Math.max(...rssRuns) : null;
+  const checks = checkBudgets(medianReadyMs, peakRssBytes);
+  const peakRssMb = peakRssBytes == null ? null : Number((peakRssBytes / (1024 * 1024)).toFixed(1));
+
   const result = {
     summary: {
       mode,
       baseUrl: BASE_URL,
-      readyMs,
+      runs: runs.length,
+      requestedRuns: total,
+      readyMs: medianReadyMs,
+      readyMsRuns,
+      readyMsP95: percentile(readyMsRuns, 0.95),
+      readyMsMin: Math.min(...readyMsRuns),
+      readyMsMax: Math.max(...readyMsRuns),
       peakRssBytes,
-      peakRssMb: peakRssBytes == null ? null : Number((peakRssBytes / (1024 * 1024)).toFixed(1)),
-      healthReady: health?.ready ?? null,
+      peakRssMb,
+      healthReady: runs[runs.length - 1].health?.ready ?? null,
     },
     checks,
     pass: checks.every((c) => c.pass),
@@ -168,11 +212,18 @@ async function main() {
   if (JSON_ONLY) {
     console.log(JSON.stringify(result, null, 2));
   } else {
+    const s = result.summary;
     console.log("\n=== Boot KPI ===");
     console.log(`mode:        ${mode}`);
     console.log(`base url:    ${BASE_URL}`);
-    console.log(`ready:       ${ms(readyMs)}`);
-    console.log(`peak RSS:    ${result.summary.peakRssMb == null ? "—" : `${result.summary.peakRssMb} MB`}`);
+    console.log(`runs:        ${runs.length}${total !== runs.length ? ` (of ${total} requested)` : ""}`);
+    if (runs.length > 1) {
+      console.log(`ready median:${ms(medianReadyMs)}  (p95 ${ms(s.readyMsP95)}, min ${ms(s.readyMsMin)}, max ${ms(s.readyMsMax)})`);
+      console.log(`ready runs:  ${readyMsRuns.map((v) => Math.round(v)).join(", ")} ms`);
+    } else {
+      console.log(`ready:       ${ms(medianReadyMs)}`);
+    }
+    console.log(`peak RSS:    ${peakRssMb == null ? "—" : `${peakRssMb} MB`}`);
     console.log("\n-- budget checks --");
     for (const c of checks) {
       const v = c.unit === "MB" ? `${c.value.toFixed(1)} MB` : ms(c.value);

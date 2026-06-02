@@ -85,12 +85,17 @@ def _build_request(args: argparse.Namespace, adapters: dict[str, Any]) -> RunReq
     else:
         benchmarks = tuple(sorted(adapters.keys()))
 
+    extra_config = _parse_json_arg(args.extra)
+    for attr in ("expand_scenarios", "count_scenarios", "validate_scenarios"):
+        if bool(getattr(args, attr, False)):
+            extra_config[attr] = True
+
     return RunRequest(
         benchmarks=benchmarks,
         agent=args.agent,
         provider=args.provider,
         model=args.model,
-        extra_config=_parse_json_arg(args.extra),
+        extra_config=extra_config,
         resume=bool(args.resume),
         rerun_failed=bool(args.rerun_failed),
         force=bool(args.force),
@@ -826,6 +831,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
+    p_run.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Forward benchmark-native edge scenario expansion where supported",
+    )
+    p_run.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Forward benchmark-native scenario count mode where supported",
+    )
+    p_run.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Forward benchmark-native scenario validation mode where supported",
+    )
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")
     p_run.add_argument("--force", action="store_true", help="Force a new run regardless of existing success")

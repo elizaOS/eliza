@@ -1,7 +1,7 @@
 {
   "schema": "eliza.external_pin_manifest.v1",
   "name": "google-research/circuit_training AlphaChip checkpoint blocker",
-  "last_audited": "2026-05-21",
+  "last_audited": "2026-06-02",
   "claim_boundary": "metadata_only_no_checkpoint_binary_or_training_claim",
   "repo": {
     "url": "https://github.com/google-research/circuit_training",

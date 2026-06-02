@@ -60,6 +60,14 @@ CLAIM_TOKENS = [
     "ai_throughput_claim_requires",
     "tapeout_claim_requires",
 ]
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "android_boot_claim_allowed",
+    "wifi_claim_allowed",
+    "ai_throughput_claim_allowed",
+    "tapeout_claim_allowed",
+)
 
 
 def load_yaml(path: Path, errors: list[str]) -> dict:
@@ -83,11 +91,18 @@ def require_file(path: str, errors: list[str], field: str) -> None:
         errors.append(f"{field} points at missing repo artifact: {path}")
 
 
+def require_false_claim_flags(data: dict, label: str, errors: list[str]) -> None:
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        if data.get(field) is not False:
+            errors.append(f"{label}.{field} must be false")
+
+
 def check_min_blocks(data: dict, errors: list[str]) -> None:
     if data.get("schema") != "eliza.phone_soc_minimum_blocks.v1":
         errors.append("phone-soc-minimum-blocks.yaml has wrong schema")
     if data.get("status") != "pre_hardware_release_blocked":
         errors.append("phone-soc-minimum-blocks.yaml must remain pre_hardware_release_blocked")
+    require_false_claim_flags(data, "phone-soc-minimum-blocks.yaml", errors)
 
     policy = data.get("release_claim_policy")
     if not isinstance(policy, dict):
@@ -133,6 +148,7 @@ def check_uma(data: dict, errors: list[str]) -> None:
         errors.append("uma-coherency-validation-strategy.yaml has wrong schema")
     if data.get("status") != "fail_closed_until_evidence":
         errors.append("UMA strategy must remain fail_closed_until_evidence")
+    require_false_claim_flags(data, "uma-coherency-validation-strategy.yaml", errors)
     axes = data.get("validation_axes")
     if not isinstance(axes, list):
         errors.append("UMA strategy must list validation_axes")
@@ -160,6 +176,7 @@ def check_ai_options(data: dict, errors: list[str]) -> None:
         errors.append("ai-accelerator-options.yaml has wrong schema")
     if data.get("status") != "decision_open_fail_closed":
         errors.append("AI accelerator options must remain decision_open_fail_closed")
+    require_false_claim_flags(data, "ai-accelerator-options.yaml", errors)
     options = data.get("options")
     if not isinstance(options, list):
         errors.append("AI accelerator options must list options")
@@ -187,6 +204,7 @@ def check_handoffs(data: dict, errors: list[str]) -> None:
         errors.append("spec-rtl-sw-pd-handoff-work-order.yaml has wrong schema")
     if data.get("status") != "fail_closed_open_work":
         errors.append("handoff work order must remain fail_closed_open_work")
+    require_false_claim_flags(data, "spec-rtl-sw-pd-handoff-work-order.yaml", errors)
     handoffs = data.get("handoffs")
     if not isinstance(handoffs, list):
         errors.append("handoff work order must list handoffs")

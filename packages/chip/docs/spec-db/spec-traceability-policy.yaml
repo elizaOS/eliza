@@ -17,6 +17,14 @@ ai_use_policy:
   generated_waivers_allowed: false
   traceability_signoff_claim_allowed: false
   requirement_coverage_signoff_claim_allowed: false
+  false_claim_flags:
+    generated_requirements_allowed: false
+    generated_spec_edits_allowed: false
+    generated_rtl_allowed: false
+    generated_assertions_allowed: false
+    generated_waivers_allowed: false
+    traceability_signoff_claim_allowed: false
+    requirement_coverage_signoff_claim_allowed: false
 
 registry:
   dir: docs/spec-db/requirements

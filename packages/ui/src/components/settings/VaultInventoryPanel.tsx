@@ -42,6 +42,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -143,6 +144,14 @@ export interface VaultInventoryPanelProps {
 
 export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   const { t } = useTranslation();
+  const { ref: addSecretRef, agentProps: addSecretAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "vault-add-secret",
+      role: "button",
+      label: "Add secret",
+      group: "vault-inventory",
+      description: "Show the form to add a new vault secret",
+    });
   const {
     entries: externalEntries,
     onChanged: externalOnChanged,
@@ -218,6 +227,8 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           </p>
         </div>
         <Button
+          ref={addSecretRef}
+          {...addSecretAgentProps}
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1 rounded-sm px-2"
@@ -355,6 +366,23 @@ function EntryRow({
   const [revealing, setRevealing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const { ref: revealRef, agentProps: revealAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-entry-reveal-${entry.key}`,
+      role: "button",
+      label: `${revealed ? "Hide" : "Reveal"} ${entry.label}`,
+      group: "vault-inventory",
+      description: `Reveal or hide the stored value for ${entry.key}`,
+      status: revealed ? "active" : "inactive",
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-entry-delete-${entry.key}`,
+      role: "button",
+      label: `Delete ${entry.label}`,
+      group: "vault-inventory",
+      description: `Delete the stored secret ${entry.key}`,
+    });
 
   // Apply incoming focus once: expand and scroll into view.
   useEffect(() => {
@@ -457,6 +485,8 @@ function EntryRow({
         )}
         {!revealed ? (
           <Button
+            ref={revealRef}
+            {...revealAgentProps}
             variant="ghost"
             size="sm"
             className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
@@ -473,6 +503,8 @@ function EntryRow({
           </Button>
         ) : (
           <Button
+            ref={revealRef}
+            {...revealAgentProps}
             variant="ghost"
             size="sm"
             className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
@@ -484,6 +516,8 @@ function EntryRow({
           </Button>
         )}
         <Button
+          ref={deleteRef}
+          {...deleteAgentProps}
           variant="ghost"
           size="sm"
           className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
@@ -560,6 +594,69 @@ function ProfilesPanel({
 
   const profiles = entry.profiles ?? [];
   const hasProfiles = profiles.length > 0;
+
+  const { ref: jumpRoutingRef, agentProps: jumpRoutingAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-profile-routing-${entry.key}`,
+      role: "button",
+      label: `Routing rules for ${entry.label}`,
+      group: "vault-profiles",
+      description: `Open the Routing tab pre-filtered to ${entry.key}`,
+    });
+  const { ref: profileAddRef, agentProps: profileAddAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-profile-add-${entry.key}`,
+      role: "button",
+      label: hasProfiles
+        ? `Add profile to ${entry.label}`
+        : `Enable profiles for ${entry.label}`,
+      group: "vault-profiles",
+      description: hasProfiles
+        ? "Show the add-profile form"
+        : "Promote this key to support multiple profiles",
+    });
+  const { ref: newIdRef, agentProps: newIdAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-profile-id-${entry.key}`,
+      role: "text-input",
+      label: "New profile id",
+      group: "vault-profiles",
+      getValue: () => newId,
+      onFill: (v) => setNewId(v),
+    });
+  const { ref: newLabelRef, agentProps: newLabelAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-profile-label-${entry.key}`,
+      role: "text-input",
+      label: "New profile display label",
+      group: "vault-profiles",
+      getValue: () => newLabel,
+      onFill: (v) => setNewLabel(v),
+    });
+  const { ref: newValueRef, agentProps: newValueAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-profile-value-${entry.key}`,
+      role: "text-input",
+      label: "New profile value",
+      group: "vault-profiles",
+      getValue: () => newValue,
+      onFill: (v) => setNewValue(v),
+    });
+  const { ref: profileCancelRef, agentProps: profileCancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-profile-cancel-${entry.key}`,
+      role: "button",
+      label: "Cancel adding profile",
+      group: "vault-profiles",
+      onActivate: () => setShowAdd(false),
+    });
+  const { ref: profileSaveRef, agentProps: profileSaveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-profile-save-${entry.key}`,
+      role: "button",
+      label: "Save profile",
+      group: "vault-profiles",
+    });
 
   const onAdd = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -649,6 +746,8 @@ function ProfilesPanel({
         <div className="flex items-center gap-1">
           {hasProfiles && onJumpToRouting && (
             <Button
+              ref={jumpRoutingRef}
+              {...jumpRoutingAgentProps}
               variant="ghost"
               size="sm"
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
@@ -666,6 +765,8 @@ function ProfilesPanel({
           )}
           {hasProfiles ? (
             <Button
+              ref={profileAddRef}
+              {...profileAddAgentProps}
               variant="ghost"
               size="sm"
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
@@ -681,6 +782,8 @@ function ProfilesPanel({
             </Button>
           ) : (
             <Button
+              ref={profileAddRef}
+              {...profileAddAgentProps}
               variant="outline"
               size="sm"
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
@@ -711,53 +814,18 @@ function ProfilesPanel({
 
       {hasProfiles && (
         <ul className="space-y-1">
-          {profiles.map((p) => {
-            const highlight = highlightProfileId === p.id;
-            return (
-              <li
-                key={p.id}
-                className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name={`active-${entry.key}`}
-                  checked={entry.activeProfile === p.id}
-                  onChange={() => void onActivate(p.id)}
-                  className="h-3 w-3 cursor-pointer accent-accent"
-                  aria-label={t("vaultinventory.profiles.makeActive", {
-                    label: p.label,
-                    defaultValue: "Make {{label}} active",
-                  })}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-txt">{p.label}</p>
-                  <p className="truncate font-mono text-2xs text-muted">
-                    {p.id}
-                  </p>
-                </div>
-                {entry.activeProfile === p.id && (
-                  <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                    <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
-                    {t("vaultinventory.profiles.active", {
-                      defaultValue: "Active",
-                    })}
-                  </span>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={t("vaultinventory.profiles.deleteProfile", {
-                    label: p.label,
-                    defaultValue: "Delete profile {{label}}",
-                  })}
-                  onClick={() => void onDelete(p.id)}
-                >
-                  <Trash2 className="h-3 w-3" aria-hidden />
-                </Button>
-              </li>
-            );
-          })}
+          {profiles.map((p) => (
+            <ProfileRow
+              key={p.id}
+              entryKey={entry.key}
+              profileId={p.id}
+              profileLabel={p.label}
+              active={entry.activeProfile === p.id}
+              highlight={highlightProfileId === p.id}
+              onActivate={() => void onActivate(p.id)}
+              onDelete={() => void onDelete(p.id)}
+            />
+          ))}
         </ul>
       )}
 
@@ -775,6 +843,8 @@ function ProfilesPanel({
                 })}
               </Label>
               <Input
+                ref={newIdRef}
+                {...newIdAgentProps}
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 placeholder={t("vaultinventory.profiles.idPlaceholder", {
@@ -792,6 +862,8 @@ function ProfilesPanel({
                 })}
               </Label>
               <Input
+                ref={newLabelRef}
+                {...newLabelAgentProps}
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder={t("vaultinventory.profiles.labelPlaceholder", {
@@ -808,6 +880,8 @@ function ProfilesPanel({
               })}
             </Label>
             <Input
+              ref={newValueRef}
+              {...newValueAgentProps}
               type="password"
               autoComplete="off"
               value={newValue}
@@ -818,6 +892,8 @@ function ProfilesPanel({
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button
+              ref={profileCancelRef}
+              {...profileCancelAgentProps}
               type="button"
               variant="ghost"
               size="sm"
@@ -830,6 +906,8 @@ function ProfilesPanel({
               })}
             </Button>
             <Button
+              ref={profileSaveRef}
+              {...profileSaveAgentProps}
               type="submit"
               variant="default"
               size="sm"
@@ -851,6 +929,91 @@ function ProfilesPanel({
   );
 }
 
+// ── Single profile row ─────────────────────────────────────────────
+
+function ProfileRow({
+  entryKey,
+  profileId,
+  profileLabel,
+  active,
+  highlight,
+  onActivate,
+  onDelete,
+}: {
+  entryKey: string;
+  profileId: string;
+  profileLabel: string;
+  active: boolean;
+  highlight: boolean;
+  onActivate: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref: activateRef, agentProps: activateAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `vault-profile-activate-${entryKey}-${profileId}`,
+      role: "toggle",
+      label: `Make ${profileLabel} the active profile`,
+      group: "vault-profiles",
+      status: active ? "active" : "inactive",
+      onActivate,
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `vault-profile-delete-${entryKey}-${profileId}`,
+      role: "button",
+      label: `Delete profile ${profileLabel}`,
+      group: "vault-profiles",
+      onActivate: onDelete,
+    });
+  return (
+    <li
+      className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
+    >
+      <input
+        ref={activateRef}
+        {...activateAgentProps}
+        type="radio"
+        name={`active-${entryKey}`}
+        checked={active}
+        onChange={onActivate}
+        className="h-3 w-3 cursor-pointer accent-accent"
+        aria-current={active ? "true" : undefined}
+        aria-label={t("vaultinventory.profiles.makeActive", {
+          label: profileLabel,
+          defaultValue: "Make {{label}} active",
+        })}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-txt">{profileLabel}</p>
+        <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
+      </div>
+      {active && (
+        <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+          <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
+          {t("vaultinventory.profiles.active", {
+            defaultValue: "Active",
+          })}
+        </span>
+      )}
+      <Button
+        ref={deleteRef}
+        {...deleteAgentProps}
+        variant="ghost"
+        size="sm"
+        className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+        aria-label={t("vaultinventory.profiles.deleteProfile", {
+          label: profileLabel,
+          defaultValue: "Delete profile {{label}}",
+        })}
+        onClick={onDelete}
+      >
+        <Trash2 className="h-3 w-3" aria-hidden />
+      </Button>
+    </li>
+  );
+}
+
 // ── Add-secret form ────────────────────────────────────────────────
 
 function AddSecretForm({
@@ -868,6 +1031,71 @@ function AddSecretForm({
   const [category, setCategory] = useState<VaultEntryCategory>("plugin");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const { ref: keyRef, agentProps: keyAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "vault-add-key",
+      role: "text-input",
+      label: "Secret key",
+      group: "vault-add-secret",
+      description: "Env-var-style identifier for the secret",
+      getValue: () => key,
+      onFill: (v) => setKey(v),
+    });
+  const { ref: labelRef, agentProps: labelAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "vault-add-label",
+      role: "text-input",
+      label: "Secret display label",
+      group: "vault-add-secret",
+      getValue: () => label,
+      onFill: (v) => setLabel(v),
+    });
+  const { ref: valueRef, agentProps: valueAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "vault-add-value",
+      role: "text-input",
+      label: "Secret value",
+      group: "vault-add-secret",
+      description: "The value plugins read at runtime",
+      getValue: () => value,
+      onFill: (v) => setValue(v),
+    });
+  const { ref: categoryRef, agentProps: categoryAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "vault-add-category",
+      role: "select",
+      label: "Secret category",
+      group: "vault-add-secret",
+      options: CATEGORY_INPUT_OPTIONS.map((opt) => opt.value),
+      getValue: () => category,
+      onFill: (v) => setCategory(v as VaultEntryCategory),
+    });
+  const { ref: providerRef, agentProps: providerAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "vault-add-provider-id",
+      role: "text-input",
+      label: "Secret provider id",
+      group: "vault-add-secret",
+      getValue: () => providerId,
+      onFill: (v) => setProviderId(v),
+    });
+  const { ref: cancelRef, agentProps: cancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "vault-add-cancel",
+      role: "button",
+      label: "Cancel adding secret",
+      group: "vault-add-secret",
+      onActivate: onClose,
+    });
+  const { ref: saveRef, agentProps: saveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "vault-add-save",
+      role: "button",
+      label: "Save secret",
+      group: "vault-add-secret",
+      description: "Save the new secret to the vault",
+    });
 
   const onSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -916,6 +1144,8 @@ function AddSecretForm({
             {t("vaultinventory.addForm.key.label", { defaultValue: "Key" })}
           </Label>
           <Input
+            ref={keyRef}
+            {...keyAgentProps}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="OPENROUTER_API_KEY"
@@ -931,6 +1161,8 @@ function AddSecretForm({
             })}
           </Label>
           <Input
+            ref={labelRef}
+            {...labelAgentProps}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="OpenRouter"
@@ -944,6 +1176,8 @@ function AddSecretForm({
           {t("vaultinventory.addForm.value.label", { defaultValue: "Value" })}
         </Label>
         <Input
+          ref={valueRef}
+          {...valueAgentProps}
           type="password"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -960,6 +1194,8 @@ function AddSecretForm({
             })}
           </Label>
           <select
+            ref={categoryRef}
+            {...categoryAgentProps}
             value={category}
             onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
             className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
@@ -978,6 +1214,8 @@ function AddSecretForm({
             })}
           </Label>
           <Input
+            ref={providerRef}
+            {...providerAgentProps}
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}
             placeholder="openrouter"
@@ -995,6 +1233,8 @@ function AddSecretForm({
 
       <div className="flex justify-end gap-2 pt-1">
         <Button
+          ref={cancelRef}
+          {...cancelAgentProps}
           type="button"
           variant="ghost"
           size="sm"
@@ -1005,6 +1245,8 @@ function AddSecretForm({
           {t("vaultinventory.addForm.cancel", { defaultValue: "Cancel" })}
         </Button>
         <Button
+          ref={saveRef}
+          {...saveAgentProps}
           type="submit"
           variant="default"
           size="sm"

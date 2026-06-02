@@ -53,6 +53,17 @@ EVIDENCE_PATHS = [
     "rtl/interconnect/e1_linux_soc_contract.sv",
     "rtl/memory/e1_axi_lite_dram.sv",
 ]
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_fabric_claim_allowed": False,
+    "coherency_claim_allowed": False,
+    "iommu_claim_allowed": False,
+    "qos_claim_allowed": False,
+    "android_claim_allowed": False,
+    "production_npu_memory_fabric_claim_allowed": False,
+    "production_display_framebuffer_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -499,6 +510,7 @@ def write_report(status: str, errors: list[str]) -> None:
                 "android_claim_allowed": False,
                 "production_npu_memory_fabric_claim_allowed": False,
                 "production_display_framebuffer_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Local contract evidence only: checks the current AXI-Lite scaffold "
                     "decode, CPU-wins arbitration wrapper, 4 KiB SRAM-backed e1-chip "

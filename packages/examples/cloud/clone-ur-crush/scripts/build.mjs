@@ -11,142 +11,21 @@ const packageRoot = path.resolve(
   "..",
 );
 const finalDistDir = path.join(packageRoot, ".next");
-const tempDistDirName = ".next-build";
+const tempDistDirName = `.next-build-${process.pid}`;
 const tempDistDir = path.join(packageRoot, tempDistDirName);
-const appRouteFiles = [
-  "api/analyze-photo/route",
-  "api/create-character/route",
-  "api/generate-field/route",
-  "api/generate-photo/route",
-  "api/generate-scene/route",
-  "cloning/page",
-  "layout",
-  "page",
-];
-const pagesRouteFiles = ["_app", "_document", "_error"];
-
-const compatibilityFiles = [
-  {
-    file: path.join(tempDistDir, "server", "pages-manifest.json"),
-    content: "{}\n",
-  },
-  {
-    file: path.join(tempDistDir, "server", "middleware-manifest.json"),
-    content: `${JSON.stringify(
-      {
-        version: 3,
-        middleware: {},
-        functions: {},
-        sortedMiddleware: [],
-      },
-      null,
-      2,
-    )}\n`,
-  },
-  {
-    file: path.join(tempDistDir, "server", "server-reference-manifest.json"),
-    content: `${JSON.stringify(
-      {
-        node: {},
-        edge: {},
-        encryptionKey: "process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
-      },
-      null,
-      2,
-    )}\n`,
-  },
-  {
-    file: path.join(tempDistDir, "server", "app-paths-manifest.json"),
-    content: `${JSON.stringify(
-      {
-        "/api/analyze-photo/route": "app/api/analyze-photo/route.js",
-        "/_not-found/page": "app/_not-found/page.js",
-        "/api/create-character/route": "app/api/create-character/route.js",
-        "/api/generate-field/route": "app/api/generate-field/route.js",
-        "/api/generate-photo/route": "app/api/generate-photo/route.js",
-        "/api/generate-scene/route": "app/api/generate-scene/route.js",
-        "/cloning/page": "app/cloning/page.js",
-        "/page": "app/page.js",
-      },
-      null,
-      2,
-    )}\n`,
-  },
-  {
-    file: path.join(
-      tempDistDir,
-      "server",
-      "app",
-      "_not-found",
-      "page.js.nft.json",
-    ),
-    content: '{"version":1,"files":[]}\n',
-  },
-  ...appRouteFiles.map((relativeFile) => ({
-    file: path.join(
-      tempDistDir,
-      "server",
-      "app",
-      `${relativeFile}.js.nft.json`,
-    ),
-    content: '{"version":1,"files":[]}\n',
-  })),
-  ...pagesRouteFiles.map((relativeFile) => ({
-    file: path.join(
-      tempDistDir,
-      "server",
-      "pages",
-      `${relativeFile}.js.nft.json`,
-    ),
-    content: '{"version":1,"files":[]}\n',
-  })),
-  ...[
-    "api/analyze-photo/route.ts",
-    "api/create-character/route.ts",
-    "api/generate-field/route.ts",
-    "api/generate-photo/route.ts",
-    "api/generate-scene/route.ts",
-    "cloning/page.ts",
-    "layout.ts",
-    "page.ts",
-  ].map((relativeFile) => ({
-    file: path.join(tempDistDir, "types", "app", relativeFile),
-    content: "export {};\n",
-  })),
-];
-
-async function writeIfMissing(file, content) {
-  let lastError;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const existing = await readFile(file, "utf8").catch((error) => {
-      if (error?.code === "ENOENT") return null;
-      throw error;
-    });
-
-    if (existing !== null) return;
-
-    try {
-      await mkdir(path.dirname(file), { recursive: true });
-      const tempFile = `${file}.${process.pid}.${attempt}.tmp`;
-      await writeFile(tempFile, content);
-      await rename(tempFile, file);
-      return;
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-      lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-  throw lastError;
-}
-
-async function writeCompatibilityFiles() {
-  await Promise.all(
-    compatibilityFiles.map(({ file, content }) =>
-      writeIfMissing(file, content),
-    ),
-  );
-}
+const tempPackagePath = path.join(tempDistDir, "package.json");
+const tempPackageWritePath = path.join(tempDistDir, ".package.json.tmp");
+const nextEnvPath = path.join(packageRoot, "next-env.d.ts");
+const tsconfigPath = path.join(packageRoot, "tsconfig.json");
+const tsbuildInfoPath = path.join(packageRoot, "tsconfig.tsbuildinfo");
+const originalNextEnv = await readFile(nextEnvPath, "utf8").catch((error) => {
+  if (error?.code === "ENOENT") return null;
+  throw error;
+});
+const originalTsconfig = await readFile(tsconfigPath, "utf8").catch((error) => {
+  if (error?.code === "ENOENT") return null;
+  throw error;
+});
 
 await rm(tempDistDir, {
   force: true,
@@ -155,26 +34,34 @@ await rm(tempDistDir, {
   retryDelay: 100,
 });
 
-let markerWrite = null;
-function refreshCompatibilityFiles() {
-  markerWrite ??= writeCompatibilityFiles().finally(() => {
-    markerWrite = null;
-  });
-  return markerWrite;
+async function writeTempPackageMarker() {
+  await mkdir(path.dirname(tempPackagePath), { recursive: true });
+  await writeFile(tempPackageWritePath, '{"type":"commonjs"}\n');
+  await rename(tempPackageWritePath, tempPackagePath);
 }
 
-await refreshCompatibilityFiles();
+async function writeTempTypesInclude() {
+  if (originalTsconfig === null) return;
 
-async function runNextBuild(args) {
-  await refreshCompatibilityFiles();
+  const parsed = JSON.parse(originalTsconfig);
+  const include = Array.isArray(parsed.include) ? parsed.include : [];
+  const tempTypesGlob = `${tempDistDirName}/types/**/*.ts`;
+  if (!include.includes(tempTypesGlob)) {
+    parsed.include = [...include, tempTypesGlob];
+    await writeFile(
+      `${tsconfigPath}.tmp`,
+      `${JSON.stringify(parsed, null, 2)}\n`,
+    );
+    await rename(`${tsconfigPath}.tmp`, tsconfigPath);
+  }
+}
 
-  const keepCompatibilityFilesPresent = setInterval(() => {
-    void refreshCompatibilityFiles();
-  }, 250);
-  keepCompatibilityFilesPresent.unref?.();
+async function runNextBuild() {
+  await writeTempPackageMarker();
+  await writeTempTypesInclude();
 
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
+    const child = spawn(process.execPath, [nextCliPath, "build"], {
       cwd: packageRoot,
       env: {
         ...process.env,
@@ -188,34 +75,40 @@ async function runNextBuild(args) {
     });
   });
 
-  clearInterval(keepCompatibilityFilesPresent);
-  await refreshCompatibilityFiles();
   return exitCode;
 }
 
-// Next 15 can hang indefinitely in the default monolithic build mode for this
-// workspace example after the server compile emits. The same work completes
-// deterministically when split into Next's documented compile/generate phases.
-let exitCode = await runNextBuild(["--experimental-build-mode", "compile"]);
+let exitCode = 1;
 
-if (exitCode === 0) {
-  await refreshCompatibilityFiles();
-  exitCode = await runNextBuild(["--experimental-build-mode", "generate"]);
-}
+try {
+  exitCode = await runNextBuild();
 
-if (exitCode === 0) {
-  await rm(finalDistDir, {
+  if (exitCode === 0) {
+    await rm(finalDistDir, {
+      force: true,
+      maxRetries: 5,
+      recursive: true,
+      retryDelay: 100,
+    });
+    await rename(tempDistDir, finalDistDir);
+  } else {
+    await rm(tempDistDir, {
+      force: true,
+      maxRetries: 5,
+      recursive: true,
+      retryDelay: 100,
+    });
+  }
+} finally {
+  if (originalNextEnv !== null) {
+    await writeFile(nextEnvPath, originalNextEnv);
+  }
+  if (originalTsconfig !== null) {
+    await writeFile(tsconfigPath, originalTsconfig);
+  }
+  await rm(tsbuildInfoPath, {
     force: true,
     maxRetries: 5,
-    recursive: true,
-    retryDelay: 100,
-  });
-  await rename(tempDistDir, finalDistDir);
-} else {
-  await rm(tempDistDir, {
-    force: true,
-    maxRetries: 5,
-    recursive: true,
     retryDelay: 100,
   });
 }

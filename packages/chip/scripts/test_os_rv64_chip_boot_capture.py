@@ -260,6 +260,8 @@ def test_generated_ap_wrapper_preflight_blocks_without_boot_command() -> None:
         raise AssertionError(report)
     if "qemu-virt reference transcripts" not in " ".join(report["blocked_reasons"]):
         raise AssertionError(report)
+    if not any("stage-agent-artifacts ARCH=riscv64" in command for command in report["next_commands"]):
+        raise AssertionError(report)
 
 
 def test_generated_ap_wrapper_preflight_reports_skip_agent_mode() -> None:

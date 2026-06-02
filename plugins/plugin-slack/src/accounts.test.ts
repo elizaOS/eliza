@@ -1,6 +1,7 @@
 import type { Character, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  listSlackAccountIds,
   normalizeSlackAccountRole,
   resolveSlackAccount,
   type SlackMultiAccountConfig,
@@ -47,6 +48,40 @@ describe("normalizeSlackAccountRole", () => {
 });
 
 describe("resolveSlackAccount role wiring", () => {
+  it("normalizes and deduplicates configured account IDs", () => {
+    const runtime = createRuntime({
+      accounts: {
+        " Owner ": {
+          botToken: "xoxb-owner",
+          appToken: "xapp-owner",
+        },
+        owner: {
+          botToken: "xoxb-owner-2",
+          appToken: "xapp-owner-2",
+        },
+        TEAM: {
+          botToken: "xoxb-team",
+          appToken: "xapp-team",
+        },
+      },
+    });
+
+    expect(listSlackAccountIds(runtime)).toEqual(["owner", "team"]);
+    expect(resolveSlackAccount(runtime, " Owner ").accountId).toBe("owner");
+
+    const whitespaceOnly = createRuntime({
+      accounts: {
+        " TEAM ": {
+          botToken: "xoxb-team",
+          appToken: "xapp-team",
+        },
+      },
+    });
+    expect(resolveSlackAccount(whitespaceOnly, "team").botToken).toBe(
+      "xoxb-team",
+    );
+  });
+
   it("defaults role to AGENT when no role is configured", () => {
     const runtime = createRuntime({
       botToken: "xoxb-bot",

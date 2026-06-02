@@ -161,8 +161,26 @@ def choose_ready_serial(adb_devices_output: str) -> str | None:
 def prepare_adb(args: argparse.Namespace) -> str | None:
     transcript: list[str] = []
     if args.adb_serial:
-        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = f"ADB_SERIAL={args.adb_serial}"
-        return args.adb_serial
+        try:
+            rc, state = run_command(
+                ["adb", "-s", args.adb_serial, "get-state"],
+                args.timeout_seconds,
+            )
+            clean_state = state.strip()
+            transcript.append(
+                f"$ adb -s {args.adb_serial} get-state\n{clean_state}\n[rc={rc}]"
+            )
+            transcript.append(f"REQUESTED_ADB_SERIAL={args.adb_serial}")
+            if rc == 0 and clean_state.splitlines()[-1:] == ["device"]:
+                transcript.append(f"SELECTED_ADB_SERIAL={args.adb_serial}")
+                os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+                return args.adb_serial
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            transcript.append(f"$ adb -s {args.adb_serial} get-state\n{exc}\n[rc=blocked]")
+            transcript.append(f"REQUESTED_ADB_SERIAL={args.adb_serial}")
+        transcript.append("SELECTED_ADB_SERIAL=<none>")
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+        return None
     try:
         rc, devices = run_command(["adb", "devices", "-l"], args.timeout_seconds)
         transcript.append(f"$ adb devices -l\n{devices.rstrip()}\n[rc={rc}]")
@@ -357,7 +375,9 @@ def main() -> int:
 
     specs = selected_specs(args.components)
     selected_serial = prepare_adb(args)
-    if selected_serial:
+    if args.adb_serial:
+        os.environ["ADB_SERIAL"] = args.adb_serial
+    elif selected_serial:
         os.environ["ADB_SERIAL"] = selected_serial
     if args.dry_run:
         for spec in specs:

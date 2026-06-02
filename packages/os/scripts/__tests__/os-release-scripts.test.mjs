@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -273,6 +273,128 @@ releaseFixtureTest(
     );
   },
 );
+
+test("legacy checksum updater preserves valid candidate manifest status", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-update-sums-"));
+  const manifestPath = path.join(tmp, "manifest.json");
+  const artifactRoot = path.join(tmp, "artifacts");
+  await mkdir(artifactRoot);
+
+  const manifest = {
+    schemaVersion: 1,
+    release: {
+      id: "test-release",
+      channel: "beta",
+      version: "2.0.0-test",
+      availableDate: "2026-05-16",
+      status: "candidate",
+    },
+    commerce: {
+      usbKeyPresale: {
+        enabled: true,
+        priceUsd: 49,
+        saleStarts: "2026-05-16",
+        estimatedShipWindow: {
+          starts: "2026-10-01",
+          ends: "2026-10-31",
+        },
+      },
+    },
+    artifacts: [
+      {
+        id: "raw",
+        kind: "raw-image",
+        status: "candidate",
+        target: { platform: "linux", architecture: "amd64" },
+        filename: "raw.img.zst",
+        downloadUrl: null,
+        sha256: null,
+        sizeBytes: null,
+        validation: {
+          requiredEvidence: ["sha256-generated"],
+          evidence: [],
+        },
+      },
+      {
+        id: "vm",
+        kind: "vm-image",
+        status: "candidate",
+        target: { platform: "linux", architecture: "amd64" },
+        filename: "vm.ova.zip",
+        downloadUrl: null,
+        sha256: null,
+        sizeBytes: null,
+        validation: {
+          requiredEvidence: ["sha256-generated"],
+          evidence: [],
+        },
+      },
+      {
+        id: "android",
+        kind: "android-image",
+        status: "candidate",
+        target: { platform: "android", architecture: "arm64" },
+        filename: "android.zip",
+        downloadUrl: null,
+        sha256: null,
+        sizeBytes: null,
+        validation: {
+          requiredEvidence: ["sha256-generated"],
+          evidence: [],
+        },
+      },
+    ],
+    checksumPolicy: {
+      algorithm: "sha256",
+      generatedFile: "SHA256SUMS",
+      verificationScript: "packages/os/scripts/verify-release-checksums.mjs",
+    },
+    validation: {
+      evidenceDirectory: "evidence",
+      promotionGates: [],
+    },
+  };
+
+  for (const artifact of manifest.artifacts) {
+    await writeFile(
+      path.join(artifactRoot, artifact.filename),
+      `fixture payload for ${artifact.id}\n`,
+    );
+  }
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  await execFileAsync(
+    process.execPath,
+    [
+      "packages/os/scripts/update-manifest-checksums.mjs",
+      "--manifest",
+      manifestPath,
+      "--artifacts-dir",
+      artifactRoot,
+    ],
+    { cwd: repoRoot },
+  );
+
+  const updated = await readJson(manifestPath);
+  assert.deepEqual(
+    updated.artifacts.map((artifact) => artifact.status),
+    ["candidate", "candidate", "candidate"],
+  );
+  assert.ok(
+    updated.artifacts.every((artifact) =>
+      artifact.validation.evidence.includes("sha256-generated"),
+    ),
+  );
+  assert.equal(
+    updated.artifacts.every((artifact) =>
+      /^[a-f0-9]{64}$/.test(artifact.sha256),
+    ),
+    true,
+  );
+
+  const validation = validateManifest(updated);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+});
 
 test("TEE measurement generation hashes required release inputs", async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-tee-"));

@@ -18,6 +18,14 @@ ALLOWED_STATUS = {
     "BLOCKED_REPLAY_EXECUTION",
     "EXECUTED_OPENLANE_REPLAY_UNVERIFIED",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -37,6 +45,14 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected JSON object")
     return data
+
+
+def validate_false_claim_flags(report: dict[str, Any]) -> list[str]:
+    return [
+        f"{field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if report.get(field) is not False
+    ]
 
 
 def validate_artifacts(report: dict[str, Any]) -> list[str]:
@@ -83,6 +99,7 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         errors.append("claim_boundary mismatch")
     if report.get("release_use_allowed") is not False:
         errors.append("release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(report))
     if report.get("status") not in ALLOWED_STATUS:
         errors.append(f"unsupported status {report.get('status')!r}")
     if not isinstance(report.get("candidate_id"), str) or not report["candidate_id"]:

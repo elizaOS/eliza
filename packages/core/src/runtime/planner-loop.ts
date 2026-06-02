@@ -417,7 +417,7 @@ export async function runPlannerLoop(
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage,
+					finalMessage: userSafeFinalMessage(finalMessage, trajectory),
 				};
 			}
 
@@ -511,7 +511,9 @@ export async function runPlannerLoop(
 			return {
 				status: "finished",
 				trajectory,
-				finalMessage: suppressReply ? "" : latestResult.text,
+				finalMessage: suppressReply
+					? ""
+					: userSafeFinalMessage(latestResult.text, trajectory),
 			};
 		}
 
@@ -2464,7 +2466,7 @@ function tryGateEvaluator(args: {
 }): EvaluatorOutput | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
-	if (!latestResult || latestResult.success !== true) return null;
+	if (latestResult?.success !== true) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
 	const message = args.lastPlannerExplicitMessageToUser?.trim();
@@ -2519,10 +2521,62 @@ function userSafeFinalMessage(
 	return candidate ? "I handled the available step." : undefined;
 }
 
+// Canonical TASKS/spawn-arg vocabulary. A planner that hallucinates its own
+// tool-call arguments into messageToUser leaks a JSON object like
+// {"task":"…","agentType":"opencode","approvalPreset":"standard","brief":"…"}.
+// Detect it by SHAPE — the reply itself must JSON.parse to an object whose keys
+// are a subset of this vocabulary with at least two discriminators — never by
+// matching the user's words. Real prose cannot JSON.parse to this object, and a
+// genuine user-requested JSON answer carries foreign keys, so this never fires
+// on a real reply.
+const SPAWN_ARG_KEYS = new Set([
+	"task",
+	"agentType",
+	"approvalPreset",
+	"brief",
+	"workdir",
+	"model",
+	"memoryContent",
+	"agents",
+	"repo",
+	"keepAliveAfterComplete",
+	"op",
+	"action",
+]);
+const SPAWN_ARG_DISCRIMINATORS = [
+	"task",
+	"agentType",
+	"approvalPreset",
+	"brief",
+];
+
+export function looksLikeSpawnEnvelopeJson(text: string): boolean {
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return false;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+	const keys = Object.keys(parsed as Record<string, unknown>);
+	if (keys.length === 0) return false;
+	if (!keys.every((k) => SPAWN_ARG_KEYS.has(k))) return false;
+	return (
+		SPAWN_ARG_DISCRIMINATORS.filter((k) => k in (parsed as object)).length >= 2
+	);
+}
+
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
+	if (looksLikeSpawnEnvelopeJson(text)) return true;
 	return [
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,

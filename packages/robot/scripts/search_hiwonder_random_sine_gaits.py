@@ -423,6 +423,7 @@ def _failure_info(info: dict[str, Any]) -> dict[str, Any]:
         "max_swing_foot_clearance_m",
         "max_foot_slip_m_s",
         "self_collision_count",
+        "max_self_collision_count",
         "done_reason",
         "success_predicate_now",
         "success_bound_violation",
@@ -430,6 +431,20 @@ def _failure_info(info: dict[str, Any]) -> dict[str, Any]:
         "effective_action_max_abs",
     )
     return {key: info.get(key) for key in keys if key in info}
+
+
+def _max_self_collision_observed(
+    *,
+    current_counts: list[float],
+    max_counts: list[float],
+    final_info: dict[str, Any],
+) -> float | None:
+    candidates = list(current_counts) + list(max_counts)
+    for key in ("max_self_collision_count", "self_collision_count"):
+        value = _finite_or_none(final_info.get(key))
+        if value is not None:
+            candidates.append(value)
+    return _safe_max(candidates)
 
 
 def _hybrid_recovery_action(
@@ -517,6 +532,8 @@ def _rollout_candidate(
         "delta_yaw": [],
         "left_foot_contact": [],
         "right_foot_contact": [],
+        "self_collision_count": [],
+        "max_self_collision_count": [],
     }
     result = None
     max_success_window_s = 0.0
@@ -584,6 +601,10 @@ def _rollout_candidate(
                 traces[key].append(value)
         for key in ("left_foot_contact", "right_foot_contact"):
             traces[key].append(1.0 if info.get(key) else 0.0)
+        for key in ("self_collision_count", "max_self_collision_count"):
+            value = _finite_or_none(info.get(key))
+            if value is not None:
+                traces[key].append(value)
         result = checker.update(_sample((step + 1) * env.config.control_dt_s, info))
         if result.failed and latched_goal_failure is None:
             latched_goal_failure = {
@@ -625,7 +646,11 @@ def _rollout_candidate(
         info.get("max_swing_foot_clearance_m")
     )
     max_foot_slip_m_s = _finite_or_none(info.get("max_foot_slip_m_s"))
-    max_self_collision_count = _finite_or_none(info.get("self_collision_count"))
+    max_self_collision_count = _max_self_collision_observed(
+        current_counts=traces["self_collision_count"],
+        max_counts=traces["max_self_collision_count"],
+        final_info=info,
+    )
     foot_switches = _count_alternating_contacts(
         traces["left_foot_contact"],
         traces["right_foot_contact"],
@@ -770,6 +795,10 @@ def _stable_bridge_score(row: dict[str, Any]) -> tuple:
     )
 
 
+def _top_by(candidates: list[dict[str, Any]], *, key, limit: int = 20) -> list[dict[str, Any]]:
+    return sorted(candidates, key=key, reverse=True)[:limit]
+
+
 def _refine_best_straight(
     env: TextConditionedProfileEnv,
     *,
@@ -777,6 +806,7 @@ def _refine_best_straight(
     seed: int,
     n_candidates: int,
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     base = broad_frontier.get("best_forward_straight")
     if not isinstance(base, dict):
@@ -788,6 +818,7 @@ def _refine_best_straight(
             "n_success": 0,
             "any_success": False,
             "failure_frontier": _failure_frontier([]),
+            "top_by_physical_gates": [],
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -799,6 +830,7 @@ def _refine_best_straight(
             n_candidates=n_candidates,
         ),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     return {
         "base_controller": base.get("controller"),
@@ -806,6 +838,7 @@ def _refine_best_straight(
         "n_success": sum(1 for row in candidates if row["success"]),
         "any_success": any(row["success"] for row in candidates),
         "failure_frontier": _failure_frontier(candidates),
+        "top_by_physical_gates": _top_by(candidates, key=_physical_gate_score),
         "candidates": candidates,
     }
 
@@ -815,6 +848,7 @@ def _transition_refine_near_walk(
     *,
     local_refinement: dict[str, Any],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     local_frontier = local_refinement.get("failure_frontier")
     local_frontier = local_frontier if isinstance(local_frontier, dict) else {}
@@ -830,6 +864,8 @@ def _transition_refine_near_walk(
             "failure_frontier": _failure_frontier([]),
             "best_by_success_window": None,
             "best_by_physical_gates": None,
+            "top_by_success_window": [],
+            "top_by_physical_gates": [],
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -837,6 +873,7 @@ def _transition_refine_near_walk(
         prefix=f"transition_{base.get('controller')}",
         params=_transition_refinement_params(base["controller_params"]),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     best_by_success_window = max(
         candidates,
@@ -855,6 +892,14 @@ def _transition_refine_near_walk(
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
         "best_by_physical_gates": best_by_physical_gates,
+        "top_by_success_window": _top_by(
+            candidates,
+            key=lambda row: (
+                float(row.get("max_success_window_s") or 0.0),
+                float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0),
+            ),
+        ),
+        "top_by_physical_gates": _top_by(candidates, key=_physical_gate_score),
         "candidates": candidates,
     }
 
@@ -864,6 +909,7 @@ def _feedback_refine_near_walk(
     *,
     local_refinement: dict[str, Any],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     local_frontier = local_refinement.get("failure_frontier")
     local_frontier = local_frontier if isinstance(local_frontier, dict) else {}
@@ -878,6 +924,8 @@ def _feedback_refine_near_walk(
             "any_success": False,
             "failure_frontier": _failure_frontier([]),
             "best_by_success_window": None,
+            "top_by_success_window": [],
+            "top_by_physical_gates": [],
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -885,6 +933,7 @@ def _feedback_refine_near_walk(
         prefix=f"feedback_{base.get('controller')}",
         params=_feedback_refinement_params(base["controller_params"]),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     best_by_success_window = max(
         candidates,
@@ -903,6 +952,14 @@ def _feedback_refine_near_walk(
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
         "best_by_physical_gates": best_by_physical_gates,
+        "top_by_success_window": _top_by(
+            candidates,
+            key=lambda row: (
+                float(row.get("max_success_window_s") or 0.0),
+                float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0),
+            ),
+        ),
+        "top_by_physical_gates": _top_by(candidates, key=_physical_gate_score),
         "candidates": candidates,
     }
 
@@ -913,6 +970,7 @@ def _hybrid_recovery_refine_near_walk(
     feedback_refinement: dict[str, Any],
     local_refinement: dict[str, Any],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     feedback_frontier = feedback_refinement.get("failure_frontier")
     feedback_frontier = feedback_frontier if isinstance(feedback_frontier, dict) else {}
@@ -932,6 +990,8 @@ def _hybrid_recovery_refine_near_walk(
             "failure_frontier": _failure_frontier([]),
             "best_by_success_window": None,
             "best_by_physical_gates": None,
+            "top_by_success_window": [],
+            "top_by_physical_gates": [],
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -939,6 +999,7 @@ def _hybrid_recovery_refine_near_walk(
         prefix=f"hybrid_{base.get('controller')}",
         params=_hybrid_recovery_refinement_params(base["controller_params"]),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     best_by_success_window = max(
         candidates,
@@ -957,6 +1018,14 @@ def _hybrid_recovery_refine_near_walk(
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
         "best_by_physical_gates": best_by_physical_gates,
+        "top_by_success_window": _top_by(
+            candidates,
+            key=lambda row: (
+                float(row.get("max_success_window_s") or 0.0),
+                float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0),
+            ),
+        ),
+        "top_by_physical_gates": _top_by(candidates, key=_physical_gate_score),
         "candidates": candidates,
     }
 
@@ -966,6 +1035,7 @@ def _stable_bridge_refine_near_walk(
     *,
     hybrid_recovery_refinement: dict[str, Any],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     base = hybrid_recovery_refinement.get("best_by_physical_gates")
     if not isinstance(base, dict) or not isinstance(base.get("controller_params"), dict):
@@ -978,6 +1048,9 @@ def _stable_bridge_refine_near_walk(
             "best_by_success_window": None,
             "best_by_physical_gates": None,
             "best_by_stable_bridge": None,
+            "top_by_success_window": [],
+            "top_by_physical_gates": [],
+            "top_by_stable_bridge": [],
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -985,6 +1058,7 @@ def _stable_bridge_refine_near_walk(
         prefix=f"stable_bridge_{base.get('controller')}",
         params=_stable_bridge_refinement_params(base["controller_params"]),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     best_by_success_window = max(
         candidates,
@@ -1005,6 +1079,15 @@ def _stable_bridge_refine_near_walk(
         "best_by_success_window": best_by_success_window,
         "best_by_physical_gates": best_by_physical_gates,
         "best_by_stable_bridge": best_by_stable_bridge,
+        "top_by_success_window": _top_by(
+            candidates,
+            key=lambda row: (
+                float(row.get("max_success_window_s") or 0.0),
+                float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0),
+            ),
+        ),
+        "top_by_physical_gates": _top_by(candidates, key=_physical_gate_score),
+        "top_by_stable_bridge": _top_by(candidates, key=_stable_bridge_score),
         "candidates": candidates,
     }
 
@@ -1015,6 +1098,7 @@ def search(
     n_candidates: int,
     n_refinement_candidates: int,
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     env = TextConditionedProfileEnv(
         "hiwonder-ainex",
@@ -1031,6 +1115,7 @@ def search(
         prefix="random_sine",
         params=_candidate_params(seed=seed, n_candidates=n_candidates),
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     frontier = _failure_frontier(candidates)
     local_refinement = _refine_best_straight(
@@ -1039,27 +1124,32 @@ def search(
         seed=seed + 1,
         n_candidates=n_refinement_candidates,
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     transition_refinement = _transition_refine_near_walk(
         env,
         local_refinement=local_refinement,
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     feedback_refinement = _feedback_refine_near_walk(
         env,
         local_refinement=local_refinement,
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     hybrid_recovery_refinement = _hybrid_recovery_refine_near_walk(
         env,
         feedback_refinement=feedback_refinement,
         local_refinement=local_refinement,
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     stable_bridge_refinement = _stable_bridge_refine_near_walk(
         env,
         hybrid_recovery_refinement=hybrid_recovery_refinement,
         max_steps=max_steps,
+        continue_after_goal_failure=continue_after_goal_failure,
     )
     any_success = (
         any(row["success"] for row in candidates)
@@ -1075,6 +1165,7 @@ def search(
         "task_id": "walk_forward",
         "seed": seed,
         "max_steps": max_steps,
+        "continue_after_goal_failure": continue_after_goal_failure,
         "n_candidates": len(candidates),
         "n_success": sum(1 for row in candidates if row["success"]),
         "any_success": any_success,
@@ -1240,6 +1331,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--n-refinement-candidates", type=int, default=220)
     parser.add_argument("--max-steps", type=int, default=320)
     parser.add_argument(
+        "--continue-after-goal-failure",
+        action="store_true",
+        help=(
+            "diagnostic only: keep rolling after GoalChecker failure while "
+            "latching strict failure; env termination still stops the rollout"
+        ),
+    )
+    parser.add_argument(
         "--out-json",
         type=Path,
         default=ROOT / "evidence" / "hiwonder_random_sine_gait_search.json",
@@ -1256,6 +1355,7 @@ def main(argv: list[str] | None = None) -> int:
         n_candidates=args.n_candidates,
         n_refinement_candidates=args.n_refinement_candidates,
         max_steps=args.max_steps,
+        continue_after_goal_failure=args.continue_after_goal_failure,
     )
     args.out_json.parent.mkdir(parents=True, exist_ok=True)
     args.out_json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

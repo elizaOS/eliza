@@ -7,6 +7,14 @@ tapeout_claim_allowed: false
 board_fabrication_claim_allowed: false
 silicon_claim_allowed: false
 production_readiness_claim_allowed: false
+false_claim_flags:
+  claim_allowed: false
+  phone_claim_allowed: false
+  release_claim_allowed: false
+  tapeout_claim_allowed: false
+  board_fabrication_claim_allowed: false
+  silicon_claim_allowed: false
+  production_readiness_claim_allowed: false
 real_world_gap_manifest: docs/manufacturing/real-world-verification-gaps.yaml
 physical_closure_work_order: docs/manufacturing/physical-closure-work-order.yaml
 blocked_gates:

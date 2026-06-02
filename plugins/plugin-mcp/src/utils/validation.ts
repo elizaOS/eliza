@@ -57,7 +57,7 @@ export function validateToolSelectionName(
   const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
   const server = mcpData[data.serverName];
 
-  if (!server || server.status !== "connected") {
+  if (server?.status !== "connected") {
     return {
       success: false,
       error: `Server "${data.serverName}" not found or not connected`,

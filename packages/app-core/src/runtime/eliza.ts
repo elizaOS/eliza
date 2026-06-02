@@ -32,6 +32,7 @@ import {
   AutonomyService,
   ChannelType,
   logger,
+  ModelType,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -52,6 +53,7 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (
   phase: EmbeddingWarmupPhase,
@@ -381,6 +383,62 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   });
 }
 
+/**
+ * Opt-in dev knob: comma-separated app-route-plugin ids to skip on boot.
+ * Empty / unset => no filtering (default behavior unchanged: every app-route
+ * plugin loads). This trims time-to-ready for core/runtime work by not
+ * transpiling + registering hundreds of feature routes a core dev does not
+ * exercise.
+ *
+ * A loader's id is its full package name (e.g. `@elizaos/plugin-lifeops`,
+ * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
+ * are matched against BOTH the full id and a normalized short alias
+ * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,steward,training,shopify`.
+ */
+export function getSkippedAppRoutePluginIds(): Set<string> {
+  return new Set(
+    (process.env.ELIZA_SKIP_APP_ROUTE_PLUGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Opt-in dev knob: when set to the literal token `"1"`, the post-ready boot
+ * tail (app-route plugins, training hooks, sensitive-request adapters, telegram
+ * polling, trigger bridge, connector catalog, voice warmup) runs in the
+ * background instead of blocking the readiness gate, so `/api/health` flips
+ * `ready:true` and "Agent ready" prints sooner. Composes with
+ * {@link getSkippedAppRoutePluginIds}: `ELIZA_SKIP_APP_ROUTE_PLUGINS` filters
+ * WHICH route plugins load; this controls WHETHER that tail blocks ready.
+ *
+ * Returns true ONLY for `"1"` (undefined / `""` / `"0"` / `"false"` / `"true"`
+ * all return false) so the default boot is byte-identical: the tail is awaited
+ * inline exactly as before.
+ */
+export function getDeferAppRoutesEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_DEFER_APP_ROUTES?.trim() === "1";
+}
+
+/**
+ * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
+ * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
+ * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
+ * `@elizaos/plugin-steward-app` and `steward` both normalize to `steward`.
+ */
+export function normalizeAppRoutePluginId(id: string): string {
+  return id
+    .trim()
+    .toLowerCase()
+    .replace(/^@elizaos\/plugin-/, "")
+    .replace(/:routes$/, "")
+    .replace(/-(app|ui|routes)$/, "");
+}
+
 function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   const byId = new Map<string, AppRoutePluginRegistryEntry>();
   for (const entry of getRegistryAppRoutePluginLoaders()) {
@@ -389,33 +447,77 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
-  return [...byId.values()];
+
+  const skip = getSkippedAppRoutePluginIds();
+  if (skip.size === 0) {
+    return [...byId.values()];
+  }
+
+  // Match a loader against the skip tokens by full id OR normalized short alias
+  // (so both `@elizaos/plugin-steward-app` and `steward` skip the same loader).
+  const skipNormalized = new Set(
+    [...skip].map((token) => normalizeAppRoutePluginId(token)),
+  );
+  const kept: AppRoutePluginRegistryEntry[] = [];
+  const skipped: string[] = [];
+  for (const entry of byId.values()) {
+    if (
+      skip.has(entry.id) ||
+      skipNormalized.has(normalizeAppRoutePluginId(entry.id))
+    ) {
+      skipped.push(entry.id);
+    } else {
+      kept.push(entry);
+    }
+  }
+  if (skipped.length > 0) {
+    logger.info(
+      `[eliza] Skipping ${skipped.length} app route plugin(s) via ELIZA_SKIP_APP_ROUTE_PLUGINS: ${skipped.join(", ")}`,
+    );
+  }
+  return kept;
 }
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  for (const { id, load } of getAppRoutePluginLoaders()) {
-    try {
-      const plugin = await load();
-      // Push rawPath routes directly onto runtime.routes to avoid the core's
-      // registerPlugin() path mangling (which prepends /<pluginName>/ to every
-      // route path). The rawPath flag means these routes already have their
-      // final absolute paths (e.g. /api/lifeops/app-state).
-      if (plugin.routes?.length) {
-        for (const route of plugin.routes) {
-          const routePath = route.path.startsWith("/")
-            ? route.path
-            : `/${route.path}`;
-          runtime.routes.push({ ...route, path: routePath });
-        }
+  // Load all app-route plugin modules concurrently. This runs on the gated
+  // ready-path (repairRuntimeAfterBoot is awaited before the runtime is handed
+  // back and /api/health flips ready), so the previous sequential await-loop
+  // serialized ~11 independent dynamic imports (lifeops alone registers 188
+  // routes) and dominated time-to-ready. Imports are independent; loading them
+  // together overlaps their I/O and module resolution. Route registration is
+  // still applied in loader order after all settle, so dispatch order is
+  // unchanged, and per-plugin failures stay isolated (a rejected load logs and
+  // contributes no routes rather than aborting the rest).
+  const loaded = await Promise.all(
+    getAppRoutePluginLoaders().map(async ({ id, load }) => {
+      try {
+        return await load();
+      } catch (err) {
+        logger.warn(
+          `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
+        );
+        return null;
       }
-      logger.info(
-        `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
-      );
-    } catch (err) {
-      logger.warn(
-        `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
-      );
+    }),
+  );
+
+  for (const plugin of loaded) {
+    if (!plugin) continue;
+    // Push rawPath routes directly onto runtime.routes to avoid the core's
+    // registerPlugin() path mangling (which prepends /<pluginName>/ to every
+    // route path). The rawPath flag means these routes already have their
+    // final absolute paths (e.g. /api/lifeops/app-state).
+    if (plugin.routes?.length) {
+      for (const route of plugin.routes) {
+        const routePath = route.path.startsWith("/")
+          ? route.path
+          : `/${route.path}`;
+        runtime.routes.push({ ...route, path: routePath });
+      }
     }
+    logger.info(
+      `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
+    );
   }
 }
 
@@ -473,6 +575,14 @@ async function registerTrainingRuntimeHooks(
   await hookMod.registerTrainingRuntimeHooks(runtime);
 }
 
+// The most recent runtime handed to the post-ready boot tail. A backgrounded
+// (deferred) tail compares against this so a hot-restart that boots a newer
+// runtime supersedes the old one's still-running tail, preventing route/service
+// registration onto a torn-down runtime. In the default inline-await path the
+// tail completes before the next repair call reassigns this, so the guard never
+// trips and default behavior stays byte-identical.
+let latestBootTailRuntime: AgentRuntime | null = null;
+
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
@@ -496,7 +606,6 @@ async function repairRuntimeAfterBoot(
     return runtime;
   }
 
-  await ensureTextToSpeechHandler(runtime);
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
   const autonomyLoopEnabled = isRuntimeAutonomyEnabled(process.env);
   if (autonomyLoopEnabled) {
@@ -506,17 +615,6 @@ async function repairRuntimeAfterBoot(
       "[eliza] Autonomy bootstrap deferred — autonomous loop disabled",
     );
   }
-
-  // ── Register app-specific route plugins ─────────────────────────────
-  // The registry and explicit registration API own the package bindings; the
-  // runtime only consumes app route plugin loaders.
-  await registerAppRoutePlugins(runtime);
-
-  await registerTrainingRuntimeHooks(runtime);
-
-  // Register first-party sensitive-request delivery adapters with the
-  // dispatch registry (no-op when the registry service isn't present).
-  registerCoreSensitiveRequestAdapters(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {
@@ -550,10 +648,96 @@ async function repairRuntimeAfterBoot(
     );
   }
 
-  if (shouldStartTelegramStandaloneBot()) {
-    await ensureTelegramBotPolling(runtime);
+  // Post-ready tail: feature-route plugins, training hooks, sensitive-request
+  // adapters, telegram polling, the trigger bridge, the connector catalog, and
+  // voice warmup. None of these gate correctness of the first turn, so when
+  // ELIZA_DEFER_APP_ROUTES=1 they run in the background and ready flips before
+  // the tail completes (feature routes may 404 for a brief window — same
+  // audience as ELIZA_SKIP_APP_ROUTE_PLUGINS). When the knob is unset the tail
+  // is awaited inline, identical in steps and order to the pre-split path.
+  latestBootTailRuntime = runtime;
+  if (getDeferAppRoutesEnabled()) {
+    void runPostReadyBootTail(runtime);
+    return runtime;
+  }
+  await runPostReadyBootTail(runtime);
+  return runtime;
+}
+
+/**
+ * The post-ready boot steps, named so a focused unit test can inject stubs and
+ * assert ordering / deferral / liveness / error-isolation without loading the
+ * full runtime. Production passes {@link DEFAULT_POST_READY_BOOT_STEPS}.
+ */
+export interface PostReadyBootSteps {
+  ensureTextToSpeechHandler: (runtime: AgentRuntime) => Promise<void>;
+  registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
+  registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
+  registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
+  shouldStartTelegramStandaloneBot: () => boolean;
+  ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
+  stopTelegramBotPolling: (reason: string) => void;
+  ensureTriggerEventBridge: (runtime: AgentRuntime) => Promise<void>;
+  ensureConnectorTargetCatalog: (runtime: AgentRuntime) => Promise<void>;
+  startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
+}
+
+const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
+  ensureTextToSpeechHandler,
+  registerAppRoutePlugins,
+  registerTrainingRuntimeHooks,
+  registerCoreSensitiveRequestAdapters,
+  shouldStartTelegramStandaloneBot,
+  ensureTelegramBotPolling,
+  stopTelegramBotPolling,
+  ensureTriggerEventBridge,
+  ensureConnectorTargetCatalog,
+  startDeferredVoiceWarmup,
+};
+
+/**
+ * Post-ready boot steps split out of {@link repairRuntimeAfterBoot}. Each step
+ * keeps its original error behavior verbatim — there is no wrapping try/catch:
+ * registerAppRoutePlugins isolates per-loader failures internally,
+ * ensureTriggerEventBridge / ensureConnectorTargetCatalog swallow into
+ * logger.warn internally, and ensureTextToSpeechHandler /
+ * registerTrainingRuntimeHooks throw (preserved in the default inline-await
+ * dispatch above).
+ *
+ * `steps` defaults to the real bound functions, so production behavior is
+ * unchanged; the seam exists only so the phase split is unit-testable.
+ */
+export async function runPostReadyBootTail(
+  runtime: AgentRuntime,
+  steps: PostReadyBootSteps = DEFAULT_POST_READY_BOOT_STEPS,
+): Promise<void> {
+  // Liveness guard: a hot-restart can swap runtimes mid-tail. If a newer boot
+  // has already claimed the tail slot, this runtime is superseded — bail before
+  // the first mutation so we never register routes/services onto a torn-down
+  // runtime. (In the default inline-await path the tail completes before the
+  // next repair call reassigns the slot, so this never trips.)
+  if (latestBootTailRuntime !== runtime) {
+    logger.info("[eliza] post-ready boot tail skipped — runtime superseded");
+    return;
+  }
+
+  await steps.ensureTextToSpeechHandler(runtime);
+
+  // ── Register app-specific route plugins ─────────────────────────────
+  // The registry and explicit registration API own the package bindings; the
+  // runtime only consumes app route plugin loaders.
+  await steps.registerAppRoutePlugins(runtime);
+
+  await steps.registerTrainingRuntimeHooks(runtime);
+
+  // Register first-party sensitive-request delivery adapters with the
+  // dispatch registry (no-op when the registry service isn't present).
+  steps.registerCoreSensitiveRequestAdapters(runtime);
+
+  if (steps.shouldStartTelegramStandaloneBot()) {
+    await steps.ensureTelegramBotPolling(runtime);
   } else {
-    stopTelegramBotPolling("passive-lifeops-connectors");
+    steps.stopTelegramBotPolling("passive-lifeops-connectors");
   }
 
   // Subscribe the trigger event bridge to the runtime event bus so
@@ -561,11 +745,27 @@ async function repairRuntimeAfterBoot(
   // etc. emissions. plugin-workflow registers WORKFLOW_DISPATCH in its `init`
   // so by the time the bridge starts, workflow-kind event triggers already
   // have a dispatcher to call.
-  await ensureTriggerEventBridge(runtime);
+  await steps.ensureTriggerEventBridge(runtime);
 
-  await ensureConnectorTargetCatalog(runtime);
+  await steps.ensureConnectorTargetCatalog(runtime);
 
-  return runtime;
+  // Warm local voice models (Whisper STT + Kokoro TTS) in the background now
+  // that the runtime is ready. repairRuntimeAfterBoot is the single chokepoint
+  // every boot path funnels through (bootElizaRuntime AND startEliza's
+  // server-only + restart paths), so the warmup fires regardless of entry
+  // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
+  void steps.startDeferredVoiceWarmup(runtime);
+}
+
+/**
+ * Test seam: set the runtime that owns the post-ready tail slot. Mirrors what
+ * {@link repairRuntimeAfterBoot} does just before dispatching the tail, so a
+ * unit test can drive the liveness guard without a full boot.
+ */
+export function __setLatestBootTailRuntimeForTest(
+  runtime: AgentRuntime | null,
+): void {
+  latestBootTailRuntime = runtime;
 }
 
 // Module-level handle for the trigger event bridge. Reset across
@@ -740,6 +940,35 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 // uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
 
+function isTruthyEnvValue(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
+  return isTruthyEnvValue(process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP);
+}
+
+function startLocalEmbeddingWarmup(
+  onProgress?: EmbeddingProgressCallback,
+): void {
+  void warmupEmbeddingModel(onProgress);
+}
+
+export function startDeferredLocalEmbeddingWarmup(
+  onProgress?: EmbeddingProgressCallback,
+): boolean {
+  if (!isLocalEmbeddingWarmupDeferredByEnv()) return false;
+  logger.info("[eliza] Starting deferred local embedding warmup");
+  startLocalEmbeddingWarmup(onProgress);
+  return true;
+}
+
 async function warmupEmbeddingModel(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
@@ -835,6 +1064,46 @@ async function warmupEmbeddingModelImpl(
   }
 }
 
+/**
+ * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
+ * the runtime is ready, by firing one tiny useModel request at each. Voice
+ * models only load through the live runtime (the Kokoro bridge auto-starts on
+ * the first TEXT_TO_SPEECH call), so unlike embedding — which warms pre-boot
+ * via a runtime-free facade — this runs post-ready. Fire-and-forget; gated to
+ * the local-inference path so cloud-only setups never make a paid TTS/STT call.
+ */
+async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
+  let localInferenceActive = false;
+  try {
+    localInferenceActive = (
+      await _localInference()
+    ).shouldWarmupLocalEmbeddingModel();
+  } catch {
+    localInferenceActive = false;
+  }
+  if (
+    !shouldWarmupVoice({
+      mobile: isMobilePlatform(),
+      skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      localInferenceActive,
+    })
+  ) {
+    return;
+  }
+  logger.info("[eliza] Starting deferred local voice warmup");
+  await warmVoiceModels(
+    runtime as unknown as Parameters<typeof warmVoiceModels>[0],
+    {
+      ttsType: ModelType.TEXT_TO_SPEECH,
+      transcriptionType: ModelType.TRANSCRIPTION,
+    },
+    {
+      info: (m: string) => logger.info(m),
+      warn: (m: string) => logger.warn(m),
+    },
+  );
+}
+
 export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
@@ -856,7 +1125,13 @@ export async function bootElizaRuntime(
     // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
     // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
     // still surfaces progress via updateStartupEmbeddingProgress.
-    void warmupEmbeddingModel(opts.onEmbeddingProgress);
+    if (isLocalEmbeddingWarmupDeferredByEnv()) {
+      logger.info(
+        "[eliza] Deferring local embedding warmup until runtime ready",
+      );
+    } else {
+      startLocalEmbeddingWarmup(opts.onEmbeddingProgress);
+    }
 
     // Default the embedding-vector dimension plugin-sql provisions to 384 when
     // unset: that is the compact SQL-safe column and the native width of the
@@ -870,6 +1145,7 @@ export async function bootElizaRuntime(
     }
 
     const runtime = await upstreamBootElizaRuntime(opts);
+    // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
     return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
   } finally {
     syncElizaEnvAliases();
@@ -1189,7 +1465,13 @@ export async function startEliza(
     // Fire-and-forget — see comment at the matching call in bootElizaRuntime
     // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
     // time while the warmup runs alongside.
-    void warmupEmbeddingModel(options?.onEmbeddingProgress);
+    if (isLocalEmbeddingWarmupDeferredByEnv()) {
+      logger.info(
+        "[eliza] Deferring local embedding warmup until runtime ready",
+      );
+    } else {
+      startLocalEmbeddingWarmup(options?.onEmbeddingProgress);
+    }
 
     // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
     if (!process.env.EMBEDDING_DIMENSION) {

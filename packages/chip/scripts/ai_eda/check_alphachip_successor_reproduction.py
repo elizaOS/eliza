@@ -18,6 +18,14 @@ EXPECTED_SCHEMA = "eliza.ai_eda.alphachip_successor_reproduction.v1"
 EXPECTED_CLAIM_BOUNDARY = "alphachip_successor_reproduction_evidence_only_no_release_claim"
 
 
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if report.get("status") != "SUCCESSOR_REPRODUCTION_READY":
+        flags["optimization_claim_allowed"] = False
+        flags["reproduction_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -81,6 +89,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("optimization_claim_allowed must match ready status")
     if report.get("reproduction_claim_allowed") is not ready:
         errors.append("reproduction_claim_allowed must match ready status")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("false_claim_flags must match denied successor reproduction claims")
     if int(report.get("minimum_cuda_epochs", 0)) < 200:
         errors.append("minimum_cuda_epochs must be at least 200")
 

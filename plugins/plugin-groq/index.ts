@@ -159,6 +159,27 @@ function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
   };
 }
 
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 function emitModelUsed(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -196,13 +217,36 @@ function env(name: string): string | null {
   return _globalThis.process?.env?.[name] ?? null;
 }
 
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function getRuntimeBuffer(): RuntimeBufferConstructor | null {
   return _globalThis.Buffer ?? null;
 }
 
 function getBaseURL(runtime: IAgentRuntime): string {
-  const url = runtime.getSetting("GROQ_BASE_URL");
-  return typeof url === "string" ? url : DEFAULT_BASE_URL;
+  const configured = nonEmptyString(runtime.getSetting("GROQ_BASE_URL"));
+  if (!configured) {
+    return DEFAULT_BASE_URL;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error("GROQ_BASE_URL must be a valid http(s) URL");
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("GROQ_BASE_URL must be a valid http(s) URL");
+  }
+
+  return configured.replace(/\/+$/, "");
 }
 
 function getSmallModel(runtime: IAgentRuntime): string {
@@ -257,9 +301,9 @@ function createGroqClient(runtime: IAgentRuntime) {
   const allowBrowserKey =
     !isBrowser() ||
     String(runtime.getSetting("GROQ_ALLOW_BROWSER_API_KEY") ?? "").toLowerCase() === "true";
-  const apiKey = allowBrowserKey ? runtime.getSetting("GROQ_API_KEY") : undefined;
+  const apiKey = allowBrowserKey ? nonEmptyString(runtime.getSetting("GROQ_API_KEY")) : undefined;
   return createGroq({
-    apiKey: typeof apiKey === "string" ? apiKey : undefined,
+    apiKey,
     fetch: runtime.fetch ?? undefined,
     baseURL: getBaseURL(runtime),
   });
@@ -425,6 +469,7 @@ async function generateWithRetry(
         model: groq.languageModel(model),
         system: params.system,
         temperature: params.temperature,
+        maxOutputTokens: params.maxTokens,
         maxRetries: 3,
         frequencyPenalty: params.frequencyPenalty,
         presencePenalty: params.presencePenalty,
@@ -529,11 +574,11 @@ function buildGroqGenerateParams(
   return {
     prompt: promptText,
     system: systemPrompt,
-    temperature: params.temperature ?? 0.7,
-    maxTokens: params.maxTokens ?? 8192,
-    frequencyPenalty: params.frequencyPenalty ?? 0.7,
-    presencePenalty: params.presencePenalty ?? 0.7,
-    stopSequences: params.stopSequences || [],
+    temperature: boundedNumber(params.temperature, 0.7, 0, 2),
+    maxTokens: positiveInteger(params.maxTokens, 8192),
+    frequencyPenalty: boundedNumber(params.frequencyPenalty, 0.7, -2, 2),
+    presencePenalty: boundedNumber(params.presencePenalty, 0.7, -2, 2),
+    stopSequences: stringArray(params.stopSequences),
     ...(paramsWithNative.messages ? { messages: paramsWithNative.messages } : {}),
     ...(paramsWithNative.tools ? { tools: paramsWithNative.tools } : {}),
     ...(paramsWithNative.toolChoice ? { toolChoice: paramsWithNative.toolChoice } : {}),
@@ -617,7 +662,7 @@ export const groqPlugin: Plugin = {
   },
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    const apiKey = runtime.getSetting("GROQ_API_KEY");
+    const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
     if (!apiKey && !isBrowser()) {
       throw new Error("GROQ_API_KEY is required");
     }
@@ -671,6 +716,9 @@ export const groqPlugin: Plugin = {
             : typeof params === "object" && params !== null && hasAudioData(params)
               ? buffer.from((params as AudioDataShape).audioData)
               : buffer.alloc(0);
+      if (audioBuffer.byteLength === 0) {
+        throw new Error("Groq TRANSCRIPTION requires non-empty audio data.");
+      }
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append(
@@ -679,7 +727,7 @@ export const groqPlugin: Plugin = {
       );
       formData.append("model", DEFAULT_TRANSCRIPTION_MODEL);
 
-      const apiKey = runtime.getSetting("GROQ_API_KEY");
+      const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
       const details: RecordLlmCallDetails = {
         model: DEFAULT_TRANSCRIPTION_MODEL,
         systemPrompt: "",
@@ -693,7 +741,7 @@ export const groqPlugin: Plugin = {
         const response = await fetch(`${baseURL}/audio/transcriptions`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+            Authorization: `Bearer ${apiKey ?? ""}`,
           },
           body: formData,
         });
@@ -718,14 +766,19 @@ export const groqPlugin: Plugin = {
       const payload =
         typeof params === "string"
           ? { text: params }
-          : (params as {
-              text?: string;
-              voice?: string;
-              model?: string;
-              responseFormat?: string;
-              response_format?: string;
-            });
-      const text = typeof payload.text === "string" ? payload.text : "";
+          : params && typeof params === "object"
+            ? (params as {
+                text?: string;
+                voice?: string;
+                model?: string;
+                responseFormat?: string;
+                response_format?: string;
+              })
+            : {};
+      const text = nonEmptyString(payload.text);
+      if (!text) {
+        throw new Error("Groq TEXT_TO_SPEECH requires non-empty text.");
+      }
       const baseURL = getBaseURL(runtime);
       const modelSetting = runtime.getSetting("GROQ_TTS_MODEL");
       const voiceSetting = runtime.getSetting("GROQ_TTS_VOICE");
@@ -751,7 +804,7 @@ export const groqPlugin: Plugin = {
               ? responseFormatSetting
               : DEFAULT_TTS_RESPONSE_FORMAT;
 
-      const apiKey = runtime.getSetting("GROQ_API_KEY");
+      const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
       const details: RecordLlmCallDetails = {
         model,
         systemPrompt: "",
@@ -765,7 +818,7 @@ export const groqPlugin: Plugin = {
         const response = await fetch(`${baseURL}/audio/speech`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+            Authorization: `Bearer ${apiKey ?? ""}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({

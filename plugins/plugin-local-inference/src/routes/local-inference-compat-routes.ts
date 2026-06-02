@@ -203,12 +203,12 @@ function parseLocalInferenceLoadOverrides(raw: unknown):
 		out[key] = value;
 	}
 
-	// Run the same validation `resolveLocalInferenceLoadArgs` will run, but
-	// with `allowFork: false` so desktop callers can't ask for fork-only
-	// KV cache types and silently get fp16. AOSP / paired-device callers
-	// bypass this route entirely.
+	// Run the same validation `resolveLocalInferenceLoadArgs` will run. The
+	// optimized desktop FFI runtime can honor the elizaOS fork's KV-cache
+	// types; unsupported runtimes fail later at the backend capability gate
+	// instead of silently loading fp16.
 	try {
-		validateLocalInferenceLoadArgs(out, { allowFork: false });
+		validateLocalInferenceLoadArgs(out, { allowFork: true });
 	} catch (err) {
 		return {
 			overrides: null,

@@ -76,6 +76,40 @@ describe("XDmAdapter", () => {
     expect(sent).toEqual({ externalId: "sent-1" });
   });
 
+  it("rejects empty direct-message drafts before encoding them", async () => {
+    const sendDirectMessageForAccount = vi.fn();
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({ sendDirectMessageForAccount });
+
+    await expect(
+      adapter.createDraft(runtime, {
+        to: [{ identifier: "recipient-1" }],
+        body: " \n\t ",
+      }),
+    ).rejects.toThrow("requires non-empty body");
+
+    expect(sendDirectMessageForAccount).not.toHaveBeenCalled();
+  });
+
+  it("surfaces failed direct-message sends instead of synthesizing success", async () => {
+    const sendDirectMessageForAccount = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      messageId: null,
+    }));
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({ sendDirectMessageForAccount });
+
+    const draft = await adapter.createDraft(runtime, {
+      to: [{ identifier: "recipient-1" }],
+      body: "blocked message",
+    });
+
+    await expect(adapter.sendDraft(runtime, draft.draftId)).rejects.toThrow(
+      "status 403",
+    );
+  });
+
   it("normalizes malformed memories and hostile list limits without throwing", async () => {
     const memory = {
       id: "memory-2",

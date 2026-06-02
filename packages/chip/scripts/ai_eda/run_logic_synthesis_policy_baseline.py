@@ -18,6 +18,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = ROOT / "build/ai_eda/logic_synthesis_recipes/validation/recipe_corpus.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/logic_synthesis_baselines"
 CLAIM_BOUNDARY = "logic_synthesis_baseline_with_yosys_equiv_opt_proof_no_ppa_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 # Passes that only report or reorganize hierarchy; they carry no logic
 # transformation that an equivalence proof would need to confirm.
@@ -179,6 +186,7 @@ def run_recipe(
             "status": "BLOCKED_EXTERNAL_ASSET_NOT_FETCHED",
             "blockers": recipe.get("blocked_until", []),
             "claim_boundary": CLAIM_BOUNDARY,
+            **FALSE_CLAIM_FLAGS,
         }
 
     rtl_reads = [f"read_verilog -sv {path}" for path in target["rtl"]]
@@ -202,6 +210,7 @@ def run_recipe(
             "metrics": parse_stat(log_text, str(target["top"])),
             "stderr_tail": stderr[-2000:],
             "claim_boundary": CLAIM_BOUNDARY,
+            **FALSE_CLAIM_FLAGS,
         }
     status = "PASS_YOSYS_RECIPE_SMOKE" if returncode == 0 else "FAIL_YOSYS_RECIPE"
     result = {
@@ -215,6 +224,7 @@ def run_recipe(
         "metrics": parse_stat(log_text, str(target["top"])),
         "stderr_tail": stderr[-2000:],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
     if returncode == 0:
         result["equivalence"] = run_equivalence(
@@ -248,6 +258,7 @@ def main() -> int:
             "status": "BLOCKED_YOSYS_NOT_FOUND",
             "results": [],
             "release_use_allowed": False,
+            **FALSE_CLAIM_FLAGS,
         }
         report_path = out_dir / "baseline_report.json"
         report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
@@ -273,6 +284,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "status": "PASS_WITH_BLOCKED_OPENABC_D" if not failed else "FAIL",
         "yosys": {"path": yosys_bin, "version": yosys_version(yosys_bin)},
         "corpus": str(args.corpus.relative_to(ROOT)),

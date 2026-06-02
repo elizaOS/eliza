@@ -1,3 +1,4 @@
+import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
@@ -8,6 +9,47 @@ import {
   pluginResourceLinkLabel,
   resolveIcon,
 } from "./plugin-list-utils";
+
+function PluginCardResourceLink({
+  pluginId,
+  linkKey,
+  url,
+  label,
+  title,
+  onOpen,
+}: {
+  pluginId: string;
+  linkKey: string;
+  url: string;
+  label: string;
+  title: string;
+  onOpen: (url: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${pluginId}-link-${linkKey}`,
+    role: "link",
+    label: `${label} (${pluginId})`,
+    group: "plugin-card",
+    description: title,
+    onActivate: () => onOpen(url),
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="h-6 px-2 text-2xs font-bold border-border/40 text-muted hover:text-txt hover:border-accent hover:bg-accent/5 backdrop-blur-sm transition-all"
+      onClick={(e) => {
+        e.stopPropagation();
+        void onOpen(url);
+      }}
+      title={title}
+      {...agentProps}
+    >
+      {label}
+    </Button>
+  );
+}
 
 export interface PluginCardProps {
   plugin: PluginInfo;
@@ -92,6 +134,64 @@ export function PluginCard({
   notInstalledLabel,
 }: PluginCardProps) {
   const { t } = useApp();
+
+  const toggleControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-toggle`,
+    role: "toggle",
+    label: `Toggle ${p.name}`,
+    group: "plugin-card",
+    status: p.enabled ? "active" : "inactive",
+    description: `Enable or disable the ${p.name} plugin`,
+    onActivate: () => void onToggle(p.id, !p.enabled),
+  });
+  const releaseLatestControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-release-main`,
+    role: "button",
+    label: `${p.name} main release stream`,
+    group: "plugin-card",
+    description: `Select the main release stream for ${p.name}`,
+    onActivate: () => onReleaseStreamChange(p.id, "latest"),
+  });
+  const releaseBetaControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-release-beta`,
+    role: "button",
+    label: `${p.name} beta release stream`,
+    group: "plugin-card",
+    description: `Select the beta release stream for ${p.name}`,
+    onActivate: () => onReleaseStreamChange(p.id, "beta"),
+  });
+  const installControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-install`,
+    role: "button",
+    label: `Install ${p.name}`,
+    group: "plugin-card",
+    description: `Install the ${p.name} plugin package`,
+    onActivate: () => onInstall(p.id, p.npmName ?? ""),
+  });
+  const updateControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-update`,
+    role: "button",
+    label: `Update ${p.name}`,
+    group: "plugin-card",
+    description: `Update the ${p.name} plugin package`,
+    onActivate: () => onUpdate(p.id, p.npmName ?? ""),
+  });
+  const uninstallControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-uninstall`,
+    role: "button",
+    label: `Uninstall ${p.name}`,
+    group: "plugin-card",
+    description: `Uninstall the ${p.name} plugin package`,
+    onActivate: () => onUninstall(p.id, p.npmName ?? ""),
+  });
+  const settingsControl = useAgentElement<HTMLButtonElement>({
+    id: `plugin-card-${p.id}-settings`,
+    role: "button",
+    label: `${p.name} settings`,
+    group: "plugin-card",
+    description: `Open the configuration for the ${p.name} plugin`,
+    onActivate: () => onToggleSettings(p.id),
+  });
 
   const hasParams = p.parameters && p.parameters.length > 0;
   const isOpen = pluginSettingsOpen.has(p.id);
@@ -214,6 +314,7 @@ export function PluginCard({
           </span>
         ) : (
           <Button
+            ref={toggleControl.ref}
             variant="outline"
             size="sm"
             data-plugin-toggle={p.id}
@@ -231,6 +332,8 @@ export function PluginCard({
               void onToggle(p.id, !p.enabled);
             }}
             disabled={toggleDisabled}
+            aria-current={p.enabled ? "true" : undefined}
+            {...toggleControl.agentProps}
           >
             {isToggleBusy
               ? t("pluginsview.Applying", {
@@ -324,19 +427,15 @@ export function PluginCard({
       {pluginLinks.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pb-2">
           {pluginLinks.map((link) => (
-            <Button
+            <PluginCardResourceLink
               key={`${p.id}:${link.key}`}
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-2xs font-bold border-border/40 text-muted hover:text-txt hover:border-accent hover:bg-accent/5 backdrop-blur-sm transition-all"
-              onClick={(e) => {
-                e.stopPropagation();
-                void onOpenExternalUrl(link.url);
-              }}
+              pluginId={p.id}
+              linkKey={link.key}
+              url={link.url}
+              label={pluginResourceLinkLabel(t, link.key)}
               title={`${pluginResourceLinkLabel(t, link.key)}: ${link.url}`}
-            >
-              {pluginResourceLinkLabel(t, link.key)}
-            </Button>
+              onOpen={onOpenExternalUrl}
+            />
           ))}
         </div>
       )}
@@ -366,6 +465,7 @@ export function PluginCard({
         {showReleaseControls && (
           <div className="flex items-center gap-1">
             <Button
+              ref={releaseLatestControl.ref}
               variant={
                 selectedReleaseStream === "latest" ? "default" : "outline"
               }
@@ -375,10 +475,12 @@ export function PluginCard({
                 e.stopPropagation();
                 onReleaseStreamChange(p.id, "latest");
               }}
+              {...releaseLatestControl.agentProps}
             >
               main
             </Button>
             <Button
+              ref={releaseBetaControl.ref}
               variant={selectedReleaseStream === "beta" ? "default" : "outline"}
               size="sm"
               className="h-6 px-2 text-2xs font-bold tracking-wide"
@@ -386,6 +488,7 @@ export function PluginCard({
                 e.stopPropagation();
                 onReleaseStreamChange(p.id, "beta");
               }}
+              {...releaseBetaControl.agentProps}
             >
               beta
             </Button>
@@ -399,6 +502,7 @@ export function PluginCard({
         <div className="flex-1" />
         {isStoreInstallMissing && !isShowcase && !p.loadError && (
           <Button
+            ref={installControl.ref}
             variant="default"
             size="sm"
             className="h-7 px-3 text-2xs font-bold tracking-wide max-w-[140px] truncate"
@@ -407,6 +511,7 @@ export function PluginCard({
               e.stopPropagation();
               onInstall(p.id, p.npmName ?? "");
             }}
+            {...installControl.agentProps}
           >
             {isInstalling
               ? installProgressLabel(
@@ -417,6 +522,7 @@ export function PluginCard({
         )}
         {canUpdate && (
           <Button
+            ref={updateControl.ref}
             variant="outline"
             size="sm"
             className="h-7 px-3 text-2xs font-bold tracking-wide"
@@ -425,6 +531,7 @@ export function PluginCard({
               e.stopPropagation();
               onUpdate(p.id, p.npmName ?? "");
             }}
+            {...updateControl.agentProps}
           >
             {isUpdating
               ? t("common.updating", { defaultValue: "Updating..." })
@@ -433,6 +540,7 @@ export function PluginCard({
         )}
         {canUninstall && (
           <Button
+            ref={uninstallControl.ref}
             variant="outline"
             size="sm"
             className="h-7 px-3 text-2xs font-bold tracking-wide text-destructive border-destructive/40 hover:border-destructive"
@@ -441,6 +549,7 @@ export function PluginCard({
               e.stopPropagation();
               onUninstall(p.id, p.npmName ?? "");
             }}
+            {...uninstallControl.agentProps}
           >
             {isUninstalling
               ? t("pluginsview.Uninstalling", {
@@ -453,6 +562,7 @@ export function PluginCard({
         )}
         {hasParams && (
           <Button
+            ref={settingsControl.ref}
             variant="ghost"
             size="sm"
             className={`h-7 px-2.5 text-xs-tight font-bold transition-all flex items-center gap-1.5 ${
@@ -465,6 +575,7 @@ export function PluginCard({
               onToggleSettings(p.id);
             }}
             title={t("nav.settings")}
+            {...settingsControl.agentProps}
           >
             <span className="text-sm leading-none">&#9881;</span>
             <span

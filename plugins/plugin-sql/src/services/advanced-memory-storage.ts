@@ -301,7 +301,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
 
   private parseLongTermMemory(memory: Memory): LongTermMemoryRecord | null {
     const envelope = getAdvancedMemoryEnvelope(memory);
-    if (!envelope || envelope.kind !== "long_term_memory" || !memory.id || !memory.agentId) {
+    if (envelope?.kind !== "long_term_memory" || !memory.id || !memory.agentId) {
       return null;
     }
 
@@ -324,13 +324,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
 
   private parseSessionSummary(memory: Memory): SessionSummaryRecord | null {
     const envelope = getAdvancedMemoryEnvelope(memory);
-    if (
-      !envelope ||
-      envelope.kind !== "session_summary" ||
-      !memory.id ||
-      !memory.agentId ||
-      !memory.roomId
-    ) {
+    if (envelope?.kind !== "session_summary" || !memory.id || !memory.agentId || !memory.roomId) {
       return null;
     }
 

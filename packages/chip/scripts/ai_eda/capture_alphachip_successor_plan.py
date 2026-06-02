@@ -21,6 +21,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/alphachip_successor_plan"
 SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
 CLAIM_BOUNDARY = "alphachip_successor_plan_only_no_checkpoint_reproduction_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "completion_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -106,6 +110,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "completion_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "evidence_run_ids": {
             "training_corpus": training_corpus_run_id,
             "training_handoff": training_handoff_run_id,

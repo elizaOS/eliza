@@ -33,6 +33,19 @@ def _provider_model_name(provider: str, model: str) -> str:
     return model_name
 
 
+def _scenario_flag_enabled(extra: dict[str, Any], *keys: str) -> bool:
+    return any(extra.get(key) is True for key in keys)
+
+
+def _append_scenario_control_flags(args: list[str], extra: dict[str, Any]) -> None:
+    if _scenario_flag_enabled(extra, "expand_scenarios", "include_edge_scenarios"):
+        args.append("--expand-scenarios")
+    if _scenario_flag_enabled(extra, "count_scenarios"):
+        args.append("--count-scenarios")
+    if _scenario_flag_enabled(extra, "validate_scenarios"):
+        args.append("--validate-scenarios")
+
+
 def _find_latest_by_patterns(root: Path, patterns: list[str]) -> Path | None:
     matches: list[Path] = []
     for pattern in patterns:
@@ -66,6 +79,11 @@ IGNORED_BENCHMARK_DIRS = {
     "elizaos_mmau",
     "eliza-adapter",
     "app_eval",
+    # Documentation, load/perf tooling, and unnormalized legacy packages.
+    "docs",
+    "gaia",
+    "loadperf",
+    "voice",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
     "hermes-adapter",
@@ -918,10 +936,7 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
         args.extend(["--max-steps", str(int(ctx.request.extra_config["max_steps"]))])
     if "max_iterations" in ctx.request.extra_config:
         args.extend(["--max-iterations", str(int(ctx.request.extra_config["max_iterations"]))])
-    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
-        "include_edge_scenarios"
-    ) is True:
-        args.append("--expand-scenarios")
+    _append_scenario_control_flags(args, ctx.request.extra_config)
     return args
 
 
@@ -1295,6 +1310,7 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     temperature = ctx.request.extra_config.get("temperature")
     if isinstance(temperature, (int, float)):
         args.extend(["--temperature", str(float(temperature))])
+    _append_scenario_control_flags(args, ctx.request.extra_config)
     return args
 
 
@@ -1384,6 +1400,7 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     random_seed = ctx.request.extra_config.get("random_seed", ctx.request.extra_config.get("seed"))
     if isinstance(random_seed, int):
         args.extend(["--random-seed", str(random_seed)])
+    _append_scenario_control_flags(args, ctx.request.extra_config)
     return args
 
 
@@ -1646,10 +1663,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if isinstance(domain, str) and domain.strip():
         args.extend(["--domain", domain.strip()])
 
-    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
-        "include_edge_scenarios"
-    ) is True:
-        args.append("--expand-scenarios")
+    _append_scenario_control_flags(args, ctx.request.extra_config)
 
     path_to_vm = ctx.request.extra_config.get("path_to_vm")
     if isinstance(path_to_vm, str) and path_to_vm.strip():
@@ -2764,6 +2778,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "eliza_bench_http_timeout_s": 90,
             "hl_bench_command_timeout_s": 60,
             "no_demo": True,
+            "expand_scenarios": True,
         },
         "gsm8k": {
             "limit": 2,
@@ -3209,7 +3224,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_evm,
             result_patterns=["metrics/evm_*_metrics.json"],
             score_extractor=_score_from_evm,
-            default_extra_config={"max_messages": 2},
+            default_extra_config={"max_messages": 2, "expand_scenarios": True},
         ),
         _make_extra_adapter(
             adapter_id="solana",

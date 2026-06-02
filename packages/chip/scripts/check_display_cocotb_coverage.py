@@ -78,6 +78,14 @@ def validate_coverage(payload: dict[str, object]) -> list[str]:
     for flag in FALSE_CLAIM_FLAGS:
         if payload.get(flag) is not False:
             errors.append(f"{flag} must be exactly false")
+    nested_flags = payload.get("false_claim_flags")
+    if nested_flags is not None:
+        if not isinstance(nested_flags, dict):
+            errors.append("false_claim_flags must be a mapping when present")
+        else:
+            for flag in FALSE_CLAIM_FLAGS:
+                if nested_flags.get(flag) is not False:
+                    errors.append(f"false_claim_flags.{flag} must be exactly false")
 
     boundary = payload.get("boundary")
     if not isinstance(boundary, str):

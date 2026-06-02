@@ -144,6 +144,12 @@ def main() -> int:
             if isinstance(record, dict) and record.get("pinout_file")
         }
     )
+    routed_step_component_envelope_count = int(
+        routed_visual.get("footprint_envelope_count")
+        or component_model.get("component_model_count")
+        or component_dir.get("component_model_count")
+        or 0
+    )
     local_non_release_progress = {
         "development_route_count": int(development_route.get("route_count") or 0),
         "development_segment_count": int(development_route.get("segment_count") or 0),
@@ -239,9 +245,7 @@ def main() -> int:
         "routed_step_candidate_release_credit": candidate_context.get("release_credit") is True,
         "routed_step_candidate_sha256": candidate_context.get("source_step_sha256", ""),
         "routed_step_candidate_matches_development_source": True,
-        "routed_step_candidate_footprint_envelope_count": int(
-            routed_visual.get("footprint_envelope_count") or 0
-        ),
+        "routed_step_candidate_footprint_envelope_count": routed_step_component_envelope_count,
         "routed_step_candidate_pad_contact_visual_count": int(
             routed_visual.get("pad_contact_visual_count") or 0
         ),
@@ -417,6 +421,12 @@ def main() -> int:
         "component_model_support_pattern_model_count": int(
             component_model.get("support_pattern_model_count") or 0
         ),
+        "component_model_pattern_bound_model_count": int(
+            component_model.get("pattern_bound_model_count") or 0
+        ),
+        "component_model_terminal_contract_bound_model_count": int(
+            component_model.get("terminal_contract_bound_model_count") or 0
+        ),
         "component_model_terminal_contract_or_no_pad_model_count": int(
             component_model.get("models_with_terminal_contract_or_no_electrical_pads_count") or 0
         ),
@@ -441,8 +451,18 @@ def main() -> int:
         "component_model_local_discrete_step_bbox_match_count": int(
             component_model.get("local_discrete_step_bbox_match_count") or 0
         ),
+        "component_model_local_step_bound_model_count": int(
+            component_model.get("local_step_bound_model_count") or 0
+        ),
         "component_model_local_discrete_step_bytes_total": int(
             component_model.get("local_discrete_step_bytes_total") or 0
+        ),
+        "component_model_all_pattern_binding_flags_pass": all(
+            component_model.get(key) is True
+            for key in (
+                "all_models_have_pattern_binding",
+                "all_models_have_terminal_contract_binding",
+            )
         ),
         "component_model_all_terminal_contract_flags_pass": all(
             component_model.get(key) is True
@@ -459,6 +479,7 @@ def main() -> int:
             component_model.get(key) is True
             for key in (
                 "all_models_have_local_discrete_step_file",
+                "all_models_have_local_step_binding",
                 "all_local_discrete_step_hashes_match_files",
                 "all_local_discrete_step_sizes_match_files",
                 "all_local_discrete_steps_import_as_solids",
@@ -468,6 +489,12 @@ def main() -> int:
         "component_model_directory_record_count": int(component_dir.get("model_record_count") or 0),
         "component_model_directory_terminal_contract_model_record_count": int(
             component_dir.get("terminal_contract_model_record_count") or 0
+        ),
+        "component_model_directory_pattern_bound_model_record_count": int(
+            component_dir.get("pattern_bound_model_record_count") or 0
+        ),
+        "component_model_directory_terminal_contract_bound_model_record_count": int(
+            component_dir.get("terminal_contract_bound_model_record_count") or 0
         ),
         "component_model_directory_terminal_contract_total_count": int(
             component_dir.get("terminal_contract_total_count") or 0
@@ -497,11 +524,14 @@ def main() -> int:
             for key in (
                 "all_pinout_bound_records_have_terminal_contract",
                 "all_support_pattern_records_have_explicit_provenance",
+                "all_model_records_have_pattern_binding",
+                "all_model_records_have_terminal_contract_binding",
                 "all_terminal_contracts_match_pad_visuals",
                 "all_model_pad_visuals_have_contract",
                 "all_non_signal_pad_contracts_match_pad_visuals",
                 "all_npth_mechanical_features_have_contract",
                 "all_model_records_have_local_discrete_step_file",
+                "all_model_records_have_local_step_binding",
                 "all_local_discrete_step_files_import_as_solids",
                 "all_local_discrete_step_bboxes_match_envelopes",
             )
@@ -514,6 +544,9 @@ def main() -> int:
         ),
         "component_model_directory_local_discrete_step_bbox_match_count": int(
             component_dir.get("local_discrete_step_bbox_match_count") or 0
+        ),
+        "component_model_directory_local_step_bound_model_record_count": int(
+            component_dir.get("local_step_bound_model_record_count") or 0
         ),
         "component_model_directory_local_discrete_step_bytes_total": int(
             component_dir.get("local_discrete_step_bytes_total") or 0

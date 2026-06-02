@@ -14,6 +14,8 @@ export {
   resolveCloudApiBaseUrl,
 } from "./base-url.js";
 export * from "./duffel-client.js";
+export * from "./lifeops-schedule-sync-client.js";
+export * from "./lifeops-schedule-sync-contracts.js";
 export {
   type BackupInfo,
   type CloudAgent,

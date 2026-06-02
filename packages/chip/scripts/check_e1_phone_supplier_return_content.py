@@ -54,6 +54,13 @@ PLACEHOLDER_MARKERS = {
 }
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_supplier_return_content.py"
 APPROVAL_AUTHORITY_PREFIX = "sourcing-approval"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "supplier_return_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "production_claim_allowed": False,
+}
 SUPPLIER_RETURN_EVIDENCE_CLASSES = {
     "rfq_response_pack",
     "signed_2d_drawing",
@@ -739,6 +746,7 @@ def main() -> int:
             {
                 "schema": "eliza.e1_phone_supplier_return_content_report.v1",
                 "status": "fail",
+                **FALSE_CLAIM_FLAGS,
                 "summary": {"release_ready": False},
                 "findings": [
                     {
@@ -771,6 +779,7 @@ def main() -> int:
             {
                 "schema": "eliza.e1_phone_supplier_return_content_report.v1",
                 "status": "blocked",
+                **FALSE_CLAIM_FLAGS,
                 "summary": {
                     "release_ready": False,
                     "rows": total,
@@ -857,6 +866,7 @@ def main() -> int:
         {
             "schema": "eliza.e1_phone_supplier_return_content_report.v1",
             "status": "pass",
+            **FALSE_CLAIM_FLAGS,
             "summary": {
                 "release_ready": True,
                 "rows": total,

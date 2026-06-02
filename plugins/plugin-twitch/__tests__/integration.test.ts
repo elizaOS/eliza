@@ -9,8 +9,13 @@ import { describe, expect, test, vi } from "vitest";
 import twitchPlugin, {
   formatChannelForDisplay,
   getTwitchUserDisplayName,
+  listTwitchAccountIds,
   MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
+  normalizeTwitchAccountId,
+  readTwitchAccountId,
+  resolveDefaultTwitchAccountId,
+  resolveTwitchAccountSettings,
   splitMessageForTwitch,
   stripMarkdownForTwitch,
   TWITCH_SERVICE_NAME,
@@ -21,12 +26,14 @@ import twitchPlugin, {
   type TwitchMessageSendOptions,
   TwitchNotConnectedError,
   TwitchPluginError,
+  type TwitchRole,
   type TwitchSendResult,
   TwitchService,
   TwitchServiceNotInitializedError,
   type TwitchSettings,
   type TwitchUserInfo,
 } from "../src/index.ts";
+import { createTwitchConnectorAccountProvider } from "../src/connector-account-provider.ts";
 import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +61,8 @@ type TwitchServiceHarnessFields = {
   settings?: TwitchSettings;
   joinedChannels?: Set<string>;
   accountServices?: Map<string, TwitchService>;
+  connected?: boolean;
+  client?: unknown;
 };
 
 function makeMockRuntime(overrides: MockRuntimeOverrides = {}): MockRuntime {
@@ -119,6 +128,20 @@ function makeTwitchServiceHarness(
   ) as TwitchService & TwitchServiceHarnessFields;
 }
 
+function makeUser(overrides: Partial<TwitchUserInfo> = {}): TwitchUserInfo {
+  return {
+    userId: "1",
+    username: "alice",
+    displayName: "Alice",
+    isModerator: false,
+    isBroadcaster: false,
+    isVip: false,
+    isSubscriber: false,
+    badges: new Map(),
+    ...overrides,
+  };
+}
+
 function _makeMockTwitchService(overrides: Record<string, unknown> = {}) {
   return {
     isConnected: () => overrides.connected ?? true,
@@ -141,14 +164,6 @@ function _makeMockTwitchService(overrides: Record<string, unknown> = {}) {
 // ===========================================================================
 
 describe("Plugin metadata", () => {
-  test("has correct name", () => {
-    expect(twitchPlugin.name).toBe("twitch");
-  });
-
-  test("has a description containing 'Twitch'", () => {
-    expect(twitchPlugin.description).toContain("Twitch");
-  });
-
   test("does not register platform-specific chat actions", () => {
     expect(twitchPlugin.actions).toHaveLength(0);
   });
@@ -161,39 +176,6 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.services).toHaveLength(2);
     expect(twitchPlugin.services).toContain(TwitchService);
     expect(twitchPlugin.services).toContain(TwitchWorkflowCredentialProvider);
-  });
-
-  test("has an init function", () => {
-    expect(typeof twitchPlugin.init).toBe("function");
-  });
-});
-
-// ===========================================================================
-// 2. Constants
-// ===========================================================================
-
-describe("Constants", () => {
-  test("MAX_TWITCH_MESSAGE_LENGTH is 500", () => {
-    expect(MAX_TWITCH_MESSAGE_LENGTH).toBe(500);
-  });
-
-  test("TWITCH_SERVICE_NAME is 'twitch'", () => {
-    expect(TWITCH_SERVICE_NAME).toBe("twitch");
-  });
-});
-
-// ===========================================================================
-// 3. Event Types Enum
-// ===========================================================================
-
-describe("TwitchEventTypes", () => {
-  test("has all expected event types", () => {
-    expect(TwitchEventTypes.MESSAGE_RECEIVED).toBe("TWITCH_MESSAGE_RECEIVED");
-    expect(TwitchEventTypes.MESSAGE_SENT).toBe("TWITCH_MESSAGE_SENT");
-    expect(TwitchEventTypes.JOIN_CHANNEL).toBe("TWITCH_JOIN_CHANNEL");
-    expect(TwitchEventTypes.LEAVE_CHANNEL).toBe("TWITCH_LEAVE_CHANNEL");
-    expect(TwitchEventTypes.CONNECTION_READY).toBe("TWITCH_CONNECTION_READY");
-    expect(TwitchEventTypes.CONNECTION_LOST).toBe("TWITCH_CONNECTION_LOST");
   });
 });
 

@@ -75,11 +75,13 @@ import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
+import { resolveRendererBuildAction } from "./lib/renderer-build-action.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 // Linux WebKitGTK: the dmabuf renderer can emit a benign but noisy
@@ -322,6 +324,10 @@ const forceRenderer =
   forceRendererCli ||
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "always" ||
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "1";
+// Opt-in fast inner loop: start against the EXISTING dist even when stale
+// (renderer may be stale until the next build). Prefer dev:desktop:watch (HMR).
+const rendererBuildSkipRequested =
+  process.env.ELIZA_DESKTOP_RENDERER_BUILD === "skip";
 const viteWatch =
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
@@ -431,18 +437,35 @@ function ensureBunRootPackageLink(packageName) {
 
 syncRendererPublicAssets();
 const rendererDistStale = viteRendererBuildNeeded(appDir, bundleRoot);
-const needRendererBuild = forceRenderer || rendererDistStale;
+const rendererDistExists = existsSync(path.join(appDir, "dist", "index.html"));
+const rendererBuildAction = resolveRendererBuildAction({
+  forceRenderer,
+  distStale: rendererDistStale,
+  distExists: rendererDistExists,
+  skipRequested: rendererBuildSkipRequested,
+});
 let ranInitialViteBuild = false;
 
-if (needRendererBuild) {
+if (rendererBuildAction === "build") {
   ranInitialViteBuild = true;
   console.log("\n[eliza] Building renderer (vite build)…");
+  console.log(
+    chalk.dim(
+      "  Tip: `bun dev:desktop:watch` uses Vite HMR and skips this build.",
+    ),
+  );
   execFileSync(BUN_EXECUTABLE, ["run", "vite", "build"], {
     cwd: appDir,
     env: { ...process.env },
     stdio: "inherit",
   });
   console.log("[eliza] Renderer ready.\n");
+} else if (rendererBuildAction === "skip-stale") {
+  console.warn(
+    "\n[eliza] Skipping STALE vite build (ELIZA_DESKTOP_RENDERER_BUILD=skip) —\n" +
+      "  the renderer may be out of date. Use `bun dev:desktop:watch` for HMR,\n" +
+      "  or `--force-renderer` to rebuild now.\n",
+  );
 } else {
   console.log(
     "\n[eliza] Skipping vite build — renderer dist/ is up to date.\n" +
@@ -779,6 +802,9 @@ async function launch() {
   }
 
   const serviceLine = namesForLog.join(", ");
+  const apiEmbeddingWarmupPolicy = resolveDesktopStartupEmbeddingWarmupPolicy(
+    process.env,
+  );
   const orchestratorBanner = formatOrchestratorDesktopDevBanner({
     worktreePath: _worktreeEnvPath,
     worktreeLoaded: existsSync(_worktreeEnvPath),
@@ -806,6 +832,7 @@ async function launch() {
     desktopDevLogPath,
     desktopDevLogOptOut,
     childrenList: serviceLine,
+    apiEmbeddingWarmupPolicy,
     elizaNamespace:
       process.env.ELIZA_NAMESPACE?.trim() || defaultElizaNamespace,
     elizaNamespaceUnset: !process.env.ELIZA_NAMESPACE?.trim(),
@@ -849,6 +876,7 @@ async function launch() {
     ...(desktopDevLogPath
       ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
       : {}),
+    ...apiEmbeddingWarmupPolicy.env,
   };
   const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
   const apiArgs = apiWatchEnabled

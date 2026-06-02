@@ -1,5 +1,6 @@
 import fc from "fast-check";
 import { afterEach, describe, expect, it } from "vitest";
+import { formatCommandResult, isAuthorized, isElevated } from "../src/index";
 import {
 	detectCommand,
 	extractCommand,
@@ -9,11 +10,15 @@ import {
 	parseCommand,
 } from "../src/parser";
 import {
+	findCommandByAlias,
 	findCommandByKey,
+	initForRuntime,
 	registerCommand,
 	resetCommands,
+	unregisterCommand,
+	useRuntime,
 } from "../src/registry";
-import type { CommandDefinition } from "../src/types";
+import type { CommandContext, CommandDefinition } from "../src/types";
 
 const customCommand: CommandDefinition = {
 	key: "deploy",
@@ -53,6 +58,41 @@ describe("command parser", () => {
 				rawArgs: "high",
 			},
 		});
+	});
+
+	it("normalizes hostile bot mention strings literally instead of as regex", () => {
+		const mention = ["bot.*+?^", "$", "{}()|[]", "\\"].join("");
+		const normalized = normalizeCommandBody(`@${mention} /help`, mention);
+
+		expect(normalized).toBe("/help");
+		expect(normalizeCommandBody("@botx /help", "bot.")).toBe("@botx /help");
+	});
+
+	it("accepts whitespace and colon separators without merging commands into args", () => {
+		expect(detectCommand("/think\thigh")).toMatchObject({
+			isCommand: true,
+			command: { key: "think", args: ["high"], rawArgs: "high" },
+		});
+		expect(detectCommand("/think\nhigh")).toMatchObject({
+			isCommand: true,
+			command: { key: "think", args: ["high"], rawArgs: "high" },
+		});
+		expect(normalizeCommandBody("!deploy: prod")).toBe("!deploy prod");
+	});
+
+	it("rejects malformed command prefixes and alias smuggling attempts", () => {
+		for (const text of [
+			"/",
+			"!",
+			"/ help",
+			"/helpful",
+			"/help--force",
+			"/help/../../reset",
+			"/debug: true",
+		]) {
+			expect(detectCommand(text)).toEqual({ isCommand: false });
+			expect(extractCommand(text)).toBeNull();
+		}
 	});
 
 	it("tokenizes quoted positional args and captures remaining text", () => {
@@ -109,6 +149,74 @@ describe("command parser", () => {
 
 		expect(findCommandByKey("deploy")?.enabled).toBe(false);
 		expect(detectCommand("/deploy production")).toEqual({ isCommand: false });
+	});
+
+	it("invalidates alias cache when replacing and unregistering commands", () => {
+		registerCommand(customCommand);
+		expect(findCommandByAlias("/deploy")?.key).toBe("deploy");
+
+		registerCommand({
+			...customCommand,
+			textAliases: ["/ship"],
+		});
+		expect(findCommandByAlias("/deploy")).toBeUndefined();
+		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
+		expect(detectCommand("/ship prod")).toMatchObject({
+			isCommand: true,
+			command: { key: "deploy", args: ["prod"] },
+		});
+
+		unregisterCommand("deploy");
+		expect(findCommandByAlias("/ship")).toBeUndefined();
+		expect(detectCommand("/ship prod")).toEqual({ isCommand: false });
+	});
+
+	it("keeps per-runtime command changes isolated when switching runtimes", () => {
+		initForRuntime("agent-a");
+		registerCommand(customCommand);
+
+		initForRuntime("agent-b");
+		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
+
+		useRuntime("agent-a");
+		expect(detectCommand("/deploy prod")).toMatchObject({
+			isCommand: true,
+			command: { key: "deploy", args: ["prod"] },
+		});
+
+		useRuntime("agent-b");
+		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
+	});
+
+	it("denies auth and elevated checks only for commands that require them", () => {
+		const context: CommandContext = {
+			isAuthorized: false,
+			isElevated: false,
+			roomId: "room-1",
+		};
+
+		expect(isAuthorized(context, customCommand)).toBe(true);
+		expect(
+			isAuthorized(context, { ...customCommand, requiresAuth: true }),
+		).toBe(false);
+		expect(isElevated(context, customCommand)).toBe(true);
+		expect(
+			isElevated(context, { ...customCommand, requiresElevated: true }),
+		).toBe(false);
+	});
+
+	it("formats command error results before fallback replies", () => {
+		expect(
+			formatCommandResult({
+				handled: true,
+				shouldContinue: false,
+				reply: "ok",
+				error: "permission denied",
+			}),
+		).toBe("Error: permission denied");
+		expect(formatCommandResult({ handled: true, shouldContinue: false })).toBe(
+			"Command executed",
+		);
 	});
 
 	it("fuzzes non-command prefixes without accidentally invoking command parsing", () => {

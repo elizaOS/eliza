@@ -27,9 +27,13 @@ def assert_false_flags(report: dict) -> None:
         "production_accelerator_release_claim_allowed",
         "nnapi_claim_allowed",
         "performance_claim_allowed",
+        "linux_android_driver_claim_allowed",
+        "soc_fabric_integration_claim_allowed",
     ):
         if report.get(key) is not False:
             raise AssertionError(f"{key} must be exactly false")
+    if report.get("false_claim_flags") != load_gate().FALSE_CLAIM_FLAGS:
+        raise AssertionError("false_claim_flags must match gate non-claim map")
 
 
 def test_report_records_non_release_boundaries() -> None:

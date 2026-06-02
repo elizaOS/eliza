@@ -1,5 +1,11 @@
 schema: eliza.aosp_simulator_completion_gate.v1
 status: blocked_until_evidence
+claim_allowed: false
+release_claim_allowed: false
+phone_runtime_claim_allowed: false
+android_boot_claim_allowed: false
+simulator_completion_claim_allowed: false
+production_readiness_claim_allowed: false
 claim_boundary: >
   This gate is the single completion checklist for claiming interactive AOSP on
   the Eliza simulated chip. Target specs may be compared against the

@@ -76,6 +76,37 @@ summary:
   cad_connection_controlled_impedance_count: 16
   cad_connection_controlled_impedance_requirement_defined_count: 32
   cad_connection_bend_radius_requirement_defined_count: 32
+  cad_connection_mechanical_envelope_defined_count: 32
+  cad_connection_all_records_have_mechanical_envelope: true
+  cad_connection_mechanical_envelope_release_credit: false
+  cad_connection_manufacturing_detail_defined_count: 32
+  cad_connection_geometry_defined_count: 32
+  cad_connection_bend_or_connector_basis_defined_count: 32
+  cad_connection_impedance_or_current_basis_defined_count: 32
+  cad_connection_all_records_have_manufacturing_geometry: true
+  cad_connection_all_records_have_bend_or_connector_basis: true
+  cad_connection_all_records_have_impedance_or_current_basis: true
+  cad_connection_all_records_have_endpoint_distance: true
+  cad_connection_supplier_drawing_requirement_medium_count: 9
+  cad_connection_supplier_drawing_requirements_by_medium:
+    battery_power_flex: approved battery flex/lead drawing with conductor gauge, NTC/ID routing, current
+      capacity, adhesive, bend radius, and connector retention
+    board_to_board_edge_connector: approved board-to-board connector/flex drawing with pin map, mating
+      height, wipe, retention, keepout, and tolerance stack
+    flexible_antenna_loop: approved NFC antenna flex drawing with loop geometry, ferrite/adhesive stack,
+      matching target, and bend radius
+    flexible_printed_circuit: approved FPC drawing with stackup, copper weights, stiffeners, adhesive,
+      connector pinout, bend radius, and impedance/current constraints
+    ground_spring_contact: approved ground-spring drawing with contact force, wipe, plating, tolerance
+      stack, and chassis bonding path
+    insulated_wire_pair: approved harness/lead drawing with wire gauge, insulation, strain relief, routing
+      clip, service loop, and bend radius
+    pcb_copper_trace_group: approved routed PCB copper with clean or waived DRC/ERC, stackup, impedance/current
+      validation, and SI/PI review
+    rf_50ohm_feed: approved RF feed drawing/layout with 50 ohm stackup, matching network, antenna clearance,
+      VNA evidence, and coexistence review
+    rf_tuner_interconnect: approved antenna tuner interconnect with RF stackup, matching state table,
+      control routing, aperture clearance, and VNA evidence
   cad_connection_supplier_release_required_count: 32
   explicit_support_pattern_count: 11
   all_support_patterns_have_explicit_provenance: true
@@ -99,7 +130,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public MAX77860 WLP81 ball map with local 0.40mm WLP development grid; pending Analog
+    Devices package drawing and assembler DFM approval
   local_terminal_contract:
   - A1
   - A2
@@ -206,7 +238,8 @@ footprint_traceability:
   pinout_status: public_audio_interface_contract_pending_selected_codec_package_pinout
   pinout_release_allowed: false
   coverage: exact_public_audio_signal_contract_pending_selected_codec_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN48 audio-codec development pattern from codec signal contract; pending
+    exact codec MPN land pattern and pinout
   local_terminal_contract:
   - '1'
   - '2'
@@ -280,7 +313,8 @@ footprint_traceability:
   pinout_status: public_backlight_bias_signal_contract_pending_selected_driver_pinout
   pinout_release_allowed: false
   coverage: exact_public_backlight_bias_signal_contract_pending_selected_driver_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 backlight/bias power development pattern from display-power signal contract;
+    pending exact driver package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -330,7 +364,8 @@ footprint_traceability:
   pinout_status: public_pack_connector_signal_contract_pending_supplier_connector_pin_order
   pinout_release_allowed: false
   coverage: exact_public_pack_signal_contract_pending_supplier_pin_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 4-pin 1.00mm battery-pack flex development pad row from pack signal contract;
+    pending pack supplier lead/connector drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -388,7 +423,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 24-pin 0.50mm rear-camera FPC development pad row from public CSI signal set;
+    pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -438,7 +474,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 30-pin 0.50mm front-camera FPC development pad row from public CSI signal
+    set; pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -494,7 +531,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_specification
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 40-pin 0.30mm display FPC development pad row from public signal set; pending
+    signed display FPC pin order and land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -592,7 +630,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_mff2_esim_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public MFF2/eSIM 8-pad pinout with local QFN/LGA development footprint; pending
+    eSIM supplier package drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -653,7 +692,8 @@ footprint_traceability:
   pinout_status: public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
   pinout_release_allowed: false
   coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP12 fuel-gauge development grid from battery gauge signal contract; pending
+    exact gauge ball map
   local_terminal_contract:
   - A1
   - A2
@@ -691,7 +731,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public USB4105 signal pinout with local 0.5mm receptacle development pad row; pending
+    GCT drawing/DFM land-pattern approval
   local_terminal_contract:
   - A1
   - A2
@@ -741,7 +782,8 @@ footprint_traceability:
   pinout_status: public_haptic_signal_contract_pending_selected_driver_pinout
   pinout_release_allowed: false
   coverage: exact_public_haptic_signal_contract_pending_selected_driver_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP9 haptic-driver development grid from haptic signal contract; pending
+    exact driver ball map
   local_terminal_contract:
   - A1
   - A2
@@ -776,7 +818,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: mechanical_numbering_public_signal_assignment_local
-  land_pattern_basis: ''
+  land_pattern_basis: local 80-contact 0.40mm board-to-board development pattern bound to public Hirose
+    numbering; pending selected connector drawing and stack-height approval
   local_terminal_contract:
   - A1
   - A2
@@ -936,7 +979,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_terminal_table_and_public_dxf_land_pattern
-  land_pattern_basis: ''
+  land_pattern_basis: public Murata Type 2EA terminal table/DXF development geometry; pending Murata/CM
+    approved footprint import
   local_terminal_contract:
   - '1'
   - '2'
@@ -1161,7 +1205,8 @@ footprint_traceability:
   pinout_status: public_nfc_signal_contract_pending_selected_controller_pinout
   pinout_release_allowed: false
   coverage: exact_public_nfc_signal_contract_pending_selected_controller_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN32 NFC-controller development pattern from NFC signal contract; pending
+    exact controller MPN land pattern
   local_terminal_contract:
   - '1'
   - '2'
@@ -1219,7 +1264,8 @@ footprint_traceability:
   pinout_status: public_nfc_loop_match_contract_pending_antenna_tuning
   pinout_release_allowed: false
   coverage: exact_public_nfc_loop_match_contract_pending_antenna_tuning
-  land_pattern_basis: ''
+  land_pattern_basis: local five-terminal NFC loop matching development pattern; pending antenna tuning
+    and selected matching network
   local_terminal_contract:
   - '1'
   - '2'
@@ -1250,7 +1296,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public Panasonic EVQ-P7 four-terminal switch pinout with local tactile-switch development
+    pads; pending selected switch drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -1311,7 +1358,8 @@ footprint_traceability:
   pinout_status: public_hardware_design_pdf_captured_non_release_until_supplier_sku_pack
   pinout_release_allowed: false
   coverage: exact_public_pin_table_pending_final_regional_sku_pack
-  land_pattern_basis: ''
+  land_pattern_basis: public Quectel RG255C pin table with synthetic LGA development grid; pending selected
+    regional SKU land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -1603,7 +1651,8 @@ footprint_traceability:
   pinout_status: public_sensor_hub_signal_contract_pending_selected_sensor_pinout
   pinout_release_allowed: false
   coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 sensor-hub development pattern from sensor signal contract; pending
+    exact sensor/IMU package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -1681,7 +1730,8 @@ footprint_traceability:
   pinout_status: public_som_connector_pinout
   pinout_release_allowed: false
   coverage: public_som_pinout_pad_count_aligned
-  land_pattern_basis: ''
+  land_pattern_basis: public 260-position SoM connector count with local dual-row development footprint;
+    pending selected connector and SoM pin-order drawing
   local_terminal_contract:
   - A1
   - B1
@@ -1994,7 +2044,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public TPS65987 RSH56 QFN pin table with local exposed-pad development pattern;
+    pending TI land-pattern/DFM release review
   local_terminal_contract:
   - '1'
   - '2'
@@ -2107,7 +2158,8 @@ footprint_traceability:
   pinout_status: public_usim_signal_contract_pending_selected_levelshift_pinout
   pinout_release_allowed: false
   coverage: exact_public_usim_signal_contract_pending_selected_levelshift_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local 10-terminal USIM ESD/level-shift development pattern from public signal contract;
+    pending selected device land pattern
   local_terminal_contract:
   - '1'
   - '2'
@@ -2211,6 +2263,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: display_touch_fpc
+    cad_span_mm:
+    - 10.0
+    - 6.0
+    - 0.12
+    nominal_visual_width_mm: 6.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 64.869
+    routed_trace_length_total_mm: 260.817
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - mipi_dphy_diff_impedance_ohm=100ohm
+    impedance_requirement: MIPI D-PHY differential routing; supplier FPC stackup required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: rear_camera_csi_fpc
@@ -2291,6 +2366,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: camera_fpc
+    cad_span_mm:
+    - 12.0
+    - 0.8
+    - 0.12
+    nominal_visual_width_mm: 0.8
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 12.0
+    endpoint_center_distance_mm: 61.498
+    routed_trace_length_total_mm: 216.992
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - mipi_dphy_diff_impedance_ohm=100ohm
+    impedance_requirement: MIPI CSI D-PHY differential routing; supplier FPC stackup required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: front_camera_csi_fpc
@@ -2359,6 +2457,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: camera_fpc
+    cad_span_mm:
+    - 9.0
+    - 0.8
+    - 0.12
+    nominal_visual_width_mm: 0.8
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 9.0
+    endpoint_center_distance_mm: 70.48
+    routed_trace_length_total_mm: 141.7
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - mipi_dphy_diff_impedance_ohm=100ohm
+    impedance_requirement: MIPI CSI D-PHY differential routing; supplier FPC stackup required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: side_key_flex
@@ -2409,6 +2530,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: side_key_flex
+    cad_span_mm:
+    - 1.0
+    - 28.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 28.0
+    endpoint_center_distance_mm: 44.352
+    routed_trace_length_total_mm: 138.528
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: battery_lead_flex
@@ -2462,6 +2605,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: battery_power_flex
+    connection_type: battery_lead_flex
+    cad_span_mm:
+    - 8.0
+    - 1.2
+    - 0.12
+    nominal_visual_width_mm: 1.2
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 8.0
+    endpoint_center_distance_mm: 7.04
+    routed_trace_length_total_mm: 250.581
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_battery_flex_min_bend_radius_requirement_1.5mm_pending_pack_supplier_lead_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: current_capacity_and_ntc_id_sense_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: usb_c_escape_tail
@@ -2518,6 +2683,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: usb_c_escape_flex
+    cad_span_mm:
+    - 18.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 18.0
+    endpoint_center_distance_mm: 72.702
+    routed_trace_length_total_mm: 65.552
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - usb2_diff_impedance_ohm=90ohm
+    impedance_requirement: USB2 differential impedance plus VBUS current capacity
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: usb_c_to_pd_controller_escape
@@ -2574,6 +2762,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: pcb_copper_trace_group
+    connection_type: board_power_usb_trace
+    cad_span_mm:
+    - 9.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 9.0
+    endpoint_center_distance_mm: 19.281
+    routed_trace_length_total_mm: 65.552
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - usb2_diff_impedance_ohm=90ohm
+    impedance_requirement: USB2 differential impedance plus VBUS/CC current and ESD review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: pd_controller_to_charger_control
@@ -2642,6 +2853,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: pcb_copper_trace_group
+    connection_type: board_power_control_trace
+    cad_span_mm:
+    - 10.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 11.0
+    routed_trace_length_total_mm: 572.622
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: charger_to_battery_power_sense
@@ -2695,6 +2928,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: pcb_copper_trace_group
+    connection_type: board_battery_power_sense_trace
+    cad_span_mm:
+    - 4.0
+    - 4.8
+    - 0.12
+    nominal_visual_width_mm: 4.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 4.8
+    endpoint_center_distance_mm: 4.833
+    routed_trace_length_total_mm: 250.581
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: VBAT/SYS current capacity plus NTC/ID kelvin-sense review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: display_bias_power_flex
@@ -2742,6 +2997,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: display_bias_power_flex
+    cad_span_mm:
+    - 6.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 6.0
+    endpoint_center_distance_mm: 19.548
+    routed_trace_length_total_mm: 235.979
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: display_bias_voltage_and_current_capacity_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: rear_camera_power_flex
@@ -2792,6 +3069,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: camera_power_flex
+    cad_span_mm:
+    - 8.0
+    - 0.7
+    - 0.12
+    nominal_visual_width_mm: 0.7
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 8.0
+    endpoint_center_distance_mm: 61.498
+    routed_trace_length_total_mm: 414.213
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: front_camera_power_flex
@@ -2842,6 +3141,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: camera_power_flex
+    cad_span_mm:
+    - 7.0
+    - 0.7
+    - 0.12
+    nominal_visual_width_mm: 0.7
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 7.0
+    endpoint_center_distance_mm: 70.48
+    routed_trace_length_total_mm: 414.029
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: wifi_bt_host_control
@@ -2934,6 +3255,30 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: pcb_copper_trace_group
+    connection_type: wifi_bt_host_control_trace
+    cad_span_mm:
+    - 13.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 13.0
+    endpoint_center_distance_mm: 29.981
+    routed_trace_length_total_mm: 306.456
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - pcie_diff_impedance_ohm=85ohm
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: PCIe differential impedance plus SDIO/UART/control routing review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: cellular_host_control
@@ -2999,6 +3344,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: pcb_copper_trace_group
+    connection_type: cellular_host_control_trace
+    cad_span_mm:
+    - 12.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 12.0
+    endpoint_center_distance_mm: 13.13
+    routed_trace_length_total_mm: 168.906
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - pcie_diff_impedance_ohm=85ohm
+    impedance_requirement: USB2/PCIe differential impedance plus reset/disable routing review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: bottom_speaker_lead_pair
@@ -3046,6 +3414,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: insulated_wire_pair
+    connection_type: speaker_lead_pair
+    cad_span_mm:
+    - 10.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 66.429
+    routed_trace_length_total_mm: 24.56
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: bottom_microphone_flex
@@ -3093,6 +3483,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: microphone_flex
+    cad_span_mm:
+    - 8.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 8.0
+    endpoint_center_distance_mm: 70.927
+    routed_trace_length_total_mm: 212.34
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: top_microphone_flex
@@ -3140,6 +3552,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: microphone_flex
+    cad_span_mm:
+    - 0.8
+    - 18.0
+    - 0.12
+    nominal_visual_width_mm: 0.8
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 18.0
+    endpoint_center_distance_mm: 70.927
+    routed_trace_length_total_mm: 212.34
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: earpiece_receiver_lead_flex
@@ -3187,6 +3621,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: insulated_wire_pair
+    connection_type: earpiece_receiver_lead_flex
+    cad_span_mm:
+    - 14.0
+    - 0.8
+    - 0.12
+    nominal_visual_width_mm: 0.8
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 14.0
+    endpoint_center_distance_mm: 68.87
+    routed_trace_length_total_mm: 24.56
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: haptic_flex
@@ -3232,6 +3688,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: haptic_flex
+    cad_span_mm:
+    - 12.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 12.0
+    endpoint_center_distance_mm: 56.546
+    routed_trace_length_total_mm: 19.874
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: sensor_hub_i2c_flex
@@ -3279,6 +3757,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: sensor_hub_i2c_flex
+    cad_span_mm:
+    - 5.0
+    - 0.8
+    - 0.12
+    nominal_visual_width_mm: 0.8
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 5.0
+    endpoint_center_distance_mm: 35.75
+    routed_trace_length_total_mm: 58.442
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: sim_esim_signal_flex
@@ -3347,6 +3847,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: sim_esim_signal_marker
+    cad_span_mm:
+    - 1.0
+    - 9.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 9.0
+    endpoint_center_distance_mm: 36.564
+    routed_trace_length_total_mm: 429.167
+    min_bend_radius_mm: 0.8
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: not_controlled_impedance
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: nfc_loop_antenna_flex
@@ -3400,6 +3922,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_antenna_loop
+    connection_type: nfc_loop_antenna_flex_marker
+    cad_span_mm:
+    - 6.0
+    - 1.0
+    - 0.12
+    nominal_visual_width_mm: 1.0
+    nominal_visual_thickness_mm: 0.12
+    visual_marker_length_mm: 6.0
+    endpoint_center_distance_mm: 28.284
+    routed_trace_length_total_mm: 39.621
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_flexible_antenna_loop_min_bend_radius_requirement_1mm_pending_antenna_supplier_ferrite_and_adhesive_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets: []
+    impedance_requirement: NFC loop matching and antenna vendor review required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: compute_som_sodimm_carrier
@@ -3468,6 +4012,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: board_to_board_edge_connector
+    connection_type: compute_som_edge_connector
+    cad_span_mm:
+    - 65.0
+    - 2.6
+    - 0.3
+    nominal_visual_width_mm: 2.6
+    nominal_visual_thickness_mm: 0.3
+    visual_marker_length_mm: 65.0
+    endpoint_center_distance_mm: 45.036
+    routed_trace_length_total_mm: 149.445
+    min_bend_radius_mm: null
+    bend_radius_basis: local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_pending_connector_supplier_stack_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - usb2_diff_impedance_ohm=90ohm
+    impedance_requirement: host high-speed and memory escape constraints required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: soc_shield_ground_spring
@@ -3513,6 +4080,28 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: ground_spring_contact
+    connection_type: shield_ground_spring
+    cad_span_mm:
+    - 3.6
+    - 0.7
+    - 0.22
+    nominal_visual_width_mm: 0.7
+    nominal_visual_thickness_mm: 0.22
+    visual_marker_length_mm: 3.6
+    endpoint_center_distance_mm: 55.457
+    routed_trace_length_total_mm: 104.168
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets: []
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: radio_shield_ground_spring
@@ -3561,6 +4150,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: ground_spring_contact
+    connection_type: shield_ground_spring
+    cad_span_mm:
+    - 3.6
+    - 0.7
+    - 0.22
+    nominal_visual_width_mm: 0.7
+    nominal_visual_thickness_mm: 0.22
+    visual_marker_length_mm: 3.6
+    endpoint_center_distance_mm: 54.639
+    routed_trace_length_total_mm: 111.982
+    min_bend_radius_mm: 0.0
+    bend_radius_basis: local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing
+    controlled_impedance_required: false
+    controlled_impedance_targets:
+    - usb2_diff_impedance_ohm=90ohm
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: cellular_main_rf_feed
@@ -3605,6 +4217,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_50ohm_feed
+    connection_type: rf_50r_feed_envelope
+    cad_span_mm:
+    - 0.45
+    - 15.0
+    - 0.35
+    nominal_visual_width_mm: 0.45
+    nominal_visual_thickness_mm: 0.35
+    visual_marker_length_mm: 15.0
+    endpoint_center_distance_mm: 30.621
+    routed_trace_length_total_mm: 10.612
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF feed with matching network and antenna review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: cellular_diversity_rf_feed
@@ -3649,6 +4284,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_50ohm_feed
+    connection_type: rf_50r_feed_envelope
+    cad_span_mm:
+    - 0.45
+    - 12.0
+    - 0.28
+    nominal_visual_width_mm: 0.45
+    nominal_visual_thickness_mm: 0.28
+    visual_marker_length_mm: 12.0
+    endpoint_center_distance_mm: 117.429
+    routed_trace_length_total_mm: 9.583
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF feed with matching network and antenna review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: cellular_antenna_aperture_tuner
@@ -3696,6 +4354,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_tuner_interconnect
+    connection_type: rf_antenna_aperture_tuner
+    cad_span_mm:
+    - 2.0
+    - 2.0
+    - 0.5
+    nominal_visual_width_mm: 2.0
+    nominal_visual_thickness_mm: 0.5
+    visual_marker_length_mm: 2.0
+    endpoint_center_distance_mm: 117.429
+    routed_trace_length_total_mm: 223.896
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_tuner_interconnect_min_bend_radius_requirement_1.5mm_pending_tuner_state_table_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF tuner connection and antenna vendor review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: cellular_gnss_rf_feed
@@ -3740,6 +4421,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_50ohm_feed
+    connection_type: rf_50r_feed_envelope
+    cad_span_mm:
+    - 0.45
+    - 10.0
+    - 0.28
+    nominal_visual_width_mm: 0.45
+    nominal_visual_thickness_mm: 0.28
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 22.739
+    routed_trace_length_total_mm: 7.202
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF feed with matching network and antenna review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: wifi_bt_rf0_feed
@@ -3784,6 +4488,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_50ohm_feed
+    connection_type: rf_50r_feed_envelope
+    cad_span_mm:
+    - 10.0
+    - 0.45
+    - 0.35
+    nominal_visual_width_mm: 0.45
+    nominal_visual_thickness_mm: 0.35
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 1.418
+    routed_trace_length_total_mm: 12.139
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF feed with matching network and antenna review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: wifi_bt_rf1_feed
@@ -3828,6 +4555,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: rf_50ohm_feed
+    connection_type: rf_50r_feed_envelope
+    cad_span_mm:
+    - 10.0
+    - 0.45
+    - 0.28
+    nominal_visual_width_mm: 0.45
+    nominal_visual_thickness_mm: 0.28
+    visual_marker_length_mm: 10.0
+    endpoint_center_distance_mm: 1.418
+    routed_trace_length_total_mm: 12.139
+    min_bend_radius_mm: 1.5
+    bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - rf_single_impedance_ohm=50ohm
+    impedance_requirement: 50 ohm RF feed with matching network and antenna review
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 - id: split_interconnect_side_flex
@@ -3893,6 +4643,29 @@ cad_connection_traceability:
   all_nets_in_routed_development_board: true
   controlled_impedance_requirement_defined: true
   bend_radius_requirement_defined: true
+  mechanical_envelope:
+    basis: local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing
+    physical_medium: flexible_printed_circuit
+    connection_type: top_bottom_board_flex
+    cad_span_mm:
+    - 2.4
+    - 88.0
+    - 0.18
+    nominal_visual_width_mm: 2.4
+    nominal_visual_thickness_mm: 0.18
+    visual_marker_length_mm: 88.0
+    endpoint_center_distance_mm: 90.0
+    routed_trace_length_total_mm: 719.498
+    min_bend_radius_mm: 1.0
+    bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
+    controlled_impedance_required: true
+    controlled_impedance_targets:
+    - usb2_diff_impedance_ohm=90ohm
+    impedance_requirement: USB2/MIPI/audio/control flex stackup required
+    slack_or_service_loop_status: not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required
+    release_credit: false
+  mechanical_envelope_defined: true
+  mechanical_envelope_release_credit: false
   release_credit: false
   pass: true
 captured_pinouts:

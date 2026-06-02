@@ -1,8 +1,16 @@
+import path from "node:path";
 import { defineConfig, devices } from "playwright/test";
+
+const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests",
-  outputDir: "./test-results",
+  outputDir: recording
+    ? path.resolve(
+        import.meta.dirname,
+        "../../../e2e-recordings/os-usb-installer/test-results",
+      )
+    : "./test-results",
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
   },
@@ -15,7 +23,9 @@ export default defineConfig({
   },
   use: {
     baseURL: "http://127.0.0.1:4456",
-    trace: "retain-on-failure",
+    trace: recording ? "on" : "retain-on-failure",
+    screenshot: recording ? "on" : "only-on-failure",
+    video: recording ? "on" : "retain-on-failure",
   },
   projects: [
     {

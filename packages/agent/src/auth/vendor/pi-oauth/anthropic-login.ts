@@ -87,6 +87,7 @@ export async function startAnthropicOAuthFlowRaw(): Promise<AnthropicOAuthFlowHa
         redirect_uri: REDIRECT_URI,
         code_verifier: verifier,
       }),
+      signal: AbortSignal.timeout(5_000),
     });
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
@@ -144,6 +145,7 @@ export async function refreshAnthropicToken(
       client_id: CLIENT_ID,
       refresh_token: refreshToken,
     }),
+    signal: AbortSignal.timeout(5_000),
   });
   if (!response.ok) {
     const errText = await response.text();

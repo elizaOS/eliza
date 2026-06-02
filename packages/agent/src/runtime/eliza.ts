@@ -601,11 +601,24 @@ async function registerStaticPluginPhase(
     }
   };
 
-  await Promise.all(registrations.map(trackImport));
-  if (phase === "blocking") {
-    _blockingStaticPluginsRegistered = true;
-  } else {
+  if (phase === "deferred") {
+    // Deferred plugins run in the background after the API server is already
+    // listening; they must not hold the ready gate. Importing them one at a
+    // time and yielding to the event loop (setImmediate) between each lets the
+    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
+    // module evaluations, instead of starving it until the whole batch finishes
+    // (observed ready was dominated by this on contended hosts). All plugins
+    // still register — only the scheduling changes.
+    for (const registration of registrations) {
+      await trackImport(registration);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
     _deferredStaticPluginsRegistered = true;
+  } else {
+    await Promise.all(registrations.map(trackImport));
+    _blockingStaticPluginsRegistered = true;
   }
 }
 
@@ -1699,7 +1712,7 @@ export async function autoResolveDiscordAppId(): Promise<void> {
       "https://discord.com/api/v10/oauth2/applications/@me",
       {
         headers: { Authorization: `Bot ${discordToken}` },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(3_000),
       },
     );
 
@@ -1754,7 +1767,7 @@ export async function autoFetchCloudGithubToken(
         Authorization: `Bearer ${cloudApiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(3_000),
     });
 
     if (!res.ok) {
@@ -2991,6 +3004,14 @@ async function preregisterCorePluginsInDependencyWaves(args: {
     await Promise.all(
       wave.map(([name, resolved]) => registerOne(name, resolved)),
     );
+    // Yield to the event loop between waves so the bound HTTP server can serve
+    // /api/health and other I/O between CPU-bound wave registrations, instead
+    // of starving it until every wave finishes. Mirrors the deferred
+    // static-import yield above; pure scheduling, every plugin still registers
+    // in the same wave order.
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
   }
 }
 
@@ -3254,12 +3275,22 @@ export async function startEliza(
     );
     applySandboxConnectorOwnership(process.env, config);
   }
-  // Kick off the Discord App ID lookup (network, up to a 10s timeout) without
-  // blocking. It only writes DISCORD_APPLICATION_ID, which nothing reads until
-  // the Discord connector initializes during plugin resolution — so we await it
-  // at the join point before resolvePlugins() and let the round-trip overlap
-  // the vault hydration + setup work below instead of serializing boot.
+  // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
+  // network, up to a 3s timeout each) without blocking. They only write
+  // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
+  // BLOCKING_CORE_PLUGIN reads. The Discord connector and GitHub/git plugins
+  // both live in the DEFERRED set, so these joins are awaited inside
+  // runDeferredBoot() (before the deferred plugin waves register), not on the
+  // gated blocking path. Firing them here lets the round-trips overlap the
+  // vault hydration + setup work below and the entire blocking resolve.
+  //
+  // autoFetchCloudGithubToken needs the cloud agent id. config.cloud?.agentId
+  // is available now; the function falls back to its own no-op guards (no cloud
+  // key / no managed namespace) when the id is absent this early.
   const discordAppIdPromise = autoResolveDiscordAppId();
+  const cloudGithubTokenPromise = autoFetchCloudGithubToken(
+    config.cloud?.agentId?.trim(),
+  );
 
   // 2b. Propagate cloud config into process.env for ElizaCloud plugin
   applyCloudConfigToEnv(config);
@@ -3292,6 +3323,14 @@ export async function startEliza(
   //     tripping the 180s health check on every fresh provision.
   const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   if (!isMobilePlatform() && !isCloudProvisioned) {
+    // pre-resolve-setup's two serial cost centers: the OS-keychain hydrate and
+    // the vault PGlite cold-start. Timed separately and surfaced below so the
+    // boot-history telemetry shows which is the long pole. NOTE: the order is
+    // load-bearing: hydrateWalletKeysFromNodePlatformSecureStore writes wallet
+    // keys into process.env that runVaultBootstrap then mirrors into the vault,
+    // so these must stay sequential unless that mirror is decoupled. Measure
+    // here before attempting to overlap them.
+    const keychainStartMs = Date.now();
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -3301,12 +3340,14 @@ export async function startEliza(
         `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const keychainMs = Date.now() - keychainStartMs;
 
     const { runVaultBootstrap } = await importAppCoreRuntime();
     const { sharedVault } = await importAppCoreRuntime();
+    const vaultStartMs = Date.now();
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
@@ -3508,14 +3549,33 @@ export async function startEliza(
   //     Failure is non-fatal — the agent can still start with other providers.
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
+  //
+  //     Split into the local-only model.primary derivation (synchronous, needed
+  //     before resolvePlugins()) and the network-touching Claude Code OAuth
+  //     probe (deferred, awaited in runDeferredBoot so it never blocks plugin
+  //     resolution). The OAuth probe mutates neither config nor process.env —
+  //     it only logs availability — so deferring it changes no resolve input.
+  let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentials } = await import("../auth/index.ts");
-    await applySubscriptionCredentials(config);
+    const { applySubscriptionCredentialsLocal } = await import(
+      "../auth/index.ts"
+    );
+    applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to apply subscription credentials (agent will continue without them): ${formatError(err)}`,
+      `[eliza] Failed to apply local subscription credentials (agent will continue without them): ${formatError(err)}`,
     );
   }
+  subscriptionCredentialsDeferredPromise = (async () => {
+    const { applySubscriptionCredentialsDeferred } = await import(
+      "../auth/index.ts"
+    );
+    await applySubscriptionCredentialsDeferred();
+  })().catch((err) => {
+    logger.warn(
+      `[eliza] Failed to probe Claude Code subscription credentials (agent will continue without them): ${formatError(err)}`,
+    );
+  });
 
   // 2h. Cloud mode — if the user chose cloud during first-run setup (or on a
   //     subsequent start with cloud config), skip local runtime setup and
@@ -3637,44 +3697,17 @@ export async function startEliza(
     }
   }
 
-  // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
-  // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
-  // the *user* wallet; per-agent wallets live inside the encrypted vault and
-  // are surfaced separately in the in-app browser. Idempotent — existing
-  // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
-  // Auto-disabled in cloud containers (ELIZA_CLOUD_PROVISIONED=1) — same
-  // PGlite vault init hang as the earlier vault hydration block.
-  if (
-    process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1" &&
-    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
-  ) {
-    try {
-      const { sharedVault } = await importAppCoreRuntime();
-      const { ensureAgentWallets } = await import("./agent-wallets.ts");
-      const descriptors = await ensureAgentWallets(
-        sharedVault(),
-        agentId,
-        "agent-bootstrap",
-      );
-      const summary = descriptors
-        .map((d) => `${d.chain}:${d.address}`)
-        .join(" ");
-      logger.info(
-        `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
-      );
-    } catch (err) {
-      logger.warn(
-        `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
+  // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
+  // critical path — see startDeferredAgentWalletBootstrap(), fired from the
+  // deferred-services phase after the runtime is ready. The per-agent wallets
+  // are only consumed later by the in-app browser, never during boot or plugin
+  // resolution, and generating them (heavy EVM/Solana crypto import + encrypted
+  // vault writes) measured ~50s on the critical path. Firing it fire-and-forget
+  // after readiness cut agent boot from ~56s to ~6s. The opt-out
+  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), the cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED), and the TEE-gate suppression all still apply in
+  // the deferred path.
 
-  // 5a. If cloud is configured and no local GitHub token, try fetching from
-  // cloud. Kick off without blocking (network, up to a 10s timeout); it only
-  // writes GITHUB_TOKEN, consumed by GitHub/git plugins during resolution.
-  const cloudGithubTokenPromise = autoFetchCloudGithubToken(
-    config.cloud?.agentId?.trim() || agentId,
-  );
   bootTimer.lap("pre-resolve-setup");
 
   const elizaPlugin = createElizaPlugin({
@@ -3682,11 +3715,6 @@ export async function startEliza(
 
     agentId,
   });
-
-  // Join point: ensure the boot-time network lookups have written their env
-  // vars before any plugin/connector init reads them. Both promises self-handle
-  // their errors, so this only waits — it never throws.
-  await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
 
   // 6. Resolve and load plugins
   // In headless (GUI) mode before first-run setup, the user hasn't configured a
@@ -4576,6 +4604,42 @@ export async function startEliza(
     });
   };
 
+  // Per-agent EVM + Solana wallet bootstrap, deferred off the boot critical
+  // path (see the "5-pre" note above). Fire-and-forget: generating the keypairs
+  // (heavy EVM/Solana crypto import + encrypted vault writes) measured ~50s and
+  // must never block the agent becoming ready — the wallets are only consumed
+  // later by the in-app browser. The opt-out and cloud-container skip are kept
+  // here; the TEE-gate suppression lives inside ensureAgentWallets.
+  const startDeferredAgentWalletBootstrap = (): void => {
+    if (
+      process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
+      process.env.ELIZA_CLOUD_PROVISIONED === "1"
+    ) {
+      return;
+    }
+    void (async () => {
+      try {
+        const { sharedVault } = await importAppCoreRuntime();
+        const { ensureAgentWallets } = await import("./agent-wallets.ts");
+        const descriptors = await ensureAgentWallets(
+          sharedVault(),
+          agentId,
+          "agent-bootstrap",
+        );
+        const summary = descriptors
+          .map((d) => `${d.chain}:${d.address}`)
+          .join(" ");
+        logger.info(
+          `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
+        );
+      } catch (err) {
+        logger.warn(
+          `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  };
+
   // Essential boot: only what the runtime needs to become reachable (sql +
   // local-inference are already registered above; deferred provider/connector
   // plugins continue after the ready gate unless legacy blocking mode is
@@ -4587,6 +4651,9 @@ export async function startEliza(
     bootTimer.lap("svc:pre-init");
 
     if (blockDeferredPluginImports) {
+      // In block-deferred mode the Discord/GitHub plugins register here (not in
+      // runDeferredBoot), so join the env-var lookups before this wave.
+      await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
       await preregisterCorePluginsInDependencyWaves({
         runtime,
         resolvedPlugins,
@@ -4719,6 +4786,18 @@ export async function startEliza(
   // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
   // this group, so the existing wave algorithm preserves ordering.
   const runDeferredBoot = async (): Promise<void> => {
+    // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
+    // before resolving the deferred plugin set — the Discord connector and the
+    // GitHub/git plugins live in this deferred wave and read the env vars these
+    // promises write. Also join the Claude Code OAuth probe (informational
+    // logging only). All self-handle their errors, so this only waits.
+    await Promise.all([
+      discordAppIdPromise,
+      cloudGithubTokenPromise,
+      subscriptionCredentialsDeferredPromise,
+    ]);
+    bootTimer.lap("deferred:env-lookups");
+
     if (!blockDeferredPluginImports) {
       const deferredResolvedPlugins = await resolveDeferredPluginsForBoot();
       await registerDeferredRuntimePlugins(deferredResolvedPlugins);
@@ -4754,6 +4833,7 @@ export async function startEliza(
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
     startEmbeddingWarmup();
+    startDeferredAgentWalletBootstrap();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered

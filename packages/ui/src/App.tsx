@@ -67,6 +67,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
@@ -260,7 +261,12 @@ function useIsPopout(): boolean {
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode = "chat-overlay" | "launcher" | "kiosk" | "full";
+type ShellMode =
+  | "chat-overlay"
+  | "onboarding-overlay"
+  | "launcher"
+  | "kiosk"
+  | "full";
 
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
@@ -273,6 +279,7 @@ function readShellMode(): ShellMode {
     (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
+  if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -295,6 +302,24 @@ function ChatOverlayShell() {
       className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
     >
       <ShellFoundationMount />
+    </div>
+  );
+}
+
+/**
+ * First-run onboarding overlay surface. Renders ONLY the floating
+ * CompactOnboarding card over a transparent, click-through background — no app
+ * chrome. The native overlay window is `transparent` + `passthrough`, so the
+ * empty (pointer-events-none) region lets clicks fall through to the desktop
+ * behind while the card stays interactive.
+ */
+function OnboardingOverlayShell() {
+  return (
+    <div
+      data-testid="onboarding-overlay-shell"
+      className="pointer-events-none fixed inset-0 bg-transparent"
+    >
+      <CompactOnboarding showVoicePill />
     </div>
   );
 }
@@ -519,6 +544,20 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+/**
+ * Fallback shown when a view/tab is unavailable. Chat is the always-present
+ * ContinuousChatOverlay that floats over every view — views never embed an
+ * inline ChatView — so an unavailable view falls back to the app/view
+ * launcher, not a chat surface.
+ */
+function ViewUnavailableFallback(): ReactNode {
+  return (
+    <TabContentView chatDisabled>
+      <ViewManagerPage />
+    </TabContentView>
+  );
+}
+
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
@@ -528,12 +567,12 @@ function renderPhoneSurface(
       <Component />
     </TabContentView>
   ) : (
-    <ChatView />
+    <ViewUnavailableFallback />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ChatView />;
+  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView chatScope="page-apps">
       {getAppSlugFromPath(navigationPath) ? (
@@ -560,9 +599,9 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     onboarding: <FirstRunScreen />,
-    chat: <ChatView />,
+    chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ChatView />,
+    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -628,7 +667,7 @@ function renderStaticViewRouterTab({
     ),
   };
   if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
   }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
@@ -669,7 +708,7 @@ function renderStaticViewRouterTab({
       </TabContentView>
     );
   }
-  return directViews[tab] ?? <ChatView />;
+  return directViews[tab] ?? <ViewUnavailableFallback />;
 }
 
 function renderViewRouterContent({
@@ -1595,6 +1634,20 @@ export function App() {
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
+  // First-run onboarding overlay window — render JUST the floating onboarding
+  // card over a transparent, click-through background, no app chrome or
+  // startup gate.
+  if (shellMode === "onboarding-overlay") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <OnboardingOverlayShell />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

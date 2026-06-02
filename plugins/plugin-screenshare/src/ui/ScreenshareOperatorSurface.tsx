@@ -572,6 +572,15 @@ export function ScreenshareTuiView() {
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
 
+  const refreshElement = useAgentElement<HTMLButtonElement>({
+    id: "tui-refresh-sessions",
+    role: "button",
+    label: "Refresh sessions",
+    group: "tui-sessions",
+    description: "Reload the screen share sessions and capabilities",
+    status: loading ? "loading" : "idle",
+  });
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -665,7 +674,9 @@ export function ScreenshareTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>sessions</strong>
             <button
+              ref={refreshElement.ref}
               type="button"
+              aria-label="Refresh sessions"
               onClick={() => void refresh()}
               disabled={loading}
               style={{
@@ -677,6 +688,7 @@ export function ScreenshareTuiView() {
                 cursor: loading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
               }}
+              {...refreshElement.agentProps}
             >
               refresh
             </button>

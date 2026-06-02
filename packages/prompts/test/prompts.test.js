@@ -7,6 +7,7 @@ import fc from "fast-check";
 import { compressPromptDescription } from "../scripts/prompt-compression.js";
 import * as prompts from "../src/index.ts";
 
+const exportedPrompts = Object.fromEntries(Object.entries(prompts));
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
 const SRC_INDEX = join(PACKAGE_ROOT, "src", "index.ts");
@@ -32,12 +33,13 @@ describe("prompt templates (src/index.ts)", () => {
   it("exports every prompt template as a non-empty string", () => {
     const names = extractTemplateConsts(readSrc());
     for (const name of names) {
+      const prompt = exportedPrompts[name];
       assert.strictEqual(
-        typeof prompts[name],
+        typeof prompt,
         "string",
         `${name} should be exported as a string`,
       );
-      assert.ok(prompts[name].trim().length > 0, `${name} should not be empty`);
+      assert.ok(prompt.trim().length > 0, `${name} should not be empty`);
     }
   });
 

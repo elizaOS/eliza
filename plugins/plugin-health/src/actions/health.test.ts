@@ -2,6 +2,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createHealthActionRunner,
+  createOwnerHealthAction,
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
   type HealthActionService,
@@ -37,6 +38,33 @@ describe("health action runner", () => {
       "date",
       "days",
     ]);
+  });
+
+  it("creates the owner health action metadata in plugin-health", async () => {
+    const validate = vi.fn(async () => true);
+    const handler = vi.fn(async () => ({
+      text: "health handled",
+      success: true,
+    }));
+    const action = createOwnerHealthAction({ validate, handler });
+
+    expect(action.name).toBe("OWNER_HEALTH");
+    expect(action.similes).toContain("HEALTH");
+    expect(action.routingHint).toContain("OWNER_HEALTH");
+    expect(action.parameters?.map((parameter) => parameter.name)).toEqual([
+      "action",
+      "intent",
+      "metric",
+      "date",
+      "days",
+    ]);
+    await expect(action.validate(runtime, message)).resolves.toBe(true);
+    await expect(action.handler(runtime, message)).resolves.toMatchObject({
+      text: "health handled",
+      success: true,
+    });
+    expect(validate).toHaveBeenCalled();
+    expect(handler).toHaveBeenCalled();
   });
 
   it("runs status through injected service and renderer adapters", async () => {

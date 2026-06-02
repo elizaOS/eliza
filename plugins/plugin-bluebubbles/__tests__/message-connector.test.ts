@@ -115,4 +115,155 @@ describe("BlueBubbles message connector registration", () => {
 			undefined,
 		);
 	});
+
+	it("does not send empty text content", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = makeRuntime(registrations);
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendMessage: vi.fn(),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await connector?.sendHandler(
+			runtime,
+			{ source: "bluebubbles", channelId: "+14155552671" },
+			{ text: "   " } as ConnectorContent,
+		);
+
+		expect(service.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("throws when a non-empty send has no resolvable target", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = makeRuntime(registrations);
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendMessage: vi.fn(),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await expect(
+			connector?.sendHandler(
+				runtime,
+				{ source: "bluebubbles" } as ConnectorTargetInfo,
+				{ text: "hello" } as ConnectorContent,
+			),
+		).rejects.toThrow("BlueBubbles target is missing a chat GUID");
+		expect(service.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("passes a reply message guid when replying to a BlueBubbles memory", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = {
+			...makeRuntime(registrations),
+			getMemoryById: vi.fn(async () => ({
+				metadata: { bluebubblesMessageGuid: "message-to-reply-to" },
+			})),
+		} as unknown as IAgentRuntime;
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendMessage: vi.fn(async () => ({ guid: "bb-2", dateCreated: 456 })),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await connector?.sendHandler(
+			runtime,
+			{ source: "bluebubbles", channelId: "+14155552671" },
+			{ text: "reply", inReplyTo: "memory-1" } as ConnectorContent,
+		);
+
+		expect(service.sendMessage).toHaveBeenCalledWith(
+			"+14155552671",
+			"reply",
+			"message-to-reply-to",
+		);
+	});
+
+	it("rejects reaction mutations missing chat, message, or reaction values", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = makeRuntime(registrations);
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendReaction: vi.fn(),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await expect(
+			connector?.reactHandler?.(runtime, {
+				target: { source: "bluebubbles", channelId: "+14155552671" },
+				messageGuid: "message-1",
+			}),
+		).rejects.toThrow(
+			"BlueBubbles reactHandler requires chat, message guid, and reaction",
+		);
+		expect(service.sendReaction).not.toHaveBeenCalled();
+	});
+
+	it("surfaces failed BlueBubbles reactions", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = makeRuntime(registrations);
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendReaction: vi.fn(async () => ({ success: false })),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await expect(
+			connector?.reactHandler?.(runtime, {
+				target: { source: "bluebubbles", channelId: "+14155552671" },
+				messageGuid: "message-1",
+				reaction: "love",
+			}),
+		).rejects.toThrow("BlueBubbles reaction failed");
+	});
+
+	it("requires an initialized client before edit or delete mutations", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = makeRuntime(registrations);
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await expect(
+			connector?.editHandler?.(runtime, {
+				messageGuid: "message-1",
+				text: "fixed",
+			}),
+		).rejects.toThrow("BlueBubbles client not initialized");
+		await expect(
+			connector?.deleteHandler?.(runtime, { messageGuid: "message-1" }),
+		).rejects.toThrow("BlueBubbles client not initialized");
+	});
 });

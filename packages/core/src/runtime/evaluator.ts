@@ -477,8 +477,9 @@ function repairFinishedToolTurnWithoutUserMessage(
 	const latestStep = [...trajectory.steps]
 		.reverse()
 		.find((step) => step.toolCall && step.result);
-	if (!latestStep?.result || latestStep.result.success !== true) return output;
-	if (latestStep.result.userFacingText?.trim()) return output;
+	const latestResult = latestStep?.result;
+	if (latestResult?.success !== true) return output;
+	if (latestResult.userFacingText?.trim()) return output;
 	return {
 		...output,
 		success: false,

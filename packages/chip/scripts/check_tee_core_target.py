@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,18 @@ REQUIRED_FORBIDDEN_CLAIMS = {
     "measured_launch",
     "attestation_quote_signed",
 }
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "confidential_vm_isolation_claim_allowed": False,
+    "memory_encryption_claim_allowed": False,
+    "measured_launch_claim_allowed": False,
+    "signed_quote_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def validate(spec: dict[str, Any]) -> list[str]:
@@ -165,6 +178,7 @@ def main() -> int:
             {
                 "schema": "eliza.tee_core_target_check.v1",
                 "status": "tee_core_target_release_blocked",
+                "generated_utc": utc_now(),
                 "claim_boundary": (
                     "CoVE/AP-TEE core target spec contract only; not confidential-VM "
                     "isolation, not memory encryption, not measured launch, not a "
@@ -172,6 +186,7 @@ def main() -> int:
                 ),
                 "target": TARGET.relative_to(ROOT).as_posix(),
                 "errors": errors,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "findings": [
                     {
                         "code": "tee_core_target_release_blocked",
@@ -183,7 +198,10 @@ def main() -> int:
                         "severity": "blocker",
                     }
                 ],
-                "summary": {"release_claim_allowed": False},
+                "summary": {
+                    "release_claim_allowed": False,
+                    "false_claim_flags": FALSE_CLAIM_FLAGS,
+                },
             },
             indent=2,
             sort_keys=True,

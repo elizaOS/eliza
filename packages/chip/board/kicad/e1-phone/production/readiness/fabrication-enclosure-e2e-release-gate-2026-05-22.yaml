@@ -53,9 +53,9 @@ local_non_release_progress:
   routed_step_candidate_release_credit: false
   routed_step_candidate_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   routed_step_candidate_matches_development_source: true
-  routed_step_candidate_footprint_envelope_count: 0
-  routed_step_candidate_pad_contact_visual_count: 0
-  routed_step_candidate_route_segment_visual_count: 0
+  routed_step_candidate_footprint_envelope_count: 89
+  routed_step_candidate_pad_contact_visual_count: 1452
+  routed_step_candidate_route_segment_visual_count: 306
   pinout_captured_file_count: 21
   pinout_declared_pin_count_total: 1212
   pinout_record_count_total: 32
@@ -97,14 +97,20 @@ local_non_release_progress:
   component_model_release_allowed: false
   component_model_pinout_bound_model_count: 22
   component_model_support_pattern_model_count: 67
+  component_model_pattern_bound_model_count: 89
+  component_model_terminal_contract_bound_model_count: 89
   component_model_terminal_contract_or_no_pad_model_count: 89
   component_model_total_pad_contract_visual_count: 1452
   component_model_uncovered_pad_visual_count: 0
   component_model_non_signal_pad_contract_count: 7
   component_model_npth_mechanical_feature_contract_count: 4
+  component_model_local_step_bound_model_count: 89
+  component_model_all_pattern_binding_flags_pass: true
   component_model_all_terminal_contract_flags_pass: true
   component_model_directory_record_count: 89
   component_model_directory_terminal_contract_model_record_count: 85
+  component_model_directory_pattern_bound_model_record_count: 89
+  component_model_directory_terminal_contract_bound_model_record_count: 89
   component_model_directory_terminal_contract_total_count: 1441
   component_model_directory_total_pad_contract_visual_count: 1452
   component_model_directory_uncovered_pad_visual_count: 0
@@ -116,6 +122,7 @@ local_non_release_progress:
   component_model_directory_local_discrete_step_file_count: 89
   component_model_directory_local_discrete_step_imported_solid_count: 89
   component_model_directory_local_discrete_step_bbox_match_count: 89
+  component_model_directory_local_step_bound_model_record_count: 89
   component_model_directory_local_discrete_step_bytes_total: 1387362
   component_model_directory_supplier_step_intake_placeholder_count: 0
   component_model_directory_supplier_step_intake_local_surrogate_count: 47

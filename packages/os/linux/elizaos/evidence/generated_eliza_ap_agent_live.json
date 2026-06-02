@@ -23,7 +23,7 @@
     "systemctl_is_active": "unknown"
   },
   "status": "blocked",
-  "transcript_path": "/home/shaw/milady/eliza/packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "transcript_path": "packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
   "validation": {
     "problems": [
       "agent transcript missing marker group: elizaos-agent-ready one of systemctl is-active elizaos-agent.service: active one of systemctl is-active elizaos-agent.service\nactive one of systemctl_is_active=active",

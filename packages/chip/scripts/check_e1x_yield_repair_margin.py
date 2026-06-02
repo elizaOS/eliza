@@ -8,6 +8,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_yield_repair_margin.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "wafer_sort_claim_allowed": False,
+    "yield_characterization_claim_allowed": False,
+}
 
 CASES = {
     "normal": {
@@ -246,6 +256,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X architecture-simulation yield/repair-margin gate over generated wafer-sort "
             "defect maps and repair manifests. This is not foundry wafer sort, ATPG coverage, "

@@ -842,6 +842,16 @@ def skip_generated_artifact_hash(path_value: str) -> bool:
     }
 
 
+def require_false_claim_flags(
+    policy: dict[str, Any],
+    expected: dict[str, bool],
+    label: str,
+    errors: list[str],
+) -> None:
+    if policy.get("false_claim_flags") != expected:
+        fail(errors, f"{label}: false_claim_flags must match denied claims")
+
+
 def load_json(path: Path, errors: list[str]) -> Any:
     if not path.is_file():
         fail(errors, f"missing JSON report {path.relative_to(ROOT)}")
@@ -1156,6 +1166,17 @@ def check_rtl_eval(errors: list[str]) -> None:
             or policy.get("model_quality_claim_allowed") is not False
         ):
             fail(errors, f"{label}: unsafe RTL model evaluation policy")
+        elif isinstance(policy, dict):
+            require_false_claim_flags(
+                policy,
+                {
+                    "generated_rtl_committed": False,
+                    "generated_rtl_enters_source": False,
+                    "model_quality_claim_allowed": False,
+                },
+                f"{label}: RTL model evaluation policy",
+                errors,
+            )
         for task in report.get("tasks") or []:
             if task.get("status") != "DRY_RUN_NOT_GENERATED":
                 fail(errors, f"{label}/{task.get('id')}: dry-run task generated RTL")
@@ -1176,6 +1197,12 @@ def check_pd_predictor(errors: list[str]) -> None:
             fail(errors, f"{label}: unsafe predictor claim boundary")
         if labels.get("signoff_claim_allowed") is not False:
             fail(errors, f"{label}: label report cannot allow signoff claims")
+        require_false_claim_flags(
+            labels,
+            {"signoff_claim_allowed": False},
+            f"{label}: label report",
+            errors,
+        )
         for artifact in snapshot.get("artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):

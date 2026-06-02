@@ -12,5 +12,9 @@
   },
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "bun-types": "1.3.14"
   }
 }

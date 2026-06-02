@@ -7,10 +7,10 @@
  * P1 ships the methods required by action / provider / event / model
  * handlers (`getService`, `useModel`, `getMemory`, `createMemory`,
  * `emitEvent`, `registerEvent`, `getSetting`, `setSetting`,
- * `composeState`). The remainder of the runtime surface (database,
- * routes, advanced event APIs) is added incrementally as plugin authors
- * reach for it; an `unknown method` host-rpc returns a typed error rather
- * than silently dropping the call.
+ * `composeState`) plus action callback marshalling. The remainder of the
+ * runtime surface (database, routes, advanced event APIs) is added
+ * incrementally as plugin authors reach for it; an `unknown method`
+ * host-rpc returns a typed error rather than silently dropping the call.
  */
 
 import type {
@@ -34,6 +34,7 @@ export const SUPPORTED_RUNTIME_METHODS = [
   "getSetting",
   "setSetting",
   "composeState",
+  "actionCallback",
 ] as const;
 
 export type RuntimeProxyMethod = (typeof SUPPORTED_RUNTIME_METHODS)[number];
@@ -166,6 +167,11 @@ export interface RuntimeProxyApi {
   getSetting(key: string): Promise<JsonValue | null>;
   setSetting(key: string, value: JsonValue): Promise<void>;
   composeState(message: JsonValue, options?: JsonValue): Promise<JsonValue>;
+  actionCallback(
+    callbackId: string,
+    response: JsonValue,
+    actionName?: string,
+  ): Promise<JsonValue>;
 }
 
 export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
@@ -197,5 +203,11 @@ export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
     },
     composeState: (message, options) =>
       proxy.call("composeState", { message, options: options ?? null }),
+    actionCallback: (callbackId, response, actionName) =>
+      proxy.call("actionCallback", {
+        callbackId,
+        response,
+        actionName: actionName ?? null,
+      }),
   };
 }

@@ -13,16 +13,36 @@ const executiveScenarioDir = resolve(
 );
 
 const EXPECTED_EXECUTIVE_SCENARIO_IDS = [
+  "executive.approval-batch-safe-actions",
+  "executive.board-pack-prep",
+  "executive.chief-of-staff-handoff",
   "executive.command-brief-risk-triage",
+  "executive.delegation-map",
   "executive.document-signature-review",
   "executive.end-of-day-closeout",
+  "executive.event-planning",
   "executive.expense-capture",
+  "executive.family-logistics",
+  "executive.finance-dispute",
+  "executive.gift-milestone",
+  "executive.hiring-loop",
   "executive.home-ops",
+  "executive.interruption-firebreak",
+  "executive.intro-routing",
+  "executive.legal-deadline",
   "executive.meeting-prep-docs-people",
+  "executive.outage-recovery",
   "executive.people-cadence",
+  "executive.privacy-redaction",
+  "executive.remote-agent-stuck",
   "executive.renewals-keep-cancel",
+  "executive.status-compression",
+  "executive.travel-disruption",
   "executive.travel-readiness",
+  "executive.vendor-negotiation",
+  "executive.vip-escalation",
   "executive.waiting-on-cross-channel",
+  "executive.weekly-operating-review",
 ] as const;
 
 type ScenarioShape = {
@@ -69,7 +89,7 @@ describe("LifeOps executive assistant scenarios", () => {
         ?.map((turn) => String(turn.text ?? ""))
         .join("\n");
       expect(userText).toMatch(
-        /brief|prep|waiting|travel|expense|renewal|relationship|doc|home|closeout/i,
+        /brief|prep|waiting|travel|expense|renewal|relationship|doc|home|closeout|approval|delegat|family|interrupt|outage|privacy|remote|status|vip|weekly|board|handoff|event|dispute|gift|hiring|intro|legal|vendor/i,
       );
 
       const hasActionCheck = scenario.finalChecks?.some(

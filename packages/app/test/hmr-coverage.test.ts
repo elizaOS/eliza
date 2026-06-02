@@ -5,11 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const VISUAL_MATRIX_SPEC = path.join(
-  HERE,
-  "ui-smoke",
-  "plugin-views-visual.spec.ts",
-);
+const VISUAL_MATRIX_SPEC = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
 const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
 const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
@@ -23,13 +19,15 @@ type GuiViewCase = {
 function readGuiVisualCases(): GuiViewCase[] {
   const source = readFileSync(VISUAL_MATRIX_SPEC, "utf8");
   const match = source.match(
-    /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\.map/,
+    /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\s*(?:satisfies[\s\S]*?)?\)?\s*\.map/,
   );
   expect(match?.[1], "VIEW_CASES declaration was not found").toBeTruthy();
   const viewCasesSource = match?.[1] ?? "";
 
   return Array.from(
-    viewCasesSource.matchAll(/\["([^"]+)",\s*"gui",\s*"([^"]+)"\]/g),
+    viewCasesSource.matchAll(
+      /\["([^"]+)",\s*"gui",\s*"([^"]+)"(?:,\s*\{[^}]*\})?\]/g,
+    ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];
     const viewPath = caseMatch[2];

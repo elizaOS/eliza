@@ -10,7 +10,7 @@
 		"declaration": true,
 		"declarationMap": true,
 		"outDir": "./dist",
-		"rootDir": "../../../",
+		"rootDir": "../..",
 		"lib": ["ES2022", "DOM"],
 		"types": ["node"],
 		"allowImportingTsExtensions": true,

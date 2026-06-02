@@ -114,6 +114,9 @@ def present_unique(items: list[Any]) -> list[Any]:
 
 
 def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    mechanical_envelope = record.get("mechanical_envelope")
+    if not isinstance(mechanical_envelope, dict):
+        mechanical_envelope = {}
     return {
         "id": record.get("id"),
         "connection_type": record.get("connection_type"),
@@ -152,6 +155,26 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         ),
         "all_represented_routes_have_layer_source_and_class": (
             record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "mechanical_envelope": mechanical_envelope,
+        "mechanical_envelope_defined": bool(mechanical_envelope),
+        "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
         ),
         "release_credit": record.get("release_credit") is True,
     }
@@ -1123,6 +1146,9 @@ def compact_step_component_model_record(record: dict[str, Any]) -> dict[str, Any
 
 
 def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    mechanical_envelope = record.get("mechanical_envelope")
+    if not isinstance(mechanical_envelope, dict):
+        mechanical_envelope = {}
     return {
         "id": record.get("id"),
         "connection_type": record.get("connection_type"),
@@ -1144,6 +1170,26 @@ def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "solid_step_parts_present": record.get("solid_step_parts_present") is True,
         "all_represented_routes_have_layer_source_and_class": (
             record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "mechanical_envelope": mechanical_envelope,
+        "mechanical_envelope_defined": bool(mechanical_envelope),
+        "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
         ),
         "release_credit": record.get("release_credit") is True,
     }
@@ -1384,6 +1430,12 @@ def main() -> int:
             ),
             "cad_connection_bend_radius_requirement_defined_count": connection_coverage.get(
                 "bend_radius_requirement_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_defined_count": connection_coverage.get(
+                "mechanical_envelope_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_release_credit": connection_coverage.get(
+                "mechanical_envelope_release_credit"
             ),
             "cad_connection_supplier_release_required_count": connection_coverage.get(
                 "supplier_release_required_connection_count"
@@ -1820,6 +1872,11 @@ def main() -> int:
                 ),
                 "component_model_record_count": len(expected_component_records),
                 "cad_connection_record_count": len(expected_connection_records),
+                "connection_mechanical_envelope_count": sum(
+                    1
+                    for record in expected_connection_records
+                    if record["mechanical_envelope_defined"]
+                ),
             }
             for key, expected in expected_detailed_counts.items():
                 if int(detailed_routed_step_candidate.get(key) or 0) != expected:
@@ -1828,6 +1885,7 @@ def main() -> int:
                 "all_route_records_have_net_layer_class_and_source": True,
                 "all_component_records_have_local_step": True,
                 "all_connection_records_have_cad_step": True,
+                "all_connection_records_have_mechanical_envelope": True,
             }
             for key, expected in expected_detailed_flags.items():
                 if detailed_routed_step_candidate.get(key) is not expected:
@@ -2120,6 +2178,51 @@ def main() -> int:
             is not True
         ):
             raise ValueError("CAD connection coverage lost route layer/source/class binding")
+        release_boundary = connection_coverage.get("release_boundary_summary")
+        if not isinstance(release_boundary, dict):
+            raise ValueError("CAD connection coverage missing release-boundary summary")
+        if (
+            release_boundary.get("evidence_class")
+            != "local_cad_connection_marker_coverage_not_release"
+        ):
+            raise ValueError("CAD connection coverage release-boundary evidence class stale")
+        if release_boundary.get("release_credit") is not False:
+            raise ValueError("CAD connection release-boundary summary cannot grant release credit")
+        critical_groups = release_boundary.get("critical_interface_connection_ids")
+        if not isinstance(critical_groups, dict):
+            raise ValueError("CAD connection release-boundary critical interface groups missing")
+        required_critical_groups = {
+            "display_touch",
+            "rear_camera",
+            "front_camera",
+            "usb_power_battery",
+            "cellular_wifi_rf",
+            "nfc",
+            "audio_haptic_sensor",
+            "shield_ground",
+            "board_to_board",
+        }
+        if set(critical_groups) != required_critical_groups:
+            raise ValueError("CAD connection release-boundary critical interface groups diverge")
+        if release_boundary.get("all_critical_interface_groups_present") is not True:
+            raise ValueError("CAD connection coverage lost a critical interface group")
+        if any(not isinstance(ids, list) or not ids for ids in critical_groups.values()):
+            raise ValueError("CAD connection release-boundary contains empty critical group")
+        if release_boundary.get("all_connections_have_terminal_markers") is not True:
+            raise ValueError("CAD connection release-boundary lost terminal marker coverage")
+        if release_boundary.get("all_connections_have_solid_step_parts") is not True:
+            raise ValueError("CAD connection release-boundary lost solid STEP coverage")
+        if (
+            release_boundary.get("all_connections_bound_to_routed_development_records")
+            is not True
+        ):
+            raise ValueError("CAD connection release-boundary lost routed-record binding")
+        if release_boundary.get("all_connections_supplier_release_required") is not True:
+            raise ValueError("CAD connection release-boundary lost supplier-release requirement")
+        if release_boundary.get("all_connections_release_credit_false") is not True:
+            raise ValueError("CAD connection release-boundary lost fail-closed release credit")
+        if len(release_boundary.get("supplier_required_deliverables", [])) < 6:
+            raise ValueError("CAD connection release-boundary supplier deliverables incomplete")
         required_connection_ids = {
             "display_touch_fpc",
             "rear_camera_csi_fpc",

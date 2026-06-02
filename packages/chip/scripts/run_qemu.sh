@@ -91,6 +91,8 @@ write_smoke_manifest() {
         printf 'hardware_boot_claim_allowed=false\n'
         printf 'silicon_evidence_claim_allowed=false\n'
         printf 'linux_boot_claim_allowed=false\n'
+        printf 'production_readiness_claim_allowed=false\n'
+        printf 'false_claim_flags=claim_allowed:false,phone_claim_allowed:false,release_claim_allowed:false,hardware_boot_claim_allowed:false,silicon_evidence_claim_allowed:false,linux_boot_claim_allowed:false,production_readiness_claim_allowed:false\n'
         printf 'archive=%s\n' "${smoke_log#"$repo_dir"/}"
         if [ -f "$smoke_log" ]; then
             printf 'sha256=%s\n' "$(sha256_file "$smoke_log")"
@@ -345,13 +347,15 @@ write_os_attempt_manifest() {
     OS_ATTEMPT_DTB=${linux_dtb:-optional-missing} \
     OS_ATTEMPT_DTB_SHA=$dtb_sha \
     OS_ATTEMPT_TRANSCRIPT=${os_attempt_log#"$repo_dir"/} \
-    python3 - <<'PY'
+python3 - <<'PY'
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 payload = {
     "schema": "eliza.qemu_virt_os_boot_attempt.v1",
+    "generated_utc": datetime.now(UTC).isoformat(),
     "claim_boundary": "qemu_virt_reference_only_not_e1_chip_rtl",
     "claim_allowed": False,
     "phone_claim_allowed": False,
@@ -359,6 +363,16 @@ payload = {
     "hardware_boot_claim_allowed": False,
     "silicon_evidence_claim_allowed": False,
     "linux_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "false_claim_flags": {
+        "claim_allowed": False,
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "hardware_boot_claim_allowed": False,
+        "silicon_evidence_claim_allowed": False,
+        "linux_boot_claim_allowed": False,
+        "production_readiness_claim_allowed": False,
+    },
     "status": os.environ["OS_ATTEMPT_STATE"],
     "check": "qemu.os_boot",
     "detail": os.environ["OS_ATTEMPT_DETAIL"],

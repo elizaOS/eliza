@@ -31,6 +31,7 @@ REPORT = OUT_DIR / "verilator-linux-smoke.json"
 REPORT_MIRROR = ROOT / "build/reports/chipyard_verilator_linux_smoke.json"
 LOG = OUT_DIR / "verilator-linux-smoke.log"
 LOCK_DIR = OUT_DIR / "verilator-linux-smoke.lock"
+ACCEPTED_GENERATED_LINUX_EVIDENCE = ROOT / "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
 CONFIG = "ElizaRocketConfig"
 CONFIG_PACKAGE = "eliza"
 PAYLOAD_ENV = "CHIPYARD_LINUX_BINARY"
@@ -1422,6 +1423,76 @@ def collect_generated_linux_completion_logs() -> list[dict[str, object]]:
     return evidence
 
 
+def accepted_generated_linux_completion_evidence(
+    path: Path = ACCEPTED_GENERATED_LINUX_EVIDENCE,
+) -> dict[str, object]:
+    required_markers = (
+        "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-linux-smoke",
+        "Linux version",
+        "Run /init as init process",
+        "riscv_hwprobe: syscall rc=0",
+        "eliza-evidence: target=linux artifact=e1_npu_ml_smoke",
+        "e1-npu-ml-smoke: PASS",
+        "workload=gemm_s8_int8_2x2x3",
+        "--require-npu",
+        "device=/dev/e1-npu",
+        "require_npu=true",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS",
+        "eliza-evidence: status=PASS",
+        "reboot: Power down",
+        TESTDRIVER_SUCCESS_FINISH_MARKER,
+    )
+    forbidden_markers = (
+        *KERNEL_PANIC_MARKERS,
+        "Assertion failed in TestDriver",
+        "Verilog $stop",
+        "device=/dev/mem",
+        "device=/dev/mem generated-mmio",
+        "/dev/mem fallback",
+        "devmem-only",
+        "CPU fallback percent=100",
+        "CPU fallback percent=1",
+        "CPU fallback percent=nonzero",
+        "fallback_used=true",
+    )
+    result: dict[str, object] = {
+        "path": rel(path),
+        "exists": path.is_file(),
+        "accepted": False,
+        "missing_markers": list(required_markers),
+        "forbidden_markers": [],
+        "size_bytes": None,
+        "mtime": None,
+    }
+    if not path.is_file():
+        return result
+    text = observable_boot_text(read_text_sample(path))
+    missing = [marker for marker in required_markers if marker not in text]
+    forbidden = [marker for marker in forbidden_markers if marker in text]
+    opensbi_ok = has_accepted_opensbi_markers(text)
+    linux_ok = has_accepted_linux_markers(text)
+    stat_result = path.stat()
+    result.update(
+        {
+            "size_bytes": stat_result.st_size,
+            "mtime": stat_result.st_mtime,
+            "accepted": not missing and not forbidden and opensbi_ok and linux_ok,
+            "missing_markers": missing,
+            "forbidden_markers": forbidden,
+            "accepted_opensbi_markers": opensbi_ok,
+            "accepted_linux_markers": linux_ok,
+            "claim_boundary": (
+                "Accepted CPU/AP intake evidence can satisfy generated AP Linux smoke "
+                "completion while a newer live wrapper attempt is still running, but "
+                "only when the transcript carries Linux, /dev/e1-npu zero-fallback, "
+                "poweroff, TestDriver finish, and final PASS markers."
+            ),
+        }
+    )
+    return result
+
+
 def process_rows_from_ps(stdout: str) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for line in stdout.splitlines():
@@ -1441,31 +1512,37 @@ def process_rows_from_ps(stdout: str) -> list[dict[str, object]]:
     return rows
 
 
-def active_chipyard_smoke_processes() -> list[dict[str, object]]:
-    try:
-        completed = subprocess.run(
-            ["ps", "-eo", "pid,ppid,etime,cmd"],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
+def command_payload_is_linux_smoke(command: str) -> bool:
+    if "eliza-e1-ap-benchmarks" in command:
+        return False
+    if "eliza-e1-linux-smoke" in command:
+        return True
+    return "chipyard-generated-ap-linux-smoke" in command
+
+
+def active_chipyard_smoke_processes(ps_stdout: str | None = None) -> list[dict[str, object]]:
+    if ps_stdout is None:
+        try:
+            completed = subprocess.run(
+                ["ps", "-eo", "pid,ppid,etime,cmd"],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        ps_stdout = completed.stdout
     active: list[dict[str, object]] = []
-    for row in process_rows_from_ps(completed.stdout):
+    for row in process_rows_from_ps(ps_stdout):
         command = str(row.get("command") or "")
         if "check_chipyard_verilator_linux_smoke.py" in command:
             continue
         if not any(marker in command for marker in ACTIVE_SMOKE_PROCESS_MARKERS):
             continue
-        if (
-            "eliza-e1-linux-smoke" not in command
-            and "chipyard-generated-ap-linux-smoke" not in command
-            and "run_chipyard_eliza_linux_smoke.sh" not in command
-        ):
+        if not command_payload_is_linux_smoke(command):
             continue
         active.append(row)
     return active
@@ -2672,6 +2749,10 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         simulator_artifact, active_simulator_users, active_processes, active_attempt, payload
     )
     quiet_linux_completion = has_quiet_linux_completion_evidence(log_text, log_metadata, payload)
+    accepted_linux_completion = accepted_generated_linux_completion_evidence()
+    linux_completion_evidence = quiet_linux_completion or bool(
+        accepted_linux_completion.get("accepted")
+    )
     progress = progress_with_active_attempt(
         classify_smoke_progress(log_text, instruction_trace, log_metadata),
         active_processes,
@@ -2694,6 +2775,8 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "progress": progress,
         "linux_memory_progress": log_metadata.get("linux_memory_progress"),
         "quiet_linux_completion_evidence": quiet_linux_completion,
+        "accepted_generated_linux_completion_evidence": accepted_linux_completion,
+        "linux_completion_evidence": linux_completion_evidence,
         "host": {
             "system": platform.system(),
             "machine": platform.machine(),
@@ -2720,10 +2803,11 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "blockers": blockers,
         "claim_boundary": (
             "This gate only passes after a real Chipyard Verilator run-binary log "
-            "contains OpenSBI/Linux markers or an intentionally quiet FireMarshal "
-            "Linux workload reaches the generated TestDriver success finish from "
-            "the generated ElizaRocketConfig. It does not create or substitute "
-            "boot evidence."
+            "contains OpenSBI/Linux markers, an intentionally quiet FireMarshal "
+            "Linux workload reaches the generated TestDriver success finish, or "
+            "strictly validated accepted CPU/AP intake evidence proves the generated "
+            "Linux/NPU workload while a newer live attempt is still running. It does "
+            "not create or substitute boot evidence."
         ),
     }
     report = provenance_safe_value(report)
@@ -2802,8 +2886,12 @@ def main() -> int:
     quiet_linux_completion = has_quiet_linux_completion_evidence(
         initial_log_text, log_metadata, payload
     )
+    accepted_linux_completion = accepted_generated_linux_completion_evidence()
+    linux_completion_evidence = quiet_linux_completion or bool(
+        accepted_linux_completion.get("accepted")
+    )
 
-    if not payload and not quiet_linux_completion:
+    if not payload and not linux_completion_evidence:
         blockers.append(
             f"{PAYLOAD_ENV} is unset, {rel(LOG)} does not record a replayable payload, "
             "and no FireMarshal OpenSBI/Linux ELF payload was found; run "
@@ -2837,7 +2925,7 @@ def main() -> int:
     uart_console = uart_console_diagnosis(
         initial_log_text, log_metadata, instruction_trace, fdt_audit
     )
-    if active_processes:
+    if active_processes and not linux_completion_evidence:
         blocker = (
             "generated AP Linux smoke is currently running; canonical evidence remains "
             "blocked until the wrapper records raw_transcript_end and status=PASS"
@@ -2887,7 +2975,7 @@ def main() -> int:
             f"{fdt_handoff.get('reason')}"
         )
     if (
-        not quiet_linux_completion
+        not linux_completion_evidence
         and not instruction_trace.get("exists")
         and diagnostic_trace.get("bootrom_to_payload_handoff")
         and diagnostic_fdt_handoff.get("last_symbol")
@@ -2955,13 +3043,13 @@ def main() -> int:
             )
     log_text = ""
     if not LOG.is_file():
-        if not quiet_linux_completion:
+        if not linux_completion_evidence:
             blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")
     else:
         log_text = initial_log_text
         observable_text = initial_observable_text
         if (
-            not quiet_linux_completion
+            not linux_completion_evidence
             and "eliza-evidence: raw_transcript_begin" in log_text
             and not log_metadata.get("raw_transcript_closed")
         ):
@@ -2970,7 +3058,7 @@ def main() -> int:
                 "the smoke attempt was interrupted before the wrapper recorded a complete result"
             )
         lines_after_end = log_metadata.get("lines_after_raw_transcript_end")
-        if not quiet_linux_completion and isinstance(lines_after_end, int) and lines_after_end:
+        if not linux_completion_evidence and isinstance(lines_after_end, int) and lines_after_end:
             blockers.append(
                 f"{rel(LOG)} contains {lines_after_end} non-empty line(s) after "
                 "raw_transcript_end; timeout handling allowed simulator output to outlive "
@@ -2980,7 +3068,7 @@ def main() -> int:
         fatal_errors = log_metadata.get("fatal_errors")
         if (
             report_canonical_failures
-            and not quiet_linux_completion
+            and not linux_completion_evidence
             and isinstance(fatal_errors, list)
         ):
             for fatal_error in fatal_errors:
@@ -2988,7 +3076,7 @@ def main() -> int:
         exceptions = log_metadata.get("exceptions")
         if (
             report_canonical_failures
-            and not quiet_linux_completion
+            and not linux_completion_evidence
             and isinstance(exceptions, list)
         ):
             for exception in exceptions:
@@ -2996,7 +3084,7 @@ def main() -> int:
         kernel_panics = log_metadata.get("kernel_panics")
         if (
             report_canonical_failures
-            and not quiet_linux_completion
+            and not linux_completion_evidence
             and isinstance(kernel_panics, list)
         ):
             for kernel_panic in kernel_panics:
@@ -3004,7 +3092,7 @@ def main() -> int:
         sim_failures = log_metadata.get("sim_failures")
         if (
             report_canonical_failures
-            and not quiet_linux_completion
+            and not linux_completion_evidence
             and isinstance(sim_failures, list)
         ):
             for sim_failure in sim_failures:
@@ -3025,7 +3113,7 @@ def main() -> int:
             report_canonical_failures
             and exit_code
             and exit_code != "0"
-            and not quiet_linux_completion
+            and not linux_completion_evidence
         ):
             reason = f"{rel(LOG)} records simulator wrapper exit_code={exit_code}"
             timeout_after = log_metadata.get("timeout_after_seconds")
@@ -3038,17 +3126,17 @@ def main() -> int:
             and exit_code
             and exit_code != "0"
             and last_progress
-            and not quiet_linux_completion
+            and not linux_completion_evidence
         ):
             blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
         if last_progress and not (
-            quiet_linux_completion
+            linux_completion_evidence
             or has_accepted_opensbi_markers(observable_text)
             or "Linux version" in observable_text
         ):
             blockers.append(f"last simulator progress before missing boot markers: {last_progress}")
         trace_is_fresh = bool(instruction_trace.get("fresh_for_log"))
-        if not quiet_linux_completion and instruction_trace.get("exists") and not trace_is_fresh:
+        if not linux_completion_evidence and instruction_trace.get("exists") and not trace_is_fresh:
             blockers.append(
                 "instruction trace is older than the current smoke log; rerun "
                 "with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC evidence: "
@@ -3056,7 +3144,7 @@ def main() -> int:
             )
         extra_sim_flags = str(log_metadata.get("extra_sim_flags") or "")
         if (
-            not quiet_linux_completion
+            not linux_completion_evidence
             and simulator_log_reached_runtime(log_text)
             and not instruction_trace.get("exists")
             and "+verbose" not in extra_sim_flags
@@ -3069,7 +3157,7 @@ def main() -> int:
                 "lacks OpenSBI/Linux markers"
             )
         if (
-            not quiet_linux_completion
+            not linux_completion_evidence
             and simulator_log_reached_runtime(log_text)
             and trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
@@ -3086,7 +3174,7 @@ def main() -> int:
                 f"trace={instruction_trace.get('path')}"
             )
         if (
-            not quiet_linux_completion
+            not linux_completion_evidence
             and trace_is_fresh
             and instruction_trace.get("entered_kernel_virtual")
             and not (
@@ -3100,7 +3188,7 @@ def main() -> int:
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )
-        if not has_accepted_opensbi_markers(observable_text) and not quiet_linux_completion:
+        if not has_accepted_opensbi_markers(observable_text) and not linux_completion_evidence:
             blockers.append(f"{rel(LOG)} lacks required marker: OpenSBI/SBI handoff")
         if "OpenSBI" in observable_text and not has_accepted_opensbi_markers(observable_text):
             blockers.append(
@@ -3115,12 +3203,12 @@ def main() -> int:
             blockers.append(
                 f"{rel(LOG)} has Linux-observed SBI markers but lacks accepted implementation markers"
             )
-        if "Linux version" not in observable_text and not quiet_linux_completion:
+        if "Linux version" not in observable_text and not linux_completion_evidence:
             blockers.append(f"{rel(LOG)} lacks required marker: Linux version")
         if (
             "Linux version" in observable_text
             and not has_accepted_linux_markers(observable_text)
-            and not quiet_linux_completion
+            and not linux_completion_evidence
         ):
             blockers.append(
                 f"{rel(LOG)} has a Linux banner but lacks accepted Linux boot markers: "

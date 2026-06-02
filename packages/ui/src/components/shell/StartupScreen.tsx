@@ -1,4 +1,4 @@
-import { FirstRunScreen } from "../../first-run/FirstRunScreen";
+import { CompactOnboarding } from "../../first-run/CompactOnboarding";
 import { useStartupShellController } from "../../state/use-startup-shell-controller";
 import { StartupShell } from "./StartupShell";
 
@@ -7,7 +7,7 @@ export function StartupScreen() {
   return (
     <StartupShell
       view={view}
-      firstRun={<FirstRunScreen />}
+      firstRun={<CompactOnboarding />}
       onRetry={retryStartup}
     />
   );

@@ -258,6 +258,17 @@ function isValidSlackEmojiName(emoji: string): boolean {
   return /^[A-Za-z0-9_+-]+(::skin-tone-[2-6])?$/.test(emoji);
 }
 
+function normalizeConnectorLimit(
+  limit: number | undefined,
+  fallback: number,
+  max = 100,
+): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(Math.floor(limit), max));
+}
+
 // Define Slack event types inline to avoid import issues
 interface SlackMessageEventType {
   type: "message";
@@ -2531,9 +2542,7 @@ export class SlackService extends Service implements ISlackService {
       params.target,
       { ...params, accountId },
     );
-    const limit = Number.isFinite(params.limit)
-      ? Math.max(1, Math.min(Number(params.limit), 100))
-      : 25;
+    const limit = normalizeConnectorLimit(params.limit, 25);
 
     const rawMessages = threadTs
       ? (((
@@ -2588,9 +2597,10 @@ export class SlackService extends Service implements ISlackService {
       return [];
     }
 
+    const requestedLimit = normalizeConnectorLimit(params.limit, 25);
     const memories = await this.fetchConnectorMessages(context, {
       ...params,
-      limit: Math.max(params.limit ?? 100, 100),
+      limit: Math.max(requestedLimit, 100),
     });
     return memories
       .filter((memory) => {
@@ -2598,7 +2608,7 @@ export class SlackService extends Service implements ISlackService {
         const name = String(memory.content.name ?? "").toLowerCase();
         return text.includes(query) || name.includes(query);
       })
-      .slice(0, params.limit ?? 25);
+      .slice(0, requestedLimit);
   }
 
   async reactConnectorMessage(

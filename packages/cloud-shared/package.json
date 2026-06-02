@@ -17,8 +17,8 @@
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../.. build:core",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",

@@ -93,6 +93,9 @@ jobs:
       - name: Actual app plugin view browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts --project=chromium
 
+      - name: Actual app plugin view lifecycle browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-lifecycle.spec.ts --project=chromium
+
       - name: Actual app all-pages render + click-safety browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
 

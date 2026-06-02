@@ -195,6 +195,14 @@ def _train_alberta(
     require_phase_success: bool = False,
     min_phase_success_rate: float = 1.0,
     phase_eval_interval_steps: int | None = None,
+    locomotion_action_prior: str = "none",
+    locomotion_prior_residual_scale: float = 1.0,
+    locomotion_prior_residual_scale_initial: float | None = None,
+    locomotion_prior_residual_scale_increment: float = 0.05,
+    locomotion_prior_residual_mode: str = "joint",
+    locomotion_prior_feedback_pitch: float | None = None,
+    locomotion_prior_feedback_roll: float | None = None,
+    locomotion_prior_feedback_yaw: float | None = None,
 ) -> dict:
     from eliza_robot.rl.alberta.train_robot import (
         steps_per_task_from_total,
@@ -222,6 +230,16 @@ def _train_alberta(
         require_phase_success=require_phase_success,
         min_phase_success_rate=min_phase_success_rate,
         phase_eval_interval_steps=phase_eval_interval_steps,
+        locomotion_action_prior=locomotion_action_prior,
+        locomotion_prior_residual_scale=locomotion_prior_residual_scale,
+        locomotion_prior_residual_scale_initial=locomotion_prior_residual_scale_initial,
+        locomotion_prior_residual_scale_increment=(
+            locomotion_prior_residual_scale_increment
+        ),
+        locomotion_prior_residual_mode=locomotion_prior_residual_mode,
+        locomotion_prior_feedback_pitch=locomotion_prior_feedback_pitch,
+        locomotion_prior_feedback_roll=locomotion_prior_feedback_roll,
+        locomotion_prior_feedback_yaw=locomotion_prior_feedback_yaw,
     )
 
 
@@ -409,6 +427,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gamma", type=float, default=0.97)
     parser.add_argument("--no-normalize", action="store_true")
     parser.add_argument(
+        "--locomotion-action-prior",
+        choices=(
+            "none",
+            "gait",
+            "hiwonder_sine",
+            "hiwonder_contact_sine",
+            "hiwonder_low_slip_contact_sine",
+        ),
+        default="none",
+    )
+    parser.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
+    parser.add_argument("--locomotion-prior-residual-scale-initial", type=float, default=None)
+    parser.add_argument(
+        "--locomotion-prior-residual-scale-increment",
+        type=float,
+        default=0.05,
+    )
+    parser.add_argument(
+        "--locomotion-prior-residual-mode",
+        choices=("joint", "hiwonder_stride_mod"),
+        default="joint",
+    )
+    parser.add_argument("--locomotion-prior-feedback-pitch", type=float, default=None)
+    parser.add_argument("--locomotion-prior-feedback-roll", type=float, default=None)
+    parser.add_argument("--locomotion-prior-feedback-yaw", type=float, default=None)
+    parser.add_argument(
         "--require-phase-success",
         action="store_true",
         help=(
@@ -489,6 +533,18 @@ def main(argv: list[str] | None = None) -> int:
         require_phase_success=args.require_phase_success,
         min_phase_success_rate=args.min_phase_success_rate,
         phase_eval_interval_steps=args.phase_eval_interval_steps,
+        locomotion_action_prior=args.locomotion_action_prior,
+        locomotion_prior_residual_scale=args.locomotion_prior_residual_scale,
+        locomotion_prior_residual_scale_initial=(
+            args.locomotion_prior_residual_scale_initial
+        ),
+        locomotion_prior_residual_scale_increment=(
+            args.locomotion_prior_residual_scale_increment
+        ),
+        locomotion_prior_residual_mode=args.locomotion_prior_residual_mode,
+        locomotion_prior_feedback_pitch=args.locomotion_prior_feedback_pitch,
+        locomotion_prior_feedback_roll=args.locomotion_prior_feedback_roll,
+        locomotion_prior_feedback_yaw=args.locomotion_prior_feedback_yaw,
     )
     return 0
 

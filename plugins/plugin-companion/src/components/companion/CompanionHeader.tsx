@@ -18,7 +18,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import { memo, type ReactNode, useCallback, useRef } from "react";
 
 const SHELL_MODE_MOBILE_BREAKPOINT = 639;
 const SHELL_MODE_MOBILE_MEDIA_QUERY = `(max-width: ${SHELL_MODE_MOBILE_BREAKPOINT}px)`;
@@ -209,7 +209,11 @@ export const CompanionHeader = memo(function CompanionHeader(
               data-no-camera-drag="true"
             >
               {rightExtras}
-              <div className="shrink-0" data-no-camera-drag="true">
+              <CompanionHeaderControlSlot
+                agentId="action-language"
+                label={t("settings.language")}
+                description="Open the interface language menu"
+              >
                 <LanguageDropdown
                   uiLanguage={uiLanguage}
                   setUiLanguage={setUiLanguage}
@@ -217,8 +221,12 @@ export const CompanionHeader = memo(function CompanionHeader(
                   variant="companion"
                   triggerClassName="!h-11 !min-h-touch !min-w-touch !rounded-xl !px-3.5 sm:!px-3.5 leading-none"
                 />
-              </div>
-              <div className="shrink-0" data-no-camera-drag="true">
+              </CompanionHeaderControlSlot>
+              <CompanionHeaderControlSlot
+                agentId="action-theme"
+                label={t("aria.toggleTheme")}
+                description="Cycle the interface theme"
+              >
                 <ThemeToggle
                   uiTheme={uiTheme}
                   setUiTheme={setUiTheme}
@@ -226,7 +234,7 @@ export const CompanionHeader = memo(function CompanionHeader(
                   variant="companion"
                   className="!h-11 !w-11 !min-h-touch !min-w-touch"
                 />
-              </div>
+              </CompanionHeaderControlSlot>
             </div>
           </div>
         </div>
@@ -337,5 +345,52 @@ function CompanionHeaderIconButton({
     >
       {children}
     </Button>
+  );
+}
+
+/**
+ * Wraps a shared @elizaos/ui control (LanguageDropdown / ThemeToggle) that does
+ * not forward an agent ref. Registers the slot and activates the control by
+ * clicking the trigger button it renders inside.
+ */
+function CompanionHeaderControlSlot({
+  agentId,
+  label,
+  description,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const activate = useCallback(() => {
+    slotRef.current?.querySelector("button")?.click();
+  }, []);
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "companion-header-actions",
+    description,
+    onActivate: activate,
+  });
+  const setRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      slotRef.current = node;
+      ref.current = node;
+    },
+    [ref],
+  );
+  return (
+    <div
+      ref={setRef}
+      className="shrink-0"
+      data-no-camera-drag="true"
+      {...agentProps}
+    >
+      {children}
+    </div>
   );
 }

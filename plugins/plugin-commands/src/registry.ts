@@ -459,10 +459,8 @@ export function startsWithCommand(text: string): CommandDefinition | undefined {
 		if (normalized === alias) {
 			return command;
 		}
-		if (
-			normalized.startsWith(`${alias} `) ||
-			normalized.startsWith(`${alias}:`)
-		) {
+		const remainder = normalized.slice(alias.length);
+		if (normalized.startsWith(alias) && /^[\s:]/.test(remainder)) {
 			return command;
 		}
 	}

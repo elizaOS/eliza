@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // The harness seeds users (and encrypts their API keys) directly in the
@@ -11,6 +12,7 @@ process.env.NODE_ENV ??= "test";
 process.env.ELIZA_KMS_BACKEND ??= "memory";
 
 const frontendUrl = process.env.E2E_FRONTEND_URL ?? "http://127.0.0.1:0";
+const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests",
@@ -23,9 +25,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL: frontendUrl,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    trace: recording ? "on" : "retain-on-failure",
+    screenshot: recording ? "on" : "only-on-failure",
+    video: recording ? "on" : "retain-on-failure",
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
@@ -35,5 +37,10 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  outputDir: "./test-results",
+  outputDir: recording
+    ? path.resolve(
+        import.meta.dirname,
+        "../../../e2e-recordings/cloud-e2e/test-results",
+      )
+    : "./test-results",
 });

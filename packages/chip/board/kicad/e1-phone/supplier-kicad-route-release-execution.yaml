@@ -160,8 +160,8 @@ release_blockers:
   - supplier response packs for selected display, cameras, USB-C, side keys, cellular, and Wi-Fi/Bluetooth are absent
   - pinout, symbol, footprint, and footprint-to-3D binding reviews have not run
   - real KiCad production symbols and supplier footprints have not replaced placeholders
-  - production ERC, trial route, routed PCB, filled zones, DRC, SI/PI/RF/power evidence are missing
-  - routed STEP, enclosure clearance, factory limits, and first-article transcript are missing
+  - local routed PCB candidate has tracks and filled zones, but production ERC, clean or waived DRC, SI/PI/RF/power evidence, and release signoff are missing
+  - local routed STEP candidate exists for review only; supplier-approved STEP, enclosure clearance, factory limits, and first-article transcript are missing
 forbidden_claims:
   - supplier_pack_complete
   - kicad_capture_ready

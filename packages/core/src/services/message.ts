@@ -24,6 +24,7 @@ import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
 import {
+	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
@@ -2324,6 +2325,49 @@ function buildFullV5PlannerActionSurface(params: {
 	};
 }
 
+// buildActionCatalog is a pure function of (actions, localizedExamples) but was
+// rebuilt from scratch on every message (~349 us/message). Cache it keyed by the
+// action-name list: adding/removing any action — including plugin/view actions —
+// changes the key, so the cache self-invalidates on the path that matters (newly
+// registered view actions appear in the next message's catalog) without any
+// manual register/unregister hook. Only cached when no localized-example
+// resolver is active: that resolver depends on the recent message, so the
+// localized catalog is message-specific and must be rebuilt each turn.
+const actionCatalogCache = new Map<string, ActionCatalog>();
+const ACTION_CATALOG_CACHE_LIMIT = 8;
+
+function actionCatalogCacheKey(actions: readonly Action[]): string {
+	let key = "";
+	for (const action of actions) {
+		key += `${action.name} `;
+	}
+	return key;
+}
+
+export function getCachedActionCatalog(
+	actions: readonly Action[],
+	localizedExamples?: LocalizedActionExampleResolver,
+): ActionCatalog {
+	if (localizedExamples) {
+		// Message-specific examples — never cache across turns.
+		return buildActionCatalog([...actions], { localizedExamples });
+	}
+	const key = actionCatalogCacheKey(actions);
+	const cached = actionCatalogCache.get(key);
+	if (cached) {
+		return cached;
+	}
+	const catalog = buildActionCatalog([...actions], { localizedExamples });
+	actionCatalogCache.set(key, catalog);
+	if (actionCatalogCache.size > ACTION_CATALOG_CACHE_LIMIT) {
+		const oldest = actionCatalogCache.keys().next().value;
+		if (typeof oldest === "string") {
+			actionCatalogCache.delete(oldest);
+		}
+	}
+	return catalog;
+}
+
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	message: Memory;
@@ -2362,9 +2406,10 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
-	const catalog = buildActionCatalog([...params.actions], {
-		localizedExamples: params.localizedExamples,
-	});
+	const catalog = getCachedActionCatalog(
+		params.actions,
+		params.localizedExamples,
+	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
@@ -3792,18 +3837,22 @@ function inferAckIntentCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
-	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
+	// Coding-work precedes web-search: "build an app that shows the bitcoin price"
+	// trips looksLikeWebSearchRequest (market term) yet is a coding task — route it
+	// to coding delegation, not a web lookup. Mirrors the coding-first guard in
+	// shouldPreferDirectCurrentCandidateActions.
 	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
+	if (looksLikeWebSearchRequest(actionText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
 	return [];
 }
 
-function inferDirectCurrentRequestCandidateActions(
+export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string[] {
@@ -3819,13 +3868,16 @@ function inferDirectCurrentRequestCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
+	// Coding-work precedes web-search: a coding request mentioning a live/market
+	// term ("build a crypto price tracker") must route to coding delegation, not a
+	// web lookup. Mirrors shouldPreferDirectCurrentCandidateActions' coding guard.
 	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
+	}
+	if (looksLikeWebSearchRequest(messageText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
 	}
 	return [];
 }

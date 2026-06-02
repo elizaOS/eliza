@@ -1,0 +1,10 @@
+{
+  "package": "elizaos-plugin-echo",
+  "repository": "github:elizaOS/eliza",
+  "kind": "plugin",
+  "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
+  "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
+  "version": "2.0.0-beta.0",
+  "directory": "packages/examples/plugin-echo",
+  "tags": ["example", "utility", "reference"]
+}

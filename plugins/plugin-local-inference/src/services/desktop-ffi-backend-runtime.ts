@@ -79,6 +79,8 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 				typeof plan.overrides?.gpuLayers === "number"
 					? plan.overrides.gpuLayers
 					: undefined,
+			cacheTypeK: plan.overrides?.cacheTypeK,
+			cacheTypeV: plan.overrides?.cacheTypeV,
 			useMmap: plan.overrides?.mmap,
 			useMlock: plan.overrides?.mlock,
 		});

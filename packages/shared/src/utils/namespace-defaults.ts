@@ -1,4 +1,6 @@
-import process from "node:process";
+type NamespaceDefaultsEnv = {
+  ELIZA_NAMESPACE?: string;
+};
 
 function trimEnvValue(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -10,8 +12,12 @@ function trimEnvValue(value: string | undefined): string | undefined {
  * when they bypass the CLI/profile bootstrap path.
  */
 export function ensureNamespaceDefaults(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NamespaceDefaultsEnv | undefined = (
+    globalThis as { process?: { env?: NamespaceDefaultsEnv } }
+  ).process?.env,
 ): void {
+  if (!env) return;
+
   if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
     env.ELIZA_NAMESPACE = "eliza";
   }

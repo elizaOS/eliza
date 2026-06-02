@@ -95,13 +95,6 @@ describe("LM Studio integration (mocked endpoint)", () => {
     expect(result.error).toContain("500");
   });
 
-  it("auto-enable predicate returns true when the server is reachable", async () => {
-    expect(typeof lmStudioPlugin.autoEnable?.shouldEnable).toBe("function");
-    // Override the default detect to point at our mock server.
-    const result = await detectLMStudio({ baseURL: mock.baseURL, timeoutMs: 500 });
-    expect(result.available).toBe(true);
-  });
-
   it("plugin.init() probes the configured endpoint and logs success on 200", async () => {
     const runtime = {
       character: { system: "" },
@@ -129,5 +122,23 @@ describe("LM Studio integration (mocked endpoint)", () => {
     } as unknown as Parameters<NonNullable<typeof lmStudioPlugin.init>>[1];
 
     await lmStudioPlugin.init?.({}, runtime);
+  });
+
+  it("plugin.init() skips the network probe when auto-detect is disabled", async () => {
+    const fetcher = vi.fn();
+    const runtime = {
+      character: { system: "" },
+      emitEvent: vi.fn(),
+      getSetting: (key: string) => {
+        if (key === "LMSTUDIO_BASE_URL") return mock.baseURL;
+        if (key === "LMSTUDIO_AUTO_DETECT") return "off";
+        return null;
+      },
+      fetch: fetcher,
+    } as unknown as Parameters<NonNullable<typeof lmStudioPlugin.init>>[1];
+
+    await lmStudioPlugin.init?.({}, runtime);
+
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

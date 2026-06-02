@@ -39,11 +39,12 @@
     "directory": "plugins/plugin-native-bun-runtime"
   },
   "scripts": {
-    "build": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-bun-runtime -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

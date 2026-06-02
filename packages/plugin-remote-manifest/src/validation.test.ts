@@ -92,4 +92,44 @@ describe("remote plugin manifest validation", () => {
     if (result.ok) return;
     expect(result.issues.map((issue) => issue.path)).toContain("$.id");
   });
+
+  it("rejects malformed optional manifest sections", () => {
+    const result = validateRemotePluginManifest({
+      id: "bunny.dash",
+      name: "Dash",
+      version: "0.1.0",
+      description: "IDE",
+      mode: "window",
+      dependencies: {
+        "bunny.git": 1,
+      },
+      permissions: {},
+      view: {
+        relativePath: "views/main/index.html",
+        title: "Dash",
+        width: 1200,
+        height: 800,
+        hidden: "false",
+        transparent: "true",
+        titleBarStyle: "floating",
+      },
+      worker: { relativePath: "" },
+      remoteUIs: {
+        dash: { name: "Dash" },
+        broken: "remote-ui/broken/index.html",
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toEqual([
+      "view.titleBarStyle",
+      "view.hidden",
+      "view.transparent",
+      "worker.relativePath",
+      "dependencies.bunny.git",
+      "remoteUIs.dash.path",
+      "remoteUIs.broken",
+    ]);
+  });
 });

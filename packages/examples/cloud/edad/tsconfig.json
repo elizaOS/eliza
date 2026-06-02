@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["bun"]
+    "types": ["node", "bun-types"]
   },
   "include": ["server.ts", "test.ts"]
 }

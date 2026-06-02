@@ -79,7 +79,8 @@ negative transcript above cannot satisfy firmware/OS readiness:
 - gate: `scripts/check_bootrom_positive_handoff.py`
   (report `build/reports/gate-bootrom-positive-handoff-check.json`)
 
-That gate requires reset-vector, verifier-entrypoint, authenticated-image,
-manifest-selected handoff target, and OpenSBI-entry markers. Until the signed
-image transcript exists, it writes a `BLOCKED` report and the aggregate boot
-security-chain contract stays in its fail-closed state.
+That gate requires the capture-wrapper claim boundary and `command_exit_code: 0`
+provenance markers in addition to reset-vector, verifier-entrypoint,
+authenticated-image, manifest-selected handoff target, and OpenSBI-entry
+markers. Until the signed image transcript exists, it writes a `BLOCKED` report
+and the aggregate boot security-chain contract stays in its fail-closed state.

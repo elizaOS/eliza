@@ -24,6 +24,19 @@ REPORT = ROOT / "build/reports/e1x_repaired_real_weight_execution.json"
 PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 FULL_NORM_REAL_WEIGHT = ROOT / "build/reports/e1x_full_norm_real_weight_rows.json"
 VOCAB_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json"
+ATTN_OUT_SAMPLED_K_REAL_WEIGHT = (
+    ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json"
+)
+ATTN_QKV_SAMPLED_K_REAL_WEIGHT = (
+    ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json"
+)
+MLP_GATE_SAMPLED_K_REAL_WEIGHT = (
+    ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json"
+)
+MLP_UP_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json"
+MLP_DOWN_SAMPLED_K_REAL_WEIGHT = (
+    ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json"
+)
 FULL_PAYLOAD_REPAIR = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
 WINDOW_REPAIR = ROOT / "build/reports/e1x_window_repair_linkage.json"
 
@@ -50,6 +63,16 @@ CASES: dict[str, CasePaths] = {
 }
 
 VOCAB_SAMPLED_K = 128
+SAMPLED_K_BY_KIND = {
+    "norm": 1,
+    "embedding": VOCAB_SAMPLED_K,
+    "lm_head": VOCAB_SAMPLED_K,
+    "attn_out_proj": 64,
+    "attn_qkv_proj": 32,
+    "mlp_gate_proj": 32,
+    "mlp_up_proj": 32,
+    "mlp_down_proj": 32,
+}
 FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
@@ -132,7 +155,7 @@ def target_layers(placement: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(layer, dict):
             continue
         kind = str(layer.get("kind"))
-        if kind == "norm" or kind in {"embedding", "lm_head"}:
+        if kind in SAMPLED_K_BY_KIND:
             layers.append(layer)
     return layers
 
@@ -171,6 +194,11 @@ def main() -> int:
         PLACEMENT,
         FULL_NORM_REAL_WEIGHT,
         VOCAB_SAMPLED_K_REAL_WEIGHT,
+        ATTN_OUT_SAMPLED_K_REAL_WEIGHT,
+        ATTN_QKV_SAMPLED_K_REAL_WEIGHT,
+        MLP_GATE_SAMPLED_K_REAL_WEIGHT,
+        MLP_UP_SAMPLED_K_REAL_WEIGHT,
+        MLP_DOWN_SAMPLED_K_REAL_WEIGHT,
         FULL_PAYLOAD_REPAIR,
         WINDOW_REPAIR,
     ]
@@ -193,6 +221,11 @@ def main() -> int:
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     full_norm = load_json(FULL_NORM_REAL_WEIGHT) if FULL_NORM_REAL_WEIGHT.is_file() else {}
     vocab = load_json(VOCAB_SAMPLED_K_REAL_WEIGHT) if VOCAB_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    attn_out = load_json(ATTN_OUT_SAMPLED_K_REAL_WEIGHT) if ATTN_OUT_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    attn_qkv = load_json(ATTN_QKV_SAMPLED_K_REAL_WEIGHT) if ATTN_QKV_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    mlp_gate = load_json(MLP_GATE_SAMPLED_K_REAL_WEIGHT) if MLP_GATE_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    mlp_up = load_json(MLP_UP_SAMPLED_K_REAL_WEIGHT) if MLP_UP_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    mlp_down = load_json(MLP_DOWN_SAMPLED_K_REAL_WEIGHT) if MLP_DOWN_SAMPLED_K_REAL_WEIGHT.is_file() else {}
     full_payload_repair = load_json(FULL_PAYLOAD_REPAIR) if FULL_PAYLOAD_REPAIR.is_file() else {}
     window_repair = load_json(WINDOW_REPAIR) if WINDOW_REPAIR.is_file() else {}
 
@@ -202,6 +235,21 @@ def main() -> int:
         and int(full_norm.get("summary", {}).get("executed_norm_output_row_count", 0)) == 414_720
         and vocab.get("status") == "PASS"
         and int(vocab.get("summary", {}).get("executed_vocab_sampled_k_mac_count", 0)) == 8_192_000
+        and attn_out.get("status") == "PASS"
+        and int(attn_out.get("summary", {}).get("executed_attn_out_sampled_k_mac_count", 0))
+        == 13_107_200
+        and attn_qkv.get("status") == "PASS"
+        and int(attn_qkv.get("summary", {}).get("executed_attn_qkv_sampled_k_mac_count", 0))
+        == 19_660_800
+        and mlp_gate.get("status") == "PASS"
+        and int(mlp_gate.get("summary", {}).get("executed_mlp_gate_sampled_k_mac_count", 0))
+        == 17_694_720
+        and mlp_up.get("status") == "PASS"
+        and int(mlp_up.get("summary", {}).get("executed_mlp_up_sampled_k_mac_count", 0))
+        == 17_694_720
+        and mlp_down.get("status") == "PASS"
+        and int(mlp_down.get("summary", {}).get("executed_mlp_down_sampled_k_mac_count", 0))
+        == 6_553_600
         and full_payload_repair.get("status") == "PASS"
         and int(
             full_payload_repair.get("summary", {}).get("high_failure_payload_remapped_records", 0)
@@ -255,7 +303,7 @@ def main() -> int:
         layer_index = int(layer["index"])
         kind = str(layer["kind"])
         rows = int(layer["rows"])
-        k_count = 1 if kind == "norm" else min(VOCAB_SAMPLED_K, int(layer["cols"]))
+        k_count = min(SAMPLED_K_BY_KIND[kind], int(layer["cols"]))
         for output_row in range(rows):
             logical_core = logical_core_for_row(layer, output_row)
             logical = (logical_core // logical_cols, logical_core % logical_cols)
@@ -353,10 +401,10 @@ def main() -> int:
     )
     repaired_ok = (
         not errors
-        and len(layers) == 83
-        and total_rows == 478_720
-        and total_macs == 8_606_720
-        and len(touched_logical_cores) == 3_847
+        and len(layers) == 283
+        and total_rows == 2_608_640
+        and total_macs == 83_317_760
+        and len(touched_logical_cores) == 151_367
         and normal_route_checksum != high_failure_route_checksum
     )
     status, detail = pass_fail(
@@ -396,16 +444,21 @@ def main() -> int:
         "subsystem": "e1x",
         "claim_boundary": (
             "Repair-aware deterministic W4A8 real-weight execution for all rows "
-            "covered by the current full-norm and vocab sampled-K gates. This proves "
-            "normal/high defect remaps preserve logical numerical outputs for those "
-            "rows while producing distinct physical route checksums. It is not a "
-            "full-output real-weight checksum, not full-K vocab execution, and not "
-            "silicon evidence."
+            "covered by the current full-norm, vocab sampled-K, attention sampled-K, "
+            "and MLP sampled-K gates. This proves normal/high defect remaps preserve "
+            "logical numerical outputs for those rows while producing distinct "
+            "physical route checksums. It is not a full-output real-weight checksum, "
+            "not full-K sampled-layer execution, and not silicon evidence."
         ),
         "evidence_paths": [
             "benchmarks/results/e1x-real-graph-model-load.placement.json",
             "build/reports/e1x_full_norm_real_weight_rows.json",
             "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
+            "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
+            "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json",
+            "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json",
+            "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json",
+            "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json",
             "build/reports/e1x_full_payload_repair_mapping.json",
             "build/reports/e1x_window_repair_linkage.json",
             "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",

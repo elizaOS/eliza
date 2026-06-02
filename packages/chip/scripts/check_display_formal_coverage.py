@@ -13,6 +13,15 @@ FORMAL_MANIFEST = ROOT / "build/reports/formal_manifest.json"
 HARNESS = ROOT / "verify/formal/e1_display_scanout_formal.sv"
 RTL = ROOT / "rtl/display/e1_display_scanout.sv"
 REPORT = ROOT / "build/reports/display_formal_coverage.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "panel_bringup_claim_allowed": False,
+    "dsi_phy_claim_allowed": False,
+    "drm_kms_claim_allowed": False,
+    "full_display_correctness_claim_allowed": False,
+    "production_framebuffer_claim_allowed": False,
+}
 
 TARGET = "e1_display_scanout"
 EXPECTED: dict[str, Any] = {
@@ -105,6 +114,7 @@ def write_report(status: str, errors: list[str], manifest: dict | None) -> None:
                 "drm_kms_claim_allowed": False,
                 "full_display_correctness_claim_allowed": False,
                 "production_framebuffer_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Checks that the formal manifest records the display scanout "
                     "SBY target as passing with expected covered files, z3 engine "

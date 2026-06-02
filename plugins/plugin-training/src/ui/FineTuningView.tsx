@@ -1,4 +1,37 @@
-import { Button, ContentLayout, client, confirmDesktopAction, openExternalUrl, parsePositiveFloat, parsePositiveInteger, registerDetailExtension, type AppDetailExtensionProps, type HuggingFaceDatasetIngestResponse, type ListTrainingCollectionsResponse, type RunActionBenchmarkResponse, type RunBenchmarkVsCerebrasResponse, type RunFeedGenerationResponse, type RunLocalEvalComparisonResponse, type RunScenarioResponse, type StageEliza1BundleResponse, type TrainingCollectionPreflightSummary, type RunTrainingCollectionResponse, type StartTrainingOptions, type StreamEventEnvelope, type TrainingAnalysisIndexResponse, type TrainingDatasetRecord, type TrainingJobRecord, type TrainingModelRecord, type TrainingReadinessReportResponse, type TrainingStatus, type TrainingStreamEvent, type TrainingTrajectoryDetail, type TrainingTrajectoryList, useApp, useIntervalWhenDocumentVisible } from "@elizaos/ui";
+import {
+  type AppDetailExtensionProps,
+  Button,
+  ContentLayout,
+  client,
+  confirmDesktopAction,
+  type HuggingFaceDatasetIngestResponse,
+  type ListTrainingCollectionsResponse,
+  openExternalUrl,
+  parsePositiveFloat,
+  parsePositiveInteger,
+  type RunActionBenchmarkResponse,
+  type RunBenchmarkVsCerebrasResponse,
+  type RunFeedGenerationResponse,
+  type RunLocalEvalComparisonResponse,
+  type RunScenarioResponse,
+  type RunTrainingCollectionResponse,
+  registerDetailExtension,
+  type StageEliza1BundleResponse,
+  type StartTrainingOptions,
+  type StreamEventEnvelope,
+  type TrainingAnalysisIndexResponse,
+  type TrainingCollectionPreflightSummary,
+  type TrainingDatasetRecord,
+  type TrainingJobRecord,
+  type TrainingModelRecord,
+  type TrainingReadinessReportResponse,
+  type TrainingStatus,
+  type TrainingStreamEvent,
+  type TrainingTrajectoryDetail,
+  type TrainingTrajectoryList,
+  useApp,
+  useIntervalWhenDocumentVisible,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type ReactNode,
@@ -8,8 +41,8 @@ import {
   useState,
 } from "react";
 import {
-  ELIZA_ONE_BENCHMARK_TIERS,
   ELIZA_ONE_BENCHMARK_TIER_LIST,
+  ELIZA_ONE_BENCHMARK_TIERS,
   elizaOneActionBenchmarkPairs,
   parseElizaOneBenchmarkTiers,
 } from "../core/eliza1-benchmark-recipe.js";
@@ -103,6 +136,9 @@ type TrainingReadinessRecommendedAction = NonNullable<
   TrainingReadinessReportResponse["report"]["checks"][number]["recommendedAction"]
 >;
 
+type TrainingReadinessCheckSummary =
+  TrainingReadinessReportResponse["report"]["checks"][number];
+
 function recordValue(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -134,7 +170,9 @@ function formatModelInventorySummary(
         .filter((tier): tier is string => Boolean(tier)),
     ),
   ];
-  const base = modelInventory.filter((model) => model.variant === "base").length;
+  const base = modelInventory.filter(
+    (model) => model.variant === "base",
+  ).length;
   const trained = modelInventory.filter(
     (model) => model.variant === "trained",
   ).length;
@@ -277,8 +315,7 @@ function summarizeAnalysisCoverage(
   const sourceLabelOf = (artifact: (typeof artifacts)[number]) => {
     const source = summaryFor(artifact).source;
     return (
-      stringSummaryValue(source) ??
-      stringSummaryValue(recordValue(source).kind)
+      stringSummaryValue(source) ?? stringSummaryValue(recordValue(source).kind)
     );
   };
   const isNaturalTrajectoryBundle = (artifact: (typeof artifacts)[number]) =>
@@ -417,6 +454,297 @@ function summarizeAnalysisCoverage(
     benchmarkTierCoverage: [],
     benchmarkComparisons,
   };
+}
+
+const AGENT_FIELD_INPUT_CLASS =
+  "h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent";
+
+function AgentInlineButton({
+  agentId,
+  label,
+  group,
+  description,
+  className,
+  variant = "outline",
+  size = "sm",
+  disabled,
+  onClick,
+  title,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  className: string;
+  variant?: "outline" | "ghost" | "link" | "default";
+  size?: "sm";
+  disabled?: boolean;
+  onClick: () => void;
+  title?: string;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group,
+    description,
+    onActivate: onClick,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size={size}
+      className={className}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={label}
+      title={title}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function AgentTextField({
+  agentId,
+  label,
+  group,
+  description,
+  className,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  className: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: "text" | "number";
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: type === "number" ? "number-input" : "text-input",
+    label,
+    group,
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <input
+      ref={ref}
+      type={type}
+      className={className}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      aria-label={label}
+      {...agentProps}
+    />
+  );
+}
+
+function AgentTextAreaField({
+  agentId,
+  label,
+  group,
+  description,
+  className,
+  value,
+  onChange,
+  placeholder,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  className: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
+    id: agentId,
+    role: "textarea",
+    label,
+    group,
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <textarea
+      ref={ref}
+      className={className}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      aria-label={label}
+      {...agentProps}
+    />
+  );
+}
+
+function AgentNativeSelect({
+  agentId,
+  label,
+  group,
+  description,
+  className,
+  value,
+  onChange,
+  options,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  className: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLSelectElement>({
+    id: agentId,
+    role: "select",
+    label,
+    group,
+    description,
+    options,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <select
+      ref={ref}
+      className={className}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      aria-label={label}
+      {...agentProps}
+    >
+      {children}
+    </select>
+  );
+}
+
+function AgentCheckboxField({
+  agentId,
+  label,
+  group,
+  description,
+  checked,
+  onChange,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: "toggle",
+    label,
+    group,
+    description,
+    status: checked ? "active" : "inactive",
+    getValue: () => checked,
+    onActivate: () => onChange(!checked),
+    onFill: (value) => onChange(value === "true" || value === "1"),
+  });
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={(event) => onChange(event.target.checked)}
+      aria-label={label}
+      aria-current={checked ? "true" : undefined}
+      {...agentProps}
+    />
+  );
+}
+
+function ReadinessCheckRow({
+  check,
+  readinessActionRunning,
+  onRunRecommendation,
+  t,
+}: {
+  check: TrainingReadinessCheckSummary;
+  readinessActionRunning: string | null;
+  onRunRecommendation: (
+    checkId: string,
+    action: TrainingReadinessRecommendedAction,
+  ) => void;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `readiness-run-${check.id}`,
+    role: "button",
+    label: `Run recommendation for ${check.label}`,
+    group: "readiness",
+    description: `Run the recommended action for the ${check.label} check`,
+    onActivate: () => {
+      if (check.recommendedAction) {
+        onRunRecommendation(check.id, check.recommendedAction);
+      }
+    },
+  });
+  return (
+    <div className="grid gap-2 border-t border-border/40 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div>
+        <div className="font-mono text-xs text-txt">
+          {check.label} · {check.status}
+        </div>
+        <div className="mt-1 text-xs text-muted">{check.note}</div>
+      </div>
+      {check.recommendedAction ? (
+        <div className="flex flex-col items-start gap-2">
+          <div className="break-all font-mono text-xs text-muted">
+            {check.recommendedAction.capability}
+            {Object.keys(check.recommendedAction.params).length > 0
+              ? ` ${JSON.stringify(check.recommendedAction.params)}`
+              : ""}
+          </div>
+          <Button
+            ref={ref}
+            variant="outline"
+            size="sm"
+            className={FINE_TUNING_ACTION_CLASS}
+            disabled={readinessActionRunning !== null}
+            onClick={() => {
+              if (check.recommendedAction) {
+                onRunRecommendation(check.id, check.recommendedAction);
+              }
+            }}
+            {...agentProps}
+          >
+            {readinessActionRunning === check.id
+              ? t("finetuningview.RunningRecommendation", {
+                  defaultValue: "Running",
+                })
+              : t("finetuningview.RunRecommendation", {
+                  defaultValue: "Run recommendation",
+                })}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function TrainingActionButton({
@@ -987,272 +1315,278 @@ export function FineTuningView({
     [loadCollectionHistory, setActionNotice, t],
   );
 
-  const handleRunTrainingCollection = useCallback(async (preflightOnly = false) => {
-    if (preflightOnly) {
-      setCollectionPreflightRunning(true);
-    } else {
-      setCollectionRunning(true);
-    }
-    try {
-      const hfFilesList = hfFiles
-        .split(/\r?\n|,/)
-        .map((file) => file.trim())
-        .filter(Boolean);
-      const actionBenchmarkTiers = parseCollectionTierList(
-        actionBenchmarkPairTiers,
-      );
-      const actionBenchmarkTierForSinglePair =
-        actionBenchmarkTier.trim() || undefined;
-      const useDerivedActionBenchmarkPairs =
-        actionBenchmarkPairEnabled &&
-        actionBenchmarkTiers.length > 0 &&
-        (actionBenchmarkTiers.length > 1 ||
-          actionBenchmarkTiers[0] !== actionBenchmarkTierForSinglePair);
-      const naturalTaskList = naturalTasks
-        .split(",")
-        .map((task) => task.trim())
-        .filter(Boolean);
-      const naturalTrajectoryOptions =
-        naturalSanitizedJsonlPath.trim() ||
-        naturalRawJsonlPath.trim() ||
-        naturalRunId.trim() ||
-        naturalTaskList.length > 0 ||
-        naturalIncludeRaw
-          ? {
-              sanitizedJsonlPath:
-                naturalSanitizedJsonlPath.trim() || undefined,
-              rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
-              includeRawJsonl:
-                naturalIncludeRaw || !!naturalRawJsonlPath.trim(),
-              tasks: naturalTaskList.length > 0 ? naturalTaskList : undefined,
-              source: {
-                kind: "training_collection_natural_trajectories",
-                runId: naturalRunId.trim() || undefined,
-                metadata: {
-                  ui: true,
-                  sanitizedJsonlPath:
-                    naturalSanitizedJsonlPath.trim() || undefined,
-                  rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
-                },
-              },
-            }
-          : undefined;
-      const result = await client.runTrainingCollection({
-        preflightOnly,
-        preflightProbe: collectionPreflightProbe,
-        includeHuggingFace: true,
-        includeFeed: true,
-        includeNaturalTrajectories: true,
-        includeTestTrajectories: true,
-        includeScenarios: true,
-        includeEvalComparison: evalComparisonEnabled,
-        includeActionBenchmark: true,
-        includeBenchmarkVsCerebras: true,
-        includeEliza1ModelRegistry: true,
-        includeEliza1BundleStage: true,
-        includeBenchmarkMatrix: true,
-        huggingFace: {
-          repoId: hfRepoId.trim() || undefined,
-          revision: hfRevision.trim() || undefined,
-          files: hfFilesList.length > 0 ? hfFilesList : undefined,
-          dryRun: hfDryRun,
-          outputDir: hfOutputDir.trim() || undefined,
-        },
-        feed: {
-          archetypes: feedArchetypes.trim() || undefined,
-          numAgents: parsePositiveInteger(feedNumAgents),
-          ticks: parsePositiveInteger(feedTicks),
-          parallel: parsePositiveInteger(feedParallel),
-          cleanup: feedCleanup,
-          dryRun: feedDryRun,
-          outputDir: feedOutputDir.trim() || undefined,
-        },
-        naturalTrajectories: naturalTrajectoryOptions,
-        scenarios: {
-          dryRun: scenarioDryRun,
-          scenario: scenarioFilter.trim() || undefined,
-          outputDir: scenarioOutputDir.trim() || undefined,
-          exportNative: scenarioExportNative,
-          useDeterministicProxy: scenarioDeterministicProxy,
-        },
-        evalComparison: {
-          manifestPath: evalComparisonManifestPath.trim() || undefined,
-          model: evalComparisonManifestPath.trim()
-            ? undefined
-            : evalComparisonBaseModel.trim() || undefined,
-          trainedModelPath: evalComparisonManifestPath.trim()
-            ? undefined
-            : evalComparisonTrainedModelPath.trim() || undefined,
-          backend: evalComparisonManifestPath.trim()
-            ? undefined
-            : evalComparisonBackend,
-          outputDir: evalComparisonOutputDir.trim() || undefined,
-          dryRun: evalComparisonDryRun,
-        },
-        actionBenchmark: {
-          filter: actionBenchmarkFilter.trim() || undefined,
-          runsPerCase: parsePositiveInteger(actionBenchmarkRunsPerCase),
-          outputDir: actionBenchmarkOutputDir.trim() || undefined,
-          provider: actionBenchmarkProvider.trim() || undefined,
-          modelId: actionBenchmarkModelId.trim() || undefined,
-          runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
-          baseUrl: actionBenchmarkBaseUrl.trim() || undefined,
-          variant: actionBenchmarkVariant,
-          tier: actionBenchmarkTier.trim() || undefined,
-          benchmark: actionBenchmarkMatrixBenchmark.trim() || undefined,
-          datasetVersion: actionBenchmarkDatasetVersion.trim() || undefined,
-          useMocks: actionBenchmarkUseMocks,
-          forceTrajectoryCapture: actionBenchmarkCapture,
-          dryRun: actionBenchmarkDryRun,
-        },
-        actionBenchmarkPair: actionBenchmarkPairEnabled
-          ? !useDerivedActionBenchmarkPairs
+  const handleRunTrainingCollection = useCallback(
+    async (preflightOnly = false) => {
+      if (preflightOnly) {
+        setCollectionPreflightRunning(true);
+      } else {
+        setCollectionRunning(true);
+      }
+      try {
+        const hfFilesList = hfFiles
+          .split(/\r?\n|,/)
+          .map((file) => file.trim())
+          .filter(Boolean);
+        const actionBenchmarkTiers = parseCollectionTierList(
+          actionBenchmarkPairTiers,
+        );
+        const actionBenchmarkTierForSinglePair =
+          actionBenchmarkTier.trim() || undefined;
+        const useDerivedActionBenchmarkPairs =
+          actionBenchmarkPairEnabled &&
+          actionBenchmarkTiers.length > 0 &&
+          (actionBenchmarkTiers.length > 1 ||
+            actionBenchmarkTiers[0] !== actionBenchmarkTierForSinglePair);
+        const naturalTaskList = naturalTasks
+          .split(",")
+          .map((task) => task.trim())
+          .filter(Boolean);
+        const naturalTrajectoryOptions =
+          naturalSanitizedJsonlPath.trim() ||
+          naturalRawJsonlPath.trim() ||
+          naturalRunId.trim() ||
+          naturalTaskList.length > 0 ||
+          naturalIncludeRaw
             ? {
-                tier: actionBenchmarkTierForSinglePair,
-                base: {
-                  modelId: actionBenchmarkBaseModelId.trim() || undefined,
-                  runtimeModel:
-                    actionBenchmarkBaseRuntimeModel.trim() || undefined,
-                  variant: "base",
-                },
-                trained: {
-                  modelId: actionBenchmarkModelId.trim() || undefined,
-                  runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
-                  variant: "trained",
+                sanitizedJsonlPath:
+                  naturalSanitizedJsonlPath.trim() || undefined,
+                rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
+                includeRawJsonl:
+                  naturalIncludeRaw || !!naturalRawJsonlPath.trim(),
+                tasks: naturalTaskList.length > 0 ? naturalTaskList : undefined,
+                source: {
+                  kind: "training_collection_natural_trajectories",
+                  runId: naturalRunId.trim() || undefined,
+                  metadata: {
+                    ui: true,
+                    sanitizedJsonlPath:
+                      naturalSanitizedJsonlPath.trim() || undefined,
+                    rawJsonlPath: naturalRawJsonlPath.trim() || undefined,
+                  },
                 },
               }
-            : undefined
-          : undefined,
-        actionBenchmarkPairs: useDerivedActionBenchmarkPairs
-          ? actionBenchmarkTiers.map((tier) => ({
-              tier,
-              base: { variant: "base" },
-              trained: { variant: "trained" },
-            }))
-          : undefined,
-        benchmarkVsCerebras: {
-          tiers: benchmarkTiers.trim() || undefined,
-          benchmark: benchmarkKind,
-          variants: benchmarkVariants,
-          maxSamples: parsePositiveInteger(benchmarkMaxSamples),
-          dryRun: benchmarkDryRun,
-          resultsDb: benchmarkResultsDb.trim() || undefined,
-          trainedModelPath: benchmarkTrainedModelPath.trim() || undefined,
-          matrixOutputDir: benchmarkMatrixOutputDir.trim() || undefined,
-        },
-        eliza1BundleStage: {
-          repoId: bundleStageRepoId.trim() || undefined,
-          tier: bundleStageTier.trim() || undefined,
-          localDir: bundleStageLocalDir.trim() || undefined,
-          outputDir: bundleStageOutputDir.trim() || undefined,
-          maxBytes: parsePositiveInteger(bundleStageMaxBytes),
-          apply: bundleStageApply,
-        },
-      });
-      if ("preflight" in result) {
-        setCollectionPreflightResult(result.preflight);
+            : undefined;
+        const result = await client.runTrainingCollection({
+          preflightOnly,
+          preflightProbe: collectionPreflightProbe,
+          includeHuggingFace: true,
+          includeFeed: true,
+          includeNaturalTrajectories: true,
+          includeTestTrajectories: true,
+          includeScenarios: true,
+          includeEvalComparison: evalComparisonEnabled,
+          includeActionBenchmark: true,
+          includeBenchmarkVsCerebras: true,
+          includeEliza1ModelRegistry: true,
+          includeEliza1BundleStage: true,
+          includeBenchmarkMatrix: true,
+          huggingFace: {
+            repoId: hfRepoId.trim() || undefined,
+            revision: hfRevision.trim() || undefined,
+            files: hfFilesList.length > 0 ? hfFilesList : undefined,
+            dryRun: hfDryRun,
+            outputDir: hfOutputDir.trim() || undefined,
+          },
+          feed: {
+            archetypes: feedArchetypes.trim() || undefined,
+            numAgents: parsePositiveInteger(feedNumAgents),
+            ticks: parsePositiveInteger(feedTicks),
+            parallel: parsePositiveInteger(feedParallel),
+            cleanup: feedCleanup,
+            dryRun: feedDryRun,
+            outputDir: feedOutputDir.trim() || undefined,
+          },
+          naturalTrajectories: naturalTrajectoryOptions,
+          scenarios: {
+            dryRun: scenarioDryRun,
+            scenario: scenarioFilter.trim() || undefined,
+            outputDir: scenarioOutputDir.trim() || undefined,
+            exportNative: scenarioExportNative,
+            useDeterministicProxy: scenarioDeterministicProxy,
+          },
+          evalComparison: {
+            manifestPath: evalComparisonManifestPath.trim() || undefined,
+            model: evalComparisonManifestPath.trim()
+              ? undefined
+              : evalComparisonBaseModel.trim() || undefined,
+            trainedModelPath: evalComparisonManifestPath.trim()
+              ? undefined
+              : evalComparisonTrainedModelPath.trim() || undefined,
+            backend: evalComparisonManifestPath.trim()
+              ? undefined
+              : evalComparisonBackend,
+            outputDir: evalComparisonOutputDir.trim() || undefined,
+            dryRun: evalComparisonDryRun,
+          },
+          actionBenchmark: {
+            filter: actionBenchmarkFilter.trim() || undefined,
+            runsPerCase: parsePositiveInteger(actionBenchmarkRunsPerCase),
+            outputDir: actionBenchmarkOutputDir.trim() || undefined,
+            provider: actionBenchmarkProvider.trim() || undefined,
+            modelId: actionBenchmarkModelId.trim() || undefined,
+            runtimeModel: actionBenchmarkRuntimeModel.trim() || undefined,
+            baseUrl: actionBenchmarkBaseUrl.trim() || undefined,
+            variant: actionBenchmarkVariant,
+            tier: actionBenchmarkTier.trim() || undefined,
+            benchmark: actionBenchmarkMatrixBenchmark.trim() || undefined,
+            datasetVersion: actionBenchmarkDatasetVersion.trim() || undefined,
+            useMocks: actionBenchmarkUseMocks,
+            forceTrajectoryCapture: actionBenchmarkCapture,
+            dryRun: actionBenchmarkDryRun,
+          },
+          actionBenchmarkPair: actionBenchmarkPairEnabled
+            ? !useDerivedActionBenchmarkPairs
+              ? {
+                  tier: actionBenchmarkTierForSinglePair,
+                  base: {
+                    modelId: actionBenchmarkBaseModelId.trim() || undefined,
+                    runtimeModel:
+                      actionBenchmarkBaseRuntimeModel.trim() || undefined,
+                    variant: "base",
+                  },
+                  trained: {
+                    modelId: actionBenchmarkModelId.trim() || undefined,
+                    runtimeModel:
+                      actionBenchmarkRuntimeModel.trim() || undefined,
+                    variant: "trained",
+                  },
+                }
+              : undefined
+            : undefined,
+          actionBenchmarkPairs: useDerivedActionBenchmarkPairs
+            ? actionBenchmarkTiers.map((tier) => ({
+                tier,
+                base: { variant: "base" },
+                trained: { variant: "trained" },
+              }))
+            : undefined,
+          benchmarkVsCerebras: {
+            tiers: benchmarkTiers.trim() || undefined,
+            benchmark: benchmarkKind,
+            variants: benchmarkVariants,
+            maxSamples: parsePositiveInteger(benchmarkMaxSamples),
+            dryRun: benchmarkDryRun,
+            resultsDb: benchmarkResultsDb.trim() || undefined,
+            trainedModelPath: benchmarkTrainedModelPath.trim() || undefined,
+            matrixOutputDir: benchmarkMatrixOutputDir.trim() || undefined,
+          },
+          eliza1BundleStage: {
+            repoId: bundleStageRepoId.trim() || undefined,
+            tier: bundleStageTier.trim() || undefined,
+            localDir: bundleStageLocalDir.trim() || undefined,
+            outputDir: bundleStageOutputDir.trim() || undefined,
+            maxBytes: parsePositiveInteger(bundleStageMaxBytes),
+            apply: bundleStageApply,
+          },
+        });
+        if ("preflight" in result) {
+          setCollectionPreflightResult(result.preflight);
+          setActionNotice(
+            t("finetuningview.CollectionPreflightCompleted", {
+              defaultValue: "Collection preflight completed",
+            }),
+            "success",
+            5200,
+          );
+          return;
+        }
+        setCollectionResult(result);
+        setCollectionPreflightResult(
+          result.manifest.evidence.preflight ?? null,
+        );
+        setAnalysisIndex(result.analysis);
+        await loadCollectionHistory();
         setActionNotice(
-          t("finetuningview.CollectionPreflightCompleted", {
-            defaultValue: "Collection preflight completed",
+          t("finetuningview.TrainingCollectionCompleted", {
+            count: result.analysis.manifest.artifacts.length,
           }),
           "success",
           5200,
         );
-        return;
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : t("finetuningview.FailedToRunTrainingCollection"),
+          "error",
+          5200,
+        );
+      } finally {
+        if (preflightOnly) {
+          setCollectionPreflightRunning(false);
+        } else {
+          setCollectionRunning(false);
+        }
       }
-      setCollectionResult(result);
-      setCollectionPreflightResult(result.manifest.evidence.preflight ?? null);
-      setAnalysisIndex(result.analysis);
-      await loadCollectionHistory();
-      setActionNotice(
-        t("finetuningview.TrainingCollectionCompleted", {
-          count: result.analysis.manifest.artifacts.length,
-        }),
-        "success",
-        5200,
-      );
-    } catch (err) {
-      setActionNotice(
-        err instanceof Error
-          ? err.message
-          : t("finetuningview.FailedToRunTrainingCollection"),
-        "error",
-        5200,
-      );
-    } finally {
-      if (preflightOnly) {
-        setCollectionPreflightRunning(false);
-      } else {
-        setCollectionRunning(false);
-      }
-    }
-  }, [
-    actionBenchmarkCapture,
-    actionBenchmarkDryRun,
-    actionBenchmarkFilter,
-    actionBenchmarkBaseModelId,
-    actionBenchmarkBaseRuntimeModel,
-    actionBenchmarkDatasetVersion,
-    actionBenchmarkMatrixBenchmark,
-    actionBenchmarkModelId,
-    actionBenchmarkBaseUrl,
-    actionBenchmarkOutputDir,
-    actionBenchmarkPairEnabled,
-    actionBenchmarkPairTiers,
-    actionBenchmarkProvider,
-    actionBenchmarkRunsPerCase,
-    actionBenchmarkRuntimeModel,
-    actionBenchmarkTier,
-    actionBenchmarkUseMocks,
-    actionBenchmarkVariant,
-    benchmarkDryRun,
-    benchmarkKind,
-    benchmarkMatrixOutputDir,
-    benchmarkMaxSamples,
-    benchmarkResultsDb,
-    benchmarkTiers,
-    benchmarkTrainedModelPath,
-    benchmarkVariants,
-    bundleStageApply,
-    bundleStageLocalDir,
-    bundleStageMaxBytes,
-    bundleStageOutputDir,
-    bundleStageRepoId,
-    bundleStageTier,
-    collectionPreflightProbe,
-    evalComparisonBackend,
-    evalComparisonBaseModel,
-    evalComparisonDryRun,
-    evalComparisonEnabled,
-    evalComparisonManifestPath,
-    evalComparisonOutputDir,
-    evalComparisonTrainedModelPath,
-    feedArchetypes,
-    feedCleanup,
-    feedDryRun,
-    feedNumAgents,
-    feedOutputDir,
-    feedParallel,
-    feedTicks,
-    hfDryRun,
-    hfFiles,
-    hfOutputDir,
-    hfRepoId,
-    hfRevision,
-    loadCollectionHistory,
-    naturalIncludeRaw,
-    naturalRawJsonlPath,
-    naturalRunId,
-    naturalSanitizedJsonlPath,
-    naturalTasks,
-    scenarioDeterministicProxy,
-    scenarioDryRun,
-    scenarioExportNative,
-    scenarioFilter,
-    scenarioOutputDir,
-    setActionNotice,
-    t,
-  ]);
+    },
+    [
+      actionBenchmarkCapture,
+      actionBenchmarkDryRun,
+      actionBenchmarkFilter,
+      actionBenchmarkBaseModelId,
+      actionBenchmarkBaseRuntimeModel,
+      actionBenchmarkDatasetVersion,
+      actionBenchmarkMatrixBenchmark,
+      actionBenchmarkModelId,
+      actionBenchmarkBaseUrl,
+      actionBenchmarkOutputDir,
+      actionBenchmarkPairEnabled,
+      actionBenchmarkPairTiers,
+      actionBenchmarkProvider,
+      actionBenchmarkRunsPerCase,
+      actionBenchmarkRuntimeModel,
+      actionBenchmarkTier,
+      actionBenchmarkUseMocks,
+      actionBenchmarkVariant,
+      benchmarkDryRun,
+      benchmarkKind,
+      benchmarkMatrixOutputDir,
+      benchmarkMaxSamples,
+      benchmarkResultsDb,
+      benchmarkTiers,
+      benchmarkTrainedModelPath,
+      benchmarkVariants,
+      bundleStageApply,
+      bundleStageLocalDir,
+      bundleStageMaxBytes,
+      bundleStageOutputDir,
+      bundleStageRepoId,
+      bundleStageTier,
+      collectionPreflightProbe,
+      evalComparisonBackend,
+      evalComparisonBaseModel,
+      evalComparisonDryRun,
+      evalComparisonEnabled,
+      evalComparisonManifestPath,
+      evalComparisonOutputDir,
+      evalComparisonTrainedModelPath,
+      feedArchetypes,
+      feedCleanup,
+      feedDryRun,
+      feedNumAgents,
+      feedOutputDir,
+      feedParallel,
+      feedTicks,
+      hfDryRun,
+      hfFiles,
+      hfOutputDir,
+      hfRepoId,
+      hfRevision,
+      loadCollectionHistory,
+      naturalIncludeRaw,
+      naturalRawJsonlPath,
+      naturalRunId,
+      naturalSanitizedJsonlPath,
+      naturalTasks,
+      scenarioDeterministicProxy,
+      scenarioDryRun,
+      scenarioExportNative,
+      scenarioFilter,
+      scenarioOutputDir,
+      setActionNotice,
+      t,
+    ],
+  );
 
   const handleRunEvalComparison = useCallback(async () => {
     setEvalComparisonRunning(true);
@@ -2056,12 +2390,13 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
             <div className="mb-3 border-b border-border/50 pb-3">
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="analysis-probe-endpoints"
+                  label="Probe live endpoints"
+                  group="analysis"
+                  description="Probe live endpoints during the collection preflight"
                   checked={collectionPreflightProbe}
-                  onChange={(event) =>
-                    setCollectionPreflightProbe(event.target.checked)
-                  }
+                  onChange={setCollectionPreflightProbe}
                 />
                 Probe live endpoints
               </label>
@@ -2075,12 +2410,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Sanitized JSONL
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="natural-sanitized-jsonl"
+                    label="Sanitized JSONL path"
+                    group="natural-import"
+                    description="Path to the sanitized trajectory JSONL file"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={naturalSanitizedJsonlPath}
-                    onChange={(event) =>
-                      setNaturalSanitizedJsonlPath(event.target.value)
-                    }
+                    onChange={setNaturalSanitizedJsonlPath}
                     placeholder="/path/to/trajectories.sanitized.jsonl"
                   />
                 </label>
@@ -2088,12 +2425,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Raw JSONL
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="natural-raw-jsonl"
+                    label="Raw JSONL path"
+                    group="natural-import"
+                    description="Path to the raw trajectory JSONL file"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={naturalRawJsonlPath}
-                    onChange={(event) =>
-                      setNaturalRawJsonlPath(event.target.value)
-                    }
+                    onChange={setNaturalRawJsonlPath}
                     placeholder="/path/to/trajectories.raw.jsonl"
                   />
                 </label>
@@ -2101,10 +2440,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Run ID
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="natural-run-id"
+                    label="Run ID"
+                    group="natural-import"
+                    description="Run identifier for the imported trajectories"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={naturalRunId}
-                    onChange={(event) => setNaturalRunId(event.target.value)}
+                    onChange={setNaturalRunId}
                     placeholder="app-run-1"
                   />
                 </label>
@@ -2112,20 +2455,25 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Task buckets
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="natural-task-buckets"
+                    label="Task buckets"
+                    group="natural-import"
+                    description="Comma-separated task buckets to import"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={naturalTasks}
-                    onChange={(event) => setNaturalTasks(event.target.value)}
+                    onChange={setNaturalTasks}
                     placeholder="response,action_planner"
                   />
                 </label>
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="natural-include-raw"
+                    label="Include raw trajectories"
+                    group="natural-import"
+                    description="Include raw trajectories in the import"
                     checked={naturalIncludeRaw}
-                    onChange={(event) =>
-                      setNaturalIncludeRaw(event.target.checked)
-                    }
+                    onChange={setNaturalIncludeRaw}
                   />
                   Include raw
                 </label>
@@ -2169,9 +2517,11 @@ export function FineTuningView({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="readiness-open-report"
+                    label="Open readiness report"
+                    group="readiness"
+                    description="Open the readiness report file"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -2180,11 +2530,13 @@ export function FineTuningView({
                     }}
                   >
                     Open readiness report
-                  </Button>
+                  </AgentInlineButton>
                   {readinessReport.report.analysisIndexHtmlPath ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <AgentInlineButton
+                      agentId="readiness-open-viewer"
+                      label="Open readiness viewer"
+                      group="readiness"
+                      description="Open the readiness analysis viewer"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
                         void openExternalUrl(
@@ -2195,11 +2547,13 @@ export function FineTuningView({
                       }}
                     >
                       Open readiness viewer
-                    </Button>
+                    </AgentInlineButton>
                   ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="readiness-open-output"
+                    label="Open readiness output"
+                    group="readiness"
+                    description="Open the readiness output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -2208,7 +2562,7 @@ export function FineTuningView({
                     }}
                   >
                     Open readiness output
-                  </Button>
+                  </AgentInlineButton>
                 </div>
                 {readinessReport.report.checks.some(
                   (check) => check.status !== "ready",
@@ -2218,54 +2572,13 @@ export function FineTuningView({
                       .filter((check) => check.status !== "ready")
                       .slice(0, 5)
                       .map((check) => (
-                        <div
+                        <ReadinessCheckRow
                           key={check.id}
-                          className="grid gap-2 border-t border-border/40 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
-                        >
-                          <div>
-                            <div className="font-mono text-xs text-txt">
-                              {check.label} · {check.status}
-                            </div>
-                            <div className="mt-1 text-xs text-muted">
-                              {check.note}
-                            </div>
-                          </div>
-                          {check.recommendedAction ? (
-                            <div className="flex flex-col items-start gap-2">
-                              <div className="break-all font-mono text-xs text-muted">
-                                {check.recommendedAction.capability}
-                                {Object.keys(check.recommendedAction.params)
-                                  .length > 0
-                                  ? ` ${JSON.stringify(
-                                      check.recommendedAction.params,
-                                    )}`
-                                  : ""}
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className={FINE_TUNING_ACTION_CLASS}
-                                disabled={readinessActionRunning !== null}
-                                onClick={() => {
-                                  if (check.recommendedAction) {
-                                    void handleRunReadinessRecommendation(
-                                      check.id,
-                                      check.recommendedAction,
-                                    );
-                                  }
-                                }}
-                              >
-                                {readinessActionRunning === check.id
-                                  ? t("finetuningview.RunningRecommendation", {
-                                      defaultValue: "Running",
-                                    })
-                                  : t("finetuningview.RunRecommendation", {
-                                      defaultValue: "Run recommendation",
-                                    })}
-                              </Button>
-                            </div>
-                          ) : null}
-                        </div>
+                          check={check}
+                          readinessActionRunning={readinessActionRunning}
+                          onRunRecommendation={handleRunReadinessRecommendation}
+                          t={t}
+                        />
                       ))}
                   </div>
                 ) : null}
@@ -2314,9 +2627,11 @@ export function FineTuningView({
                   <div className="mt-1 break-all font-mono text-xs text-txt">
                     {collectionResult.readmePath}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="collection-open-summary"
+                    label="Open collection summary"
+                    group="collection-result"
+                    description="Open the collection run summary"
                     className={`${FINE_TUNING_ACTION_CLASS} mt-2`}
                     onClick={() =>
                       void openExternalUrl(
@@ -2325,7 +2640,7 @@ export function FineTuningView({
                     }
                   >
                     Open summary
-                  </Button>
+                  </AgentInlineButton>
                 </div>
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -2344,9 +2659,11 @@ export function FineTuningView({
                   <div className="mt-1 break-all font-mono text-xs text-txt">
                     {collectionResult.manifest.analysis.indexHtmlPath}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="collection-open-viewer"
+                    label="Open collection viewer"
+                    group="collection-result"
+                    description="Open the collection analysis viewer"
                     className={`${FINE_TUNING_ACTION_CLASS} mt-2`}
                     onClick={() =>
                       void openExternalUrl(
@@ -2357,7 +2674,7 @@ export function FineTuningView({
                     }
                   >
                     Open viewer
-                  </Button>
+                  </AgentInlineButton>
                 </div>
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -2366,9 +2683,11 @@ export function FineTuningView({
                   <div className="mt-1 break-all font-mono text-xs text-txt">
                     {collectionResult.collectionIndex.indexHtmlPath}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="collection-open-index"
+                    label="Open collection index"
+                    group="collection-result"
+                    description="Open the collection index"
                     className={`${FINE_TUNING_ACTION_CLASS} mt-2`}
                     onClick={() =>
                       void openExternalUrl(
@@ -2379,7 +2698,7 @@ export function FineTuningView({
                     }
                   >
                     Open index
-                  </Button>
+                  </AgentInlineButton>
                 </div>
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -2441,13 +2760,9 @@ export function FineTuningView({
                   </div>
                   <div className="mt-1 font-mono text-xs text-txt">
                     evals:
-                    {
-                      collectionResult.manifest.evidence.evals.evalArtifacts
-                    }{" "}
+                    {collectionResult.manifest.evidence.evals.evalArtifacts}{" "}
                     matrices:
-                    {
-                      collectionResult.manifest.evidence.evals.benchmarkMatrices
-                    }{" "}
+                    {collectionResult.manifest.evidence.evals.benchmarkMatrices}{" "}
                     models:{collectionResult.manifest.evidence.training.models}
                     {formatModelInventorySummary(
                       collectionResult.manifest.evidence.training
@@ -2516,11 +2831,9 @@ export function FineTuningView({
                         .allEliza1TierImprovements
                     }{" "}
                     samples:
-                    {
-                      collectionResult.manifest.evidence.readinessGaps.find(
-                        (gap) => gap.id === "readable_source_samples",
-                      )?.status ?? "ready"
-                    }
+                    {collectionResult.manifest.evidence.readinessGaps.find(
+                      (gap) => gap.id === "readable_source_samples",
+                    )?.status ?? "ready"}
                   </div>
                 </div>
                 {collectionResult.manifest.evidence.preflight ? (
@@ -2568,16 +2881,18 @@ export function FineTuningView({
                     <div className="mt-1 break-all font-mono text-xs text-txt">
                       {collectionResult.manifest.evidence.stepArtifacts
                         .flatMap((step) =>
-                          step.paths.slice(0, 3).map(
-                            (path) =>
-                              `${step.stepId}:${path.label}->${path.path}${
-                                step.command?.length
-                                  ? ` cmd:${step.command.join(" ")}`
-                                  : ""
-                              }${
-                                step.stdout ? ` stdout:${step.stdout}` : ""
-                              }${step.stderr ? ` stderr:${step.stderr}` : ""}`,
-                          ),
+                          step.paths
+                            .slice(0, 3)
+                            .map(
+                              (path) =>
+                                `${step.stepId}:${path.label}->${path.path}${
+                                  step.command?.length
+                                    ? ` cmd:${step.command.join(" ")}`
+                                    : ""
+                                }${
+                                  step.stdout ? ` stdout:${step.stdout}` : ""
+                                }${step.stderr ? ` stderr:${step.stderr}` : ""}`,
+                            ),
                         )
                         .slice(0, 8)
                         .join(" | ")}
@@ -2630,8 +2945,9 @@ export function FineTuningView({
                   </div>
                 ) : null}
                 {collectionResult.manifest.evidence.sourceSamples &&
-                Object.values(collectionResult.manifest.evidence.sourceSamples)
-                  .flat().length > 0 ? (
+                Object.values(
+                  collectionResult.manifest.evidence.sourceSamples,
+                ).flat().length > 0 ? (
                   <div className="md:col-span-2 xl:col-span-4">
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                       Collection source samples
@@ -2709,7 +3025,9 @@ export function FineTuningView({
                             } improvement:${
                               comparison.improvementPercent ?? "n/a"
                             }% evidence:${
-                              comparison.modelBacked ? "model-backed" : "partial"
+                              comparison.modelBacked
+                                ? "model-backed"
+                                : "partial"
                             }`,
                         )
                         .join(" | ")}
@@ -2730,8 +3048,8 @@ export function FineTuningView({
                       ",",
                     ) || "none"}{" "}
                     next:
-                    {collectionResult.manifest.evidence.benchmarks.baselineProgress
-                      .nextTier ?? "none"}{" "}
+                    {collectionResult.manifest.evidence.benchmarks
+                      .baselineProgress.nextTier ?? "none"}{" "}
                     remaining:
                     {collectionResult.manifest.evidence.benchmarks.baselineProgress.remainingTiers.join(
                       ",",
@@ -2800,9 +3118,11 @@ export function FineTuningView({
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <AgentInlineButton
+                      agentId="collection-history-refresh"
+                      label="Refresh collection runs"
+                      group="collection-history"
+                      description="Reload the saved collection runs list"
                       className={FINE_TUNING_ACTION_CLASS}
                       disabled={collectionHistoryLoading}
                       onClick={() => {
@@ -2810,10 +3130,12 @@ export function FineTuningView({
                       }}
                     >
                       {collectionHistoryLoading ? "Refreshing" : "Refresh runs"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    </AgentInlineButton>
+                    <AgentInlineButton
+                      agentId="collection-history-open-index"
+                      label="Open collection runs index"
+                      group="collection-history"
+                      description="Open the saved collection runs index"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() =>
                         void openExternalUrl(
@@ -2822,7 +3144,7 @@ export function FineTuningView({
                       }
                     >
                       Open collection index
-                    </Button>
+                    </AgentInlineButton>
                   </div>
                 </div>
                 {collectionHistory.collections.length > 0 ? (
@@ -2882,8 +3204,9 @@ export function FineTuningView({
                                         }`,
                                     )
                                     .join(" ")}`
-                                : ""}
-                              {" "}evals:{run.evals?.evalArtifacts ?? 0} eval-comparisons:
+                                : ""}{" "}
+                              evals:{run.evals?.evalArtifacts ?? 0}{" "}
+                              eval-comparisons:
                               {run.evals?.evalComparisons ?? 0}
                               {run.evals?.comparisonInventory?.length
                                 ? ` ${run.evals.comparisonInventory
@@ -2938,7 +3261,7 @@ export function FineTuningView({
                                           }%`,
                                       )
                                       .join(" ")}`
-                                : ""}
+                                  : ""}
                               </div>
                             ) : null}
                             {run.readinessGaps?.length ? (
@@ -2962,19 +3285,23 @@ export function FineTuningView({
                                 ) ? (
                                   <div className="mt-2 flex flex-wrap gap-1">
                                     {run.readinessGaps
-                                      .filter((gap) => gap.recommendedCapability)
+                                      .filter(
+                                        (gap) => gap.recommendedCapability,
+                                      )
                                       .slice(0, 4)
                                       .map((gap) => (
-                                        <Button
+                                        <AgentInlineButton
                                           key={`${run.manifestPath}:${gap.id}:${gap.recommendedCapability}`}
-                                          variant="outline"
-                                          size="sm"
+                                          agentId={`history-gap-${run.manifestPath}-${gap.id}`}
+                                          label={`Run recommendation for ${gap.id}`}
+                                          group="collection-history"
+                                          description={`Run the recommended action ${gap.recommendedCapability} for gap ${gap.id}`}
+                                          title={`${gap.id}: ${gap.recommendedCapability}`}
                                           className={FINE_TUNING_ACTION_CLASS}
                                           disabled={
                                             readinessActionRunning ===
                                             `history:${gap.id}`
                                           }
-                                          title={`${gap.id}: ${gap.recommendedCapability}`}
                                           onClick={() =>
                                             void handleRunReadinessRecommendation(
                                               `history:${gap.id}`,
@@ -2988,7 +3315,7 @@ export function FineTuningView({
                                           }
                                         >
                                           Run {gap.id}
-                                        </Button>
+                                        </AgentInlineButton>
                                       ))}
                                   </div>
                                 ) : null}
@@ -3003,7 +3330,8 @@ export function FineTuningView({
                                 {run.coverage.dataSources.natural} scenarios:
                                 {run.coverage.dataSources.scenarios} tests:
                                 {run.coverage.dataSources.tests} jsonl:
-                                {run.coverage.dataSources.trainingJsonl} scored-evals:
+                                {run.coverage.dataSources.trainingJsonl}{" "}
+                                scored-evals:
                                 {run.coverage.evals.scoredComparisons}/
                                 {run.coverage.evals.comparisons} scored-bench:
                                 {run.coverage.benchmarks.scoredComparisons}/
@@ -3032,7 +3360,9 @@ export function FineTuningView({
                                         sample.scenarioId ??
                                         sample.title
                                       } task:${
-                                        sample.task ?? sample.sourceKind ?? "n/a"
+                                        sample.task ??
+                                        sample.sourceKind ??
+                                        "n/a"
                                       } input:${input || "n/a"} output:${
                                         output || "n/a"
                                       }`;
@@ -3047,15 +3377,14 @@ export function FineTuningView({
                                 {run.sourceArtifacts
                                   .slice(0, 6)
                                   .map((artifact) => (
-                                    <Button
+                                    <AgentInlineButton
                                       key={`${artifact.category}:${artifact.path}`}
+                                      agentId={`history-source-artifact-${run.manifestPath}-${artifact.category}-${artifact.path}`}
+                                      label={`Open source artifact ${artifact.category}:${artifact.title}`}
+                                      group="collection-history"
+                                      description={`Open the source artifact ${artifact.path}`}
                                       variant="ghost"
-                                      size="sm"
                                       className={FINE_TUNING_ACTION_CLASS}
-                                      title={[
-                                        artifact.schema ?? "source artifact",
-                                        artifact.path,
-                                      ].join(" · ")}
                                       onClick={() =>
                                         void openExternalUrl(
                                           localViewerUrl(artifact.path),
@@ -3063,7 +3392,7 @@ export function FineTuningView({
                                       }
                                     >
                                       {artifact.category}:{artifact.title}
-                                    </Button>
+                                    </AgentInlineButton>
                                   ))}
                               </div>
                             ) : null}
@@ -3072,15 +3401,14 @@ export function FineTuningView({
                                 {run.evidenceArtifacts
                                   .slice(0, 6)
                                   .map((artifact) => (
-                                    <Button
+                                    <AgentInlineButton
                                       key={`${artifact.category}:${artifact.path}`}
+                                      agentId={`history-evidence-artifact-${run.manifestPath}-${artifact.category}-${artifact.path}`}
+                                      label={`Open evidence artifact ${artifact.category}:${artifact.title}`}
+                                      group="collection-history"
+                                      description={`Open the evidence artifact ${artifact.path}`}
                                       variant="ghost"
-                                      size="sm"
                                       className={FINE_TUNING_ACTION_CLASS}
-                                      title={[
-                                        artifact.schema ?? "evidence artifact",
-                                        artifact.path,
-                                      ].join(" · ")}
                                       onClick={() =>
                                         void openExternalUrl(
                                           localViewerUrl(artifact.path),
@@ -3088,15 +3416,17 @@ export function FineTuningView({
                                       }
                                     >
                                       {artifact.category}:{artifact.title}
-                                    </Button>
+                                    </AgentInlineButton>
                                   ))}
                               </div>
                             ) : null}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
+                            <AgentInlineButton
+                              agentId={`history-run-viewer-${run.manifestPath}`}
+                              label={`Open saved viewer for ${run.generatedAt}`}
+                              group="collection-history"
+                              description="Open the saved collection run viewer"
                               className={FINE_TUNING_ACTION_CLASS}
                               onClick={() =>
                                 void openExternalUrl(
@@ -3105,10 +3435,12 @@ export function FineTuningView({
                               }
                             >
                               Open saved viewer
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
+                            </AgentInlineButton>
+                            <AgentInlineButton
+                              agentId={`history-run-summary-${run.manifestPath}`}
+                              label={`Open saved summary for ${run.generatedAt}`}
+                              group="collection-history"
+                              description="Open the saved collection run summary"
                               className={FINE_TUNING_ACTION_CLASS}
                               onClick={() =>
                                 void openExternalUrl(
@@ -3117,7 +3449,7 @@ export function FineTuningView({
                               }
                             >
                               Open saved summary
-                            </Button>
+                            </AgentInlineButton>
                           </div>
                         </div>
                       </div>
@@ -3147,9 +3479,11 @@ export function FineTuningView({
                   <div className="mt-1 break-all font-mono text-xs text-txt">
                     {analysisIndex.indexHtmlPath}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="analysis-open-viewer"
+                    label="Open analysis viewer"
+                    group="analysis"
+                    description="Open the analysis index viewer"
                     className={`${FINE_TUNING_ACTION_CLASS} mt-2`}
                     onClick={() =>
                       void openExternalUrl(
@@ -3158,7 +3492,7 @@ export function FineTuningView({
                     }
                   >
                     Open viewer
-                  </Button>
+                  </AgentInlineButton>
                 </div>
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -3227,7 +3561,7 @@ export function FineTuningView({
                         {analysisCoverage.benchmarkModelStats
                           .bestAverageScore !== null
                           ? ` avg:${analysisCoverage.benchmarkModelStats.bestAverageScore}`
-                        : ""}
+                          : ""}
                       </div>
                     </div>
                     <div>
@@ -3245,9 +3579,7 @@ export function FineTuningView({
                                 tier.hasBase ? "base" : "-"
                               }/${tier.hasTrained ? "trained" : "-"}/${
                                 tier.hasReference ? "ref" : "-"
-                              }/${
-                                tier.hasImprovement ? "improvement" : "-"
-                              }`,
+                              }/${tier.hasImprovement ? "improvement" : "-"}`,
                           )
                           .join(" ")}
                       </div>
@@ -3296,10 +3628,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.HuggingFaceRepo")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="hf-repo-id"
+                    label="HuggingFace repo"
+                    group="hf-ingest"
+                    description="HuggingFace dataset repo id to ingest"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={hfRepoId}
-                    onChange={(event) => setHfRepoId(event.target.value)}
+                    onChange={setHfRepoId}
                     placeholder="elizaos/eliza-1-training"
                   />
                 </label>
@@ -3307,10 +3643,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Revision")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="hf-revision"
+                    label="HuggingFace revision"
+                    group="hf-ingest"
+                    description="Dataset revision/branch to ingest"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={hfRevision}
-                    onChange={(event) => setHfRevision(event.target.value)}
+                    onChange={setHfRevision}
                     placeholder="main"
                   />
                 </label>
@@ -3318,10 +3658,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="hf-output-dir"
+                    label="HuggingFace output directory"
+                    group="hf-ingest"
+                    description="Output directory for the ingested dataset"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={hfOutputDir}
-                    onChange={(event) => setHfOutputDir(event.target.value)}
+                    onChange={setHfOutputDir}
                     placeholder="default"
                   />
                 </label>
@@ -3329,19 +3673,26 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Files")}
                   </span>
-                  <textarea
+                  <AgentTextAreaField
+                    agentId="hf-files"
+                    label="HuggingFace files"
+                    group="hf-ingest"
+                    description="Newline-separated dataset files to ingest"
                     className="min-h-24 w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
                     value={hfFiles}
-                    onChange={(event) => setHfFiles(event.target.value)}
+                    onChange={setHfFiles}
                   />
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="hf-dry-run"
+                    label="HuggingFace ingest dry run"
+                    group="hf-ingest"
+                    description="Run the HuggingFace ingest as a dry run"
                     checked={hfDryRun}
-                    onChange={(event) => setHfDryRun(event.target.checked)}
+                    onChange={setHfDryRun}
                   />
                   {t("finetuningview.DryRun")}
                 </label>
@@ -3399,9 +3750,11 @@ export function FineTuningView({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="hf-open-manifest"
+                    label="Open HF manifest"
+                    group="hf-ingest"
+                    description="Open the HuggingFace ingest manifest"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3410,10 +3763,12 @@ export function FineTuningView({
                     }}
                   >
                     Open HF manifest
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  </AgentInlineButton>
+                  <AgentInlineButton
+                    agentId="hf-open-output"
+                    label="Open HF output"
+                    group="hf-ingest"
+                    description="Open the HuggingFace ingest output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3422,7 +3777,7 @@ export function FineTuningView({
                     }}
                   >
                     Open HF output
-                  </Button>
+                  </AgentInlineButton>
                 </div>
               </>
             )}
@@ -3434,10 +3789,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Archetypes")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="feed-archetypes"
+                    label="Feed archetypes"
+                    group="feed-gen"
+                    description="Comma-separated archetypes for feed generation"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={feedArchetypes}
-                    onChange={(event) => setFeedArchetypes(event.target.value)}
+                    onChange={setFeedArchetypes}
                     placeholder="trader"
                   />
                 </label>
@@ -3445,61 +3804,83 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Agents")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="feed-num-agents"
+                    label="Feed agents"
+                    group="feed-gen"
+                    description="Number of agents for feed generation"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={feedNumAgents}
-                    onChange={(event) => setFeedNumAgents(event.target.value)}
-                    inputMode="numeric"
+                    onChange={setFeedNumAgents}
+                    type="number"
                   />
                 </label>
                 <label className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Ticks")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="feed-ticks"
+                    label="Feed ticks"
+                    group="feed-gen"
+                    description="Number of simulation ticks for feed generation"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={feedTicks}
-                    onChange={(event) => setFeedTicks(event.target.value)}
-                    inputMode="numeric"
+                    onChange={setFeedTicks}
+                    type="number"
                   />
                 </label>
                 <label className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Parallel")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="feed-parallel"
+                    label="Feed parallelism"
+                    group="feed-gen"
+                    description="Parallelism for feed generation"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={feedParallel}
-                    onChange={(event) => setFeedParallel(event.target.value)}
-                    inputMode="numeric"
+                    onChange={setFeedParallel}
+                    type="number"
                   />
                 </label>
                 <label className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="feed-output-dir"
+                    label="Feed output directory"
+                    group="feed-gen"
+                    description="Output directory for generated feed trajectories"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={feedOutputDir}
-                    onChange={(event) => setFeedOutputDir(event.target.value)}
+                    onChange={setFeedOutputDir}
                     placeholder="default"
                   />
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="feed-cleanup"
+                    label="Feed cleanup"
+                    group="feed-gen"
+                    description="Clean up intermediate feed artifacts"
                     checked={feedCleanup}
-                    onChange={(event) => setFeedCleanup(event.target.checked)}
+                    onChange={setFeedCleanup}
                   />
                   {t("finetuningview.Cleanup")}
                 </label>
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="feed-dry-run"
+                    label="Feed generation dry run"
+                    group="feed-gen"
+                    description="Run feed generation as a dry run"
                     checked={feedDryRun}
-                    onChange={(event) => setFeedDryRun(event.target.checked)}
+                    onChange={setFeedDryRun}
                   />
                   {t("finetuningview.DryRun")}
                 </label>
@@ -3577,9 +3958,11 @@ export function FineTuningView({
                   ) : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="feed-open-output"
+                    label="Open feed output"
+                    group="feed-gen"
+                    description="Open the feed generation output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3588,11 +3971,13 @@ export function FineTuningView({
                     }}
                   >
                     Open feed output
-                  </Button>
+                  </AgentInlineButton>
                   {feedGenerationResult.artifacts[0]?.manifestPath ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <AgentInlineButton
+                      agentId="feed-open-manifest"
+                      label="Open feed manifest"
+                      group="feed-gen"
+                      description="Open the feed generation manifest"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
                         void openExternalUrl(
@@ -3603,12 +3988,14 @@ export function FineTuningView({
                       }}
                     >
                       Open feed manifest
-                    </Button>
+                    </AgentInlineButton>
                   ) : null}
                   {feedGenerationResult.artifacts[0]?.exportPath ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <AgentInlineButton
+                      agentId="feed-open-export"
+                      label="Open feed export"
+                      group="feed-gen"
+                      description="Open the feed generation export"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
                         void openExternalUrl(
@@ -3619,7 +4006,7 @@ export function FineTuningView({
                       }}
                     >
                       Open feed export
-                    </Button>
+                    </AgentInlineButton>
                   ) : null}
                 </div>
               </>
@@ -3632,10 +4019,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Scenario")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="scenario-filter"
+                    label="Scenario filter"
+                    group="scenarios"
+                    description="Filter expression to select scenarios to run"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={scenarioFilter}
-                    onChange={(event) => setScenarioFilter(event.target.value)}
+                    onChange={setScenarioFilter}
                     placeholder="deterministic-pr-smoke"
                   />
                 </label>
@@ -3643,44 +4034,49 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="scenario-output-dir"
+                    label="Scenario output directory"
+                    group="scenarios"
+                    description="Output directory for scenario results"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={scenarioOutputDir}
-                    onChange={(event) =>
-                      setScenarioOutputDir(event.target.value)
-                    }
+                    onChange={setScenarioOutputDir}
                     placeholder="default"
                   />
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="scenario-export-native"
+                    label="Export native trajectories"
+                    group="scenarios"
+                    description="Export native trajectories from scenario runs"
                     checked={scenarioExportNative}
-                    onChange={(event) =>
-                      setScenarioExportNative(event.target.checked)
-                    }
+                    onChange={setScenarioExportNative}
                   />
                   {t("finetuningview.ExportNative")}
                 </label>
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="scenario-deterministic-proxy"
+                    label="Deterministic proxy"
+                    group="scenarios"
+                    description="Use a deterministic proxy for scenario runs"
                     checked={scenarioDeterministicProxy}
-                    onChange={(event) =>
-                      setScenarioDeterministicProxy(event.target.checked)
-                    }
+                    onChange={setScenarioDeterministicProxy}
                   />
                   {t("finetuningview.Proxy")}
                 </label>
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="scenario-dry-run"
+                    label="Scenario dry run"
+                    group="scenarios"
+                    description="Run the scenario suite as a dry run"
                     checked={scenarioDryRun}
-                    onChange={(event) =>
-                      setScenarioDryRun(event.target.checked)
-                    }
+                    onChange={setScenarioDryRun}
                   />
                   {t("finetuningview.DryRun")}
                 </label>
@@ -3745,9 +4141,11 @@ export function FineTuningView({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="scenario-open-viewer"
+                    label="Open scenario viewer"
+                    group="scenarios"
+                    description="Open the scenario results viewer"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3756,10 +4154,12 @@ export function FineTuningView({
                     }}
                   >
                     Open scenario viewer
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  </AgentInlineButton>
+                  <AgentInlineButton
+                    agentId="scenario-open-matrix"
+                    label="Open scenario matrix"
+                    group="scenarios"
+                    description="Open the scenario results matrix"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3768,11 +4168,13 @@ export function FineTuningView({
                     }}
                   >
                     Open scenario matrix
-                  </Button>
+                  </AgentInlineButton>
                   {scenarioResult.nativeJsonlPath ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <AgentInlineButton
+                      agentId="scenario-open-native-jsonl"
+                      label="Open native JSONL"
+                      group="scenarios"
+                      description="Open the scenario native JSONL export"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
                         if (scenarioResult.nativeJsonlPath) {
@@ -3783,11 +4185,13 @@ export function FineTuningView({
                       }}
                     >
                       Open native JSONL
-                    </Button>
+                    </AgentInlineButton>
                   ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="scenario-open-output"
+                    label="Open scenario output"
+                    group="scenarios"
+                    description="Open the scenario output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3796,7 +4200,7 @@ export function FineTuningView({
                     }}
                   >
                     Open scenario output
-                  </Button>
+                  </AgentInlineButton>
                 </div>
               </>
             )}
@@ -3808,12 +4212,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Manifest")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="eval-manifest-path"
+                    label="Eval manifest path"
+                    group="eval-comparison"
+                    description="Training manifest path for the eval comparison"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonManifestPath}
-                    onChange={(event) =>
-                      setEvalComparisonManifestPath(event.target.value)
-                    }
+                    onChange={setEvalComparisonManifestPath}
                     placeholder="training manifest path"
                   />
                 </label>
@@ -3821,12 +4227,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.BaseModel")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="eval-base-model"
+                    label="Eval base model"
+                    group="eval-comparison"
+                    description="Base model id for the eval comparison"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonBaseModel}
-                    onChange={(event) =>
-                      setEvalComparisonBaseModel(event.target.value)
-                    }
+                    onChange={setEvalComparisonBaseModel}
                     placeholder="eliza-1-0_8b-base"
                   />
                 </label>
@@ -3834,12 +4242,14 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.TrainedModel")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="eval-trained-model"
+                    label="Eval trained model"
+                    group="eval-comparison"
+                    description="Trained model path for the eval comparison"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonTrainedModelPath}
-                    onChange={(event) =>
-                      setEvalComparisonTrainedModelPath(event.target.value)
-                    }
+                    onChange={setEvalComparisonTrainedModelPath}
                     placeholder="eliza-1-0_8b-trained"
                   />
                 </label>
@@ -3847,52 +4257,59 @@ export function FineTuningView({
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Backend")}
                   </span>
-                  <select
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentNativeSelect
+                    agentId="eval-backend"
+                    label="Eval backend"
+                    group="eval-comparison"
+                    description="Compute backend for the eval comparison"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonBackend}
-                    onChange={(event) =>
-                      setEvalComparisonBackend(
-                        event.target.value as "cpu" | "mlx" | "cuda",
-                      )
+                    onChange={(value) =>
+                      setEvalComparisonBackend(value as "cpu" | "mlx" | "cuda")
                     }
+                    options={["cpu", "mlx", "cuda"]}
                   >
                     <option value="cpu">cpu</option>
                     <option value="mlx">mlx</option>
                     <option value="cuda">cuda</option>
-                  </select>
+                  </AgentNativeSelect>
                 </label>
                 <label className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-5">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
-                  <input
-                    className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                  <AgentTextField
+                    agentId="eval-output-dir"
+                    label="Eval output directory"
+                    group="eval-comparison"
+                    description="Output directory for the eval comparison"
+                    className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonOutputDir}
-                    onChange={(event) =>
-                      setEvalComparisonOutputDir(event.target.value)
-                    }
+                    onChange={setEvalComparisonOutputDir}
                     placeholder="default"
                   />
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="eval-include-in-collection"
+                    label="Include eval in collection"
+                    group="eval-comparison"
+                    description="Include the eval comparison in the collection run"
                     checked={evalComparisonEnabled}
-                    onChange={(event) =>
-                      setEvalComparisonEnabled(event.target.checked)
-                    }
+                    onChange={setEvalComparisonEnabled}
                   />
                   {t("finetuningview.IncludeInCollection")}
                 </label>
                 <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  <input
-                    type="checkbox"
+                  <AgentCheckboxField
+                    agentId="eval-dry-run"
+                    label="Eval comparison dry run"
+                    group="eval-comparison"
+                    description="Run the eval comparison as a dry run"
                     checked={evalComparisonDryRun}
-                    onChange={(event) =>
-                      setEvalComparisonDryRun(event.target.checked)
-                    }
+                    onChange={setEvalComparisonDryRun}
                   />
                   {t("finetuningview.DryRun")}
                 </label>
@@ -3959,9 +4376,11 @@ export function FineTuningView({
                   ) : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="eval-open-artifact"
+                    label="Open eval artifact"
+                    group="eval-comparison"
+                    description="Open the eval comparison artifact"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3970,10 +4389,12 @@ export function FineTuningView({
                     }}
                   >
                     Open eval artifact
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  </AgentInlineButton>
+                  <AgentInlineButton
+                    agentId="eval-open-report"
+                    label="Open eval report"
+                    group="eval-comparison"
+                    description="Open the eval comparison report"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3982,10 +4403,12 @@ export function FineTuningView({
                     }}
                   >
                     Open eval report
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  </AgentInlineButton>
+                  <AgentInlineButton
+                    agentId="eval-open-output"
+                    label="Open eval output"
+                    group="eval-comparison"
+                    description="Open the eval comparison output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -3994,7 +4417,7 @@ export function FineTuningView({
                     }}
                   >
                     Open eval output
-                  </Button>
+                  </AgentInlineButton>
                 </div>
               </>
             )}
@@ -4005,10 +4428,14 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tiers")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="benchmark-tiers"
+                  label="Benchmark tiers"
+                  group="benchmark"
+                  description="Comma-separated benchmark tiers to run"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkTiers}
-                  onChange={(event) => setBenchmarkTiers(event.target.value)}
+                  onChange={setBenchmarkTiers}
                   placeholder={ELIZA_ONE_BENCHMARK_TIER_LIST}
                 />
               </label>
@@ -4016,18 +4443,28 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
-                <select
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentNativeSelect
+                  agentId="benchmark-kind"
+                  label="Benchmark kind"
+                  group="benchmark"
+                  description="Which benchmark suite to run"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkKind}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setBenchmarkKind(
-                      event.target.value as
+                      value as
                         | "eliza_harness_action_selection"
                         | "hermes"
                         | "clawbench"
                         | "all",
                     )
                   }
+                  options={[
+                    "eliza_harness_action_selection",
+                    "hermes",
+                    "clawbench",
+                    "all",
+                  ]}
                 >
                   <option value="eliza_harness_action_selection">
                     eliza_harness_action_selection
@@ -4035,37 +4472,42 @@ export function FineTuningView({
                   <option value="hermes">hermes</option>
                   <option value="clawbench">clawbench</option>
                   <option value="all">all</option>
-                </select>
+                </AgentNativeSelect>
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variants")}
                 </span>
-                <select
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentNativeSelect
+                  agentId="benchmark-variants"
+                  label="Benchmark variants"
+                  group="benchmark"
+                  description="Which model variants to benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkVariants}
-                  onChange={(event) =>
-                    setBenchmarkVariants(
-                      event.target.value as "trained" | "base" | "both",
-                    )
+                  onChange={(value) =>
+                    setBenchmarkVariants(value as "trained" | "base" | "both")
                   }
+                  options={["both", "base", "trained"]}
                 >
                   <option value="both">both</option>
                   <option value="base">base</option>
                   <option value="trained">trained</option>
-                </select>
+                </AgentNativeSelect>
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxSamples")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="benchmark-max-samples"
+                  label="Benchmark max samples"
+                  group="benchmark"
+                  description="Maximum samples per benchmark run"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkMaxSamples}
-                  onChange={(event) =>
-                    setBenchmarkMaxSamples(event.target.value)
-                  }
-                  inputMode="numeric"
+                  onChange={setBenchmarkMaxSamples}
+                  type="number"
                   placeholder="50"
                 />
               </label>
@@ -4073,12 +4515,14 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ResultsDb")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="benchmark-results-db"
+                  label="Benchmark results DB"
+                  group="benchmark"
+                  description="Path to the benchmark results database"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkResultsDb}
-                  onChange={(event) =>
-                    setBenchmarkResultsDb(event.target.value)
-                  }
+                  onChange={setBenchmarkResultsDb}
                   placeholder="default"
                 />
               </label>
@@ -4086,12 +4530,14 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.TrainedModelPath")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="benchmark-trained-model-path"
+                  label="Benchmark trained model path"
+                  group="benchmark"
+                  description="Path to the trained model for benchmarking"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkTrainedModelPath}
-                  onChange={(event) =>
-                    setBenchmarkTrainedModelPath(event.target.value)
-                  }
+                  onChange={setBenchmarkTrainedModelPath}
                   placeholder="packages/training/checkpoints/eliza-1-0_8b/final"
                 />
               </label>
@@ -4099,22 +4545,27 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MatrixOutput")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="benchmark-matrix-output"
+                  label="Benchmark matrix output"
+                  group="benchmark"
+                  description="Output directory for the benchmark matrix"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkMatrixOutputDir}
-                  onChange={(event) =>
-                    setBenchmarkMatrixOutputDir(event.target.value)
-                  }
+                  onChange={setBenchmarkMatrixOutputDir}
                   placeholder="default"
                 />
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="benchmark-dry-run"
+                  label="Benchmark dry run"
+                  group="benchmark"
+                  description="Run the benchmark suite as a dry run"
                   checked={benchmarkDryRun}
-                  onChange={(event) => setBenchmarkDryRun(event.target.checked)}
+                  onChange={setBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
               </label>
@@ -4190,9 +4641,11 @@ export function FineTuningView({
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {benchmarkResult.matrixArtifactPath ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="benchmark-open-matrix-artifact"
+                    label="Open matrix artifact"
+                    group="benchmark"
+                    description="Open the benchmark matrix artifact"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       if (benchmarkResult.matrixArtifactPath) {
@@ -4203,12 +4656,14 @@ export function FineTuningView({
                     }}
                   >
                     Open matrix artifact
-                  </Button>
+                  </AgentInlineButton>
                 ) : null}
                 {benchmarkResult.outputDir ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="benchmark-open-output"
+                    label="Open benchmark output"
+                    group="benchmark"
+                    description="Open the benchmark output directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -4217,7 +4672,7 @@ export function FineTuningView({
                     }}
                   >
                     Open benchmark output
-                  </Button>
+                  </AgentInlineButton>
                 ) : null}
               </div>
             </div>
@@ -4228,10 +4683,14 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleRepo")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="bundle-repo-id"
+                  label="Bundle repo"
+                  group="bundle-stage"
+                  description="HuggingFace repo id for the bundle"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageRepoId}
-                  onChange={(event) => setBundleStageRepoId(event.target.value)}
+                  onChange={setBundleStageRepoId}
                   placeholder="elizaos/eliza-1"
                 />
               </label>
@@ -4239,10 +4698,15 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleTier")}
                 </span>
-                <select
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentNativeSelect
+                  agentId="bundle-tier"
+                  label="Bundle tier"
+                  group="bundle-stage"
+                  description="Model tier to stage"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageTier}
-                  onChange={(event) => setBundleStageTier(event.target.value)}
+                  onChange={setBundleStageTier}
+                  options={["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]}
                 >
                   <option value="0_8b">0_8b</option>
                   <option value="2b">2b</option>
@@ -4250,18 +4714,20 @@ export function FineTuningView({
                   <option value="9b">9b</option>
                   <option value="27b">27b</option>
                   <option value="27b-256k">27b-256k</option>
-                </select>
+                </AgentNativeSelect>
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.LocalDir")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="bundle-local-dir"
+                  label="Bundle local directory"
+                  group="bundle-stage"
+                  description="Local directory to stage the bundle into"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageLocalDir}
-                  onChange={(event) =>
-                    setBundleStageLocalDir(event.target.value)
-                  }
+                  onChange={setBundleStageLocalDir}
                   placeholder="/tmp/eliza-1-bundles"
                 />
               </label>
@@ -4269,37 +4735,42 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxBytes")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="bundle-max-bytes"
+                  label="Bundle max bytes"
+                  group="bundle-stage"
+                  description="Maximum bytes to stage for the bundle"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageMaxBytes}
-                  onChange={(event) =>
-                    setBundleStageMaxBytes(event.target.value)
-                  }
-                  inputMode="numeric"
+                  onChange={setBundleStageMaxBytes}
+                  type="number"
                 />
               </label>
               <label className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-1">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ManifestOutput")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="bundle-output-dir"
+                  label="Bundle manifest output"
+                  group="bundle-stage"
+                  description="Output directory for the bundle manifest"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageOutputDir}
-                  onChange={(event) =>
-                    setBundleStageOutputDir(event.target.value)
-                  }
+                  onChange={setBundleStageOutputDir}
                   placeholder="default"
                 />
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="bundle-apply"
+                  label="Apply bundle"
+                  group="bundle-stage"
+                  description="Apply the staged bundle"
                   checked={bundleStageApply}
-                  onChange={(event) =>
-                    setBundleStageApply(event.target.checked)
-                  }
+                  onChange={setBundleStageApply}
                 />
                 {t("finetuningview.Apply")}
               </label>
@@ -4381,9 +4852,11 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
+                <AgentInlineButton
+                  agentId="bundle-open-manifest"
+                  label="Open bundle manifest"
+                  group="bundle-stage"
+                  description="Open the bundle manifest"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4392,10 +4865,12 @@ export function FineTuningView({
                   }}
                 >
                   Open bundle manifest
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
+                </AgentInlineButton>
+                <AgentInlineButton
+                  agentId="bundle-open-output"
+                  label="Open bundle output"
+                  group="bundle-stage"
+                  description="Open the bundle output directory"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4404,11 +4879,13 @@ export function FineTuningView({
                   }}
                 >
                   Open bundle output
-                </Button>
+                </AgentInlineButton>
                 {bundleStageResult.plan?.bundleDir ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <AgentInlineButton
+                    agentId="bundle-open-dir"
+                    label="Open bundle directory"
+                    group="bundle-stage"
+                    description="Open the staged bundle directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
                       void openExternalUrl(
@@ -4417,7 +4894,7 @@ export function FineTuningView({
                     }}
                   >
                     Open bundle dir
-                  </Button>
+                  </AgentInlineButton>
                 ) : null}
               </div>
             </div>
@@ -4428,12 +4905,14 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ActionBenchmarkFilter")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-filter"
+                  label="Action benchmark filter"
+                  group="action-benchmark"
+                  description="Case id filter for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkFilter}
-                  onChange={(event) =>
-                    setActionBenchmarkFilter(event.target.value)
-                  }
+                  onChange={setActionBenchmarkFilter}
                   placeholder="case-id[,case-id]"
                 />
               </label>
@@ -4441,25 +4920,29 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RunsPerCase")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-runs-per-case"
+                  label="Action benchmark runs per case"
+                  group="action-benchmark"
+                  description="Number of runs per benchmark case"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkRunsPerCase}
-                  onChange={(event) =>
-                    setActionBenchmarkRunsPerCase(event.target.value)
-                  }
-                  inputMode="numeric"
+                  onChange={setActionBenchmarkRunsPerCase}
+                  type="number"
                 />
               </label>
               <label className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Output")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-output-dir"
+                  label="Action benchmark output directory"
+                  group="action-benchmark"
+                  description="Output directory for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkOutputDir}
-                  onChange={(event) =>
-                    setActionBenchmarkOutputDir(event.target.value)
-                  }
+                  onChange={setActionBenchmarkOutputDir}
                   placeholder="default"
                 />
               </label>
@@ -4467,36 +4950,42 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Model")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-model-id"
+                  label="Action benchmark model"
+                  group="action-benchmark"
+                  description="Model id for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkModelId}
-                  onChange={(event) =>
-                    setActionBenchmarkModelId(event.target.value)
-                  }
+                  onChange={setActionBenchmarkModelId}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseModel")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-base-model-id"
+                  label="Action benchmark base model"
+                  group="action-benchmark"
+                  description="Base model id for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkBaseModelId}
-                  onChange={(event) =>
-                    setActionBenchmarkBaseModelId(event.target.value)
-                  }
+                  onChange={setActionBenchmarkBaseModelId}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.CollectionTiers")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-pair-tiers"
+                  label="Action benchmark collection tiers"
+                  group="action-benchmark"
+                  description="Collection tiers for the paired action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkPairTiers}
-                  onChange={(event) =>
-                    setActionBenchmarkPairTiers(event.target.value)
-                  }
+                  onChange={setActionBenchmarkPairTiers}
                   placeholder={`${ELIZA_ONE_BENCHMARK_TIER_LIST} or all`}
                 />
               </label>
@@ -4504,143 +4993,166 @@ export function FineTuningView({
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RuntimeModel")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-runtime-model"
+                  label="Action benchmark runtime model"
+                  group="action-benchmark"
+                  description="Runtime model for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkRuntimeModel}
-                  onChange={(event) =>
-                    setActionBenchmarkRuntimeModel(event.target.value)
-                  }
+                  onChange={setActionBenchmarkRuntimeModel}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseRuntimeModel")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-base-runtime-model"
+                  label="Action benchmark base runtime model"
+                  group="action-benchmark"
+                  description="Base runtime model for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkBaseRuntimeModel}
-                  onChange={(event) =>
-                    setActionBenchmarkBaseRuntimeModel(event.target.value)
-                  }
+                  onChange={setActionBenchmarkBaseRuntimeModel}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Provider")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-provider"
+                  label="Action benchmark provider"
+                  group="action-benchmark"
+                  description="Provider for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkProvider}
-                  onChange={(event) =>
-                    setActionBenchmarkProvider(event.target.value)
-                  }
+                  onChange={setActionBenchmarkProvider}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseUrl")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-base-url"
+                  label="Action benchmark base URL"
+                  group="action-benchmark"
+                  description="Base URL for the action benchmark provider"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkBaseUrl}
-                  onChange={(event) =>
-                    setActionBenchmarkBaseUrl(event.target.value)
-                  }
+                  onChange={setActionBenchmarkBaseUrl}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variant")}
                 </span>
-                <select
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentNativeSelect
+                  agentId="action-benchmark-variant"
+                  label="Action benchmark variant"
+                  group="action-benchmark"
+                  description="Model variant for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkVariant}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setActionBenchmarkVariant(
-                      event.target.value as "reference" | "base" | "trained",
+                      value as "reference" | "base" | "trained",
                     )
                   }
+                  options={["trained", "base", "reference"]}
                 >
                   <option value="trained">trained</option>
                   <option value="base">base</option>
                   <option value="reference">reference</option>
-                </select>
+                </AgentNativeSelect>
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tier")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-tier"
+                  label="Action benchmark tier"
+                  group="action-benchmark"
+                  description="Tier for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkTier}
-                  onChange={(event) =>
-                    setActionBenchmarkTier(event.target.value)
-                  }
+                  onChange={setActionBenchmarkTier}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-matrix-benchmark"
+                  label="Action benchmark name"
+                  group="action-benchmark"
+                  description="Benchmark name for the action benchmark matrix"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkMatrixBenchmark}
-                  onChange={(event) =>
-                    setActionBenchmarkMatrixBenchmark(event.target.value)
-                  }
+                  onChange={setActionBenchmarkMatrixBenchmark}
                 />
               </label>
               <label className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.DatasetVersion")}
                 </span>
-                <input
-                  className="h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent"
+                <AgentTextField
+                  agentId="action-benchmark-dataset-version"
+                  label="Action benchmark dataset version"
+                  group="action-benchmark"
+                  description="Dataset version for the action benchmark"
+                  className={AGENT_FIELD_INPUT_CLASS}
                   value={actionBenchmarkDatasetVersion}
-                  onChange={(event) =>
-                    setActionBenchmarkDatasetVersion(event.target.value)
-                  }
+                  onChange={setActionBenchmarkDatasetVersion}
                 />
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="action-benchmark-pair-enabled"
+                  label="Pair base and trained"
+                  group="action-benchmark"
+                  description="Pair base and trained variants in the action benchmark"
                   checked={actionBenchmarkPairEnabled}
-                  onChange={(event) =>
-                    setActionBenchmarkPairEnabled(event.target.checked)
-                  }
+                  onChange={setActionBenchmarkPairEnabled}
                 />
                 {t("finetuningview.PairBaseTrained")}
               </label>
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="action-benchmark-use-mocks"
+                  label="Use mocks"
+                  group="action-benchmark"
+                  description="Use mocked responses in the action benchmark"
                   checked={actionBenchmarkUseMocks}
-                  onChange={(event) =>
-                    setActionBenchmarkUseMocks(event.target.checked)
-                  }
+                  onChange={setActionBenchmarkUseMocks}
                 />
                 {t("finetuningview.UseMocks")}
               </label>
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="action-benchmark-capture"
+                  label="Capture trajectories"
+                  group="action-benchmark"
+                  description="Capture trajectories during the action benchmark"
                   checked={actionBenchmarkCapture}
-                  onChange={(event) =>
-                    setActionBenchmarkCapture(event.target.checked)
-                  }
+                  onChange={setActionBenchmarkCapture}
                 />
                 {t("finetuningview.CaptureTrajectories")}
               </label>
               <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                <input
-                  type="checkbox"
+                <AgentCheckboxField
+                  agentId="action-benchmark-dry-run"
+                  label="Action benchmark dry run"
+                  group="action-benchmark"
+                  description="Run the action benchmark as a dry run"
                   checked={actionBenchmarkDryRun}
-                  onChange={(event) =>
-                    setActionBenchmarkDryRun(event.target.checked)
-                  }
+                  onChange={setActionBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
               </label>
@@ -4705,9 +5217,11 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
+                <AgentInlineButton
+                  agentId="action-benchmark-open-report"
+                  label="Open action report"
+                  group="action-benchmark"
+                  description="Open the action benchmark report"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4716,10 +5230,12 @@ export function FineTuningView({
                   }}
                 >
                   Open action report
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
+                </AgentInlineButton>
+                <AgentInlineButton
+                  agentId="action-benchmark-open-summary"
+                  label="Open action summary"
+                  group="action-benchmark"
+                  description="Open the action benchmark summary"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4728,10 +5244,12 @@ export function FineTuningView({
                   }}
                 >
                   Open action summary
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
+                </AgentInlineButton>
+                <AgentInlineButton
+                  agentId="action-benchmark-open-trajectories"
+                  label="Open action trajectories"
+                  group="action-benchmark"
+                  description="Open the action benchmark trajectories directory"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4740,10 +5258,12 @@ export function FineTuningView({
                   }}
                 >
                   Open action trajectories
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
+                </AgentInlineButton>
+                <AgentInlineButton
+                  agentId="action-benchmark-open-output"
+                  label="Open action output"
+                  group="action-benchmark"
+                  description="Open the action benchmark output directory"
                   className={FINE_TUNING_ACTION_CLASS}
                   onClick={() => {
                     void openExternalUrl(
@@ -4752,7 +5272,7 @@ export function FineTuningView({
                   }}
                 >
                   Open action output
-                </Button>
+                </AgentInlineButton>
               </div>
             </div>
           )}
@@ -4843,6 +5363,44 @@ export function FineTuningView({
         <LiveEventsPanel events={trainingEvents} t={t} />
       </div>
     </ContentLayout>
+  );
+}
+
+function TuiRefreshButton({
+  loading,
+  onRefresh,
+}: {
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "tui-refresh",
+    role: "button",
+    label: "Refresh training status",
+    group: "tui",
+    description: "Reload the training status in the terminal view",
+    onActivate: onRefresh,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onRefresh}
+      disabled={loading}
+      aria-label="Refresh training status"
+      style={{
+        background: "transparent",
+        color: "#a7f3d0",
+        border: "1px solid rgba(167,243,208,0.45)",
+        borderRadius: 4,
+        padding: "4px 8px",
+        cursor: loading ? "not-allowed" : "pointer",
+        fontFamily: "inherit",
+      }}
+      {...agentProps}
+    >
+      refresh
+    </button>
   );
 }
 
@@ -4945,22 +5503,10 @@ export function FineTuningTuiView() {
             }}
           >
             <strong style={{ color: "#e2e8f0" }}>status</strong>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading}
-              style={{
-                background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
-                borderRadius: 4,
-                padding: "4px 8px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              refresh
-            </button>
+            <TuiRefreshButton
+              loading={loading}
+              onRefresh={() => void refresh()}
+            />
           </div>
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           <div>
@@ -5680,12 +6226,9 @@ function FineTuningDetailMetric({
   );
 }
 
-export function FineTuningDetailExtension({
-  app,
-}: AppDetailExtensionProps) {
-  const [history, setHistory] = useState<ListTrainingCollectionsResponse | null>(
-    null,
-  );
+export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
+  const [history, setHistory] =
+    useState<ListTrainingCollectionsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [runningGapId, setRunningGapId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -5886,7 +6429,9 @@ export function FineTuningDetailExtension({
               variant="outline"
               size="sm"
               onClick={() =>
-                void openExternalUrl(localViewerUrl(latest.analysisIndexHtmlPath))
+                void openExternalUrl(
+                  localViewerUrl(latest.analysisIndexHtmlPath),
+                )
               }
             >
               Open analysis
@@ -5895,7 +6440,9 @@ export function FineTuningDetailExtension({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void openExternalUrl(localViewerUrl(latest.readmePath))}
+              onClick={() =>
+                void openExternalUrl(localViewerUrl(latest.readmePath))
+              }
             >
               Open README
             </Button>
@@ -5928,7 +6475,4 @@ export function FineTuningDetailExtension({
   );
 }
 
-registerDetailExtension(
-  FINE_TUNING_DETAIL_PANEL_ID,
-  FineTuningDetailExtension,
-);
+registerDetailExtension(FINE_TUNING_DETAIL_PANEL_ID, FineTuningDetailExtension);

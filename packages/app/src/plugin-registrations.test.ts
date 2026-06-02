@@ -14,6 +14,7 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-hyperliquid-app",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-wallet-ui",
+  "@elizaos/app-model-tester",
   "@elizaos/plugin-contacts/register",
   "@elizaos/plugin-device-settings/register",
   "@elizaos/plugin-messages/register",

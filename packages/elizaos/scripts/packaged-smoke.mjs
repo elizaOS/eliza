@@ -156,8 +156,27 @@ function runCli(smokeDir, cwd, args) {
   return run(getInstalledCli(smokeDir), args, { cwd, env: cliEnv });
 }
 
+function availableCliRuntimes() {
+  // The bin's ESM imports are resolved by whatever runtime EXECUTES the bin,
+  // not by whatever installed it. node and bun apply the package "exports" map
+  // differently, so #8000 (ERR_PACKAGE_PATH_NOT_EXPORTED) can reproduce under
+  // one and not the other. Exercise every runtime that is on PATH.
+  const runtimes = [];
+  if (commandExists("node")) runtimes.push("node");
+  if (commandExists(bunCommand)) runtimes.push(bunCommand);
+  if (runtimes.length === 0) {
+    throw new Error("Neither node nor bun is available to execute the CLI");
+  }
+  return runtimes;
+}
+
 function runGlobalCli(prefixDir, cwd, args) {
-  return run(getGloballyInstalledCli(prefixDir), args, { cwd, env: cliEnv });
+  // Run the installed bin under each runtime explicitly. execFileSync throws on
+  // a non-zero exit, so a successful return is the "exit 0" assertion.
+  const globalCli = getGloballyInstalledCli(prefixDir);
+  for (const runtime of availableCliRuntimes()) {
+    run(runtime, [globalCli, ...args], { cwd, env: cliEnv });
+  }
 }
 
 function smokeGlobalInstall(tarballPath) {
@@ -172,7 +191,12 @@ function smokeGlobalInstall(tarballPath) {
 
     const globalCli = getGloballyInstalledCli(prefixDir);
     assertPathExists(globalCli);
+    // --version and --help both run the full module-init import chain (the bin
+    // shim's top-level imports) before commander short-circuits, so either
+    // would surface ERR_PACKAGE_PATH_NOT_EXPORTED. Assert both, under both
+    // node and bun.
     runGlobalCli(prefixDir, tmpRoot, ["--version"]);
+    runGlobalCli(prefixDir, tmpRoot, ["--help"]);
   }
 }
 

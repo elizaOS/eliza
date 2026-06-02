@@ -3,7 +3,7 @@
   "overall_status": "cad_package_pass",
   "manufacturing_release_ready": false,
   "why_not_release_ready": [
-    "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
+    "Local routed KiCad PCB and routed STEP candidates exist for visual review only; supplier-approved production routing, fabrication outputs, and first-article evidence are not released.",
     "Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers are not locked.",
     "No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical samples.",
     "No GD&T-controlled release drawing package or toolmaker DFM signoff."

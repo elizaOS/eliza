@@ -47,6 +47,7 @@ export * from "./contracts/health.js";
 export * from "./default-packs/index.js";
 export * from "./health-bridge/index.js";
 export * from "./providers/index.js";
+export * from "./routes/index.js";
 export * from "./screen-time/index.js";
 export * from "./sleep/index.js";
 export * from "./ui/index.js";

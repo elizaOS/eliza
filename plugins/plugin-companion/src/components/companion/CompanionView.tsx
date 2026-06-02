@@ -10,9 +10,11 @@ import {
   useApp,
   useRenderGuard,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type CSSProperties,
   memo,
+  type ReactNode,
   Suspense,
   useCallback,
   useMemo,
@@ -390,22 +392,35 @@ export function CompanionTuiView() {
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
             commands: state | emotes | play-emote | stop-emote | toggle-voice
           </div>
-          <button type="button" onClick={toggleVoiceMute} style={buttonStyle}>
+          <CompanionTuiButton
+            agentId="tui-toggle-voice"
+            label="Toggle voice"
+            onActivate={toggleVoiceMute}
+          >
             toggle voice
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleNewConversation()}
-            style={buttonStyle}
+          </CompanionTuiButton>
+          <CompanionTuiButton
+            agentId="tui-new-chat"
+            label="New chat"
+            onActivate={() => void handleNewConversation()}
           >
             new chat
-          </button>
-          <button type="button" onClick={toggleEmotePicker} style={buttonStyle}>
+          </CompanionTuiButton>
+          <CompanionTuiButton
+            agentId="tui-toggle-emotes"
+            label={emotePickerOpen ? "Close emotes" : "Open emotes"}
+            status={emotePickerOpen ? "active" : "inactive"}
+            onActivate={toggleEmotePicker}
+          >
             {emotePickerOpen ? "close emotes" : "open emotes"}
-          </button>
-          <button type="button" onClick={openSettings} style={buttonStyle}>
+          </CompanionTuiButton>
+          <CompanionTuiButton
+            agentId="tui-settings"
+            label="Settings"
+            onActivate={openSettings}
+          >
             settings
-          </button>
+          </CompanionTuiButton>
           <div style={{ marginTop: 14 }}>
             {Object.entries(viewState.emotesByCategory).map(
               ([category, count]) => (
@@ -433,6 +448,40 @@ const buttonStyle = {
   cursor: "pointer",
   fontFamily: "inherit",
 } satisfies CSSProperties;
+
+function CompanionTuiButton({
+  agentId,
+  label,
+  status,
+  onActivate,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  status?: string;
+  onActivate: () => void;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "companion-tui-controls",
+    status,
+    description: label,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onActivate}
+      style={buttonStyle}
+      {...agentProps}
+    >
+      {children}
+    </button>
+  );
+}
 
 export async function interact(
   capability: string,

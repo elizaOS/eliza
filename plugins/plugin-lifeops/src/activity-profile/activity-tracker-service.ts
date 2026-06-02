@@ -16,7 +16,7 @@ import {
   LifeOpsRepository,
 } from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
-import { isSystemInactivityApp } from "./system-inactivity-apps.js";
+import { isSystemInactivityApp } from "@elizaos/plugin-health";
 
 export type ActivityTrackerMode =
   | "running"

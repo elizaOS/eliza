@@ -41,7 +41,6 @@ export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
-export * from "./avatar-runtime/index";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
 export {

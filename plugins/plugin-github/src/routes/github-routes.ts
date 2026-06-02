@@ -74,6 +74,15 @@ interface TokenStatusResponse {
   savedAt?: number;
 }
 
+interface GitHubValidationResponse {
+  ok: boolean;
+  status: number;
+  headers: {
+    get(name: string): string | null;
+  };
+  json(): Promise<unknown>;
+}
+
 function sendJson(
   ctx: GitHubRouteContext,
   status: number,
@@ -106,16 +115,16 @@ async function validateToken(
 ): Promise<{ user: GitHubUserResponse; scopes: string[] }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
-  let response: Response;
+  let response: GitHubValidationResponse;
   try {
-    response = await fetchImpl(GITHUB_USER_URL, {
+    response = (await fetchImpl(GITHUB_USER_URL, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
         "User-Agent": "eliza-github-connection",
       },
       signal: controller.signal,
-    });
+    })) as GitHubValidationResponse;
   } finally {
     clearTimeout(timer);
   }

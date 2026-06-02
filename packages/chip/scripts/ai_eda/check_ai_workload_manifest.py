@@ -176,6 +176,12 @@ def validate(manifest: dict[str, Any]) -> list[str]:
             errors.append("policy.release_use_allowed must be false")
         if policy.get("performance_claim_allowed") is not False:
             errors.append("policy.performance_claim_allowed must be false")
+        false_claim_flags = {
+            "release_use_allowed": False,
+            "performance_claim_allowed": False,
+        }
+        if policy.get("false_claim_flags") != false_claim_flags:
+            errors.append("policy.false_claim_flags must match denied AI workload claims")
     workloads = manifest.get("workloads")
     if not isinstance(workloads, list) or len(workloads) < 6:
         return errors + ["workloads must contain at least six entries"]

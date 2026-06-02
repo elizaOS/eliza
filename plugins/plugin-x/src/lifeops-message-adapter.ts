@@ -183,6 +183,9 @@ export class XDmAdapter extends BaseMessageAdapter {
         "[XDmAdapter] createDraft requires a recipient identifier",
       );
     }
+    if (!draft.body.trim()) {
+      throw new Error("[XDmAdapter] createDraft requires non-empty body");
+    }
     const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
     const preview =
       draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
@@ -203,6 +206,13 @@ export class XDmAdapter extends BaseMessageAdapter {
       participantId,
       text,
     });
+    if (sent.ok === false) {
+      throw new Error(
+        `[XDmAdapter] failed to send direct message${
+          sent.status ? ` (status ${sent.status})` : ""
+        }`,
+      );
+    }
     return {
       externalId: sent.messageId ?? `${participantId}:${Date.now()}`,
     };

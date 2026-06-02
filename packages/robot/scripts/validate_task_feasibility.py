@@ -715,6 +715,21 @@ def _success_predicate_diagnostics(
                 unmet=actual < required,
             )
         )
+    for side in ("left", "right"):
+        key = f"{side}_foot_contact_required"
+        if key not in success:
+            continue
+        required = bool(success[key])
+        values = traces.get(f"{side}_foot_contact", [])
+        actual = None if not values else bool(values[-1])
+        diagnostics.append(
+            _predicate_row(
+                name=key,
+                expected=required,
+                actual=actual,
+                unmet=actual is None or actual is not required,
+            )
+        )
     if "min_swing_foot_clearance_m" in success:
         required = float(success["min_swing_foot_clearance_m"])
         actual = _safe_max(traces.get("swing_foot_clearance", []))
@@ -1122,7 +1137,12 @@ def _make_sinusoidal_action(
         phase = 2.0 * np.pi * float(params["hz"]) * t_s + float(
             params.get("phase0", 0.0)
         )
-        direction = -1.0 if task_id == "walk_backward" else 1.0
+        backward = task_id == "walk_backward"
+        direction = -1.0 if backward else 1.0
+        phase_offset = float(params.get("backward_phase_offset", np.pi if backward else 0.0))
+        gait_phase = phase + phase_offset
+        knee_phase_sign = -1.0 if backward else 1.0
+        roll_phase_sign = -1.0 if backward else 1.0
         hip_bias = float(params.get("hip_bias", params.get("hip", 0.0)))
         knee_bias = float(params.get("knee_bias", params.get("knee", 0.0)))
         ank_bias = float(params.get("ank_bias", params.get("ank", 0.0)))
@@ -1133,28 +1153,28 @@ def _make_sinusoidal_action(
             value = 0.0
             if "hip_pitch" in name:
                 value = direction * (
-                    hip_bias + side * float(params["hip_amp"]) * np.sin(phase)
+                    hip_bias + side * float(params["hip_amp"]) * np.sin(gait_phase)
                 )
             elif "knee" in name:
                 value = (
                     knee_bias
                     + side
                     * float(params["knee_amp"])
-                    * np.sin(phase + float(params["knee_phase"]))
+                    * np.sin(gait_phase + knee_phase_sign * float(params["knee_phase"]))
                 )
             elif "ank_pitch" in name or "ankle_pitch" in name:
                 value = direction * (
                     ank_bias
                     + side
                     * float(params["ank_amp"])
-                    * np.sin(phase + float(params["ank_phase"]))
+                    * np.sin(gait_phase + knee_phase_sign * float(params["ank_phase"]))
                 )
             elif "hip_roll" in name:
                 value = (
                     side * float(params["roll_bias"])
                     + side
                     * float(params["roll_amp"])
-                    * np.sin(phase + float(params["roll_phase"]))
+                    * np.sin(gait_phase + roll_phase_sign * float(params["roll_phase"]))
                 )
             elif "ank_roll" in name or "ankle_roll" in name:
                 value = (
@@ -1162,14 +1182,14 @@ def _make_sinusoidal_action(
                     + side
                     * float(params["ank_roll_amp"])
                     * np.sin(
-                        phase
-                        + float(params["roll_phase"])
+                        gait_phase
+                        + roll_phase_sign * float(params["roll_phase"])
                         + float(params.get("ank_roll_phase_delta", 0.0))
                     )
                 )
             elif "hip_yaw" in name:
                 value = side * float(params.get("yaw_amp", 0.0)) * np.sin(
-                    phase + float(params.get("yaw_phase", 0.0))
+                    gait_phase + float(params.get("yaw_phase", 0.0))
                 )
             action[idx] = float(np.clip(value, -1.0, 1.0))
         return action
@@ -1196,6 +1216,37 @@ def _make_sinusoidal_action(
         return action.astype(np.float32)
 
     return _action
+
+
+def _make_env_locomotion_prior_action(
+    env: TextConditionedProfileEnv,
+    _task_id: str,
+    *,
+    prior_name: str,
+    feedback_pitch: float = 0.0,
+    feedback_roll: float = 0.0,
+    feedback_yaw: float = 0.0,
+) -> Callable[[int], np.ndarray | None]:
+    del feedback_pitch, feedback_roll, feedback_yaw
+    method_by_prior = {
+        "hiwonder_sine": env._locomotion_hiwonder_sine_prior_action,  # noqa: SLF001
+        "hiwonder_contact_sine": env._locomotion_hiwonder_contact_sine_prior_action,  # noqa: SLF001
+        "hiwonder_low_slip_contact_sine": env._locomotion_hiwonder_low_slip_contact_sine_prior_action,  # noqa: SLF001
+    }
+    method = method_by_prior[prior_name]
+
+    def _action(_step: int) -> np.ndarray:
+        return method().astype(np.float32)
+
+    return _action
+
+
+def _make_configured_locomotion_prior_action(
+    env: TextConditionedProfileEnv,
+    _task_id: str,
+) -> Callable[[int], np.ndarray | None]:
+    action = np.zeros(env.action_space.shape, dtype=np.float32)
+    return lambda _step: action
 
 
 def _make_switched_deterministic_action(
@@ -1366,6 +1417,36 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
         if _motion_clip_for_task(task_id) is not None:
             specs.append(_PrimitiveSpec("motion_clip", 1.0, _make_motion_clip_action))
         if task_id in {"walk_forward", "walk_backward"}:
+            for prior_name in (
+                "hiwonder_sine",
+                "hiwonder_contact_sine",
+                "hiwonder_low_slip_contact_sine",
+            ):
+                specs.append(
+                    _PrimitiveSpec(
+                        f"configured_prior_{prior_name}",
+                        1.0,
+                        _make_configured_locomotion_prior_action,
+                        {
+                            "prior_name": prior_name,
+                            "env_config": {
+                                "locomotion_action_prior": prior_name,
+                                "locomotion_prior_residual_scale": 0.0,
+                            },
+                        },
+                    )
+                )
+                specs.append(
+                    _PrimitiveSpec(
+                        f"env_prior_{prior_name}",
+                        1.0,
+                        partial(
+                            _make_env_locomotion_prior_action,
+                            prior_name=prior_name,
+                        ),
+                        {"prior_name": prior_name},
+                    )
+                )
             for idx, params in enumerate(_HIWONDER_FORWARD_SINE_PARAMS):
                 specs.append(
                     _PrimitiveSpec(
@@ -1509,6 +1590,7 @@ def _rollout_candidate(
     max_steps: int,
     primitive: _PrimitiveSpec,
 ) -> dict:
+    env_config_overrides = dict(primitive.params.get("env_config", {})) if primitive.params else {}
     env = TextConditionedProfileEnv(
         profile,
         ProfileEnvConfig(
@@ -1517,6 +1599,7 @@ def _rollout_candidate(
             episode_steps=max_steps,
             domain_rand=False,
             action_scale=primitive.action_scale,
+            **env_config_overrides,
         ),
     )
     env.reset(seed=0)

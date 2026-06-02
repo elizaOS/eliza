@@ -32,10 +32,10 @@ const ALL_PAGES_SPEC = path.join(
   "ui-smoke",
   "all-pages-clicksafe.spec.ts",
 );
-const PLUGIN_VIEWS_SPEC = path.join(
+const PLUGIN_VIEW_CASES_SOURCE = path.join(
   HERE,
   "ui-smoke",
-  "plugin-views-visual.spec.ts",
+  "plugin-view-cases.ts",
 );
 const PLUGIN_VIEW_VISUAL_REVIEW_REPORT = path.resolve(
   HERE,
@@ -57,6 +57,10 @@ type PluginViewCase = {
   id: string;
   viewType: "gui" | "tui" | "xr";
   path: string;
+};
+
+type PluginViewManifestContract = PluginViewCase & {
+  componentExport: string;
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
@@ -295,6 +299,199 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
   },
 ];
 
+const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
+  [
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "gui",
+      path: "/2004scape",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "xr",
+      path: "/2004scape",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "tui",
+      path: "/2004scape/tui",
+      componentExport: "TwoThousandFourScapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "gui",
+      path: "/clawville",
+      componentExport: "ClawvilleOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "xr",
+      path: "/clawville",
+      componentExport: "ClawvilleOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "tui",
+      path: "/clawville/tui",
+      componentExport: "ClawvilleTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "gui",
+      path: "/defense-of-the-agents",
+      componentExport: "DefenseAgentsOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "xr",
+      path: "/defense-of-the-agents",
+      componentExport: "DefenseAgentsOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "tui",
+      path: "/defense-of-the-agents/tui",
+      componentExport: "DefenseAgentsTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "gui",
+      path: "/feed",
+      componentExport: "FeedOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "xr",
+      path: "/feed",
+      componentExport: "FeedOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "tui",
+      path: "/feed/tui",
+      componentExport: "FeedTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "gui",
+      path: "/hyperscape",
+      componentExport: "HyperscapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "xr",
+      path: "/hyperscape",
+      componentExport: "HyperscapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "tui",
+      path: "/hyperscape/tui",
+      componentExport: "HyperscapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "gui",
+      path: "/scape",
+      componentExport: "ScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "xr",
+      path: "/scape",
+      componentExport: "ScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "tui",
+      path: "/scape/tui",
+      componentExport: "ScapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "gui",
+      path: "/screenshare",
+      componentExport: "ScreenshareOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "xr",
+      path: "/screenshare",
+      componentExport: "ScreenshareOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "tui",
+      path: "/screenshare/tui",
+      componentExport: "ScreenshareTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "gui",
+      path: "/task-coordinator",
+      componentExport: "CodingAgentTasksPanel",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "xr",
+      path: "/task-coordinator",
+      componentExport: "CodingAgentTasksPanel",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "tui",
+      path: "/task-coordinator/tui",
+      componentExport: "TaskCoordinatorTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "gui",
+      path: "/orchestrator",
+      componentExport: "OrchestratorWorkbench",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "xr",
+      path: "/orchestrator",
+      componentExport: "OrchestratorWorkbench",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "tui",
+      path: "/orchestrator/tui",
+      componentExport: "OrchestratorTuiView",
+    },
+  ];
+
 function pathsFromSource(filePath: string): Set<string> {
   const source = readFileSync(filePath, "utf8");
   return new Set(
@@ -426,13 +623,13 @@ function registeredAppShellPagePaths(): string[] {
 }
 
 function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
-  const source = readFileSync(PLUGIN_VIEWS_SPEC, "utf8");
+  const source = readFileSync(PLUGIN_VIEW_CASES_SOURCE, "utf8");
   return [
     ...source.matchAll(
       /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
     ),
   ].map((match) => ({
-    manifestPath: PLUGIN_VIEWS_SPEC,
+    manifestPath: PLUGIN_VIEW_CASES_SOURCE,
     id: match[1] ?? "",
     viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
     path: match[3] ?? "",
@@ -653,6 +850,61 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Plugin-views visual paths drifted from manifests: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("operator plugin view manifests keep explicit gui/xr/tui contracts", () => {
+    const contractsByManifest = new Map<string, PluginViewManifestContract[]>();
+    for (const contract of OPERATOR_VIEW_MANIFEST_CONTRACTS) {
+      const contracts = contractsByManifest.get(contract.manifestPath) ?? [];
+      contracts.push(contract);
+      contractsByManifest.set(contract.manifestPath, contracts);
+    }
+
+    const failures = [...contractsByManifest].flatMap(
+      ([manifestPath, contracts]) => {
+        const source = readFileSync(
+          path.resolve(REPO_ROOT, manifestPath),
+          "utf8",
+        );
+        const objectsByKey = new Map(
+          viewObjects(source).map((object) => {
+            const id = stringField(object, "id") ?? "";
+            const viewType = stringField(object, "viewType") ?? "gui";
+            return [`${id}:${viewType}`, object];
+          }),
+        );
+
+        return contracts.flatMap((contract) => {
+          const object = objectsByKey.get(
+            `${contract.id}:${contract.viewType}`,
+          );
+          if (!object) {
+            return [
+              `${manifestPath}:${contract.id}:${contract.viewType} missing view declaration`,
+            ];
+          }
+          const bundlePath = stringField(object, "bundlePath");
+          const componentExport = stringField(object, "componentExport");
+          const pathValue = stringField(object, "path");
+          return [
+            pathValue === contract.path
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} path expected ${contract.path} got ${pathValue}`,
+            bundlePath === "dist/views/bundle.js"
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} bundle expected dist/views/bundle.js got ${bundlePath}`,
+            componentExport === contract.componentExport
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} component expected ${contract.componentExport} got ${componentExport}`,
+          ].filter((failure): failure is string => Boolean(failure));
+        });
+      },
+    );
+
+    expect(
+      failures,
+      `Operator plugin view manifest contracts drifted: ${failures.join("; ")}`,
     ).toEqual([]);
   });
 

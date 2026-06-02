@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -83,57 +83,80 @@ const allowedCallsites = new Map<string, string>([
 	],
 ]);
 
-const actionHandlerCallPattern = [
-	"action\\.handler\\(",
-	"route\\.action\\.handler\\(",
-	"args\\.action\\.handler\\(",
-	"childAction\\.handler\\(",
-	"createTaskAction\\.handler\\(",
-	"googleCalendarAction\\.handler\\(",
-	"roomOpAction\\.handler\\(",
-	"appAction\\.handler\\(",
-	"playbackOp\\.handler\\(",
-	"playAudio\\.handler\\(",
-	"musicLibraryAction\\.handler\\(",
-	"manageRouting\\.handler\\(",
-	"manageZones\\.handler\\(",
-].join("|");
+const actionHandlerCallPattern = new RegExp(
+	[
+		"action\\.handler\\(",
+		"route\\.action\\.handler\\(",
+		"args\\.action\\.handler\\(",
+		"childAction\\.handler\\(",
+		"createTaskAction\\.handler\\(",
+		"googleCalendarAction\\.handler\\(",
+		"roomOpAction\\.handler\\(",
+		"appAction\\.handler\\(",
+		"playbackOp\\.handler\\(",
+		"playAudio\\.handler\\(",
+		"musicLibraryAction\\.handler\\(",
+		"manageRouting\\.handler\\(",
+		"manageZones\\.handler\\(",
+	].join("|"),
+);
+
+const searchRoots = [
+	"packages/core/src",
+	"packages/agent/src",
+	"packages/scenario-runner/src",
+	"plugins",
+];
+
+const excludedDirNames = new Set([
+	"dist",
+	"node_modules",
+	"test",
+	"tests",
+	"scripts",
+]);
+
+function isExcludedFile(relPath: string): boolean {
+	return (
+		relPath.endsWith(".d.ts") ||
+		relPath.endsWith(".test.ts") ||
+		relPath.endsWith(".spec.ts")
+	);
+}
+
+function isScannableSource(name: string): boolean {
+	return name.endsWith(".ts") || name.endsWith(".tsx");
+}
+
+function walk(absDir: string, found: Set<string>): void {
+	let entries: ReturnType<typeof readdirSync>;
+	try {
+		entries = readdirSync(absDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		const abs = path.join(absDir, entry.name);
+		if (entry.isDirectory()) {
+			if (excludedDirNames.has(entry.name)) continue;
+			walk(abs, found);
+			continue;
+		}
+		if (!entry.isFile() || !isScannableSource(entry.name)) continue;
+		const rel = path.relative(repoRoot, abs).split(path.sep).join("/");
+		if (isExcludedFile(rel)) continue;
+		const content = readFileSync(abs, "utf8");
+		if (actionHandlerCallPattern.test(content)) found.add(rel);
+	}
+}
 
 describe("action handler callsite audit", () => {
 	it("keeps direct action.handler callers classified for voiced response handling", () => {
-		const output = execFileSync(
-			"rg",
-			[
-				"-l",
-				actionHandlerCallPattern,
-				"packages/core/src",
-				"packages/agent/src",
-				"packages/scenario-runner/src",
-				"plugins",
-				"-g",
-				"!**/dist/**",
-				"-g",
-				"!**/node_modules/**",
-				"-g",
-				"!**/*.d.ts",
-				"-g",
-				"!**/*.test.ts",
-				"-g",
-				"!**/*.spec.ts",
-				"-g",
-				"!**/test/**",
-				"-g",
-				"!**/tests/**",
-				"-g",
-				"!**/scripts/**",
-			],
-			{ cwd: repoRoot, encoding: "utf8" },
-		);
-		const found = output
-			.split("\n")
-			.map((line) => line.trim())
-			.filter(Boolean)
-			.sort();
+		const foundSet = new Set<string>();
+		for (const root of searchRoots) {
+			walk(path.join(repoRoot, root), foundSet);
+		}
+		const found = [...foundSet].sort();
 		const unexpected = found.filter((file) => !allowedCallsites.has(file));
 		const stale = [...allowedCallsites.keys()].filter(
 			(file) => !found.includes(file),

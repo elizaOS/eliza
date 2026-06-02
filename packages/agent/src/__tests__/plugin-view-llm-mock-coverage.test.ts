@@ -23,17 +23,19 @@ function isGuiOrTui(view: PluginViewMockCase) {
 
 function readVisualMatrixCases(): PluginViewMockCase[] {
   const source = readFileSync(
-    resolve(repoRoot, "packages/app/test/ui-smoke/plugin-views-visual.spec.ts"),
+    resolve(repoRoot, "packages/app/test/ui-smoke/plugin-view-cases.ts"),
     "utf8",
   );
   const match = source.match(
-    /const VIEW_CASES: ViewCase\[] = \[([\s\S]*?)\]\.map/,
+    /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\s*(?:satisfies[\s\S]*?)?\)?\s*\.map/,
   );
   expect(match?.[1], "VIEW_CASES declaration was not found").toBeTruthy();
   const viewCasesSource = match?.[1] ?? "";
 
   return Array.from(
-    viewCasesSource.matchAll(/\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"\]/g),
+    viewCasesSource.matchAll(
+      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}]*\})?\]/g,
+    ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];
     const viewType = caseMatch[2];

@@ -82,7 +82,10 @@ bun run --cwd packages/ui build-storybook  # static build
    back rather than shipped broken. The purely-presentational wave-4 stories
    that don't touch that graph **are** committed and render-verified:
    `permissions/PermissionIcon`, `views/ViewIcon`, `shared/ThemeToggle`,
-   `shared/AppPageSidebar`, `voice/VoiceWaveform`.
+   `shared/AppPageSidebar`. (A `voice/VoiceWaveform` story was also shipped, but
+   its component was later removed on `develop` in a perf pass — "kill
+   VoiceWaveform" — so the orphaned story was dropped when this branch merged
+   `develop`.)
 
 ## Tracked test follow-ups (not ignored)
 

@@ -231,6 +231,22 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     group: "header",
     description: "Reload Shopify status and dashboard data",
   });
+  const viewAllOrdersButton = useAgentElement<HTMLButtonElement>({
+    id: "overview-view-all-orders",
+    role: "button",
+    label: "View all orders",
+    group: "overview",
+    description: "Jump to the orders tab from the overview summary",
+    onActivate: () => setActiveTab("orders"),
+  });
+  const viewAllInventoryButton = useAgentElement<HTMLButtonElement>({
+    id: "overview-view-inventory",
+    role: "button",
+    label: "View inventory",
+    group: "overview",
+    description: "Jump to the inventory tab from the overview summary",
+    onActivate: () => setActiveTab("inventory"),
+  });
 
   return (
     <div
@@ -363,12 +379,14 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                       </div>
                       {ordersTotal > 5 ? (
                         <Button
+                          ref={viewAllOrdersButton.ref}
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="mt-2 h-7 rounded-full px-2 text-xs-tight"
                           onClick={() => setActiveTab("orders")}
                           title={`View all ${ordersTotal.toLocaleString()} orders`}
+                          {...viewAllOrdersButton.agentProps}
                         >
                           +{(ordersTotal - 5).toLocaleString()}
                         </Button>
@@ -428,12 +446,14 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                       {inventoryItems.filter((i) => i.available <= 5).length >
                       5 ? (
                         <Button
+                          ref={viewAllInventoryButton.ref}
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="mt-2 h-7 rounded-full px-2 text-xs-tight"
                           onClick={() => setActiveTab("inventory")}
                           title="View inventory"
+                          {...viewAllInventoryButton.agentProps}
                         >
                           +
                           {(

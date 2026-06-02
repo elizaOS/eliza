@@ -455,7 +455,7 @@
           "blocked_reason": "missing_e1_npu_nnapi_accelerator",
           "pipeline_visible": true,
           "release_blocking": true,
-          "resolution": "Run scripts/android/capture_e1_npu_nnapi_evidence.sh on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate. Set E1_NPU_WRITE_PROOF_JSON=1 plus measured counter env vars so the hardware validation job creates the proof JSON and transcripts together, not by hand.",
+          "resolution": "Run scripts/android/capture_e1_npu_nnapi_evidence.sh on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate. Set E1_NPU_WRITE_PROOF_JSON=1 plus measured E1_NPU_MACS_PER_INFERENCE, E1_NPU_CYCLES, E1_NPU_HZ, E1_NPU_DMA_BYTES_READ, E1_NPU_DMA_BYTES_WRITTEN, E1_NPU_NNAPI_DELEGATED_NODE_COUNT, E1_NPU_NNAPI_TOTAL_NODE_COUNT, E1_NPU_CPU_FALLBACK_PERCENT=0, E1_NPU_UNSUPPORTED_OP_COUNT=0, E1_NPU_DATAFLOW_NAME, E1_NPU_GENERATED_BY, and E1_NPU_TARGET so the hardware validation job creates the proof JSON and transcripts together, not by hand.",
           "proof": {
             "schema": "eliza.e1_npu_nnapi_capability.v1",
             "accelerator_name": "e1-npu",

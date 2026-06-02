@@ -45,12 +45,12 @@ REQUIRED_PRIV_PERMISSIONS = (
     "android.permission.WRITE_SECURE_SETTINGS",
 )
 AOSP_BUILD_ONLY_COMMAND = (
-    "AOSP_DIR=/home/shaw/aosp python3 packages/chip/scripts/run_with_timeout.py "
+    "test -n \"$AOSP_DIR\" && python3 packages/chip/scripts/run_with_timeout.py "
     "--timeout-seconds 2400 --label aosp-build-only-evidence -- "
     "packages/chip/scripts/boot_android_simulator.sh --build-only"
 )
 AOSP_FULL_RUNTIME_COMMAND = (
-    "AOSP_DIR=/home/shaw/aosp packages/chip/scripts/boot_android_simulator.sh "
+    "test -n \"$AOSP_DIR\" && packages/chip/scripts/boot_android_simulator.sh "
     "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
 )
 AOSP_EXPECTED_EVIDENCE = (
@@ -61,7 +61,17 @@ AOSP_EXPECTED_EVIDENCE = (
     ROOT / "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
 )
 AOSP_PRODUCT_OUT = (
-    Path(os.environ.get("AOSP_DIR", "/home/shaw/aosp")) / "out/target/product/eliza_ai_soc"
+    Path(os.environ["AOSP_DIR"]) / "out/target/product/eliza_ai_soc"
+    if os.environ.get("AOSP_DIR")
+    else Path("$AOSP_DIR/out/target/product/eliza_ai_soc")
+)
+AOSP_WORKSPACE_PREFIXES = tuple(
+    dict.fromkeys(
+        [
+            *(Path(os.environ["AOSP_DIR"]).as_posix() for _ in [0] if os.environ.get("AOSP_DIR")),
+            "/home/shaw/aosp",
+        ]
+    )
 )
 AOSP_EXPECTED_ARTIFACT_NAMES = (
     "vendor.img",
@@ -94,10 +104,11 @@ def provenance_safe_text(value: str) -> str:
     replacements = (
         (ROOT.as_posix(), "packages/chip"),
         (ROOT.parents[1].as_posix(), ""),
-        (AOSP_PRODUCT_OUT.parents[3].as_posix(), "$AOSP_WORKSPACE"),
     )
     for source, replacement in replacements:
         sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    for source in AOSP_WORKSPACE_PREFIXES:
+        sanitized = sanitized.replace(source, "$AOSP_WORKSPACE")
     return HOST_LOCAL_PATH.sub(lambda match: f"<host-path>/{Path(match.group(0)).name}", sanitized)
 
 

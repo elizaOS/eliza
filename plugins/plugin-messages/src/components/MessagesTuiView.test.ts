@@ -34,6 +34,9 @@ vi.mock("@elizaos/capacitor-system", () => ({
 
 import { interact, MessagesAppView, MessagesTuiView } from "./MessagesAppView";
 
+const t = (key: string, opts?: { defaultValue?: string }) =>
+  opts?.defaultValue ?? key;
+
 const sampleMessages = [
   {
     id: "m1",
@@ -87,6 +90,14 @@ function mockBridge() {
     held: true,
     resultCode: 0,
   });
+}
+
+function overlayContext(exitToApps = vi.fn()) {
+  return {
+    exitToApps,
+    uiTheme: "light" as const,
+    t,
+  };
 }
 
 afterEach(() => {
@@ -227,14 +238,11 @@ describe("MessagesTuiView", () => {
 });
 
 describe("MessagesAppView", () => {
-  const t = (key: string, opts?: { defaultValue?: string }) =>
-    opts?.defaultValue ?? key;
-
   it("keeps overlay back navigation inside the composer before exiting apps", async () => {
     mockBridge();
     const exitToApps = vi.fn();
 
-    render(React.createElement(MessagesAppView, { exitToApps, t }));
+    render(React.createElement(MessagesAppView, overlayContext(exitToApps)));
 
     fireEvent.click(await screen.findByTestId("messages-thread-thread-a"));
     expect(
@@ -257,7 +265,7 @@ describe("MessagesAppView", () => {
   it("blocks blank composed SMS bodies and trims outbound addresses and text", async () => {
     mockBridge();
 
-    render(React.createElement(MessagesAppView, { exitToApps: vi.fn(), t }));
+    render(React.createElement(MessagesAppView, overlayContext()));
 
     await screen.findByText("+15550200");
     fireEvent.click(screen.getByTestId("messages-new"));

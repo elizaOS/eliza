@@ -60,6 +60,28 @@ def ready_contract() -> dict:
     }
 
 
+def contract_backed_key_ceremony_doc() -> str:
+    return (
+        "Status: pre-silicon specification.\n"
+        "\n"
+        "## Machine-checkable evidence contract\n"
+        "\n"
+        "### Non-claim flags\n"
+        "\n"
+        "| Flag | Value |\n"
+        "|---|---|\n"
+        "| release_claim_allowed | false |\n"
+        "| secure_boot_claim_allowed | false |\n"
+        "| silicon_secure_boot_claim_allowed | false |\n"
+        "\n"
+        "### Required production evidence\n"
+        "\n"
+        "- HSM attestation bundle.\n"
+        "- Ceremony transcript.\n"
+        "- Signer audit export.\n"
+    )
+
+
 class BootSecurityChainContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         write_json(tmp / "sw/platform/e1_platform_contract.json", stale_contract())
@@ -170,6 +192,31 @@ class BootSecurityChainContractTests(unittest.TestCase):
         )
         self.assertGreater(report["summary"]["next_command_count"], 0)
         self.assertTrue(report["next_command_plan"])
+        positive = {
+            finding["code"]: finding
+            for finding in report["findings"]
+            if finding["code"].startswith("bootrom_positive_handoff")
+        }
+        self.assertTrue(positive)
+        for finding in positive.values():
+            self.assertIn(
+                "scripts/capture_bootrom_positive_handoff.sh preflight",
+                finding["next_commands"],
+            )
+            self.assertIn(
+                "scripts/capture_bootrom_positive_handoff.sh run",
+                finding["next_commands"],
+            )
+            self.assertIn(
+                "python3 scripts/check_bootrom_positive_handoff.py",
+                finding["next_commands"],
+            )
+            self.assertIn(finding["next_command"], finding["next_commands"])
+        plan_by_code = {row["code"]: row for row in report["next_command_plan"]}
+        self.assertIn(
+            "scripts/capture_bootrom_positive_handoff.sh preflight",
+            plan_by_code["bootrom_positive_handoff_report_missing"]["commands"],
+        )
 
     def test_complete_static_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -229,11 +276,13 @@ class BootSecurityChainContractTests(unittest.TestCase):
                         "schema": "eliza.gate_status.v1",
                         "gate": "boot.bootrom_positive_handoff",
                         "status": "PASS",
+                        "claim_allowed": False,
                         "phone_claim_allowed": False,
                         "release_claim_allowed": False,
                         "linux_boot_claim_allowed": False,
                         "android_boot_claim_allowed": False,
                         "silicon_secure_boot_claim_allowed": False,
+                        "production_readiness_claim_allowed": False,
                         "evidence_paths": [
                             gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(
                                 gate.ROOT
@@ -459,6 +508,52 @@ class BootSecurityChainContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         assert_false_claim_flags(self, report)
         self.assertIn("bootrom_sim_transcript_report_allows_release_claims", codes)
+
+    def test_contract_backed_pre_silicon_key_ceremony_doc_is_not_spec_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            with PatchStack(self._patch_tree(tmp)):
+                for doc in (
+                    gate.SECURE_BOOT_LIFECYCLE,
+                    gate.BOOT_IMAGE_FORMAT,
+                    gate.AVB_OTA,
+                ):
+                    doc.write_text(
+                        "Implementation evidence captured and validated.\n", encoding="utf-8"
+                    )
+                gate.KEY_CEREMONY.write_text(
+                    contract_backed_key_ceremony_doc(), encoding="utf-8"
+                )
+
+                findings: list[gate.Finding] = []
+                gate.check_security_docs(findings)
+
+        self.assertEqual(findings, [])
+
+    def test_pre_silicon_key_ceremony_without_contract_remains_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            with PatchStack(self._patch_tree(tmp)):
+                for doc in (
+                    gate.SECURE_BOOT_LIFECYCLE,
+                    gate.BOOT_IMAGE_FORMAT,
+                    gate.AVB_OTA,
+                ):
+                    doc.write_text(
+                        "Implementation evidence captured and validated.\n", encoding="utf-8"
+                    )
+                gate.KEY_CEREMONY.write_text(
+                    "Status: pre-silicon specification. No HSM exists yet.\n",
+                    encoding="utf-8",
+                )
+
+                findings: list[gate.Finding] = []
+                gate.check_security_docs(findings)
+
+        self.assertEqual(
+            [finding.code for finding in findings],
+            ["security_boot_docs_are_pre_silicon_or_blocked"],
+        )
 
 
 class PatchStack:

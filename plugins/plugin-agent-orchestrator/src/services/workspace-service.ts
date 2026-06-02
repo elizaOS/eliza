@@ -970,7 +970,7 @@ export class CodingWorkspaceService {
     const timer = setTimeout(async () => {
       try {
         const record = this.scratchBySession.get(sessionId);
-        if (!record || record.status !== "pending_decision") return;
+        if (record?.status !== "pending_decision") return;
         await this.removeScratchDir(record.path);
       } catch (error) {
         logger.warn(

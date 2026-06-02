@@ -50,6 +50,7 @@
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { isExpired, isExpiringSoon } from "./ttl";
 import type { FormAutofillData, FormSession, FormSubmission } from "./types";
 import {
   FORM_AUTOFILL_COMPONENT,
@@ -83,6 +84,14 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
   );
 };
 
+const isLiveSession = (session: FormSession): boolean => !isExpired(session);
+
+const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = [
+  "active",
+  "ready",
+  "stashed",
+];
+
 const isFormSubmission = (data: JsonValue | object): data is FormSubmission => {
   if (!isRecord(data)) return false;
   return (
@@ -102,6 +111,36 @@ const isFormAutofillData = (
     typeof data.updatedAt === "number" &&
     typeof data.values === "object"
   );
+};
+
+const getRestorableSessions = async (
+  runtime: IAgentRuntime,
+): Promise<FormSession[]> => {
+  const sessionsById = new Map<string, FormSession>();
+
+  for (const status of RESTORABLE_SESSION_STATUSES) {
+    const entities = await runtime.queryEntities({
+      agentId: runtime.agentId,
+      componentDataFilter: { status },
+      includeAllComponents: true,
+    });
+
+    for (const entity of entities) {
+      for (const component of entity.components ?? []) {
+        if (!component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
+          continue;
+        }
+        if (component.data && isFormSession(component.data)) {
+          const session = component.data;
+          if (isLiveSession(session) && session.status === status) {
+            sessionsById.set(session.id, session);
+          }
+        }
+      }
+    }
+  }
+
+  return [...sessionsById.values()];
 };
 
 // ============================================================================
@@ -142,7 +181,10 @@ export async function getActiveSession(
 
   // Only return if active (not stashed, submitted, cancelled, or expired)
   // WHY: Other statuses require explicit action to restore/continue
-  if (session.status === "active" || session.status === "ready") {
+  if (
+    isLiveSession(session) &&
+    (session.status === "active" || session.status === "ready")
+  ) {
     return session;
   }
 
@@ -173,7 +215,10 @@ export async function getAllActiveSessions(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.status === "active" || session.status === "ready") {
+        if (
+          isLiveSession(session) &&
+          (session.status === "active" || session.status === "ready")
+        ) {
           sessions.push(session);
         }
       }
@@ -206,7 +251,7 @@ export async function getStashedSessions(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.status === "stashed") {
+        if (isLiveSession(session) && session.status === "stashed") {
           sessions.push(session);
         }
       }
@@ -240,7 +285,7 @@ export async function getSessionById(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.id === sessionId) {
+        if (isLiveSession(session) && session.id === sessionId) {
           return session;
         }
       }
@@ -512,47 +557,38 @@ export async function saveAutofillData(
 /**
  * Get all stale sessions (for nudge system).
  *
- * LIMITATION: This requires iterating over all entities, which is not
- * efficient with current elizaOS component system. In production,
- * this would need a database-level query.
- *
  * WHY this is here:
- * - Documents the need for this functionality
- * - Placeholder for future implementation
- * - Nudge system can call this when entity context is available
+ * - Finds active/ready/stashed sessions across users
+ * - Uses component data filters to avoid a full entity scan
+ * - Filters by the typed session payload so unrelated components with
+ *   matching status values are ignored
  *
  * @param runtime - Agent runtime for database access
  * @param afterInactiveMs - Inactivity threshold in milliseconds
- * @returns Array of stale sessions (currently returns empty array)
+ * @returns Array of stale sessions
  */
 export async function getStaleSessions(
   runtime: IAgentRuntime,
-  _afterInactiveMs: number,
+  afterInactiveMs: number,
 ): Promise<FormSession[]> {
-  // Proper querying across all entities would require either a database index
-  // on component data, a separate tracking table, or a periodic full scan.
-
-  runtime.logger.warn(
-    "getStaleSessions requires entity iteration - not implemented",
+  const now = Date.now();
+  const sessions = await getRestorableSessions(runtime);
+  return sessions.filter(
+    (session) => now - session.effort.lastInteractionAt >= afterInactiveMs,
   );
-  return [];
 }
 
 /**
  * Get sessions expiring within a time window.
  *
- * Same limitation as getStaleSessions.
- *
  * @param runtime - Agent runtime for database access
  * @param withinMs - Time window in milliseconds
- * @returns Array of expiring sessions (currently returns empty array)
+ * @returns Array of expiring sessions
  */
 export async function getExpiringSessions(
   runtime: IAgentRuntime,
-  _withinMs: number,
+  withinMs: number,
 ): Promise<FormSession[]> {
-  runtime.logger.warn(
-    "getExpiringSessions requires entity iteration - not implemented",
-  );
-  return [];
+  const sessions = await getRestorableSessions(runtime);
+  return sessions.filter((session) => isExpiringSoon(session, withinMs));
 }

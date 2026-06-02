@@ -1,0 +1,52 @@
+{
+  "name": "elizaos-plugin-echo",
+  "version": "2.0.0-beta.0",
+  "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/examples/plugin-echo"
+  },
+  "keywords": [
+    "elizaos",
+    "eliza",
+    "plugin",
+    "example"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --noCheck -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "node ../../scripts/run-vitest.mjs run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  },
+  "elizaos": {
+    "kind": "plugin",
+    "plugin": {
+      "displayName": "Echo",
+      "category": "utility"
+    }
+  }
+}

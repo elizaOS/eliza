@@ -10,11 +10,6 @@ name: Hetzner Provision Smoke
 
 on:
   workflow_dispatch:
-  # Scoped to the throwaway smoke branch so the push registers + triggers the
-  # run (a workflow_dispatch-only file on a non-default branch isn't yet
-  # registered for dispatch). Removed once the real provision is observed.
-  push:
-    branches: [claude/hetzner-provision-smoke]
 
 concurrency:
   group: hetzner-e2e
@@ -34,6 +29,10 @@ jobs:
       CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
       CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
       HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+      # cx22 is deprecated and cax (ARM) isn't placeable for this project;
+      # cpx22 (x86 2c/4g) is available across the EU datacenters.
+      HETZNER_E2E_SERVER_TYPE: cpx22
+      HETZNER_E2E_LOCATION: nbg1
     steps:
       - name: Check secret configuration
         run: |
@@ -56,6 +55,17 @@ jobs:
 
       - name: Install dependencies
         run: bun install --no-save --ignore-scripts
+
+      - name: List Hetzner catalog (what's actually placeable)
+        run: |
+          echo "=== non-deprecated server types (id  name  arch  cores/mem) ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/server_types \
+            | jq -r '.server_types[] | select(.deprecation==null) | "\(.id)\t\(.name)\t\(.architecture)\t\(.cores)c/\(.memory)g"' | sort -n
+          echo "=== per-datacenter available server-type IDs ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/datacenters \
+            | jq -r '.datacenters[] | "\(.name)\tavail=[\(.server_types.available | join(","))]"'
 
       - name: Provision Hetzner server
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts

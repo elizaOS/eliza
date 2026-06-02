@@ -248,6 +248,7 @@
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@pixiv/three-vrm": "^3.4.5",

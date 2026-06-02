@@ -1,6 +1,6 @@
+import type { LifeOpsScheduleMergedState } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { LifeOpsScheduleMergedState } from "../lifeops/schedule-sync-contracts.js";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {

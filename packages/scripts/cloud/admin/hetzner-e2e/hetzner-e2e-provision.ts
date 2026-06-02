@@ -40,11 +40,14 @@ const SERVER_TYPE_FALLBACKS: ReadonlyArray<{
   serverType: string;
   location: string;
 }> = [
-  { serverType: "cx22", location: "fsn1" }, // newer x86 shared
-  { serverType: "cax11", location: "fsn1" }, // ARM shared
-  { serverType: "cax11", location: "hel1" },
-  { serverType: "cx22", location: "nbg1" },
-  { serverType: "cax11", location: "nbg1" },
+  // cx22 is deprecated and cax (ARM) currently returns "error during
+  // placement" for the CI project; cpx22 (x86 2c/4g) is the available shared
+  // type across the EU datacenters, with cpx11 in hil (US-W) as a last resort.
+  // Verified against GET /v1/datacenters .server_types.available (2026-06).
+  { serverType: "cpx22", location: "nbg1" },
+  { serverType: "cpx22", location: "hel1" },
+  { serverType: "cpx22", location: "fsn1" },
+  { serverType: "cpx11", location: "hil" }, // US-West fallback
 ];
 
 // Conditions under which we should try the next fallback combo. Covers
@@ -63,8 +66,17 @@ function isRetryableCombo(err: unknown): boolean {
   if (err instanceof HetznerCloudError && err.code === "quota_exceeded") {
     return true;
   }
+  // "error during placement" (HTTP 412) is Hetzner's transient signal that the
+  // requested type can't be placed in that location right now — a different
+  // location usually succeeds, so keep walking the fallback ladder instead of
+  // aborting the whole provision on the first capacity hiccup.
+  if (err instanceof HetznerCloudError && err.status === 412) {
+    return true;
+  }
   const message = err instanceof Error ? err.message.toLowerCase() : "";
   return (
+    message.includes("error during placement") ||
+    message.includes("placement") ||
     message.includes("unsupported_server_type_for_location") ||
     message.includes("unsupported location for server type") ||
     message.includes("unsupported_location_for_server_type") ||
@@ -130,10 +142,10 @@ async function main(): Promise<void> {
 
   const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
   const requestedLocation = process.env.HETZNER_E2E_LOCATION ?? "fsn1";
-  // cpx11 was deprecated in 2026Q2; cx22 is the current shared-cpu x86
-  // successor (similar 2 vCPU / 4 GB footprint, same fsn1/hel1/nbg1
-  // availability). Operators can still pin a specific type via env.
-  const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cx22";
+  // cx22 is now deprecated; cpx22 (x86 2 vCPU / 4 GB) is the current shared
+  // type available across fsn1/hel1/nbg1 per GET /v1/datacenters. Operators can
+  // still pin a specific type via env.
+  const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cpx22";
   const image = process.env.HETZNER_E2E_IMAGE ?? "ubuntu-24.04";
   const createdAt = new Date().toISOString();
 

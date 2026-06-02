@@ -94,6 +94,41 @@ describe("Linear router actions", () => {
     handler.mockRestore();
   });
 
+  it("normalizes explicit subactions and preserves callback action names", async () => {
+    const handler = vi.spyOn(createIssueAction, "handler").mockResolvedValue({
+      success: true,
+      text: "updated",
+      data: { identifier: "ENG-3" },
+    });
+    const callback = vi.fn();
+
+    const result = await linearIssueRouterAction.handler(
+      createRuntime(),
+      createMessage("Do the Linear thing"),
+      undefined,
+      { parameters: { subaction: " create " } },
+      callback
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    const routedCallback = handler.mock.calls[0]?.[4];
+    await routedCallback?.({ text: "child callback", source: "test" });
+    expect(callback).toHaveBeenCalledWith(
+      { text: "child callback", source: "test" },
+      "CREATE_LINEAR_ISSUE"
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        op: "create",
+        subaction: "create",
+        result: { identifier: "ENG-3" },
+      },
+    });
+
+    handler.mockRestore();
+  });
+
   it("annotates delegated comment failures with structured error data", async () => {
     const handler = vi.spyOn(createCommentAction, "handler").mockResolvedValue({
       success: false,
@@ -166,5 +201,20 @@ describe("Linear router actions", () => {
     await expect(
       linearWorkflowRouterAction.validate(runtime, createMessage("Show Linear activity"))
     ).resolves.toBe(true);
+  });
+
+  it("denies router validation when Linear account config is absent", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      character: {},
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      linearIssueRouterAction.validate(runtime, createMessage("Update issue ENG-2"))
+    ).resolves.toBe(false);
+    await expect(
+      linearCommentRouterAction.validate(runtime, createMessage("Comment on ENG-2"))
+    ).resolves.toBe(false);
   });
 });

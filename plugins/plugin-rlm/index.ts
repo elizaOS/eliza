@@ -24,7 +24,7 @@ import {
   resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
 
-import { RLMClient, stubResult } from "./client";
+import { RLMClient } from "./client";
 import { estimateTokenCount } from "./cost";
 import type { RLMConfig } from "./types";
 import { DEFAULT_CONFIG, ENV_VARS, VALID_BACKENDS, VALID_ENVIRONMENTS } from "./types";
@@ -231,7 +231,7 @@ export const rlmPlugin: Plugin = {
     if (status.available) {
       logger.info(`[RLM] Backend available: ${status.backend}`);
     } else {
-      logger.warn("[RLM] Backend not available - running in stub mode");
+      logger.warn("[RLM] Backend not available; RLM model calls will fail until configured");
     }
   },
 
@@ -248,19 +248,25 @@ export const rlmPlugin: Plugin = {
       name: "rlm_plugin_tests",
       tests: [
         {
-          name: "rlm_test_stub_mode",
-          fn: async (_runtime: IAgentRuntime): Promise<void> => {
-            // Test that stub mode works
-            const result = stubResult();
-            if (!result.metadata.stub) {
-              throw new Error("Stub result should have stub=true");
+          name: "rlm_test_backend_status",
+          fn: async (runtime: IAgentRuntime): Promise<void> => {
+            const client = getOrCreateClient(runtime);
+            const status = await client.getStatus();
+            if (typeof status.available !== "boolean") {
+              throw new Error("RLM status should report backend availability");
             }
-            logger.info("[RLM Test] Stub mode test passed");
+            logger.info(`[RLM Test] Backend available: ${status.available}`);
           },
         },
         {
           name: "rlm_test_text_generation",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
+            const status = await getOrCreateClient(runtime).getStatus();
+            if (!status.available) {
+              logger.warn("[RLM Test] Skipping text generation; backend unavailable");
+              return;
+            }
+
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "Say 'hello' in exactly one word.",
             });
@@ -275,6 +281,12 @@ export const rlmPlugin: Plugin = {
         {
           name: "rlm_test_message_format",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
+            const status = await getOrCreateClient(runtime).getStatus();
+            if (!status.available) {
+              logger.warn("[RLM Test] Skipping message format generation; backend unavailable");
+              return;
+            }
+
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "What is 2 + 2?",
             });
@@ -294,7 +306,7 @@ export const rlmPlugin: Plugin = {
 export default rlmPlugin;
 
 // Re-export types and client
-export { configFromEnv, RLMClient, stubResult } from "./client";
+export { configFromEnv, RLMClient } from "./client";
 export type {
   GenerateTextParams,
   RLMConfig,

@@ -45,8 +45,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bun run lint",
     "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },

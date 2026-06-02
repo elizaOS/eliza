@@ -37,7 +37,7 @@ export async function readAssignments(): Promise<ModelAssignments> {
   try {
     const raw = await fs.readFile(assignmentsPath(), "utf8");
     const parsed = JSON.parse(raw) as AssignmentsFile;
-    if (!parsed || parsed.version !== 1 || !parsed.assignments) return {};
+    if (parsed?.version !== 1 || !parsed.assignments) return {};
     return parsed.assignments;
   } catch {
     return {};

@@ -505,6 +505,20 @@ if [[ -f packages/contracts/package.json ]] && jq -e '.scripts.build' packages/c
   ln -s ../../packages/contracts node_modules/@elizaos/contracts
 fi
 
+# @elizaos/logger must also be built BEFORE @elizaos/core: core's
+# tsconfig.declarations.json maps `@elizaos/logger` to
+# `../logger/dist/index.d.ts`, so the declarations build aborts with TS2307
+# (src/logger.ts) if dist/ doesn't exist yet.
+if [[ -f packages/logger/package.json ]] && jq -e '.scripts.build' packages/logger/package.json >/dev/null; then
+  log "Building @elizaos/logger (required by core declarations)"
+  pushd packages/logger >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+  mkdir -p node_modules/@elizaos
+  rm -rf node_modules/@elizaos/logger
+  ln -s ../../packages/logger node_modules/@elizaos/logger
+fi
+
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
