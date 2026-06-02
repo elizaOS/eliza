@@ -52,6 +52,7 @@ const requireUser =
 const requireUserWithOrg = mock<(c: unknown) => Promise<unknown>>();
 const requireUserOrApiKey = mock<(c: unknown) => Promise<unknown>>();
 const requireUserOrApiKeyWithOrg = mock<(c: unknown) => Promise<unknown>>();
+const requireCronSecret = mock<(c: unknown) => void>();
 const getCurrentUser = mock<(c: unknown) => Promise<unknown>>();
 
 const buildRedisClient = mock<(env: unknown) => unknown>();
@@ -59,6 +60,7 @@ const buildRedisClient = mock<(env: unknown) => unknown>();
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   getCurrentUser,
   requireUser,
+  requireCronSecret,
   requireUserOrApiKey,
   requireUserOrApiKeyWithOrg,
   requireUserWithOrg,
@@ -125,6 +127,7 @@ afterEach(() => {
   getByWalletAddress.mockReset();
   usersServiceUpdate.mockReset();
   requireUser.mockReset();
+  requireCronSecret.mockReset();
   requireUserWithOrg.mockReset();
   requireUserOrApiKey.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();

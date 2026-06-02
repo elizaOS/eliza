@@ -274,6 +274,12 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/orchestrator",
   },
   {
+    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+    id: "odysseus",
+    viewType: "xr",
+    path: "/odysseus",
+  },
+  {
     manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
     id: "trajectory-logger",
     viewType: "xr",
@@ -489,6 +495,27 @@ const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
       viewType: "tui",
       path: "/orchestrator/tui",
       componentExport: "OrchestratorTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "odysseus",
+      viewType: "gui",
+      path: "/odysseus",
+      componentExport: "OdysseusShell",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "odysseus",
+      viewType: "xr",
+      path: "/odysseus",
+      componentExport: "OdysseusShell",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "odysseus",
+      viewType: "tui",
+      path: "/odysseus/tui",
+      componentExport: "OdysseusTuiView",
     },
   ];
 

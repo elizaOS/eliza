@@ -221,6 +221,15 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     ],
     timeoutMs: 90_000,
   },
+  {
+    name: "odysseus tui app shell page",
+    path: "/odysseus/tui",
+    readyChecks: [
+      { text: "elizaos://odysseus --type=tui" },
+      { text: "orchestrator-status" },
+    ],
+    timeoutMs: 90_000,
+  },
 ];
 
 const managerVisibleViewTileCases = [

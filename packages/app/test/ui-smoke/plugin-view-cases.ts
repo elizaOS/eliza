@@ -59,6 +59,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["task-coordinator", "gui", "/task-coordinator"],
     ["task-coordinator", "tui", "/task-coordinator/tui"],
     ["odysseus", "gui", "/odysseus", { shellPill: "suppressed" }],
+    ["odysseus", "tui", "/odysseus/tui"],
     ["orchestrator", "gui", "/orchestrator", { shellPill: "suppressed" }],
     ["orchestrator", "tui", "/orchestrator/tui"],
     ["trajectory-logger", "gui", "/trajectory-logger"],

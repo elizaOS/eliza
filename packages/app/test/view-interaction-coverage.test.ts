@@ -363,7 +363,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(53);
+    expect(visualCases.length).toBe(54);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

@@ -87,7 +87,10 @@ mock.module("@/db/helpers", () => ({
   dbWrite: { select: dbSelect },
 }));
 
+const requireCronSecret = mock<(c: unknown) => void>();
+
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireCronSecret,
   requireUserOrApiKeyWithOrg,
 }));
 
