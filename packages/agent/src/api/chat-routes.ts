@@ -125,6 +125,79 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
+/** Max accepted client-supplied idempotency key length. Anything longer is a
+ *  malformed/abusive client and is treated as absent (no dedupe). */
+const CLIENT_MESSAGE_ID_MAX_LENGTH = 128;
+
+/**
+ * Short-window idempotency cache for the HTTP chat path, the analogue of the
+ * WebSocket `isDuplicateWsMessage` cache in server.ts. Chat sends go over HTTP
+ * SSE (not WS), so the WS cache does not cover them. The client stamps a stable
+ * `clientMessageId` on every send (`ui/src/api/client-base.ts`); a retried or
+ * double-submitted POST carries the same id, and without this guard would start
+ * a second LLM turn and persist a duplicate assistant memory (report 05,
+ * Finding 1 / W3.1).
+ *
+ * Keyed by `${conversationOrUserScope}:${clientMessageId}` so a legitimately
+ * identical message in a different conversation, or the same text re-sent after
+ * the TTL, is NOT suppressed. Entries expire after `CHAT_DEDUPE_TTL_MS`; the map
+ * stays bounded via an amortized sweep (at most once per TTL window) — the same
+ * O(1)-check / amortized-eviction shape as the WS cache.
+ */
+const chatSeenMessageIds = new Map<string, number>();
+const CHAT_DEDUPE_TTL_MS = 30_000;
+let chatSeenLastSweepAt = 0;
+
+/** Normalize a raw body value into a usable idempotency key, or `null` when
+ *  absent/invalid. Exported for unit testing the dedupe decision in isolation. */
+export function normalizeClientMessageId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > CLIENT_MESSAGE_ID_MAX_LENGTH) {
+    return null;
+  }
+  return trimmed;
+}
+
+/**
+ * TTL-aware O(1) duplicate check for an HTTP chat send. Returns `true` when this
+ * `(scope, clientMessageId)` pair was already seen within the TTL window. When
+ * `clientMessageId` is absent/invalid the result is ALWAYS `false`, so requests
+ * without an idempotency key behave exactly as before (no dedupe). The first
+ * sighting records the timestamp and returns `false`; a repeat within the window
+ * returns `true`. After the TTL elapses the id is treated as new again.
+ *
+ * `scope` is the conversation room id (dashboard chat) or the per-user room key
+ * (agent-message API) so the key cannot collide across conversations/users.
+ */
+export function isDuplicateChatMessage(
+  scope: string,
+  clientMessageId: string | null,
+  now: number = Date.now(),
+): boolean {
+  if (!clientMessageId) return false;
+  const key = `${scope}:${clientMessageId}`;
+  const seenAt = chatSeenMessageIds.get(key);
+  if (seenAt !== undefined && now - seenAt <= CHAT_DEDUPE_TTL_MS) return true;
+  chatSeenMessageIds.set(key, now);
+  // Amortized eviction: sweep expired entries at most once per TTL window
+  // rather than on every request, keeping the map bounded without a per-request
+  // O(n) scan.
+  if (now - chatSeenLastSweepAt > CHAT_DEDUPE_TTL_MS) {
+    chatSeenLastSweepAt = now;
+    for (const [seenKey, ts] of chatSeenMessageIds) {
+      if (now - ts > CHAT_DEDUPE_TTL_MS) chatSeenMessageIds.delete(seenKey);
+    }
+  }
+  return false;
+}
+
+/** Test-only: clear the HTTP chat idempotency cache between cases. */
+export function __resetChatDedupeForTests(): void {
+  chatSeenMessageIds.clear();
+  chatSeenLastSweepAt = 0;
+}
+
 const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
   /\b(check|search|find|fetch|get|look\s+up|browse|open|click|call|email|send|create|update|delete|save|remember|schedule|remind|set|run|execute|install|download|upload|read|inspect|build|deploy|commit|push|pull|merge|rebase|book|pay|buy|order)\b/i;
 
@@ -1576,6 +1649,9 @@ export async function readChatRequestPayload(
   preferredLanguage?: string;
   source?: string;
   metadata?: Record<string, unknown>;
+  /** Client-supplied idempotency key (see `isDuplicateChatMessage`); absent
+   *  when the client did not stamp one. */
+  clientMessageId?: string;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -1584,6 +1660,7 @@ export async function readChatRequestPayload(
     language?: string;
     source?: string;
     metadata?: Record<string, unknown>;
+    clientMessageId?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -1624,6 +1701,7 @@ export async function readChatRequestPayload(
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -1631,6 +1709,7 @@ export async function readChatRequestPayload(
     ...(preferredLanguage ? { preferredLanguage } : {}),
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
+    ...(clientMessageId ? { clientMessageId } : {}),
   };
 }
 
