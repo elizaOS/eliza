@@ -227,7 +227,7 @@ export class SecretsManagerInstaller {
       return this.signInBitwarden(request);
     }
     throw new Error(
-      `Sign-in for "${request.backendId}" is not implemented. Vendor CLI is unstable.`,
+      `Sign-in for "${request.backendId}" is unsupported because the vendor CLI contract is unstable.`,
     );
   }
 
