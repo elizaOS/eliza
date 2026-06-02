@@ -412,6 +412,7 @@
         "sharp": "^0.34.0",
       },
       "devDependencies": {
+        "@elizaos/plugin-computeruse": "workspace:*",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "4.1.7",
@@ -2588,6 +2589,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
+        "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-gitpathologist": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",

@@ -4,13 +4,19 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   AgentRuntime,
+  type ChatMessage,
+  type ChatMessageRole,
   type Content,
   elizaLogger,
+  type JSONSchema,
   type Memory,
   type MessageProcessingResult,
   ModelType,
   type Plugin,
   stringToUuid,
+  type ToolCall,
+  type ToolChoice,
+  type ToolDefinition,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
@@ -254,6 +260,130 @@ function isActionCallingBenchmarkName(benchmark: string): boolean {
 function isVendingBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "vending-bench" || normalized === "vending_bench";
+}
+
+// ---------------------------------------------------------------------------
+// Boundary adapters: the benchmark harness and the message normalizers below
+// build OpenAI chat-completion *wire* objects (snake_case `tool_calls` /
+// `tool_call_id`, free-form tool defs) which the direct HTTP path
+// (`callOpenAiCompatibleActionCalling`) forwards verbatim. `runtime.useModel`
+// instead consumes the typed `@elizaos/core` contracts (`ChatMessage[]` /
+// `ToolDefinition[]` / `ToolChoice`). These converters validate the loosely
+// typed wire data at that boundary and return genuinely well-formed core
+// objects, mapping snake_case wire keys onto the camelCase fields the runtime
+// reads.
+// ---------------------------------------------------------------------------
+
+const CHAT_MESSAGE_ROLES: ReadonlySet<ChatMessageRole> = new Set([
+  "system",
+  "developer",
+  "user",
+  "assistant",
+  "tool",
+]);
+
+function asChatMessageRole(value: unknown): ChatMessageRole {
+  return typeof value === "string" &&
+    CHAT_MESSAGE_ROLES.has(value as ChatMessageRole)
+    ? (value as ChatMessageRole)
+    : "user";
+}
+
+function wireToolCallToToolCall(value: unknown): ToolCall | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const call = value as Record<string, unknown>;
+  const fn =
+    call.function && typeof call.function === "object"
+      ? (call.function as Record<string, unknown>)
+      : undefined;
+  const name =
+    typeof call.name === "string"
+      ? call.name
+      : typeof fn?.name === "string"
+        ? fn.name
+        : "";
+  if (!name) return null;
+  const rawArgs = call.arguments ?? fn?.arguments ?? {};
+  // OpenAI wire format carries tool-call arguments as a JSON string; match the
+  // file-wide convention (see `normalizeLocaIncomingToolCall`) and keep
+  // `ToolCall.arguments` as a string so no value-shape cast is needed.
+  const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs);
+  const id = typeof call.id === "string" ? call.id : name;
+  return { id, name, arguments: args, type: "function" };
+}
+
+/**
+ * Convert OpenAI-wire chat messages into `ChatMessage[]` for `useModel`,
+ * mapping snake_case tool fields (`tool_calls`/`tool_call_id`) onto the
+ * camelCase `ChatMessage` fields the runtime reads.
+ */
+function toChatMessages(wire: Array<Record<string, unknown>>): ChatMessage[] {
+  return wire.map((message) => {
+    const role = asChatMessageRole(message.role);
+    const content =
+      typeof message.content === "string" ? message.content : null;
+    const chatMessage: ChatMessage = { role, content };
+    if (typeof message.name === "string") chatMessage.name = message.name;
+    const toolCallId = message.tool_call_id ?? message.toolCallId;
+    if (typeof toolCallId === "string") chatMessage.toolCallId = toolCallId;
+    const rawToolCalls = Array.isArray(message.tool_calls)
+      ? message.tool_calls
+      : Array.isArray(message.toolCalls)
+        ? message.toolCalls
+        : [];
+    const toolCalls = rawToolCalls
+      .map(wireToolCallToToolCall)
+      .filter((call): call is ToolCall => call !== null);
+    if (toolCalls.length > 0) chatMessage.toolCalls = toolCalls;
+    return chatMessage;
+  });
+}
+
+/**
+ * Convert harness-supplied tool definitions (OpenAI `{ type, function: {...} }`
+ * or flat `{ name, ... }`) into `ToolDefinition[]`. Entries without a usable
+ * name are dropped rather than fabricated.
+ */
+function toToolDefinitions(
+  raw: Array<Record<string, unknown>>,
+): ToolDefinition[] {
+  const tools: ToolDefinition[] = [];
+  for (const entry of raw) {
+    const fn =
+      entry.function && typeof entry.function === "object"
+        ? (entry.function as Record<string, unknown>)
+        : undefined;
+    const name =
+      typeof entry.name === "string"
+        ? entry.name
+        : typeof fn?.name === "string"
+          ? fn.name
+          : "";
+    if (!name) continue;
+    const description =
+      typeof entry.description === "string"
+        ? entry.description
+        : typeof fn?.description === "string"
+          ? fn.description
+          : undefined;
+    const rawParameters = entry.parameters ?? fn?.parameters;
+    const parameters =
+      rawParameters && typeof rawParameters === "object"
+        ? (rawParameters as JSONSchema)
+        : undefined;
+    const tool: ToolDefinition = { name };
+    if (description !== undefined) tool.description = description;
+    if (parameters !== undefined) tool.parameters = parameters;
+    tools.push(tool);
+  }
+  return tools;
+}
+
+/** Narrow a benchmark-supplied tool-choice string to a `ToolChoice`. */
+function toToolChoice(value: string): ToolChoice {
+  return value === "none" || value === "auto" || value === "required"
+    ? value
+    : "required";
 }
 
 function normalizeActionCallingNativeMessages(
@@ -2784,9 +2914,9 @@ export async function startBenchmarkServer() {
                 };
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                  messages: nativeMessages,
-                  tools: benchmarkContext.tools,
-                  toolChoice,
+                  messages: toChatMessages(nativeMessages),
+                  tools: toToolDefinitions(benchmarkContext.tools),
+                  toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
@@ -2900,8 +3030,8 @@ export async function startBenchmarkServer() {
                 };
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                  messages: nativeMessages,
-                  tools: benchmarkContext.tools,
+                  messages: toChatMessages(nativeMessages),
+                  tools: toToolDefinitions(benchmarkContext.tools),
                   toolChoice: "required",
                   maxTokens,
                   temperature,
@@ -3024,9 +3154,9 @@ export async function startBenchmarkServer() {
                 };
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                  messages,
-                  tools: benchmarkContext.tools,
-                  toolChoice,
+                  messages: toChatMessages(messages),
+                  tools: toToolDefinitions(benchmarkContext.tools),
+                  toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
@@ -3144,8 +3274,8 @@ export async function startBenchmarkServer() {
                 };
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                  messages,
-                  tools: benchmarkContext.tools,
+                  messages: toChatMessages(messages),
+                  tools: toToolDefinitions(benchmarkContext.tools),
                   toolChoice: "required",
                   maxTokens: 256,
                   temperature:
@@ -3268,9 +3398,9 @@ export async function startBenchmarkServer() {
                 };
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                  messages,
-                  tools: benchmarkContext.tools,
-                  toolChoice,
+                  messages: toChatMessages(messages),
+                  tools: toToolDefinitions(benchmarkContext.tools),
+                  toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
@@ -3600,7 +3730,9 @@ export async function startBenchmarkServer() {
   });
 }
 
-startBenchmarkServer().catch((err) => {
-  elizaLogger.error("[bench] Failed to start benchmark server", { err });
+startBenchmarkServer().catch((err: unknown) => {
+  elizaLogger.error(
+    `[bench] Failed to start benchmark server: ${formatUnknownError(err)}`,
+  );
   process.exit(1);
 });
