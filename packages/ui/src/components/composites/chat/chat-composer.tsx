@@ -496,6 +496,8 @@ export function ChatComposer({
         {inlineMicButton}
         {inlineSendButton}
       </>
+    ) : voice.isListening ? (
+      inlineMicButton
     ) : hasDraft ? (
       inlineSendButton
     ) : (

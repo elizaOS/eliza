@@ -88,11 +88,15 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // The reset actually fires against the server...
   await resetRequest;
 
-  // ...and the renderer returns to the pre-agent first-run onboarding surface
-  // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
-  await expect(page.getByTestId("startup-shell-loading")).toBeVisible({
+  // ...and the renderer returns to the pre-agent first-run onboarding surface.
+  await expect(
+    page.getByRole("form", { name: "Bootstrap token entry" }),
+  ).toBeVisible({
     timeout: 20_000,
   });
+  await expect(
+    page.getByRole("heading", { name: "Finish setting up your container" }),
+  ).toBeVisible();
 });
 
 test("cancelling the Reset Everything warning leaves the agent untouched", async ({

@@ -657,22 +657,25 @@ describe("scenario PR workflow contract", () => {
     const appAssistantFlow = readFileSync(appAssistantFlowPath, "utf8");
 
     for (const required of [
+      "onboarding-toast",
       "startup-shell-loading",
       "shell-home-pill",
       "toHaveCount(0)",
       "04-chat-pill-suppressed",
       "05-views-desktop-no-embedded-pill",
       "07-wallet-view-no-embedded-pill",
-      "home-chat-pill",
-      "home-chat-input",
-      "Send message",
+      "Chat workspace",
+      "chat-composer-textarea",
+      "Voice input",
+      "Stop listening",
+      "Release to send",
+      "Send",
       'toHaveValue("")',
       "streamRequests",
       "show me my pinned views",
       "open wallet by typing",
-      "__homeVoiceSimulate",
-      "home-voice-stop",
-      "home-assistant-transcript",
+      "__sttSimulate",
+      "__sttState",
       "push to talk works",
     ]) {
       expect(appAssistantFlow).toContain(required);

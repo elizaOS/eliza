@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { createRef } from "react";
+import { type ComponentProps, createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatComposer, type ChatComposerVoiceState } from "./chat-composer";
 
@@ -18,32 +18,34 @@ const voice: ChatComposerVoiceState = {
   toggleListening: vi.fn(),
 };
 
-function renderInlineComposer() {
-  return render(
-    <ChatComposer
-      agentVoiceEnabled={false}
-      chatInput=""
-      chatPendingImagesCount={0}
-      chatSending={false}
-      hideAttachButton
-      isAgentStarting={false}
-      isComposerLocked={false}
-      layout="inline"
-      onAttachImage={vi.fn()}
-      onChatInputChange={vi.fn()}
-      onKeyDown={vi.fn()}
-      onSend={vi.fn()}
-      onStop={vi.fn()}
-      onStopSpeaking={vi.fn()}
-      onToggleAgentVoice={vi.fn()}
-      placeholder="Message"
-      t={(key) => key}
-      textareaAriaLabel="Message"
-      textareaRef={createRef<HTMLTextAreaElement>()}
-      variant="default"
-      voice={voice}
-    />,
-  );
+function renderInlineComposer(
+  overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
+) {
+  const props: ComponentProps<typeof ChatComposer> = {
+    agentVoiceEnabled: false,
+    chatInput: "",
+    chatPendingImagesCount: 0,
+    chatSending: false,
+    hideAttachButton: true,
+    isAgentStarting: false,
+    isComposerLocked: false,
+    layout: "inline",
+    onAttachImage: vi.fn(),
+    onChatInputChange: vi.fn(),
+    onKeyDown: vi.fn(),
+    onSend: vi.fn(),
+    onStop: vi.fn(),
+    onStopSpeaking: vi.fn(),
+    onToggleAgentVoice: vi.fn(),
+    placeholder: "Message",
+    t: (key) => key,
+    textareaAriaLabel: "Message",
+    textareaRef: createRef<HTMLTextAreaElement>(),
+    variant: "default",
+    voice,
+    ...overrides,
+  };
+  return render(<ChatComposer {...props} />);
 }
 
 describe("ChatComposer", () => {
@@ -67,5 +69,23 @@ describe("ChatComposer", () => {
     expect(screen.getByTestId("chat-composer-textarea").className).toContain(
       "placeholder:text-muted-strong",
     );
+  });
+
+  it("keeps push-to-talk release available after transcript text fills the draft", () => {
+    renderInlineComposer({
+      chatInput: "push to talk works",
+      voice: {
+        ...voice,
+        captureMode: "push-to-talk",
+        interimTranscript: "push to talk works",
+        isListening: true,
+        supported: true,
+      },
+    });
+
+    expect(
+      screen.getByRole("button", { name: "chat.releaseToSend" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "common.send" })).toBeNull();
   });
 });

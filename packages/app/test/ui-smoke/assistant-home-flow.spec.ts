@@ -51,6 +51,11 @@ const VIEW_FIXTURES = [
   },
 ];
 
+const TINY_MP3 = Buffer.from(
+  "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
+  "base64",
+);
+
 async function fulfillJson(
   route: Route,
   body: Record<string, unknown>,
@@ -203,6 +208,17 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       text: "Opening the right view now.",
     });
   });
+  await page.route("**/api/tts/**", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+      body: TINY_MP3,
+    });
+  });
   await page.route("**/api/conversations", async (route) => {
     const method = route.request().method();
     const timestamp = new Date().toISOString();
@@ -338,37 +354,19 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
-async function openReadyHome(page: Page): Promise<void> {
-  await openAppPath(page, "/");
-  await expect(page.getByTestId("home-view")).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({
-      hasText: /Starting Eliza|Loading workspace|Connecting to Eliza/,
-    }),
-  ).toHaveCount(0, { timeout: 30_000 });
-
-  const homeChatInput = page.getByTestId("home-chat-input");
-  if (!(await homeChatInput.isVisible())) {
-    const homeChatPill = page.getByTestId("home-chat-pill");
-    await expect(homeChatPill).toBeVisible({ timeout: 15_000 });
-    await homeChatPill.focus();
-    await homeChatPill.press("Enter");
-  }
-  await expect(homeChatInput).toBeVisible({ timeout: 15_000 });
-  await expect(homeChatInput).toBeEnabled({ timeout: 30_000 });
-
-  const mic = page.getByRole("button", { name: /start voice input/i });
-  if ((await mic.count()) > 0) {
-    await expect(mic).toBeEnabled({ timeout: 30_000 });
-  }
-}
-
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
   const composer = page.locator('[data-testid="chat-composer-textarea"]');
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
+}
+
+async function openReadyChatWorkspace(page: Page): Promise<void> {
+  await openReadyChat(page, "/chat");
+  await expect(
+    page.getByRole("region", { name: "Chat workspace" }),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
@@ -467,14 +465,19 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   });
 }
 
-async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
+async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    type ResultHandler = (event: unknown) => void;
+    type Listener = (event: unknown) => void;
     const instances: Array<{
-      onresult: ResultHandler | null;
-      onend: (() => void) | null;
+      onresult: Listener | null;
+      onerror: Listener | null;
+      onend: Listener | null;
+      onstart: Listener | null;
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
       started: boolean;
-      stop: () => void;
+      stopCount: number;
     }> = [];
 
     Object.defineProperty(navigator, "mediaDevices", {
@@ -484,23 +487,34 @@ async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
 
     function makeRecognition() {
       const rec = {
+        onresult: null as Listener | null,
+        onerror: null as Listener | null,
+        onend: null as Listener | null,
+        onstart: null as Listener | null,
         continuous: false,
         interimResults: false,
         lang: "en-US",
-        onresult: null as ResultHandler | null,
-        onerror: null as ResultHandler | null,
-        onend: null as (() => void) | null,
         started: false,
+        stopCount: 0,
         start() {
           this.started = true;
+          this.onstart?.({});
         },
         stop() {
           this.started = false;
-          this.onend?.();
+          this.stopCount += 1;
+          this.onend?.({});
         },
         abort() {
           this.stop();
         },
+        addEventListener(name: string, handler: Listener) {
+          if (name === "result") this.onresult = handler;
+          if (name === "error") this.onerror = handler;
+          if (name === "end") this.onend = handler;
+          if (name === "start") this.onstart = handler;
+        },
+        removeEventListener() {},
       };
       instances.push(rec);
       return rec;
@@ -511,22 +525,34 @@ async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
     ).webkitSpeechRecognition = makeRecognition;
     (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition =
       makeRecognition;
-    (window as unknown as Record<string, unknown>).__homeVoiceSimulate = (
+    (window as unknown as Record<string, unknown>).__sttSimulate = (
       text: string,
       isFinal: boolean,
     ) => {
       const rec = instances[instances.length - 1];
       if (!rec?.started) return false;
       rec.onresult?.({
-        resultIndex: 0,
         results: [
           {
             isFinal,
             0: { transcript: text },
+            length: 1,
           },
         ],
       });
       return true;
+    };
+    (window as unknown as Record<string, unknown>).__sttState = () => {
+      const rec = instances[instances.length - 1];
+      return rec
+        ? {
+            continuous: rec.continuous,
+            interimResults: rec.interimResults,
+            lang: rec.lang,
+            started: rec.started,
+            stopCount: rec.stopCount,
+          }
+        : null;
     };
   });
 }
@@ -561,7 +587,10 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(page.getByTestId("startup-shell-loading")).toBeVisible();
+    await expect(page.getByTestId("onboarding-toast")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Eliza Cloud" }),
+    ).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
@@ -614,90 +643,59 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAppStorage(page);
-    await installHomeSpeechRecognitionShim(page);
-    await installReadyDesktopStatusBridge(page);
-    const assistantApi = await installAssistantFlowRoutes(page);
+    await installChatSpeechRecognitionShim(page);
+    await installAssistantFlowRoutes(page);
 
-    await openReadyHome(page);
+    await openReadyChatWorkspace(page);
 
-    const mic = page.getByRole("button", { name: /start voice input/i });
+    const mic = page.getByRole("button", { name: /Voice input/i }).first();
     await expect(mic).toBeEnabled({ timeout: 30_000 });
     await mic.click();
-    await expect(page.getByTestId("home-voice-stop")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Stop listening/i }),
+    ).toBeVisible({ timeout: 5_000 });
 
     const accepted = await page.evaluate(() => {
       const simulate = (
         window as unknown as {
-          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
+          __sttSimulate?: (text: string, isFinal: boolean) => boolean;
         }
-      ).__homeVoiceSimulate;
+      ).__sttSimulate;
       return simulate?.("show me my pinned views", true) ?? false;
     });
-    expect(accepted, "home voice shim must receive the scripted turn").toBe(
+    expect(accepted, "chat voice shim must receive the scripted turn").toBe(
       true,
     );
 
-    await expect(page.getByTestId("home-assistant-transcript")).toContainText(
-      "Opening the right view now and keeping voice ready",
+    await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(
+      "show me my pinned views",
+      { timeout: 5_000 },
     );
-    expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
 
-  test("morphs the home mic into send and submits a typed turn", async ({
+  test("submits a typed turn through the current chat composer", async ({
     page,
   }) => {
-    page.on("console", (m) => console.log("PAGE>", m.type(), m.text()));
-    page.on("requestfailed", (r) =>
-      console.log("REQFAIL>", r.method(), r.url(), r.failure()?.errorText),
-    );
-    page.on("response", (r) => {
-      const u = r.url();
-      if (u.includes("/api/conversations") || u.includes("/api/chat"))
-        console.log("RESP>", r.status(), r.request().method(), u);
-    });
     await seedAppStorage(page);
-    await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openReadyHome(page);
+    await openReadyChatWorkspace(page);
 
-    // The trailing control defaults to the mic; there is no send button until
-    // the user types into the composer.
-    const initialMic = page.getByRole("button", {
-      name: /start voice input/i,
-    });
+    const initialMic = page
+      .getByRole("button", { name: /Voice input/i })
+      .first();
     await expect(initialMic).toBeVisible();
     await expect(initialMic).toBeEnabled({ timeout: 15_000 });
-    await expect(
-      page.getByRole("button", { name: "Send message" }),
-    ).toHaveCount(0);
 
-    await page.getByTestId("home-chat-input").fill("open wallet by typing");
+    const composer = page.getByTestId("chat-composer-textarea");
+    await expect(page.getByRole("button", { name: /^Send$/ })).toHaveCount(0);
 
-    // Typing morphs the single trailing control from mic into send.
-    await expect(
-      page.getByRole("button", { name: /start voice input/i }),
-    ).toHaveCount(0);
-    const send = page.getByRole("button", { name: "Send message" });
+    await composer.fill("open wallet by typing");
+    const send = page.getByRole("button", { name: /^Send$/ });
     await expect(send).toBeVisible();
     await expect(send).toBeEnabled({ timeout: 15_000 });
-
-    const cover = await send.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const top = document.elementFromPoint(
-        r.left + r.width / 2,
-        r.top + r.height / 2,
-      );
-      return {
-        topTag: top?.tagName,
-        topLabel: top?.getAttribute("aria-label"),
-        isSelf: top === el || el.contains(top),
-        disabled: (el as HTMLButtonElement).disabled,
-      };
-    });
-    console.log("COVER>", JSON.stringify(cover));
     await send.click();
-    await expect(page.getByTestId("home-chat-input")).toHaveValue("");
+    await expect(composer).toHaveValue("");
     await expect(
       page.getByText("Opening the right view now and keeping voice ready."),
     ).toBeVisible();
@@ -708,40 +706,66 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAppStorage(page);
-    await installHomeSpeechRecognitionShim(page);
-    await installReadyDesktopStatusBridge(page);
+    await installChatSpeechRecognitionShim(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openReadyHome(page);
+    await openReadyChatWorkspace(page);
 
-    const mic = page.getByRole("button", { name: /start voice input/i });
+    const mic = page.getByRole("button", { name: /Voice input/i }).first();
     await expect(mic).toBeEnabled({ timeout: 15_000 });
-    const box = await mic.boundingBox();
-    if (!box) throw new Error("home mic button has no bounding box");
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    // Holding past the push-to-talk threshold (200ms) begins capture, which
-    // flips the trailing control into its "stop" state.
-    await expect(page.getByTestId("home-voice-stop")).toBeVisible({
-      timeout: 5_000,
+    await mic.dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: "mouse",
     });
+    // Holding past the push-to-talk threshold (200ms) begins capture, which
+    // flips the microphone into its release-to-send state.
+    await expect(
+      page.getByRole("button", { name: /Release to send/i }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const state = (
+              window as unknown as {
+                __sttState?: () => { started: boolean } | null;
+              }
+            ).__sttState?.();
+            return state?.started ?? false;
+          }),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
 
     const accepted = await page.evaluate(() => {
       const simulate = (
         window as unknown as {
-          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
+          __sttSimulate?: (text: string, isFinal: boolean) => boolean;
         }
-      ).__homeVoiceSimulate;
+      ).__sttSimulate;
       return simulate?.("push to talk works", true) ?? false;
     });
-    expect(accepted, "home voice shim must receive the held turn").toBe(true);
+    expect(accepted, "chat voice shim must receive the held turn").toBe(true);
 
     // Releasing the hold ends capture and submits the buffered transcript.
-    await page.mouse.up();
-    await expect(page.getByTestId("home-assistant-transcript")).toContainText(
-      "Opening the right view now and keeping voice ready",
-    );
+    await page
+      .getByRole("button", { name: /Release to send/i })
+      .dispatchEvent("pointerup", {
+        bubbles: true,
+        button: 0,
+        buttons: 0,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+    await expect(
+      page.getByText("Opening the right view now and keeping voice ready."),
+    ).toBeVisible();
     expect(assistantApi.streamRequests).toEqual(["push to talk works"]);
   });
 });
