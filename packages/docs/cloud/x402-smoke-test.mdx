@@ -1,0 +1,116 @@
+---
+title: x402 / Payment Smoke Test
+description: End-to-end smoke test for the Cloud-link payment adapter — confirm a 402 from a monetized endpoint actually charges the user's org credits.
+---
+
+# x402 / Payment Smoke Test
+
+A walkthrough for confirming the **`cloud_authenticated_link` sensitive-request adapter** delivers paid Cloud endpoints end-to-end on a dev box: a 402 from a monetized Cloud app produces a charge URL the runtime can resolve, the user can complete payment, and the charge appears in the org's credit ledger.
+
+Use this when:
+
+- Verifying a fresh agent install can reach Cloud monetization at all.
+- Bisecting a regression in the adapter or the receiving Cloud route.
+- Onboarding a new Cloud paid endpoint and checking the round-trip before promoting it.
+
+## What gets exercised
+
+The agent runtime emits a `DispatchSensitiveRequest` with `kind: "payment"` when an action wants the user to authorize a Cloud-side charge. The [`cloud_authenticated_link` adapter](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts) resolves `ELIZAOS_CLOUD_API_KEY` + `ELIZAOS_CLOUD_BASE_URL` and produces a charge URL pointing at the Cloud site:
+
+```
+${cloudBase}/payment/app-charge/${appId}/${requestId}
+```
+
+The user opens that URL, completes the charge in their Cloud session, and the receiving Cloud route debits the org credit balance / credits the creator's redeemable earnings per the app's monetization settings ([see Monetized Apps](./monetized-apps.mdx)).
+
+## Prerequisites
+
+1. **A working agent install.** The agent needs to be able to dispatch sensitive requests at all — `bun run dev` or `bun run dev:desktop` boots cleanly, the chat surface responds.
+2. **An Eliza Cloud API key.** Get it from the Cloud dashboard:
+   ```bash
+   export ELIZAOS_CLOUD_API_KEY="sk-elc_..."
+   # optional override, defaults to https://www.elizacloud.ai
+   # export ELIZAOS_CLOUD_BASE_URL="https://staging.elizacloud.ai"
+   ```
+3. **A monetized Cloud app to target.** Use a known paid app, OR provision a smoke-only one following [Monetized Apps → Register and Configure](./monetized-apps.mdx#register-and-configure). Note the app's `id` — you'll need it in the request below. Set its `inferenceMarkupPercentage` to a non-zero value so the charge is visible.
+4. **Credits on the org.** The user's organization needs enough credit balance for the charge to land. Top up via the dashboard if needed.
+
+## Run
+
+<Steps>
+
+<Step title="Resolve the adapter — sanity check">
+
+Confirm the adapter actually sees the env vars by triggering a no-op resolution from the runtime. From the agent's HTTP API (default `http://127.0.0.1:31337`):
+
+```bash
+curl -s http://127.0.0.1:31337/api/sensitive-requests/dispatch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "payment",
+    "id": "smoke-001",
+    "target": { "appId": "'$APP_ID'" }
+  }'
+```
+
+Expected: a JSON response with `delivered: true`, `target: "cloud_authenticated_link"`, and `url: "<cloudBase>/payment/app-charge/<APP_ID>/smoke-001"`. If you see `delivered: false, error: "cloud not paired"`, `ELIZAOS_CLOUD_API_KEY` is not reaching the runtime — re-check the env or `runtime.getSetting("ELIZAOS_CLOUD_API_KEY")` from a debug route.
+
+</Step>
+
+<Step title="Trigger a real charge from chat">
+
+Send a chat message that invokes an action which dispatches a payment sensitive-request against the monetized app. The exact prompt depends on which paid endpoint you're smoking — for the app's `/chat` endpoint (default monetized surface), simply chatting against the app is enough.
+
+In a working browser session signed into Eliza Cloud:
+
+1. Open the charge URL from step 1 (or let the agent open it via its sensitive-request UI).
+2. Complete the charge.
+3. The receiving route at `POST /api/v1/apps/${APP_ID}/charge/${REQUEST_ID}` (cloud-api) debits the org and credits the creator.
+
+</Step>
+
+<Step title="Verify the ledger">
+
+Pull the org's recent charge history from the Cloud API:
+
+```bash
+curl -s "https://www.elizacloud.ai/api/v1/credits/transactions?limit=5" \
+  -H "Authorization: Bearer $ELIZAOS_CLOUD_API_KEY"
+```
+
+Expected: the most recent transaction is a `debit` of the charge amount with `appId === APP_ID` and `metadata.sensitiveRequestId === "smoke-001"` (or whichever request id you used). If you don't see it, the receiving route didn't fire — check cloud-api logs for the `/payment/app-charge/${APP_ID}/${REQUEST_ID}` request and confirm the auth header is recognized.
+
+</Step>
+
+<Step title="Verify the earnings ledger (creator side)">
+
+If the app has a non-zero `inferenceMarkupPercentage`, the markup amount lands in your redeemable earnings:
+
+```bash
+curl -s "https://www.elizacloud.ai/api/v1/apps/$APP_ID/earnings" \
+  -H "Authorization: Bearer $ELIZAOS_CLOUD_API_KEY"
+```
+
+Expected: the markup amount has been added to `availableEarnings`. From here, the redemption flow at [Monetized Apps → Redeem Earnings](./monetized-apps.mdx) takes over.
+
+</Step>
+
+</Steps>
+
+## Failure-mode quick reference
+
+| Symptom | Likely cause |
+|---|---|
+| `delivered: false, error: "cloud not paired"` | `ELIZAOS_CLOUD_API_KEY` is not set on the runtime, or `runtime.getSetting` is returning empty. Re-source the env, restart the agent. |
+| `delivered: false, error: "payment request missing appId"` | The `SensitiveRequest.target.appId` (or `callback.appId`) was empty when the action dispatched. Fix the action's request shape; the adapter has no fallback. |
+| Charge URL returns 404 | The `appId` doesn't exist in Cloud, OR you're hitting a different cloud base than the one the app was created in. Confirm `ELIZAOS_CLOUD_BASE_URL` matches the app's tenant. |
+| Charge URL completes but no debit appears | The receiving cloud-api route never fired or the auth header was rejected. Check cloud-api logs for the request id; confirm the bearer token belongs to a member of the org that owns the app. |
+| Charge debits but no earnings | App monetization is disabled OR `inferenceMarkupPercentage` is 0. See [Monetized Apps → Enable Monetization](./monetized-apps.mdx#register-and-configure). |
+
+## Code references
+
+- Adapter: [`packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts)
+- Receiving Cloud route: cloud-api `/api/v1/apps/${appId}/charge/${requestId}` handler (see `cloud-api/src/routes/payment`)
+- Monetization model: [Monetized Apps](./monetized-apps.mdx)
+
+Refs: elizaOS/eliza#8124
