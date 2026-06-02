@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-// Spread the real module into the partial mock below — `mock.module` is
-// process-global, so dropping `setAuditDispatcher` (and the other real exports)
-// breaks every later importer of this singleton in the same test run.
-import * as auditDispatcherActual from "@/api-app/services/audit-dispatcher-singleton";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+// Capture audit emits through the REAL singleton (setAuditDispatcher) rather
+// than mock.module'ing getAuditDispatcher — a module mock here is process-global
+// and would pin getAuditDispatcher to this stub for every later suite (e.g. the
+// SOC2 middleware tests' own dispatcher), so their sink would never see events.
+import {
+  initAuditDispatcher,
+  setAuditDispatcher,
+} from "@/api-app/services/audit-dispatcher-singleton";
 
 const constructEventAsync = mock();
 const emitAudit = mock(async () => undefined);
@@ -23,13 +27,6 @@ if (!queueMockGlobal.__cloudApiRedisQueueMock) {
 const redisQueueMock = queueMockGlobal.__cloudApiRedisQueueMock;
 const { enqueue } = redisQueueMock;
 const tryCreate = mock(async () => ({ created: true }));
-
-mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
-  ...auditDispatcherActual,
-  getAuditDispatcher: () => ({
-    emit: emitAudit,
-  }),
-}));
 
 mock.module("@/db/repositories/webhook-events", () => ({
   webhookEventsRepository: {
@@ -107,6 +104,16 @@ describe("Stripe webhook route", () => {
     enqueue.mockClear();
     tryCreate.mockReset();
     tryCreate.mockResolvedValue({ created: true });
+    // Install a capturing dispatcher through the real singleton.
+    setAuditDispatcher({
+      emit: emitAudit,
+    } as unknown as Parameters<typeof setAuditDispatcher>[0]);
+  });
+
+  // Restore a real dispatcher so the captured stub does not leak into later
+  // suites that read the singleton.
+  afterAll(() => {
+    setAuditDispatcher(initAuditDispatcher());
   });
 
   test("rejects requests without a Stripe signature before persistence or enqueue", async () => {
