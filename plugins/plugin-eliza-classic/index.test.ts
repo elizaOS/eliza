@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   elizaClassicPlugin,
   generateElizaResponse,
@@ -25,9 +25,13 @@ describe("eliza-classic deterministic responses", () => {
     const handler = elizaClassicPlugin.models?.[ModelType.TEXT_SMALL];
 
     await expect(
-      handler?.({} as never, {
-        prompt: "System: stay deterministic\nUser: why am I tired?\nAssistant:",
-      } as never),
+      handler?.(
+        {} as never,
+        {
+          prompt:
+            "System: stay deterministic\nUser: why am I tired?\nAssistant:",
+        } as never,
+      ),
     ).resolves.toEqual(
       JSON.stringify({
         thought: "Responding with deterministic ELIZA pattern matching.",
@@ -39,21 +43,15 @@ describe("eliza-classic deterministic responses", () => {
     );
   });
 
-  it("registers deterministic handlers for text, planning, and embedding models", async () => {
+  it("registers deterministic handlers for text and planning models only", () => {
     expect(elizaClassicPlugin.models?.[ModelType.TEXT_NANO]).toBeTypeOf(
       "function",
     );
     expect(elizaClassicPlugin.models?.[ModelType.ACTION_PLANNER]).toBeTypeOf(
       "function",
     );
-
-    const embeddingHandler = elizaClassicPlugin.models?.[
-      ModelType.TEXT_EMBEDDING
-    ] as ((runtime: unknown, params: unknown) => Promise<number[]>) | undefined;
-
-    const embedding = await embeddingHandler?.({} as never, {} as never);
-    expect(embedding).toHaveLength(1536);
-    expect(embedding?.[0]).toBe(1);
-    expect(embedding?.slice(1).every((value) => value === 0)).toBe(true);
+    expect(
+      elizaClassicPlugin.models?.[ModelType.TEXT_EMBEDDING],
+    ).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ Deterministic offline ELIZA-style pattern-matching model handlers for Eliza agen
 
 ## Purpose / role
 
-This plugin replaces every LLM inference call with deterministic keyword-pattern responses modelled after the 1966 ELIZA chatbot. It registers model handlers for all standard `ModelType` variants so an Eliza agent can operate fully offline without any external API. Use it as a zero-cost fallback, for testing agent pipelines, or when a real LLM backend is unavailable.
+This plugin replaces text/planning inference calls with deterministic keyword-pattern responses modelled after the 1966 ELIZA chatbot. It does not register embeddings; load a real embedding provider when retrieval or knowledge search is enabled. Use it as a zero-cost fallback, for testing agent pipelines, or when a real LLM backend is unavailable.
 
 The plugin is **opt-in** — add it to the agent's `plugins` array. It declares `priority: 200`, which is higher than most inference plugins, so it will win the model-handler election when loaded alongside a real LLM plugin unless that plugin declares a higher priority.
 
@@ -18,7 +18,6 @@ Registered in the `elizaClassicPlugin` / `plugin` export. No actions, providers,
 | `RESPONSE_HANDLER` | `handleText` |
 | `ACTION_PLANNER` | `handleText` |
 | `TEXT_COMPLETION` | `handleText` |
-| `TEXT_EMBEDDING` | `handleEmbedding` — returns a 1536-dimensional unit vector (index 0 = 1, rest = 0) |
 
 `handleText` extracts the last user turn from the prompt using a `User:|Human:|You:` regex, runs it through `generateElizaResponse`, and returns a structured JSON string with `thought`, `actions: ["REPLY"]`, `providers: []`, `text`, and `useKnowledgeProviders: false`.
 
@@ -27,7 +26,7 @@ Registered in the `elizaClassicPlugin` / `plugin` export. No actions, providers,
 ```
 plugins/plugin-eliza-classic/
   index.ts              All plugin logic: pattern table, generateElizaResponse,
-                        getElizaGreeting, handleText, handleEmbedding,
+                        getElizaGreeting, handleText,
                         elizaClassicPlugin export
   index.browser.ts      Browser entry — re-exports everything from index.ts
   scripts/build.mjs     Bun.build script; also hand-writes dist/index.d.ts
@@ -82,5 +81,5 @@ bun run --cwd plugins/plugin-eliza-classic build
 - **`dev` script uses tsup**, not the custom build script. The two outputs are equivalent for the compiled JS but the `dev` watcher regenerates `.d.ts` via tsup's own dts pipeline.
 - **Browser entry is a thin re-export.** `index.browser.ts` just re-exports `index.ts`; no browser-specific divergence exists today. Keep it that way unless a genuine browser/Node difference arises.
 - **Priority 200 wins.** If this plugin is registered alongside a real LLM plugin with a lower priority, all inference will be handled by ELIZA pattern matching. Confirm load order when debugging unexpected offline behaviour.
-- **Embedding is a stub.** The 1536-dim unit vector returned by `handleEmbedding` is not semantically meaningful. It satisfies the type contract and prevents crashes but will produce nonsense similarity scores.
+- **No embedding handler.** ELIZA Classic is text/planning only. Do not add a fake embedding handler; use a real embedding provider for semantic retrieval.
 - **No src/ subdirectory.** Source files live directly at the package root, not under `src/`.

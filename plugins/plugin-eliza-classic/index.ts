@@ -66,10 +66,6 @@ async function handleText(
   });
 }
 
-async function handleEmbedding(): Promise<number[]> {
-  return Array.from({ length: 1536 }, (_, index) => (index === 0 ? 1 : 0));
-}
-
 export const elizaClassicPlugin: Plugin = {
   name: "eliza-classic",
   description: "Deterministic offline ELIZA-style text responses.",
@@ -83,7 +79,6 @@ export const elizaClassicPlugin: Plugin = {
     [ModelType.RESPONSE_HANDLER]: handleText,
     [ModelType.ACTION_PLANNER]: handleText,
     [ModelType.TEXT_COMPLETION]: handleText,
-    [ModelType.TEXT_EMBEDDING]: handleEmbedding,
   },
 };
 
