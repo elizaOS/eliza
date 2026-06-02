@@ -83,7 +83,9 @@ jobs:
         run: bun run --cwd packages/shared build:i18n
 
       - name: Build core browser dist
-        run: bun run --cwd packages/core build
+        run: |
+          bun run --cwd packages/logger build
+          bun run --cwd packages/core build
 
       - name: Run bun dev onboarding chat smoke
         run: bun run --cwd packages/app test:dev-smoke
