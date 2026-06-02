@@ -120,6 +120,7 @@ describe("runHydrating route selection", () => {
     await runHydrating(deps, dispatch, { current: false });
 
     expect(deps.setTab).not.toHaveBeenCalledWith("character-select");
+    expect(deps.setTabRaw).toHaveBeenCalledWith("chat");
     expect(deps.setTabRaw).not.toHaveBeenCalledWith("character-select");
     expect(deps.firstRunCompletionCommittedRef.current).toBe(false);
     expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATION_COMPLETE" });

@@ -256,7 +256,7 @@ export async function runHydrating(
       if (isRoot) deps.setTab(resolveDefaultLandingTab());
     }
   }
-  if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
+  if (!isRoot && urlTab) {
     deps.setTabRaw(urlTab);
     if (urlTab === "plugins") {
       void deps.loadPlugins();
