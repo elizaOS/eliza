@@ -6,7 +6,12 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
-type CanvasPattern = "sparkles" | "petals" | "rain" | "constellations";
+type CanvasPattern =
+  | "sparkles"
+  | "petals"
+  | "rain"
+  | "constellations"
+  | "embers";
 const ANIMATIONS: Record<
   CanvasPattern,
   (canvas: HTMLCanvasElement) => () => void
@@ -15,7 +20,15 @@ const ANIMATIONS: Record<
   petals: runPetals,
   rain: runRain,
   constellations: runConstellations,
+  embers: runEmbers,
 };
+
+function hexRgba(hex: string, a: number): string {
+  const h = hex.replace("#", "");
+  if (h.length < 6) return `rgba(156,222,242,${a})`;
+  const n = Number.parseInt(h.slice(0, 6), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 
 function effectColor(canvas: HTMLCanvasElement): string {
   const s = getComputedStyle(canvas);
@@ -353,11 +366,113 @@ function runConstellations(canvas: HTMLCanvasElement): () => void {
   };
 }
 
+// Verbatim port of odysseus theme.js _initEmbers — rising glowing embers with
+// sparks + occasional ground bursts (destination-out fade + lighter compositing).
+function runEmbers(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0;
+  let h = 0;
+  const embers: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    r: number;
+    life: number;
+    maxLife: number;
+    wobble: number;
+    spark: boolean;
+  }[] = [];
+  const make = () => ({
+    x: Math.random() * w,
+    y: h + Math.random() * 40,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: -0.3 - Math.random() * 0.8,
+    r: 0.3 + Math.random() * 0.6,
+    life: 0,
+    maxLife: 220 + Math.random() * 220,
+    wobble: Math.random() * Math.PI * 2,
+    spark: false,
+  });
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (embers.length === 0)
+      for (let i = 0; i < 60; i++) {
+        const e = make();
+        e.y = Math.random() * h;
+        e.life = Math.random() * e.maxLife;
+        embers.push(e);
+      }
+  };
+  resize();
+  window.addEventListener("resize", resize);
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "lighter";
+    const color = effectColor(canvas);
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const e = embers[i];
+      e.wobble += 0.03;
+      e.x += e.vx + Math.sin(e.wobble) * 0.5;
+      e.y += e.vy;
+      e.life++;
+      if (e.life > e.maxLife || e.y < -20) {
+        embers.splice(i, 1);
+        if (embers.length < 70) embers.push(make());
+        continue;
+      }
+      if (!e.spark && Math.random() < 0.003) e.spark = true;
+      const lr = e.life / e.maxLife;
+      const fade = Math.min(1, Math.min(lr * 4, (1 - lr) * 3));
+      const r = e.r * (e.spark ? 2.4 : 1);
+      const a = (e.spark ? 0.9 : 0.55) * fade;
+      const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, r * 4);
+      g.addColorStop(0, hexRgba(color, a));
+      g.addColorStop(0.4, hexRgba(color, a * 0.3));
+      g.addColorStop(1, hexRgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(e.x - r * 4, e.y - r * 4, r * 8, r * 8);
+      ctx.fillStyle = hexRgba("#ffffff", a * 0.6);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      e.spark = false;
+    }
+    if (Math.random() < 0.015) {
+      const bx = Math.random() * w;
+      for (let i = 0; i < 5; i++) {
+        const e = make();
+        e.x = bx + (Math.random() - 0.5) * 40;
+        e.y = h - 10;
+        e.vy *= 1.5;
+        embers.push(e);
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+  };
+}
+
 export const CANVAS_BG_PATTERNS: CanvasPattern[] = [
   "sparkles",
   "petals",
   "rain",
   "constellations",
+  "embers",
 ];
 
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {

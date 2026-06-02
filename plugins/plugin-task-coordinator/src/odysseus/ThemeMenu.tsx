@@ -23,6 +23,7 @@ const BG_PATTERNS = [
   "petals",
   "rain",
   "constellations",
+  "embers",
 ] as const;
 
 export function ThemeMenu({
