@@ -12,9 +12,9 @@ describe("extractShortToolDeliverable", () => {
   });
 
   it("falls back to finalText when response is absent", () => {
-    expect(
-      extractShortToolDeliverable({ finalText: wrap("70234") }),
-    ).toBe("70234");
+    expect(extractShortToolDeliverable({ finalText: wrap("70234") })).toBe(
+      "70234",
+    );
   });
 
   it("returns undefined when there are multiple blocks (stays on summarized path)", () => {
@@ -38,7 +38,9 @@ describe("extractShortToolDeliverable", () => {
 
   it("returns undefined for a body over the 2048-byte cap", () => {
     const body = "a".repeat(2049);
-    expect(extractShortToolDeliverable({ response: wrap(body) })).toBeUndefined();
+    expect(
+      extractShortToolDeliverable({ response: wrap(body) }),
+    ).toBeUndefined();
   });
 
   it("returns undefined for an empty body", () => {
