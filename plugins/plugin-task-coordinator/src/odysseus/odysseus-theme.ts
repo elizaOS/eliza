@@ -531,7 +531,13 @@ export const ODYSSEUS_CSS = `
 
 /* ── search palette (Ctrl+K) ── */
 .odysseus-root .od-search-overlay { position:absolute; inset:0; z-index:50; display:flex;
-  align-items:flex-start; justify-content:center; padding-top:12vh; background:rgba(0,0,0,.45); }
+  align-items:flex-start; justify-content:center; padding:12vh 0 5vh; overflow-y:auto;
+  background:rgba(0,0,0,.45); }
+/* A centered (non-windowed) panel is capped to the viewport so its header +
+   footer chrome stay on-screen and inner scroll regions own the overflow; if a
+   panel is still taller, the overlay itself scrolls so nothing is unreachable.
+   A windowed panel sets its own height inline (win.panelStyle), which wins. */
+.odysseus-root .od-search-overlay:not(.od-windowed) > .od-search-panel { max-height:83vh; }
 .odysseus-root .od-search-backdrop { position:absolute; inset:0; z-index:0; background:none; border:none;
   padding:0; margin:0; cursor:default; }
 .odysseus-root .od-search-panel { position:relative; z-index:1; width:560px; max-width:90%; background:var(--panel);
