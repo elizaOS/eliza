@@ -30,6 +30,7 @@
     "typecheck": "tsgo --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
+    "lint:bin-exports": "node ./scripts/lint-bin-exports.mjs",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

@@ -5,6 +5,7 @@ import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
 	findWebLookupActionName,
+	inferDirectCurrentRequestCandidateActions,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
@@ -208,6 +209,26 @@ describe("live routing regressions", () => {
 				directCandidateActions: ["WEB_FETCH"],
 			}),
 		).toBe(false);
+	});
+
+	it("routes a coding request that mentions a market term to coding, not web-lookup", () => {
+		// "build an app … bitcoin price" trips looksLikeWebSearchRequest (the market
+		// term) yet is a coding task. Coding-work must be checked before web-search
+		// so it routes to coding delegation, not a web lookup.
+		const actions = [{ name: "TASKS" }, { name: "WEB_SEARCH" }];
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				actions,
+				"build an app that shows the current bitcoin price",
+			),
+		).toEqual(["TASKS"]);
+		// A pure live-info ask (no coding verb) still routes to the web lookup.
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				actions,
+				"what is the current bitcoin price",
+			),
+		).toEqual(["WEB_SEARCH"]);
 	});
 
 	it("promotes explicit reply to direct shell/search action aliases", () => {

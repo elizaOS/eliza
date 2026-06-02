@@ -1915,23 +1915,42 @@ export async function resolvePlugins(
   // performance. Critical env vars (database, AI provider keys) are set
   // before this point in buildCharacterFromConfig / resolveDbEnv.
   const serializePluginLoads = process.env.ELIZA_SERIALIZE_PLUGIN_LOADS === "1";
+  // The deferred phase runs in the background after the API server is already
+  // listening, so it must not starve it. Plugin imports are CPU-bound module
+  // evaluation (TS transpile + eval); a `Promise.all` burst hogs the single
+  // event loop for the whole batch, blocking /api/health (and the readiness
+  // flip) until it drains. For the deferred phase, load sequentially and yield
+  // to the event loop (setImmediate) between each import so the bound HTTP
+  // server can serve liveness/readiness mid-burst. Parallelism buys little here
+  // anyway — the work is CPU-bound on one thread. Blocking/all phases gate boot
+  // and keep the parallel path. Mirrors the deferred static-plugin scheduling.
+  const yieldBetweenLoads = phase === "deferred" && !serializePluginLoads;
   logger.info(
-    `[eliza] Loading ${pluginsToLoad.size} plugins${serializePluginLoads ? " sequentially" : ""}...`,
+    `[eliza] Loading ${pluginsToLoad.size} plugins${serializePluginLoads ? " sequentially" : yieldBetweenLoads ? " (deferred, yielding)" : ""}...`,
   );
-  const pluginResults = serializePluginLoads
-    ? await (async () => {
-        const results: Array<Awaited<ReturnType<typeof loadSinglePlugin>>> = [];
-        let index = 0;
-        for (const pluginName of pluginsToLoad) {
-          index += 1;
-          logger.info(
-            `[eliza] Loading plugin ${index}/${pluginsToLoad.size}: ${pluginName}`,
-          );
-          results.push(await loadSinglePlugin(pluginName));
-        }
-        return results;
-      })()
-    : await Promise.all(Array.from(pluginsToLoad).map(loadSinglePlugin));
+  const pluginResults =
+    serializePluginLoads || yieldBetweenLoads
+      ? await (async () => {
+          const results: Array<Awaited<ReturnType<typeof loadSinglePlugin>>> =
+            [];
+          let index = 0;
+          for (const pluginName of pluginsToLoad) {
+            index += 1;
+            if (serializePluginLoads) {
+              logger.info(
+                `[eliza] Loading plugin ${index}/${pluginsToLoad.size}: ${pluginName}`,
+              );
+            }
+            results.push(await loadSinglePlugin(pluginName));
+            if (yieldBetweenLoads) {
+              await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+              });
+            }
+          }
+          return results;
+        })()
+      : await Promise.all(Array.from(pluginsToLoad).map(loadSinglePlugin));
 
   // Collect successful loads
   for (const result of pluginResults) {

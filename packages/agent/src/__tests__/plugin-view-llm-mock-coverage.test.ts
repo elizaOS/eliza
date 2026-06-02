@@ -23,7 +23,7 @@ function isGuiOrTui(view: PluginViewMockCase) {
 
 function readVisualMatrixCases(): PluginViewMockCase[] {
   const source = readFileSync(
-    resolve(repoRoot, "packages/app/test/ui-smoke/plugin-views-visual.spec.ts"),
+    resolve(repoRoot, "packages/app/test/ui-smoke/plugin-view-cases.ts"),
     "utf8",
   );
   const match = source.match(

@@ -1,3 +1,4 @@
+import { isCloudReachable } from "@elizaos/shared";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
@@ -36,7 +37,7 @@ function createRegistryFetchInit(): RequestInit {
   };
 }
 
-export async function fetchFromNetwork(params: {
+interface FetchFromNetworkParams {
   generatedRegistryUrl: string;
   indexRegistryUrl: string;
   applyLocalWorkspaceApps: (
@@ -46,10 +47,18 @@ export async function fetchFromNetwork(params: {
     plugins: Map<string, RegistryPluginInfo>,
   ) => Promise<void>;
   sanitizeSandbox: (value?: string) => string;
-}): Promise<Map<string, RegistryPluginInfo>> {
+}
+
+/**
+ * Fetch + parse the generated registry. Returns the parsed plugin map on a
+ * 200, or `null` when the endpoint is absent (404) or the request fails — in
+ * which case the caller falls through to the index registry.
+ */
+async function fetchGeneratedRegistry(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo> | null> {
   const {
     generatedRegistryUrl,
-    indexRegistryUrl,
     applyLocalWorkspaceApps,
     applyNodeModulePlugins,
     sanitizeSandbox,
@@ -208,10 +217,24 @@ export async function fetchFromNetwork(params: {
         errorKind: "http_error",
       });
     }
+    return null;
   } catch (err) {
     generatedSpan.failure({ error: err });
     // caller logs fallback warnings
+    return null;
   }
+}
+
+/**
+ * Fetch + parse the index registry. Throws `RegistryNetworkFallbackError` (or
+ * the raw network error) when it cannot be loaded, signalling the caller to
+ * use the local snapshot.
+ */
+async function fetchIndexRegistry(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo>> {
+  const { indexRegistryUrl, applyLocalWorkspaceApps, applyNodeModulePlugins } =
+    params;
 
   const indexSpan = createIntegrationTelemetrySpan({
     boundary: "marketplace",
@@ -262,4 +285,38 @@ export async function fetchFromNetwork(params: {
   await applyNodeModulePlugins(plugins);
   indexSpan.success({ statusCode: resp.status });
   return plugins;
+}
+
+/**
+ * Resolve the plugin registry from the network, preferring the generated
+ * registry over the index registry.
+ *
+ * Both network attempts are issued concurrently so a doomed-offline boot
+ * waits out a single ~2.5s timeout instead of two sequential ones. The
+ * generated result still wins whenever it loads; the index result is only
+ * consulted (and its failure only surfaced) when the generated registry is
+ * absent. When the cloud is already known to be unreachable for this boot we
+ * skip both fetches entirely and go straight to the local-snapshot fallback.
+ */
+export async function fetchFromNetwork(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo>> {
+  if (!(await isCloudReachable())) {
+    throw new RegistryNetworkFallbackError(
+      "cloud unreachable at boot — using local registry snapshot",
+    );
+  }
+
+  const generatedResult = fetchGeneratedRegistry(params);
+  const indexResult = fetchIndexRegistry(params);
+  // Prevent an unhandled rejection if the generated registry wins the race and
+  // we never await the index attempt; its failure is only relevant as a
+  // fallback when the generated registry is absent.
+  indexResult.catch(() => {});
+
+  const generated = await generatedResult;
+  if (generated) {
+    return generated;
+  }
+  return indexResult;
 }

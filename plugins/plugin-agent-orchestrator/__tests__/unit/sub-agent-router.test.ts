@@ -6,6 +6,7 @@ import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setHostResolver } from "../../src/services/ssrf-guard.js";
 import {
+  extractShortToolDeliverable,
   extractSubResources,
   normalizeUrlsInText,
   redactLoopbackUrls,
@@ -60,6 +61,7 @@ function makeAcpService(session: SessionInfo): {
     listSessions: ReturnType<typeof vi.fn>;
     updateSessionMetadata: ReturnType<typeof vi.fn>;
     getChangedPaths: ReturnType<typeof vi.fn>;
+    stopSession: ReturnType<typeof vi.fn>;
   };
   emit: (sessionId: string, event: string, data: unknown) => void;
 } {
@@ -71,6 +73,7 @@ function makeAcpService(session: SessionInfo): {
         captured.fn = undefined;
       };
     }),
+    stopSession: vi.fn(async () => {}),
     getSession: vi.fn(async (id: string) =>
       id === session.id ? session : null,
     ),
@@ -1911,6 +1914,64 @@ describe("normalizeUrlsInText", () => {
   });
 });
 
+describe("extractShortToolDeliverable", () => {
+  it("recovers the inner body of a single short tool-output block", () => {
+    const data = {
+      response:
+        "Done.\n[tool output: bash]\n42 files matched the pattern.\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBe(
+      "42 files matched the pattern.",
+    );
+  });
+
+  it("reads from finalText when response is absent", () => {
+    const data = {
+      finalText: "[tool output: cat]\nhello world\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBe("hello world");
+  });
+
+  it("returns undefined for multiple tool-output blocks (stays on model path)", () => {
+    const data = {
+      response:
+        "[tool output: a]\none\n[/tool output]\n[tool output: b]\ntwo\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBeUndefined();
+  });
+
+  it("returns undefined when the block exceeds the 2KB verbatim gate", () => {
+    const big = "x".repeat(2049);
+    const data = { response: `[tool output: dump]\n${big}\n[/tool output]` };
+    expect(extractShortToolDeliverable(data)).toBeUndefined();
+  });
+
+  it("relays a block at the 2KB boundary verbatim", () => {
+    const atCap = "y".repeat(2048);
+    const data = { response: `[tool output: dump]\n${atCap}\n[/tool output]` };
+    expect(extractShortToolDeliverable(data)).toBe(atCap);
+  });
+
+  it("returns undefined when there is no tool-output block", () => {
+    expect(
+      extractShortToolDeliverable({ response: "just prose, no tools" }),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when the block body is empty", () => {
+    expect(
+      extractShortToolDeliverable({
+        response: "[tool output: noop]\n\n[/tool output]",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when there is no captured response payload", () => {
+    expect(extractShortToolDeliverable({})).toBeUndefined();
+    expect(extractShortToolDeliverable(null)).toBeUndefined();
+  });
+});
+
 describe("redactLoopbackUrls", () => {
   // Live regression: on 2026-05-25 a "make me a 1-page PDF" sub-agent
   // task ran successfully but the sub-agent's task report mentioned
@@ -1998,8 +2059,11 @@ describe("SubAgentRouter state_lost respawn cap", () => {
     // Live regression (milady dog-site, 2026-05-28): a dying sub-agent emitted
     // an "error"/session_state_lost event every ~60s; each respawn was a NEW
     // sessionId so the per-session roundTripCap never fired -> unbounded loop.
-    // The per-origin cap (taskRoomId+agentType, default 3) must stop
-    // re-injecting after the cap so the parent is no longer prompted to spawn.
+    // The per-origin cap (taskRoomId+agentType, default 3) bounds the lineage.
+    // Here the sessions carry NO initialTask, so deterministic in-router
+    // recovery can't reconstruct the work — each under-cap failure falls
+    // through to an honest error post, and the over-cap event posts exactly
+    // one terminal failure (deduped) instead of hanging silently.
     stubFetch(vi.fn(async () => new Response("", { status: 200 })) as never);
     const captured: { fn?: (s: string, e: string, d: unknown) => void } = {};
     const stopSession = vi.fn(async () => undefined);
@@ -2037,8 +2101,9 @@ describe("SubAgentRouter state_lost respawn cap", () => {
     const { runtime, handleMessage } = makeRuntime({ acp: acpService });
     const router = await SubAgentRouter.start(runtime);
 
-    // 5 respawns: distinct sessionIds, same origin room (taskRoomId fallback)
-    // + agentType. Cap=3 -> events 1..3 post, 4..5 suppressed.
+    // 5 events: distinct sessionIds, same origin room (taskRoomId fallback)
+    // + agentType. Cap=3 -> events 1..3 post honest errors, event 4 posts one
+    // terminal failure, event 5 suppressed.
     for (let i = 1; i <= 5; i++) {
       captured.fn?.(`sess-${i}-0000-0000-0000-00000000000${i}`, "error", {
         message:
@@ -2048,8 +2113,13 @@ describe("SubAgentRouter state_lost respawn cap", () => {
       await new Promise((r) => setImmediate(r));
     }
 
-    expect(handleMessage).toHaveBeenCalledTimes(3);
-    // The over-cap respawns are force-stopped instead of re-injected.
+    expect(handleMessage).toHaveBeenCalledTimes(4);
+    const terminal = handleMessage.mock.calls[3]?.[1];
+    expect(
+      (terminal?.content?.metadata as Record<string, unknown> | undefined)
+        ?.subAgentEvent,
+    ).toBe("state_lost_exhausted");
+    // The over-cap session is force-stopped instead of re-injected.
     expect(stopSession).toHaveBeenCalled();
     await router.stop();
   });
@@ -2172,5 +2242,162 @@ describe("SubAgentRouter — change-set narration (GAP C)", () => {
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
+  });
+});
+
+describe("SubAgentRouter — deterministic session_state_lost recovery", () => {
+  const STATE_LOST = {
+    failureKind: "session_state_lost",
+    message: "Sub-agent state was lost.",
+  };
+
+  it("recovers in-router and posts nothing to the user (no crash narration)", async () => {
+    const session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Fix the failing test in foo.ts",
+      },
+    });
+    const acp = makeAcpService(session);
+    const { runtime, handleMessage, spawnSession } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "error", STATE_LOST);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // Recovery is deterministic and silent: a replacement was spawned with the
+    // original task and origin metadata, the dead session was stopped, and the
+    // user saw NOTHING (the child's own task_complete will be the only reply).
+    expect(spawnSession).toHaveBeenCalledTimes(1);
+    const spawnArg = spawnSession.mock.calls[0]?.[0] as {
+      initialTask?: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(spawnArg?.initialTask).toBe("Fix the failing test in foo.ts");
+    expect(spawnArg?.metadata?.roomId).toBe(ROOM);
+    expect(spawnArg?.metadata?.retryOfSessionId).toBe(SESSION_ID);
+    expect(acp.service.stopSession).toHaveBeenCalledWith(SESSION_ID);
+    expect(handleMessage).not.toHaveBeenCalled();
+
+    // The dead session's tail events are suppressed — a late task_complete on
+    // the lost session must not double-post.
+    acp.emit(SESSION_ID, "task_complete", { response: "stale ghost reply" });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an honest failure when there is no original task to respawn", async () => {
+    // Default session carries no initialTask → respawn can't reconstruct the
+    // work, so the user gets an honest error report instead of silence.
+    const session = makeSession();
+    const acp = makeAcpService(session);
+    const { runtime, handleMessage, spawnSession } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "error", STATE_LOST);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(spawnSession).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces an honest failure when the respawn spawn throws", async () => {
+    const session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Fix the failing test in foo.ts",
+      },
+    });
+    const acp = makeAcpService(session);
+    const { runtime, handleMessage, spawnSession } = makeRuntime({
+      acp: acp.service,
+    });
+    spawnSession.mockRejectedValueOnce(new Error("no slots"));
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "error", STATE_LOST);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(spawnSession).toHaveBeenCalledTimes(1);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps respawns per lineage and posts exactly one terminal failure", async () => {
+    // A flapping task lineage (each crash respawns a new session that also
+    // crashes) must not respawn unbounded. Cap is 3; the 4th state_lost for
+    // the lineage reports one honest terminal failure, and any further ones
+    // are suppressed.
+    const ids = [
+      "10000000-0000-0000-0000-000000000001",
+      "10000000-0000-0000-0000-000000000002",
+      "10000000-0000-0000-0000-000000000003",
+      "10000000-0000-0000-0000-000000000004",
+      "10000000-0000-0000-0000-000000000005",
+    ];
+    const sessions = new Map(
+      ids.map((id) => [
+        id,
+        makeSession({
+          id,
+          metadata: {
+            label: "fix-bug-42",
+            roomId: ROOM,
+            worldId: WORLD,
+            userId: USER,
+            messageId: PARENT_MSG, // shared origin → shared respawn lineage
+            source: "telegram",
+            initialTask: "Fix the failing test in foo.ts",
+          },
+        }),
+      ]),
+    );
+    const captured: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof captured.fn) => {
+        captured.fn = handler;
+        return () => {
+          captured.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => sessions.get(id) ?? null),
+      listSessions: vi.fn(async () => [...sessions.values()]),
+      stopSession: vi.fn(async () => {}),
+    };
+    const { runtime, handleMessage, spawnSession } = makeRuntime({
+      acp: service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    for (const id of ids) {
+      captured.fn?.(id, "error", STATE_LOST);
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+    }
+
+    // 3 under-cap respawns (silent), then exactly one terminal failure post.
+    expect(spawnSession).toHaveBeenCalledTimes(3);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(metadata?.subAgentEvent).toBe("state_lost_exhausted");
+    expect(metadata?.subAgentStatus).toBe("failed");
+    expect(posted?.content?.text).toContain("could not be recovered");
   });
 });

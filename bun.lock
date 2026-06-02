@@ -1261,6 +1261,10 @@
       "dependencies": {
         "@elizaos/cloud-sdk": "workspace:*",
       },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "bun-types": "1.3.14",
+      },
     },
     "packages/examples/cloudflare": {
       "name": "elizaos-cloudflare-worker",
@@ -1602,6 +1606,7 @@
         "@evenrealities/even_hub_sdk": "0.0.10",
       },
       "devDependencies": {
+        "@types/node": "^25.0.3",
         "bun-types": "1.3.14",
         "pngjs": "^7.0.0",
         "typescript": "^6.0.3",

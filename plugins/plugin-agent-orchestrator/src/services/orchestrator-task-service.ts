@@ -198,6 +198,12 @@ function describeEvent(event: string, data: unknown): string {
     }
     case "message":
       return truncate(str(record.text) ?? "Sub-agent message", 160);
+    case "reasoning":
+      return truncate(str(record.text) ?? "Sub-agent reasoning", 160);
+    case "plan": {
+      const count = Array.isArray(record.entries) ? record.entries.length : 0;
+      return `Updated plan — ${count} item${count === 1 ? "" : "s"}`;
+    }
     case "blocked":
       return truncate(str(record.message) ?? "Blocked on input", 160);
     case "login_required":
@@ -420,6 +426,24 @@ export class OrchestratorTaskService extends Service {
             direction: "stdout",
           });
         }
+        break;
+      }
+      case "reasoning": {
+        // Reasoning text rides the event stream (event.data.text), which the
+        // mapper forwards verbatim onto the task event record for the UI's
+        // ReasoningCell. It is intentionally NOT recorded as a message: the
+        // message DTO's `direction` is a closed union and reasoning is not part
+        // of the deliverable transcript. addEvent (in onSessionEvent) already
+        // persisted it; nothing further to apply to session/task state.
+        break;
+      }
+      case "plan": {
+        // The sub-agent's todo/plan snapshot (already sanitized in AcpService)
+        // becomes the task's durable currentPlan, which drives the plan/todo
+        // dock. addEvent (in onSessionEvent) persisted the event; here we update
+        // the task so the latest plan is available without replaying events.
+        const entries = Array.isArray(record.entries) ? record.entries : [];
+        await this.store.updateTask(taskId, { currentPlan: { entries } });
         break;
       }
       case "blocked":

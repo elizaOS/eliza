@@ -34,6 +34,8 @@ export type SessionEventName =
   | "stopped"
   | "error"
   | "message"
+  | "reasoning"
+  | "plan"
   | "reconnected"
   | string;
 

@@ -7,6 +7,7 @@ import {
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
   resolveWorkdirByConvention,
+  resolveWorkdirRoute,
 } from "../../src/services/task-agent-routing.js";
 
 // `task` / `userRequest` are deliberately chosen so they match no configured
@@ -54,6 +55,66 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
       resolveSpawnWorkdir(undefined, NO_ROUTE_TASK, NO_ROUTE_TASK, locked, {
         lockWorkdir: true,
       }),
+    ).toEqual({ workdir: process.cwd() });
+  });
+});
+
+describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
+  // When a task matches no route/convention/explicit workdir, the last resort
+  // honors the documented ACP workspace settings (so simple tasks don't write
+  // into the runtime's own source checkout), falling back to process.cwd()
+  // only when neither is set — preserving the self-checkout default.
+  const stubRuntime = (settings: Record<string, string>) =>
+    ({ getSetting: (key: string) => settings[key] }) as never;
+
+  it("honors ELIZA_ACP_WORKSPACE_ROOT over process.cwd() when no route matches", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ws-root-"));
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({ ELIZA_ACP_WORKSPACE_ROOT: root }),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        undefined,
+      ),
+    ).toEqual({ workdir: root });
+  });
+
+  it("honors ACPX_DEFAULT_CWD when ELIZA_ACP_WORKSPACE_ROOT is unset", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "acp-cwd-"));
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({ ACPX_DEFAULT_CWD: root }),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        undefined,
+      ),
+    ).toEqual({ workdir: root });
+  });
+
+  it("prefers ELIZA_ACP_WORKSPACE_ROOT over ACPX_DEFAULT_CWD", () => {
+    const preferred = fs.mkdtempSync(path.join(os.tmpdir(), "ws-pref-"));
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "ws-other-"));
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({
+          ELIZA_ACP_WORKSPACE_ROOT: preferred,
+          ACPX_DEFAULT_CWD: other,
+        }),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        undefined,
+      ),
+    ).toEqual({ workdir: preferred });
+  });
+
+  it("still returns process.cwd() when no workspace root is configured (self-checkout default)", () => {
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({}),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        undefined,
+      ),
     ).toEqual({ workdir: process.cwd() });
   });
 });
@@ -110,6 +171,39 @@ describe("resolveWorkdirByConvention", () => {
         "ship boseti and soulmates together",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("resolveWorkdirRoute — malformed route guard", () => {
+  const stubRuntime = (routesJson: string) =>
+    ({
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_WORKDIR_ROUTES" ? routesJson : undefined,
+    }) as never;
+
+  it("drops a route whose match fields are not arrays instead of throwing", () => {
+    // `matchAll: "foo"` (string, misconfigured) would otherwise reach
+    // routeMatches()'s `.some()` and throw "some is not a function". The parse
+    // guard must filter the entry out so resolution degrades to no-match.
+    const routes = JSON.stringify([
+      { id: "bad", workdir: os.tmpdir(), matchAll: "foo" },
+    ]);
+    expect(() =>
+      resolveWorkdirRoute(stubRuntime(routes), "task", "ship foo now"),
+    ).not.toThrow();
+    expect(
+      resolveWorkdirRoute(stubRuntime(routes), "task", "ship foo now"),
+    ).toBeUndefined();
+  });
+
+  it("still matches a well-formed array route", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "route-ok-"));
+    const routes = JSON.stringify([
+      { id: "ok", workdir: dir, matchAny: ["shipit"] },
+    ]);
+    const r = resolveWorkdirRoute(stubRuntime(routes), "task", "please shipit");
+    expect(r?.id).toBe("ok");
+    expect(r?.workdir).toBe(dir);
   });
 });
 

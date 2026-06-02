@@ -18,6 +18,12 @@ import {
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
+type ExpressLikeResponse = ServerResponse & {
+  status?: (code: number) => ExpressLikeResponse;
+  json?: (data: unknown) => ExpressLikeResponse;
+  send?: (data: unknown) => ExpressLikeResponse;
+};
+
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 type X402RoutesModule = {
   createPaymentAwareHandler: (
@@ -106,32 +112,34 @@ function attachExpressResponseHelpers(res: ServerResponse): void {
   if (marked[EXPRESS_SHIM]) return;
   marked[EXPRESS_SHIM] = true;
 
-  const r = res as ServerResponse & {
-    status: (code: number) => {
-      json: (data: unknown) => void;
-      send: (data: unknown) => void;
-    };
-  };
+  const r = res as ExpressLikeResponse;
 
-  r.status = (code: number) => {
-    res.statusCode = code;
-    return {
-      json(data: unknown) {
-        if (res.headersSent) return;
+  if (typeof r.status !== "function") {
+    r.status = (code: number) => {
+      res.statusCode = code;
+      return r;
+    };
+  }
+  if (typeof r.json !== "function") {
+    r.json = (data: unknown) => {
+      if (res.headersSent) return r;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.end(JSON.stringify(data));
+      return r;
+    };
+  }
+  if (typeof r.send !== "function") {
+    r.send = (data: unknown) => {
+      if (res.headersSent) return r;
+      if (typeof data === "string" || Buffer.isBuffer(data)) {
+        res.end(data);
+      } else {
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify(data));
-      },
-      send(data: unknown) {
-        if (res.headersSent) return;
-        if (typeof data === "string" || Buffer.isBuffer(data)) {
-          res.end(data);
-        } else {
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(data));
-        }
-      },
+      }
+      return r;
     };
-  };
+  }
 }
 
 function augmentRequest(
