@@ -83,6 +83,11 @@ export function createChannelDebouncer(
 	const bufferUnaddressed =
 		options.shouldRespondOnlyToMentions === true && !coalesceEnabled;
 	const bufferTtlMs = Math.max(options.bufferTtlMs ?? 10_000, debounceMs);
+	// The rolling buffer only feeds recent context to a following pointer, so a
+	// handful of lines is plenty. Cap it so a channel flooded with unaddressed
+	// messages inside the TTL window cannot grow the per-channel array without
+	// bound; keep the most recent entries.
+	const maxRecentBuffer = 50;
 	const recentUnaddressed = new Map<
 		string,
 		{ message: DiscordMessage; at: number }[]
@@ -106,6 +111,9 @@ export function createChannelDebouncer(
 		const now = Date.now();
 		const buffered = recentUnaddressed.get(channelId) ?? [];
 		buffered.push({ message, at: now });
+		if (buffered.length > maxRecentBuffer) {
+			buffered.splice(0, buffered.length - maxRecentBuffer);
+		}
 		recentUnaddressed.set(channelId, buffered);
 		pruneRecent(channelId, now);
 	};

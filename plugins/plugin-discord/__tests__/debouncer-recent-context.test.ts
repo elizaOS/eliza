@@ -247,4 +247,33 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 			vi.useRealTimers();
 		}
 	});
+
+	it("caps the rolling buffer so a flood of unaddressed messages cannot grow without bound", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 60_000,
+			});
+
+			// Flood the channel with unaddressed messages well past the 50-entry cap.
+			for (let i = 1; i <= 120; i++) {
+				debouncer.enqueue(mockMessage(String(i), `flood ${i}`));
+			}
+			// Let the pending debounce batch flush so only the rolling buffer remains.
+			vi.advanceTimersByTime(3000);
+			flushed.length = 0;
+
+			// A pointer drains the buffer; it must carry at most the 50 most-recent
+			// unaddressed messages plus the pointer itself.
+			debouncer.enqueue(mockMessage("999", "<@123> ^^"));
+			const lastBatch = flushed[flushed.length - 1];
+			expect(lastBatch.length).toBe(51);
+			expect(lastBatch[lastBatch.length - 1]).toBe("999");
+			// Oldest retained entry is #71 (120 - 50 + 1); #1..#70 were evicted.
+			expect(lastBatch[0]).toBe("71");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
