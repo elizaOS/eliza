@@ -249,7 +249,7 @@ export function ContinuousChatOverlay({
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-center px-4 pb-[calc(var(--safe-area-bottom,0px)+1.5rem)]"
+      className="pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-center px-4 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
       style={{ zIndex: Z_SHELL_OVERLAY }}
       data-testid="continuous-chat-overlay"
     >
@@ -296,6 +296,11 @@ export function ContinuousChatOverlay({
       {!expanded && recent.length > 0 ? (
         <div
           aria-live="polite"
+          // Hidden from the a11y tree once faded out: opacity-0 alone leaves the
+          // stale lines browseable to screen readers. aria-hidden flips false in
+          // the same commit a new line arrives (whisperVisible→true), so the new
+          // line still announces; it just isn't left exposed during the fade-out.
+          aria-hidden={!whisperVisible}
           className={cn(
             "pointer-events-none relative mb-4 flex w-full max-w-xl flex-col transition-opacity duration-1000",
             whisperVisible ? "opacity-100" : "opacity-0",

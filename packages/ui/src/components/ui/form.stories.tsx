@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "./button";
 import {
@@ -18,9 +19,14 @@ function DemoForm({ withError = false }: { withError?: boolean }) {
   const form = useForm<{ username: string }>({
     defaultValues: { username: "" },
   });
-  if (withError) {
-    form.setError("username", { message: "Username is already taken." });
-  }
+  // Seed the error after commit, not during render — calling setError() in the
+  // render body mutates form state mid-render (React's render-during-render
+  // warning). An effect keeps the WithError story identical without that.
+  useEffect(() => {
+    if (withError) {
+      form.setError("username", { message: "Username is already taken." });
+    }
+  }, [withError, form]);
   return (
     <Form {...form}>
       <form

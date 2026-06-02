@@ -48,6 +48,29 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.queryByLabelText("talk")).toBeNull();
   });
 
+  it("shows a disabled, no-op send control while a reply is pending (canSend false)", () => {
+    const controller = makeController({ canSend: false });
+    render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "hello" },
+    });
+    // The control still swaps to send, but is labelled + guarded as waiting.
+    const send = screen.getByLabelText("send (waiting for reply)");
+    expect(send).toBeTruthy();
+    fireEvent.click(send);
+    expect(controller.send).not.toHaveBeenCalled();
+  });
+
+  it("swaps send → mic again once the draft is cleared", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message");
+    fireEvent.change(input, { target: { value: "hello" } });
+    expect(screen.getByLabelText("send")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.getByLabelText("talk")).toBeTruthy();
+    expect(screen.queryByLabelText("send")).toBeNull();
+  });
+
   it("submits the draft on Enter, calls send(), and clears the input", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} />);

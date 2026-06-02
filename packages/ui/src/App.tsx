@@ -91,6 +91,12 @@ const MOBILE_NAV_PADDING_CLASS =
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
+// Single source of truth for the lazy route-view chunk loaders. Each
+// lazyNamedView() call registers its import() thunk here so prefetch (below)
+// warms exactly the chunks that are lazy-split — no hand-synced second list to
+// drift out of sync.
+const routeViewLoaders = new Set<() => Promise<unknown>>();
+
 function lazyNamedView<
   TModule extends Record<string, unknown>,
   TKey extends keyof TModule,
@@ -98,6 +104,7 @@ function lazyNamedView<
   load: () => Promise<TModule>,
   exportName: TKey,
 ): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
+  routeViewLoaders.add(load);
   return lazy(async () => {
     const module = await load();
     const component = module[exportName];
@@ -211,26 +218,11 @@ const TrajectoriesView = lazyNamedView(
 
 // Once the shell is interactive, warm the lazy route chunks during idle time so
 // the first navigation to each view is instant instead of waiting on a chunk
-// fetch. Paths must match the lazy() loaders above exactly so the bundler
-// reuses the same chunks. Failures are ignored — this is best-effort warming.
+// fetch. Iterates the loaders registered by lazyNamedView() above — the same
+// thunks the lazy() boundaries use, so the bundler reuses the same chunks and
+// the list can't drift. Failures are ignored — this is best-effort warming.
 function prefetchRouteViewChunks(): void {
-  const loaders: Array<() => Promise<unknown>> = [
-    () => import("./components/pages/DatabasePageView"),
-    () => import("./components/pages/LogsView"),
-    () => import("./components/pages/MemoryViewerView"),
-    () => import("./components/pages/PluginsPageView"),
-    () => import("./components/pages/RelationshipsView"),
-    () => import("./components/pages/RuntimeView"),
-    () => import("./components/pages/SkillsView"),
-    () => import("./components/pages/TasksPageView"),
-    () => import("./components/pages/TrajectoriesView"),
-    () => import("./components/pages/SettingsView"),
-    () => import("./components/pages/StreamView"),
-    () => import("./components/pages/AutomationsFeed"),
-    () => import("./components/pages/ViewManagerPage"),
-    () => import("./components/pages/BrowserWorkspaceView"),
-  ];
-  for (const load of loaders) void load().catch(() => {});
+  for (const load of routeViewLoaders) void load().catch(() => {});
 }
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {
@@ -922,9 +914,11 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 // (activity events, widget-collapse, and the mobile surface live here), so the
 // ShellContent contract stays unchanged. On narrow screens it collapses to a
 // single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
-// is suppressed on this tab — a full in-view chat already lives here, so there
-// is no duplicate composer. Rendered only when MINIMAL_SHELL is off; kept in its
-// own component so its hooks are never called conditionally.
+// stays mounted on this tab too (it floats over every view); the duplicate
+// composer is avoided by passing `hideComposer` to ChatView, so the overlay is
+// the single shared input (both read the same conversation via
+// useShellController). Rendered only when MINIMAL_SHELL is off; kept in its own
+// component so its hooks are never called conditionally.
 function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
   const isMobile = useMediaQuery(CHAT_MOBILE_MEDIA_QUERY);
   const { events: activityEvents, clearEvents } = useActivityEvents();

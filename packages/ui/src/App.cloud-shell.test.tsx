@@ -11,6 +11,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import {
+  isChatOverlayWindowShell,
+  isDetachedWindowShell,
+  isStandaloneWindowShell,
+  parseWindowShellRoute,
+  resolveDetachedShellTarget,
+} from "./platform/window-shell";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 const APP_MAIN_TS = readFileSync(
@@ -119,5 +126,66 @@ describe("App standalone chat-overlay wiring", () => {
     expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
       'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
+  });
+});
+
+// Behavioral coverage of the window-shell classification the wiring above only
+// asserts textually — these are pure functions, so we exercise the real logic.
+describe("window-shell route classification (behavioral)", () => {
+  it("parses the chat-overlay shellMode under both param spellings", () => {
+    expect(parseWindowShellRoute("?shellMode=chat-overlay")).toEqual({
+      mode: "chat-overlay",
+    });
+    expect(parseWindowShellRoute("?shell-mode=chat-overlay")).toEqual({
+      mode: "chat-overlay",
+    });
+  });
+
+  it("parses settings / surface / pill shells and falls back to main", () => {
+    expect(parseWindowShellRoute("")).toEqual({ mode: "main" });
+    expect(parseWindowShellRoute("?shell=settings&tab=cloud")).toEqual({
+      mode: "settings",
+      tab: "cloud",
+    });
+    expect(parseWindowShellRoute("?shell=surface&tab=browser")).toEqual({
+      mode: "surface",
+      tab: "browser",
+    });
+    expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "pill" });
+    // Unknown surface tab is not a valid detached target → main.
+    expect(parseWindowShellRoute("?shell=surface&tab=bogus")).toEqual({
+      mode: "main",
+    });
+  });
+
+  it("classifies chat-overlay as standalone but NOT detached", () => {
+    const route = parseWindowShellRoute("?shellMode=chat-overlay");
+    expect(isChatOverlayWindowShell(route)).toBe(true);
+    expect(isStandaloneWindowShell(route)).toBe(true);
+    // The overlay floats inside the app — it has no detached window target.
+    expect(isDetachedWindowShell(route)).toBe(false);
+  });
+
+  it("treats the main shell as neither standalone nor chat-overlay", () => {
+    const route = parseWindowShellRoute("");
+    expect(isStandaloneWindowShell(route)).toBe(false);
+    expect(isChatOverlayWindowShell(route)).toBe(false);
+    expect(isDetachedWindowShell(route)).toBe(false);
+  });
+
+  it("maps detached surface routes to a target and refuses non-detached ones", () => {
+    expect(
+      resolveDetachedShellTarget(
+        parseWindowShellRoute("?shell=surface&tab=release"),
+      ),
+    ).toEqual({ tab: "settings", settingsSection: "updates" });
+    expect(() =>
+      resolveDetachedShellTarget(
+        parseWindowShellRoute("?shellMode=chat-overlay"),
+      ),
+    ).toThrow();
+    expect(() =>
+      resolveDetachedShellTarget(parseWindowShellRoute("")),
+    ).toThrow();
   });
 });
