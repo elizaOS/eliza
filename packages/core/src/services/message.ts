@@ -89,10 +89,6 @@ import {
 	runPlannerLoop,
 } from "../runtime/planner-loop";
 import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "../runtime/stage1-honesty-detector";
-import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
@@ -109,6 +105,10 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "../runtime/stage1-honesty-detector";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -3477,8 +3477,7 @@ export function messageHandlerFromFieldResult(
 	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
 	// leak, or a fabricated-moderation claim — is dropped so the planner's own
 	// message reaches the user instead.
-	const replyText =
-		shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
+	const replyText = shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -8209,8 +8208,8 @@ export function stripReplyWhenActionOwnsTurn(
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
-		getService?: IAgentRuntime["getService"];
-	},
+			getService?: IAgentRuntime["getService"];
+		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 ): HandlerCallback | undefined {
@@ -8356,7 +8355,7 @@ async function rewriteActionCallbackInCharacter(args: {
 	};
 	const prompt = [
 		"Rewrite an action callback into the assistant character's user-facing voice.",
-		"Return strict JSON only: {\"response\":\"...\"}.",
+		'Return strict JSON only: {"response":"..."}.',
 		"",
 		"Rules:",
 		"- Use the character voice and plain natural language.",
@@ -8387,9 +8386,9 @@ async function rewriteActionCallbackInCharacter(args: {
 			providerOptions: { eliza: { thinking: "off" } },
 		})) as string | GenerateTextResult;
 		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
-		const parsed = parseJSONObjectFromText(cleaned) as
-			| { response?: unknown }
-			| null;
+		const parsed = parseJSONObjectFromText(cleaned) as {
+			response?: unknown;
+		} | null;
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
 		if (!response || response === args.text) return fallback();

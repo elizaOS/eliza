@@ -43,10 +43,10 @@ export * from "./prompts";
 export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
+export * from "./runtime";
 export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export { looksLikeRefusal } from "./runtime/refusal-detector";
-export * from "./runtime";
 export * from "./runtime/rlm";
 export {
 	looksLikeNonRefusalStage1HonestyViolation,

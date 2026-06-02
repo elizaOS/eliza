@@ -96,6 +96,50 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("I'm sorry, but I can't help with that.");
 	});
 
+	it("vetoes complete-direct-reply promotion for cutoff leaks with weak candidates", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["SEARCH"],
+				replyText:
+					"As of my training data, the latest stable version was Node 22.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.reply).toBe("");
+		expect(handler.plan.candidateActions).toEqual(["SEARCH"]);
+	});
+
+	it("forces planning for simple-path non-refusal honesty violations", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "The system automatically blocks such content.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.reply).toBe("");
+	});
+
 	it("still promotes to planning when candidateActions contains AT LEAST ONE real action even with simple context", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

@@ -48,8 +48,8 @@ const FABRICATED_MODERATION_PATTERNS: readonly RegExp[] = [
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?(?:flagged|rejected)\s+by\s+(?:the\s+)?(?:system|content\s+filter|(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|safety\s+(?:system|filter|policy))\b/i,
 	// "your request|message|... was blocked by the system/content filter/moderation system"
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+(?:(?:was|were|got|has been)\s+)?blocked\s+by\s+(?:the\s+)?(?:system|content\s+filter|(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|safety\s+(?:system|filter|policy))\b/i,
-	// "my|the|our content filter"
-	/\b(?:my|the|our)\s+content\s+filter\b/i,
+	// "my|our content filter", or "the content filter blocked/prevented/..."
+	/\b(?:(?:my|our)\s+content\s+filter|the\s+content\s+filter\s+(?:blocked|flagged|prevented|filtered|rejected))\b/i,
 	// "I (was|am|got|'m) blocked from ..." — "'m" is contracted (no space before it)
 	new RegExp(
 		`\\bi(?:\\s+(?:was|am|got)|\\s*${APOS}\\s*m)\\s+blocked\\s+from\\b`,
@@ -57,8 +57,8 @@ const FABRICATED_MODERATION_PATTERNS: readonly RegExp[] = [
 	),
 	// "my|our safety guidelines | usage policies | content policies"
 	/\b(?:my|our)\s+(?:safety\s+guidelines?|usage\s+polic\w+|content\s+polic\w+)\b/i,
-	// "my|our|the (content) moderation system|filter|layer|policy"
-	/\b(?:my|our|the)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\b/i,
+	// "my|our moderation system", or "the moderation system blocked/prevented/..."
+	/\b(?:(?:my|our)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|the\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\s+(?:blocked|flagged|prevented|filtered|rejected))\b/i,
 	// "your request|message|... contained hateful|harmful|inappropriate|abusive|offensive language|content|material|speech"
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+contained\s+(?:hateful|harmful|inappropriate|abusive|offensive)\s+(?:language|content|material|speech)\b/i,
 	// "the system (automatically) blocks/blocked such content | your request | ..."
