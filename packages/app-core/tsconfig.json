@@ -92,14 +92,23 @@
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/capacitor-gateway": [
+        "../../plugins/plugin-native-gateway/src/index.ts"
+      ],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
       "@elizaos/native-activity-tracker": [
