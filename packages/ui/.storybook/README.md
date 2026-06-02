@@ -33,16 +33,22 @@ bun run --cwd packages/ui build-storybook  # static build
    bundling the full `@elizaos/core` source graph (no prebuilt `dist`). `storybook
    dev` compiles on-demand and works. A prebuilt core (`bun run build`) makes the
    static build viable.
-2. **State/context-heavy stories are slow to first-compile.** Stories that import
-   the full app state graph (anything pulling `useApp` → `AppContext` → services)
-   trigger a large on-demand compile; first load can exceed a headless probe's
-   timeout in constrained sandboxes. They render on a warm/resourced server.
-   Affected so far: `Shell/CommandPalette`, `Shell/SystemWarningBanner`,
+2. **State/context-heavy stories render blank pending the harness in (3)/#8177.**
+   Stories whose import graph transitively reaches `@elizaos/core` / the app
+   services layer (via `useApp` → `AppContext` → services, or via the
+   `api`/`utils`/`voice` graph) pull Node builtins into the browser bundle and
+   render empty — the **same root cause as (3)**, not merely a slow compile.
+   Confirmed blank on a warm server: `Composites/Chat/PermissionCard`,
+   `Composites/Chat/ContinuousChatToggle`, and the shell state stories
+   (`Shell/CommandPalette`, `Shell/SystemWarningBanner`,
    `Shell/ConnectionFailedBanner`, `Shell/RestartBanner`, `Shell/LoadingScreen`,
-   `Shell/ShortcutsOverlay`, `Shell/PairingCommandHint`,
-   `Composites/Chat/ContinuousChatToggle`, `Composites/Chat/PermissionCard`.
-   These are valid CSF + Biome-clean + correctly wired (mock state via
-   `mockApp({...})`); render-verification is pending a resourced build.
+   `Shell/ShortcutsOverlay`, `Shell/PairingCommandHint`). They are valid CSF +
+   Biome-clean; populated rendering is gated on the #8177 harness work. The
+   purely-presentational majority of the catalog (primitives, most composites,
+   icons, layouts, the continuous-chat overlay + glass-composer) renders today —
+   verified serially via Playwright. NOTE: a story rendering "empty" can also be
+   correct by design — e.g. `Composites/OwnerBadge` `NotOwner` is intentionally
+   hidden for non-owners (the `Default`/owner story renders).
 3. **Feature-surface stories coupled to `@elizaos/core` can't render in the
    browser catalog yet** (tracked: elizaOS/eliza#8177). Components that
    transitively `import { logger } from
