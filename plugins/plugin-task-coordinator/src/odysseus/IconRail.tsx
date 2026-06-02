@@ -18,11 +18,13 @@ export function IconRail({
   onOpenTheme,
   onOpenMemory,
   onOpenSkills,
+  onOpenSettings,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
   onOpenMemory: () => void;
   onOpenSkills: () => void;
+  onOpenSettings: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -66,7 +68,13 @@ export function IconRail({
       >
         <Palette size={18} />
       </button>
-      <button type="button" className="od-rail-btn" title="Settings">
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenSettings}
+        title="Settings"
+        aria-label="Settings"
+      >
         <Settings size={18} />
       </button>
     </div>
