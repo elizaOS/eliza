@@ -653,24 +653,27 @@ describe("scenario PR workflow contract", () => {
     expect(screenshotQuality).toContain("screenshot quality failed");
   });
 
-  it("keeps actual app pill/chat coverage on repeated open-close-send cycles", () => {
+  it("keeps actual app assistant home coverage on chat, voice, and desktop pill suppression", () => {
     const appAssistantFlow = readFileSync(appAssistantFlowPath, "utf8");
 
     for (const required of [
+      "startup-shell-loading",
       "shell-home-pill",
-      "Message Eliza",
+      "toHaveCount(0)",
+      "04-chat-pill-suppressed",
+      "05-views-desktop-no-embedded-pill",
+      "07-wallet-view-no-embedded-pill",
+      "home-chat-pill",
+      "home-chat-input",
       "Send message",
-      "open wallet from the pill",
-      "06b-views-pill-closed",
-      "06c-views-pill-reopened",
-      "open terminal after reopen",
-      "06d-views-pill-second-send",
-      "06e-views-pill-reclosed",
-      "Close Eliza",
-      "Open Eliza",
-      "streamRequests",
       'toHaveValue("")',
+      "streamRequests",
       "show me my pinned views",
+      "open wallet by typing",
+      "__homeVoiceSimulate",
+      "home-voice-stop",
+      "home-assistant-transcript",
+      "push to talk works",
     ]) {
       expect(appAssistantFlow).toContain(required);
     }
