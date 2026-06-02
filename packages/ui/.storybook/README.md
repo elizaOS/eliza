@@ -43,3 +43,18 @@ bun run --cwd packages/ui build-storybook  # static build
    `Composites/Chat/ContinuousChatToggle`, `Composites/Chat/PermissionCard`.
    These are valid CSF + Biome-clean + correctly wired (mock state via
    `mockApp({...})`); render-verification is pending a resourced build.
+
+## Tracked test follow-ups (not ignored)
+
+- **`ContinuousChatOverlay`** — covered by `ContinuousChatOverlay.test.tsx` (pure
+  component, mock controller).
+- **`MINIMAL_SHELL`** — covered by `shell-chrome.test.ts`.
+- **Chat-shell wiring** (`hideComposer`, header nav, 3-panel restore, gating) —
+  covered at the source-invariant level in `App.cloud-shell.test.tsx`, and the
+  end-to-end behavior (overlay is the chat input; in-view composer hidden; nav
+  renders) was verified live via Playwright against a running agent.
+- **Deferred:** isolated render tests for `ChatView` (with `hideComposer`) and
+  `Header` (nav/tab-groups) need a richer `AppProvider` test harness — these
+  components read the full app context (e.g. `messages` must be iterable), so a
+  bare render throws. Worth a shared `renderWithAppContext(...)` helper that
+  seeds a complete mock `AppContextValue`; tracked, not blocking.
