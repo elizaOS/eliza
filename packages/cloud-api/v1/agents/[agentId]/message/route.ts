@@ -23,7 +23,6 @@ import { Hono } from "hono";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import type { AgentMessageJobResult } from "@/lib/services/provisioning-jobs";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -95,25 +94,28 @@ async function __hono_POST(c: AppContext) {
       if (!current) continue;
 
       if (current.status === "completed") {
-        const result = (current.result ?? {}) as AgentMessageJobResult;
+        const result = (current.result ?? {}) as Record<string, unknown>;
+        const replyText = typeof result.text === "string" ? result.text : "";
+        const reason = typeof result.reason === "string" ? result.reason : undefined;
         // Flatten so callers reading top-level `text` work directly.
         return c.json({
           success: true,
-          text: result.text ?? "",
-          ...(result.reason ? { reason: result.reason } : {}),
+          text: replyText,
+          ...(reason ? { reason } : {}),
           jobId: job.id,
         });
       }
 
       if (current.status === "failed") {
-        const result = (current.result ?? {}) as AgentMessageJobResult;
+        const result = (current.result ?? {}) as Record<string, unknown>;
+        const errMsg = typeof result.error === "string" ? result.error : "agent message failed";
         logger.warn("[agents/message] job failed", {
           agentId,
           jobId: job.id,
-          error: result.error,
+          error: errMsg,
         });
         return c.json(
-          { success: false, error: result.error ?? "agent message failed", jobId: job.id },
+          { success: false, error: errMsg, jobId: job.id },
           502,
         );
       }
