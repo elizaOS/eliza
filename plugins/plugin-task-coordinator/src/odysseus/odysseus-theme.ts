@@ -3855,4 +3855,1710 @@ export const ODYSSEUS_CSS = `
   padding: 6px 0 2px;
   flex-shrink: 0;
 }
+
+
+/* ===== GalleryEditorView ===== */
+/* ════════════════════════════════════════════════════════════════════
+   Gallery Editor (odysseus galleryEditor.js + editor/* + editor rules in
+   style.css). Scoped under .odysseus-root, colors via theme vars. Ported
+   1:1 from odysseus's .gallery-editor / .ge-* rules. Reuses the shared
+   .od-search-overlay / .od-search-backdrop backdrop pattern (CompareView)
+   with a large full-bleed .od-ge-panel.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Full-bleed editor panel — large column reusing the overlay backdrop,
+   same convention as .od-compare-panel. */
+.odysseus-root .od-ge-panel {
+  width: min(1280px, 97vw);
+  height: min(90vh, 920px);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  animation: od-ge-enter 0.3s ease-out;
+}
+@keyframes od-ge-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.odysseus-root .gallery-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Top bar ── */
+.odysseus-root .ge-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
+  position: relative;
+  z-index: 5;
+}
+.odysseus-root .ge-topbar-left,
+.odysseus-root .ge-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.odysseus-root .ge-alpha-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  padding: 3px 6px;
+  margin-right: 4px;
+  border-radius: 4px;
+  color: var(--accent, var(--red));
+  background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  text-transform: uppercase;
+  user-select: none;
+  cursor: default;
+}
+.odysseus-root .ge-topbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.odysseus-root .ge-ge-close {
+  background: none;
+  border: none;
+  color: var(--muted, var(--fg));
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 2px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.odysseus-root .ge-ge-close:hover {
+  opacity: 1;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+/* Topbar buttons sit visually 2px low against label baselines. */
+.odysseus-root .ge-topbar .ge-btn,
+.odysseus-root .ge-topbar .ge-btn-sm,
+.odysseus-root .ge-topbar select { position: relative; top: -2px; }
+
+/* Stacked button — glyph over a small uppercase label (Undo/Redo/Hist). */
+.odysseus-root .ge-stacked-btn {
+  display: inline-flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 8px !important;
+  line-height: 1;
+}
+.odysseus-root .ge-stacked-btn .ge-stacked-glyph {
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+}
+.odysseus-root .ge-stacked-btn .ge-stacked-glyph svg { display: block; }
+.odysseus-root .ge-stacked-btn .ge-stacked-label {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  font-weight: 600;
+  position: relative;
+  top: 2px;
+}
+.odysseus-root .ge-zoom-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.odysseus-root .ge-zoom-stack .ge-zoom-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  position: relative;
+  left: -1px;
+}
+.odysseus-root .ge-zoom-stack .ge-zoom-glyph svg { width: 16px; height: 16px; }
+.odysseus-root .ge-zoom-stack .ge-zoom-label {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  font-weight: 600;
+  position: relative;
+  top: 4px;
+  left: 1px;
+}
+
+/* Topbar dropdown menus (Image / Filter / Save). */
+.odysseus-root .ge-image-wrap,
+.odysseus-root .ge-filter-wrap,
+.odysseus-root .ge-save-wrap { position: relative; display: inline-block; }
+.odysseus-root .ge-image-menu,
+.odysseus-root .ge-filter-menu,
+.odysseus-root .ge-save-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.odysseus-root .ge-save-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.odysseus-root .ge-image-menu .dropdown-item-compact,
+.odysseus-root .ge-filter-menu .dropdown-item-compact,
+.odysseus-root .ge-save-menu .dropdown-item-compact {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+  border-radius: 5px;
+  padding: 5px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.odysseus-root .ge-image-menu .dropdown-item-compact:hover,
+.odysseus-root .ge-filter-menu .dropdown-item-compact:hover,
+.odysseus-root .ge-save-menu .dropdown-item-compact:hover {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.odysseus-root .ge-image-menu .dropdown-icon,
+.odysseus-root .ge-filter-menu .dropdown-icon,
+.odysseus-root .ge-save-menu .dropdown-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted, var(--fg));
+  flex-shrink: 0;
+  width: 14px;
+  justify-content: center;
+}
+.odysseus-root .dropdown-shortcut {
+  margin-left: auto;
+  font-size: 9px;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+.odysseus-root .ge-filter-submenu-label,
+.odysseus-root .dropdown-section-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+  font-weight: 600;
+  padding: 6px 8px 2px;
+}
+.odysseus-root .dropdown-section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+  opacity: 0.6;
+}
+
+/* ── Editor body (toolbar + canvas + panel) ── */
+.odysseus-root .ge-editor-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Left tool palette ── */
+.odysseus-root .ge-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 8px 8px 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  width: 56px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.odysseus-root .ge-tool-sep {
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.odysseus-root .ge-tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 2px;
+  height: 42px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--fg);
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, opacity 0.15s;
+  position: relative;
+}
+.odysseus-root .ge-tool-btn:hover { opacity: 0.85; }
+.odysseus-root .ge-tool-btn:hover::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px 0 -2px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 6px;
+  z-index: -1;
+  pointer-events: none;
+}
+.odysseus-root .ge-tool-btn.active {
+  opacity: 1;
+  color: var(--red);
+  background: none;
+}
+.odysseus-root .ge-tool-btn.active::before {
+  content: '';
+  position: absolute;
+  inset: 0 2px 0 -2px;
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  border-radius: 6px;
+  z-index: 0;
+  pointer-events: none;
+}
+.odysseus-root .ge-tool-btn > * { position: relative; z-index: 1; left: -2px; }
+.odysseus-root .ge-tool-icon {
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.odysseus-root .ge-tool-glyph { font-size: 18px; line-height: 1; }
+.odysseus-root .ge-tool-label {
+  font-size: 9px;
+  line-height: 1.25;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.odysseus-root .ge-tool-ai {
+  position: absolute !important;
+  top: 1px;
+  left: 3px !important;
+  z-index: 2;
+  color: inherit;
+  opacity: 0.7;
+  pointer-events: none;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+}
+.odysseus-root .ge-tool-btn.is-ai:hover .ge-tool-ai { opacity: 0.95; }
+.odysseus-root .ge-tool-btn.is-ai.active .ge-tool-ai { opacity: 1; }
+
+/* ── Canvas area (center) + checkerboard + honest landing ── */
+.odysseus-root .ge-canvas-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--bg);
+  position: relative;
+  min-width: 0;
+}
+.odysseus-root .gallery-editor-landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 64px 16px;
+  flex: 1;
+  text-align: center;
+  color: var(--fg);
+  /* Checkerboard transparency backdrop framed like odysseus's canvas. */
+  width: min(520px, 72%);
+  aspect-ratio: 4 / 3;
+  max-height: 80%;
+  border-radius: 8px;
+  background:
+    repeating-conic-gradient(
+      color-mix(in srgb, var(--fg) 8%, transparent) 0% 25%,
+      color-mix(in srgb, var(--fg) 3%, transparent) 0% 50%
+    ) 50% / 22px 22px;
+  border: 1px dashed color-mix(in srgb, var(--fg) 20%, transparent);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+.odysseus-root .gallery-editor-landing h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.odysseus-root .gallery-editor-landing p {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 13px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+.odysseus-root .ge-alpha-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--accent, var(--red));
+  background: color-mix(in srgb, var(--accent, var(--red)) 15%, transparent);
+  position: relative;
+  top: -1px;
+}
+.odysseus-root .gallery-editor-landing-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.odysseus-root .ge-ge-landing-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  font-size: 12px;
+}
+.odysseus-root .ge-ge-landing-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Right panel (controls + layers) ── */
+.odysseus-root .ge-right-panel {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+.odysseus-root .ge-controls {
+  flex: 0 0 auto;
+  padding: 10px 10px 6px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.odysseus-root .ge-brush-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.odysseus-root .ge-controls input[type="range"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  display: block;
+}
+.odysseus-root .ge-control-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--fg);
+}
+.odysseus-root .ge-control-row label {
+  flex-shrink: 0;
+  opacity: 0.7;
+  min-width: 36px;
+}
+.odysseus-root .ge-color-picker {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  overflow: hidden;
+  flex: 0 0 24px;
+}
+.odysseus-root .ge-color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.odysseus-root .ge-color-picker::-webkit-color-swatch { border: none; border-radius: 50%; }
+.odysseus-root .ge-color-picker::-moz-color-swatch { border: none; border-radius: 50%; }
+
+/* Section titles / hints / dividers / help chip. */
+.odysseus-root .ge-section-title {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+  font-weight: 600;
+}
+.odysseus-root .ge-section-title-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.odysseus-root .ge-ge-mask-brush-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.odysseus-root .ge-section-hint {
+  font-size: 10.5px;
+  line-height: 1.45;
+  opacity: 0.55;
+  margin: 0 0 8px;
+}
+.odysseus-root .ge-ge-tiny-hint {
+  font-size: 9px;
+  opacity: 0.4;
+  margin: 4px 0 0;
+}
+.odysseus-root .ge-section-divider {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 10px -2px;
+  opacity: 0.6;
+}
+.odysseus-root .ge-section-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted, var(--fg));
+  background: none;
+  cursor: help;
+  position: relative;
+  top: -1px;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.odysseus-root .ge-section-title-with-help .ge-section-help { margin-left: 0; }
+.odysseus-root .ge-section-help:hover {
+  opacity: 1;
+  color: var(--fg);
+  border-color: var(--muted, var(--fg));
+}
+
+/* Slider rows (Opacity / Flow / Softness / Tolerance / Strength / …). */
+.odysseus-root .ge-eraser-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px;
+  padding: 2px 0;
+  position: relative;
+}
+.odysseus-root .ge-eraser-row label {
+  font-size: 10px;
+  opacity: 0.55;
+  flex: 0 0 78px;
+  white-space: nowrap;
+}
+.odysseus-root .ge-eraser-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 8px;
+  accent-color: var(--red);
+  -webkit-appearance: none;
+  appearance: none;
+  background: color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 999px;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+}
+.odysseus-root .ge-eraser-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  border: none;
+  cursor: pointer;
+}
+.odysseus-root .ge-eraser-row input[type="range"]::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  border: none;
+  cursor: pointer;
+}
+.odysseus-root .ge-slider-value {
+  flex: 0 0 auto;
+  margin: 0 0 0 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+  white-space: nowrap;
+}
+.odysseus-root .ge-eraser-preview {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg);
+  flex-shrink: 0;
+  display: inline-block;
+  opacity: 0.5;
+}
+
+/* Size slider in the brush-controls block (no preview disk). */
+.odysseus-root .ge-size-slider {
+  flex: 1 1 auto;
+  height: 8px;
+  accent-color: var(--red);
+  -webkit-appearance: none;
+  appearance: none;
+  background: color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 999px;
+}
+.odysseus-root .ge-size-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--red);
+  border: none;
+  cursor: pointer;
+}
+.odysseus-root .ge-size-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--red);
+  border: none;
+  cursor: pointer;
+}
+.odysseus-root .ge-size-label {
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Action button clusters. */
+.odysseus-root .ge-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.odysseus-root .ge-ge-actions-wrap { margin-top: 4px; }
+.odysseus-root .ge-ge-mode-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.odysseus-root .ge-ge-model-row { margin-top: 6px; }
+.odysseus-root .ge-ge-strength-row { margin-top: 6px; }
+.odysseus-root .ge-ge-ai-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.odysseus-root .ge-ge-ai-btn { flex: 1 1 0; }
+.odysseus-root .ge-ge-ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.odysseus-root .ge-ge-mode-half {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Base buttons. */
+.odysseus-root .ge-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.odysseus-root .ge-btn:hover { background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
+.odysseus-root .ge-btn.active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 16%, var(--bg));
+  border-color: var(--accent, var(--red));
+  color: var(--accent, var(--red));
+}
+.odysseus-root .ge-btn-sm { padding: 3px 6px; font-size: 10px; }
+.odysseus-root .ge-btn-iconlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.odysseus-root .ge-btn-primary {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+  font-weight: 600;
+}
+.odysseus-root .ge-btn-primary:hover { background: color-mix(in srgb, var(--red) 85%, #000); }
+.odysseus-root .ge-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.odysseus-root .ge-btn-ai-mark {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  opacity: 0.75;
+  margin-right: 1px;
+}
+.odysseus-root .ge-mask-vis-btn {
+  background: none !important;
+  border: none !important;
+  padding: 2px 4px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+.odysseus-root .ge-mask-vis-btn.visible { opacity: 0.9; }
+.odysseus-root .ge-mask-vis-btn:hover { opacity: 1; background: none !important; }
+.odysseus-root .ge-inpaint-mode-btn,
+.odysseus-root .ge-wand-mode-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  opacity: 0.6;
+  border: 1px solid var(--border);
+}
+.odysseus-root .ge-wand-mode-btn { flex: 1 1 0; padding: 4px 6px; }
+.odysseus-root .ge-inpaint-mode-btn.active,
+.odysseus-root .ge-wand-mode-btn.active {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+  border-color: var(--accent, var(--red));
+  color: var(--accent, var(--red));
+  font-weight: 600;
+}
+
+/* Inpaint section bits. */
+.odysseus-root .ge-inpaint-section {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.odysseus-root .ge-inpaint-mask-row {
+  display: flex !important;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+.odysseus-root .ge-inpaint-prompt {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+.odysseus-root .ge-inpaint-prompt:focus { border-color: var(--red); outline: none; }
+.odysseus-root .ge-inpaint-model-row { display: flex; align-items: center; gap: 8px; }
+.odysseus-root .ge-inpaint-model-row label { flex: 0 0 auto; font-size: 10px; opacity: 0.65; }
+.odysseus-root .ge-ai-model {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+/* ── Layers panel ── */
+.odysseus-root .ge-layers {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.odysseus-root .ge-layers-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+  opacity: 0.8;
+  border-bottom: 1px solid var(--border);
+}
+.odysseus-root .ge-layers-title { flex: 1; }
+.odysseus-root .ge-layers-grab { display: none; }
+.odysseus-root .ge-icon-btn {
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.odysseus-root .ge-layers-header .ge-btn:disabled,
+.odysseus-root .ge-ge-add-layer:disabled { opacity: 0.4; cursor: not-allowed; }
+.odysseus-root .ge-layers-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0;
+}
+.odysseus-root .ge-ge-layers-empty {
+  padding: 18px 12px;
+  font-size: 11px;
+  text-align: center;
+  opacity: 0.5;
+  line-height: 1.5;
+}
+
+/* Panel resize grab handle. */
+.odysseus-root .ge-panel-resize {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 5;
+  transition: background 0.12s;
+}
+.odysseus-root .ge-panel-resize:hover {
+  background: color-mix(in srgb, var(--red) 30%, transparent);
+}
+.odysseus-root .ge-panel-resize::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  background: color-mix(in srgb, var(--fg) 35%, transparent);
+  border-radius: 2px;
+}
+
+/* ── History popover (frosted) ── */
+.odysseus-root .ge-frosted {
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+.odysseus-root .ge-history-panel {
+  position: absolute;
+  top: 52px;
+  left: 92px;
+  z-index: 60;
+  width: 240px;
+  max-height: 360px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  color: var(--fg);
+}
+.odysseus-root .ge-history-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.odysseus-root .ge-adj-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted, var(--fg));
+  flex-shrink: 0;
+}
+.odysseus-root .ge-history-title { font-weight: 600; font-size: 12px; flex: 1 1 auto; }
+.odysseus-root .ge-head-btns { display: inline-flex; margin-left: auto; }
+.odysseus-root .ge-history-close {
+  background: none;
+  border: none;
+  color: var(--muted, var(--fg));
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.odysseus-root .ge-history-close:hover { color: var(--fg); }
+.odysseus-root .ge-history-list { overflow-y: auto; padding: 4px 0; }
+.odysseus-root .ge-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 11px;
+}
+.odysseus-root .ge-history-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .ge-history-row.current {
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+}
+.odysseus-root .ge-history-row.current .ge-history-row-dot { background: var(--accent, var(--red)); }
+.odysseus-root .ge-history-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted, var(--fg));
+  flex-shrink: 0;
+}
+.odysseus-root .ge-history-row-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .ge-history-row-time { font-size: 9px; opacity: 0.55; flex-shrink: 0; }
+
+/* ── Shortcuts cheatsheet overlay ── */
+.odysseus-root .ge-shortcuts-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.odysseus-root .ge-shortcuts-card {
+  position: relative;
+  z-index: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px 12px;
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--fg) 25%, transparent);
+  width: min(720px, 92%);
+  max-height: 86%;
+  overflow-y: auto;
+  color: var(--fg);
+}
+.odysseus-root .ge-shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.odysseus-root .ge-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 24px;
+}
+@media (min-width: 720px) {
+  .odysseus-root .ge-shortcuts-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.odysseus-root .ge-shortcuts-col h5 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.odysseus-root .ge-shortcuts-col > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+.odysseus-root .ge-shortcuts-col > div kbd:last-of-type { margin-right: 6px; }
+.odysseus-root .ge-shortcuts-card kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 55%, transparent);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  color: var(--accent, var(--red));
+  min-width: 18px;
+  line-height: 1.4;
+}
+.odysseus-root .ge-shortcuts-foot {
+  margin-top: 12px;
+  font-size: 11px;
+  opacity: 0.55;
+  text-align: center;
+}
+/* ===== GroupChatView ===== */
+/* ── Group Chat (odysseus group.js + .msg-group rules) ──────────────────────
+   A wide panel: header with a participant count + parallel/sequential mode
+   toggle + close, a room picker, then a two-column body (participant roster +
+   shared message stream) above a composer. Reuses the shared .od-msg /
+   .od-role / .od-body / .od-msg-time bubble styles already in ODYSSEUS_CSS; the
+   classes below are the group-specific chrome. All colours via theme vars. */
+.odysseus-root .od-search-panel.od-group-panel {
+  width: 860px;
+  max-width: 94%;
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.odysseus-root .od-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.odysseus-root .od-group-header-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-group-header-spacer { flex: 1; }
+/* odysseus #group-mode-btn — icon + label, comfortable touch target. */
+.odysseus-root .od-group-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.odysseus-root .od-group-mode-btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+/* odysseus #group-toggle-btn.active — red wash when parallel ("all respond"). */
+.odysseus-root .od-group-mode-btn.active {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+}
+.odysseus-root .od-group-mode-label { font-size: 12px; font-weight: 500; }
+.odysseus-root .od-group-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.odysseus-root .od-group-close:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-group-roompicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-roompicker-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.odysseus-root .od-group-room-select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+  cursor: pointer;
+}
+.odysseus-root .od-group-room-select:focus { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-group-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+/* ── Participant roster (odysseus group-participants list) ── */
+.odysseus-root .od-group-roster {
+  width: 210px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.odysseus-root .od-group-roster-head {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-group-roster-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-group-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 8px;
+}
+/* odysseus participant row: flex, color-mix bg, 6px radius. */
+.odysseus-root .od-group-participant {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.odysseus-root .od-group-participant.idle { opacity: 0.55; }
+.odysseus-root .od-group-participant-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-participant-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.odysseus-root .od-group-participant-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-group-participant-sub {
+  font-size: 10px;
+  color: color-mix(in srgb, var(--fg) 38%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ── Shared message stream ── */
+.odysseus-root .od-group-stream-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.odysseus-root .od-group-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+}
+.odysseus-root .od-group-empty {
+  margin: auto;
+  max-width: 360px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+/* odysseus .msg-group .role is bold; the per-sender dot/name/time mirror the
+   group bubble header (role + role-timestamp). */
+.odysseus-root .od-msg-group .od-role { font-weight: 600; }
+.odysseus-root .od-group-role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-role-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-group-role-time {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  margin-left: 2px;
+}
+/* ── Composer (odysseus .chat-input-bar) ── */
+.odysseus-root .od-group-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-input {
+  flex: 1;
+  min-height: 38px;
+  max-height: 120px;
+  resize: none;
+  padding: 9px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.4;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--bg));
+  color: var(--fg);
+  outline: none;
+}
+.odysseus-root .od-group-input:focus { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-group-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.odysseus-root .od-group-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent, var(--red));
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.12s, opacity 0.12s;
+}
+.odysseus-root .od-group-send:hover:not(:disabled) { filter: brightness(1.1); }
+.odysseus-root .od-group-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.odysseus-root .od-group-note {
+  padding: 0 14px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--fg) 42%, transparent);
+  flex-shrink: 0;
+}
+.odysseus-root .od-group-note strong { color: color-mix(in srgb, var(--fg) 70%, transparent); }
+/* ===== AdminView ===== */
+/* ════════════════════════════════════════════════════════════════════
+   AdminView — odysseus admin panel (admin.js + index.html admin sub-tabs).
+   All rules scoped under .odysseus-root; colors via theme vars only.
+   Mirrors odysseus's .admin-card / .admin-switch / .admin-user-row /
+   .admin-badge / .admin-btn-* / .admin-toggle-* / .admin-priv-* rules.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Full-bleed panel (sized like CompareView's .od-compare-panel) */
+.odysseus-root .od-admin-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 94vw);
+  height: min(86vh, 760px);
+  max-height: 86vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ── Header (settings-modal header) ── */
+.odysseus-root .od-admin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-admin-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+.odysseus-root .od-admin-header-spacer { flex: 1; }
+.odysseus-root .od-admin-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.odysseus-root .od-admin-close:hover { background: var(--border); border-color: var(--red); }
+
+/* ── Honest empty-state notice ── */
+.odysseus-root .od-admin-notice {
+  margin: 10px 14px 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 4%, var(--panel));
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 11.5px;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+/* ── Body: left rail + panels ── */
+.odysseus-root .od-admin-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+.odysseus-root .od-admin-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 178px;
+  flex-shrink: 0;
+  padding: 12px 10px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.odysseus-root .od-admin-rail-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  opacity: 0.35;
+  padding: 4px 8px 6px;
+}
+.odysseus-root .od-admin-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.odysseus-root .od-admin-rail-item:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-admin-rail-item.active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-admin-panels {
+  flex: 1;
+  min-width: 0;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+/* ── Cards (admin-card) ── */
+.odysseus-root .od-admin-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.odysseus-root .od-admin-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-admin-card-title svg { opacity: 0.6; flex-shrink: 0; }
+.odysseus-root .od-admin-danger-card {
+  border-color: color-mix(in srgb, var(--red) 27%, transparent);
+}
+.odysseus-root .od-admin-danger-title { color: var(--red); }
+.odysseus-root .od-admin-danger-title svg { opacity: 1; }
+
+/* ── Toggle rows (admin-toggle-*) ── */
+.odysseus-root .od-admin-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.odysseus-root .od-admin-toggle-label { font-size: 13px; font-weight: 500; color: var(--fg); }
+.odysseus-root .od-admin-toggle-sub {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-size: 11px;
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+/* ── Switch (admin-switch / admin-slider) ── */
+.odysseus-root .od-admin-switch {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.odysseus-root .od-admin-switch-sm { transform: scale(0.85); }
+.odysseus-root .od-admin-switch input { opacity: 0; width: 0; height: 0; }
+.odysseus-root .od-admin-slider {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--fg) 50%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.odysseus-root .od-admin-slider::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--panel);
+  border-radius: 50%;
+  transition: transform 0.08s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.odysseus-root .od-admin-switch input:checked + .od-admin-slider { background: var(--red); }
+.odysseus-root .od-admin-switch input:checked + .od-admin-slider::before { transform: translateX(14px); }
+.odysseus-root .od-admin-switch input:disabled + .od-admin-slider { cursor: not-allowed; opacity: 0.6; }
+.odysseus-root .od-admin-switch-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+/* ── User rows (admin-user-row) ── */
+.odysseus-root .od-admin-empty {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-size: 12px;
+  padding: 10px 4px;
+  text-align: center;
+}
+.odysseus-root .od-admin-user-row {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+.odysseus-root .od-admin-user-row:hover {
+  border-color: color-mix(in srgb, var(--fg) 20%, var(--border));
+}
+.odysseus-root .od-admin-user-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.odysseus-root .od-admin-user-info { display: flex; align-items: center; gap: 8px; }
+.odysseus-root .od-admin-user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent, var(--red)) 20%, var(--panel));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  color: var(--accent, var(--red));
+}
+.odysseus-root .od-admin-user-name { font-size: 13px; font-weight: 500; color: var(--fg); }
+.odysseus-root .od-admin-user-hint { font-size: 10px; opacity: 0.4; display: block; }
+.odysseus-root .od-admin-user-actions { display: flex; gap: 8px; align-items: center; }
+.odysseus-root .od-admin-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--red) 20%, transparent);
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ── Privilege panel (admin-priv-*) ── */
+.odysseus-root .od-admin-priv-panel {
+  max-height: 1200px;
+  transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.2s ease;
+  overflow: hidden;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.odysseus-root .od-admin-priv-panel.hidden {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  border-top: none;
+}
+.odysseus-root .od-admin-priv-section {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.35;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.odysseus-root .od-admin-priv-section:first-child { margin-top: 0; }
+.odysseus-root .od-admin-priv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.odysseus-root .od-admin-priv-label { font-size: 12px; color: var(--fg); }
+.odysseus-root .od-admin-priv-hint {
+  font-size: 10px;
+  opacity: 0.4;
+  margin-bottom: 4px;
+}
+.odysseus-root .od-admin-priv-num {
+  width: 70px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 12px;
+  text-align: center;
+}
+.odysseus-root .od-admin-priv-models-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+.odysseus-root .od-admin-priv-models-actions { display: flex; gap: 8px; font-size: 10px; opacity: 0.5; }
+.odysseus-root .od-admin-priv-models-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--bg);
+}
+.odysseus-root .od-admin-priv-models-empty { opacity: 0.4; font-size: 11px; }
+.odysseus-root .od-admin-priv-model-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px;
+  font-size: 12px;
+  color: var(--fg);
+}
+.odysseus-root .od-admin-priv-model-row input { accent-color: var(--accent, var(--red)); }
+
+/* ── Buttons (admin-btn-*) ── */
+.odysseus-root .od-admin-btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--red);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.odysseus-root .od-admin-btn-add:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 80%, white);
+}
+.odysseus-root .od-admin-btn-add:disabled { opacity: 0.5; cursor: not-allowed; }
+.odysseus-root .od-admin-btn-delete {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--red) 27%, transparent);
+  color: var(--red);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.odysseus-root .od-admin-btn-delete:hover:not(:disabled) {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.odysseus-root .od-admin-btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
+.odysseus-root .od-admin-btn-sm {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+.odysseus-root .od-admin-btn-sm:hover:not(:disabled) { background: var(--border); border-color: var(--red); }
+.odysseus-root .od-admin-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Add-user form (admin-add-form) ── */
+.odysseus-root .od-admin-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.odysseus-root .od-admin-add-form input[type="text"],
+.odysseus-root .od-admin-add-form input[type="password"] {
+  flex: 1;
+  min-width: 120px;
+  padding: 5px 8px;
+  height: 32px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+}
+.odysseus-root .od-admin-add-form input:focus { outline: none; border-color: var(--red); }
+.odysseus-root .od-admin-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.odysseus-root .od-admin-add-msg {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* ── Feature list (Agent Tools) ── */
+.odysseus-root .od-admin-feature-list { margin-top: 6px; }
+.odysseus-root .od-admin-feature-row {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.odysseus-root .od-admin-feature-row:last-child { border-bottom: none; }
+
+/* ── System tab (Backup + Danger Zone) ── */
+.odysseus-root .od-admin-backup-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.odysseus-root .od-admin-wipe-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 12px;
+}
+.odysseus-root .od-admin-wipe-row:first-of-type { margin-top: 4px; }
 `;

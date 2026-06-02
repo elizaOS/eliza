@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AdminView } from "./AdminView";
 import { BgEffect } from "./BgEffect";
 import { CalendarView } from "./CalendarView";
 import { ChatContainer } from "./ChatContainer";
@@ -27,7 +28,9 @@ import { CompareView } from "./CompareView";
 import { CookbookView } from "./CookbookView";
 import { DocumentLibraryView } from "./DocumentLibraryView";
 import { EmailView } from "./EmailView";
+import { GalleryEditorView } from "./GalleryEditorView";
 import { GalleryView } from "./GalleryView";
+import { GroupChatView } from "./GroupChatView";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
@@ -85,6 +88,9 @@ export function OdysseusShell(): ReactNode {
   const [cookbookOpen, setCookbookOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -319,6 +325,9 @@ export function OdysseusShell(): ReactNode {
         onOpenCookbook={() => setCookbookOpen(true)}
         onOpenModels={() => setModelsOpen(true)}
         onOpenTasks={() => setTasksOpen(true)}
+        onOpenEditor={() => setEditorOpen(true)}
+        onOpenGroup={() => setGroupOpen(true)}
+        onOpenAdmin={() => setAdminOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -358,6 +367,16 @@ export function OdysseusShell(): ReactNode {
       />
       <ModelsView open={modelsOpen} onClose={() => setModelsOpen(false)} />
       <TasksView open={tasksOpen} onClose={() => setTasksOpen(false)} />
+      <GalleryEditorView
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+      />
+      <GroupChatView
+        open={groupOpen}
+        onClose={() => setGroupOpen(false)}
+        initialTaskId={selectedId ?? undefined}
+      />
+      <AdminView open={adminOpen} onClose={() => setAdminOpen(false)} />
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

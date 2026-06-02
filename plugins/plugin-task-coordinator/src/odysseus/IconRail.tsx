@@ -15,9 +15,12 @@ import {
   ListChecks,
   Mail,
   MessageSquare,
+  MessagesSquare,
   Palette,
   PanelLeft,
+  Pencil,
   Settings,
+  ShieldAlert,
   StickyNote,
   Zap,
 } from "lucide-react";
@@ -39,6 +42,9 @@ export function IconRail({
   onOpenCookbook,
   onOpenModels,
   onOpenTasks,
+  onOpenEditor,
+  onOpenGroup,
+  onOpenAdmin,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
@@ -55,6 +61,9 @@ export function IconRail({
   onOpenCookbook: () => void;
   onOpenModels: () => void;
   onOpenTasks: () => void;
+  onOpenEditor: () => void;
+  onOpenGroup: () => void;
+  onOpenAdmin: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -177,6 +186,33 @@ export function IconRail({
         aria-label="Cookbook"
       >
         <BookOpen size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenGroup}
+        title="Group Chat"
+        aria-label="Group Chat"
+      >
+        <MessagesSquare size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenEditor}
+        title="Image Editor"
+        aria-label="Image Editor"
+      >
+        <Pencil size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenAdmin}
+        title="Admin"
+        aria-label="Admin"
+      >
+        <ShieldAlert size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button
