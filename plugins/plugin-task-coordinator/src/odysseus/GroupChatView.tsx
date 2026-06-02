@@ -60,6 +60,7 @@ import { formatClockTime, formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
+import { LoadingRow } from "./Spinner";
 import { readPref, writePref } from "./util/storage";
 
 // odysseus persists its group config under GROUP_STATE_KEY
@@ -590,7 +591,9 @@ export function GroupChatView({
             {noRoom || !activeTaskId ? (
               <div className="od-group-roster-empty">No participants.</div>
             ) : detailLoading && roster.length === 0 ? (
-              <div className="od-group-roster-empty">Loading…</div>
+              <div className="od-group-roster-empty">
+                <LoadingRow label="Loading…" />
+              </div>
             ) : (
               <div className="od-group-roster-list">
                 {roster.map((p) => {
@@ -699,7 +702,9 @@ export function GroupChatView({
               ) : !activeTaskId ? (
                 <div className="od-group-empty">No group conversation.</div>
               ) : messagesLoading && messages.length === 0 ? (
-                <div className="od-group-empty">Loading conversation…</div>
+                <div className="od-group-empty">
+                  <LoadingRow label="Loading conversation…" />
+                </div>
               ) : runs.length === 0 ? (
                 <div className="od-group-empty">
                   No messages in this room yet.

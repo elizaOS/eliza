@@ -9140,4 +9140,33 @@ export const ODYSSEUS_CSS = `
   from { opacity: 0; transform: translateY(20px) scale(0.85); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+
+/* ===== Add mobile-responsive overlay-drawer behavior to the odysseus clone shell (port of sidebar-layout.js), gated below a 700px viewport. ===== */
+/* ── mobile sidebar overlay drawer (odysseus sidebar-layout.js + the
+   max-width:768px .sidebar / #sidebar-backdrop rules in static/style.css) ──
+   Below MOBILE_BREAKPOINT (700px) the shell sets .od-mobile on the root and adds
+   .od-sidebar-open while the drawer is open. The drawer then slides in OVER the
+   chat (it does not push it) backed by a tap-to-close scrim. All gating is
+   class-based so the desktop in-flow, drag-resizable sidebar is untouched.
+   position:absolute (not fixed) because everything is scoped inside the
+   position:relative .odysseus-root host. */
+.odysseus-root .od-sidebar-backdrop { display:none; }
+.odysseus-root.od-mobile .od-sidebar-backdrop { display:block; position:absolute; inset:0;
+  z-index:199; border:none; padding:0; margin:0; appearance:none; cursor:pointer;
+  background:color-mix(in srgb, var(--bg) 45%, rgba(0,0,0,.55)); opacity:0; pointer-events:none;
+  transition:opacity .25s ease; }
+.odysseus-root.od-mobile.od-sidebar-open .od-sidebar-backdrop { opacity:1; pointer-events:auto; }
+.odysseus-root.od-mobile .od-sidebar { position:absolute; top:0; bottom:0; left:0; z-index:200;
+  width:min(82vw, 320px) !important; max-width:320px; flex-shrink:0;
+  box-shadow:4px 0 24px rgba(0,0,0,.5); transform:translateX(-100%);
+  transition:transform .25s ease; }
+.odysseus-root.od-mobile.od-sidebar-open .od-sidebar { transform:translateX(0); }
+/* The drag-resize handle is meaningless for a full-width overlay drawer — hide
+   it on mobile so an edge touch can't start a phantom resize. */
+.odysseus-root.od-mobile .od-sidebar-resize-handle { display:none; }
+@media (prefers-reduced-motion: reduce) {
+  .odysseus-root.od-mobile .od-sidebar,
+  .odysseus-root.od-mobile .od-sidebar-backdrop { transition:none; }
+}
 `;

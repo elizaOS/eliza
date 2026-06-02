@@ -52,6 +52,7 @@ import { formatIsoRelative, formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
+import { LoadingRow } from "./Spinner";
 
 // odysseus tracks four display states (active / paused / completed / error).
 // Collapse the orchestrator's richer status union + `paused` flag onto them so
@@ -598,7 +599,9 @@ export function TasksView({
 
               <div className="od-tasks-list">
                 {!fetched ? (
-                  <div className="od-tasks-empty">Loading…</div>
+                  <div className="od-tasks-empty">
+                    <LoadingRow label="Loading…" />
+                  </div>
                 ) : threads.length === 0 ? (
                   <div className="od-tasks-empty">
                     No tasks yet. The orchestrator creates a task thread when
@@ -931,7 +934,9 @@ function RunHistory({
         </span>
       </div>
       {loading ? (
-        <div className="od-tasks-empty">Loading…</div>
+        <div className="od-tasks-empty">
+          <LoadingRow label="Loading…" />
+        </div>
       ) : runs.length === 0 ? (
         <div className="od-tasks-empty">No runs yet.</div>
       ) : (

@@ -50,6 +50,7 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
+import { LoadingRow } from "./Spinner";
 import { readPref, writePref } from "./util/storage";
 
 // ── Local-pref keys (odysseus models.js / modelPicker.js constants, namespaced
@@ -375,20 +376,6 @@ function compareModels(a: ProviderModelRecord, b: ProviderModelRecord): number {
 /** Short display name: trailing path segment (odysseus displayName.split('/').pop()). */
 function shortName(name: string): string {
   return name.split("/").pop() || name;
-}
-
-// odysseus spinner.js `createLoadingRow`: a label + the whirlpool spinner, used
-// for list/empty-state loading. Upstream paints a canvas whirlpool that
-// self-stops once removed from the DOM; here the equivalent is a CSS-animated
-// ring that simply stops painting when React unmounts the node. Faithful to
-// `.lib-loading-row` (label + spinner side-by-side).
-function OdLoadingRow({ label }: { label: string }): ReactNode {
-  return (
-    <div className="od-loading-row">
-      <span>{label}</span>
-      <span className="od-whirlpool" aria-hidden="true" />
-    </div>
-  );
 }
 
 export function ModelsView({
@@ -839,7 +826,7 @@ export function ModelsView({
 
             <div className="od-models-scroll">
               {isLoading ? (
-                <OdLoadingRow
+                <LoadingRow
                   label={`Scanning ${providerRailLabel(provider)}…`}
                 />
               ) : isErrored ? (

@@ -62,6 +62,11 @@ import { VoiceView } from "./VoiceView";
 
 const THREAD_POLL_MS = 5_000;
 
+// odysseus sidebar-layout.js AUTO_COLLAPSE_WIDTH: below this viewport width the
+// sidebar stops being an in-flow, drag-resizable panel and becomes an overlay
+// drawer that slides in over the chat with a tap-to-close backdrop.
+const MOBILE_BREAKPOINT = 700;
+
 export function OdysseusShell(): ReactNode {
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -73,6 +78,13 @@ export function OdysseusShell(): ReactNode {
   );
   const widthRef = useRef(sidebarWidth);
   widthRef.current = sidebarWidth;
+  // Mobile flag (odysseus sidebar-layout.js): below MOBILE_BREAKPOINT the
+  // sidebar becomes an overlay drawer. Initialised from the current viewport so
+  // a first paint at a narrow width starts collapsed.
+  const [isMobile, setIsMobile] = useState(
+    () =>
+      typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT,
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [themeName, setThemeName] = useState<ThemeName>(() =>
     readPref<ThemeName>(PREF_KEYS.themeMode, "dark"),
@@ -200,12 +212,58 @@ export function OdysseusShell(): ReactNode {
     });
   }, []);
 
+  // odysseus _wasAutoCollapsed: remembers that the sidebar was collapsed *by*
+  // the responsive auto-collapse (not the user), so it is only auto-restored
+  // when the viewport grows back to desktop. A user toggle clears it.
+  const wasAutoCollapsedRef = useRef(false);
+
   const toggleSidebar = useCallback(() => {
+    // A deliberate toggle is always the user's intent — drop the auto-collapse
+    // flag so a later desktop resize doesn't pop the drawer back open.
+    wasAutoCollapsedRef.current = false;
     setSidebarCollapsed((prev) => {
-      writePref(PREF_KEYS.sidebarCollapsed, !prev);
+      // The collapsed pref is desktop-only: on mobile the drawer is transient
+      // overlay state and must not overwrite the user's desktop preference.
+      if (!isMobile) writePref(PREF_KEYS.sidebarCollapsed, !prev);
       return !prev;
     });
+  }, [isMobile]);
+
+  // Responsive auto-collapse (odysseus sidebar-layout.js checkSidebarAutoCollapse
+  // + the resize listener it cleans up). Crossing below MOBILE_BREAKPOINT
+  // collapses the sidebar into the overlay drawer; growing back to desktop
+  // restores it only if the auto-collapse is what hid it. The drawer also
+  // starts closed every time we enter mobile so the chat is unobstructed.
+  useEffect(() => {
+    const onResize = () => {
+      const mobile = window.innerWidth < MOBILE_BREAKPOINT;
+      setIsMobile(mobile);
+      setSidebarCollapsed((prev) => {
+        if (mobile) {
+          if (!prev) {
+            wasAutoCollapsedRef.current = true;
+            return true;
+          }
+          return prev;
+        }
+        if (prev && wasAutoCollapsedRef.current) {
+          wasAutoCollapsedRef.current = false;
+          return false;
+        }
+        return prev;
+      });
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // On mobile the drawer is "open" when not collapsed; selecting a thread or
+  // starting a new chat should dismiss it so the chat is visible (odysseus
+  // closes the sidebar on navigation on phones).
+  const closeMobileDrawer = useCallback(() => {
+    if (isMobile) setSidebarCollapsed(true);
+  }, [isMobile]);
 
   // Keyboard shortcuts (odysseus keyboard-shortcuts.js): toggle sidebar, new
   // chat, focus composer, and open the tool surfaces. Only actions wired here
@@ -329,9 +387,15 @@ export function OdysseusShell(): ReactNode {
         ? buildThemeVars(customThemes[themeName])
         : themeVars(themeName);
 
+  // Below MOBILE_BREAKPOINT the sidebar is an overlay drawer: it is open when
+  // not collapsed (odysseus .sidebar:not(.hidden) on mobile). The root carries
+  // .od-mobile (switches the sidebar/backdrop CSS into overlay mode) and
+  // .od-sidebar-open (drives the slide-in + backdrop visibility).
+  const drawerOpen = isMobile && !sidebarCollapsed;
+
   return (
     <div
-      className={`odysseus-root od-density-${density}${bgPattern !== "none" ? ` od-bg-${bgPattern}` : ""}`}
+      className={`odysseus-root od-density-${density}${bgPattern !== "none" ? ` od-bg-${bgPattern}` : ""}${isMobile ? " od-mobile" : ""}${drawerOpen ? " od-sidebar-open" : ""}`}
       style={{ ...themeStyle, fontFamily: FONT_MAP[font] }}
       data-od-theme={themeName}
       data-testid="odysseus-shell"
@@ -421,12 +485,33 @@ export function OdysseusShell(): ReactNode {
         onClose={() => setSearchOpen(false)}
         onSelect={setSelectedId}
       />
-      {sidebarCollapsed ? null : (
+      {/* Mobile: a tap-to-close backdrop behind the overlay drawer (odysseus
+          #sidebar-backdrop). Pure-CSS visibility is gated by .od-sidebar-open;
+          we mount it only on mobile so desktop keeps a clean layout. */}
+      {isMobile ? (
+        <button
+          type="button"
+          className="od-sidebar-backdrop"
+          aria-label="Close sidebar"
+          tabIndex={drawerOpen ? 0 : -1}
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      ) : null}
+      {/* Desktop renders the sidebar only when expanded (in-flow, resizable).
+          Mobile keeps it mounted so the drawer can slide in/out via CSS
+          transform; the .od-mobile class makes width/resize a no-op there. */}
+      {isMobile || !sidebarCollapsed ? (
         <SessionSidebar
           threads={threads}
           selectedId={selectedId}
-          onSelect={setSelectedId}
-          onNewChat={onNewChat}
+          onSelect={(id) => {
+            setSelectedId(id);
+            closeMobileDrawer();
+          }}
+          onNewChat={() => {
+            onNewChat();
+            closeMobileDrawer();
+          }}
           onSearch={() => setSearchOpen(true)}
           onRename={onRenameThread}
           onDelete={onDeleteThread}
@@ -435,7 +520,7 @@ export function OdysseusShell(): ReactNode {
           pinnedIds={pinnedIds}
           onTogglePin={onTogglePin}
         />
-      )}
+      ) : null}
       <ChatContainer
         title={title}
         conversation={conversation}
