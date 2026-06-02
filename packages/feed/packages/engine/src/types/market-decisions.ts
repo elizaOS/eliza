@@ -26,6 +26,8 @@ export interface TradingDecision {
   marketId?: string; // Market ID is a Snowflake string
   positionId?: string;
   amount: number;
+  /** For close_position on perps, close only this portion (0-1). Omitted means full close. */
+  closePercentage?: number;
   confidence: number;
   reasoning: string;
   timestamp?: string;

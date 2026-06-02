@@ -886,9 +886,17 @@ export class NPCInvestmentManager {
 
       const currentAllocation = positionValue / totalValue;
 
-      // If position is more than 1.5x the max allocation, log for monitoring
-      // Note: Resize action is not yet implemented - logging only for now
+      // If position is more than 1.5x the max allocation, trim perp exposure
+      // back toward the strategy target. Prediction positions remain full-close
+      // only because their sell flow closes a selected position.
       if (currentAllocation > maxAllocation * 1.5) {
+        const targetValue = maxAllocation * totalValue;
+        const currentSize = Number(position.size);
+        const targetSize =
+          positionValue > 0
+            ? Math.max(0, currentSize * (targetValue / positionValue))
+            : 0;
+
         logger.info(
           `Position overweight detected: ${(currentAllocation * 100).toFixed(1)}% > ${(maxAllocation * 100).toFixed(1)}% target`,
           {
@@ -900,7 +908,35 @@ export class NPCInvestmentManager {
           },
           "NPCInvestmentManager",
         );
-        // TODO: Implement resize action when partial position closing is supported
+
+        if (
+          position.marketType === "perp" &&
+          currentSize > 0 &&
+          targetSize < currentSize
+        ) {
+          actions.push({
+            type: "resize",
+            positionId: position.id,
+            marketType: "perp",
+            ticker: position.ticker || undefined,
+            marketId: position.marketId || undefined,
+            side: position.side,
+            targetSize,
+            reason: `Trim overweight perp allocation from ${(currentAllocation * 100).toFixed(1)}% toward ${(maxAllocation * 100).toFixed(1)}% target`,
+          });
+        } else if (position.marketType === "prediction") {
+          logger.info(
+            "Skipping partial resize for prediction position; prediction sell flow closes whole positions",
+            {
+              poolId,
+              positionId: position.id,
+              marketId: position.marketId,
+              currentAllocation: currentAllocation * 100,
+              maxAllocation: maxAllocation * 100,
+            },
+            "NPCInvestmentManager",
+          );
+        }
       }
     }
 
@@ -986,17 +1022,82 @@ export class NPCInvestmentManager {
         throw error;
       }
     } else if (action.type === "resize" && action.positionId) {
-      // Resize is more complex - for now, log it. Full implementation would require
-      // partial position closing which is not supported by all market types.
+      if (action.marketType !== "perp") {
+        logger.info(
+          "Skipping resize because partial position closing is only supported for perp positions",
+          { npcUserId, action },
+          "NPCInvestmentManager",
+        );
+        return;
+      }
+
+      const [position] = await db
+        .select({
+          id: perpPositions.id,
+          size: perpPositions.size,
+          closedAt: perpPositions.closedAt,
+        })
+        .from(perpPositions)
+        .where(eq(perpPositions.id, action.positionId))
+        .limit(1);
+
+      if (!position || position.closedAt) {
+        throw new Error(`Open perp position not found: ${action.positionId}`);
+      }
+
+      const currentSize = Number(position.size);
+      const targetSize = Math.max(0, Number(action.targetSize));
+      if (!Number.isFinite(currentSize) || currentSize <= 0) {
+        throw new Error(`Invalid perp position size: ${action.positionId}`);
+      }
+      if (!Number.isFinite(targetSize)) {
+        throw new Error(`Invalid resize target: ${action.targetSize}`);
+      }
+      if (targetSize >= currentSize) {
+        logger.info(
+          "Skipping resize because target size is not smaller than current size",
+          { npcUserId, action, currentSize, targetSize },
+          "NPCInvestmentManager",
+        );
+        return;
+      }
+
+      const closePercentage = Math.min(
+        1,
+        Math.max(0, (currentSize - targetSize) / currentSize),
+      );
+      const actor = StaticDataRegistry.getActor(npcUserId);
+      const decision: TradingDecision = {
+        npcId: npcUserId,
+        npcName: actor?.name || "Unknown",
+        action: "close_position",
+        marketType: "perp",
+        ticker: action.ticker,
+        marketId: action.marketId,
+        positionId: action.positionId,
+        amount: 0,
+        closePercentage,
+        confidence: 1.0,
+        reasoning: action.reason,
+      };
+
+      const tradeService = new TradeExecutionService();
+      const result = await tradeService.executeSingleDecision(decision);
       logger.info(
-        `Resize action requested (not yet implemented): ${action.positionId} -> ${action.targetSize}`,
-        { npcUserId, action },
+        `Resize action completed for ${action.ticker || action.positionId}`,
+        {
+          npcUserId,
+          positionId: action.positionId,
+          closePercentage,
+          targetSize,
+          action: result.action,
+          side: result.side,
+          executionPrice: result.executionPrice,
+          amount: result.amount,
+          size: result.size,
+        },
         "NPCInvestmentManager",
       );
-
-      // For prediction markets, we could close and re-open with new size
-      // For perp markets, we could adjust margin/size directly
-      // This is left as a future enhancement
     }
   }
 

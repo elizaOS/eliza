@@ -73,12 +73,25 @@ platform no-ops are separated from actionable runtime gaps.
 - Also moved `desc` in `DirectExecutors.ts` to a direct `drizzle-orm` import
   to avoid a brittle Bun named-import failure through the `@feed/db` barrel in
   isolated tests.
+- Finished the NPC perp resize path in
+  `packages/engine/src/npc/npc-investment-manager.ts`. Overweight perp
+  positions now generate resize actions, and resize execution performs a real
+  partial close by passing `closePercentage` through `TradingDecision` into
+  `TradeExecutionService` / `PerpMarketService`. Prediction positions are
+  explicitly skipped for resize because the current prediction sell flow closes
+  a whole selected position.
 - Verified with:
   - `bun test /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts --preload /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/testing/unit/preload.ts`
+  - `bun build packages/feed/packages/engine/src/npc/npc-investment-manager.ts --target=bun --outfile=/tmp/npc-investment-manager-check.js`
+  - `bun build packages/feed/packages/engine/src/services/trade-execution-service.ts --target=bun --outfile=/tmp/trade-execution-service-check.js`
   - `git diff --check -- packages/feed/packages/agents/src/autonomous/DirectExecutors.ts packages/feed/packages/agents/src/autonomous/intel-payment-executors.ts packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`
   - Marker scan on the touched Feed files
 - Biome note: root `biome.json` excludes `packages/feed/**`, so Biome reports
   these files as ignored.
+- Feed TypeScript note: direct `tsc --noEmit` on `packages/engine` and
+  `packages/agents` currently fails on pre-existing project-reference `dist`
+  outputs and unrelated strictness errors, so it is not a focused validation
+  signal for these edits.
 
 ### packages/plugin-worker-runtime
 
