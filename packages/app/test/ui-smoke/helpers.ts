@@ -287,10 +287,7 @@ async function expectMainShellReadyForRoute(
   targetPath: string,
 ): Promise<void> {
   if (isRootTargetPath(targetPath)) return;
-  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0, {
-    timeout: STARTUP_SETTLED_TIMEOUT_MS,
-  });
-  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0, {
+  await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
 }

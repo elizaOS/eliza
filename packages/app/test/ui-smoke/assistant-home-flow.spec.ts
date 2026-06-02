@@ -365,8 +365,7 @@ async function openReadyHome(page: Page): Promise<void> {
 
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
-  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0);
-  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0);
+  await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
   const composer = page.locator('[data-testid="chat-composer-textarea"]');
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
@@ -562,7 +561,7 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
+    await expect(page.getByTestId("startup-shell-loading")).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");

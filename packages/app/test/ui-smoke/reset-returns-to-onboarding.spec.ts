@@ -90,7 +90,7 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
 
   // ...and the renderer returns to the pre-agent first-run onboarding surface
   // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
-  await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible({
+  await expect(page.getByTestId("startup-shell-loading")).toBeVisible({
     timeout: 20_000,
   });
 });
