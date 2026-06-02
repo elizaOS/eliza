@@ -150,8 +150,10 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
 
   await openAppPath(page, "/screenshare");
 
-  await expect(page.getByText("Host")).toBeVisible();
-  await expect(page.getByText("Capabilities")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Host" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Capabilities" }),
+  ).toBeVisible();
   await expect(page.getByText("Screenshot")).toBeVisible();
   await expect(page.getByText("Keyboard")).toBeVisible();
   await expect(page.getByText("Ready").first()).toBeVisible();
