@@ -381,8 +381,8 @@ function assertShellCapability(
  *                    fall back to the host.
  *   - `local-yolo` → direct host exec via child_process.spawn.
  *
- * On Windows, `local-safe` currently throws because no Windows sandbox
- * backend is wired up yet; callers must opt in to `local-yolo` explicitly.
+ * Platform support is determined by the resolved SandboxManager backend; the
+ * router does not silently downgrade `local-safe` to host execution.
  */
 export async function runShell(
   req: ShellRequest,
@@ -431,11 +431,6 @@ export async function runShell(
 
   if (mode === "local-safe") {
     assertShellCapability(req, mode, `sandbox.${req.toolName}`);
-    if (process.platform === "win32") {
-      throw new Error(
-        "[shell-router] Windows local-safe sandbox not yet implemented",
-      );
-    }
     const manager = await resolveSandboxManager(ctx);
     if (!manager) {
       throw new Error(
