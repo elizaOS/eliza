@@ -2181,6 +2181,12 @@ class TextConditionedProfileEnv(gym.Env):
                 if float(self._foot_contact_switch_count) >= required_contacts
                 else 0.0
             )
+        gait_reward_contact_scale = (
+            alternating_contact_progress
+            if _is_locomotion_reward(r)
+            and "min_alternating_foot_contacts" in crit
+            else 1.0
+        )
         locomotion_contact_reward_scale = 1.0
         locomotion_task_progress = progress
         locomotion_reward_progress = progress
@@ -2306,24 +2312,19 @@ class TextConditionedProfileEnv(gym.Env):
             * yaw_track,
             "contact_cadence": float(r.get("gait_phase_weight", 0.0))
             * contact_cadence
-            * (
-                alternating_contact_completion
-                if _is_locomotion_reward(r)
-                and "min_alternating_foot_contacts" in crit
-                else 1.0
-            )
+            * gait_reward_contact_scale
             * locomotion_directional_credit_scale,
             "stance_contact": float(
                 r.get("stance_contact_weight", 0.4 if _is_locomotion_reward(r) else 0.0)
             )
             * stance_contact
-            * locomotion_contact_reward_scale
+            * gait_reward_contact_scale
             * locomotion_directional_credit_scale,
             "foot_clearance": float(
                 r.get("foot_clearance_weight", 0.4 if _is_locomotion_reward(r) else 0.0)
             )
             * foot_clearance
-            * locomotion_contact_reward_scale
+            * gait_reward_contact_scale
             * locomotion_directional_credit_scale,
             "no_support": -float(
                 r.get("no_support_weight", 3.0 if _is_locomotion_reward(r) else 0.0)
@@ -2368,7 +2369,7 @@ class TextConditionedProfileEnv(gym.Env):
                     3.0 if _is_locomotion_reward(r) else 0.0,
                 )
             )
-            * alternating_contact_completion
+            * alternating_contact_progress
             * locomotion_directional_credit_scale
             * positive_locomotion_scale,
             "no_progress": -float(

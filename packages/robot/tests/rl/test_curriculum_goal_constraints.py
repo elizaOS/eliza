@@ -235,6 +235,23 @@ def test_walk_forward_uses_tracked_motion_without_overloading_torso_height() -> 
     assert result.success is True
 
 
+def test_walking_curriculum_declares_staged_biped_reward_terms() -> None:
+    curriculum = load_curriculum()
+
+    for task_id in (
+        "walk_forward",
+        "walk_backward",
+        "sidestep_left",
+        "sidestep_right",
+    ):
+        task = curriculum.by_id(task_id)
+        assert task.reward["stance_contact_weight"] > 0.0
+        assert task.reward["foot_clearance_weight"] > 0.0
+        assert task.reward["alternating_contact_weight"] > 0.0
+        assert task.success["min_alternating_foot_contacts"] >= 2
+        assert task.success["min_swing_foot_clearance_m"] > 0.0
+
+
 def test_sidestep_requires_lateral_motion_without_forward_or_yaw_drift() -> None:
     checker = _checker("sidestep_left")
     checker.update(
