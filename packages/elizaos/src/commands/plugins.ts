@@ -44,7 +44,7 @@ const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VALID_KINDS = new Set(["plugin", "connector", "app"]);
 const MISSING_REGISTRY_MESSAGE =
-  "Community registry PR submission is not currently configured. Publish the package to npm with the elizaos keyword for discovery, or pass --registry owner/repo if the maintainers have provided a writable registry repository.";
+  "The community registry lives in the elizaOS monorepo at packages/registry. To list this package, run with --dry-run to print its entry, add that file under packages/registry/entries/third-party/, and open a pull request (see packages/registry/README.md). Pass --registry owner/repo only to target a different writable registry repository.";
 
 export function registerPluginsCommand(program: Command): void {
   const plugins = program
@@ -57,7 +57,7 @@ export function registerPluginsCommand(program: Command): void {
     .argument("[path]", "Plugin project directory", ".")
     .option(
       "--registry <owner/repo>",
-      "Writable registry GitHub repository. No public submission repository is currently configured.",
+      "Writable registry GitHub repository. Defaults to the in-repo packages/registry flow; pass this only to target a different repository.",
     )
     .option("--base <branch>", "Registry base branch", "main")
     .option(

@@ -7,13 +7,13 @@
  */
 
 export {
-  loadThirdPartyEntries,
-  thirdPartyEntriesDir,
-} from "./loader.ts";
-export {
   generateRegistry,
   toGeneratedEntry,
 } from "./generate.ts";
+export {
+  loadThirdPartyEntries,
+  thirdPartyEntriesDir,
+} from "./loader.ts";
 export {
   assertRegistryEntry,
   validateRegistryEntry,

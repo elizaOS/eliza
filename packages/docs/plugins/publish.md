@@ -216,17 +216,20 @@ The TypeScript implementation is always required. Python and Rust implementation
 
 The public plugin registry is served at [`plugins.elizacloud.ai`](https://plugins.elizacloud.ai). The runtime discovers community plugins by fetching `https://plugins.elizacloud.ai/generated-registry.json` (falling back to `index.json`), and recognizes any npm package whose `keywords` include `elizaos` as a plugin.
 
-After publishing to npm and making your GitHub repository public, verify the registry metadata the CLI would generate:
+After publishing to npm and making your GitHub repository public, generate the registry metadata the CLI would submit:
 
 ```bash
 elizaos plugins submit . --dry-run
 ```
 
-There is no public GitHub repository accepting community registry pull requests at the moment. If maintainers give you a writable registry repository for a specific listing flow, pass it explicitly:
+The community registry source of truth lives in the monorepo at [`packages/registry`](https://github.com/elizaOS/eliza/tree/main/packages/registry) (it replaced the archived `elizaos-plugins/registry` repo — see [elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173)). To get listed, add the printed `entries/third-party/<package>.json` file under `packages/registry/entries/third-party/`, then validate, regenerate, and open a pull request:
 
 ```bash
-elizaos plugins submit . --registry owner/repo
+bun run --cwd packages/registry validate
+bun run --cwd packages/registry generate
 ```
+
+The full walkthrough — with a worked example ([`packages/examples/plugin-echo`](https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo)) — is in the [registry package README](https://github.com/elizaOS/eliza/tree/main/packages/registry#adding-a-third-party-plugin).
 
 Before requesting a listing, make sure your package:
 
@@ -236,7 +239,7 @@ Before requesting a listing, make sure your package:
 4. Has a public GitHub repository
 5. Includes a README with setup instructions and required environment variables
 
-Community plugins are reviewed for security, functionality, and documentation quality before listing. npm keyword discovery remains the default path until a public submission repository is announced. See [Registry Documentation](/tracks/plugin/publish) for details.
+Community plugins are reviewed for security, functionality, and documentation quality before listing. npm keyword discovery works without a registry entry; the registry adds metadata and curation. See the [Plugin Registry Guide](/guides/registry) for details.
 
 ## Related
 
