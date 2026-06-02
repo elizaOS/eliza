@@ -1061,6 +1061,10 @@ function attachMainWindow(
     transparent: process.platform === "darwin",
   });
   trackFocusedWindow(win);
+  // Reveal the Dock icon in tray-first mode whenever a main window is attached,
+  // regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
+  // a direct restoreWindow() from a deep link that bypasses showWindow()).
+  getDesktopManager().markMainWindowShown();
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
@@ -1187,6 +1191,8 @@ async function restoreWindow(): Promise<void> {
     } catch {
       // unminimize/focus may not be available
     }
+    // Re-reveal the Dock icon for an already-open window (tray-first only).
+    getDesktopManager().markMainWindowShown();
     return;
   }
   if (backgroundWindowPromise) {
