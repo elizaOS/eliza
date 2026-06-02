@@ -118,7 +118,7 @@ function syntheticTrajectory() {
 describe("recordedTrajectoryToNativeRows scenario outcome", () => {
   it("omits scenario outcome fields when no outcome is supplied", () => {
     const rows = recordedTrajectoryToNativeRows(syntheticTrajectory() as never);
-    expect(rows[0]!.status).toBeUndefined();
+    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
     expect(rows[0]!.scenarioStatus).toBeUndefined();
     expect(rows[0]!.metadata.scenario_status).toBeUndefined();
   });
@@ -128,7 +128,7 @@ describe("recordedTrajectoryToNativeRows scenario outcome", () => {
       syntheticTrajectory() as never,
       "passed",
     );
-    expect(rows[0]!.status).toBeUndefined();
+    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
     expect(rows[0]!.scenarioStatus).toBe("passed");
     expect(rows[0]!.metadata.scenario_status).toBe("passed");
   });
@@ -142,7 +142,7 @@ describe("recordedTrajectoryToNativeRows scenario outcome", () => {
     // metadata.scenario_status in {failed,skipped} as success=False/score=0 →
     // rating="repair"/weight=0. Top-level status remains reserved for the
     // canonical native lifecycle contract.
-    expect(rows[0]!.status).toBeUndefined();
+    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
     expect(rows[0]!.scenarioStatus).toBe("failed");
     expect(rows[0]!.metadata.trajectory_status).toBe("finished");
     expect(rows[0]!.metadata.scenario_status).toBe("failed");
