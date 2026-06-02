@@ -21,9 +21,11 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { DiffView } from "./orchestrator-diff";
-import { formatClockTime, stripAnsi } from "./view-format";
+import { type ReactNode, useMemo, useState } from "react";
+import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
+import { MarkdownText } from "./orchestrator-markdown";
+import { ReasoningCell } from "./orchestrator-reasoning";
+import { formatClockTime, formatDuration, stripAnsi } from "./view-format";
 
 // The orchestrator room renders a coding-agent session the way Claude Code /
 // Codex do: a single flowing conversation of (1) the user's prompts, (2) the
@@ -61,6 +63,11 @@ export interface ToolView {
   query?: string;
   /** Tool result/output, ANSI-stripped. */
   output?: string;
+  /** Process exit code for `execute` tools (0 = success); null/undefined when
+   * not an exec tool or not yet finished. */
+  exitCode?: number | null;
+  /** Wall-clock duration in ms from the tool's first to last event. */
+  durationMs?: number;
 }
 
 export type ConversationBlock =
@@ -74,6 +81,7 @@ export type ConversationBlock =
       tone: "normal" | "error";
     }
   | { kind: "tool"; key: string; at: number; tool: ToolView }
+  | { kind: "reasoning"; key: string; at: number; text: string }
   | {
       kind: "notice";
       key: string;
@@ -103,14 +111,14 @@ const NOTICE_META: Record<string, NoticeMeta> = {
   task_registered: { icon: Circle, tone: "text-muted", label: "Task started" },
   task_complete: { icon: CircleCheck, tone: "text-ok", label: "Completed" },
   stopped: { icon: CircleStop, tone: "text-muted", label: "Stopped" },
-  blocked: { icon: OctagonX, tone: "text-warn", label: "Blocked" },
+  blocked: { icon: OctagonX, tone: "text-muted-strong", label: "Blocked" },
   blocked_auto_resolved: {
     icon: Check,
     tone: "text-muted",
     label: "Auto-resolved",
   },
-  escalation: { icon: CircleAlert, tone: "text-warn", label: "Escalation" },
-  error: { icon: CircleX, tone: "text-danger", label: "Error" },
+  escalation: { icon: CircleAlert, tone: "text-muted", label: "Escalation" },
+  error: { icon: CircleX, tone: "text-red-500", label: "Error" },
 };
 
 function noticeMeta(eventType: string): NoticeMeta {
@@ -157,6 +165,19 @@ function pickString(
   return undefined;
 }
 
+/** First finite number among `keys` on `obj`. */
+function pickNumber(
+  obj: Record<string, unknown> | undefined,
+  ...keys: string[]
+): number | undefined {
+  if (!obj) return undefined;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 /** Tool output arrives as a possibly JSON-encoded string (e.g. `"\"\""` for an
  * empty result); decode one layer, strip ANSI, and drop if empty. */
 function normalizeOutput(value: unknown): string | undefined {
@@ -185,6 +206,54 @@ function normalizeOutput(value: unknown): string | undefined {
   return clean === "" ? undefined : clean;
 }
 
+interface ToolOutput {
+  text?: string;
+  diff?: { path?: string; oldText?: string; newText?: string };
+}
+
+/** ACP tool results arrive as a JSON-encoded array of content blocks, e.g.
+ * `[{type:"content",content:{type:"text",text}}, {type:"diff",path,oldText,newText}]`.
+ * Pull out the human-readable text and any file diff so the card renders real
+ * prose + a diff instead of dumping the raw JSON the agent returned. Plain
+ * (non-block) strings fall back to {@link normalizeOutput}. */
+function parseToolOutput(raw: unknown): ToolOutput {
+  let value = raw;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+      return { text: normalizeOutput(raw) };
+    }
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return { text: normalizeOutput(raw) };
+    }
+  }
+  const blocks = Array.isArray(value) ? value : [value];
+  const texts: string[] = [];
+  let diff: ToolOutput["diff"];
+  for (const block of blocks) {
+    const record = asRecord(block);
+    if (!record) continue;
+    if (record.type === "diff") {
+      diff = {
+        path: pickString(record, "path"),
+        oldText:
+          typeof record.oldText === "string" ? record.oldText : undefined,
+        newText:
+          typeof record.newText === "string" ? record.newText : undefined,
+      };
+      continue;
+    }
+    const inner = asRecord(record.content) ?? record;
+    const text =
+      pickString(inner, "text", "content") ?? pickString(record, "text");
+    if (text) texts.push(text);
+  }
+  const joined = stripAnsi(texts.join("\n")).trim();
+  return { text: joined === "" ? undefined : joined, diff };
+}
+
 /** The raw `data.toolCall` object the ACP service forwards (see its field
  * mapping). Kept as an open record because adapters vary in which fields they
  * populate (`title`/`name`, `rawInput`/`input`, `output`/`rawOutput`, …); every
@@ -207,6 +276,8 @@ function toToolView(
   let status: ToolStatus = "running";
   let rawInput: Record<string, unknown> | undefined;
   let output: string | undefined;
+  let outputDiff: ToolOutput["diff"];
+  let exitCode: number | undefined;
   for (const event of events) {
     const call = rawToolCall(event);
     if (!call) continue;
@@ -216,9 +287,27 @@ function toToolView(
     if (rawStatus) status = TOOL_STATUS_FROM_RAW[rawStatus] ?? status;
     const nextInput = asRecord(call.rawInput) ?? asRecord(call.input);
     if (nextInput) rawInput = { ...rawInput, ...nextInput };
-    const nextOutput = normalizeOutput(call.output ?? call.rawOutput);
-    if (nextOutput) output = nextOutput;
+    const parsed = parseToolOutput(call.output ?? call.rawOutput);
+    if (parsed.text) output = parsed.text;
+    if (
+      parsed.diff?.oldText !== undefined ||
+      parsed.diff?.newText !== undefined
+    )
+      outputDiff = parsed.diff;
+    const nextExit =
+      pickNumber(asRecord(call.exitStatus), "exitCode") ??
+      pickNumber(call, "exitCode");
+    if (nextExit !== undefined) exitCode = nextExit;
   }
+  // A finished exec tool's exit code is the authoritative status — opencode tops
+  // its tool events out at in_progress, so the code is what distinguishes a
+  // success from a failure.
+  if (typeof exitCode === "number") status = exitCode === 0 ? "done" : "failed";
+  // Wall-clock span from the tool's first to last event.
+  const durationMs =
+    events.length > 1
+      ? events[events.length - 1].timestamp - events[0].timestamp
+      : undefined;
   return {
     id,
     title,
@@ -226,16 +315,16 @@ function toToolView(
     status,
     filePath: pickString(rawInput, "filePath", "file_path", "path"),
     command: pickString(rawInput, "command", "cmd", "script"),
-    newText: pickString(
-      rawInput,
-      "content",
-      "newString",
-      "new_string",
-      "newText",
-    ),
-    oldText: pickString(rawInput, "oldString", "old_string", "oldText"),
+    newText:
+      pickString(rawInput, "content", "newString", "new_string", "newText") ??
+      outputDiff?.newText,
+    oldText:
+      pickString(rawInput, "oldString", "old_string", "oldText") ??
+      outputDiff?.oldText,
     query: pickString(rawInput, "pattern", "query", "regex", "glob"),
     output,
+    exitCode,
+    durationMs: durationMs && durationMs > 0 ? durationMs : undefined,
   };
 }
 
@@ -247,6 +336,7 @@ type Atom =
       message: CodingAgentTaskMessageRecord;
     }
   | { at: number; order: number; type: "tool"; tool: ToolView }
+  | { at: number; order: number; type: "reasoning"; text: string }
   | {
       at: number;
       order: number;
@@ -261,7 +351,9 @@ type Atom =
 function messageLane(message: CodingAgentTaskMessageRecord): string {
   if (message.senderKind === "user") return "user";
   const stream = message.direction === "stderr" ? "err" : "out";
-  return `${message.senderKind}:${message.sessionId ?? ""}:${stream}`;
+  // Fall back to the message id (not a shared "") when there's no session, so
+  // unrelated session-less outputs never coalesce into one merged turn.
+  return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
 }
 
 /** Turn the polled message + event records into the ordered conversation the
@@ -278,12 +370,14 @@ export function buildConversation(
   let order = 0;
 
   for (const message of messages) {
+    // Skip raw stdin/keystroke echoes from sub-agents, but ALWAYS render the
+    // user's own typed messages — those are recorded with senderKind "user"
+    // AND direction "stdin", and skipping them hid the user's input entirely.
     if (
-      (message.direction === "stdin" || message.direction === "keys") &&
-      message.senderKind !== "user"
-    ) {
+      message.senderKind !== "user" &&
+      (message.direction === "stdin" || message.direction === "keys")
+    )
       continue;
-    }
     if (stripAnsi(message.content).trim() === "") continue;
     atoms.push({
       at: message.timestamp,
@@ -304,6 +398,21 @@ export function buildConversation(
         toolEvents.set(id, [event]);
         toolFirstSeen.set(id, event.timestamp);
       }
+      continue;
+    }
+    // Reasoning streams as many small `agent_thought_chunk` deltas; capture the
+    // full text from event.data (not the 160-char summary) and let the block
+    // pass coalesce consecutive deltas into one collapsible cell — rendering
+    // each delta as its own notice would flood the room.
+    if (event.eventType === "reasoning") {
+      const text = typeof event.data?.text === "string" ? event.data.text : "";
+      if (text)
+        atoms.push({
+          at: event.timestamp,
+          order: order++,
+          type: "reasoning",
+          text,
+        });
       continue;
     }
     if (NOISE_EVENT_TYPES.has(event.eventType)) continue;
@@ -344,9 +453,14 @@ export function buildConversation(
     lane: string;
     block: Extract<ConversationBlock, { kind: "user" | "agent" }>;
   } | null = null;
+  // Consecutive reasoning deltas coalesce into one collapsible cell, the way a
+  // message lane coalesces; any non-reasoning atom closes the burst.
+  let openReasoning: Extract<ConversationBlock, { kind: "reasoning" }> | null =
+    null;
 
   for (const atom of atoms) {
     if (atom.type === "message") {
+      openReasoning = null;
       const lane = messageLane(atom.message);
       const text = stripAnsi(atom.message.content);
       if (openLane && openLane.lane === lane) {
@@ -377,6 +491,22 @@ export function buildConversation(
       continue;
     }
     openLane = null;
+    if (atom.type === "reasoning") {
+      if (openReasoning) {
+        openReasoning.text += atom.text;
+      } else {
+        const block = {
+          kind: "reasoning" as const,
+          key: `reason-${atom.order}`,
+          at: atom.at,
+          text: atom.text,
+        };
+        blocks.push(block);
+        openReasoning = block;
+      }
+      continue;
+    }
+    openReasoning = null;
     if (atom.type === "tool") {
       blocks.push({
         kind: "tool",
@@ -398,156 +528,6 @@ export function buildConversation(
   }
 
   return blocks;
-}
-
-// --- Lightweight markdown ---------------------------------------------------
-// The agent writes markdown prose; rendering it (code fences, inline code,
-// bold, lists, headings) is what makes the room read like a chat rather than a
-// log. This is deliberately small — no external markdown engine — matching the
-// in-repo precedent (config-field's preview renderer).
-
-const FENCE = /```([\w-]*)\n?([\s\S]*?)```/g;
-
-function renderInline(text: string, keyBase: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern =
-    /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-  let last = 0;
-  let index = 0;
-  let match = pattern.exec(text);
-  while (match !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    if (match[1] !== undefined) {
-      nodes.push(
-        <strong key={`${keyBase}-b${index}`} className="font-semibold text-txt">
-          {match[1]}
-        </strong>,
-      );
-    } else if (match[2] !== undefined) {
-      nodes.push(
-        <code
-          key={`${keyBase}-c${index}`}
-          className="rounded bg-bg/70 px-1 py-px font-mono text-[0.95em] text-accent"
-        >
-          {match[2]}
-        </code>,
-      );
-    } else if (match[3] !== undefined) {
-      nodes.push(
-        <a
-          key={`${keyBase}-l${index}`}
-          href={match[4]}
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent underline underline-offset-2"
-        >
-          {match[3]}
-        </a>,
-      );
-    }
-    last = match.index + match[0].length;
-    index += 1;
-    match = pattern.exec(text);
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
-function renderProse(text: string, keyBase: string): ReactNode {
-  const lines = text.split("\n");
-  return lines.map((line, lineIndex) => {
-    const key = `${keyBase}-${lineIndex}`;
-    if (line.trim() === "") return <div key={key} className="h-2" />;
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading) {
-      return (
-        <div key={key} className="mt-1 font-semibold text-txt">
-          {renderInline(heading[2], key)}
-        </div>
-      );
-    }
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-    if (bullet) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none text-muted">•</span>
-          <span className="min-w-0 flex-1">{renderInline(bullet[1], key)}</span>
-        </div>
-      );
-    }
-    const numbered = /^\s*(\d+)\.\s+(.*)$/.exec(line);
-    if (numbered) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none tabular-nums text-muted">
-            {numbered[1]}.
-          </span>
-          <span className="min-w-0 flex-1">
-            {renderInline(numbered[2], key)}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <div key={key} className="break-words leading-relaxed">
-        {renderInline(line, key)}
-      </div>
-    );
-  });
-}
-
-export function MarkdownText({ text }: { text: string }): ReactNode {
-  const segments: ReactNode[] = [];
-  let last = 0;
-  let index = 0;
-  FENCE.lastIndex = 0;
-  let match = FENCE.exec(text);
-  while (match !== null) {
-    if (match.index > last) {
-      segments.push(
-        <div key={`p${index}`}>
-          {renderProse(text.slice(last, match.index), `p${index}`)}
-        </div>,
-      );
-    }
-    segments.push(
-      <CodeBlock
-        key={`f${index}`}
-        language={match[1]}
-        code={match[2].replace(/\n$/, "")}
-      />,
-    );
-    last = match.index + match[0].length;
-    index += 1;
-    match = FENCE.exec(text);
-  }
-  if (last < text.length) {
-    segments.push(
-      <div key={`p${index}`}>{renderProse(text.slice(last), `p${index}`)}</div>,
-    );
-  }
-  return <div className="space-y-0.5">{segments}</div>;
-}
-
-function CodeBlock({
-  language,
-  code,
-}: {
-  language?: string;
-  code: string;
-}): ReactNode {
-  return (
-    <div className="my-1 overflow-hidden rounded-md border border-border/50 bg-bg/80">
-      {language ? (
-        <div className="border-b border-border/40 px-2 py-0.5 font-mono text-2xs text-muted">
-          {language}
-        </div>
-      ) : null}
-      <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
-        {code}
-      </pre>
-    </div>
-  );
 }
 
 // --- Conversation block views ----------------------------------------------
@@ -584,6 +564,44 @@ function toolIcon(tool: ToolView): LucideIcon {
   );
 }
 
+// Codex labels a tool by the ACTION it took, not the raw tool name: "Ran",
+// "Read", "Edited", "Searched", not "bash"/"grep". Present tense while the call
+// is in flight, past tense once it has settled (the red badge carries failure,
+// so a failed run is still "Ran"). Tuple is [running, settled].
+const VERB_BY_KIND: Record<string, readonly [string, string]> = {
+  execute: ["Running", "Ran"],
+  read: ["Reading", "Read"],
+  edit: ["Editing", "Edited"],
+  search: ["Searching", "Searched"],
+  fetch: ["Fetching", "Searched web"],
+  move: ["Moving", "Moved"],
+  delete: ["Deleting", "Deleted"],
+  think: ["Thinking", "Thought"],
+};
+
+const VERB_BY_TITLE: Record<string, readonly [string, string]> = {
+  write: ["Writing", "Wrote"],
+  edit: ["Editing", "Edited"],
+  read: ["Reading", "Read"],
+  bash: ["Running", "Ran"],
+  shell: ["Running", "Ran"],
+  grep: ["Searching", "Searched"],
+  glob: ["Searching", "Searched"],
+  list: ["Listing", "Listed"],
+  webfetch: ["Fetching", "Searched web"],
+  fetch: ["Fetching", "Searched web"],
+};
+
+/** The action verb for a tool's header, status-aware. Falls back to the raw
+ * tool name for kinds we don't have a verb for, so nothing renders blank. */
+function toolVerb(tool: ToolView): string {
+  const pair =
+    VERB_BY_TITLE[tool.title.toLowerCase()] ??
+    VERB_BY_KIND[tool.kind.toLowerCase()];
+  if (!pair) return tool.title;
+  return tool.status === "running" ? pair[0] : pair[1];
+}
+
 /** The shortest meaningful one-liner about what a tool touched, shown in the
  * collapsed header (file name, command, or query). */
 function toolTarget(tool: ToolView): string | undefined {
@@ -600,9 +618,14 @@ const STATUS_BADGE: Record<
   ToolStatus,
   { icon: LucideIcon; tone: string; label: string; spin?: boolean }
 > = {
-  running: { icon: Loader, tone: "text-accent", label: "Running", spin: true },
+  running: {
+    icon: Loader,
+    tone: "text-muted-strong",
+    label: "Running",
+    spin: true,
+  },
   done: { icon: Check, tone: "text-ok", label: "Done" },
-  failed: { icon: CircleX, tone: "text-danger", label: "Failed" },
+  failed: { icon: CircleX, tone: "text-red-500", label: "Failed" },
 };
 
 const MAX_BODY_CHARS = 4000;
@@ -616,6 +639,19 @@ function TruncatedNote(): ReactNode {
   return (
     <div className="px-1 text-2xs text-muted/70">… (truncated for display)</div>
   );
+}
+
+/** Command output's meaningful result — the error, the exit summary, the last
+ * failing line — usually lives at the END, so when it's too long keep BOTH
+ * ends and elide the middle rather than dropping the tail (a head-only clamp
+ * hides exactly the part you opened the card to read). Diffs keep the head-only
+ * clamp above; a mid-string marker there would corrupt line alignment. */
+function clampOutput(text: string): string {
+  if (text.length <= MAX_BODY_CHARS) return text;
+  const head = Math.ceil(MAX_BODY_CHARS * 0.6);
+  const tail = MAX_BODY_CHARS - head;
+  const elided = text.length - head - tail;
+  return `${text.slice(0, head).trimEnd()}\n\n… ${elided.toLocaleString()} characters elided …\n\n${text.slice(-tail).trimStart()}`;
 }
 
 /** The expandable body of a tool card: an interleaved diff for edits, the new
@@ -638,28 +674,16 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
     if (truncated) blocks.push(<TruncatedNote key="content-trunc" />);
   }
 
-  if (tool.command) {
-    blocks.push(
-      <div
-        key="cmd"
-        className="rounded-md border border-border/40 bg-black/40 px-2.5 py-1 font-mono text-2xs text-txt"
-      >
-        <span className="select-none text-ok">$ </span>
-        <span className="whitespace-pre-wrap break-words">{tool.command}</span>
-      </div>,
-    );
-  }
-
+  // The command itself is already shown (untruncated on hover) in the card
+  // header, so the body carries only its output — no redundant `$` echo.
   if (tool.output) {
-    const { body, truncated } = clamp(tool.output);
     blocks.push(
       <pre
         key="out"
         className="overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
         style={{ maxHeight: "14rem" }}
       >
-        {body}
-        {truncated ? "\n… (truncated)" : ""}
+        {clampOutput(tool.output)}
       </pre>,
     );
   }
@@ -668,22 +692,35 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   return <div className="mt-1.5 space-y-1.5">{blocks}</div>;
 }
 
-function ToolCallCard({
-  tool,
-  at,
-  locale,
-}: {
-  tool: ToolView;
-  at: number;
-  locale?: string;
-}): ReactNode {
+function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
   const Icon = toolIcon(tool);
   const badge = STATUS_BADGE[tool.status];
   const BadgeIcon = badge.icon;
   const target = toolTarget(tool);
-  const hasBody = Boolean(
-    tool.newText !== undefined || tool.command || tool.output,
+  // The command lives in the header; only a diff/new content or captured
+  // output makes the card expandable. A command that printed nothing is a
+  // single tidy line — no chevron, no empty body.
+  const hasBody = Boolean(tool.newText !== undefined || tool.output);
+  // Edit/write magnitude shown on the collapsed header so the reader sees the
+  // size of a change without expanding it.
+  const diffStat = useMemo(
+    () =>
+      tool.newText === undefined
+        ? null
+        : countDiff(lineDiff(tool.oldText ?? "", tool.newText)),
+    [tool.oldText, tool.newText],
   );
+  // Codex-style result suffix: a non-zero exit code (red badge already conveys
+  // failure) and the wall-clock duration, both dim/mono.
+  const meta: string[] = [];
+  if (typeof tool.exitCode === "number" && tool.exitCode !== 0)
+    meta.push(`exit ${tool.exitCode}`);
+  // Only surface a duration once it's meaningful. A non-streaming command
+  // (e.g. `pip install --quiet`) emits its start and end events within the
+  // same tick, so a sub-second event-span is a logging artifact, not a real
+  // runtime — showing "1ms" for a multi-second install would be misleading.
+  if (tool.durationMs !== undefined && tool.durationMs >= 1000)
+    meta.push(formatDuration(tool.durationMs));
   // Open by default while the agent is mid-edit so the change is visible as it
   // streams; collapse finished read/search calls to keep the room scannable.
   const [open, setOpen] = useState(
@@ -691,7 +728,7 @@ function ToolCallCard({
   );
   return (
     <div
-      className="rounded-md border border-border/50 bg-bg-accent/20"
+      className="rounded-md border border-border/50 bg-card/50"
       data-testid="orchestrator-tool-call"
     >
       <button
@@ -707,17 +744,23 @@ function ToolCallCard({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
-        <span className="shrink-0 font-mono text-xs font-semibold text-txt">
-          {tool.title}
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-strong" />
+        <span className="shrink-0 text-xs font-semibold text-txt">
+          {toolVerb(tool)}
         </span>
-        {target ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted">
+        {target && target !== tool.title ? (
+          <span
+            title={target}
+            className="min-w-0 flex-1 truncate font-mono text-2xs text-muted"
+          >
             {target}
           </span>
         ) : (
           <span className="flex-1" />
         )}
+        {diffStat && (diffStat.added > 0 || diffStat.removed > 0) ? (
+          <DiffStat added={diffStat.added} removed={diffStat.removed} />
+        ) : null}
         <span
           className={`flex shrink-0 items-center gap-1 text-2xs ${badge.tone}`}
         >
@@ -726,9 +769,11 @@ function ToolCallCard({
           />
           {badge.label}
         </span>
-        <span className="shrink-0 tabular-nums text-2xs text-muted/70">
-          {formatClockTime(at, locale)}
-        </span>
+        {meta.length > 0 ? (
+          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted/70">
+            {meta.join(" · ")}
+          </span>
+        ) : null}
       </button>
       {open ? (
         <div className="px-2.5 pb-2">{<ToolBody tool={tool} />}</div>
@@ -751,40 +796,47 @@ export function ConversationBlockView({
         data-testid="orchestrator-user-message"
       >
         <div
-          className="rounded-lg bg-accent/20 px-2.5 py-1.5 text-xs text-txt"
-          style={{ maxWidth: "88%" }}
+          className="rounded-lg border border-border/50 bg-surface px-3 py-2 text-xs text-txt"
+          style={{ maxWidth: "80%" }}
         >
-          <div className="mb-0.5 text-2xs tabular-nums text-muted">
+          <div className="whitespace-pre-wrap break-words leading-relaxed">
+            {block.content}
+          </div>
+          <div className="mt-1 text-3xs tabular-nums text-muted/70">
             {formatClockTime(block.at, locale)}
           </div>
-          <div className="whitespace-pre-wrap break-words">{block.content}</div>
         </div>
       </div>
     );
   }
 
   if (block.kind === "agent") {
+    // Codex Desktop renders the assistant turn FLAT (full-width markdown, no
+    // bubble) with a small identity marker — only the user's turn is bubbled.
     return (
       <div
-        className="flex flex-col items-start"
+        className="flex w-full flex-col items-start"
         data-testid="orchestrator-agent-message"
       >
+        <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full bg-muted-strong"
+            aria-hidden
+          />
+          <span className="font-semibold tracking-tight text-txt/90">
+            {block.senderName}
+          </span>
+          <span className="tabular-nums">
+            {formatClockTime(block.at, locale)}
+          </span>
+        </div>
         <div
-          className={`rounded-lg px-2.5 py-1.5 text-xs ${
+          className={
             block.tone === "error"
-              ? "bg-danger/10 text-danger"
-              : "bg-bg-hover/60 text-txt"
-          }`}
-          style={{ maxWidth: "92%" }}
+              ? "w-full border-l-2 border-red-500/40 pl-2.5 text-red-500"
+              : "w-full text-txt"
+          }
         >
-          <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-            <span className="font-semibold tracking-tight text-txt/90">
-              {block.senderName}
-            </span>
-            <span className="tabular-nums">
-              {formatClockTime(block.at, locale)}
-            </span>
-          </div>
           <MarkdownText text={block.content} />
         </div>
       </div>
@@ -792,7 +844,11 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "tool") {
-    return <ToolCallCard tool={block.tool} at={block.at} locale={locale} />;
+    return <ToolCallCard tool={block.tool} />;
+  }
+
+  if (block.kind === "reasoning") {
+    return <ReasoningCell text={block.text} />;
   }
 
   const Icon = block.icon;
@@ -805,9 +861,6 @@ export function ConversationBlockView({
       <Icon className={`h-3 w-3 shrink-0 ${block.tone}`} />
       <span className={`min-w-0 shrink truncate font-medium ${block.tone}`}>
         {block.text}
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {formatClockTime(block.at, locale)}
       </span>
       <span className="h-px flex-1 bg-border/40" />
     </div>

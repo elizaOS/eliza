@@ -207,6 +207,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "odysseus app shell page",
+    path: "/odysseus",
+    selector: '[data-testid="odysseus-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "orchestrator tui app shell page",
     path: "/orchestrator/tui",
     readyChecks: [
