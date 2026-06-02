@@ -42,14 +42,15 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",
-    "test": "echo \"No tests\""
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

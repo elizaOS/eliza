@@ -163,6 +163,8 @@ fi
 if [ -z "$binary" ]; then
 	printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
 	printf '  simulator_path: external/chipyard/sims/verilator\n'
+	# $CHIPYARD_LINUX_BINARY is literal text for user guidance (shown as-is in the output)
+	# shellcheck disable=SC2016
 	printf '  next_command: cd external/chipyard/sims/verilator && source ../../env.sh && make CONFIG=%s CONFIG_PACKAGE=%s BINARY=$CHIPYARD_LINUX_BINARY LOADMEM=1 run-binary\n' "$config" "$config_package"
 	printf '  - CHIPYARD_LINUX_BINARY is unset; provide a real OpenSBI/Linux ELF payload\n'
 	exit 2

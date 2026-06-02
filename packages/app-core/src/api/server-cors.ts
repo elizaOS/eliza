@@ -108,6 +108,17 @@ function originString(u: URL): string {
   return `${u.protocol}//${u.host}`;
 }
 
+function isAllowedNativeWebviewHost(u: URL): boolean {
+  const host = u.hostname.toLowerCase();
+  return (
+    host === "" ||
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host === "::1"
+  );
+}
+
 /**
  * Check whether a URL string is an allowed origin for CORS:
  *   - a configured local API port,
@@ -125,7 +136,9 @@ export function isAllowedOrigin(
     const u = new URL(urlStr);
     const origin = originString(u);
     if (CAPACITOR_WEBVIEW_ORIGINS.has(origin)) return true;
-    if (NATIVE_WEBVIEW_PROTOCOLS.has(u.protocol)) return true;
+    if (NATIVE_WEBVIEW_PROTOCOLS.has(u.protocol)) {
+      return isAllowedNativeWebviewHost(u);
+    }
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
     if (remoteOrigins.has(origin)) return true;
     const h = u.hostname.toLowerCase();

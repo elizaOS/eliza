@@ -21,6 +21,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  countViewJourneyScenarios,
   getScenarioById,
   getScenariosByTag,
   VIEW_USER_JOURNEYS,
@@ -63,6 +64,10 @@ const CEREBRAS_MAX_RETRIES = Number.parseInt(
 );
 const LIVE_SINGLE_SCENARIO_TIMEOUT_MS = 180_000;
 const LIVE_BATCH_SCENARIO_TIMEOUT_MS = 600_000;
+const VIEW_EVAL_MAX_SCENARIOS = Number.parseInt(
+  process.env.VIEW_EVAL_MAX_SCENARIOS ?? "10",
+  10,
+);
 
 // ---------------------------------------------------------------------------
 // Evaluation types
@@ -294,10 +299,13 @@ async function callCerebrasJudge(prompt: string): Promise<string> {
 }
 
 async function callAnthropicJudge(prompt: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required");
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
@@ -383,6 +391,18 @@ async function evaluateScenario(
   };
 }
 
+function capLiveScenarios(
+  scenarios: ViewJourneyScenario[],
+): ViewJourneyScenario[] {
+  if (
+    !Number.isFinite(VIEW_EVAL_MAX_SCENARIOS) ||
+    VIEW_EVAL_MAX_SCENARIOS <= 0
+  ) {
+    return scenarios;
+  }
+  return scenarios.slice(0, VIEW_EVAL_MAX_SCENARIOS);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -423,7 +443,7 @@ describe.skipIf(!hasAnyCredential)(
     it(
       "discovery scenarios score >= 7 on average",
       async () => {
-        const scenarios = getScenariosByTag("discovery");
+        const scenarios = capLiveScenarios(getScenariosByTag("discovery"));
         const results = await Promise.all(scenarios.map(evaluateScenario));
 
         const total = results.reduce((sum, r) => sum + r.score, 0);
@@ -448,7 +468,7 @@ describe.skipIf(!hasAnyCredential)(
     it(
       "navigation scenarios have correct navigation direction",
       async () => {
-        const scenarios = getScenariosByTag("navigation").slice(0, 5); // cap for cost
+        const scenarios = capLiveScenarios(getScenariosByTag("navigation"));
         const results = await Promise.all(scenarios.map(evaluateScenario));
 
         const withNavAssertion = results.filter(
@@ -473,7 +493,7 @@ describe.skipIf(!hasAnyCredential)(
     it(
       "error-handling scenarios respond helpfully without crashing",
       async () => {
-        const scenarios = getScenariosByTag("error-handling");
+        const scenarios = capLiveScenarios(getScenariosByTag("error-handling"));
         const results = await Promise.all(scenarios.map(evaluateScenario));
 
         const failures = results.filter((r) => r.score < 5);
@@ -487,8 +507,8 @@ describe.skipIf(!hasAnyCredential)(
     it(
       "full journey suite: at least 80% of scenarios score >= 7",
       async () => {
-        // Run all scenarios but cap to avoid excessive API cost in tests.
-        const scenarios = VIEW_USER_JOURNEYS.slice(0, 10);
+        // Run a representative prefix by default to avoid excessive API cost.
+        const scenarios = capLiveScenarios(VIEW_USER_JOURNEYS);
         const results = await Promise.all(scenarios.map(evaluateScenario));
 
         const passing = results.filter((r) => r.pass);
@@ -518,6 +538,15 @@ describe.skipIf(!hasAnyCredential)(
 describe("view-user-journeys scenario library", () => {
   it("contains at least 20 scenarios", () => {
     expect(VIEW_USER_JOURNEYS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("expands the curated base set by exactly 10x", () => {
+    expect(countViewJourneyScenarios()).toEqual({
+      existing: 34,
+      added: 340,
+      total: 374,
+      multiplierAdded: 10,
+    });
   });
 
   it("all scenario ids are unique", () => {

@@ -8,9 +8,12 @@ function stripUrls(input: string): string {
 
 function stripThinkingAndMarkup(input: string): string {
   let text = input;
-  text = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, " ");
   text = text.replace(
-    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    " ",
+  );
+  text = text.replace(
+    /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*$/gi,
     " ",
   );
   text = text.replace(/```[\s\S]*?```/g, " ");
@@ -49,6 +52,7 @@ function sanitizeSpeechPunctuation(input: string): string {
   text = text.replace(/[‘’]/g, "'");
   text = text.replace(/[…]/g, "...");
   text = text.replace(/[–—]/g, ", ");
+  text = text.replace(/([,.!?，。！？])\1+/g, "$1");
   text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
   text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
   text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：-]/gu, " ");

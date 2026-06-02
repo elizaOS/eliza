@@ -170,7 +170,12 @@ function matchesScope(scope: RoutingScope, ctx: ResolutionContext): boolean {
 }
 
 function parseRoutingConfig(raw: string): RoutingConfig {
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return EMPTY_ROUTING;
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return EMPTY_ROUTING;
   }

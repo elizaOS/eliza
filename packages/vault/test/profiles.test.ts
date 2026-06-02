@@ -277,6 +277,33 @@ describe("profiles — routing config persistence", () => {
     const got = await readRoutingConfig(vault);
     expect(got.rules).toHaveLength(1);
   });
+
+  it("treats malformed persisted routing config as empty routing", async () => {
+    for (const value of [
+      "not-json",
+      "null",
+      "[]",
+      JSON.stringify({ rules: "not-array" }),
+      JSON.stringify({
+        rules: [
+          {
+            keyPattern: "_routing.config",
+            scope: { kind: "agent", agentId: "abc" },
+            profileId: "work",
+          },
+          {
+            keyPattern: "OPENROUTER_API_KEY",
+            scope: { kind: "agent" },
+            profileId: "work",
+          },
+        ],
+        defaultProfile: "",
+      }),
+    ]) {
+      await vault.set("_routing.config", value);
+      await expect(readRoutingConfig(vault)).resolves.toEqual({ rules: [] });
+    }
+  });
 });
 
 describe("profiles — manager.getActive integration", () => {

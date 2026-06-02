@@ -10,20 +10,39 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_repair_rom_cocotb.json"
-GENERATED_ROM_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
-GENERATED_ROM_HEX = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
-GENERATED_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
-REAL_GRAPH_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json"
-REAL_GRAPH_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex"
-REAL_GRAPH_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
-REAL_GRAPH_NORMAL_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json"
-REAL_GRAPH_NORMAL_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex"
-REAL_GRAPH_NORMAL_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
+GENERATED_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
+)
+GENERATED_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
+)
+GENERATED_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
+)
+REAL_GRAPH_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json"
+)
+REAL_GRAPH_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex"
+)
+REAL_GRAPH_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
+)
+REAL_GRAPH_NORMAL_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json"
+)
+REAL_GRAPH_NORMAL_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex"
+)
+REAL_GRAPH_NORMAL_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
+)
 RUNS = {
     "loader": {
         "top": "e1x_repair_rom_loader_tb",
         "module": "test_e1x_repair_rom_loader",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_repair_rom_loader.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_repair_rom_loader.xml",
         "expected": {
             "repair_rom_loader_decodes_header_remaps_and_routes",
             "repair_rom_loader_rejects_bad_magic_and_clear_recovers",
@@ -61,7 +80,8 @@ RUNS = {
     "generated_loader": {
         "top": "e1x_repair_rom_loader_tb",
         "module": "test_e1x_generated_repair_rom_loader",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
         "expected": {
             "generated_high_failure_repair_rom_streams_through_rtl_loader",
         },
@@ -73,7 +93,8 @@ RUNS = {
     "generated_route_table": {
         "top": "e1x_repair_route_table_tb",
         "module": "test_e1x_generated_repair_route_table",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
         "expected": {
             "generated_high_failure_repair_rom_programs_route_table_lookups",
         },
@@ -86,7 +107,8 @@ RUNS = {
     "real_graph_generated_loader": {
         "top": "e1x_repair_rom_loader_tb",
         "module": "test_e1x_generated_repair_rom_loader",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
         "expected": {
             "generated_high_failure_repair_rom_streams_through_rtl_loader",
         },
@@ -98,7 +120,8 @@ RUNS = {
     "real_graph_generated_route_table": {
         "top": "e1x_repair_route_table_tb",
         "module": "test_e1x_generated_repair_route_table",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
         "expected": {
             "generated_high_failure_repair_rom_programs_route_table_lookups",
         },
@@ -111,7 +134,8 @@ RUNS = {
     "real_graph_normal_generated_loader": {
         "top": "e1x_repair_rom_loader_tb",
         "module": "test_e1x_generated_repair_rom_loader",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_rom_loader_tb_test_e1x_generated_repair_rom_loader.xml",
         "expected": {
             "generated_high_failure_repair_rom_streams_through_rtl_loader",
         },
@@ -123,7 +147,8 @@ RUNS = {
     "real_graph_normal_generated_route_table": {
         "top": "e1x_repair_route_table_tb",
         "module": "test_e1x_generated_repair_route_table",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_route_table_tb_test_e1x_generated_repair_route_table.xml",
         "expected": {
             "generated_high_failure_repair_rom_programs_route_table_lookups",
         },
@@ -150,7 +175,8 @@ RUNS = {
     "generated_state": {
         "top": "e1x_repair_state_large_tb",
         "module": "test_e1x_generated_repair_state",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_state_large_tb_test_e1x_generated_repair_state.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_state_large_tb_test_e1x_generated_repair_state.xml",
         "expected": {
             "generated_high_failure_repair_rom_programs_large_repair_state",
         },

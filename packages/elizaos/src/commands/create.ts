@@ -189,6 +189,10 @@ export async function create(
   }
 
   let finalProjectName = await promptProjectName(template.id, projectName);
+  if (!finalProjectName) {
+    clack.cancel("Project name is required.");
+    process.exit(1);
+  }
   if (template.id === "plugin" && !finalProjectName.startsWith("plugin-")) {
     finalProjectName = `plugin-${finalProjectName}`;
   }

@@ -372,6 +372,14 @@ function normalizePluginId(rawName: string): string {
   return rawName.replace(/^@[^/]+\//, "").replace(/^(plugin|app)-/, "");
 }
 
+function decodePluginPathSegment(rawSegment: string): string | null {
+  try {
+    return decodeURIComponent(rawSegment);
+  } catch {
+    return null;
+  }
+}
+
 function resolveCompatConfigKey(
   pluginId: string,
   npmName: string | undefined,
@@ -1038,8 +1046,7 @@ function isPluginLoaded(
     }
     if (
       loadedName.endsWith(`/plugin-${pluginId}`) ||
-      loadedName.endsWith(`/app-${pluginId}`) ||
-      loadedName.includes(pluginId)
+      loadedName.endsWith(`/app-${pluginId}`)
     ) {
       return true;
     }
@@ -1542,9 +1549,15 @@ export async function handlePluginsCompatRoutes(
       return true;
     }
 
-    const pluginId = normalizePluginId(
-      decodeURIComponent(url.pathname.slice("/api/plugins/".length)),
+    const decodedPluginId = decodePluginPathSegment(
+      url.pathname.slice("/api/plugins/".length),
     );
+    if (decodedPluginId === null) {
+      sendJsonErrorResponse(res, 400, "Invalid plugin path");
+      return true;
+    }
+
+    const pluginId = normalizePluginId(decodedPluginId);
     const plugin = buildPluginListResponse(state.current).plugins.find(
       (candidate) => candidate.id === pluginId,
     );
@@ -1608,7 +1621,12 @@ export async function handlePluginsCompatRoutes(
     method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
   if (testMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const testPluginId = normalizePluginId(decodeURIComponent(testMatch[1]));
+    const decodedTestPluginId = decodePluginPathSegment(testMatch[1]);
+    if (decodedTestPluginId === null) {
+      sendJsonErrorResponse(res, 400, "Invalid plugin path");
+      return true;
+    }
+    const testPluginId = normalizePluginId(decodedTestPluginId);
     const startMs = Date.now();
 
     if (testPluginId === "telegram") {
@@ -1691,9 +1709,14 @@ export async function handlePluginsCompatRoutes(
     // entry; vault/keychain failures surface instead of silently falling
     // back to env.
     try {
+      const decodedRevealPluginId = decodePluginPathSegment(revealMatch[1]);
+      if (decodedRevealPluginId === null) {
+        sendJsonErrorResponse(res, 400, "Invalid plugin path");
+        return true;
+      }
       const vaultValue = await sharedVault().reveal(
         key,
-        `plugins:${decodeURIComponent(revealMatch[1])}:reveal`,
+        `plugins:${decodedRevealPluginId}:reveal`,
       );
       sendJsonResponse(res, 200, { ok: true, value: vaultValue });
       return true;

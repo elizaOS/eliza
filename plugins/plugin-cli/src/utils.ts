@@ -19,7 +19,7 @@ export const DEFAULT_CLI_NAME = "elizaos";
 /**
  * Default CLI version
  */
-export const DEFAULT_CLI_VERSION = "1.0.0";
+export const DEFAULT_CLI_VERSION = "2.0.3-beta.0";
 
 /**
  * Create default CLI dependencies
@@ -187,7 +187,11 @@ export function parseDurationMs(input: string): ParsedDuration {
 			return { ms: 0, original: input, valid: false };
 	}
 
-	return { ms: Math.round(value * multiplier), original: input, valid: true };
+	const ms = Math.round(value * multiplier);
+	if (!Number.isSafeInteger(ms) || ms < 0) {
+		return { ms: 0, original: input, valid: false };
+	}
+	return { ms, original: input, valid: true };
 }
 
 /**
@@ -236,10 +240,10 @@ export function resolveCliName(argv?: string[]): string {
 	if (args.length < 2) return DEFAULT_CLI_NAME;
 
 	const scriptPath = args[1];
-	const scriptName = scriptPath.split("/").pop() ?? DEFAULT_CLI_NAME;
+	const scriptName = scriptPath.split(/[\\/]/).pop() ?? DEFAULT_CLI_NAME;
 
 	// Remove common extensions
-	return scriptName.replace(/\.(js|ts|mjs|cjs)$/, "");
+	return scriptName.replace(/\.(js|ts|mjs|cjs|cmd|exe)$/, "");
 }
 
 /**

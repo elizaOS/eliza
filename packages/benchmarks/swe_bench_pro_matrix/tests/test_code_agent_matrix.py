@@ -13,8 +13,11 @@ from benchmarks.swe_bench_pro_matrix.code_agent_matrix import (
     _write_evaluator_raw_sample,
     agent_command_template,
     build_result,
+    count_tasks,
+    expand_tasks,
     load_tasks,
     main,
+    validate_tasks,
 )
 
 
@@ -26,6 +29,20 @@ def test_load_tasks_uses_vendored_public_split() -> None:
     assert tasks[0]["repo"]
     assert tasks[0]["base_commit"]
     assert tasks[0]["problem_statement"]
+
+
+def test_expand_tasks_adds_ten_edge_variants_per_instance() -> None:
+    tasks = load_tasks(max_tasks=1)
+
+    expanded = expand_tasks(tasks, expand_scenarios=True)
+
+    assert count_tasks(tasks, expand_scenarios=True) == {"base": 1, "edge": 10, "total": 11}
+    assert len(expanded) == 11
+    assert expanded[0]["instance_id"] == tasks[0]["instance_id"]
+    assert expanded[1]["scenario_id"].endswith("__edge_01")
+    assert expanded[1]["source_instance_id"] == tasks[0]["instance_id"]
+    assert "Additional benchmark edge condition 01" in expanded[1]["problem_statement"]
+    assert validate_tasks(tasks, expand_scenarios=True)["valid"] is True
 
 
 def test_builtin_agent_command_template_targets_helper(monkeypatch) -> None:
@@ -62,6 +79,7 @@ def test_mock_mode_writes_normalized_result(tmp_path: Path, capsys) -> None:
             "--max-tasks",
             "1",
             "--mock",
+            "--expand-scenarios",
             "--json",
         ]
     )
@@ -71,8 +89,9 @@ def test_mock_mode_writes_normalized_result(tmp_path: Path, capsys) -> None:
     assert json.loads(capsys.readouterr().out)["benchmark"] == "swe_bench_pro"
     assert result["benchmark"] == "swe_bench_pro"
     assert result["dataset_version"] == DATASET_VERSION
-    assert result["summary"]["total"] == 1
-    assert result["summary"]["passed"] == 1
+    assert result["scenario_counts"] == {"base": 1, "edge": 10, "total": 11}
+    assert result["summary"]["total"] == 11
+    assert result["summary"]["passed"] == 11
     assert result["summary"]["failed"] == 0
     assert result["summary"]["llm_call_count"] == 0
 

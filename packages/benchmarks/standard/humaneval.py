@@ -47,11 +47,13 @@ from ._base import (
     RunStats,
 )
 from ._cli import RunnerFactory, cli_dispatch
+from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
 log = logging.getLogger("benchmarks.standard.humaneval")
 
 BENCHMARK_ID = "humaneval"
 DATASET_VERSION = "openai_humaneval@1.0"
+EXPANDED_DATASET_VERSION = "openai_humaneval@1.0+edge-v1"
 DATASET_NAME = "openai_humaneval"
 DEFAULT_MAX_TOKENS = 2048
 
@@ -306,10 +308,26 @@ class HumanEvalRunner:
         examples: Iterable[dict[str, object]] | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         timeout_s: float = 10.0,
+        include_edge_scenarios: bool = False,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
         self._max_tokens = max_tokens
         self._timeout_s = timeout_s
+        self._include_edge_scenarios = include_edge_scenarios
+
+    def _selected_examples(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(self._examples if self._examples is not None else _load_dataset_examples(limit))
+        if self._examples is not None and limit is not None:
+            base = base[:limit]
+        examples = expand_humaneval_examples(base) if self._include_edge_scenarios else list(base)
+        validate_humaneval_examples(examples)
+        return base, examples
+
+    def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
+        base, examples = self._selected_examples(limit)
+        counts = count_dict_examples(base, examples)
+        counts["edge_multiplier"] = 10
+        return counts
 
     def run(
         self,
@@ -321,11 +339,7 @@ class HumanEvalRunner:
         limit: int | None,
     ) -> BenchmarkResult:
         stats = RunStats()
-        examples = (
-            self._examples
-            if self._examples is not None
-            else _load_dataset_examples(limit)
-        )
+        _, examples = self._selected_examples(limit)
         if not examples:
             raise RuntimeError("HumanEval loaded zero examples")
 
@@ -395,7 +409,7 @@ class HumanEvalRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(pass_at_1, 4),
@@ -428,17 +442,45 @@ class _HumanEvalFactory(RunnerFactory):
         )
 
     def build(self, args: argparse.Namespace) -> tuple[HumanEvalRunner, Sequence[str] | None]:
-        runner = HumanEvalRunner(max_tokens=args.max_tokens, timeout_s=args.timeout_s)
+        runner = HumanEvalRunner(
+            max_tokens=args.max_tokens,
+            timeout_s=args.timeout_s,
+            include_edge_scenarios=args.expand_scenarios,
+        )
         mock_responses: Sequence[str] | None = None
         if args.mock:
+            base = list(SMOKE_FIXTURES)
+            if args.limit is not None:
+                base = base[: args.limit]
+            examples = expand_humaneval_examples(base) if args.expand_scenarios else base
             runner = HumanEvalRunner(
-                examples=list(SMOKE_FIXTURES),
+                examples=base,
                 max_tokens=args.max_tokens,
                 timeout_s=args.timeout_s,
+                include_edge_scenarios=args.expand_scenarios,
             )
             # Echo canonical solutions for the smoke fixture.
-            mock_responses = [str(item["canonical_solution"]) for item in SMOKE_FIXTURES]
+            mock_responses = [str(item["canonical_solution"]) for item in examples]
         return runner, mock_responses
+
+
+def expand_humaneval_examples(examples: list[dict[str, object]]) -> list[dict[str, object]]:
+    def mutate(item: dict[str, object], instruction: str) -> None:
+        item["prompt"] = (
+            f"# Edge instruction: {instruction}\n"
+            f"# Return only the function body below.\n"
+            f"{item['prompt']}"
+        )
+
+    return expand_dict_examples(examples, id_key="task_id", mutator=mutate)
+
+
+def validate_humaneval_examples(examples: list[dict[str, object]]) -> None:
+    validate_dict_examples(
+        examples,
+        id_key="task_id",
+        required_keys=("task_id", "prompt", "canonical_solution", "test", "entry_point"),
+    )
 
 
 def main() -> int:

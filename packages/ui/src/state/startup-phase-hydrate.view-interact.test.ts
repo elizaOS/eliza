@@ -41,6 +41,7 @@ function makeDeps(): ReadyPhaseDeps {
     showRestartBanner: vi.fn(),
     setPtySessions: vi.fn(),
     hasPtySessionsRef: { current: false },
+    agentRunningRef: { current: false },
     setTabRaw: vi.fn(),
     setConversationMessages: vi.fn(),
     setUnreadConversations: vi.fn(),
@@ -56,6 +57,31 @@ function makeDeps(): ReadyPhaseDeps {
     elizaCloudLoginPollTimer: { current: null },
   };
 }
+
+describe("bindReadyPhase pty hydration readiness gate", () => {
+  it("only polls coding-agent status once the agent is running", () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    vi.useFakeTimers();
+    try {
+      const deps = makeDeps();
+      const cleanup = bindReadyPhase({ current: deps });
+
+      // Agent not running: the periodic poll must not touch the orchestrator/ACP
+      // routes (they 404/503 during the boot window).
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
+
+      // Agent enters "running": the poll's catch-all hydrates exactly once.
+      deps.agentRunningRef.current = true;
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("bindReadyPhase view interaction bridge", () => {
   beforeEach(() => {
@@ -93,6 +119,31 @@ describe("bindReadyPhase view interaction bridge", () => {
 
     cleanup();
     expect(clientMock.disconnectWs).toHaveBeenCalled();
+  }, 60_000);
+
+  it("routes XR view:interact websocket events through the view dispatcher", async () => {
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("view:interact")?.({
+      requestId: "req-xr-1",
+      viewId: "spatial-room",
+      viewType: "xr",
+      capability: "get-state",
+    });
+
+    await vi.waitFor(
+      () =>
+        expect(viewInteractMock.dispatchViewInteract).toHaveBeenCalledWith(
+          "spatial-room",
+          "xr",
+          "get-state",
+          undefined,
+          "req-xr-1",
+        ),
+      { timeout: 10_000 },
+    );
+
+    cleanup();
   }, 60_000);
 
   it("ignores malformed view:interact websocket events before dispatch", async () => {
@@ -149,6 +200,33 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewType: "gui",
       action: "pin-tab",
       alwaysOnTop: true,
+    });
+
+    cleanup();
+    window.removeEventListener("eliza:navigate:view", navHandler);
+  });
+
+  it("dispatches valid XR shell:navigate:view events to the browser shell", () => {
+    const navHandler = vi.fn();
+    window.addEventListener("eliza:navigate:view", navHandler);
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:navigate:view")?.({
+      viewId: "spatial-room",
+      viewPath: "/apps/spatial-room",
+      viewLabel: "Spatial Room",
+      viewType: "xr",
+    });
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const event = navHandler.mock.calls[0][0] as CustomEvent;
+    expect(event.detail).toEqual({
+      viewId: "spatial-room",
+      viewPath: "/apps/spatial-room",
+      viewLabel: "Spatial Room",
+      viewType: "xr",
+      action: undefined,
+      alwaysOnTop: false,
     });
 
     cleanup();

@@ -12,9 +12,11 @@ from typing import Any
 
 from benchmarks.mint.runner import MINTRunner
 from benchmarks.mint.types import ConfigurationResult, MINTConfig, MINTSubtask
+from benchmarks.mint.dataset import count_tasks, expand_tasks, validate_tasks
 
 
 DATASET_VERSION = "mint-coding-v1"
+EXPANDED_DATASET_VERSION = "mint-coding-edge-v1"
 CODING_SUBTASKS = (MINTSubtask.HUMANEVAL, MINTSubtask.MBPP)
 
 
@@ -48,6 +50,7 @@ def _build_result(
     model_provider: str,
     model: str,
     mode: str,
+    include_edge_scenarios: bool,
 ) -> dict[str, Any]:
     canonical = (
         raw_results.full_results
@@ -62,7 +65,7 @@ def _build_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
-        "dataset_version": DATASET_VERSION,
+        "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
         "summary": {
             "total_instances": int(metrics.total_tasks),
             "resolved": int(metrics.passed_tasks),
@@ -113,6 +116,7 @@ async def run_mint_coding(
     timeout_seconds: int,
     use_docker: bool,
     mock: bool,
+    include_edge_scenarios: bool,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if trajectory_dir is not None:
@@ -121,10 +125,15 @@ async def run_mint_coding(
         os.environ["BENCHMARK_TELEMETRY_JSONL"] = str(trajectory_dir / "telemetry.jsonl")
 
     if mock:
-        total = max(1, int(max_tasks or 1))
+        base_total = max(1, int(max_tasks or 1))
+        total = base_total * 11 if include_edge_scenarios else base_total
         results = [
             {
-                "task": f"humaneval-smoke-{index}",
+                "task": (
+                    f"humaneval-smoke-{index // 11}--edge-{index % 11:02d}"
+                    if include_edge_scenarios and index % 11
+                    else f"humaneval-smoke-{index // 11 if include_edge_scenarios else index}"
+                ),
                 "subtask": "humaneval",
                 "status": "mock",
                 "success": True,
@@ -144,7 +153,7 @@ async def run_mint_coding(
             "model_provider": model_provider,
             "model": model,
             "mode": "mock",
-            "dataset_version": DATASET_VERSION,
+            "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
             "summary": {
                 "total_instances": total,
                 "resolved": total,
@@ -167,6 +176,7 @@ async def run_mint_coding(
         output_dir=str(output_dir),
         max_tasks_per_subtask=max_tasks_per_subtask,
         max_total_tasks=max_tasks,
+        include_edge_scenarios=include_edge_scenarios,
         timeout_per_task_ms=max(1, timeout_seconds) * 1000,
         subtasks=list(CODING_SUBTASKS),
         use_docker=use_docker,
@@ -214,6 +224,7 @@ async def run_mint_coding(
         model_provider=model_provider,
         model=model,
         mode="mock" if mock else "live",
+        include_edge_scenarios=include_edge_scenarios,
     )
 
 
@@ -228,12 +239,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.count_scenarios or args.validate_scenarios:
+        from benchmarks.mint.dataset import MINTDataset
+
+        async def _count() -> tuple[list[Any], list[Any]]:
+            dataset = MINTDataset(auto_fetch=True)
+            await dataset.load(subtasks=list(CODING_SUBTASKS))
+            base_tasks = dataset.get_tasks(
+                subtasks=list(CODING_SUBTASKS),
+                limit=max(1, math.ceil(args.max_tasks / len(CODING_SUBTASKS)))
+                if args.max_tasks is not None
+                else None,
+            )
+            if args.max_tasks is not None:
+                base_tasks = base_tasks[: max(0, int(args.max_tasks))]
+            selected = expand_tasks(base_tasks) if args.expand_scenarios else list(base_tasks)
+            return base_tasks, selected
+
+        base_tasks, selected_tasks = asyncio.run(_count())
+        if args.validate_scenarios:
+            validate_tasks(selected_tasks)
+            if args.expand_scenarios and len(selected_tasks) != len(base_tasks) * 11:
+                raise RuntimeError(
+                    f"Expanded MINT coding count mismatch: base={len(base_tasks)} total={len(selected_tasks)}"
+                )
+            print("Scenario validation: ok")
+        if args.count_scenarios:
+            print(json.dumps(count_tasks(base_tasks, selected_tasks), sort_keys=True))
+        return 0
+
     result = asyncio.run(
         run_mint_coding(
             output_dir=Path(args.output),
@@ -245,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             use_docker=not args.no_docker,
             mock=bool(args.mock),
+            include_edge_scenarios=bool(args.expand_scenarios),
         )
     )
     result_path = Path(args.output) / "mint-code-agent-results.json"

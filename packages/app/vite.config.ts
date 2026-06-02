@@ -376,6 +376,14 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   ) {
     return true;
   }
+  // @elizaos/core's importAiProvider lazy-loads AI SDK providers by string
+  // specifier; its /* @vite-ignore */ is stripped by Bun.build's minifier from
+  // dist/browser/index.browser.js, so vite:import-analysis re-warns in local
+  // mode (the symlinked core realpath has no node_modules segment). Intentional
+  // and resolves correctly at runtime.
+  if (text.includes("dynamic import cannot be analyzed by Vite")) {
+    return true;
+  }
   if (!text.includes("INEFFECTIVE_DYNAMIC_IMPORT")) {
     if (!text.includes("dynamically imported")) {
       return false;
@@ -565,8 +573,12 @@ function createAppPluginBrowserAliases() {
     for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
       const candidate = path.join(pkgDir, uiEntry);
       if (!fs.existsSync(candidate)) continue;
+      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form (the
+      // latter is what the package.json `./*` export maps to src/ui/index.ts);
+      // without `/index` here vite falls through to the unbuilt dist/ui/index.js
+      // in dev and the client bundle fails to resolve.
       aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/ui$`),
+        find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
         replacement: candidate,
       });
       break;
@@ -1051,6 +1063,21 @@ function resolveManualChunk(id: string): string | undefined {
     return "vendor-lucide";
   }
 
+  // Phonemizer (eSpeak NG WASM, ~1.3MB) is dynamically imported through the
+  // kokoro `phonemizer.ts` adapter (packages/shared/.../kokoro/phonemizer.ts).
+  // Because that adapter is the dynamic-import boundary, Rolldown otherwise emits
+  // a second async chunk auto-named "phonemizer" and inlines its own copy of the
+  // npm package — shipping eSpeak NG twice (a "phonemizer" chunk *and* a
+  // "vendor-phonemizer" chunk). Routing BOTH the npm package and the adapter
+  // source to one chunk collapses them into a single ~650KB (brotli) chunk.
+  // Kept outside the /node_modules/ gate below so the adapter source matches too.
+  if (
+    normalizedId.includes("/phonemizer/") ||
+    normalizedId.includes("/kokoro/phonemizer")
+  ) {
+    return "vendor-phonemizer";
+  }
+
   if (normalizedId.includes("/node_modules/")) {
     if (
       pathIncludesAny(normalizedId, [
@@ -1076,11 +1103,6 @@ function resolveManualChunk(id: string): string | undefined {
       return "vendor-three";
     }
 
-    // Heavy single-purpose libs that only specific surfaces use. Splitting them
-    // into their own async chunks keeps them out of the initial entry chunk.
-    if (normalizedId.includes("/phonemizer/")) {
-      return "vendor-phonemizer";
-    }
     if (pathIncludesAny(normalizedId, ["/draco3d/", "/draco3dgltf/"])) {
       return "vendor-draco";
     }

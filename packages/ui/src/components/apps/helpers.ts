@@ -497,12 +497,16 @@ export function getAppShortName(app: RegistryAppInfo): string {
 }
 
 export function getAppEmoji(app: RegistryAppInfo): string {
+  return getAppIconName(app);
+}
+
+export function getAppIconName(app: RegistryAppInfo): string {
   const sectionKey = getAppCatalogSectionKey(app);
-  if (sectionKey === "featured") return "⭐";
-  if (sectionKey === "games") return "🎮";
-  if (sectionKey === "developerUtilities") return "🛠️";
-  if (sectionKey === "finance") return "💰";
-  return "📦";
+  if (sectionKey === "featured") return "Star";
+  if (sectionKey === "games") return "Gamepad2";
+  if (sectionKey === "developerUtilities") return "Wrench";
+  if (sectionKey === "finance") return "Wallet";
+  return "Package";
 }
 
 export function getAppSessionModeLabel(

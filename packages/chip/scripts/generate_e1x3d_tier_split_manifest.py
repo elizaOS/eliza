@@ -73,9 +73,7 @@ def _design_name(run_dir: Path) -> str | None:
 
 def _completed_stages(run_dir: Path) -> list[str]:
     return sorted(
-        child.name
-        for child in run_dir.iterdir()
-        if child.is_dir() and child.name[:2].isdigit()
+        child.name for child in run_dir.iterdir() if child.is_dir() and child.name[:2].isdigit()
     )
 
 
@@ -159,7 +157,9 @@ def build_tier_split_manifest() -> dict:
         ),
         None,
     )
-    interface_kind = "monolithic_miv" if recommended_bonding == "monolithic_miv" else "hybrid_bond_f2f"
+    interface_kind = (
+        "monolithic_miv" if recommended_bonding == "monolithic_miv" else "hybrid_bond_f2f"
+    )
 
     logic_tier = {
         "tier": 0,

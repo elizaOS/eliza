@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import json
 import tempfile
 import unittest
@@ -101,7 +100,10 @@ class AndroidProofBundlePreflightTests(unittest.TestCase):
         blockers = {item["code"]: item for item in report["blockers"]}
         self.assertIn("cts_tradefed_missing", blockers)
         self.assertIn("vts_tradefed_missing", blockers)
-        self.assertIn("scripts/android/build_cts_vts_tradefed.sh", blockers["cts_tradefed_missing"]["next_step"])
+        self.assertIn(
+            "scripts/android/build_cts_vts_tradefed.sh",
+            blockers["cts_tradefed_missing"]["next_step"],
+        )
 
     def test_report_sanitizes_host_local_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -113,7 +115,9 @@ class AndroidProofBundlePreflightTests(unittest.TestCase):
             model.write_bytes(b"model")
             args = Namespace(aosp_tree=str(aosp), no_adb_probe=True)
             env = {"E1_NPU_TFLITE_MODEL": str(model), "E1_NPU_WRITE_PROOF_JSON": "0"}
-            with mock.patch.object(preflight.shutil, "which", return_value="/home/shaw/Android/Sdk/platform-tools/adb"):
+            with mock.patch.object(
+                preflight.shutil, "which", return_value="/home/shaw/Android/Sdk/platform-tools/adb"
+            ):
                 _rc, report = preflight.build_report(args, env)
 
         encoded = json.dumps(report, sort_keys=True)

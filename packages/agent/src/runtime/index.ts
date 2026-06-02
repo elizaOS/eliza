@@ -8,7 +8,11 @@ export * from "./first-run-names.ts";
 export * from "./owner-entity.ts";
 export * from "./plugin-collector.ts";
 export * from "./plugin-lifecycle.ts";
-export { getLastFailedPluginNames, resolvePlugins } from "./plugin-resolver.ts";
+export {
+  getLastFailedPluginDetails,
+  getLastFailedPluginNames,
+  resolvePlugins,
+} from "./plugin-resolver.ts";
 export * from "./plugin-types.ts";
 export * from "./release-plugin-policy.ts";
 export * from "./roles.ts";

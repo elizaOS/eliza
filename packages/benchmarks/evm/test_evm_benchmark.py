@@ -644,6 +644,18 @@ class TestElizaExplorerConstruction:
         matches = explorer.code_pattern.findall(text)
         assert len(matches) == 2
 
+    def test_count_and_validate_expanded_scenarios(self):
+        from benchmarks.evm.eliza_explorer import count_scenarios, validate_scenarios
+
+        validate_scenarios(max_messages=1, include_edge_scenarios=True)
+
+        assert count_scenarios(include_edge_scenarios=True) == {
+            "base": 1,
+            "edge": 10,
+            "edge_multiplier": 10,
+            "total": 11,
+        }
+
 
 # =========================================================================
 # skill_templates: TypeScript validity via real Bun execution

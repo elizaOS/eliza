@@ -18,6 +18,8 @@ from unittest import mock
 
 import pytest
 
+from elizaos_webshop.types import WebShopTask
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -46,6 +48,32 @@ def _clear_optout_env(monkeypatch):
 # ---------------------------------------------------------------------------
 # spaCy auto-install
 # ---------------------------------------------------------------------------
+
+
+def test_edge_scenario_expansion_adds_ten_per_selected_webshop_task():
+    from elizaos_webshop.dataset import count_tasks, expand_tasks, validate_tasks
+
+    task = WebShopTask(
+        task_id="webshop_000001_B000HEADPH",
+        instruction="buy wireless bluetooth headphones in black",
+        target_product_ids=["B000HEADPH"],
+        budget=100.0,
+        metadata={"upstream_goal_json": "{}"},
+    )
+
+    expanded = expand_tasks([task])
+
+    assert count_tasks([task], include_edge_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+    assert len(expanded) == 11
+    assert expanded[1].target_product_ids == task.target_product_ids
+    assert expanded[1].metadata["base_task_id"] == task.task_id
+    assert expanded[1].metadata["scenario_id"]
+    validate_tasks([task], include_edge_scenarios=True)
 
 
 def test_spacy_autoinstall_retries_after_oserror():

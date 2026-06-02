@@ -57,6 +57,7 @@ class BenchmarkConfig:
     suites: list[BenchmarkSuite] = field(
         default_factory=lambda: list(BenchmarkSuite)
     )
+    include_edge_scenarios: bool = False
 
 
 @dataclass

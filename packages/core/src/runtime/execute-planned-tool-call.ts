@@ -224,6 +224,10 @@ export async function executePlannedToolCall(
 
 	let resultForEvent: ActionResult;
 	try {
+		const actionCallback: typeof executorCtx.callback = executorCtx.callback
+			? (response, actionName) =>
+					executorCtx.callback!(response, actionName ?? action.name)
+			: undefined;
 		const result = await runWithActionRoutingContext(
 			{ actionName: action.name, modelClass: action.modelClass },
 			() =>
@@ -232,7 +236,7 @@ export async function executePlannedToolCall(
 					executorCtx.message,
 					executorCtx.state,
 					handlerOptions,
-					executorCtx.callback,
+					actionCallback,
 					executorCtx.responses,
 				),
 		);

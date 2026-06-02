@@ -105,7 +105,7 @@ class WebShopConfig:
     temperature: float = 0.0
     model_provider: str | None = None
     model_name: str | None = None
+    include_edge_scenarios: bool = False
     # Trajectory logging
     enable_trajectory_logging: bool = False
     trajectory_export_format: str = "art"  # "art" | "grpo"
-

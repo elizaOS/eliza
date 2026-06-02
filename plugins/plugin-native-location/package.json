@@ -35,6 +35,7 @@
     "build:docs": "bun run clean && bun run docgen && tsc && bun --bun rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
+    "test": "vitest run",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
   },
   "author": "elizaOS",
@@ -58,7 +59,8 @@
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

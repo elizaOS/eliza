@@ -10,13 +10,13 @@ or when reference-only qemu-virt evidence can be mistaken for chip boot proof.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import hashlib
 import json
 import re
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 

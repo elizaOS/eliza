@@ -385,7 +385,9 @@ class BootSecurityChainContractTests(unittest.TestCase):
                     "    call enter_opensbi\n",
                     encoding="utf-8",
                 )
-                gate.BOOTROM_CHECKER.write_text("if missing_toolchain:\n    return 2\n", encoding="utf-8")
+                gate.BOOTROM_CHECKER.write_text(
+                    "if missing_toolchain:\n    return 2\n", encoding="utf-8"
+                )
                 gate.BOOTROM_RELEASE_EVIDENCE.write_text(
                     "scripts/check_bootrom_sim_transcript.py checks "
                     "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt.\n",
@@ -404,7 +406,10 @@ class BootSecurityChainContractTests(unittest.TestCase):
                         ],
                     },
                 )
-                write(gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT, "reset-vector-fetch <_start>\n<e1_secure_boot_main>\nauthenticated-image-verified\nhandoff-target-loaded-from-manifest\nOpenSBI entry\n")
+                write(
+                    gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT,
+                    "reset-vector-fetch <_start>\n<e1_secure_boot_main>\nauthenticated-image-verified\nhandoff-target-loaded-from-manifest\nOpenSBI entry\n",
+                )
                 write_json(
                     gate.BOOTROM_POSITIVE_HANDOFF_REPORT,
                     {
@@ -416,7 +421,11 @@ class BootSecurityChainContractTests(unittest.TestCase):
                         "linux_boot_claim_allowed": False,
                         "android_boot_claim_allowed": False,
                         "silicon_secure_boot_claim_allowed": False,
-                        "evidence_paths": [gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(gate.ROOT).as_posix()],
+                        "evidence_paths": [
+                            gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(
+                                gate.ROOT
+                            ).as_posix()
+                        ],
                         "checks": [
                             {"id": marker, "status": "pass", "detail": "found"}
                             for marker in sorted(gate.REQUIRED_POSITIVE_HANDOFF_MARKERS)
@@ -430,9 +439,19 @@ class BootSecurityChainContractTests(unittest.TestCase):
                     "}\n",
                     encoding="utf-8",
                 )
-                gate.PMC_README.write_text("Secure boot verifier and key provisioning are closed by evidence.\n", encoding="utf-8")
-                for doc in (gate.SECURE_BOOT_LIFECYCLE, gate.BOOT_IMAGE_FORMAT, gate.AVB_OTA, gate.KEY_CEREMONY):
-                    doc.write_text("Implementation evidence captured and validated.\n", encoding="utf-8")
+                gate.PMC_README.write_text(
+                    "Secure boot verifier and key provisioning are closed by evidence.\n",
+                    encoding="utf-8",
+                )
+                for doc in (
+                    gate.SECURE_BOOT_LIFECYCLE,
+                    gate.BOOT_IMAGE_FORMAT,
+                    gate.AVB_OTA,
+                    gate.KEY_CEREMONY,
+                ):
+                    doc.write_text(
+                        "Implementation evidence captured and validated.\n", encoding="utf-8"
+                    )
 
                 report = gate.run_check(Namespace())
 

@@ -1,0 +1,109 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ASSISTANT_INTENTS,
+  HEALTH_ASSISTANT_INTENTS,
+  LIFEOPS_ASSISTANT_INTENTS,
+  LIFEOPS_VOICE_COMMAND_PROMPT,
+  LifeOpsAssistantIntentGrid,
+  LifeOpsAssistantSection,
+} from "./LifeOpsAssistantSection.js";
+
+vi.mock(
+  "react",
+  async () =>
+    await import(
+      "../../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"
+    ),
+);
+
+const openLifeOpsChat = vi.fn();
+
+vi.mock("./LifeOpsChatAdapter.js", () => ({
+  useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
+}));
+
+afterEach(() => {
+  cleanup();
+  openLifeOpsChat.mockClear();
+});
+
+describe("LifeOpsAssistantIntentGrid", () => {
+  it("renders and launches every assistant command", () => {
+    const launched: string[] = [];
+
+    render(
+      <LifeOpsAssistantIntentGrid
+        onLaunch={(intent) => launched.push(intent.id)}
+      />,
+    );
+
+    const buttons = screen.getAllByTestId("lifeops-assistant-intent");
+    expect(buttons).toHaveLength(LIFEOPS_ASSISTANT_INTENTS.length);
+
+    for (const intent of LIFEOPS_ASSISTANT_INTENTS) {
+      fireEvent.click(screen.getByLabelText(intent.label));
+    }
+
+    expect(launched).toEqual(
+      LIFEOPS_ASSISTANT_INTENTS.map((intent) => intent.id),
+    );
+    expect(
+      new Set(LIFEOPS_ASSISTANT_INTENTS.map((intent) => intent.prompt)).size,
+    ).toBe(LIFEOPS_ASSISTANT_INTENTS.length);
+  });
+
+  it("renders plugin-health commands as health-owned assistant intents", () => {
+    render(<LifeOpsAssistantIntentGrid onLaunch={() => undefined} />);
+
+    expect(HEALTH_ASSISTANT_INTENTS.length).toBeGreaterThan(0);
+    for (const intent of HEALTH_ASSISTANT_INTENTS) {
+      expect(intent.id).toMatch(/^health:/);
+      expect(screen.getByLabelText(intent.label)).toBeTruthy();
+    }
+  });
+});
+
+describe("LifeOpsAssistantSection", () => {
+  it("keeps the assistant landing surface icon-led and free of paragraph copy", () => {
+    const { container } = render(<LifeOpsAssistantSection />);
+
+    expect(container.querySelectorAll("p")).toHaveLength(0);
+    expect(screen.getByTestId("lifeops-assistant-intents")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /^Quick / })).toHaveLength(5);
+    expect(
+      screen.getByRole("button", { name: "Open LifeOps voice command" }),
+    ).toBeTruthy();
+  });
+
+  it("launches the command brief, voice command, and quick prompts into chat", () => {
+    render(<LifeOpsAssistantSection />);
+
+    fireEvent.click(screen.getByTestId("lifeops-assistant-command-brief"));
+    expect(openLifeOpsChat).toHaveBeenLastCalledWith(
+      ASSISTANT_INTENTS[0]?.prompt,
+      {},
+      { select: true },
+    );
+
+    fireEvent.click(screen.getByTestId("lifeops-assistant-voice-command"));
+    expect(openLifeOpsChat).toHaveBeenLastCalledWith(
+      LIFEOPS_VOICE_COMMAND_PROMPT,
+      {},
+      { select: false },
+    );
+
+    for (const intent of ASSISTANT_INTENTS.slice(0, 5)) {
+      fireEvent.click(
+        screen.getByRole("button", { name: `Quick ${intent.label}` }),
+      );
+      expect(openLifeOpsChat).toHaveBeenLastCalledWith(
+        intent.prompt,
+        {},
+        { select: true },
+      );
+    }
+  });
+});

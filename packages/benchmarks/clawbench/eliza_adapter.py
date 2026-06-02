@@ -44,6 +44,13 @@ from eliza_adapter import ElizaClient, ElizaServerManager  # noqa: E402
 # Local imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clawbench.scoring import score_episode  # noqa: E402
+from clawbench.scenarios import (  # noqa: E402
+    base_scenario_name,
+    count_scenarios,
+    load_scenario as load_expanded_scenario,
+    load_scenarios,
+    validate_scenarios,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -55,16 +62,15 @@ FIXTURES_DIR = CLAWBENCH_DIR / "fixtures"
 
 def load_scenario(name: str) -> dict | None:
     """Load scenario YAML config."""
-    path = SCENARIOS_DIR / f"{name}.yaml"
-    if not path.exists():
+    try:
+        return load_expanded_scenario(name)
+    except FileNotFoundError:
         return None
-    with open(path) as f:
-        return yaml.safe_load(f)
 
 
 def load_fixture(scenario: str, fixture_name: str) -> dict | list | None:
     """Load a fixture file for a scenario."""
-    path = FIXTURES_DIR / scenario / fixture_name
+    path = FIXTURES_DIR / base_scenario_name(scenario) / fixture_name
     if not path.exists() and fixture_name == "tasks.json":
         path = FIXTURES_DIR / scenario / "tasks_fixture.json"
     if not path.exists():
@@ -75,20 +81,22 @@ def load_fixture(scenario: str, fixture_name: str) -> dict | list | None:
 
 def build_context(scenario_config: dict, scenario: str) -> dict:
     """Build context object from scenario config and fixtures."""
+    base_name = str(scenario_config.get("_base_name") or base_scenario_name(scenario))
     context: dict = {
         "benchmark": "clawbench",
         "scenario": scenario,
+        "base_scenario": base_name,
         "tools": scenario_config.get("tools", []),
     }
 
     # Load relevant fixtures for context
     for fixture in ("inbox.json", "calendar.json", "tasks.json", "slack_messages.json"):
-        data = load_fixture(scenario, fixture)
+        data = load_fixture(base_name, fixture)
         if data:
             context[fixture.replace(".json", "")] = data
 
     # Load memory files
-    memory_dir = FIXTURES_DIR / scenario / "memory"
+    memory_dir = FIXTURES_DIR / base_name / "memory"
     if memory_dir.exists():
         memory: dict[str, str] = {}
         for f in memory_dir.glob("*.md"):
@@ -216,7 +224,7 @@ class ElizaClawBenchRunner:
 
 
 def list_scenarios() -> list[str]:
-    return sorted(p.stem for p in SCENARIOS_DIR.glob("*.yaml"))
+    return sorted(str(scenario.get("name")) for scenario in load_scenarios())
 
 
 def main() -> int:
@@ -232,6 +240,8 @@ def main() -> int:
         help="Directory to write trajectory_<scenario>_<ts>.json (default: ./outputs)",
     )
     parser.add_argument("--list", "-l", action="store_true", help="List available scenarios")
+    parser.add_argument("--count-scenarios", action="store_true", help="Print scenario expansion counts")
+    parser.add_argument("--validate-scenarios", action="store_true", help="Validate expanded scenarios")
     parser.add_argument("--json", "-j", action="store_true", help="Print full result JSON to stdout")
     parser.add_argument(
         "--start-server",
@@ -246,6 +256,14 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(), indent=2))
+        return 0
+    if args.validate_scenarios:
+        validation = validate_scenarios()
+        print(json.dumps(validation, indent=2))
+        return 0 if validation["valid"] else 1
 
     if args.list:
         print("Available ClawBench scenarios:")

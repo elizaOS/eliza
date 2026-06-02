@@ -265,7 +265,7 @@ function permissionSummary(
         : "current-site access",
     permissions.scripting ? "DOM actions enabled" : "DOM actions unavailable",
     permissions.incognitoEnabled ? "incognito on" : "incognito off",
-  ].join(" • ");
+  ].join(" / ");
 }
 
 function mergePackageStatus(
@@ -471,20 +471,20 @@ function installHint(
   if (localWorkspaceAvailable) {
     if (browser === "chrome") {
       return currentBrowser === "chrome"
-        ? "Install builds the extension, opens chrome://extensions in this browser profile when possible, and reveals the folder for Load unpacked."
-        : "Install builds the extension, opens Chrome extensions, and reveals the folder you need for Load unpacked.";
+        ? "Builds here, opens chrome://extensions, reveals Load unpacked folder."
+        : "Builds locally, opens Chrome extensions, reveals Load unpacked folder.";
     }
-    return "Install builds the Safari helper app and opens it so you can enable the extension once.";
+    return "Builds the Safari helper app and opens extension settings.";
   }
 
   const target = releaseTargetForBrowser(browser, releaseManifest);
   if (target?.installKind === "chrome_web_store") {
-    return "Use the published Chrome Web Store build, then open the popup once in the profile you want LifeOps to use.";
+    return "Install from Chrome Web Store, then open the popup once.";
   }
   if (target?.installKind === "apple_app_store") {
-    return "Use the published Safari App Store build, then enable the extension and open its popup once.";
+    return "Install from App Store, enable Safari extension, open popup once.";
   }
-  return "Download the published browser companion, install it, then open the popup once to auto-connect.";
+  return "Download, install, open popup once to auto-connect.";
 }
 
 type GuidedSetupStepStatus = "done" | "current" | "pending" | "attention";
@@ -688,6 +688,7 @@ function BrowserCompanionRow({
           disabled={busy}
           onClick={() => void onCreatePairing(browser)}
         >
+          <ShieldCheck className="mr-1.5 h-3 w-3" />
           Manual Pairing
         </Button>
         {browser === "chrome" && buildPath ? (
@@ -707,6 +708,7 @@ function BrowserCompanionRow({
               disabled={busy}
               onClick={() => void onOpenManager("chrome")}
             >
+              <ExternalLink className="mr-1.5 h-3 w-3" />
               Open Extensions
             </Button>
           </>
@@ -1665,14 +1667,10 @@ export function BrowserBridgeSetupPanel() {
       <div className="rounded-3xl border border-border/18 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--card)_82%,transparent),transparent_34%),linear-gradient(135deg,color-mix(in_srgb,var(--bg)_96%,transparent),color-mix(in_srgb,var(--card)_86%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <div className="text-sm font-semibold text-txt">
-              Guided Browser Setup
-            </div>
+            <div className="text-sm font-semibold text-txt">Browser Setup</div>
             <div className="max-w-2xl text-xs leading-relaxed text-muted">
-              Use this when you want the easy path. LifeOps will enable the
-              recommended browser settings, build or open the companion
-              installer, and take you to the right browser page for the current
-              profile.
+              Recommended settings, companion install, and popup pairing for the
+              current profile.
             </div>
           </div>
           <Badge variant={setupComplete ? "default" : "secondary"}>
@@ -1750,6 +1748,7 @@ export function BrowserBridgeSetupPanel() {
               disabled={setupBusy}
               onClick={() => void openBrowserManager("chrome")}
             >
+              <ExternalLink className="mr-1.5 h-3 w-3" />
               Open Chrome Extensions
             </Button>
           ) : null}
@@ -1804,7 +1803,7 @@ export function BrowserBridgeSetupPanel() {
                       : "Chrome"}{" "}
                     / {primaryCompanion.profileLabel}
                   </span>
-                  {" • "}
+                  {" / "}
                   {permissionSummary(primaryCompanion.permissions)}
                 </div>
               ) : null}
@@ -1855,9 +1854,8 @@ export function BrowserBridgeSetupPanel() {
                 </div>
               ) : (
                 <div className="rounded-2xl bg-card/14 px-3 py-3 text-xs text-muted">
-                  No browser profiles have connected yet. After installing the
-                  extension, open its popup once in the browser profile you want
-                  LifeOps to use.
+                  No profiles connected. Install the extension, then open its
+                  popup once in the target profile.
                 </div>
               )}
             </div>

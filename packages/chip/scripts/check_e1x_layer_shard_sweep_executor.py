@@ -44,7 +44,9 @@ def mix64(checksum: int, value: int) -> int:
     return ((checksum ^ (value & MASK64)) * FNV64_PRIME) & MASK64
 
 
-def packed_w4_layer_word(model: str, layer_index: int, logical_core_index: int, word_addr: int) -> int:
+def packed_w4_layer_word(
+    model: str, layer_index: int, logical_core_index: int, word_addr: int
+) -> int:
     seed = f"{model}|layer={layer_index}|core={logical_core_index}|w4|{word_addr}"
     value = int.from_bytes(blake2s(seed.encode(), digest_size=4).digest(), "big")
     word = 0
@@ -101,7 +103,9 @@ def selected_layer_records(layers: list[dict]) -> list[dict[str, int | str]]:
     return selected
 
 
-def execute_record(model: str, record: dict[str, int | str], activations: list[int]) -> dict[str, int]:
+def execute_record(
+    model: str, record: dict[str, int | str], activations: list[int]
+) -> dict[str, int]:
     acc = 0
     lane_macs = 0
     checksum = FNV64_OFFSET
@@ -144,7 +148,9 @@ def main() -> int:
         "layer-shard sweep executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_layer_shard_sweep_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_layer_shard_sweep_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     proof = load_json(PROOF) if PROOF.is_file() else {}
@@ -167,7 +173,9 @@ def main() -> int:
         "placement, full model-load stream, full-shard sample, and window-shard linkage are PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_layer_shard_sweep_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_layer_shard_sweep_dependencies_pass", "status": status, "detail": detail}
+    )
 
     layers = placement.get("layers", [])
     records = selected_layer_records(layers if isinstance(layers, list) else [])
@@ -185,7 +193,9 @@ def main() -> int:
         f"selected {len(records)} first/mid/last shard records across {len(layer_indices)} layers and {len(records_by_kind)} layer kinds",
         "layer-shard record selection mismatch",
     )
-    checks.append({"id": "e1x_layer_shard_sweep_selection_covers_graph", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_layer_shard_sweep_selection_covers_graph", "status": status, "detail": detail}
+    )
 
     proof_records = proof.get("records", [])
     first_record = proof_records[0] if isinstance(proof_records, list) and proof_records else {}
@@ -196,12 +206,16 @@ def main() -> int:
     aggregate_checksum = FNV64_OFFSET
     sampled_results: list[dict[str, int | str]] = []
     for record in records:
-        result = execute_record(model_name, record, activations) if activations else {
-            "accumulator": 0,
-            "requantized_s8": 0,
-            "lane_mac_count": 0,
-            "trace_checksum": 0,
-        }
+        result = (
+            execute_record(model_name, record, activations)
+            if activations
+            else {
+                "accumulator": 0,
+                "requantized_s8": 0,
+                "lane_mac_count": 0,
+                "trace_checksum": 0,
+            }
+        )
         total_lane_macs += int(result["lane_mac_count"])
         total_words += int(record["loader_words"])
         aggregate_checksum = mix64(aggregate_checksum, int(record["layer_index"]))
@@ -231,9 +245,17 @@ def main() -> int:
         f"executed {total_words} generated W4 layer-shard words through W4A8 semantics",
         "layer-shard W4A8 execution mismatch",
     )
-    checks.append({"id": "e1x_layer_shard_sweep_executes_generated_payload", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_layer_shard_sweep_executes_generated_payload",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
-    total_loader_words = int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+    total_loader_words = int(
+        model_load.get("summary", {}).get("stream_loader_word_transactions", 0)
+    )
     coverage_ok = (
         total_loader_words == 1_627_034_880
         and 0.001 < total_words / total_loader_words < 0.01
@@ -245,7 +267,13 @@ def main() -> int:
         "layer-shard sweep expands generated payload execution while preserving full 6.5GB payload blocker",
         "layer-shard sweep coverage boundary mismatch",
     )
-    checks.append({"id": "e1x_layer_shard_sweep_preserves_full_payload_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_layer_shard_sweep_preserves_full_payload_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -259,7 +287,9 @@ def main() -> int:
         "executed_loader_word_count": total_words,
         "executed_lane_mac_count": total_lane_macs,
         "total_loader_word_transactions": total_loader_words,
-        "loader_word_coverage_fraction": total_words / total_loader_words if total_loader_words else 0.0,
+        "loader_word_coverage_fraction": total_words / total_loader_words
+        if total_loader_words
+        else 0.0,
         "activation_source_layer_index": int(first_record.get("layer_index", -1)),
         "activation_value_count": len(activations),
         "aggregate_execution_checksum": aggregate_checksum,
@@ -295,7 +325,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X layer-shard sweep executor failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X layer-shard sweep executor failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X layer-shard sweep executor; report {REPORT.relative_to(ROOT)}")
     return 0

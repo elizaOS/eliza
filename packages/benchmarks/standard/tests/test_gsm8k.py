@@ -120,3 +120,34 @@ def test_gsm8k_cli_end_to_end(tmp_path: Path) -> None:
     assert rc == 0
     data = json.loads((out_dir / "gsm8k-results.json").read_text("utf-8"))
     assert data["metrics"]["score"] == 1.0
+
+
+def test_gsm8k_expanded_count_and_mock_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out_dir = tmp_path / "out"
+    rc = main_entry(
+        _GSM8KFactory(),
+        output_filename="gsm8k-results.json",
+        argv=[
+            "--mock",
+            "--output",
+            str(out_dir),
+            "--limit",
+            "1",
+            "--expand-scenarios",
+            "--count-scenarios",
+            "--validate-scenarios",
+        ],
+    )
+    assert rc == 0
+    assert '"base": 1' in capsys.readouterr().out
+
+    rc = main_entry(
+        _GSM8KFactory(),
+        output_filename="gsm8k-results.json",
+        argv=["--mock", "--output", str(out_dir), "--limit", "1", "--expand-scenarios"],
+    )
+    assert rc == 0
+    data = json.loads((out_dir / "gsm8k-results.json").read_text("utf-8"))
+    assert data["dataset_version"].endswith("+edge-v1")
+    assert data["n"] == 11
+    assert data["metrics"]["score"] == 1.0

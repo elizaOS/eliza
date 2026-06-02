@@ -68,3 +68,18 @@ async def test_back_compat_category_attr_exists() -> None:
     await ds.load()
     t = ds.tasks[0]
     assert t.category == t.problem
+
+
+@pytest.mark.asyncio
+async def test_edge_expansion_adds_ten_variants_per_sample_task() -> None:
+    ds = REALMDataset(use_sample_tasks=True, include_edge_scenarios=True)
+    await ds.load()
+
+    counts = ds.count_scenarios()
+
+    assert counts == {"base": 2, "edge": 20, "total": 22, "edge_multiplier": 10}
+    assert ds.validate_scenarios() == []
+    assert len({tc.task.id for tc in ds.test_cases}) == 22
+    edge_cases = [tc for tc in ds.test_cases if "--edge-" in tc.task.id]
+    assert edge_cases
+    assert all(tc.task.metadata["base_id"] for tc in edge_cases)

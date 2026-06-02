@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs",
+    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
     "fix-deps": "bun packages/scripts/fix-workspace-deps.mjs",
@@ -271,6 +271,7 @@
     "create-hmac": "^1.1.7",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
+    "fast-check": "^3.23.2",
     "hash-base": "^3.1.2",
     "jsdom": "^29.1.1",
     "json5": "^2.2.3",

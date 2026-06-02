@@ -96,8 +96,7 @@ def stage_runtime_payload(apk: Path, runtime_source_apk: Path) -> None:
                 missing.append(entry)
         if missing:
             raise FileNotFoundError(
-                f"{rel(runtime_source_apk)} missing runtime payload entries: "
-                + ", ".join(missing)
+                f"{rel(runtime_source_apk)} missing runtime payload entries: " + ", ".join(missing)
             )
         runtime_payload = {entry: src.read(entry) for entry in entries if entry in source_names}
         runtime_infos = {entry: src.getinfo(entry) for entry in runtime_payload}

@@ -18,12 +18,19 @@ function isVisible(element: Element | null): boolean {
   if (!(element instanceof HTMLElement)) {
     return false;
   }
-  const style = window.getComputedStyle(element);
-  return (
-    style.display !== "none" &&
-    style.visibility !== "hidden" &&
-    style.opacity !== "0"
-  );
+  let current: HTMLElement | null = element;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0"
+    ) {
+      return false;
+    }
+    current = current.parentElement;
+  }
+  return true;
 }
 
 function collectVisibleText(maxLength: number): string | null {
@@ -81,6 +88,9 @@ function collectForms(): Array<{ action: string | null; fields: string[] }> {
               element instanceof HTMLSelectElement
             )
           ) {
+            return null;
+          }
+          if (!isVisible(element)) {
             return null;
           }
           if (

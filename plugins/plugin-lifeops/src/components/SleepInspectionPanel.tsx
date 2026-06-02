@@ -95,11 +95,11 @@ export function SleepInspectionPanel(): JSX.Element {
     <div className="space-y-3 rounded-2xl border border-border/20 bg-bg/36 px-3 py-3">
       <div className="flex items-baseline justify-between">
         <div className="text-[11px] uppercase tracking-wide text-muted">
-          Sleep inspection · last 7 days
+          Sleep inspection / last 7 days
         </div>
         <div className="text-[11px] text-muted">
-          SRI {Math.round(regularity.sri)} ·{" "}
-          {regularity.regularityClass.replace(/_/g, " ")} · n
+          SRI {Math.round(regularity.sri)} /{" "}
+          {regularity.regularityClass.replace(/_/g, " ")} / n
           {regularity.sampleCount}
         </div>
       </div>
@@ -122,12 +122,12 @@ export function SleepInspectionPanel(): JSX.Element {
               <span className="flex-1">
                 {new Date(episode.startMs).toLocaleString()}
                 {episode.endMs !== null ? (
-                  <>
-                    {" → "}
+                  <span className="ml-1 inline-flex items-center gap-1">
+                    <span aria-hidden>/</span>
                     {new Date(episode.endMs).toLocaleString()}
-                  </>
+                  </span>
                 ) : (
-                  <span className="text-amber-300"> · in progress</span>
+                  <span className="text-amber-300"> / in progress</span>
                 )}
               </span>
               <span className="text-muted">
@@ -136,7 +136,7 @@ export function SleepInspectionPanel(): JSX.Element {
                 }m`}
               </span>
               <span className="text-[11px] text-muted">
-                {episode.source} · {Math.round(episode.confidence * 100)}%
+                {episode.source} / {Math.round(episode.confidence * 100)}%
               </span>
             </li>
           ))}
@@ -144,7 +144,7 @@ export function SleepInspectionPanel(): JSX.Element {
       )}
       <div className="flex flex-wrap gap-1.5 pt-2">
         <span className="text-[11px] uppercase tracking-wide text-muted">
-          Bedtime stddev {Math.round(regularity.bedtimeStddevMin)}m · wake
+          Bedtime stddev {Math.round(regularity.bedtimeStddevMin)}m / wake
           stddev {Math.round(regularity.wakeStddevMin)}m
         </span>
       </div>

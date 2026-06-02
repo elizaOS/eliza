@@ -123,7 +123,10 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             )
             self.assertTrue(payload["summary"]["source_report_missing_e1_chip_top"])
             self.assertEqual(payload["summary"]["missing_e1_chip_top_report_count"], 1)
-            self.assertIn("Regenerate the OpenLane antenna metadata report", payload["findings"][0]["next_step"])
+            self.assertIn(
+                "Regenerate the OpenLane antenna metadata report",
+                payload["findings"][0]["next_step"],
+            )
 
     def test_latest_report_accepts_any_openlane_step_number_and_derived_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

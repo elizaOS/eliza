@@ -210,6 +210,50 @@ function lineDataFromContent(content: Content): Record<string, unknown> {
   return data ?? {};
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isValidHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validateTemplateUrls(template: LineTemplateMessage): string | null {
+  const content = template.template;
+  if ("thumbnailImageUrl" in content && content.thumbnailImageUrl) {
+    if (!isValidHttpsUrl(content.thumbnailImageUrl)) {
+      return "LINE template thumbnailImageUrl must be an HTTPS URL";
+    }
+  }
+
+  for (const action of content.actions) {
+    if (action.type === "uri" && (!action.uri || !isValidHttpsUrl(action.uri))) {
+      return "LINE template URI actions must use HTTPS URLs";
+    }
+  }
+
+  return null;
+}
+
+function validateLocation(location: LineLocationMessage): string | null {
+  if (!Number.isFinite(location.latitude) || location.latitude < -90 || location.latitude > 90) {
+    return "LINE location latitude must be between -90 and 90";
+  }
+  if (
+    !Number.isFinite(location.longitude) ||
+    location.longitude < -180 ||
+    location.longitude > 180
+  ) {
+    return "LINE location longitude must be between -180 and 180";
+  }
+  return null;
+}
+
 /**
  * LINE messaging service for ElizaOS agents.
  */
@@ -563,6 +607,11 @@ export class LineService extends Service implements ILineService {
       return { success: false, error: "Service not connected" };
     }
 
+    const validationError = validateTemplateUrls(template);
+    if (validationError) {
+      return { success: false, error: validationError };
+    }
+
     const message: TemplateMessage = {
       type: "template",
       altText: template.altText.slice(0, 400),
@@ -578,6 +627,11 @@ export class LineService extends Service implements ILineService {
   async sendLocationMessage(to: string, location: LineLocationMessage): Promise<LineSendResult> {
     if (!this.client) {
       return { success: false, error: "Service not connected" };
+    }
+
+    const validationError = validateLocation(location);
+    if (validationError) {
+      return { success: false, error: validationError };
     }
 
     const message: LocationMessage = {
@@ -702,8 +756,14 @@ export class LineService extends Service implements ILineService {
     if (!this.runtime) {
       return;
     }
+    if (!Array.isArray(events)) {
+      return;
+    }
 
     for (const event of events) {
+      if (!isRecord(event) || typeof event.type !== "string") {
+        continue;
+      }
       await this.handleWebhookEvent(event);
     }
   }
@@ -945,6 +1005,9 @@ export class LineService extends Service implements ILineService {
         } as EventPayload);
         break;
       case "postback":
+        if (!isRecord(event.postback) || typeof event.postback.data !== "string") {
+          return;
+        }
         this.runtime.emitEvent([LineEventTypes.POSTBACK], {
           runtime: this.runtime,
           source: "line",
@@ -961,12 +1024,19 @@ export class LineService extends Service implements ILineService {
     if (!this.runtime) {
       return;
     }
+    if (!isRecord(event.message) || typeof event.message.id !== "string") {
+      return;
+    }
+    if (typeof event.message.type !== "string") {
+      return;
+    }
+    const timestamp = Number.isFinite(event.timestamp) ? event.timestamp : Date.now();
 
     const message: LineMessage = {
       id: event.message.id,
       type: event.message.type,
       userId: event.source?.userId || "",
-      timestamp: event.timestamp,
+      timestamp,
       replyToken: event.replyToken,
     };
 

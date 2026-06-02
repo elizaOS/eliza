@@ -9,14 +9,16 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../../types";
+import { EventType } from "../../types";
 import {
 	_resetActionRolePolicyCacheForTests,
 	executePlannedToolCall,
 } from "../execute-planned-tool-call";
 
-type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> & {
-	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
-};
+type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> &
+	Partial<Pick<IAgentRuntime, "emitEvent">> & {
+		logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
+	};
 
 function makeAction(overrides: Partial<Action>): Action {
 	return {
@@ -28,7 +30,10 @@ function makeAction(overrides: Partial<Action>): Action {
 	};
 }
 
-function makeRuntime(actions: Action[]): IAgentRuntime {
+function makeRuntime(
+	actions: Action[],
+	overrides: Partial<ExecuteToolCallTestRuntime> = {},
+): IAgentRuntime {
 	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
 		logger: {
@@ -36,6 +41,7 @@ function makeRuntime(actions: Action[]): IAgentRuntime {
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
+		...overrides,
 	};
 	return runtime as IAgentRuntime;
 }
@@ -244,8 +250,9 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("passes validated parameters and HandlerCallback through to the action handler", async () => {
+	it("passes validated parameters and an action-attributing HandlerCallback through to the action handler", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
+		let handlerCallback: HandlerCallback | undefined;
 		const handler = vi.fn(async () => ({ success: true, text: "ok" }));
 		const action = makeAction({
 			name: "CREATE_TASK",
@@ -263,7 +270,10 @@ describe("executePlannedToolCall", () => {
 					schema: { type: "string", default: "normal" },
 				},
 			],
-			handler,
+			handler: async (...args) => {
+				handlerCallback = args[4];
+				return handler(...args);
+			},
 		});
 
 		await executePlannedToolCall(
@@ -279,8 +289,13 @@ describe("executePlannedToolCall", () => {
 			expect.objectContaining({
 				parameters: { title: "Ship it", priority: "normal" },
 			}),
-			callback,
+			expect.any(Function),
 			undefined,
+		);
+		await handlerCallback?.({ text: "created Ship it" });
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "created Ship it" },
+			"CREATE_TASK",
 		);
 	});
 
@@ -348,6 +363,94 @@ describe("executePlannedToolCall", () => {
 			error: "handler failed",
 			data: { actionName: "BOOM" },
 		});
+	});
+
+	it("emits ACTION_STARTED and ACTION_COMPLETED events for successful planned tools", async () => {
+		const emitEvent = vi.fn(async () => {});
+		const action = makeAction({
+			name: "CREATE_TASK",
+			handler: async () => ({
+				success: true,
+				text: "created",
+				data: { id: "task-1" },
+			}),
+		});
+		const runtime = makeRuntime([action], { emitEvent });
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(true);
+		expect(emitEvent).toHaveBeenNthCalledWith(
+			1,
+			EventType.ACTION_STARTED,
+			expect.objectContaining({
+				messageId: "message-id",
+				roomId: "room-id",
+				world: "room-id",
+				content: expect.objectContaining({
+					text: "Executing action: CREATE_TASK",
+					actions: ["CREATE_TASK"],
+					actionStatus: "executing",
+				}),
+			}),
+		);
+		expect(emitEvent).toHaveBeenNthCalledWith(
+			2,
+			EventType.ACTION_COMPLETED,
+			expect.objectContaining({
+				messageId: "message-id",
+				roomId: "room-id",
+				world: "room-id",
+				content: expect.objectContaining({
+					text: "created",
+					actions: ["CREATE_TASK"],
+					actionStatus: "completed",
+					actionResult: expect.objectContaining({
+						success: true,
+						text: "created",
+						data: expect.objectContaining({ id: "task-1" }),
+					}),
+				}),
+			}),
+		);
+	});
+
+	it("emits failed ACTION_COMPLETED events with string errors for thrown handlers", async () => {
+		const emitEvent = vi.fn(async () => {});
+		const action = makeAction({
+			name: "BOOM",
+			handler: async () => {
+				throw new Error("handler failed");
+			},
+		});
+		const runtime = makeRuntime([action], { emitEvent });
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "BOOM", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(emitEvent).toHaveBeenNthCalledWith(
+			2,
+			EventType.ACTION_COMPLETED,
+			expect.objectContaining({
+				content: expect.objectContaining({
+					actions: ["BOOM"],
+					actionStatus: "failed",
+					actionResult: expect.objectContaining({
+						success: false,
+						error: "handler failed",
+					}),
+					error: "handler failed",
+				}),
+			}),
+		);
 	});
 
 	it("denies actions that fail role or context gates", async () => {

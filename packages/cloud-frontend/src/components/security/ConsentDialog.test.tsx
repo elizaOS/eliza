@@ -1,6 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type React from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { I18nProvider } from "@/providers/I18nProvider";
 import { ConsentDialog } from "./ConsentDialog";
 import type { PluginPermission } from "./PermissionList";
 
@@ -27,10 +29,14 @@ const PERMS: PluginPermission[] = [
 
 afterEach(() => cleanup());
 
+function renderWithI18n(ui: React.ReactNode) {
+  return render(<I18nProvider initialLang="en">{ui}</I18nProvider>);
+}
+
 describe("ConsentDialog", () => {
   test("sensitive permissions default to off, non-sensitive can be pre-selected", () => {
     const onConfirm = vi.fn();
-    render(
+    renderWithI18n(
       <ConsentDialog
         open
         onOpenChange={() => {}}
@@ -60,7 +66,7 @@ describe("ConsentDialog", () => {
   });
 
   test("install is disabled when signature is invalid", () => {
-    render(
+    renderWithI18n(
       <ConsentDialog
         open
         onOpenChange={() => {}}
@@ -77,7 +83,7 @@ describe("ConsentDialog", () => {
 
   test("confirm reports the currently selected permissions", () => {
     const onConfirm = vi.fn();
-    render(
+    renderWithI18n(
       <ConsentDialog
         open
         onOpenChange={() => {}}

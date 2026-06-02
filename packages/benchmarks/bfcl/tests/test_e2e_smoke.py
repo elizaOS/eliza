@@ -94,6 +94,25 @@ def test_simple_multiple_smoke_full_score(fixture_dir: Path) -> None:
     assert all(r.status == TestStatus.PASSED for r in results.results)
 
 
+def test_edge_expansion_adds_ten_variants_per_selected_case(fixture_dir: Path) -> None:
+    """Expanded local fixtures preserve ground truth and score cleanly."""
+    config = BFCLConfig(
+        data_path=str(fixture_dir),
+        use_huggingface=False,
+        categories=[BFCLCategory.SIMPLE],
+        generate_report=False,
+        save_raw_responses=False,
+        include_edge_scenarios=True,
+    )
+    runner = BFCLRunner(config, use_mock_agent=True)
+    results = asyncio.run(runner.run())
+
+    assert len(results.results) == 11
+    assert results.metrics.total_tests == 11
+    assert results.metrics.ast_accuracy == pytest.approx(1.0, abs=0.001)
+    assert sum("--edge-" in r.test_case_id for r in results.results) == 10
+
+
 def test_runner_exports_compact_trajectory_fixture(fixture_dir: Path, tmp_path: Path) -> None:
     """Every harness gets a compact JSONL trajectory fixture from the runner."""
     output_dir = tmp_path / "out"

@@ -1,4 +1,10 @@
-import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+  UserRound,
+} from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import {
   type CloudCompatAgent,
@@ -139,13 +145,21 @@ function buildRoleButtonLabel(
   return `${baseLabel} ${ROLE_BUTTON_SUFFIX[role]}`;
 }
 
+function cloudOAuthRoleTitle(
+  platform: string,
+  role: CloudOAuthConnectionRole,
+): string {
+  return role === "agent"
+    ? `Connect the agent's ${platform} identity.`
+    : `Connect your own ${platform} identity.`;
+}
+
 const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
   slack: {
     platform: "slack",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use Slack OAuth",
-    connectedHint:
-      "Connect Slack with Eliza Cloud OAuth. Use 'agent' to install the agent's own Slack bot (xoxb-... bot token) into the workspace; use 'your account' to grant the agent permission to act on your own Slack identity (xoxp-... user token) — read your channels, write as you, search your messages.",
+    connectedHint: "OAuth ready. Choose agent bot or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use Slack OAuth instead of local Socket Mode tokens.",
     successNotice: "Finish Slack OAuth in your browser, then return here.",
@@ -154,8 +168,7 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     platform: "twitter",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use X/Twitter OAuth",
-    connectedHint:
-      "Connect X/Twitter with Eliza Cloud OAuth. Use 'agent' to link the agent's own X account for autonomous posts and DMs; use 'your account' to grant the agent permission to act on your own X account.",
+    connectedHint: "OAuth ready. Choose agent account or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
     successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
@@ -164,8 +177,7 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     platform: "google",
     connectionRoles: ["agent", "owner"],
     buttonLabel: "Use Google OAuth",
-    connectedHint:
-      "Connect Google with Eliza Cloud OAuth. Use 'agent' to link the agent's own Google account for autonomous Gmail / Calendar / Drive / Meet activity; use 'your account' to grant the agent permission to act on your own Google account.",
+    connectedHint: "OAuth ready. Choose agent workspace or owner account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use Google OAuth instead of local OAuth2 credentials.",
     successNotice: "Finish Google OAuth in your browser, then return here.",
@@ -637,7 +649,10 @@ function ConnectorPluginCard({
         ))}
       </span>
       <div className="mt-2">
-        <p className="text-sm text-muted">
+        <p
+          className="line-clamp-1 text-sm text-muted"
+          title={plugin.description || pluginDescriptionFallback}
+        >
           {plugin.description || pluginDescriptionFallback}
         </p>
         {plugin.enabled && !plugin.isActive && (
@@ -769,12 +784,10 @@ function ConnectorPluginCard({
             >
               {elizaCloudConnected
                 ? t("pluginsview.ManagedDiscordGatewayHintConnected", {
-                    defaultValue:
-                      "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
+                    defaultValue: "Managed Discord gateway available.",
                   })
                 : t("pluginsview.ManagedDiscordGatewayHint", {
-                    defaultValue:
-                      "Prefer OAuth? Connect Eliza Cloud to use the shared Discord gateway instead of a local bot token.",
+                    defaultValue: "Connect Eliza Cloud for managed Discord.",
                   })}
               {managedDiscordPickerOpen && managedDiscordAgents.length > 1 ? (
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -844,7 +857,16 @@ function ConnectorPluginCard({
                         void handleOpenCloudOAuthConnector(role);
                       }}
                       disabled={roleBusy}
+                      title={cloudOAuthRoleTitle(
+                        cloudOAuthConnector.platform,
+                        role,
+                      )}
                     >
+                      {role === "agent" ? (
+                        <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
                       {roleBusy
                         ? "..."
                         : elizaCloudConnected
@@ -892,12 +914,10 @@ function ConnectorPluginCard({
           >
             {elizaCloudConnected
               ? t("pluginsview.TelegramCloudGatewayHint", {
-                  defaultValue:
-                    "Telegram does not support bot-install OAuth for bidirectional chats. Use a BotFather token here; Eliza Cloud can host the webhook gateway and route updates to this app.",
+                  defaultValue: "Webhook gateway available.",
                 })
               : t("pluginsview.TelegramCloudGatewayHintDisconnected", {
-                  defaultValue:
-                    "Telegram does not support bot-install OAuth for bidirectional chats. Connect Eliza Cloud to host the webhook gateway, then use a BotFather token here.",
+                  defaultValue: "Connect Eliza Cloud for webhook hosting.",
                 })}
           </PagePanel.Notice>
         ) : null}

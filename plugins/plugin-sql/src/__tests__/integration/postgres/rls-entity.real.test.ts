@@ -16,10 +16,12 @@ import { bootstrapPostgresRlsSchema, toPostgresSuperuserUrl } from "./rls-test-h
  * - Entity-level isolation (user privacy)
  * - Participant-based access control (room membership)
  * - Entity RLS works with Server RLS (double isolation)
- * - withEntityContext() correctly sets entity context (regression test for sql.raw fix)
+ * - withEntityContext() correctly sets entity context (regression test for the
+ *   parameterized set_config() RLS context)
  *
  * IMPORTANT: Uses PostgresConnectionManager.withEntityContext() to test the actual
- * production code path. This ensures the Drizzle sql.raw() fix is tested (no $1 error).
+ * production code path. This exercises the parameterized set_config('app.entity_id', $1, true)
+ * form (transaction-scoped), so the entity context applies without raw interpolation.
  */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)

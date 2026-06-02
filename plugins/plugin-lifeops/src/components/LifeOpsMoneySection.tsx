@@ -181,7 +181,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         ([] as CloudBillingHistoryItem[]);
       setCreditTransactions(list);
     } catch {
-      // 401/404/network → no data yet, keep section quiet rather than erroring loudly.
+      // 401/404/network: no data yet, keep section quiet rather than erroring loudly.
       setCreditTransactions([]);
     } finally {
       setCreditTransactionsLoading(false);
@@ -303,7 +303,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         });
         if (result.fallback === "csv_export") {
           setImportStatus(
-            "PayPal Reporting API isn't available for this account (typically personal-tier). Use the CSV export from paypal.com → Activity → Statements.",
+            "PayPal Reporting API isn't available for this account (typically personal-tier). Use CSV export from paypal.com / Activity / Statements.",
           );
         } else {
           setImportStatus(
@@ -587,7 +587,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
               </div>
             </header>
             {dash.sources.length === 0 ? (
-              <p className="text-xs text-muted">No sources.</p>
+              <div className="text-xs text-muted">No sources.</div>
             ) : (
               <ul className="space-y-2">
                 {dash.sources.map((source) => (
@@ -664,7 +664,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
             <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
             {dash.spending.topCategories.length === 0 ? (
-              <p className="text-xs text-muted">No categories.</p>
+              <div className="text-xs text-muted">No categories.</div>
             ) : (
               <ul className="space-y-1.5">
                 {dash.spending.topCategories.map((category) => (
@@ -703,9 +703,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           </h2>
         </header>
         {dash.upcomingBills.length === 0 ? (
-          <p className="text-xs text-muted">
-            No bills detected from email yet.
-          </p>
+          <div className="text-xs text-muted">No bills from email.</div>
         ) : (
           <ul className="space-y-1.5">
             {dash.upcomingBills.map((bill) => (
@@ -776,7 +774,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <h2 className="text-sm font-semibold">Recurring charges</h2>
         </header>
         {dash.recurring.length === 0 ? (
-          <p className="text-xs text-muted">No recurring charges.</p>
+          <div className="text-xs text-muted">No recurring charges.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-xs">
@@ -871,7 +869,8 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                   {merchant.merchantDisplay}
                 </span>
                 <span className="tabular-nums text-muted">
-                  {formatUsd(merchant.totalUsd)} · {merchant.transactionCount}×
+                  {formatUsd(merchant.totalUsd)} / {merchant.transactionCount}{" "}
+                  tx
                 </span>
               </li>
             ))}
@@ -990,9 +989,9 @@ function CloudCreditsActivity(props: {
         ) : null}
       </header>
       {recent.length === 0 ? (
-        <p className="text-xs text-muted">
+        <div className="text-xs text-muted">
           {props.loading ? "Loading…" : "No recent activity"}
-        </p>
+        </div>
       ) : (
         <ul className="space-y-1.5">
           {recent.map((txn) => {

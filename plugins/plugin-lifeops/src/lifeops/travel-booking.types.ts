@@ -4,7 +4,7 @@ import type {
   DuffelOrder,
   DuffelPayment,
   SearchFlightsRequest,
-} from "./travel-adapters/duffel.js";
+} from "@elizaos/plugin-elizacloud/cloud/duffel-client";
 
 export interface TravelBookingPassenger {
   readonly offerPassengerId?: string | null;

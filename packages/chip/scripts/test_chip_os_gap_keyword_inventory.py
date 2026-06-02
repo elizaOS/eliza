@@ -99,8 +99,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             test_source = repo / "packages/app/src/android-update-checker.test.ts"
             test_source.parent.mkdir(parents=True)
             test_source.write_text(
-                'vi.mock("@capacitor/app", () => ({}));\n'
-                "const placeholder = true;\n",
+                'vi.mock("@capacitor/app", () => ({}));\nconst placeholder = true;\n',
                 encoding="utf-8",
             )
             cpp_test = repo / "packages/chip/verify/verilator/test_npu_gemm.cpp"
@@ -182,7 +181,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
             source_doc = repo / "packages/chip/docs/arch/boot.md"
             source_doc.parent.mkdir(parents=True)
-            source_doc.write_text("Boot placeholder text that must be resolved.\n", encoding="utf-8")
+            source_doc.write_text(
+                "Boot placeholder text that must be resolved.\n", encoding="utf-8"
+            )
 
             with mock.patch.object(inv, "REPO", repo):
                 report = inv.build_report(["packages/chip/docs"])
@@ -203,13 +204,14 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
             todo = repo / "packages/chip/docs/project/android-on-simulated-chip-todo.md"
             todo.write_text(
-                "# TODO audit\n\n"
-                "| TODO | placeholder evidence remains blocked |\n",
+                "# TODO audit\n\n| TODO | placeholder evidence remains blocked |\n",
                 encoding="utf-8",
             )
             source_doc = repo / "packages/chip/docs/arch/npu.md"
             source_doc.parent.mkdir(parents=True, exist_ok=True)
-            source_doc.write_text("NPU placeholder text that still needs resolution.\n", encoding="utf-8")
+            source_doc.write_text(
+                "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
+            )
 
             with mock.patch.object(inv, "REPO", repo):
                 report = inv.build_report(["packages/chip/docs"])
@@ -249,7 +251,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             converter = repo / "packages/chip/scripts/alphachip/convert_lefdef_to_pb.sh"
             converter.parent.mkdir(parents=True)
             converter.write_text(
-                "sed -e 's/placeholder: \"macro\"/placeholder: \"MACRO\"/g'\n",
+                'sed -e \'s/placeholder: "macro"/placeholder: "MACRO"/g\'\n',
                 encoding="utf-8",
             )
 
@@ -274,17 +276,15 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             os_checker.write_text(
                 '"""BLOCKED means a manifest artifact is not yet on disk."""\n'
                 'TEMPLATE_STRING_PLACEHOLDERS = {"@@PROFILE@@": "template"}\n'
-                'for placeholder, replacement in TEMPLATE_STRING_PLACEHOLDERS.items():\n'
-                '    text = text.replace(placeholder, replacement)\n'
+                "for placeholder, replacement in TEMPLATE_STRING_PLACEHOLDERS.items():\n"
+                "    text = text.replace(placeholder, replacement)\n"
                 'errors.append("payload contains placeholder")\n'
                 'raise SystemExit("agent evidence remains blocked")\n',
                 encoding="utf-8",
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(
-                    ["packages/chip/sw", "packages/os/linux/elizaos/scripts"]
-                )
+                report = inv.build_report(["packages/chip/sw", "packages/os/linux/elizaos/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -296,7 +296,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             runner.parent.mkdir(parents=True)
             runner.write_text(
                 "#!/usr/bin/env sh\n"
-                "case \"$CHIPYARD_LINUX_SMOKE_RUN_TARGET\" in\n"
+                'case "$CHIPYARD_LINUX_SMOKE_RUN_TARGET" in\n'
                 "  run-binary-fast) ;;\n"
                 "  *) printf '  - unsupported CHIPYARD_LINUX_SMOKE_RUN_TARGET: %s\\n' \"$CHIPYARD_LINUX_SMOKE_RUN_TARGET\" ; exit 2 ;;\n"
                 "esac\n",
@@ -343,7 +343,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
             source_doc = repo / "packages/chip/docs/arch/boot.md"
             source_doc.parent.mkdir(parents=True)
-            source_doc.write_text("Boot placeholder text that must be resolved.\n", encoding="utf-8")
+            source_doc.write_text(
+                "Boot placeholder text that must be resolved.\n", encoding="utf-8"
+            )
 
             with mock.patch.object(inv, "REPO", repo):
                 report = inv.build_report(["packages/chip/docs"])

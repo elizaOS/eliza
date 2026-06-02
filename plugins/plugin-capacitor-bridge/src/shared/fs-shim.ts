@@ -68,7 +68,11 @@ import { createRequire } from "node:module";
 import * as nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnyFn, FsAccessMode, MobileFsGlobals } from "./fs-sandbox.ts";
-import { modeForMobileFsOpenFlags } from "./fs-sandbox.ts";
+import {
+	guardMobileFsWritePath,
+	mobileFsAccessError,
+	modeForMobileFsOpenFlags,
+} from "./fs-sandbox.ts";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -294,10 +298,7 @@ export function getMobileWorkspaceRoot(): string {
 // ---------------------------------------------------------------------------
 
 function accessError(path: string, message: string): NodeJS.ErrnoException {
-	const err = new Error(message) as NodeJS.ErrnoException;
-	err.code = "EACCES";
-	err.path = path;
-	return err;
+	return mobileFsAccessError(path, message);
 }
 
 function pathLikeToString(raw: unknown): string | null {
@@ -520,16 +521,7 @@ function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
 }
 
 function guardWritePath(resolved: string, originalPath: string): void {
-	const ext = nodePath.extname(resolved).toLowerCase();
-	// Block writes to native binary extensions (.so / .dylib / .node) under
-	// any path — these can't be loaded legitimately at runtime on iOS anyway,
-	// but let's be explicit.
-	if (ext === ".so" || ext === ".dylib" || ext === ".node") {
-		throw accessError(
-			originalPath,
-			`mobile-fs-shim: writing native binary files is blocked (${ext})`,
-		);
-	}
+	guardMobileFsWritePath(resolved, originalPath);
 }
 
 // ---------------------------------------------------------------------------

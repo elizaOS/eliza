@@ -77,6 +77,15 @@ function isReadableTextAttachment(attachment: Attachment): boolean {
 	return false;
 }
 
+function isSafeRemoteAttachmentUrl(url: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "http:" || parsed.protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Class representing an Attachment Manager.
  */
@@ -148,6 +157,21 @@ export class AttachmentManager {
 		}
 
 		let media: Media | null = null;
+		if (!isSafeRemoteAttachmentUrl(attachment.url)) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					attachmentId: attachment.id,
+					url: attachment.url,
+				},
+				"Skipping attachment with non-remote URL",
+			);
+			media = await this.processGenericAttachment(attachment);
+			this.attachmentCache.set(attachment.url, media);
+			return media;
+		}
+
 		const mimeType = normalizedMimeType(attachment.contentType);
 		if (mimeType === "application/pdf") {
 			media = await this.processPdfAttachment(attachment);

@@ -14,6 +14,8 @@ from rich.console import Console
 from rich.table import Table
 
 from .scoring import score_episode, format_score_summary
+from .scenarios import count_scenarios as count_scenario_corpus
+from .scenarios import load_scenario, validate_scenarios as validate_scenario_corpus
 
 app = typer.Typer(help="ClawBench - Evaluate AGENTS.md policies")
 console = Console()
@@ -26,15 +28,12 @@ CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
 
 def _load_scenario(name_or_path: str) -> dict:
     """Load a scenario YAML by name or file path."""
-    path = Path(name_or_path)
-    if not path.exists():
-        path = SCENARIOS_DIR / f"{name_or_path}.yaml"
-    if not path.exists():
+    try:
+        return load_scenario(name_or_path)
+    except FileNotFoundError:
         console.print(f"[red]Scenario not found:[/red] {name_or_path}")
         console.print(f"Available: {[p.stem for p in sorted(SCENARIOS_DIR.glob('*.yaml'))]}")
         raise typer.Exit(1)
-    with open(path) as f:
-        return yaml.safe_load(f)
 
 
 @app.command()
@@ -144,6 +143,21 @@ def list_scenarios():
         )
 
     console.print(table)
+
+
+@app.command()
+def count_scenarios():
+    """Print base, edge, and total scenario counts."""
+    console.print_json(data=count_scenario_corpus())
+
+
+@app.command()
+def validate_scenarios():
+    """Validate base and expanded scenario definitions."""
+    result = validate_scenario_corpus()
+    console.print_json(data=result)
+    if not result.get("valid"):
+        raise typer.Exit(1)
 
 
 @app.command()

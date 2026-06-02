@@ -99,7 +99,10 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "schema": "eliza.gate_status.v1",
                 "gate": "display-scanout-check",
                 "status": status,
-                "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "generated_utc": datetime.now(UTC)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "blocker_id": blocker_id,
                 "blocker_reason": blocker_reason,
                 "evidence_paths": [SCANOUT_RTL, AXI4_PKG, TB, TEST],

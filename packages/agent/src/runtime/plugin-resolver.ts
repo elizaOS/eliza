@@ -25,6 +25,7 @@ import {
   formatError,
   isMobilePlatform,
   type PluginManifestCandidate,
+  type PluginManifestVerdict,
   readAppManifest,
 } from "@elizaos/shared";
 
@@ -66,6 +67,14 @@ const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
 
 type GlobalWithLastFailedPluginNames = typeof globalThis & {
   [LAST_FAILED_PLUGIN_NAMES]?: string[];
+};
+
+const LAST_FAILED_PLUGIN_DETAILS = Symbol.for(
+  "@elizaos/plugin-resolver/last-failed-plugin-details",
+);
+
+type GlobalWithLastFailedPluginDetails = typeof globalThis & {
+  [LAST_FAILED_PLUGIN_DETAILS]?: Array<{ name: string; error: string }>;
 };
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
@@ -769,16 +778,37 @@ async function findNearestNodeModulesDir(
   }
 }
 
-function setLastFailedPluginNames(pluginNames: readonly string[]): void {
-  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] = [
-    ...pluginNames,
-  ];
+function setLastFailedPlugins(
+  failed: ReadonlyArray<{ name: string; error: string }>,
+): void {
+  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] =
+    failed.map((plugin) => plugin.name);
+  (globalThis as GlobalWithLastFailedPluginDetails)[
+    LAST_FAILED_PLUGIN_DETAILS
+  ] = failed.map((plugin) => ({ name: plugin.name, error: plugin.error }));
 }
 
 export function getLastFailedPluginNames(): string[] {
   return [
     ...((globalThis as GlobalWithLastFailedPluginNames)[
       LAST_FAILED_PLUGIN_NAMES
+    ] ?? []),
+  ];
+}
+
+/**
+ * Full {name,error} detail for the plugins that failed to load on the last
+ * resolve pass. getLastFailedPluginNames() returns only names; this preserves
+ * the error message (e.g. a missing-export from a stale @elizaos/* copy) so the
+ * dev boot-history endpoint can surface it without log scraping.
+ */
+export function getLastFailedPluginDetails(): Array<{
+  name: string;
+  error: string;
+}> {
+  return [
+    ...((globalThis as GlobalWithLastFailedPluginDetails)[
+      LAST_FAILED_PLUGIN_DETAILS
     ] ?? []),
   ];
 }
@@ -1283,6 +1313,42 @@ let pluginCandidateCache: {
 } | null = null;
 
 /**
+ * In-process cache for {@link evaluatePluginManifests}. `discoverPluginCandidates`
+ * is memoized, but the manifest evaluator still re-reads every candidate's
+ * package.json and re-runs each plugin's `shouldEnable(ctx)` on every
+ * `resolvePlugins` call — duplicated work across the two-phase (blocking +
+ * deferred) boot. Verdicts are a pure function of (candidate set, env, config,
+ * platform); we key the cache on the candidate signature plus a fingerprint of
+ * those inputs so the deferred pass reuses the blocking pass's result while
+ * nothing has changed, and recomputes the moment any input that could flip a
+ * verdict changes (e.g. first-run config rewrite).
+ */
+let pluginVerdictCache: {
+  key: string;
+  verdicts: PluginManifestVerdict[];
+} | null = null;
+
+/**
+ * Fingerprint the inputs `shouldEnable(ctx)` predicates may read. `shouldEnable`
+ * can consult any env var or config field, so the fingerprint covers the whole
+ * env + serialized config + platform flag — invalidating the verdict cache on
+ * any change that could alter a verdict. Cheap relative to the ~180 disk reads
+ * and dynamic dispatches the evaluator performs.
+ */
+function computeVerdictFingerprint(
+  config: ElizaConfig,
+  isNativePlatform: boolean,
+): string {
+  const env = Object.entries(process.env)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v ?? ""}`)
+    .join(" ");
+  return `${isNativePlatform ? "1" : "0"}${env}${JSON.stringify(
+    config,
+  )}`;
+}
+
+/**
  * Cheap signature over the directories {@link discoverPluginCandidates} scans:
  * the mtimeMs of each `node_modules/@elizaos` and `plugins` root. Adding or
  * removing a package mutates the containing directory's mtime, invalidating the
@@ -1486,11 +1552,26 @@ export async function resolvePlugins(
         `[eliza] App manifest restricted candidate set: ${candidates.length}/${allCandidates.length} plugins considered`,
       );
     }
-    const verdicts = await evaluatePluginManifests(candidates, {
-      env: process.env,
+    const isNativePlatform = isMobilePlatform();
+    const candidateKey = candidates
+      .map((c) => c.packageName)
+      .sort()
+      .join(",");
+    const verdictKey = `${candidateKey}\n${computeVerdictFingerprint(
       config,
-      isNativePlatform: isMobilePlatform(),
-    });
+      isNativePlatform,
+    )}`;
+    let verdicts: PluginManifestVerdict[];
+    if (pluginVerdictCache?.key === verdictKey) {
+      verdicts = pluginVerdictCache.verdicts;
+    } else {
+      verdicts = await evaluatePluginManifests(candidates, {
+        env: process.env,
+        config,
+        isNativePlatform,
+      });
+      pluginVerdictCache = { key: verdictKey, verdicts };
+    }
     applyPluginManifestVerdicts(config, verdicts, changes);
   } catch (err) {
     logger.warn(
@@ -1903,7 +1984,7 @@ export async function resolvePlugins(
     );
   }
 
-  setLastFailedPluginNames(failedPlugins.map((plugin) => plugin.name));
+  setLastFailedPlugins(failedPlugins);
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);

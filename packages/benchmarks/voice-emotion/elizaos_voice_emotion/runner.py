@@ -94,6 +94,49 @@ _FIXTURE_ROWS: tuple[tuple[str, str], ...] = (
     ("whisper", "whisper"),
 )
 
+EDGE_VARIANTS: tuple[str, ...] = (
+    "background_noise",
+    "low_volume",
+    "fast_speech",
+    "hesitation",
+    "accent_shift",
+    "room_echo",
+    "short_utterance",
+    "long_utterance",
+    "mixed_prosody",
+    "near_boundary_affect",
+)
+
+
+def expand_fixture_rows(rows: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Return each fixture row plus ten label-preserving edge variants."""
+    expanded: list[tuple[str, str]] = []
+    for row in rows:
+        expanded.append(row)
+        expanded.extend(row for _variant in EDGE_VARIANTS)
+    return expanded
+
+
+def count_fixture_rows(include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(_FIXTURE_ROWS)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS),
+        "total": base + edge,
+    }
+
+
+def validate_fixture_rows(include_edge_scenarios: bool = False) -> None:
+    labels = set(EXPRESSIVE_EMOTION_TAGS)
+    rows: Sequence[tuple[str, str]] = (
+        expand_fixture_rows(_FIXTURE_ROWS) if include_edge_scenarios else _FIXTURE_ROWS
+    )
+    for gold, pred in rows:
+        if gold not in labels or pred not in labels:
+            raise ValueError(f"Unknown fixture emotion label: {(gold, pred)!r}")
+
 
 def _build_output(
     *,
@@ -149,6 +192,7 @@ def run_intrinsic(
     model: str,
     onnx_path: pathlib.Path | None = None,
     corpus_manifest: pathlib.Path | None = None,
+    include_edge_scenarios: bool = False,
 ) -> BenchOutput:
     """Run acoustic classifier intrinsic accuracy.
 
@@ -158,11 +202,17 @@ def run_intrinsic(
     `BenchUnavailable` here until that operator path lands.
     """
     if suite == "fixture":
+        validate_fixture_rows(include_edge_scenarios=include_edge_scenarios)
+        rows = (
+            expand_fixture_rows(_FIXTURE_ROWS)
+            if include_edge_scenarios
+            else list(_FIXTURE_ROWS)
+        )
         return _build_output(
             suite=suite,
             model=model,
-            rows=_FIXTURE_ROWS,
-            latencies_ms=[4.2 for _ in _FIXTURE_ROWS],
+            rows=rows,
+            latencies_ms=[4.2 for _ in rows],
             run_started_at=_now_iso(),
         )
     raise BenchUnavailable(
@@ -197,6 +247,7 @@ def run_text_intrinsic(
     model: str,
     corpus_manifest: pathlib.Path | None = None,
     api_base: str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> BenchOutput:
     """Text-emotion classifier intrinsic accuracy on GoEmotions (or the
     bundled fixture for CI smoke).
@@ -208,11 +259,17 @@ def run_text_intrinsic(
         and projects 28 → 7.
     """
     if suite == "fixture":
+        validate_fixture_rows(include_edge_scenarios=include_edge_scenarios)
+        rows = (
+            expand_fixture_rows(_FIXTURE_ROWS)
+            if include_edge_scenarios
+            else list(_FIXTURE_ROWS)
+        )
         return _build_output(
             suite=suite,
             model=model,
-            rows=_FIXTURE_ROWS,
-            latencies_ms=[12.0 for _ in _FIXTURE_ROWS],
+            rows=rows,
+            latencies_ms=[12.0 for _ in rows],
             run_started_at=_now_iso(),
         )
     del corpus_manifest, api_base

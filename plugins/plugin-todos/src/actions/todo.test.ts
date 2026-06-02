@@ -6,6 +6,7 @@ import type {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { currentTodosProvider } from "../providers/current-todos.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
 import { todoAction } from "./todo.js";
 
@@ -34,6 +35,13 @@ interface StoredTodo {
 class FakeTodosService {
   private nextId = 0;
   rows: StoredTodo[] = [];
+  failOn: string | null = null;
+
+  private throwIf(operation: string): void {
+    if (this.failOn === operation) {
+      throw new Error(`forced ${operation} failure`);
+    }
+  }
 
   newId(): string {
     this.nextId++;
@@ -41,6 +49,7 @@ class FakeTodosService {
   }
 
   async create(input: Record<string, unknown>): Promise<StoredTodo> {
+    this.throwIf("create");
     const now = new Date();
     const row: StoredTodo = {
       id: this.newId(),
@@ -64,6 +73,7 @@ class FakeTodosService {
   }
 
   async get(id: string): Promise<StoredTodo | null> {
+    this.throwIf("get");
     return this.rows.find((r) => r.id === id) ?? null;
   }
 
@@ -73,6 +83,7 @@ class FakeTodosService {
     roomId?: string | null;
     includeCompleted?: boolean;
   }): Promise<StoredTodo[]> {
+    this.throwIf("list");
     return this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
       if (filter.agentId && r.agentId !== filter.agentId) return false;
@@ -91,6 +102,7 @@ class FakeTodosService {
     id: string,
     patch: Record<string, unknown>,
   ): Promise<StoredTodo | null> {
+    this.throwIf("update");
     const row = this.rows.find((r) => r.id === id);
     if (!row) return null;
     if (patch.content !== undefined) row.content = String(patch.content);
@@ -108,6 +120,7 @@ class FakeTodosService {
   }
 
   async delete(id: string): Promise<boolean> {
+    this.throwIf("delete");
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => r.id !== id);
     return this.rows.length < before;
@@ -126,6 +139,7 @@ class FakeTodosService {
       activeForm?: string;
     }>;
   }): Promise<{ before: StoredTodo[]; after: StoredTodo[] }> {
+    this.throwIf("writeList");
     const before = await this.list({
       entityId: args.entityId,
       agentId: args.agentId,
@@ -173,6 +187,7 @@ class FakeTodosService {
     agentId?: string;
     roomId?: string | null;
   }): Promise<number> {
+    this.throwIf("clear");
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return true;
@@ -288,6 +303,85 @@ describe("TODO action", () => {
       });
       expect(service.rows[0]!.parentTrajectoryStepId).toBe("parent-step-99");
     });
+
+    it("preserves caller order while reconciling mixed existing and new rows", async () => {
+      await invoke(runtime, {
+        action: "write",
+        todos: [
+          { content: "alpha", status: "pending" },
+          { content: "bravo", status: "pending" },
+          { content: "charlie", status: "pending" },
+        ],
+      });
+      const [alpha, , charlie] = service.rows;
+
+      const result = await invoke(runtime, {
+        action: "write",
+        todos: [
+          { id: charlie!.id, content: "charlie next", status: "in_progress" },
+          { content: "delta", status: "pending" },
+          { id: alpha!.id, content: "alpha done", status: "completed" },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: StoredTodo[] };
+      expect(data.todos.map((todo) => todo.content)).toEqual([
+        "charlie next",
+        "delta",
+        "alpha done",
+      ]);
+      expect(service.rows.map((todo) => todo.content)).toEqual([
+        "alpha done",
+        "charlie next",
+        "delta",
+      ]);
+    });
+
+    it("rejects malformed todo arrays without mutating existing rows", async () => {
+      await invoke(runtime, {
+        action: "create",
+        content: "keep me",
+      });
+      const malformedPayloads: unknown[] = [
+        undefined,
+        null,
+        "not-an-array",
+        [null],
+        [false],
+        [{}],
+        [{ content: "", status: "pending" }],
+        [{ content: "x", status: "" }],
+        [{ content: "x", status: "blocked" }],
+        [{ content: { nested: true }, status: "pending" }],
+        [{ content: "x", status: { nested: true } }],
+      ];
+
+      for (const todos of malformedPayloads) {
+        const result = await invoke(runtime, { action: "write", todos });
+        expect(result.success).toBe(false);
+        expect(result.text).toMatch(/invalid_param/);
+        expect(service.rows.map((row) => row.content)).toEqual(["keep me"]);
+      }
+    });
+
+    it("ignores hostile field names instead of polluting prototypes", async () => {
+      const hostile = JSON.parse(
+        '{"content":"safe","status":"pending","__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}}',
+      ) as Record<string, unknown>;
+
+      const result = await invoke(runtime, {
+        action: "write",
+        todos: [hostile],
+      });
+
+      expect(result.success).toBe(true);
+      expect(service.rows[0]?.content).toBe("safe");
+      expect(
+        (Object.prototype as Record<string, unknown>).polluted,
+      ).toBeUndefined();
+      expect(service.rows[0]?.metadata).toEqual({});
+    });
   });
 
   describe("action=create", () => {
@@ -358,6 +452,50 @@ describe("TODO action", () => {
       });
       expect(result.success).toBe(false);
       expect(result.text).toContain("not_found");
+    });
+
+    it("rejects updates for another agent's todo with the same entityId", async () => {
+      service.rows.push({
+        id: "foreign-agent",
+        entityId: ENTITY,
+        agentId: "00000000-0000-0000-0000-0000000000ee",
+        roomId: null,
+        worldId: null,
+        content: "other agent",
+        activeForm: "other agent",
+        status: "pending",
+        parentTodoId: null,
+        parentTrajectoryStepId: null,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
+      const result = await invoke(runtime, {
+        action: "update",
+        id: "foreign-agent",
+        content: "hijacked",
+      });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("not_found");
+      expect(service.rows[0]!.content).toBe("other agent");
+    });
+
+    it("clears completedAt when a completed todo moves back to pending", async () => {
+      await invoke(runtime, { action: "create", content: "reopen me" });
+      const id = service.rows[0]!.id;
+      await invoke(runtime, { action: "complete", id });
+      expect(service.rows[0]!.completedAt).toBeInstanceOf(Date);
+
+      const result = await invoke(runtime, {
+        action: "update",
+        id,
+        status: "pending",
+      });
+
+      expect(result.success).toBe(true);
+      expect(service.rows[0]!.status).toBe("pending");
+      expect(service.rows[0]!.completedAt).toBeNull();
     });
   });
 
@@ -447,6 +585,15 @@ describe("TODO action", () => {
       expect(result.success).toBe(false);
       expect(result.text).toContain("entityId");
     });
+
+    it("requires agentId on the runtime", async () => {
+      const result = await invoke(
+        { ...runtime, agentId: undefined } as never as IAgentRuntime,
+        { action: "list" },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("agentId");
+    });
   });
 
   describe("legacy op discriminator", () => {
@@ -474,6 +621,88 @@ describe("TODO action", () => {
       });
       expect(result.success).toBe(true);
       expect(result.data).toMatchObject({ action: "create", op: "create" });
+    });
+  });
+
+  describe("persistence failures", () => {
+    it("returns a structured failure when create persistence throws", async () => {
+      service.failOn = "create";
+
+      const result = await invoke(runtime, {
+        action: "create",
+        content: "will fail",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("persistence_error");
+      expect(result.text).toContain("forced create failure");
+      expect(service.rows).toEqual([]);
+    });
+
+    it("returns a structured failure when list persistence throws", async () => {
+      service.failOn = "list";
+
+      const result = await invoke(runtime, { action: "list" });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("persistence_error");
+      expect(result.text).toContain("forced list failure");
+    });
+  });
+
+  describe("currentTodosProvider", () => {
+    it("renders only active todos for the current user and agent", async () => {
+      await invoke(runtime, { action: "create", content: "pending task" });
+      await invoke(runtime, {
+        action: "create",
+        content: "doing task",
+        status: "in_progress",
+      });
+      await invoke(runtime, {
+        action: "create",
+        content: "done task",
+        status: "completed",
+      });
+      service.rows.push({
+        id: "other-agent",
+        entityId: ENTITY,
+        agentId: "00000000-0000-0000-0000-0000000000ee",
+        roomId: null,
+        worldId: null,
+        content: "foreign task",
+        activeForm: "foreign task",
+        status: "pending",
+        parentTodoId: null,
+        parentTrajectoryStepId: null,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
+
+      const result = await currentTodosProvider.get!(
+        runtime,
+        makeMessage(),
+        undefined,
+      );
+
+      expect(result.text).toContain("# Current todos");
+      expect(result.text).toContain("[ ] pending task");
+      expect(result.text).toContain("[→] doing task");
+      expect(result.text).not.toContain("done task");
+      expect(result.text).not.toContain("foreign task");
+      expect((result.data.todos as StoredTodo[]).map((todo) => todo.content))
+        .toEqual(["pending task", "doing task"]);
+    });
+
+    it("returns empty context when entityId is missing", async () => {
+      const result = await currentTodosProvider.get!(
+        runtime,
+        makeMessage({ entityId: undefined }),
+        undefined,
+      );
+
+      expect(result).toEqual({ text: "", data: { todos: [] } });
     });
   });
 });

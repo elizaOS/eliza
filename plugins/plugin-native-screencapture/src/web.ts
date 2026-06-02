@@ -19,7 +19,9 @@ const VIDEO_MIME_TYPES = [
   "video/mp4",
 ];
 const getSupportedMimeType = (): string | null =>
-  VIDEO_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m)) ?? null;
+  typeof MediaRecorder === "undefined"
+    ? null
+    : (VIDEO_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m)) ?? null);
 
 type DisplayMediaDevices = MediaDevices & {
   getDisplayMedia(
@@ -27,7 +29,26 @@ type DisplayMediaDevices = MediaDevices & {
   ): Promise<MediaStream>;
 };
 const hasDisplayMedia = (): boolean =>
-  !!(navigator.mediaDevices as Partial<DisplayMediaDevices>).getDisplayMedia;
+  !!(navigator.mediaDevices as Partial<DisplayMediaDevices> | undefined)
+    ?.getDisplayMedia;
+
+function assertPositiveFiniteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a positive finite number`);
+  }
+  return value;
+}
+
+function assertQuality(value: unknown): number {
+  if (value === undefined) return 1;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("quality must be a finite number between 0 and 100");
+  }
+  if (value < 0 || value > 100) {
+    throw new Error("quality must be between 0 and 100");
+  }
+  return value / 100;
+}
 
 /** ImageCapture is a newer web API not yet in all TS lib definitions */
 declare class ImageCapture {
@@ -66,8 +87,11 @@ export class ScreenCaptureWeb extends WebPlugin {
     options?: ScreenshotOptions,
   ): Promise<ScreenshotResult> {
     const format = options?.format || "png";
-    const quality = (options?.quality || 100) / 100;
-    const scale = options?.scale || 1;
+    const quality = assertQuality(options?.quality);
+    const scale =
+      options?.scale === undefined
+        ? 1
+        : assertPositiveFiniteNumber(options.scale, "scale");
 
     // PERMISSIONS_MIGRATION: getDisplayMedia() triggers the OS screen
     // recording / picker dialog implicitly. New flow probes via
@@ -85,12 +109,15 @@ export class ScreenCaptureWeb extends WebPlugin {
     const width = (settings.width || 1920) * scale;
     const height = (settings.height || 1080) * scale;
 
-    const imageCapture = new ImageCapture(track);
-    const bitmap = await imageCapture.grabFrame();
-
-    stream.getTracks().forEach((t) => {
-      t.stop();
-    });
+    let bitmap: ImageBitmap | null = null;
+    try {
+      const imageCapture = new ImageCapture(track);
+      bitmap = await imageCapture.grabFrame();
+    } finally {
+      stream.getTracks().forEach((t) => {
+        t.stop();
+      });
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -124,6 +151,18 @@ export class ScreenCaptureWeb extends WebPlugin {
 
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
     if (this.isRecording) throw new Error("Recording already in progress");
+    if (options?.fps !== undefined) {
+      assertPositiveFiniteNumber(options.fps, "fps");
+    }
+    if (options?.bitrate !== undefined) {
+      assertPositiveFiniteNumber(options.bitrate, "bitrate");
+    }
+    if (options?.maxDuration !== undefined) {
+      assertPositiveFiniteNumber(options.maxDuration, "maxDuration");
+    }
+    if (options?.maxFileSize !== undefined) {
+      assertPositiveFiniteNumber(options.maxFileSize, "maxFileSize");
+    }
 
     const videoConstraints: MediaTrackConstraints = {
       displaySurface: "monitor",

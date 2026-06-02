@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from elizaos_experience_bench.edge_cases import expand_hard_cases
 from elizaos_experience_bench.hard_cases import (
     ALL_HARD_CASES,
     JACCARD_CATEGORIES,
@@ -89,14 +90,25 @@ class HardCaseResults:
 class HardCaseEvaluator:
     """Evaluate hard hand-crafted benchmark cases."""
 
-    def __init__(self, service_factory: ServiceFactory | None = None) -> None:
+    def __init__(
+        self,
+        service_factory: ServiceFactory | None = None,
+        *,
+        include_edge_scenarios: bool = False,
+    ) -> None:
         self._service_factory = service_factory or ExperienceService
+        self.include_edge_scenarios = include_edge_scenarios
 
     def evaluate(self) -> HardCaseResults:
         """Run all hard cases and return per-category results."""
         results = HardCaseResults()
 
-        for category_name, cases in ALL_HARD_CASES.items():
+        for category_name, base_cases in ALL_HARD_CASES.items():
+            cases = (
+                expand_hard_cases(base_cases)
+                if self.include_edge_scenarios
+                else base_cases
+            )
             if not cases:
                 continue
 

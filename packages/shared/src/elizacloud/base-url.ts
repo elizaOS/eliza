@@ -30,6 +30,16 @@ function trimApiPath(pathname: string): string {
   return normalized;
 }
 
+function normalizeMalformedCandidate(candidate: string): string {
+  const truncated =
+    candidate.length > 8192 ? candidate.slice(0, 8192) : candidate;
+  const withoutFragment = truncated.split("#", 1)[0] ?? "";
+  const withoutQuery = withoutFragment.split("?", 1)[0] ?? "";
+  const withoutApiPath = withoutQuery.replace(/\/api\/v1\/?$/i, "");
+  const withoutTrailingSlash = withoutApiPath.replace(/\/{1,1024}$/, "");
+  return withoutTrailingSlash.replace(/^http:\/\//i, "https://");
+}
+
 export function normalizeCloudSiteUrl(rawUrl?: string): string {
   // Allow cloud-provisioned containers to override the base URL via env var
   const envOverride = process.env.ELIZAOS_CLOUD_BASE_URL?.trim();
@@ -56,9 +66,7 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
 
     return parsed.toString().replace(/\/{1,1024}$/, "");
   } catch {
-    const safeCandidate =
-      candidate.length > 8192 ? candidate.slice(0, 8192) : candidate;
-    return safeCandidate.replace(/\/{1,1024}$/, "");
+    return normalizeMalformedCandidate(candidate);
   }
 }
 

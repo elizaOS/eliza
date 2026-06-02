@@ -893,6 +893,10 @@ Focus on:
 					abortSignal,
 					previousResults,
 				} satisfies ExtendedHandlerOptions;
+				const actionCallback: typeof callback = callback
+					? (response, actionName) =>
+							callback(response, actionName ?? action.name)
+					: undefined;
 
 				const result = await runWithActionRoutingContext(
 					{ actionName: action.name, modelClass: action.modelClass },
@@ -902,7 +906,7 @@ Focus on:
 							message,
 							{ values: {}, data: {}, text: "" },
 							options,
-							callback,
+							actionCallback,
 						),
 				);
 

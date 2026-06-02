@@ -92,9 +92,7 @@ def test_e1x_kernel_codegen_gate_passes() -> None:
     assert color_timing["peak_color_fabric_cycles"] > 0
 
     execution = json.loads(
-        (
-            ROOT / "benchmarks/results/e1x-real-graph-schedule-execution-estimate.json"
-        ).read_text()
+        (ROOT / "benchmarks/results/e1x-real-graph-schedule-execution-estimate.json").read_text()
     )
     assert execution["schema"] == "eliza.e1x.schedule_execution_estimate.v1"
     assert execution["source_tensor_schedule_sha256"] == schedule["artifact_sha256"]

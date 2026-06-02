@@ -162,7 +162,7 @@ All read via `runtime.getSetting()` / `process.env`. Declared in `package.json#a
 | `COMPUTER_USE_ENABLED` | boolean | `false` | No | Master toggle; also controls `autoEnable` |
 | `COMPUTER_USE_SCREENSHOT_AFTER_ACTION` | boolean | `true` | No | Auto-capture screenshot after each desktop action |
 | `COMPUTER_USE_ACTION_TIMEOUT_MS` | number | `10000` | No | Per-action timeout in ms |
-| `COMPUTER_USE_APPROVAL_MODE` | enum | `"full_control"` | No | `full_control` / `smart_approve` / `approve_all` / `off` |
+| `COMPUTER_USE_APPROVAL_MODE` | enum | `"smart_approve"` | No | `full_control` / `smart_approve` / `approve_all` / `off` |
 | `COMPUTER_USE_BROWSER_HEADLESS` | boolean | `false` | No | Headless browser (useful in CI) |
 | `ELIZA_COMPUTERUSE_DRIVER` | enum | `"nutjs"` | No | Input driver: `nutjs` (@nut-tree-fork/nut-js) or `legacy` (cliclick/xdotool/PowerShell) |
 
@@ -197,7 +197,7 @@ Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mo
 
 ## Conventions / gotchas
 
-- **Approval flow**: every destructive action passes through `ComputerUseApprovalManager`. The default mode is `full_control` (auto-approve). Switch to `smart_approve` or `approve_all` via env or the `/api/computer-use/approval-mode` route. `off` denies all.
+- **Approval flow**: every destructive action passes through `ComputerUseApprovalManager`. The default mode is `smart_approve` — only read-only `SAFE_COMMANDS` auto-approve, and destructive verbs (terminal execute, file write/delete) require explicit human approval. Switch to `full_control` (auto-approve everything), `approve_all`, or `off` (deny all) via env or the `/api/computer-use/approval-mode` route.
 - **`browser_execute` is always disabled** (GHSA-rcvr-766c-4phv) — `isBrowserExecuteAllowed()` returns `false` unconditionally; no setting re-enables it. Use `dom`, `clickables`, `click`, `type`, `navigate`, `screenshot` browser subactions instead.
 - **Coordinate system**: each display has its own local coordinate space. `src/platform/coords.ts` translates local→global when needed. Always pass `displayId` when targeting a specific monitor.
 - **nutjs native bindings**: `@nut-tree-fork/nut-js` requires native compilation. If the build fails, set `ELIZA_COMPUTERUSE_DRIVER=legacy` to fall back to shell tools.

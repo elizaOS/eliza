@@ -1,4 +1,9 @@
-import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ImageDescriptionParams,
+  ImageDescriptionResult,
+  ImageGenerationParams,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, type LanguageModel } from "ai";
 
@@ -6,16 +11,45 @@ import { createOpenRouterProvider } from "../providers";
 import { getImageGenerationModel, getImageModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
+const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
+  "Analyze this image and respond with:\nTitle: <short title>\nDescription: <detailed description>";
+
+function parseTitle(content: string): string {
+  const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
+  if (titleMatch?.[1]) {
+    return titleMatch[1].trim();
+  }
+
+  const firstLine = content
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  return firstLine ? firstLine.slice(0, 100) : "Image Analysis";
+}
+
+function parseDescription(content: string): string {
+  const withoutTitle = content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
+  const withoutDescriptionLabel = withoutTitle.replace(/^description[:\s]+/i, "").trim();
+  return withoutDescriptionLabel.length > 0 ? withoutDescriptionLabel : content.trim();
+}
+
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
-): Promise<string> {
+): Promise<ImageDescriptionResult> {
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getImageModel(runtime);
 
   const imageUrl = typeof params === "string" ? params : params.imageUrl;
   const prompt =
-    typeof params === "string" ? "Describe this image" : params.prompt || "Describe this image";
+    typeof params === "string"
+      ? DEFAULT_IMAGE_DESCRIPTION_PROMPT
+      : (params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT);
+
+  if (!imageUrl || imageUrl.trim().length === 0) {
+    throw new Error("[OpenRouter] IMAGE_DESCRIPTION requires a valid image URL.");
+  }
 
   try {
     const generateParams = {
@@ -37,7 +71,10 @@ export async function handleImageDescription(
       emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, prompt, response.usage, modelName);
     }
 
-    return response.text;
+    return {
+      title: parseTitle(response.text),
+      description: parseDescription(response.text),
+    };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error describing image: ${message}`);

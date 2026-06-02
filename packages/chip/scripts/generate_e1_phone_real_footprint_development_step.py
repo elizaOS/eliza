@@ -445,7 +445,9 @@ def common_report(
     controlled_impedance_segment_count = sum(
         1 for segment in segments if segment.get("controlled_impedance_targets_ohm")
     )
-    segment_net_names = sorted({str(segment.get("net")) for segment in segments if segment.get("net")})
+    segment_net_names = sorted(
+        {str(segment.get("net")) for segment in segments if segment.get("net")}
+    )
     via_net_names = sorted({str(via.get("net")) for via in vias if via.get("net")})
     zone_net_names = sorted({str(zone.get("net")) for zone in zones if zone.get("net")})
     return {
@@ -520,12 +522,12 @@ def write_manifest(report: dict[str, object]) -> None:
 
 def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
     from OCP.BRep import BRep_Builder
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+    from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
     from OCP.TopoDS import TopoDS_Compound
-    from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
     board_text = str(context["board_text"])
     params = context["params"]
@@ -659,7 +661,9 @@ def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
         x = float(bbox["x_min"]) + float(bbox["width"]) / 2.0 - board_w / 2.0
         y = board_h / 2.0 - (float(bbox["y_min"]) + float(bbox["height"]) / 2.0)
         layers = zone.get("layers", [])
-        visual_layers = [layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}]
+        visual_layers = [
+            layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}
+        ]
         for layer in visual_layers or ["F.Cu"]:
             if layer == "F.Cu":
                 z = z_top + copper_thickness * 2.4
@@ -835,7 +839,9 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
         x = float(bbox["x_min"]) + float(bbox["width"]) / 2.0 - board_w / 2.0
         y = board_h / 2.0 - (float(bbox["y_min"]) + float(bbox["height"]) / 2.0)
         layers = zone.get("layers", [])
-        visual_layers = [layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}]
+        visual_layers = [
+            layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}
+        ]
         for layer in visual_layers or ["F.Cu"]:
             if layer == "F.Cu":
                 z = z_top + copper_thickness * 2.4
@@ -847,7 +853,11 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
                 z = -board_t * 0.25
             zone_shape = (
                 cq.Workplane("XY")
-                .box(max(float(bbox["width"]), 0.05), max(float(bbox["height"]), 0.05), copper_thickness)
+                .box(
+                    max(float(bbox["width"]), 0.05),
+                    max(float(bbox["height"]), 0.05),
+                    copper_thickness,
+                )
                 .translate((x, y, z))
             )
             zone_name = re.sub(

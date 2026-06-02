@@ -44,6 +44,11 @@ function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function hasExplicitEmbeddingDimensions(runtime: IAgentRuntime): boolean {
+  const value = getSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS");
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function shouldUseLocalEmbeddingFallback(runtime: IAgentRuntime): boolean {
   return isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime);
 }
@@ -141,6 +146,7 @@ export async function handleTextEmbedding(
     body: JSON.stringify({
       model: embeddingModel,
       input: trimmedText,
+      ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
   });
 

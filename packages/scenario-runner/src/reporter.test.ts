@@ -1,9 +1,37 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildAggregate,
+  printStdoutSummary,
+  writeReportBundle,
+  writeScenarioRunViewer,
+} from "./reporter.ts";
 import type { AggregateReport } from "./types.ts";
-import { writeScenarioRunViewer } from "./reporter.ts";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  vi.restoreAllMocks();
+});
+
+function makeTempDir(prefix: string): string {
+  const dir = mkdtempSync(path.join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
 
 function aggregateReport(): AggregateReport {
   return {
@@ -108,5 +136,99 @@ describe("writeScenarioRunViewer", () => {
     expect(data).toContain("eliza_native_v1");
     expect(data).toContain("traj-1.json");
     expect(payload.report.artifactPaths).toEqual(aggregate.artifactPaths);
+  });
+});
+
+describe("scenario report aggregation", () => {
+  it("builds aggregate counts from scenario statuses without trusting caller totals", () => {
+    const report = buildAggregate(
+      [
+        {
+          ...aggregateReport().scenarios[0],
+          id: "passed.one",
+          status: "passed",
+        },
+        {
+          ...aggregateReport().scenarios[0],
+          id: "failed.one",
+          status: "failed",
+        },
+        {
+          ...aggregateReport().scenarios[0],
+          id: "skipped.one",
+          status: "skipped",
+          skipReason: "not configured",
+        },
+      ],
+      null,
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-aggregate",
+    );
+
+    expect(report).toMatchObject({
+      runId: "run-aggregate",
+      providerName: null,
+      totalCount: 3,
+      passedCount: 1,
+      failedCount: 1,
+      skippedCount: 1,
+      totals: {
+        passed: 1,
+        failed: 1,
+        skipped: 1,
+        flakyPassed: 0,
+        costUsd: 0,
+      },
+    });
+  });
+
+  it("writes matrix and per-scenario reports with sanitized stable filenames", () => {
+    const outDir = makeTempDir("scenario-bundle-");
+    const report = aggregateReport();
+    report.scenarios = [
+      { ...report.scenarios[0], id: "todos/create basic" },
+      { ...report.scenarios[0], id: "email|send:urgent" },
+    ];
+    report.totalCount = report.scenarios.length;
+
+    writeReportBundle(report, outDir);
+
+    expect(
+      JSON.parse(readFileSync(path.join(outDir, "matrix.json"), "utf8")),
+    ).toEqual(report);
+    expect(readdirSync(outDir).sort()).toEqual([
+      "001-todos_create_basic.json",
+      "002-email_send_urgent.json",
+      "matrix.json",
+    ]);
+    expect(existsSync(path.join(outDir, "001-todos_create_basic.json"))).toBe(
+      true,
+    );
+  });
+
+  it("prints pipe-safe single-line failure summaries", () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    const report = aggregateReport();
+    report.scenarios[0] = {
+      ...report.scenarios[0],
+      status: "failed",
+      failedAssertions: [
+        {
+          type: "responseIncludesAny",
+          passed: false,
+          detail: "bad | value\nsecond line",
+        } as never,
+      ],
+    };
+
+    printStdoutSummary(report);
+
+    const output = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+    expect(output).toContain("| todos.create-basic | failed | 1000ms |");
+    expect(output).toContain("bad \\| value second line");
+    expect(output).not.toContain("bad | value\nsecond line");
   });
 });

@@ -60,31 +60,39 @@ def build_workplan_records(schedule: dict, placement: dict) -> tuple[list[dict],
         expected_core_waves = assigned_cores * k_wave_count
         if total_core_wave_count != expected_core_waves:
             mismatches.append(f"core-waves:{layer_index}")
-        if int(layer.get("row_coverage", -1)) != rows or not bool(layer.get("row_coverage_complete")):
+        if int(layer.get("row_coverage", -1)) != rows or not bool(
+            layer.get("row_coverage_complete")
+        ):
             mismatches.append(f"row-coverage:{layer_index}")
         if not bool(layer.get("fits_core_sram")):
             mismatches.append(f"sram-fit:{layer_index}")
-        for key, placement_key in (("rows", "rows"), ("cols", "cols"), ("assigned_cores", "assigned_cores")):
+        for key, placement_key in (
+            ("rows", "rows"),
+            ("cols", "cols"),
+            ("assigned_cores", "assigned_cores"),
+        ):
             if int(layer.get(key, -1)) != int(placement_layer.get(placement_key, -2)):
                 mismatches.append(f"placement-{key}:{layer_index}")
         if int(layer.get("routing_color", -1)) != int(placement_layer.get("routing_color", -2)):
             mismatches.append(f"placement-color:{layer_index}")
-        records.append({
-            "layer_index": layer_index,
-            "layer_name": str(layer.get("layer_name", "")),
-            "kind": str(layer.get("kind", "")),
-            "routing_color": int(layer.get("routing_color", -1)),
-            "rows": rows,
-            "cols": cols,
-            "assigned_cores": assigned_cores,
-            "rows_per_core": int(layer.get("rows_per_core", 0)),
-            "k_wave_count": k_wave_count,
-            "total_core_wave_count": total_core_wave_count,
-            "vector_word_ops": vector_word_ops,
-            "macs": macs,
-            "max_core_shard_bytes": int(layer.get("max_core_shard_bytes", 0)),
-            "usable_bytes_per_core": int(layer.get("usable_bytes_per_core", 0)),
-        })
+        records.append(
+            {
+                "layer_index": layer_index,
+                "layer_name": str(layer.get("layer_name", "")),
+                "kind": str(layer.get("kind", "")),
+                "routing_color": int(layer.get("routing_color", -1)),
+                "rows": rows,
+                "cols": cols,
+                "assigned_cores": assigned_cores,
+                "rows_per_core": int(layer.get("rows_per_core", 0)),
+                "k_wave_count": k_wave_count,
+                "total_core_wave_count": total_core_wave_count,
+                "vector_word_ops": vector_word_ops,
+                "macs": macs,
+                "max_core_shard_bytes": int(layer.get("max_core_shard_bytes", 0)),
+                "usable_bytes_per_core": int(layer.get("usable_bytes_per_core", 0)),
+            }
+        )
     return records, mismatches
 
 
@@ -97,7 +105,9 @@ def main() -> int:
         "full-output workplan inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_output_workplan_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_workplan_inputs_present", "status": status, "detail": detail}
+    )
 
     schedule = load_json(SCHEDULE) if SCHEDULE.is_file() else {}
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
@@ -116,7 +126,9 @@ def main() -> int:
         "schedule, placement, coverage, and sampled fabric reports are linked and PASS",
         "input schema/link/status mismatch",
     )
-    checks.append({"id": "e1x_full_output_workplan_artifact_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_workplan_artifact_links", "status": status, "detail": detail}
+    )
 
     records, mismatches = build_workplan_records(schedule, placement)
     total_rows = sum(int(record["rows"]) for record in records)
@@ -143,14 +155,17 @@ def main() -> int:
         f"full-output workplan covers {total_rows} rows, {total_macs} MACs, and {total_core_waves} core waves",
         "workplan coverage mismatch: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_full_output_workplan_covers_all_rows", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_workplan_covers_all_rows", "status": status, "detail": detail}
+    )
 
     sram_ok = (
         bool(schedule.get("all_rows_covered"))
         and bool(schedule.get("all_shards_fit_sram"))
         and int(placement.get("cores_used", 0)) == 151_367
         and int(placement.get("usable_bytes_per_core", 0)) == 45_056
-        and int(placement.get("peak_core_shard_bytes", 0)) <= int(placement.get("usable_bytes_per_core", 0))
+        and int(placement.get("peak_core_shard_bytes", 0))
+        <= int(placement.get("usable_bytes_per_core", 0))
     )
     status, detail = pass_fail(
         sram_ok,
@@ -169,7 +184,13 @@ def main() -> int:
         "workplan is full-output coverage metadata while execution evidence remains sampled",
         "sampled/full-output boundary mismatch",
     )
-    checks.append({"id": "e1x_full_output_workplan_preserves_execution_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_workplan_preserves_execution_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -189,7 +210,9 @@ def main() -> int:
         "sampled_executed_partial_count": int(
             tensor_fabric.get("summary", {}).get("merged_partial_count", 0)
         ),
-        "missing_output_row_count": int(coverage.get("summary", {}).get("missing_output_row_count", 0)),
+        "missing_output_row_count": int(
+            coverage.get("summary", {}).get("missing_output_row_count", 0)
+        ),
         "missing_mac_count": int(coverage.get("summary", {}).get("missing_mac_count", 0)),
         "all_workplan_records": records,
         "sampled_workplan_records": records[:8],

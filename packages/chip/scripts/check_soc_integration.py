@@ -404,7 +404,9 @@ def main() -> int:
     if rc != 0:
         write_report(
             "BLOCKED" if rc == 2 else "FAIL",
-            "soc_integration_boot_smoke_blocked" if rc == 2 else "soc_integration_boot_smoke_failed",
+            "soc_integration_boot_smoke_blocked"
+            if rc == 2
+            else "soc_integration_boot_smoke_failed",
             "boot-smoke cocotb result did not pass",
         )
         return rc
@@ -416,7 +418,9 @@ def main() -> int:
     if rc != 0:
         write_report(
             "BLOCKED" if rc == 2 else "FAIL",
-            "soc_integration_cross_domain_blocked" if rc == 2 else "soc_integration_cross_domain_failed",
+            "soc_integration_cross_domain_blocked"
+            if rc == 2
+            else "soc_integration_cross_domain_failed",
             "cross-domain cocotb result did not pass",
         )
         return rc

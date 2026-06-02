@@ -101,8 +101,12 @@ export function parseClampedInteger(
   const raw = sanitizeNumericText(value);
   if (!raw) return normalizeFallback(options.fallback);
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
+  if (!/^[+-]?\d+$/.test(raw)) {
+    return normalizeFallback(options.fallback);
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return normalizeFallback(options.fallback);
 
   const { min, max } = options;
   if (min !== undefined && parsed < min) return min;

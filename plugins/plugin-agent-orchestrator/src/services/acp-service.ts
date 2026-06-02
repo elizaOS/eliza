@@ -157,6 +157,11 @@ export class AcpService extends Service {
   private readonly transportMode: "native" | "cli";
   private readonly defaultAgent: AgentType;
   private readonly maxSessions: number;
+  // Serializes the session-limit check-and-reserve so concurrent spawns can't
+  // each pass the limit check before any has inserted (which would overshoot
+  // ELIZA_ACP_MAX_SESSIONS). A promise-chain mutex: each reservation awaits the
+  // previous one's completion. See reserveSessionSlot.
+  private spawnReservationLock: Promise<void> = Promise.resolve();
   private readonly sessionTimeoutMs?: number;
   private readonly sessionCallbacks: SessionEventCallback[] = [];
   private readonly acpCallbacks: AcpEventCallback[] = [];
@@ -473,7 +478,6 @@ export class AcpService extends Service {
         DEFAULT_WORKDIR_ROOT,
     );
     await mkdir(workdir, { recursive: true });
-    await this.enforceSessionLimit();
 
     // Record the workspace HEAD + already-dirty files at spawn so the change
     // set captured at task_complete is scoped to exactly what this sub-agent
@@ -503,7 +507,10 @@ export class AcpService extends Service {
           }
         : opts.metadata,
     };
-    await this.store.create(session);
+    // Atomic check-and-reserve: enforces the session limit and inserts under a
+    // single mutex so concurrent spawns can't overshoot maxSessions (the old
+    // separate enforceSessionLimit()/store.create() left a read-then-act race).
+    await this.reserveSessionSlot(session);
 
     if (this.transportMode === "native") {
       const result = await this.spawnNativeSession(id, session, opts);
@@ -1834,6 +1841,36 @@ export class AcpService extends Service {
     );
     if (active.length >= this.maxSessions)
       throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+  }
+
+  /**
+   * Atomically enforce the session limit and reserve the slot by inserting the
+   * session. Wrapping the check (`enforceSessionLimit`) and the insert
+   * (`store.create`) in a single mutex-guarded critical section makes them one
+   * indivisible operation, so N concurrent spawns can't all pass the limit
+   * check before any has inserted and overshoot `maxSessions`.
+   *
+   * The mutex is a promise chain: each call awaits the previous reservation's
+   * settlement (success OR failure) before running its own check+insert, so
+   * the count observed by `enforceSessionLimit` always includes every
+   * already-reserved session. Errors propagate to the caller; the chain itself
+   * never rejects (we swallow on the tail) so one failed reservation doesn't
+   * wedge the lock for later spawns.
+   */
+  private async reserveSessionSlot(session: SessionInfo): Promise<void> {
+    const previous = this.spawnReservationLock;
+    let release!: () => void;
+    this.spawnReservationLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Wait for the prior reservation to finish before observing the count.
+    await previous.catch(() => {});
+    try {
+      await this.enforceSessionLimit();
+      await this.store.create(session);
+    } finally {
+      release();
+    }
   }
 
   private async stopTrackedProcess(sessionId: string): Promise<void> {

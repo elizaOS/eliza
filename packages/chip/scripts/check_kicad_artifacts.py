@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import cast
 
 import yaml
-
 from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -20,7 +20,7 @@
  *   THREE_AGENT_SMOKE=1 bun run runner/run-dialogue.ts   # smoke (first 4 turns)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -36,6 +36,12 @@ import {
   estimateWavDurationSec,
   isAudioNonBlank,
 } from "./audio-bus.ts";
+import {
+  countDialogueScenarios,
+  listDialogueScenarios,
+  loadDialogueScenario,
+  validateDialogueScenarios,
+} from "./scenarios.ts";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -44,38 +50,12 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
 const CHARACTERS_DIR = join(PKG_DIR, "characters");
-const SCENARIOS_DIR = join(PKG_DIR, "scenarios");
 const REPO_ROOT = resolve(PKG_DIR, "../../..");
 const ARTIFACTS_BASE = join(REPO_ROOT, "artifacts", "three-agent-dialogue");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface ScenarioTurn {
-  turnIdx: number;
-  speaker: string;
-  prompt: string;
-  expectedEmotion: string;
-  note: string;
-}
-
-interface ScenarioVerificationThresholds {
-  minNonEmptyTranscripts: number;
-  minAudioDurationSec: number;
-  minDistinctSpeakers: number;
-  emotionDetectedMinFraction: number;
-}
-
-interface Scenario {
-  id: string;
-  description: string;
-  durationEstimateSec: number;
-  smokeDurationEstimateSec: number;
-  turns: ScenarioTurn[];
-  smokeSubset: number[];
-  verificationThresholds: ScenarioVerificationThresholds;
-}
 
 export interface TranscriptEntry {
   turnIdx: number;
@@ -435,12 +415,7 @@ export async function runDialogue(options: {
   smoke?: boolean;
 }): Promise<VerificationResult> {
   const scenarioId = options.scenarioId ?? "canonical";
-  const scenarioPath = join(SCENARIOS_DIR, `${scenarioId}.json`);
-  if (!existsSync(scenarioPath)) {
-    throw new Error(`Scenario not found: ${scenarioPath}`);
-  }
-
-  const scenario = JSON.parse(readFileSync(scenarioPath, "utf-8")) as Scenario;
+  const scenario = loadDialogueScenario(scenarioId);
   const isSmoke = options.smoke ?? false;
 
   const turnsToRun = isSmoke
@@ -774,6 +749,19 @@ export async function runDialogue(options: {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  if (process.argv.includes("--count-scenarios")) {
+    console.log(JSON.stringify(countDialogueScenarios(), null, 2));
+    return;
+  }
+  if (process.argv.includes("--validate-scenarios")) {
+    console.log(JSON.stringify(validateDialogueScenarios(), null, 2));
+    return;
+  }
+  if (process.argv.includes("--list-scenarios")) {
+    for (const scenario of listDialogueScenarios()) console.log(scenario);
+    return;
+  }
+
   const scenarioArg = parseArg("scenario") ?? "canonical";
   const outputArg = parseArg("output");
   const isSmoke =

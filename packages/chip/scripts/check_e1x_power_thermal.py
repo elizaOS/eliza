@@ -81,19 +81,28 @@ def main() -> int:
     average_active_cores = total_core_wave_count / max(1, total_k_wave_count)
     compute_energy_j = total_ops * ENERGY_PJ_PER_INT8_OP / 1e12
     local_sram_energy_j = total_ops * LOCAL_SRAM_PJ_PER_BYTE / 1e12
-    fabric_bytes = int(schedule.get("total_fabric_cycles", 0)) * LINK_BITS_PER_CYCLE_BIDIRECTIONAL // 8
+    fabric_bytes = (
+        int(schedule.get("total_fabric_cycles", 0)) * LINK_BITS_PER_CYCLE_BIDIRECTIONAL // 8
+    )
     fabric_energy_j = (
-        fabric_bytes * float(schedule.get("repair_hop_penalty", 0.0)) * FABRIC_PJ_PER_BYTE_HOP / 1e12
+        fabric_bytes
+        * float(schedule.get("repair_hop_penalty", 0.0))
+        * FABRIC_PJ_PER_BYTE_HOP
+        / 1e12
     )
     active_static_energy_j = average_active_cores * STATIC_POWER_W_PER_CORE * elapsed_s
-    schedule_energy_j = compute_energy_j + local_sram_energy_j + fabric_energy_j + active_static_energy_j
+    schedule_energy_j = (
+        compute_energy_j + local_sram_energy_j + fabric_energy_j + active_static_energy_j
+    )
     schedule_average_power_w = schedule_energy_j / max(elapsed_s, 1e-12)
     schedule_power_density_w_per_mm2 = schedule_average_power_w / WAFER_AREA_MM2
-    schedule_planning_junction_c = AMBIENT_COOLANT_C + schedule_average_power_w * PLANNING_THETA_JA_C_PER_W
-
-    model_required_vs_sram = float(model_load.get("model_load", {}).get("total_required_mib", 0.0)) / (
-        logical_cores * LOCAL_SRAM_KIB_PER_CORE / 1024
+    schedule_planning_junction_c = (
+        AMBIENT_COOLANT_C + schedule_average_power_w * PLANNING_THETA_JA_C_PER_W
     )
+
+    model_required_vs_sram = float(
+        model_load.get("model_load", {}).get("total_required_mib", 0.0)
+    ) / (logical_cores * LOCAL_SRAM_KIB_PER_CORE / 1024)
 
     gate_checks = [
         (
@@ -130,8 +139,7 @@ def main() -> int:
         ),
         (
             "real_graph_schedule_energy_is_positive_and_bounded",
-            0.0 < schedule_energy_j < 1.0
-            and 0.0 < schedule_average_power_w < peak_package_power_w,
+            0.0 < schedule_energy_j < 1.0 and 0.0 < schedule_average_power_w < peak_package_power_w,
             (
                 f"real-graph schedule energy={schedule_energy_j:.6f} J "
                 f"average_power={schedule_average_power_w:.3f} W"
@@ -140,7 +148,9 @@ def main() -> int:
     ]
     for check_id, condition, detail in gate_checks:
         status, resolved_detail = pass_fail(condition, detail)
-        checks.append({"id": f"e1x_power_thermal_{check_id}", "status": status, "detail": resolved_detail})
+        checks.append(
+            {"id": f"e1x_power_thermal_{check_id}", "status": status, "detail": resolved_detail}
+        )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

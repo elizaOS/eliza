@@ -6,7 +6,9 @@
  * Pure types only — resolution logic lives in @elizaos/core.
  */
 
-export type ElizaCloudService = 'inference' | 'tts' | 'media' | 'embeddings' | 'rpc';
+export const ELIZA_CLOUD_SERVICES = ['inference', 'tts', 'media', 'embeddings', 'rpc'] as const;
+
+export type ElizaCloudService = (typeof ELIZA_CLOUD_SERVICES)[number];
 
 export type ResolvedElizaCloudTopology = {
 	linked: boolean;

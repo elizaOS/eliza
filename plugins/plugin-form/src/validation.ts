@@ -293,7 +293,7 @@ function validateNumber(
       ? value
       : parseFloat(String(value).replace(/[,$]/g, ""));
 
-  if (Number.isNaN(numValue)) {
+  if (!Number.isFinite(numValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a number`,

@@ -14,6 +14,7 @@ import {
 import { creditsService } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseCreditTransactionsQuery } from "./query";
 
 const app = new Hono<AppEnv>();
 
@@ -28,8 +29,23 @@ app.get("/", async (c) => {
 
     const hoursParam = c.req.query("hours");
     const limitParam = c.req.query("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) : 100;
-    const hours = hoursParam ? parseInt(hoursParam, 10) : null;
+    let limit: number;
+    let hours: number | null;
+    try {
+      ({ limit, hours } = parseCreditTransactionsQuery({
+        limit: limitParam,
+        hours: hoursParam,
+      }));
+    } catch (err) {
+      return c.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : "Invalid query parameter",
+          code: "validation_error",
+        },
+        400,
+      );
+    }
 
     const allTransactions = await creditsService.listTransactionsByOrganization(
       user.organization_id,

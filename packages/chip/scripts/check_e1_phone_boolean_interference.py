@@ -17,12 +17,12 @@ Reproducible: re-running with the same out/*.step files yields the same numbers.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
 import sys
 import time
-import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

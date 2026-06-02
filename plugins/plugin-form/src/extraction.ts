@@ -35,6 +35,8 @@ const FORM_INTENTS: FormIntent[] = [
   "other",
 ];
 
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
 const INTENT_MEANINGS: Record<FormIntent, string> = {
   fill_form: "user is providing field values",
   submit: "user wants to submit or finish the form",
@@ -101,6 +103,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isValidIntent(str: string): str is FormIntent {
   return (FORM_INTENTS as string[]).includes(str);
+}
+
+function isSafeExtractionField(field: string): boolean {
+  return (
+    field
+      .split(".")
+      .every((part) => part.length > 0 && !UNSAFE_OBJECT_KEYS.has(part))
+  );
 }
 
 // ============================================================================
@@ -233,6 +243,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
     if (!isRecord(entry)) continue;
     const fieldKey = typeof entry.field === "string" ? entry.field : "";
     if (!fieldKey) continue;
+    if (!isSafeExtractionField(fieldKey)) continue;
 
     const dedupeKey = `${fieldKey}\0${String(entry.value ?? "")}`;
     if (seen.has(dedupeKey)) continue;
@@ -245,6 +256,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
         ? entry.confidence
         : parseFloat(String(entry.confidence ?? ""));
     if (!Number.isFinite(confidence)) confidence = 0.5;
+    confidence = Math.max(0, Math.min(1, confidence));
 
     const reasoning =
       typeof entry.reasoning === "string" ? entry.reasoning : undefined;
@@ -277,11 +289,20 @@ export function coerceExtractionsAgainstControls(
       )
     : controls;
 
-  return extractions.map((extraction) => {
-    if (extraction.field.includes(".")) return extraction;
+  const controlsByKey = new Map(
+    resolvedControls.map((control) => [control.key, control]),
+  );
 
-    const control = resolvedControls.find((c) => c.key === extraction.field);
-    if (!control) return extraction;
+  return extractions.flatMap((extraction) => {
+    if (extraction.field.includes(".")) {
+      const [parentKey, subKey, ...extraParts] = extraction.field.split(".");
+      if (extraParts.length > 0 || !parentKey || !subKey) return [];
+      if (!controlsByKey.has(parentKey)) return [];
+      return [extraction];
+    }
+
+    const control = controlsByKey.get(extraction.field);
+    if (!control) return [];
 
     let value = extraction.value;
     if (typeof value === "string") {
@@ -292,15 +313,17 @@ export function coerceExtractionsAgainstControls(
     if (!validation.valid) {
       const reasoning =
         `${extraction.reasoning ?? ""} (Validation failed: ${validation.error})`.trim();
-      return {
-        ...extraction,
-        value,
-        confidence: Math.min(extraction.confidence, 0.3),
-        reasoning,
-      };
+      return [
+        {
+          ...extraction,
+          value,
+          confidence: Math.min(extraction.confidence, 0.3),
+          reasoning,
+        },
+      ];
     }
 
-    return { ...extraction, value };
+    return [{ ...extraction, value }];
   });
 }
 

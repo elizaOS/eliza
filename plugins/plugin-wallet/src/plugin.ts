@@ -109,7 +109,7 @@ export const walletPlugin: Plugin = {
   ),
   providers: concatPlugins(coreWalletPlugin.providers, evmPlugin.providers),
   actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions),
-  routes: concatPlugins(solanaPlugin.routes),
+  routes: concatPlugins(evmPlugin.routes, solanaPlugin.routes),
   init: async (config, runtime) => {
     await coreWalletPlugin.init?.(config, runtime);
     await evmPlugin.init?.(config, runtime);

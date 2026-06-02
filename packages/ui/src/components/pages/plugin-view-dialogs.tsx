@@ -1,3 +1,4 @@
+import { CheckCircle2 } from "lucide-react";
 import type { PluginInfo } from "../../api";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
@@ -128,18 +129,22 @@ export function PluginSettingsDialog({
           )}
         </AdminDialog.Header>
         <AdminDialog.BodyScroll>
-          <div className="px-5 pt-4 pb-1 flex items-center gap-3 flex-wrap text-xs text-muted">
+          <div className="px-5 pt-4 pb-1 flex items-center gap-3 text-xs text-muted">
             {plugin.description && (
-              <span className="text-xs text-muted leading-relaxed">
+              <span
+                className="min-w-0 flex-1 line-clamp-1 text-xs text-muted"
+                title={plugin.description}
+              >
                 {plugin.description}
               </span>
             )}
             {(plugin.tags?.length ?? 0) > 0 && (
-              <span className="flex items-center gap-1.5 flex-wrap">
+              <span className="flex shrink-0 items-center gap-1.5">
                 {plugin.tags?.map((tag) => (
                   <span
                     key={`${plugin.id}:${tag}:settings`}
-                    className="whitespace-nowrap border border-border/40 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+                    className="max-w-24 truncate border border-border/40 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+                    title={tag}
                   >
                     {tag}
                   </span>
@@ -265,13 +270,18 @@ export function PluginSettingsDialog({
               onClick={() => void onConfigSave(plugin.id)}
               disabled={isSaving}
             >
-              {isSaving
-                ? savingLabel
-                : saveSuccess
-                  ? t("pluginsview.SavedWithCheck", {
-                      defaultValue: "✓ Saved",
-                    })
-                  : saveSettingsLabel}
+              {isSaving ? (
+                savingLabel
+              ) : saveSuccess ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {t("pluginsview.Saved", {
+                    defaultValue: "Saved",
+                  })}
+                </>
+              ) : (
+                saveSettingsLabel
+              )}
             </Button>
           </AdminDialog.Footer>
         )}

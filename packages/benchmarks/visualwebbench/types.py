@@ -144,3 +144,4 @@ class VisualWebBenchConfig:
     app_harness_ui_url: str | None = None
     app_harness_poll_interval_ms: int | None = None
     verbose: bool = False
+    include_edge_scenarios: bool = False

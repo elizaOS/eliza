@@ -34,7 +34,7 @@ describe("values-pg-local.yaml (CNPG local PostgreSQL)", () => {
   test("pins the PostgreSQL major version", () => {
     const version = doc.version as Record<string, unknown>;
     expect(version).toBeDefined();
-    expect(typeof version.postgresql).toBe("string");
+    expect(version.postgresql).toBe("17");
   });
 
   test("configures a single-instance cluster with initdb DB and owner", () => {
@@ -87,7 +87,13 @@ describe("values-redis-local.yaml (Bitnami Redis chart)", () => {
     expect(master).toBeDefined();
     const resources = master.resources as Record<string, unknown>;
     const requests = resources.requests as Record<string, unknown>;
-    expect(typeof requests.memory).toBe("string");
-    expect(typeof requests.cpu).toBe("string");
+    const limits = resources.limits as Record<string, unknown>;
+    expect(requests).toEqual({
+      memory: "64Mi",
+      cpu: "50m",
+    });
+    expect(limits).toEqual({
+      memory: "128Mi",
+    });
   });
 });

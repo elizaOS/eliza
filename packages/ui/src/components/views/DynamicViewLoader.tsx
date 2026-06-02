@@ -14,13 +14,16 @@
  * When a view module exports an `interact(capability, params)` function, the
  * loader registers it with view-interact-registry so the agent can invoke
  * capabilities via POST /api/views/:id/interact → WS → here → WS result.
- * Standard capabilities (get-text, get-state, refresh, focus-element) are
- * handled by the loader itself even when the module has no interact export.
+ * Standard capabilities (get-text, get-state, refresh, focus-element,
+ * click-element, fill-input) are handled by the loader itself even when the
+ * module has no interact export.
  */
 
+import { AlertTriangle, Ban, LoaderCircle } from "lucide-react";
 import {
   type ComponentType,
   memo,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -355,56 +358,99 @@ async function handleStandardCapability(
   }
 }
 
+function ViewStatusFrame({
+  tone,
+  icon,
+  title,
+  children,
+}: {
+  tone: "loading" | "error" | "restricted";
+  icon: ReactNode;
+  title: ReactNode;
+  children?: ReactNode;
+}) {
+  const toneClass =
+    tone === "error"
+      ? "border-destructive/25 bg-destructive/5 text-destructive"
+      : tone === "restricted"
+        ? "border-muted-foreground/20 bg-muted/20 text-muted-foreground"
+        : "border-primary/20 bg-primary/5 text-primary";
+
+  return (
+    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
+      <div
+        className={`flex w-full max-w-sm items-center gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
+      >
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
+          {icon}
+        </div>
+        <div className="min-w-0 text-left">
+          <div className="text-sm font-semibold">{title}</div>
+          {children ? (
+            <div className="mt-1 text-xs opacity-75">{children}</div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ViewLoadingSkeleton() {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      {t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
-    </div>
+    <ViewStatusFrame
+      tone="loading"
+      icon={
+        <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+      }
+      title={t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
+    />
   );
 }
 
 function ViewErrorState({ viewId }: { viewId: string }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 flex-col items-center justify-center gap-2 p-6 text-center">
-      <p className="text-sm font-semibold text-destructive">
-        {t("dynamicviewloader.error.title", {
-          defaultValue: "Failed to load view",
-        })}
-      </p>
-      <p className="text-xs text-muted">
+    <ViewStatusFrame
+      tone="error"
+      icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.error.title", {
+        defaultValue: "Failed to load view",
+      })}
+    >
+      <span>
         {t("dynamicviewloader.viewId", {
           viewId,
           defaultValue: "View ID: {{viewId}}",
         })}
-      </p>
-    </div>
+      </span>
+    </ViewStatusFrame>
   );
 }
 
 function ViewRestrictedState({ viewId }: { viewId: string }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 flex-col items-center justify-center gap-2 p-6 text-center">
-      <p className="text-sm font-semibold text-muted-foreground">
-        {t("dynamicviewloader.restricted.title", {
-          defaultValue: "View not available on this platform",
-        })}
-      </p>
-      <p className="text-xs text-muted">
+    <ViewStatusFrame
+      tone="restricted"
+      icon={<Ban className="h-5 w-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.restricted.title", {
+        defaultValue: "View not available on this platform",
+      })}
+    >
+      <span>
         {t("dynamicviewloader.restricted.body", {
           defaultValue:
             "Dynamic views cannot be loaded on iOS or Android store builds.",
         })}
-      </p>
-      <p className="text-xs text-muted">
+      </span>
+      <span className="mt-1 block">
         {t("dynamicviewloader.viewId", {
           viewId,
           defaultValue: "View ID: {{viewId}}",
         })}
-      </p>
-    </div>
+      </span>
+    </ViewStatusFrame>
   );
 }
 
@@ -416,7 +462,7 @@ interface DynamicViewLoaderProps {
   /** The view's stable ID, used in error state messages. */
   viewId: string;
   /** Presentation/runtime family for this view. Defaults to GUI. */
-  viewType?: "gui" | "tui";
+  viewType?: "gui" | "tui" | "xr";
 }
 
 /**

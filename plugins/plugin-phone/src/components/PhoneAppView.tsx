@@ -62,6 +62,8 @@ const DIAL_KEYS: readonly string[] = [
 ];
 
 type PhoneTab = "dialer" | "recent" | "contacts";
+const DEFAULT_CALL_LOG_LIMIT = 50;
+const MAX_CALL_LOG_LIMIT = 200;
 
 function defaultOverlayContext(): OverlayAppContext {
   return {
@@ -132,12 +134,21 @@ function normalizeNumber(input: string): string {
   return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
 }
 
-async function loadPhoneState(options?: { limit?: number; number?: string }) {
+function normalizeCallLogLimit(limit: unknown): number {
+  if (!Number.isFinite(limit) || typeof limit !== "number") {
+    return DEFAULT_CALL_LOG_LIMIT;
+  }
+  return Math.min(MAX_CALL_LOG_LIMIT, Math.max(1, Math.trunc(limit)));
+}
+
+async function loadPhoneState(options?: { limit?: unknown; number?: string }) {
+  const normalizedNumber =
+    typeof options?.number === "string" ? normalizeNumber(options.number) : "";
   const [status, recent] = await Promise.all([
     Phone.getStatus().catch(() => null),
     Phone.listRecentCalls({
-      limit: options?.limit ?? 50,
-      ...(options?.number ? { number: normalizeNumber(options.number) } : {}),
+      limit: normalizeCallLogLimit(options?.limit),
+      ...(normalizedNumber ? { number: normalizedNumber } : {}),
     }),
   ]);
   return {
@@ -1195,7 +1206,7 @@ export async function interact(
 ): Promise<unknown> {
   if (capability === "terminal-phone-state") {
     const state = await loadPhoneState({
-      limit: typeof params?.limit === "number" ? params.limit : 50,
+      limit: params?.limit,
       number: typeof params?.number === "string" ? params.number : undefined,
     });
     return {

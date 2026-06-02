@@ -7,7 +7,8 @@ import { SidebarHeaderStack } from "./sidebar-header-stack";
 export interface SidebarHeaderProps
   extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
-  search?: Omit<SidebarSearchBarProps, "className">;
+  search?: Omit<SidebarSearchBarProps, "className"> &
+    React.RefAttributes<HTMLInputElement>;
   searchClassName?: string;
 }
 

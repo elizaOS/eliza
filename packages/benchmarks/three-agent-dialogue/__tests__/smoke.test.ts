@@ -172,6 +172,41 @@ describe("Canonical scenario", () => {
   });
 });
 
+describe("Scenario expansion", () => {
+  it("adds exactly ten edge variants per authored scenario", async () => {
+    const {
+      EDGE_VARIANTS,
+      countDialogueScenarios,
+      listDialogueScenarios,
+      validateDialogueScenarios,
+    } = await import("../runner/scenarios.ts");
+
+    const counts = countDialogueScenarios();
+    expect(EDGE_VARIANTS.length).toBe(10);
+    expect(counts).toEqual({
+      suite: "three-agent-dialogue",
+      existing: 1,
+      added: 10,
+      total: 11,
+      multiplierAdded: 10,
+    });
+    expect(listDialogueScenarios()).toHaveLength(11);
+    expect(validateDialogueScenarios().valid).toBe(true);
+  });
+
+  it("loads an edge scenario without mutating the canonical turns", async () => {
+    const { loadDialogueScenario } = await import("../runner/scenarios.ts");
+
+    const canonical = loadDialogueScenario("canonical");
+    const edge = loadDialogueScenario("canonical--edge-emotion-ambiguity");
+
+    expect(edge.id).toBe("canonical--edge-emotion-ambiguity");
+    expect(edge.turns).toHaveLength(canonical.turns.length);
+    expect(edge.turns[0].prompt).toContain("slightly mixed");
+    expect(canonical.turns[0].prompt).not.toContain("slightly mixed");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Character file validation (always run)
 // ---------------------------------------------------------------------------

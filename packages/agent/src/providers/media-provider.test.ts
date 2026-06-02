@@ -3,6 +3,7 @@ import { ElizaSchema } from "../config/zod-schema";
 import {
   type AudioGenerationProvider,
   createAudioProvider,
+  createVideoProvider,
 } from "./media-provider";
 
 type FetchCall = {
@@ -213,5 +214,84 @@ describe("media audio provider routing", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/voiceId/);
+  });
+});
+
+describe("media video provider routing", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends FAL video generation request shape and returns video output", async () => {
+    const calls: FetchCall[] = [];
+    stubAudioFetch(
+      Response.json({
+        video: { url: "https://cdn.example/video.mp4" },
+        thumbnail: { url: "https://cdn.example/thumb.jpg" },
+        duration: 7,
+      }),
+      calls,
+    );
+
+    const provider = createVideoProvider(
+      {
+        mode: "own-key",
+        provider: "fal",
+        fal: {
+          apiKey: "fal-key",
+          model: "fal-ai/minimax-video",
+          baseUrl: "https://fal.test",
+        },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.generate({
+      prompt: "glass lighthouse",
+      duration: 7,
+      aspectRatio: "16:9",
+      imageUrl: "https://example.com/input.png",
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        videoUrl: "https://cdn.example/video.mp4",
+        thumbnailUrl: "https://cdn.example/thumb.jpg",
+        duration: 7,
+      },
+    });
+    expect(calls[0].url).toBe("https://fal.test/fal-ai/minimax-video");
+    expect(calls[0].init?.headers).toMatchObject({
+      Authorization: "Key fal-key",
+    });
+    expect(calls[0].body).toEqual({
+      prompt: "glass lighthouse",
+      duration: 7,
+      aspect_ratio: "16:9",
+      image_url: "https://example.com/input.png",
+    });
+  });
+
+  it("returns failure when FAL succeeds without a video URL", async () => {
+    const calls: FetchCall[] = [];
+    stubAudioFetch(Response.json({ video: {}, duration: 7 }), calls);
+
+    const provider = createVideoProvider(
+      {
+        mode: "own-key",
+        provider: "fal",
+        fal: { apiKey: "fal-key" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.generate({ prompt: "missing video" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "No video returned from FAL",
+    });
+    expect(calls).toHaveLength(1);
   });
 });

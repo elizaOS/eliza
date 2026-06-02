@@ -35,6 +35,7 @@
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch"
   },
@@ -42,7 +43,8 @@
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

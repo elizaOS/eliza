@@ -13,6 +13,7 @@
  */
 
 import type { ResponseHandlerResult } from "./core-lite.ts";
+import { getBaseScenarioId } from "./scenarios.ts";
 import type { SimulatorState } from "./state.ts";
 import type { Scenario, ScenarioScriptStep } from "./types.ts";
 
@@ -81,9 +82,10 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
     );
     const channelId = message.channel;
     const text = message.text;
+    const scenarioId = getBaseScenarioId(scenario.id);
 
     // Branch on scenario id for explicit ideal behavior.
-    switch (scenario.id) {
+    switch (scenarioId) {
       // ---- A1, K1: fragmented stream — coalesce, respond on last fragment ----
       case "A1-fragmented-email-draft":
       case "K1-recipe-assembly": {
@@ -103,7 +105,7 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
         }
         const combined = allMessagesInChannel.map((m) => m.text).join(" ");
         let replyText: string;
-        if (scenario.id === "A1-fragmented-email-draft") {
+        if (scenarioId === "A1-fragmented-email-draft") {
           replyText = "Drafting an email to Bob about lunch tomorrow.";
         } else {
           replyText =

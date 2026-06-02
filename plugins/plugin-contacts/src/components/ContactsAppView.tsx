@@ -99,9 +99,17 @@ function matchesQuery(contact: ContactSummary, q: string): boolean {
   return false;
 }
 
+function normalizeContactsLimit(value: unknown, fallback = 200): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(500, Math.max(1, Math.trunc(value)));
+}
+
 async function loadContactsState(options?: { query?: string; limit?: number }) {
   const query = options?.query?.trim() ?? "";
-  const limit = options?.limit;
+  const limit =
+    typeof options?.limit === "number"
+      ? normalizeContactsLimit(options.limit)
+      : undefined;
   const result = await Contacts.listContacts({
     ...(query ? { query } : {}),
     ...(typeof limit === "number" ? { limit } : {}),
@@ -1052,9 +1060,17 @@ export function ContactsTuiView() {
                   {contact.displayName || "Unnamed"}
                 </span>
                 <span
+                  aria-label={contact.starred ? "Starred" : "Not starred"}
+                  role="img"
                   style={{ color: contact.starred ? "#facc15" : "#64748b" }}
+                  title={contact.starred ? "Starred" : "Not starred"}
                 >
-                  {contact.starred ? "*" : "-"}
+                  <Star
+                    aria-hidden
+                    fill={contact.starred ? "currentColor" : "none"}
+                    size={14}
+                    strokeWidth={contact.starred ? 0 : 1.8}
+                  />
                 </span>
                 <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
                   {subtitle}

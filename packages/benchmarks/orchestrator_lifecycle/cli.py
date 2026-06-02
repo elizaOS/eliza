@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 
+from .dataset import LifecycleDataset
 from .runner import LifecycleRunner
 from .types import LifecycleConfig
 
@@ -25,6 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Compatibility flag; lifecycle scenarios are expanded by default",
+    )
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
+    parser.add_argument(
         "--mode",
         choices=("bridge", "simulate"),
         default="bridge",
@@ -41,6 +50,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.count_scenarios:
+        dataset = LifecycleDataset(args.scenario_dir)
+        print(json.dumps(dataset.count_scenarios(), indent=2))
+        return
+    if args.validate_scenarios:
+        dataset = LifecycleDataset(args.scenario_dir)
+        validation = dataset.validate_scenarios()
+        print(json.dumps(validation, indent=2))
+        if not validation["valid"]:
+            raise SystemExit(1)
+        return
+
     config = LifecycleConfig(
         output_dir=args.output,
         scenario_dir=args.scenario_dir,

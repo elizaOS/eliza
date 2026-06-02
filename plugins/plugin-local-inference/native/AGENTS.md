@@ -1,13 +1,14 @@
 # AGENTS.md — Eliza-1 inference (kernels + runtime)
 
 This file is the canonical contract for any agent working on the Eliza-1
-on-device inference stack. It applies to everything under
-`packages/inference/`, the runtime under
-`packages/app-core/src/services/local-inference/`, the mtp build hook
-at `packages/app-core/scripts/build-llama-cpp-mtp.mjs`, and any
-mobile/desktop bridges that consume the same artifacts.
+on-device inference stack. In this repository the native stack lives under
+`plugins/plugin-local-inference/native/`; older docs may still call that area
+`packages/inference/`. The contract also applies to the local-inference runtime
+surfaces in `packages/ui/src/services/local-inference/`, the mtp build hook at
+`packages/app-core/scripts/build-llama-cpp-mtp.mjs`, and any mobile/desktop
+bridges that consume the same artifacts.
 
-The training-side companion is at [`packages/training/AGENTS.md`](../training/AGENTS.md).
+The training-side companion is at [`packages/training/AGENTS.md`](../../../packages/training/AGENTS.md).
 Read both before changing anything that crosses the boundary (artifacts,
 manifest, kernel ABI, GGML pin).
 
@@ -35,8 +36,8 @@ follow-up — not a blocker for structured output (the b9213 base already has
 `grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`); the
 conflict-prone files are the quant-slot enums in `ggml-common.h` / `ggml.h` and
 the `Q1_0` block layout, which upstream redefined incompatibly with the fork's.
-Full cost / conflict surface / trigger conditions:
-[`docs/porting/upstream-rebase-plan.md`](../../docs/porting/upstream-rebase-plan.md).)
+Before attempting that rebase, write or update a concrete porting plan in the
+repo docs and verify every referenced path from this directory.)
 
 ---
 
@@ -575,7 +576,7 @@ device-side downloader MUST:
    voice generation → barge-in cancel test), and only then mark the
    bundle `ready` in the local catalog.
 
-Publishing flow (training side, see [`packages/training/AGENTS.md`](../training/AGENTS.md)):
+Publishing flow (training side, see [`packages/training/AGENTS.md`](../../../packages/training/AGENTS.md)):
 
 - Training produces text + drafter weights.
 - Quantization recipes in `packages/training/scripts/quantization/`
@@ -640,7 +641,7 @@ backend nightly.
   evidence.
 - **Stay aligned with the training side.** Quantization recipes, weight
   layouts, and bundle structure cross the boundary between training
-  and inference. Read [`packages/training/AGENTS.md`](../training/AGENTS.md)
+  and inference. Read [`packages/training/AGENTS.md`](../../../packages/training/AGENTS.md)
   before changing the manifest schema or any quantization op.
 - **Branding.** User-facing strings and logs say `Eliza-1`. They do
   not say `Qwen`, `Llama`, `OmniVoice`, `MTP`, or `TurboQuant`.
@@ -652,10 +653,9 @@ backend nightly.
 
 ## 10. Files to read before making changes
 
-- `packages/inference/README.md` — kernel-level technical reference and
-  current verification matrix. The single source of truth for what is
-  hardware-verified vs. compile-only.
-- `packages/app-core/src/services/local-inference/README.md` — runtime
+- `plugins/plugin-local-inference/README.md` — plugin-level runtime and native
+  inference overview.
+- `packages/ui/src/services/local-inference/README.md` — runtime
   contract for the engine, downloader, recommendation, and routing.
 - `packages/app-core/scripts/build-llama-cpp-mtp.mjs` — the build
   hook. Every kernel patch lives here. It (and the AOSP cross-compile at

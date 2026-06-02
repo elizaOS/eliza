@@ -43,6 +43,23 @@ describe("paste handler utilities", () => {
       expect(result.remaining).toBe("extra");
     });
 
+    test("keeps normal input before paste start out of paste content", () => {
+      const handler = new PasteHandler();
+      const result = handler.handleInput(`a${PASTE_START}p${PASTE_END}b`);
+      expect(result.consumed).toBe(true);
+      expect(result.pasteContent).toBe("p");
+      expect(result.remaining).toBe("ab");
+    });
+
+    test("returns normal input before an unfinished paste as remaining input", () => {
+      const handler = new PasteHandler();
+      const result = handler.handleInput(`typed${PASTE_START}paste`);
+      expect(result.consumed).toBe(true);
+      expect(result.pasteContent).toBeNull();
+      expect(result.remaining).toBe("typed");
+      expect(handler.isBuffering()).toBe(true);
+    });
+
     test("passes through non-paste input", () => {
       const handler = new PasteHandler();
       const result = handler.handleInput("normal input");

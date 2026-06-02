@@ -33,6 +33,7 @@
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
     "test:android:manual": "cd android && gradle test",
     "prepublishOnly": "bun run build"
   },
@@ -55,7 +56,8 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

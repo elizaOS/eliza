@@ -16,7 +16,9 @@ def test_e1x_repaired_real_weight_execution_gate_passes() -> None:
         text=True,
         stdout=subprocess.PIPE,
     )
-    report = json.loads((ROOT / "build/reports/e1x_repaired_real_weight_execution.json").read_text())
+    report = json.loads(
+        (ROOT / "build/reports/e1x_repaired_real_weight_execution.json").read_text()
+    )
     summary = report["summary"]
     assert result.returncode == 0, result.stdout
     assert "PASS: E1X repaired real-weight execution" in result.stdout

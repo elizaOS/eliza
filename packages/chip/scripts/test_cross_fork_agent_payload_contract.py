@@ -272,7 +272,11 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                     mock.patch.object(
                         gate,
                         "LINUX_MANIFEST_CANDIDATES",
-                        (os_rv64 / "manifest.json", os_rv64 / "manifest.json.template", chip_manifest),
+                        (
+                            os_rv64 / "manifest.json",
+                            os_rv64 / "manifest.json.template",
+                            chip_manifest,
+                        ),
                     ),
                 ]
             ):

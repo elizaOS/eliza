@@ -43,27 +43,38 @@ export function installWebShim(
   options: {
     /** Origin to send postMessage to. Defaults to "*"; production agents should pin this. */
     parentOrigin?: string;
+    /** Milliseconds before a parent request is rejected. Default 30s. */
+    requestTimeoutMs?: number;
     /** Base path the agent serves view bundles from. Default `/api/views`. */
     viewsBasePath?: string;
   } = {},
 ): PluginHostShim {
+  if (installedWebShim) return installedWebShim;
+
   const parentOrigin = options.parentOrigin ?? "*";
+  const requestTimeoutMs = Math.max(0, options.requestTimeoutMs ?? 30_000);
   const viewsBasePath = options.viewsBasePath ?? "/api/views";
 
   const subscribers = new Map<string, Set<(data: JsonValue) => void>>();
   const pending = new Map<
     number,
-    { resolve: (v: JsonValue) => void; reject: (e: Error) => void }
+    {
+      reject: (e: Error) => void;
+      resolve: (v: JsonValue) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
   >();
   let nextRequestId = 0;
 
-  window.addEventListener("message", (event: MessageEvent) => {
+  const onMessage = (event: MessageEvent) => {
+    if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
+    if (event.source !== window.parent) return;
     const message = event.data;
-    if (!isShimMessage(message)) return;
-    if (message.kind === "elizaos.shim.response") {
+    if (isParentResponse(message)) {
       const slot = pending.get(message.id);
       if (!slot) return;
       pending.delete(message.id);
+      clearTimeout(slot.timeout);
       if (message.ok) {
         slot.resolve((message.payload ?? null) as JsonValue);
       } else {
@@ -71,17 +82,19 @@ export function installWebShim(
       }
       return;
     }
-    if (message.kind === "elizaos.shim.event") {
+    if (isParentEvent(message)) {
       const set = subscribers.get(message.event);
       if (!set) return;
       for (const handler of set) handler(message.data);
     }
-  });
+  };
+  window.addEventListener("message", onMessage);
 
   const shim: PluginHostShim = {
     resolveViewUrl(pluginName, relativePath) {
+      const safeRelativePath = normalizeRelativePath(relativePath);
       return new URL(
-        `${viewsBasePath}/${encodeURIComponent(pluginName)}/${relativePath}`,
+        `${viewsBasePath}/${encodeURIComponent(pluginName)}/${safeRelativePath}`,
         window.location.href,
       );
     },
@@ -94,11 +107,22 @@ export function installWebShim(
         params,
       };
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`Host shim request timed out: ${method}`));
+        }, requestTimeoutMs);
         pending.set(id, {
-          resolve: (v) => resolve(v as never),
           reject,
+          resolve: (v) => resolve(v as never),
+          timeout,
         });
-        window.parent.postMessage(envelope, parentOrigin);
+        try {
+          window.parent.postMessage(envelope, parentOrigin);
+        } catch (error) {
+          pending.delete(id);
+          clearTimeout(timeout);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
       });
     },
     on(event, handler) {
@@ -113,17 +137,64 @@ export function installWebShim(
   };
 
   installHostShim(shim);
+  installedWebShim = shim;
+  installedWebShimCleanup = () => {
+    window.removeEventListener("message", onMessage);
+    for (const slot of pending.values()) {
+      clearTimeout(slot.timeout);
+    }
+    pending.clear();
+  };
   return shim;
 }
 
-function isShimMessage(
-  message: unknown,
-): message is ParentRequest | ParentResponse | ParentEvent {
+let installedWebShim: PluginHostShim | null = null;
+let installedWebShimCleanup: (() => void) | null = null;
+
+export function resetWebShimForTests(): void {
+  installedWebShimCleanup?.();
+  installedWebShimCleanup = null;
+  installedWebShim = null;
+}
+
+function normalizeRelativePath(relativePath: string): string {
+  const raw = relativePath.replace(/\\/g, "/");
+  if (!raw || raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) {
+    throw new Error(`Invalid view asset path: ${relativePath || "<empty>"}`);
+  }
+  const normalized = raw
+    .split("/")
+    .map((segment) => {
+      if (segment === "" || segment === "." || segment === "..") {
+        throw new Error(`Invalid view asset path: ${relativePath}`);
+      }
+      return encodeURIComponent(segment);
+    })
+    .join("/");
+  if (!normalized) {
+    throw new Error(`Invalid view asset path: ${relativePath || "<empty>"}`);
+  }
+  return normalized;
+}
+
+function isParentResponse(message: unknown): message is ParentResponse {
   if (typeof message !== "object" || message === null) return false;
-  const kind = (message as { kind?: unknown }).kind;
+  const candidate = message as Partial<ParentResponse>;
   return (
-    kind === "elizaos.shim.request" ||
-    kind === "elizaos.shim.response" ||
-    kind === "elizaos.shim.event"
+    candidate.kind === "elizaos.shim.response" &&
+    typeof candidate.id === "number" &&
+    Number.isFinite(candidate.id) &&
+    typeof candidate.ok === "boolean" &&
+    (candidate.error === undefined || typeof candidate.error === "string")
+  );
+}
+
+function isParentEvent(message: unknown): message is ParentEvent {
+  if (typeof message !== "object" || message === null) return false;
+  const candidate = message as Partial<ParentEvent>;
+  return (
+    candidate.kind === "elizaos.shim.event" &&
+    typeof candidate.event === "string" &&
+    Object.hasOwn(candidate, "data")
   );
 }

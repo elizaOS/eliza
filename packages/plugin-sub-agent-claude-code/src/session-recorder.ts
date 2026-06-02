@@ -38,12 +38,15 @@ const RETENTION_DAYS = Number.parseInt(
  * isolation rather than relying on it as the only line of defence.
  */
 const REDACT_PATTERNS: { re: RegExp; label: string }[] = [
-  { re: /[A-Za-z0-9_-]{20,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, label: "<EMAIL>" },
+  { re: /sk-[A-Za-z0-9_-]{20,}/g, label: "<API_KEY>" },
+  {
+    re: /[A-Za-z0-9_-]{20,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    label: "<EMAIL>",
+  },
   {
     re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     label: "<EMAIL>",
   },
-  { re: /sk-[A-Za-z0-9_-]{20,}/g, label: "<API_KEY>" },
   { re: /(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, label: "<GH_TOKEN>" },
   { re: /xox[bpars]-[A-Za-z0-9-]{10,}/g, label: "<SLACK_TOKEN>" },
   { re: /0x[a-fA-F0-9]{40}/g, label: "<ETH_ADDR>" },
@@ -63,6 +66,7 @@ export interface SessionRecorderOptions {
   sessionId: string;
   auditDispatcher?: AuditDispatcher;
   actorId?: string;
+  sessionsRoot?: string;
 }
 
 /**
@@ -77,7 +81,7 @@ export class SessionRecorder {
   private finalized = false;
 
   constructor(private readonly opts: SessionRecorderOptions) {
-    this.dir = join(SESSIONS_ROOT, opts.sessionId);
+    this.dir = join(opts.sessionsRoot ?? SESSIONS_ROOT, opts.sessionId);
     this.path = join(this.dir, "transcript.log");
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(this.path, "", "utf8");
@@ -130,13 +134,16 @@ export class SessionRecorder {
  * Delete session directories older than `RETENTION_DAYS`. Safe to call
  * fire-and-forget at service start.
  */
-export function pruneOldSessions(now: number = Date.now()): number {
-  if (!existsSync(SESSIONS_ROOT)) return 0;
+export function pruneOldSessions(
+  now: number = Date.now(),
+  sessionsRoot: string = SESSIONS_ROOT,
+): number {
+  if (!existsSync(sessionsRoot)) return 0;
   const cutoff = now - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   let removed = 0;
-  for (const entry of readdirSync(SESSIONS_ROOT, { withFileTypes: true })) {
+  for (const entry of readdirSync(sessionsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const dir = join(SESSIONS_ROOT, entry.name);
+    const dir = join(sessionsRoot, entry.name);
     try {
       const stat = statSync(dir);
       if (stat.mtimeMs < cutoff) {

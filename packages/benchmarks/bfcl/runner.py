@@ -25,7 +25,7 @@ import time
 from typing import Optional
 
 from benchmarks.bfcl.agent import BFCLAgent, MockBFCLAgent
-from benchmarks.bfcl.dataset import BFCLDataset
+from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases
 from benchmarks.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
 from benchmarks.bfcl.executable_runtime import (
     MEMORY_PREREQ_CONVERSATION_PATH,
@@ -163,6 +163,8 @@ class BFCLRunner:
             await self._initialize()
 
             await self.dataset.load()
+            if self.config.include_edge_scenarios:
+                self.dataset._test_cases = expand_test_cases(list(self.dataset))
             logger.info(f"Loaded {len(self.dataset)} test cases")
 
             stats = self.dataset.get_statistics()
@@ -923,6 +925,8 @@ class BFCLRunner:
                 require_ground_truth=True,
                 seed=effective_seed,
             )
+            if self.config.include_edge_scenarios:
+                sample = expand_test_cases(sample)
             logger.info(
                 "Running sample of %s tests (seed=%s): %s",
                 len(sample),

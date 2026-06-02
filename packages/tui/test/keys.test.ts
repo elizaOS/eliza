@@ -263,6 +263,24 @@ describe("matchesKey", () => {
 });
 
 describe("parseKey", () => {
+  describe("Malformed terminal input", () => {
+    it("does not throw on malformed or oversized Kitty-like sequences", () => {
+      const malformedInputs = [
+        "\x1b[u",
+        "\x1b[;5u",
+        "\x1b[999999999999999999999999999999999999999999999999999999u",
+        "\x1b[97;999999999999999999999999999999999999999999999999999999:3u",
+        "\x1b[1;5:X",
+        "\x1b[<not-a-mouse-eventM",
+      ];
+
+      for (const input of malformedInputs) {
+        assert.doesNotThrow(() => parseKey(input));
+        assert.doesNotThrow(() => matchesKey(input, "ctrl+c"));
+      }
+    });
+  });
+
   describe("Kitty protocol with alternate keys", () => {
     it("should return Latin key name when base layout key is present", () => {
       setKittyProtocolActive(true);

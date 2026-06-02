@@ -161,6 +161,7 @@ class BenchmarkConfig:
     tags: list[str] | None = None
     fail_threshold: float = 0.5
     output_path: str | None = None
+    include_edge_scenarios: bool = False
 
 
 # ---------------------------------------------------------------------------

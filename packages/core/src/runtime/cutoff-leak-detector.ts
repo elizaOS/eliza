@@ -43,12 +43,13 @@
 const CUTOFF_LEAK_PATTERNS: readonly RegExp[] = [
 	// "as of my last/latest update | training | knowledge | last training | most recent update/training"
 	/\bas of my (?:last update|latest update|training|knowledge|last training|most recent (?:update|training))\b/i,
-	// "knowledge / training cutoff" (and "cut-off" / "cut off") — references the model's own horizon
-	/\b(?:knowledge|training)\s*cut[\s-]?off\b/i,
+	// "my knowledge / training cutoff" (and "cut-off" / "cut off") — references the model's own horizon
+	/\b(?:my|this model['’]?s|the model['’]?s|the assistant['’]?s)\s+(?:knowledge|training)\s*cut[\s-]?off\b/i,
+	/\bpredates\s+my\s+(?:knowledge|training)\s*cut[\s-]?off\b/i,
 	// "I was trained on | up to | until | through ...", "I was last updated | last trained"
 	/\bi\s+was\s+(?:trained\s+(?:on|up\s+to|until|through)|last\s+(?:updated|trained))\b/i,
-	// "the latest information / data / knowledge I have is/dates/goes from | to | up to | back to ..."
-	/\bthe latest (?:information|data|knowledge) i have (?:is|dates|goes)?\s*(?:from|to|up to|back to)\b/i,
+	// "the latest information / data / knowledge I have is/dates/goes from | to | up to | back to <date>"
+	/\bthe latest (?:information|data|knowledge) i have (?:is|dates|goes)?\s*(?:from|to|up to|back to)\s+(?:(?:early|mid|late)\s+)?(?:\d{4}|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i,
 	// "based on data through ...", "based on the data I was trained on", "based on my training data"
 	/\bbased on (?:data through|the data i was trained on|my training data)\b/i,
 	// "my training data | set | corpus"

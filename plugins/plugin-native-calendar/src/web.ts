@@ -53,7 +53,9 @@ export class AppleCalendarWeb extends WebPlugin implements AppleCalendarPlugin {
     return { ...unsupported };
   }
 
-  async deleteEvent(): Promise<AppleCalendarBaseResult> {
+  async deleteEvent(
+    _input: Parameters<AppleCalendarPlugin["deleteEvent"]>[0],
+  ): Promise<AppleCalendarBaseResult> {
     return { ...unsupported };
   }
 }

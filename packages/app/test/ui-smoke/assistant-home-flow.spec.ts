@@ -363,6 +363,15 @@ async function openReadyHome(page: Page): Promise<void> {
   }
 }
 
+async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
+  await openAppPath(page, targetPath);
+  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0);
+  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0);
+  const composer = page.locator('[data-testid="chat-composer-textarea"]');
+  await expect(composer).toBeVisible({ timeout: 15_000 });
+  await expect(composer).toBeEnabled({ timeout: 30_000 });
+}
+
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type Bridge = {
@@ -574,17 +583,13 @@ test.describe("assistant home app flow", () => {
     await installReadyDesktopStatusBridge(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
-    await openReadyHome(page);
-    const homeChatInput = page.getByTestId("home-chat-input");
+    await openReadyChat(page);
+    const rootChatInput = page.locator('[data-testid="chat-composer-textarea"]');
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
-    await screenshot(page, "02-assistant-home-clouds");
+    await screenshot(page, "02-assistant-chat-root");
 
-    await homeChatInput.fill("show me my views");
-    const recentChats = page.getByTestId("home-recent-chats");
-    if ((await recentChats.count()) > 0) {
-      await expect(recentChats).toBeVisible();
-    }
-    await screenshot(page, "03-assistant-home-typing-recents");
+    await rootChatInput.fill("show me my views");
+    await screenshot(page, "03-assistant-chat-typing");
 
     await openAppPath(page, "/chat");
     await expect(

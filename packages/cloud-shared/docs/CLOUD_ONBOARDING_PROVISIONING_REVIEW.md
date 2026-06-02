@@ -187,6 +187,21 @@ Action to unblock: redeploy/repair the staging Cloud API datastore env (verify
 `GET /api/v1/eliza/agents` with a valid key returns 200, then re-run
 `hetzner-e2e` (`gh workflow run hetzner-e2e.yml --ref develop`).
 
+### Update (2026-06-01) — staging datastore FIXED; only an expired CI key remains
+
+The staging datastore was repaired. Re-probed `api-staging.elizacloud.ai`:
+`GET /api/v1/eliza/agents` with an invalid `eliza_` bearer now returns **401**
+(was 500) — the `validateApiKey` path is healthy again. Re-dispatched the real
+`hetzner-e2e` workflow on `develop`; its preflight advanced from a 500 skip to:
+`Cloud API rejected CLOUD_E2E_API_KEY with HTTP 401`. So the auth + datastore
+path and the workflow wiring are now confirmed correct end-to-end on real
+staging; the only remaining gap is that the `ELIZACLOUD_API_KEY` /
+`CLOUD_E2E_API_KEY` secret in the `ci-hetzner-e2e` environment is expired.
+Refresh that secret with a valid staging bearer and the workflow will provision
+real Hetzner capacity. (Owner decision: the 500→401 transition is accepted as
+sufficient real-infra confirmation; a full real provision is deferred to a
+secret refresh.)
+
 ## 8. Verification status (honest)
 
 Confirmed in this environment (no cloud credentials needed):
@@ -204,6 +219,42 @@ and the production Cloudflare Worker deploy. These are exercised by the gated
 nightly `.github/workflows/hetzner-e2e.yml` against live Hetzner. Running the
 real-infra path is the remaining step for 100% production confidence and needs
 `HCLOUD_TOKEN` + Neon/R2/Cloudflare credentials.
+
+## 8b. Topology → e2e/test coverage map
+
+| Topology | Tests | Vehicle |
+| --- | --- | --- |
+| Cloud agent (provisioned) | `packages/test/cloud-e2e` — provision, deprovision, stuck-cleanup, dashboard, **sleep-wake**, **scheduled-backup**, **suspend-resume**, **auth-errors** (11 specs / 15 tests) | mock stack (real router/worker/job-queue/provisioning svc) |
+| Local agent + **cloud inference** | `packages/cloud-routing/src/resolve.test.ts` (**57 tests**: local/cloud/auto per-feature routing, Bearer/header proxy assembly) | vitest |
+| Automatic setup / local setup | `packages/app/test/ui-smoke/first-run-startup.spec.ts`, `packages/app-core/test/app/first-run-companion.live.e2e.test.ts`, `packages/shared/src/contracts/first-run-routes.test.ts` | Playwright + bun |
+| Reset / re-onboard | `packages/app/test/ui-smoke/reset-returns-to-onboarding.spec.ts` | Playwright |
+| All-local agent + inference | first-run local path + agent suites; `first-run-config.ts` builder selects local provider | — |
+| Incremental-backup logic | `agent-backup-diff.test.ts` (**29 tests**) | vitest |
+
+## 8c. Second staging fault — Redis-backed wallet sign-in 500s (2026-06-01)
+
+While minting a staging key via the public SIWE flow to drive a real provision,
+found a **second staging infra fault, independent of the first**:
+
+| Staging endpoint | Result |
+| --- | --- |
+| `/api/health` | 200 |
+| `/api/v1/eliza/agents` (invalid key) | 401 (Neon/DB path healthy ✓) |
+| `/api/auth/siwe/nonce` | **500** (consistent) |
+| `/api/auth/siws/nonce` | **500** (consistent) |
+
+The nonce routes need Upstash Redis (`issueNonce` → `redis.setex`). They return
+`500 internal_error` (the `setex` throws), not the `503` "Nonce storage
+unavailable" branch — so **staging Upstash Redis is erroring**, which **breaks
+SIWE/SIWS wallet sign-in on staging** and blocks minting a fresh key. (Neon is
+fine; the earlier 500→401 fix addressed the DB side only.)
+
+Net: the two remaining real-provision routes are both blocked by staging infra —
+(a) the `ci-hetzner-e2e` `ELIZACLOUD_API_KEY` secret is expired, and (b) staging
+Upstash Redis is down so a fresh key can't be minted via wallet auth. Both are
+operator/secret actions; neither is a defect in this repo. Minor code follow-up:
+the nonce route could translate a Redis throw to `503` (retryable) instead of
+letting it surface as `500 internal_error`.
 
 ## 9. Remaining / follow-ups
 

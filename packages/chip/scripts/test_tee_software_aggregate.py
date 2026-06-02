@@ -51,9 +51,7 @@ def test_run_checker_sanitizes_host_local_output() -> None:
         ),
         stderr="",
     )
-    with mock.patch.object(
-        check_tee_software_aggregate.subprocess, "run", return_value=completed
-    ):
+    with mock.patch.object(check_tee_software_aggregate.subprocess, "run", return_value=completed):
         row = check_tee_software_aggregate.run_checker("core-target", "check.py")
 
     encoded = str(row)

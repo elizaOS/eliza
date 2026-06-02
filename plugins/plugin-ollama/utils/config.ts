@@ -42,6 +42,7 @@ export function getBaseURL(runtime: SettingsProvider): string {
   const apiEndpoint =
     getSetting(runtime, "OLLAMA_API_ENDPOINT") ||
     getSetting(runtime, "OLLAMA_API_URL") ||
+    getSetting(runtime, "OLLAMA_BASE_URL") ||
     DEFAULT_OLLAMA_URL;
 
   if (!apiEndpoint.endsWith("/api")) {

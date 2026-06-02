@@ -47,16 +47,18 @@ def touched_window_shards(layer: dict) -> list[dict[str, int | str]]:
         row_start = ordinal * rows_per_core
         row_count = min(rows_per_core, window_rows - covered_rows)
         shard_bytes = row_count * bytes_per_row
-        records.append({
-            "layer_index": int(layer["index"]),
-            "layer_name": str(layer["name"]),
-            "logical_core_index": int(layer["core_index_start"]) + ordinal,
-            "window_row_start": row_start,
-            "window_row_count": row_count,
-            "bytes_per_row": bytes_per_row,
-            "window_shard_bytes": shard_bytes,
-            "window_loader_words": ceil(shard_bytes / WORD_BYTES),
-        })
+        records.append(
+            {
+                "layer_index": int(layer["index"]),
+                "layer_name": str(layer["name"]),
+                "logical_core_index": int(layer["core_index_start"]) + ordinal,
+                "window_row_start": row_start,
+                "window_row_count": row_count,
+                "bytes_per_row": bytes_per_row,
+                "window_shard_bytes": shard_bytes,
+                "window_loader_words": ceil(shard_bytes / WORD_BYTES),
+            }
+        )
         covered_rows += row_count
         ordinal += 1
     return records
@@ -71,7 +73,9 @@ def main() -> int:
         "window-shard linkage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_window_shard_linkage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_shard_linkage_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     model_load = load_json(MODEL_LOAD_STREAM) if MODEL_LOAD_STREAM.is_file() else {}
@@ -93,7 +97,9 @@ def main() -> int:
         "placement, model-load stream, vector-window fabric checksum, and coverage ladder are linked and PASS",
         "window-shard dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_window_shard_linkage_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_shard_linkage_dependencies_pass", "status": status, "detail": detail}
+    )
 
     touched_records: list[dict[str, int | str]] = []
     mismatches: list[str] = []
@@ -109,9 +115,13 @@ def main() -> int:
             mismatches.append(f"row-window:{layer.get('index')}")
         for record in records:
             if int(record["window_shard_bytes"]) > usable_bytes:
-                mismatches.append(f"sram-fit:{record['layer_index']}:{record['logical_core_index']}")
+                mismatches.append(
+                    f"sram-fit:{record['layer_index']}:{record['logical_core_index']}"
+                )
             if int(record["logical_core_index"]) >= logical_cores:
-                mismatches.append(f"logical-core:{record['layer_index']}:{record['logical_core_index']}")
+                mismatches.append(
+                    f"logical-core:{record['layer_index']}:{record['logical_core_index']}"
+                )
         touched_records.extend(records)
 
     touched_cores = {int(record["logical_core_index"]) for record in touched_records}
@@ -128,18 +138,27 @@ def main() -> int:
         and touched_rows == int(vector_window.get("summary", {}).get("executed_row_count", -1))
         and touched_bytes > 44_241_984
         and touched_loader_words > 11_060_496
-        and int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0)) == 1_627_034_880
+        and int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+        == 1_627_034_880
     )
     status, detail = pass_fail(
         coverage_ok,
         f"window execution rows map to {len(touched_records)} loaded SRAM shard records and {touched_loader_words} loader words",
         "window-shard linkage mismatch: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_window_shard_linkage_maps_window_rows_to_loaded_shards", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_shard_linkage_maps_window_rows_to_loaded_shards",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     boundary_ok = (
-        len(touched_records) == int(model_load.get("summary", {}).get("programmed_shard_records", 0))
-        and touched_loader_words == int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+        len(touched_records)
+        == int(model_load.get("summary", {}).get("programmed_shard_records", 0))
+        and touched_loader_words
+        == int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
         and vector_window.get("summary", {}).get("residual_blocker")
         == "full_output_vectorized_tensor_fabric_executor_missing"
     )
@@ -148,7 +167,13 @@ def main() -> int:
         "window-shard linkage covers every loaded shard while preserving the synthetic-weight execution boundary",
         "window-shard claim boundary mismatch",
     )
-    checks.append({"id": "e1x_window_shard_linkage_preserves_full_execution_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_shard_linkage_preserves_full_execution_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -161,18 +186,23 @@ def main() -> int:
         "window_touched_logical_cores": len(touched_cores),
         "window_touched_shard_bytes": touched_bytes,
         "window_touched_loader_words": touched_loader_words,
-        "total_programmed_shard_records": int(model_load.get("summary", {}).get("programmed_shard_records", 0)),
+        "total_programmed_shard_records": int(
+            model_load.get("summary", {}).get("programmed_shard_records", 0)
+        ),
         "total_stream_loader_word_transactions": int(
             model_load.get("summary", {}).get("stream_loader_word_transactions", 0)
         ),
         "window_shard_record_fraction": (
-            len(touched_records) / int(model_load.get("summary", {}).get("programmed_shard_records", 1))
+            len(touched_records)
+            / int(model_load.get("summary", {}).get("programmed_shard_records", 1))
         ),
         "window_loader_word_fraction": (
             touched_loader_words
             / int(model_load.get("summary", {}).get("stream_loader_word_transactions", 1))
         ),
-        "routed_window_checksum": int(vector_window.get("summary", {}).get("routed_window_checksum", 0)),
+        "routed_window_checksum": int(
+            vector_window.get("summary", {}).get("routed_window_checksum", 0)
+        ),
         "touched_shard_record_sha256": touched_record_sha256,
         "sampled_touched_shard_records": sampled_records,
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",

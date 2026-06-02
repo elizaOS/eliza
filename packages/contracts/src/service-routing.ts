@@ -6,9 +6,13 @@
  * Pure types only — normalizers and builders live in @elizaos/core.
  */
 
-export type LinkedAccountStatus = 'linked' | 'unlinked';
+export const LINKED_ACCOUNT_STATUSES = ['linked', 'unlinked'] as const;
 
-export type LinkedAccountSource = 'api-key' | 'oauth' | 'credentials' | 'subscription';
+export type LinkedAccountStatus = (typeof LINKED_ACCOUNT_STATUSES)[number];
+
+export const LINKED_ACCOUNT_SOURCES = ['api-key', 'oauth', 'credentials', 'subscription'] as const;
+
+export type LinkedAccountSource = (typeof LINKED_ACCOUNT_SOURCES)[number];
 
 /**
  * Legacy "is this provider linked" flag stored in `eliza.json` under
@@ -33,23 +37,36 @@ export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
  * records. Cloud-managed providers (`elizacloud`, etc.) use the legacy
  * {@link LinkedAccountFlagConfig} flag instead.
  */
-export type LinkedAccountProviderId =
-	| 'anthropic-subscription'
-	| 'openai-codex'
-	| 'gemini-cli'
-	| 'zai-coding'
-	| 'kimi-coding'
-	| 'deepseek-coding'
-	| 'anthropic-api'
-	| 'openai-api'
-	| 'deepseek-api'
-	| 'zai-api'
-	| 'moonshot-api'
-	| 'cerebras-api';
+export const LINKED_ACCOUNT_PROVIDER_IDS = [
+	'anthropic-subscription',
+	'openai-codex',
+	'gemini-cli',
+	'zai-coding',
+	'kimi-coding',
+	'deepseek-coding',
+	'anthropic-api',
+	'openai-api',
+	'deepseek-api',
+	'zai-api',
+	'moonshot-api',
+	'cerebras-api',
+] as const;
 
-export type LinkedAccountAccountSource = 'oauth' | 'api-key';
+export type LinkedAccountProviderId = (typeof LINKED_ACCOUNT_PROVIDER_IDS)[number];
 
-export type LinkedAccountHealth = 'ok' | 'rate-limited' | 'needs-reauth' | 'invalid' | 'unknown';
+export const LINKED_ACCOUNT_ACCOUNT_SOURCES = ['oauth', 'api-key'] as const;
+
+export type LinkedAccountAccountSource = (typeof LINKED_ACCOUNT_ACCOUNT_SOURCES)[number];
+
+export const LINKED_ACCOUNT_HEALTH_STATES = [
+	'ok',
+	'rate-limited',
+	'needs-reauth',
+	'invalid',
+	'unknown',
+] as const;
+
+export type LinkedAccountHealth = (typeof LINKED_ACCOUNT_HEALTH_STATES)[number];
 
 export interface LinkedAccountHealthDetail {
 	/** epoch ms — when this state expires (e.g. rate-limit reset) */
@@ -97,11 +114,22 @@ export interface LinkedAccountConfig {
 
 export type LinkedAccountsConfig = Record<string, LinkedAccountConfig>;
 
-export type ServiceCapability = 'llmText' | 'tts' | 'media' | 'embeddings' | 'rpc';
+export const SERVICE_CAPABILITIES = ['llmText', 'tts', 'media', 'embeddings', 'rpc'] as const;
 
-export type ServiceTransport = 'direct' | 'cloud-proxy' | 'remote';
+export type ServiceCapability = (typeof SERVICE_CAPABILITIES)[number];
 
-export type ServiceRouteAccountStrategy = 'priority' | 'round-robin' | 'least-used' | 'quota-aware';
+export const SERVICE_TRANSPORTS = ['direct', 'cloud-proxy', 'remote'] as const;
+
+export type ServiceTransport = (typeof SERVICE_TRANSPORTS)[number];
+
+export const SERVICE_ROUTE_ACCOUNT_STRATEGIES = [
+	'priority',
+	'round-robin',
+	'least-used',
+	'quota-aware',
+] as const;
+
+export type ServiceRouteAccountStrategy = (typeof SERVICE_ROUTE_ACCOUNT_STRATEGIES)[number];
 
 export type ServiceRouteConfig = {
 	backend?: string;

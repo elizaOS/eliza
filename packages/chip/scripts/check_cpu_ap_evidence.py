@@ -229,8 +229,7 @@ def check_scaffold(errors: list[str]) -> None:
         errors,
     )
     require(
-        claim_policy.get("linux_capable_cpu_claim")
-        is (manifest.get("status") == "linux_complete"),
+        claim_policy.get("linux_capable_cpu_claim") is (manifest.get("status") == "linux_complete"),
         "manifest Linux boot claim must match selected manifest evidence state",
         errors,
     )

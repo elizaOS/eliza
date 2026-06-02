@@ -1138,9 +1138,11 @@ def has_quiet_linux_completion_evidence(
         log_metadata.get("payload") or log_metadata.get("binary_arg") or ""
     )
     generated_completion_logs = log_metadata.get("generated_linux_completion_logs")
-    if "eliza-e1-linux-smoke" in payload_text and isinstance(
-        generated_completion_logs, list
-    ) and generated_completion_logs:
+    if (
+        "eliza-e1-linux-smoke" in payload_text
+        and isinstance(generated_completion_logs, list)
+        and generated_completion_logs
+    ):
         return True
     if "linux-poweroff-quiet" not in payload_text:
         return False
@@ -2315,9 +2317,8 @@ def classify_smoke_progress(
         or "[timeout-wrapper]" in log_text
         and "status=timeout" in log_text
     )
-    interrupted_exit = (
-        str(log_metadata.get("exit_code") or "") not in {"", "0", "124"}
-        or str(log_metadata.get("signal") or "")
+    interrupted_exit = str(log_metadata.get("exit_code") or "") not in {"", "0", "124"} or str(
+        log_metadata.get("signal") or ""
     )
     if has_quiet_linux_completion_evidence(log_text, log_metadata, None):
         generated_logs = log_metadata.get("generated_linux_completion_logs")
@@ -2977,19 +2978,35 @@ def main() -> int:
             )
         report_canonical_failures = not active_processes
         fatal_errors = log_metadata.get("fatal_errors")
-        if report_canonical_failures and not quiet_linux_completion and isinstance(fatal_errors, list):
+        if (
+            report_canonical_failures
+            and not quiet_linux_completion
+            and isinstance(fatal_errors, list)
+        ):
             for fatal_error in fatal_errors:
                 blockers.append(f"{rel(LOG)} records fatal error: {fatal_error}")
         exceptions = log_metadata.get("exceptions")
-        if report_canonical_failures and not quiet_linux_completion and isinstance(exceptions, list):
+        if (
+            report_canonical_failures
+            and not quiet_linux_completion
+            and isinstance(exceptions, list)
+        ):
             for exception in exceptions:
                 blockers.append(f"{rel(LOG)} records generator exception: {exception}")
         kernel_panics = log_metadata.get("kernel_panics")
-        if report_canonical_failures and not quiet_linux_completion and isinstance(kernel_panics, list):
+        if (
+            report_canonical_failures
+            and not quiet_linux_completion
+            and isinstance(kernel_panics, list)
+        ):
             for kernel_panic in kernel_panics:
                 blockers.append(f"{rel(LOG)} records Linux kernel panic: {kernel_panic}")
         sim_failures = log_metadata.get("sim_failures")
-        if report_canonical_failures and not quiet_linux_completion and isinstance(sim_failures, list):
+        if (
+            report_canonical_failures
+            and not quiet_linux_completion
+            and isinstance(sim_failures, list)
+        ):
             for sim_failure in sim_failures:
                 hint = ""
                 if "timeout" in sim_failure and "+max-cycles=" in log_text:
@@ -3004,7 +3021,12 @@ def main() -> int:
                     )
                 blockers.append(f"{rel(LOG)} records simulator failure: {sim_failure}{hint}")
         exit_code = log_metadata.get("exit_code")
-        if report_canonical_failures and exit_code and exit_code != "0" and not quiet_linux_completion:
+        if (
+            report_canonical_failures
+            and exit_code
+            and exit_code != "0"
+            and not quiet_linux_completion
+        ):
             reason = f"{rel(LOG)} records simulator wrapper exit_code={exit_code}"
             timeout_after = log_metadata.get("timeout_after_seconds")
             if timeout_after:

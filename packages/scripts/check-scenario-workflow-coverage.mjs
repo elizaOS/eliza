@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,39 @@ const DEFAULT_REPORT_DIR = path.join(
   "scenarios",
   "catalog-inventory",
 );
+const CORE_KEYWORD_DATA = path.join(
+  REPO_ROOT,
+  "packages",
+  "core",
+  "src",
+  "i18n",
+  "generated",
+  "validation-keyword-data.ts",
+);
+const KEYWORD_GENERATOR = path.join(
+  REPO_ROOT,
+  "packages",
+  "shared",
+  "scripts",
+  "generate-keywords.mjs",
+);
+
+function ensureGeneratedKeywordData() {
+  if (existsSync(CORE_KEYWORD_DATA)) {
+    return;
+  }
+
+  const completed = spawnSync("node", [KEYWORD_GENERATOR, "--target", "ts"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (completed.status !== 0) {
+    throw new Error(
+      `keyword data generation failed: ${completed.stderr || completed.stdout}`,
+    );
+  }
+}
 
 function parseArgs(argv) {
   const options = {
@@ -402,8 +435,9 @@ function renderMarkdown(summary, runArtifacts = []) {
 }
 
 function main() {
-  const options = parseArgs(process.argv.slice(2));
-  mkdirSync(options.reportDir, { recursive: true });
+const options = parseArgs(process.argv.slice(2));
+ensureGeneratedKeywordData();
+mkdirSync(options.reportDir, { recursive: true });
 
   const defaultIds = runScenarioList(DEFAULT_SCENARIO_ROOT);
   const includePendingIds = runScenarioList(DEFAULT_SCENARIO_ROOT, [], {

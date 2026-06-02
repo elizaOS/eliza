@@ -46,8 +46,10 @@ export * from "./contracts/circadian-default.js";
 export * from "./contracts/health.js";
 export * from "./default-packs/index.js";
 export * from "./health-bridge/index.js";
+export * from "./providers/index.js";
 export * from "./screen-time/index.js";
 export * from "./sleep/index.js";
+export * from "./ui/index.js";
 export * from "./util/index.js";
 
 export const HEALTH_PLUGIN_NAME = "plugin-health";

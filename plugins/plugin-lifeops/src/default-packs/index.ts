@@ -54,6 +54,11 @@ import {
 } from "./daily-rhythm.js";
 import { DEFAULT_ESCALATION_LADDERS } from "./escalation-ladders.js";
 import {
+  EXECUTIVE_ASSISTANT_PACK_KEY,
+  EXECUTIVE_ASSISTANT_RECORD_IDS,
+  executiveAssistantPack,
+} from "./executive-assistant.js";
+import {
   buildFollowupTaskForRelationship,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
   deriveOverdueFollowupTasks,
@@ -120,6 +125,7 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   followupStarterPack,
   inboxTriageStarterPack,
   habitStartersPack,
+  executiveAssistantPack,
 ];
 
 export function getAllDefaultPacks(): DefaultPack[] {
@@ -180,7 +186,10 @@ export {
   DAILY_RHYTHM_RECORD_IDS,
   DEFAULT_CONSOLIDATION_POLICIES,
   DEFAULT_ESCALATION_LADDERS,
+  EXECUTIVE_ASSISTANT_PACK_KEY,
+  EXECUTIVE_ASSISTANT_RECORD_IDS,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
+  executiveAssistantPack,
   dailyRhythmPack,
   defaultTaskCompiler,
   deriveOverdueFollowupTasks,

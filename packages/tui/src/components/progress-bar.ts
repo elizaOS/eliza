@@ -3,7 +3,7 @@
  */
 
 import type { Component } from "../tui.js";
-import { visibleWidth } from "../utils.js";
+import { truncateToWidth, visibleWidth } from "../utils.js";
 
 /**
  * Theme functions for ProgressBar styling.
@@ -122,8 +122,14 @@ export class ProgressBar implements Component {
       return this.cachedLines;
     }
 
-    const contentWidth = Math.max(1, width - this.paddingX * 2);
-    const leftPad = " ".repeat(this.paddingX);
+    const safeWidth = Math.max(1, width);
+    const paddingX = Math.max(
+      0,
+      Math.min(this.paddingX, Math.floor((safeWidth - 1) / 2)),
+    );
+    const contentWidth = Math.max(1, safeWidth - paddingX * 2);
+    const leftPad = " ".repeat(paddingX);
+    const rightPad = " ".repeat(paddingX);
 
     // Calculate percentage label
     const percentLabel = this.showPercentage
@@ -164,11 +170,10 @@ export class ProgressBar implements Component {
       line = bar;
     }
 
-    // Pad to width
-    const lineWidth = visibleWidth(line);
-    const padding = Math.max(0, contentWidth - lineWidth);
-    const paddedLine =
-      leftPad + line + " ".repeat(padding) + " ".repeat(this.paddingX);
+    const safeLine = truncateToWidth(line, contentWidth, "", false);
+    const safeLineWidth = visibleWidth(safeLine);
+    const safePadding = Math.max(0, contentWidth - safeLineWidth);
+    const paddedLine = leftPad + safeLine + " ".repeat(safePadding) + rightPad;
 
     const lines: string[] = [paddedLine];
 
@@ -177,14 +182,10 @@ export class ProgressBar implements Component {
       const styledMessage = this.theme.message
         ? this.theme.message(this.message)
         : this.message;
-      const msgWidth = visibleWidth(styledMessage);
+      const safeMessage = truncateToWidth(styledMessage, contentWidth, "");
+      const msgWidth = visibleWidth(safeMessage);
       const msgPadding = Math.max(0, contentWidth - msgWidth);
-      lines.push(
-        leftPad +
-          styledMessage +
-          " ".repeat(msgPadding) +
-          " ".repeat(this.paddingX),
-      );
+      lines.push(leftPad + safeMessage + " ".repeat(msgPadding) + rightPad);
     }
 
     // Update cache

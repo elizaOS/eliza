@@ -15,6 +15,7 @@ from pathlib import Path
 from elizaos_vending_bench.agent import LLMProvider
 from elizaos_vending_bench.reporting import VendingBenchReporter
 from elizaos_vending_bench.runner import VendingBenchRunner
+from elizaos_vending_bench.scenarios import count_scenarios, validate_scenarios
 from elizaos_vending_bench.types import (
     CoherenceError,
     CoherenceErrorType,
@@ -170,6 +171,21 @@ Examples:
         help="Skip leaderboard comparison",
     )
     run_parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each base simulation plus 10 realistic edge variants",
+    )
+    run_parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit",
+    )
+    run_parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected base and edge scenarios before running",
+    )
+    run_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -230,6 +246,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         initial_cash=Decimal(str(args.initial_cash)),
         random_seed=args.seed,
         starter_inventory=bool(args.starter_inventory),
+        include_edge_scenarios=bool(args.expand_scenarios),
         max_actions_per_day=max(1, int(args.max_actions_per_day)),
         model_name=args.model,
         temperature=args.temperature,
@@ -237,6 +254,12 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         generate_report=not args.no_report,
         compare_leaderboard=not args.no_leaderboard,
     )
+
+    if args.validate_scenarios:
+        validate_scenarios(config)
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(config), sort_keys=True))
+        return 0
 
     # Setup LLM provider if specified
     llm_provider: LLMProvider | None = None

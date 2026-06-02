@@ -24,7 +24,10 @@ InterruptBench is **in-process** — it does not boot a full agent runtime or hi
 | **H** | Concurrent merge (combine overlapping threads on demand) |
 | **K** | Recipe-style accumulation (assemble specs from multiple short messages) |
 
-Ten scenarios ship in this package, one per category (plus A4 and an extra A1). Add more by dropping JSON into `scenarios/<category>/`.
+Ten authored scenarios ship in this package, one per category (plus A4 and an
+extra A1). The loader expands each authored scenario with 10 realistic edge
+variants, for 100 added variants and 110 total scenarios. Add more authored
+baselines by dropping JSON into `scenarios/<category>/`.
 
 ## Six scoring axes
 
@@ -59,6 +62,10 @@ bun run bench -- --scenario=B1-pure-cancellation
 
 # Persist report files.
 bun run bench -- --out=./results
+
+# Print/validate the expanded scenario inventory.
+bun run bench -- --count-scenarios
+bun run bench -- --validate-scenarios
 
 # One-shot Cerebras round trip to verify the wiring.
 bun run bench:smoke
@@ -152,8 +159,8 @@ tests/
 - `bun install` succeeds.
 - `bun run typecheck` succeeds.
 - `bun run bench:smoke` round-trips one Cerebras call with the composed schema and prints the parsed JSON.
-- `bun run bench` runs all 10 scenarios against the scripted provider and emits a markdown report.
-- `bun run bench -- --mode=cerebras --judge` runs all 10 against Cerebras with the judge bonus enabled.
+- `bun run bench` runs all 110 scenarios against the scripted provider and emits a markdown report.
+- `bun run bench -- --mode=cerebras --judge` runs all 110 against Cerebras with the judge bonus enabled.
 
 ## See also
 

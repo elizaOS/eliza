@@ -963,9 +963,12 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
-// Flips true the first time the UI port serves; tightens the health watchdog
-// from the cold-start grace to a fast liveness window thereafter.
-let viteSeenListening = false;
+
+// Vite cold-start of the full raw-source module graph can exceed 60s on slow
+// shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
+// via env; dev machines keep the 60s default.
+const VITE_READY_BUDGET_MS =
+  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 60_000;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -1076,7 +1079,6 @@ function startVite() {
     );
   }
   viteStartedAt = Date.now();
-  viteSeenListening = false;
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -1147,18 +1149,9 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
     if (shuttingDown || !viteProcess) return;
 
     const listening = await isPortListening(UI_PORT);
-    if (listening) {
-      viteSeenListening = true;
-    } else {
+    if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
-      // The cold pre-bundle (optimizeDeps.include) can take a while on a busy
-      // machine, so allow a generous grace before the port first serves; once
-      // vite has been seen listening, a wedge should be caught fast. Override
-      // the cold grace with ELIZA_VITE_HEALTH_GRACE_MS.
-      const coldGraceMs =
-        Number(process.env.ELIZA_VITE_HEALTH_GRACE_MS) || 120_000;
-      const limitMs = viteSeenListening ? 30_000 : coldGraceMs;
-      if (ageMs > limitMs) {
+      if (ageMs > VITE_READY_BUDGET_MS) {
         console.log(
           `  ${green(logPrefix)} ${dim(
             `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,

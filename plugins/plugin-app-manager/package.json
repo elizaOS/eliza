@@ -52,7 +52,7 @@
     "dev": "bun run build.ts",
     "clean": "rm -rf dist",
     "typecheck": "tsgo --noEmit --rootDir ../..",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --config vitest.config.ts"
   },
   "publishConfig": {
     "access": "public"

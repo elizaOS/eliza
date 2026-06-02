@@ -111,14 +111,14 @@ export function StewardView() {
           <h2 className="mt-4 text-lg font-semibold text-txt-strong">
             Steward Not Connected
           </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted leading-relaxed">
+          <div className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
             Set STEWARD_API_URL and STEWARD_API_KEY in agent settings to enable
             vault management.
-          </p>
+          </div>
           {stewardStatus.error && (
-            <p className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
+            <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
               {stewardStatus.error}
-            </p>
+            </div>
           )}
         </PagePanel>
       </div>
@@ -172,10 +172,10 @@ export function StewardView() {
               <span>Connected</span>
             </div>
             {stewardStatus.evmAddress && (
-              <p className="mt-1.5 font-mono text-2xs text-muted/60">
+              <div className="mt-1.5 font-mono text-2xs text-muted/60">
                 {stewardStatus.evmAddress.slice(0, 6)}…
                 {stewardStatus.evmAddress.slice(-4)}
-              </p>
+              </div>
             )}
           </div>
         )}
@@ -194,11 +194,11 @@ export function StewardView() {
           <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
             {activeTab === "approvals" ? "Approvals" : "Transaction History"}
           </h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted">
+          <div className="mt-1.5 max-w-2xl text-sm text-muted">
             {activeTab === "approvals"
               ? "Transactions that need your sign-off."
               : "All signed and broadcast transactions from the vault."}
-          </p>
+          </div>
         </PagePanel>
 
         {/* Content */}

@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -636,6 +638,27 @@ def test_clawbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:
     assert "--trajectory-dir" in cell.command
     assert "--mock" in cell.command
     assert "--no-docker" in cell.command
+
+
+def test_browser_and_agentbench_cells_forward_edge_expansion_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EXPAND_SCENARIOS", "true")
+
+    for benchmark in ("mind2web", "visualwebbench", "webshop", "agentbench"):
+        cell = build_cell(
+            root=_root().parent,
+            run_root=tmp_path / benchmark,
+            benchmark=benchmark,
+            adapter="opencode",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            max_tasks=1,
+            smoke=True,
+            no_docker=True,
+        )
+        assert "--expand-scenarios" in cell.command
 
 
 def test_agentbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:

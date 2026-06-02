@@ -640,9 +640,7 @@ def build_report(
                 ]
             ),
             "component_model_directory_uncovered_pad_visual_count": (
-                objective_local_progress[
-                    "component_model_directory_uncovered_pad_visual_count"
-                ]
+                objective_local_progress["component_model_directory_uncovered_pad_visual_count"]
             ),
             "component_model_directory_non_signal_pad_contract_total_count": (
                 objective_local_progress[
@@ -666,9 +664,7 @@ def build_report(
                 ]
             ),
             "component_model_directory_local_discrete_step_file_count": (
-                objective_local_progress[
-                    "component_model_directory_local_discrete_step_file_count"
-                ]
+                objective_local_progress["component_model_directory_local_discrete_step_file_count"]
             ),
             "component_model_directory_local_discrete_step_imported_solid_count": (
                 objective_local_progress[

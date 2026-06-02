@@ -184,10 +184,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No MTProto protocol simulator, media fixture, or group-admin fixture",
     ],
     rationale:
-      "LifeOps uses telegram-local-client.ts and TelegramLocalClientDeps; an HTTP Mockoon facade would test a path the product does not call.",
+      "LifeOps delegates Telegram transport to plugin-telegram; an HTTP Mockoon facade would test a path the product does not call.",
     validation: [
       "plugins/plugin-lifeops/test/lifeops-simulator.test.ts",
-      "plugins/plugin-lifeops/src/lifeops/telegram-local-client.test.ts",
+      "plugins/plugin-telegram/src/local-client.test.ts",
       "plugins/plugin-lifeops/src/lifeops/service-mixin-telegram.test.ts",
       "plugins/plugin-lifeops/test/cross-channel-send.test.ts",
     ],
@@ -214,7 +214,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
       "test/mocks/__tests__/mock-runtime-seeding.test.ts",
       "plugins/plugin-lifeops/test/lifeops-simulator.test.ts",
-      "plugins/plugin-lifeops/test/lifeops-signal-local-client.integration.test.ts",
+      "plugins/plugin-signal/src/local-client.test.ts",
       "plugins/plugin-lifeops/src/lifeops/service-mixin-signal.test.ts",
     ],
   },

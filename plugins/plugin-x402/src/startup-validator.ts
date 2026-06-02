@@ -175,7 +175,7 @@ function validateX402Route(
         `${routePath}: x402: true requires character.settings.x402.defaultPaymentConfigs (non-empty array)`,
       );
     }
-  } else if (typeof raw === "object") {
+  } else if (typeof raw === "object" && !Array.isArray(raw)) {
     priceInCents = raw.priceInCents ?? cx?.defaultPriceInCents;
     paymentConfigs = (raw.paymentConfigs ?? cx?.defaultPaymentConfigs) as
       | string[]
@@ -190,6 +190,8 @@ function validateX402Route(
         `${routePath}: x402.paymentConfigs is required (or set character.settings.x402.defaultPaymentConfigs)`,
       );
     }
+  } else {
+    errors.push(`${routePath}: x402 must be true or a configuration object`);
   }
 
   if (priceInCents !== undefined && priceInCents !== null) {

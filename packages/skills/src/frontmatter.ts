@@ -31,10 +31,11 @@ function stringList(value: unknown, transform: (value: string) => string) {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return value
+  const out = value
     .filter((item): item is string => typeof item === "string")
     .map(transform)
     .filter((item) => item.length > 0);
+  return out.length > 0 ? out : undefined;
 }
 
 function extractFrontmatter(content: string): {

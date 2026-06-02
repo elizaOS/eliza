@@ -24,6 +24,9 @@ import { handleViewsRoutes } from "../api/views-routes.js";
 // ---------------------------------------------------------------------------
 
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 function makeReqWithBody(body?: unknown): http.IncomingMessage {
   const em = new EventEmitter() as http.IncomingMessage;
@@ -126,6 +129,7 @@ const PLUGIN_NAMES = [
   "views-integration-wallet",
   "views-integration-dev",
   "views-integration-remote",
+  "views-integration-local-bundle",
 ];
 
 // ---------------------------------------------------------------------------
@@ -142,6 +146,29 @@ afterEach(() => {
   }
   vi.restoreAllMocks();
 });
+
+async function createLocalBundlePlugin(bundleSource: string): Promise<{
+  pluginDir: string;
+  bundlePath: string;
+}> {
+  const pluginDir = await mkdtemp(path.join(tmpdir(), "eliza-view-bundle-"));
+  const bundleDir = path.join(pluginDir, "dist", "views");
+  await mkdir(bundleDir, { recursive: true });
+  const bundlePath = path.join(bundleDir, "bundle.js");
+  await writeFile(bundlePath, bundleSource);
+  return { pluginDir, bundlePath };
+}
+
+function rawResponse(ctx: ViewsRouteContext): {
+  writeHead: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+} {
+  const res = ctx.res as unknown as {
+    writeHead: ReturnType<typeof vi.fn>;
+    end: ReturnType<typeof vi.fn>;
+  };
+  return { writeHead: res.writeHead, end: res.end };
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/views — list all registered views
@@ -573,6 +600,129 @@ describe("GET /api/views/:id/bundle.js", () => {
     expect(status).toBe(404);
     expect(message).toContain("no bundle path configured");
   });
+
+  it("serves local bundles with ETag, HEAD, 304, immutable versioned URLs, and changed hashes after rebuild", async () => {
+    const { pluginDir, bundlePath } = await createLocalBundlePlugin(
+      "export default function LocalBundle(){ return 'v1'; }\n",
+    );
+
+    try {
+      await registerPluginViews(
+        {
+          name: "views-integration-local-bundle",
+          description: "local bundle",
+          actions: [],
+          views: [
+            {
+              id: "local.bundle",
+              label: "Local Bundle",
+              path: "/local-bundle",
+              bundlePath: "dist/views/bundle.js",
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const entryV1 = getView("local.bundle");
+      expect(entryV1).toMatchObject({
+        available: true,
+        bundlePath: "dist/views/bundle.js",
+      });
+      expect(entryV1?.bundleHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(entryV1?.bundleUrlVersioned).toContain(`v=${entryV1?.bundleHash}`);
+
+      const { ctx: getCtx } = makeCtx(
+        "GET",
+        "/api/views/local.bundle/bundle.js",
+      );
+      await handleViewsRoutes(getCtx);
+      const getRes = rawResponse(getCtx);
+      const [, getHeaders] = getRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      const getBody = getRes.end.mock.calls[0]?.[0] as Buffer;
+      expect(getHeaders["Content-Type"]).toBe(
+        "application/javascript; charset=utf-8",
+      );
+      expect(getHeaders["Cache-Control"]).toBe("no-cache");
+      expect(getHeaders.ETag).toMatch(/^"[a-f0-9]{16}"$/);
+      expect(getHeaders["X-Content-Hash"]).toMatch(/^sha256-/);
+      expect(getBody.toString("utf8")).toContain("LocalBundle");
+
+      const { ctx: headCtx } = makeCtx(
+        "HEAD",
+        "/api/views/local.bundle/bundle.js",
+      );
+      await handleViewsRoutes(headCtx);
+      const headRes = rawResponse(headCtx);
+      const [, headHeaders] = headRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      expect(headHeaders.ETag).toBe(getHeaders.ETag);
+      expect(headHeaders["Content-Length"]).toBe(0);
+      expect(headRes.end.mock.calls[0]?.[0]).toBeUndefined();
+
+      const { ctx: notModifiedCtx } = makeCtx(
+        "GET",
+        "/api/views/local.bundle/bundle.js",
+      );
+      notModifiedCtx.req.headers = {
+        ...notModifiedCtx.req.headers,
+        "if-none-match": String(getHeaders.ETag),
+      };
+      await handleViewsRoutes(notModifiedCtx);
+      const notModifiedRes = rawResponse(notModifiedCtx);
+      expect(notModifiedRes.writeHead).toHaveBeenCalledWith(304, {});
+      expect(notModifiedRes.end.mock.calls[0]?.[0]).toBeUndefined();
+
+      const { ctx: immutableCtx } = makeCtx(
+        "GET",
+        "/api/views/local.bundle/bundle.js",
+        { v: entryV1?.bundleHash ?? "" },
+      );
+      await handleViewsRoutes(immutableCtx);
+      const immutableRes = rawResponse(immutableCtx);
+      const [, immutableHeaders] = immutableRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      expect(immutableHeaders["Cache-Control"]).toBe(
+        "public, max-age=31536000, immutable",
+      );
+
+      await writeFile(
+        bundlePath,
+        "export default function LocalBundle(){ return 'v2'; }\n",
+      );
+      await registerPluginViews(
+        {
+          name: "views-integration-local-bundle",
+          description: "local bundle",
+          actions: [],
+          views: [
+            {
+              id: "local.bundle",
+              label: "Local Bundle",
+              path: "/local-bundle",
+              bundlePath: "dist/views/bundle.js",
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const entryV2 = getView("local.bundle");
+      expect(entryV2?.bundleHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(entryV2?.bundleHash).not.toBe(entryV1?.bundleHash);
+      expect(entryV2?.bundleUrlVersioned).toContain(`v=${entryV2?.bundleHash}`);
+    } finally {
+      unregisterPluginViews("views-integration-local-bundle");
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -752,7 +902,11 @@ describe("POST /api/views/:id/interact", () => {
     expect(status).toBe(400);
   });
 
-  it("allows standard capabilities on views with declared capabilities", async () => {
+  it.each([
+    "get-text",
+    "click-element",
+    "fill-input",
+  ] as const)("allows standard capability %s on views with declared capabilities", async (capability) => {
     const viewWithCaps = {
       ...WALLET_VIEW,
       capabilities: [{ id: "custom-action", description: "A custom action" }],
@@ -773,7 +927,7 @@ describe("POST /api/views/:id/interact", () => {
       "/api/views/wallet.inventory/interact",
       {},
       undefined,
-      { capability: "get-text", timeoutMs: 500 },
+      { capability, timeoutMs: 500 },
       (payload) => broadcasts.push(payload),
     );
 
@@ -783,7 +937,7 @@ describe("POST /api/views/:id/interact", () => {
     expect(broadcasts).toHaveLength(1);
     const broadcast = broadcasts[0] as { type: string; capability: string };
     expect(broadcast.type).toBe("view:interact");
-    expect(broadcast.capability).toBe("get-text");
+    expect(broadcast.capability).toBe(capability);
   });
 });
 

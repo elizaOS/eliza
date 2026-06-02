@@ -26,9 +26,7 @@ from provenance_sanitize import sanitize_host_local_paths  # noqa: E402
 DEFAULT_EVIDENCE = ROOT / "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
 DEFAULT_OUT = ROOT / "benchmarks/results/generated-ap-smoke/report.json"
 SCHEMA = "eliza.benchmark_run.v1"
-CLAIM_BOUNDARY = (
-    "generated_ap_verilator_transcript_only_not_silicon_or_phone_benchmark"
-)
+CLAIM_BOUNDARY = "generated_ap_verilator_transcript_only_not_silicon_or_phone_benchmark"
 
 
 def rel(path: Path) -> str:

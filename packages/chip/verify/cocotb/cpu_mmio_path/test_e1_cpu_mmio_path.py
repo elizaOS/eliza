@@ -12,10 +12,10 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 # v0 MMIO map (matches e1_mmio_decode).
-BOOTROM_ID_ADDR = 0x0000_0000      # ROM identity header word 0 ("OSO\0")
-PERIPH_ID_ADDR = 0x1000_0000       # peripheral ID register -> 0x1000_0001
-PERIPH_GPIO_ADDR = 0x1000_0008     # GPIO out (addr word 0x02)
-NPU_ID_ADDR = 0x1002_0000          # NPU CSR base
+BOOTROM_ID_ADDR = 0x0000_0000  # ROM identity header word 0 ("OSO\0")
+PERIPH_ID_ADDR = 0x1000_0000  # peripheral ID register -> 0x1000_0001
+PERIPH_GPIO_ADDR = 0x1000_0008  # GPIO out (addr word 0x02)
+NPU_ID_ADDR = 0x1002_0000  # NPU CSR base
 
 AXI_RESP_OKAY = 0b00
 AXI_RESP_SLVERR = 0b10
@@ -183,13 +183,9 @@ async def both_masters_share_fabric(dut):
 
     # Debug master (priority) reads the peripheral ID register.
     dbg_val = await dbg_read32(dut, PERIPH_ID_ADDR)
-    assert dbg_val == 0x1000_0001, (
-        f"debug master read {dbg_val:#010x}, expected 0x10000001"
-    )
+    assert dbg_val == 0x1000_0001, f"debug master read {dbg_val:#010x}, expected 0x10000001"
 
     # CPU master (lower priority) reads the same register through arbitration.
     cpu_val, resp = await cpu_read32(dut, PERIPH_ID_ADDR)
     assert resp == AXI_RESP_OKAY
-    assert cpu_val == 0x1000_0001, (
-        f"CPU master read {cpu_val:#010x}, expected 0x10000001"
-    )
+    assert cpu_val == 0x1000_0001, f"CPU master read {cpu_val:#010x}, expected 0x10000001"

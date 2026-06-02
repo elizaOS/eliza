@@ -23,7 +23,7 @@ import type {
 import {
   PaymentRequiredError,
   type X402PaymentRequirement,
-} from "../lifeops/x402-payment-handler.js";
+} from "@elizaos/plugin-elizacloud/cloud/x402-payment-handler";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 

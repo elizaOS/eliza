@@ -30,6 +30,7 @@ import {
   recordRecentViewId,
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
+import { ViewIcon } from "../views/ViewIcon";
 
 const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-1",
@@ -144,9 +145,9 @@ function ViewCard({
         )}
 
         <div className="flex items-start gap-3">
-          {view.icon && !view.heroImageUrl && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-lg">
-              {view.icon}
+          {!view.heroImageUrl && (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-accent/10 text-accent">
+              <ViewIcon icon={view.icon} label={view.label} />
             </div>
           )}
 

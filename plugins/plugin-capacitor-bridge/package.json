@@ -50,6 +50,7 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
+		"test": "vitest run --config vitest.config.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -65,7 +66,8 @@
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.5.13",
 		"tsup": "8.5.1",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.0.18"
 	},
 	"publishConfig": {
 		"access": "public"

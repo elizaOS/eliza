@@ -1,6 +1,6 @@
-export { BrowserBridgeAdapter } from "./adapters/browser-bridge-adapter.js";
+export { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 export { CalendlyAdapter } from "./adapters/calendly-adapter.js";
-export { XDmAdapter } from "./adapters/x-dm-adapter.js";
+export { XDmAdapter } from "@elizaos/plugin-x";
 export { createOwnerSendPolicy } from "./owner-send-policy.js";
 
 /**

@@ -4,6 +4,7 @@
  * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
  */
 
+import { Brain } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
@@ -447,7 +448,9 @@ export function SkillsModalView() {
           </>
         ) : (
           <div className="plugins-game-detail-empty">
-            <span className="plugins-game-detail-empty-icon">🧠</span>
+            <span className="plugins-game-detail-empty-icon">
+              <Brain className="h-5 w-5" />
+            </span>
             <span className="plugins-game-detail-empty-text">
               {t("skillsview.SelectATalentToConf", {
                 defaultValue: "Select a talent to configure",

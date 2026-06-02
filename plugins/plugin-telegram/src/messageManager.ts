@@ -492,16 +492,27 @@ export class MessageManager {
     if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
-        const photo = message.photo[message.photo.length - 1];
-        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
-        attachments.push({
-          id: photo.file_id,
-          url: fileLink.toString(),
-          title: "Image Attachment",
-          source: "Image",
-          description: imageInfo.description,
-          text: imageInfo.description,
-        });
+        try {
+          const photo = message.photo[message.photo.length - 1];
+          const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
+          attachments.push({
+            id: photo.file_id,
+            url: fileLink.toString(),
+            title: "Image Attachment",
+            source: "Image",
+            description: imageInfo.description,
+            text: imageInfo.description,
+          });
+        } catch (error) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Error attaching processed image",
+          );
+        }
       }
     }
 
@@ -533,37 +544,39 @@ export class MessageManager {
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
     if (content.attachments && content.attachments.length > 0) {
-      content.attachments.map(async (attachment: Media) => {
-        const typeMap: { [key: string]: MediaType } = {
-          "image/gif": MediaType.ANIMATION,
-          image: MediaType.PHOTO,
-          doc: MediaType.DOCUMENT,
-          video: MediaType.VIDEO,
-          audio: MediaType.AUDIO,
-        };
+      await Promise.all(
+        content.attachments.map(async (attachment: Media) => {
+          const typeMap: { [key: string]: MediaType } = {
+            "image/gif": MediaType.ANIMATION,
+            image: MediaType.PHOTO,
+            doc: MediaType.DOCUMENT,
+            video: MediaType.VIDEO,
+            audio: MediaType.AUDIO,
+          };
 
-        let mediaType: MediaType | undefined;
+          let mediaType: MediaType | undefined;
 
-        for (const prefix in typeMap) {
-          if (attachment.contentType?.startsWith(prefix)) {
-            mediaType = typeMap[prefix];
-            break;
+          for (const prefix in typeMap) {
+            if (attachment.contentType?.startsWith(prefix)) {
+              mediaType = typeMap[prefix];
+              break;
+            }
           }
-        }
 
-        if (!mediaType) {
-          throw new Error(
-            `Unsupported Telegram attachment content type: ${attachment.contentType}`,
+          if (!mediaType) {
+            throw new Error(
+              `Unsupported Telegram attachment content type: ${attachment.contentType}`,
+            );
+          }
+
+          await this.sendMedia(
+            ctx,
+            attachment.url,
+            mediaType,
+            attachment.description,
           );
-        }
-
-        await this.sendMedia(
-          ctx,
-          attachment.url,
-          mediaType,
-          attachment.description,
-        );
-      });
+        }),
+      );
       return [];
     } else {
       const chunks = this.splitMessage(content.text ?? "");
@@ -1073,8 +1086,12 @@ export class MessageManager {
       date: Math.floor(Date.now() / 1000),
     };
 
-    const reactionType = reaction.new_reaction[0].type;
-    const reactionEmoji = (reaction.new_reaction[0] as ReactionType).type; // Assuming ReactionType has 'type' for emoji
+    const firstReaction = reaction.new_reaction[0];
+    if (!firstReaction) {
+      return;
+    }
+    const reactionType = firstReaction.type;
+    const reactionEmoji = (firstReaction as ReactionType).type; // Assuming ReactionType has 'type' for emoji
 
     try {
       const entityId = createUniqueUuid(
@@ -1175,7 +1192,7 @@ export class MessageManager {
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
-        originalReaction: reaction.new_reaction[0] as ReactionType,
+        originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
 
       // Also emit the platform-specific event
@@ -1189,7 +1206,7 @@ export class MessageManager {
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
-        originalReaction: reaction.new_reaction[0] as ReactionType,
+        originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
     } catch (error) {
       logger.error(

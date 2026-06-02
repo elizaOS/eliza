@@ -288,7 +288,17 @@ export function createDesktopPolicy(): PlatformPolicy {
 export function createWebPolicy(): PlatformPolicy {
   return {
     supportsLocalRuntime: false,
-    backendTimeoutMs: 30_000,
+    // Browser sessions frequently point at a LOCAL agent that is still
+    // cold-booting (e.g. `bun run dev` at localhost:2138 → localhost:31337,
+    // which takes ~60–120s for PGlite migration + plugin load before
+    // /api/auth/status binds). A 30s budget timed out mid-boot and dropped the
+    // app into the terminal error phase — which does not re-poll — so the user
+    // saw a stuck blank/error screen until a manual reload. Match the
+    // local-agent budget used by every other policy so the connecting screen
+    // simply waits out the boot and transitions to ready on its own. A backend
+    // that is already up still resolves on the first poll (<1s), so this only
+    // changes the patience window, not the happy path.
+    backendTimeoutMs: 180_000,
     agentReadyTimeoutMs: 180_000,
     probeForExistingInstall: false,
     defaultTarget: null,

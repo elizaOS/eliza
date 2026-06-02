@@ -24,9 +24,7 @@ MECH_DIR = CHIP_ROOT / "mechanical/e1-phone"
 OUT_DIR = MECH_DIR / "out"
 REVIEW_DIR = MECH_DIR / "review"
 DEFAULT_REPORT = REVIEW_DIR / "mechanical-cad-evidence-inventory-2026-05-22.yaml"
-SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = (
-    REVIEW_DIR / "supplier-step-surrogate-intake-detail.json"
-)
+SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = REVIEW_DIR / "supplier-step-surrogate-intake-detail.json"
 COMPONENT_MODEL_DIR_MANIFEST = (
     CHIP_ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
 )
@@ -36,9 +34,7 @@ CANDIDATE_MANIFEST = (
 PUBLIC_CAD_SOURCE_INTAKE = (
     CHIP_ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
 )
-PUBLIC_BOM_MARKET_COST_BANDS = (
-    REVIEW_DIR / "bom-public-market-cost-bands-2026-05-28.yaml"
-)
+PUBLIC_BOM_MARKET_COST_BANDS = REVIEW_DIR / "bom-public-market-cost-bands-2026-05-28.yaml"
 
 REPORT_DATE = "2026-05-22"
 SCRIPT_NAME = "e1_phone_mechanical_cad_evidence_inventory.py"
@@ -121,9 +117,7 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "represented_route_ids": record.get("represented_route_ids", []),
         "represented_net_count": int(record.get("represented_net_count") or 0),
         "represented_route_count": int(record.get("represented_route_count") or 0),
-        "represented_route_record_count": int(
-            record.get("represented_route_record_count") or 0
-        ),
+        "represented_route_record_count": int(record.get("represented_route_record_count") or 0),
         "represented_route_records_with_layer_count": int(
             record.get("represented_route_records_with_layer_count") or 0
         ),
@@ -167,12 +161,8 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
             record.get("terminal_contract_matches_pad_visuals") is True
         ),
         "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
-        "all_pad_visuals_have_contract": (
-            record.get("all_pad_visuals_have_contract") is True
-        ),
-        "non_signal_pad_contract_count": int(
-            record.get("non_signal_pad_contract_count") or 0
-        ),
+        "all_pad_visuals_have_contract": (record.get("all_pad_visuals_have_contract") is True),
+        "non_signal_pad_contract_count": int(record.get("non_signal_pad_contract_count") or 0),
         "non_signal_pad_contract_matches_pad_visuals": (
             record.get("non_signal_pad_contract_matches_pad_visuals") is True
         ),
@@ -202,9 +192,7 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
         "public_cad_step_overlay_status": record.get("public_cad_step_overlay_status"),
         "public_cad_step_overlay_file": record.get("public_cad_step_overlay_file"),
         "public_cad_step_overlay_sha256": record.get("public_cad_step_overlay_sha256"),
-        "public_cad_step_overlay_bytes": int(
-            record.get("public_cad_step_overlay_bytes") or 0
-        ),
+        "public_cad_step_overlay_bytes": int(record.get("public_cad_step_overlay_bytes") or 0),
         "public_cad_source_record": record.get("public_cad_source_record"),
         "public_cad_step_overlay_release_credit": (
             record.get("public_cad_step_overlay_release_credit") is True
@@ -232,9 +220,7 @@ def component_model_directory_summary() -> dict[str, Any]:
         "model_record_count": int(data.get("model_record_count") or 0),
         "component_model_count": int(data.get("component_model_count") or 0),
         "supplier_approved_model_count": int(data.get("supplier_approved_model_count") or 0),
-        "pinout_bound_model_record_count": int(
-            data.get("pinout_bound_model_record_count") or 0
-        ),
+        "pinout_bound_model_record_count": int(data.get("pinout_bound_model_record_count") or 0),
         "support_pattern_model_record_count": int(
             data.get("support_pattern_model_record_count") or 0
         ),
@@ -263,12 +249,8 @@ def component_model_directory_summary() -> dict[str, Any]:
         "local_discrete_step_bbox_match_count": int(
             data.get("local_discrete_step_bbox_match_count") or 0
         ),
-        "local_discrete_step_file_count": int(
-            data.get("local_discrete_step_file_count") or 0
-        ),
-        "local_discrete_step_bytes_total": int(
-            data.get("local_discrete_step_bytes_total") or 0
-        ),
+        "local_discrete_step_file_count": int(data.get("local_discrete_step_file_count") or 0),
+        "local_discrete_step_bytes_total": int(data.get("local_discrete_step_bytes_total") or 0),
         "missing_supplier_discrete_model_count": int(
             data.get("missing_supplier_discrete_model_count") or 0
         ),
@@ -299,9 +281,7 @@ def component_model_directory_summary() -> dict[str, Any]:
             if isinstance(item, dict) and item.get("combined_step_assembly_name")
         ),
         "component_model_record_manifest": [
-            compact_component_model_record(item)
-            for item in model_records
-            if isinstance(item, dict)
+            compact_component_model_record(item) for item in model_records if isinstance(item, dict)
         ],
         "release_allowed": data.get("release_allowed") is True,
         "release_credit": False,
@@ -373,9 +353,7 @@ def supplier_step_surrogate_intake_detail(
                 "size_matches_file": actual_bytes == int(item.get("bytes") or 0),
                 "release_credit": item.get("release_credit") is True,
                 "component_reference_count": len(lane_components),
-                "manifest_model_reference_count": int(
-                    item.get("model_reference_count") or 0
-                ),
+                "manifest_model_reference_count": int(item.get("model_reference_count") or 0),
                 "component_references": [
                     str(record.get("reference") or "") for record in lane_components
                 ],
@@ -438,9 +416,7 @@ def supplier_step_surrogate_intake_detail(
         "supplier_step_intake_lane_counts": data.get("supplier_step_intake_lane_counts", {}),
         "component_model_record_count": int(component_model_dir.get("model_record_count") or 0),
         "lane_records": lane_records,
-        "all_lane_surrogates_present": all(
-            record["file_present"] for record in lane_records
-        ),
+        "all_lane_surrogates_present": all(record["file_present"] for record in lane_records),
         "all_lane_surrogate_hashes_match": all_hashes_match,
         "all_lane_surrogate_sizes_match": all_sizes_match,
         "all_lane_surrogates_release_credit_false": all(
@@ -454,8 +430,7 @@ def supplier_step_surrogate_intake_detail(
             record["all_component_records_release_credit_false"] for record in lane_records
         ),
         "all_lane_component_records_reference_surrogate": all(
-            record["all_component_records_reference_this_surrogate"]
-            for record in lane_records
+            record["all_component_records_reference_this_surrogate"] for record in lane_records
         ),
         "release_credit": False,
         "release_allowed": False,
@@ -500,9 +475,7 @@ def public_sourcing_intake_summary() -> dict[str, Any]:
             public_cad_summary.get("release_credit_record_count") or 0
         ),
         "public_market_bom_cost_category_count": len(public_bom_records),
-        "public_market_bom_cost_volume_count": int(
-            public_bom_summary.get("volume_count") or 0
-        ),
+        "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
         "public_market_bom_cost_avl_quote_count": int(
             public_bom_summary.get("avl_quote_count") or 0
         ),
@@ -683,9 +656,9 @@ def review_gate_inventory() -> dict[str, Any]:
             gate["cad_connection_all_records_have_cad_step_bytes"] = bool(
                 connection_records
             ) and all(int(item.get("cad_step_bytes") or 0) > 1000 for item in connection_records)
-            gate["cad_connection_all_records_have_cad_parts"] = bool(
-                connection_records
-            ) and all(item.get("cad_part_present") is True for item in connection_records)
+            gate["cad_connection_all_records_have_cad_parts"] = bool(connection_records) and all(
+                item.get("cad_part_present") is True for item in connection_records
+            )
             gate["cad_connection_all_records_release_credit_false"] = bool(
                 connection_records
             ) and all(item.get("release_credit") is False for item in connection_records)
@@ -787,10 +760,7 @@ def build_report() -> dict[str, Any]:
         and ocp_terminal_step_fallback_count == expected_terminal_marker_count
         and not solid_handoff.get("ocp_terminal_step_fallback_error")
     )
-    terminal_step_coverage_complete = (
-        solid_handoff_generated
-        or ocp_terminal_step_fallback_complete
-    )
+    terminal_step_coverage_complete = solid_handoff_generated or ocp_terminal_step_fallback_complete
     step_validation_validated_count = int(step_validation.get("validated_count") or 0)
     required_connection_count = int(connection_coverage.get("required_connection_count") or 0)
     passing_connection_count = int(connection_coverage.get("passing_connection_count") or 0)
@@ -899,9 +869,7 @@ def build_report() -> dict[str, Any]:
                 connection_coverage.get("represented_route_records_with_layer_count_total")
             ),
             "cad_connection_represented_route_records_with_source_domain_count_total": (
-                connection_coverage.get(
-                    "represented_route_records_with_source_domain_count_total"
-                )
+                connection_coverage.get("represented_route_records_with_source_domain_count_total")
             ),
             "cad_connection_represented_route_records_with_route_class_count_total": (
                 connection_coverage.get("represented_route_records_with_route_class_count_total")
@@ -999,12 +967,8 @@ def build_report() -> dict[str, Any]:
                 local_routed_step_candidate_ready
             ),
             "detailed_routed_step_candidate_path": detailed_routed_step_candidate.get("path"),
-            "routed_board_step_intake_detail": board_gate.get(
-                "routed_board_step_intake_detail"
-            ),
-            "routed_board_kicad_cli_preflight": board_gate.get(
-                "routed_board_kicad_cli_preflight"
-            ),
+            "routed_board_step_intake_detail": board_gate.get("routed_board_step_intake_detail"),
+            "routed_board_kicad_cli_preflight": board_gate.get("routed_board_kicad_cli_preflight"),
             "detailed_routed_step_candidate_bytes": int(
                 detailed_routed_step_candidate.get("size_bytes") or 0
             ),
@@ -1051,8 +1015,7 @@ def build_report() -> dict[str, Any]:
                     routed_source_binding.get("candidate_placeholder_marker_count") or 0
                 ),
                 "candidate_legacy_e1phone_footprint_ref_count": int(
-                    routed_source_binding.get("candidate_legacy_e1phone_footprint_ref_count")
-                    or 0
+                    routed_source_binding.get("candidate_legacy_e1phone_footprint_ref_count") or 0
                 ),
                 "candidate_footprint_count": int(
                     routed_source_binding.get("candidate_footprint_count") or 0
@@ -1061,9 +1024,7 @@ def build_report() -> dict[str, Any]:
                     routed_source_binding.get("candidate_segment_count") or 0
                 ),
                 "candidate_via_count": int(routed_source_binding.get("candidate_via_count") or 0),
-                "candidate_zone_count": int(
-                    routed_source_binding.get("candidate_zone_count") or 0
-                ),
+                "candidate_zone_count": int(routed_source_binding.get("candidate_zone_count") or 0),
                 "candidate_filled_zone_count": int(
                     routed_source_binding.get("candidate_filled_zone_count") or 0
                 ),
@@ -1135,9 +1096,7 @@ def build_report() -> dict[str, Any]:
             "supplier_lane_surrogate_step_count": supplier_surrogate_detail.get(
                 "supplier_lane_surrogate_step_count"
             ),
-            "supplier_lane_surrogate_records": supplier_surrogate_detail.get(
-                "lane_records", []
-            ),
+            "supplier_lane_surrogate_records": supplier_surrogate_detail.get("lane_records", []),
             "all_lane_surrogates_present": supplier_surrogate_detail.get(
                 "all_lane_surrogates_present"
             ),
@@ -1151,9 +1110,7 @@ def build_report() -> dict[str, Any]:
                 "all_lane_surrogates_release_credit_false"
             ),
             "all_lane_component_reference_counts_match_manifest": (
-                supplier_surrogate_detail.get(
-                    "all_lane_component_reference_counts_match_manifest"
-                )
+                supplier_surrogate_detail.get("all_lane_component_reference_counts_match_manifest")
             ),
             "all_lane_component_records_release_credit_false": supplier_surrogate_detail.get(
                 "all_lane_component_records_release_credit_false"
@@ -1199,9 +1156,7 @@ def build_report() -> dict[str, Any]:
                 ocp_terminal_step_fallback_complete
             ),
             "cad_connection_coverage_complete": cad_connection_coverage_complete,
-            "cad_connection_record_count": connection_coverage.get(
-                "cad_connection_record_count"
-            ),
+            "cad_connection_record_count": connection_coverage.get("cad_connection_record_count"),
             "cad_connection_record_manifest_id_count": connection_coverage.get(
                 "cad_connection_record_manifest_id_count"
             ),
@@ -1325,9 +1280,7 @@ def main() -> int:
     report = build_report()
     text = render_yaml(report)
     if args.write:
-        detail = supplier_step_surrogate_intake_detail(
-            component_model_directory_summary()
-        )
+        detail = supplier_step_surrogate_intake_detail(component_model_directory_summary())
         SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL.write_text(
             json.dumps(detail, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

@@ -87,7 +87,10 @@ type NativeGenerateTextResult = {
 };
 type NativeTextModelResult = string & NativeGenerateTextResult;
 
-function buildUserContent(params: GenerateTextParamsWithAttachments): UserContent {
+function buildUserContent(
+  params: GenerateTextParamsWithAttachments,
+  options: { includePrompt?: boolean } = { includePrompt: true }
+): UserContent {
   const content: Array<
     | { type: "text"; text: string }
     | {
@@ -98,7 +101,11 @@ function buildUserContent(params: GenerateTextParamsWithAttachments): UserConten
       }
   > = [];
 
-  if (typeof params.prompt === "string" && params.prompt.length > 0) {
+  if (
+    options.includePrompt !== false &&
+    typeof params.prompt === "string" &&
+    params.prompt.length > 0
+  ) {
     content.push({ type: "text", text: params.prompt });
   }
 
@@ -112,6 +119,39 @@ function buildUserContent(params: GenerateTextParamsWithAttachments): UserConten
   }
 
   return content;
+}
+
+function appendUserContentToMessages(
+  messages: ModelMessage[],
+  extraContent: UserContent
+): ModelMessage[] {
+  if (extraContent.length === 0) {
+    return messages;
+  }
+
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user");
+  if (lastUserIndex === -1) {
+    return [...messages, { role: "user" as const, content: extraContent }];
+  }
+
+  const nextMessages = [...messages];
+  const userMessage = nextMessages[lastUserIndex];
+  const existingContent = userMessage.content;
+  const content = [
+    ...(typeof existingContent === "string"
+      ? [{ type: "text" as const, text: existingContent }]
+      : Array.isArray(existingContent)
+        ? existingContent
+        : []),
+    ...extraContent,
+  ];
+
+  nextMessages[lastUserIndex] = {
+    ...userMessage,
+    content,
+  } as ModelMessage;
+
+  return nextMessages;
 }
 
 function textFromMessages(messages: ModelMessage[] | undefined): string {
@@ -260,6 +300,10 @@ function buildGenerateParams(
     (paramsWithAttachments.attachments?.length ?? 0) > 0
       ? buildUserContent(paramsWithAttachments)
       : undefined;
+  const attachmentContent =
+    paramsWithAttachments.messages && (paramsWithAttachments.attachments?.length ?? 0) > 0
+      ? buildUserContent(paramsWithAttachments, { includePrompt: false })
+      : undefined;
   const temperature = params.temperature ?? 0.7;
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
@@ -274,7 +318,11 @@ function buildGenerateParams(
   );
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+      ? {
+          messages: attachmentContent
+            ? appendUserContentToMessages(wireMessages, attachmentContent)
+            : wireMessages,
+        }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
         : prompt !== undefined

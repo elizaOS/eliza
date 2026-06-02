@@ -15,6 +15,7 @@ import {
   CircleAlert,
   CircleDashed,
   ExternalLink,
+  HardDrive,
   Loader2,
   MessageCircle,
   Phone,
@@ -726,7 +727,7 @@ export function DiscordConnectorCard() {
     (available || canRelaunchDiscord || Boolean(preferredActionLabel)) &&
     (!isConnected || !dmInboxVisible);
   const statusLabel = dmInboxVisible
-    ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
+    ? `Connected / ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
       ? `Log in to Discord in ${browserAccessSourceLabel(preferredAccess)}`
       : preferredAccess?.nextAction === "relaunch_discord"
@@ -955,14 +956,14 @@ export function DiscordConnectorCard() {
                   <div className="mt-1 text-[11px] text-muted/80">
                     {access.canControl ? "Control on" : "Control off"}
                     {access.siteAccessOk === false
-                      ? " • Discord not granted yet"
+                      ? " / Discord not granted yet"
                       : ""}
                     {access.tabState === "dm_inbox_visible"
-                      ? " • DM inbox visible"
+                      ? " / DM inbox visible"
                       : access.tabState === "discord_open"
-                        ? " • Discord open"
+                        ? " / Discord open"
                         : access.tabState === "background_discord"
-                          ? " • Discord tab found"
+                          ? " / Discord tab found"
                           : ""}
                   </div>
                   {actionLabel ? (
@@ -1585,6 +1586,7 @@ export function IMessageConnectorCard() {
               disabled={busy}
               onClick={() => void handleOpenFullDiskAccess()}
             >
+              <HardDrive className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               Open Full Disk Access
             </Button>
           </div>
@@ -1593,7 +1595,7 @@ export function IMessageConnectorCard() {
           <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
             Full Disk Access is still blocked for the process running Eliza, so
             reading `~/Library/Messages/chat.db` may stay limited until you
-            allow it in System Settings → Privacy & Security → Full Disk Access.
+            allow it in System Settings / Privacy & Security / Full Disk Access.
           </div>
         ) : null}
         {status?.accountHandle ? (

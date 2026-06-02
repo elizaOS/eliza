@@ -143,8 +143,9 @@ def dram_word_get(dut, byte_addr: int) -> int:
     return int(dut.u_sg_dram.mem[idx].value) & 0xFFFF_FFFF
 
 
-def build_descriptor(dut, desc_addr: int, src: int, dst: int, length: int,
-                     flags: int, nxt: int) -> None:
+def build_descriptor(
+    dut, desc_addr: int, src: int, dst: int, length: int, flags: int, nxt: int
+) -> None:
     dram_word_set(dut, desc_addr + D_SRC, src)
     dram_word_set(dut, desc_addr + D_DST, dst)
     dram_word_set(dut, desc_addr + D_LEN, length)
@@ -175,8 +176,13 @@ async def sg_dma_reachable_and_copies(dut):
         dram_word_set(dut, src_addr + i * 4, word)
         dram_word_set(dut, dst_addr + i * 4, 0)
     build_descriptor(
-        dut, desc_addr, src_addr, dst_addr, len(payload) * 4,
-        F_OWN | F_IRQ | F_LAST, 0,
+        dut,
+        desc_addr,
+        src_addr,
+        dst_addr,
+        len(payload) * 4,
+        F_OWN | F_IRQ | F_LAST,
+        0,
     )
 
     await mmio_write(dut, SGDMA_BASE + SG_IRQ_EN, 0x3)  # done + error IRQ enable
@@ -202,9 +208,7 @@ async def sg_dma_reachable_and_copies(dut):
     # Byte-exact copy in the engine's private DRAM.
     for i, word in enumerate(payload):
         got = dram_word_get(dut, dst_addr + i * 4)
-        assert got == word, (
-            f"copy mismatch @word {i}: got {got:#010x} want {word:#010x}"
-        )
+        assert got == word, f"copy mismatch @word {i}: got {got:#010x} want {word:#010x}"
 
     # Descriptor status writeback marks DONE (bit0) without ERR (bit1).
     desc_status = dram_word_get(dut, desc_addr + D_STATUS)

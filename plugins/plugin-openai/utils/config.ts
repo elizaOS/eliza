@@ -280,7 +280,7 @@ export function getTranscriptionModel(runtime: IAgentRuntime): string {
 }
 
 export function getTTSModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "OPENAI_TTS_MODEL") ?? "tts-1";
+  return getSetting(runtime, "OPENAI_TTS_MODEL") ?? "gpt-5-mini-tts";
 }
 
 export function getTTSVoice(runtime: IAgentRuntime): string {

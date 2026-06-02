@@ -89,10 +89,12 @@ function PendingApprovalActions({
 
 function RejectReasonInput({
   txId,
+  inputId,
   value,
   onChange,
 }: {
   txId: string;
+  inputId: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -105,6 +107,7 @@ function RejectReasonInput({
   });
   return (
     <input
+      id={inputId}
       ref={ref}
       {...agentProps}
       type="text"
@@ -375,12 +378,12 @@ export function ApprovalQueue({
                       <span className="text-2xs uppercase tracking-wider text-muted/60">
                         Amount
                       </span>
-                      <p className="text-sm font-semibold text-txt">
+                      <div className="text-sm font-semibold text-txt">
                         {formatWeiValue(
                           tx.request?.value ?? "0",
                           tx.request?.chainId ?? 8453,
                         )}
-                      </p>
+                      </div>
                     </div>
                   </div>
 
@@ -391,12 +394,12 @@ export function ApprovalQueue({
                         Policy reason
                       </span>
                       {reasons.map((reason) => (
-                        <p
+                        <div
                           key={reason}
                           className="rounded-lg border border-status-warning/15 bg-status-warning-bg px-2.5 py-1.5 text-xs text-status-warning"
                         >
                           {reason}
-                        </p>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -420,9 +423,13 @@ export function ApprovalQueue({
               {rejectDialogTxId === tx.id && (
                 <div className="mt-3 flex items-end gap-2 border-t border-border/20 pt-3">
                   <div className="flex-1">
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1">
+                    <label
+                      className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1"
+                      htmlFor={`reject-reason-${tx.id}`}
+                    >
                       Rejection reason (optional)
                       <RejectReasonInput
+                        inputId={`reject-reason-${tx.id}`}
                         txId={tx.id}
                         value={rejectReason}
                         onChange={setRejectReason}

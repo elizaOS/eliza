@@ -9,7 +9,7 @@
 export interface ViewEntry {
 	id: string;
 	label: string;
-	viewType?: "gui" | "tui";
+	viewType?: "gui" | "tui" | "xr";
 	description?: string;
 	icon?: string;
 	path?: string;
@@ -21,7 +21,7 @@ export interface ViewEntry {
 }
 
 export async function fetchViewEntries(
-	viewType?: "gui" | "tui",
+	viewType?: "gui" | "tui" | "xr",
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
 	const res = await fetch(`/api/views${qs}`);

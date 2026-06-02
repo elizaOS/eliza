@@ -13,6 +13,7 @@ import argparse
 import os
 import re
 import sys
+import json
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -177,6 +178,7 @@ async def run_benchmark(
     positions: list[NeedlePosition] | None = None,
     tasks_per_position: int | None = None,
     harness: str = "eliza",
+    expand_scenarios: bool = False,
 ) -> object:
     """Run the context benchmark via the eliza TS bridge."""
 
@@ -200,6 +202,7 @@ async def run_benchmark(
             run_niah_semantic=False,
             run_multi_hop=False,
             output_dir=output_dir,
+            include_edge_scenarios=expand_scenarios,
         )
     else:
         config = ContextBenchConfig(
@@ -217,6 +220,7 @@ async def run_benchmark(
             run_multi_hop=True,
             multi_hop_depths=[2, 3],
             output_dir=output_dir,
+            include_edge_scenarios=expand_scenarios,
         )
 
     def on_progress(suite: str, completed: int, total: int) -> None:
@@ -316,6 +320,21 @@ def main() -> int:
         choices=["eliza", "hermes", "openclaw", "smithers"],
         help="Agent harness routing the LLM query (default: eliza)",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for every generated context task.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print configured context scenario counts and exit.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate configured context scenarios and exit.",
+    )
     args = parser.parse_args()
     context_lengths = (
         [int(value) for value in args.context_lengths.split(",") if value.strip()]
@@ -328,6 +347,47 @@ def main() -> int:
         else None
     )
 
+    if args.quick:
+        config = ContextBenchConfig(
+            context_lengths=context_lengths or [1024, 4096],
+            positions=positions or [NeedlePosition.START, NeedlePosition.MIDDLE, NeedlePosition.END],
+            tasks_per_position=args.tasks_per_position or 2,
+            run_niah_basic=True,
+            run_niah_semantic=False,
+            run_multi_hop=False,
+            include_edge_scenarios=args.expand_scenarios,
+        )
+    else:
+        config = ContextBenchConfig(
+            context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384],
+            positions=positions or [
+                NeedlePosition.START,
+                NeedlePosition.EARLY,
+                NeedlePosition.MIDDLE,
+                NeedlePosition.LATE,
+                NeedlePosition.END,
+            ],
+            tasks_per_position=args.tasks_per_position or 3,
+            run_niah_basic=True,
+            run_niah_semantic=True,
+            run_multi_hop=True,
+            multi_hop_depths=[2, 3],
+            include_edge_scenarios=args.expand_scenarios,
+        )
+    if args.count_scenarios or args.validate_scenarios:
+        runner = ContextBenchRunner(config=config, llm_query_fn=_make_mock_llm_query())
+        counts = runner.count_scenarios()
+        if args.validate_scenarios:
+            errors = runner.validate_scenarios()
+            payload = {"ok": not errors, **counts}
+            if errors:
+                payload["errors"] = errors[:50]
+                payload["error_count"] = len(errors)
+            print(json.dumps(payload, indent=2))
+            return 0 if not errors else 1
+        print(json.dumps(counts, indent=2))
+        return 0
+
     asyncio.run(
         run_benchmark(
             quick=args.quick,
@@ -337,6 +397,7 @@ def main() -> int:
             positions=positions,
             tasks_per_position=args.tasks_per_position,
             harness=args.harness,
+            expand_scenarios=args.expand_scenarios,
         )
     )
     return 0

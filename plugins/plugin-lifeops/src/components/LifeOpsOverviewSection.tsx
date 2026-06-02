@@ -1227,9 +1227,9 @@ export function LifeOpsOverviewSection({
               }
               action={
                 <IconAction
-                  label="Sleep"
+                  label="Ask about sleep"
                   icon={<Moon className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("sleep")}
+                  onClick={() => onNavigate("assistant")}
                 />
               }
               className="xl:col-span-3"
@@ -1267,9 +1267,9 @@ export function LifeOpsOverviewSection({
               icon={<Monitor className="h-4 w-4" aria-hidden />}
               action={
                 <IconAction
-                  label="Screen Time"
+                  label="Ask about screen time"
                   icon={<Monitor className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("screen-time")}
+                  onClick={() => onNavigate("assistant")}
                 />
               }
               className="xl:col-span-3"
@@ -1318,9 +1318,9 @@ export function LifeOpsOverviewSection({
               icon={<Share2 className="h-4 w-4" aria-hidden />}
               action={
                 <IconAction
-                  label="Social"
+                  label="Ask about social"
                   icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("screen-time")}
+                  onClick={() => onNavigate("assistant")}
                 />
               }
               className="xl:col-span-3"

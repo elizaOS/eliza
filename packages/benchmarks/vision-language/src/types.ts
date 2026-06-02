@@ -182,6 +182,14 @@ export interface BenchReport {
   runtime_seconds: number;
   /** Number of samples whose prediction errored. */
   error_count: number;
+  /** True when benchmark edge sample expansion was requested. */
+  include_edge_scenarios?: boolean;
+  /** Base, edge, and total sample counts after optional expansion. */
+  scenario_counts?: {
+    base: number;
+    edge: number;
+    total: number;
+  };
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;

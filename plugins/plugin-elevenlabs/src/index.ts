@@ -172,6 +172,15 @@ function getTranscriptionSettings(
 ): TranscriptionSettings {
   const languageCode = getSetting(runtime, "ELEVENLABS_STT_LANGUAGE_CODE");
   const numSpeakersStr = getSetting(runtime, "ELEVENLABS_STT_NUM_SPEAKERS");
+  const numSpeakers = numSpeakersStr ? Number(numSpeakersStr) : undefined;
+  if (
+    numSpeakers !== undefined &&
+    (!Number.isInteger(numSpeakers) || numSpeakers < 1 || numSpeakers > 32)
+  ) {
+    throw new Error(
+      "ELEVENLABS_STT_NUM_SPEAKERS must be an integer between 1 and 32",
+    );
+  }
 
   return {
     apiKey: getApiKey(runtime) || "",
@@ -185,11 +194,34 @@ function getTranscriptionSettings(
     diarize: parseBooleanFromText(
       `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false") ?? "false"}`,
     ),
-    numSpeakers: numSpeakersStr ? Number(numSpeakersStr) : undefined,
+    numSpeakers,
     tagAudioEvents: parseBooleanFromText(
       `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false") ?? "false"}`,
     ),
   };
+}
+
+function isBufferInput(input: unknown): input is Buffer {
+  return (
+    typeof Buffer !== "undefined" &&
+    typeof Buffer.isBuffer === "function" &&
+    Buffer.isBuffer(input)
+  );
+}
+
+async function responseToAudioFile(response: Response): Promise<Buffer | Blob> {
+  if (isBrowser()) {
+    if (typeof response.blob === "function") {
+      return response.blob();
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return new Blob([arrayBuffer]);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(arrayBuffer);
+  }
+  return new Blob([arrayBuffer]);
 }
 
 /**
@@ -300,11 +332,9 @@ async function fetchTranscription(
       body.languageCode = params.languageCode;
     }
 
-    if (params.timestampsGranularity !== "none") {
-      body.timestampsGranularity = parseSttTimestampsGranularity(
-        params.timestampsGranularity,
-      );
-    }
+    body.timestampsGranularity = parseSttTimestampsGranularity(
+      params.timestampsGranularity,
+    );
 
     if (params.diarize) {
       body.diarize = true;
@@ -437,9 +467,8 @@ export const elevenLabsPlugin: Plugin = {
           if (!response.ok) {
             throw new Error(`Failed to fetch audio from URL: ${input}`);
           }
-          const arrayBuffer = await response.arrayBuffer();
-          audioFile = Buffer.from(arrayBuffer);
-        } else if (Buffer.isBuffer(input)) {
+          audioFile = await responseToAudioFile(response);
+        } else if (isBufferInput(input)) {
           audioFile = input;
         } else if (typeof input === "object" && "audioUrl" in input) {
           const response = await fetch(input.audioUrl);
@@ -448,8 +477,7 @@ export const elevenLabsPlugin: Plugin = {
               `Failed to fetch audio from URL: ${input.audioUrl}`,
             );
           }
-          const arrayBuffer = await response.arrayBuffer();
-          audioFile = Buffer.from(arrayBuffer);
+          audioFile = await responseToAudioFile(response);
         } else {
           throw new Error("Invalid input type for TRANSCRIPTION model");
         }

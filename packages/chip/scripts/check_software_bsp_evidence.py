@@ -8,7 +8,6 @@ from typing import Any
 
 import check_software_bsp
 
-
 FALSE_CLAIM_FLAGS = {
     "claim_allowed": False,
     "phone_claim_allowed": False,

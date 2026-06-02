@@ -26,6 +26,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from elizaos_webshop.dataset import WebShopDataset, count_tasks, validate_tasks
 from elizaos_webshop.runner import WebShopRunner
 from elizaos_webshop.types import WebShopConfig
 
@@ -94,6 +95,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
     p.add_argument("--no-details", action="store_true", help="Disable detailed json output")
     p.add_argument("--json", action="store_true", help="Print results json to stdout")
+    p.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected task plus ten realistic edge variants.",
+    )
+    p.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts before running.",
+    )
+    p.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate task ids and edge scenario metadata before running.",
+    )
 
     # Eliza integration
     p.add_argument("--mock", action="store_true", help="Use mock agent instead of real LLM (for testing)")
@@ -157,6 +173,7 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
         temperature=float(args.temperature),
         model_provider=args.model_provider,
         model_name=args.model,
+        include_edge_scenarios=bool(args.expand_scenarios),
         enable_trajectory_logging=(
             bool(args.trajectories) and not use_bridge
         )
@@ -201,6 +218,19 @@ def main() -> int:
     use_hf = bool(args.hf)
 
     config = create_config(args)
+    if args.count_scenarios or args.validate_scenarios:
+        ds = WebShopDataset(
+            split=str(args.split),
+            profile=str(args.profile),
+            use_sample_tasks=bool(args.use_sample_tasks),
+        )
+        ds.load_sync()
+        base_tasks = ds.get_tasks(limit=config.max_tasks)
+        if args.validate_scenarios:
+            validate_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
+        if args.count_scenarios:
+            print(json.dumps(count_tasks(base_tasks, bool(args.expand_scenarios))))
+
     provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
     if not provider:
         if os.environ.get("GROQ_API_KEY"):

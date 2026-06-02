@@ -1,4 +1,4 @@
-import { Package } from "lucide-react";
+import { Package, Puzzle } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -244,13 +244,13 @@ function PluginListView({
     if (result?.success) {
       return t("pluginsview.ConnectionTestPassedDialog", {
         durationMs: result.durationMs,
-        defaultValue: "✓ OK ({{durationMs}}ms)",
+        defaultValue: "OK ({{durationMs}}ms)",
       });
     }
     if (result?.error) {
       return t("pluginsview.ConnectionTestFailedDialog", {
         error: result.error,
-        defaultValue: "✕ {{error}}",
+        defaultValue: "Failed: {{error}}",
       });
     }
     return t("pluginsview.TestConnection");
@@ -906,7 +906,7 @@ function PluginListView({
     ) => {
       const icon = resolveIcon(plugin);
       if (!icon) {
-        return <span className={options?.emojiClassName ?? "text-sm"}>🧩</span>;
+        return <Puzzle className={options?.className ?? "w-5 h-5"} />;
       }
       if (typeof icon === "string") {
         const imageSrc = iconImageSource(icon);
@@ -922,7 +922,7 @@ function PluginListView({
             }}
           />
         ) : (
-          <span className={options?.emojiClassName ?? "text-sm"}>{icon}</span>
+          <Puzzle className={options?.className ?? "w-5 h-5"} />
         );
       }
       const IconComponent = icon;

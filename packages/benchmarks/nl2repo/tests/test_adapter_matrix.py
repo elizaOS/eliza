@@ -10,9 +10,12 @@ if str(ROOT) not in sys.path:
 
 from benchmarks.nl2repo.adapter_matrix import (
     NL2RepoTask,
+    count_tasks,
+    expand_tasks,
     load_tasks,
     run_agent_generation,
     token_metrics_from_usage,
+    validate_tasks,
 )
 from benchmarks.orchestrator.code_agent_matrix import collect_token_metrics
 
@@ -25,6 +28,21 @@ def test_load_tasks_reads_canonical_metadata() -> None:
     assert tasks[0].prompt_md_path.endswith("/start.md")
     assert tasks[0].test_case_count > 0
     assert tasks[0].eval_image.endswith(f"/{tasks[0].name}:1.0")
+
+
+def test_expand_tasks_adds_ten_edge_variants_per_base_task() -> None:
+    tasks = load_tasks(max_tasks=1)
+
+    expanded = expand_tasks(tasks, expand_scenarios=True)
+
+    assert count_tasks(tasks, expand_scenarios=True) == {"base": 1, "edge": 10, "total": 11}
+    assert len(expanded) == 11
+    assert expanded[0].name == tasks[0].name
+    assert expanded[1].name.endswith("__edge_01")
+    assert expanded[1].source_name == tasks[0].name
+    assert expanded[1].eval_image == tasks[0].eval_image
+    assert expanded[1].edge_condition
+    assert validate_tasks(tasks, expand_scenarios=True)["valid"] is True
 
 
 def test_token_metrics_from_usage_sums_nested_calls() -> None:

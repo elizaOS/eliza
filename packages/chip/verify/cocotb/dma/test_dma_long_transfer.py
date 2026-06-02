@@ -5,9 +5,9 @@ following the handshake style of ``verify/cocotb/test_e1_dma.py``. This suite
 is run by the top-level ``cocotb-dma`` gate.
 """
 
+import json
 import random
 import sys
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,9 +16,8 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import read_reg, write_reg  # noqa: E402
+from common import read_reg, word_read, word_write, write_reg  # noqa: E402  # noqa: E402
 from common import reset as _reset  # noqa: E402
-from common import word_read, word_write  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC_REG = 0x00

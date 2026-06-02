@@ -478,13 +478,7 @@ async function route(
   const params = getParams(options);
   const { target, innerSubaction } = translateSubaction(subaction);
   const delegatedCallback: HandlerCallback | undefined = callback
-    ? async (content, files) =>
-        callback(
-          content && typeof content === "object"
-            ? { ...content, action: ACTION_NAME }
-            : content,
-          files,
-        )
+    ? (content, actionName) => callback(content, actionName ?? ACTION_NAME)
     : undefined;
 
   const forwardedOptions: HandlerOptions = {

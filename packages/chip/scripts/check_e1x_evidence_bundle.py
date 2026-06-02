@@ -31,24 +31,33 @@ REQUIRED_REPORTS = {
     "full_output_checksum_manifest": ROOT / "build/reports/e1x_full_output_checksum_manifest.json",
     "expanded_real_weight_rows": ROOT / "build/reports/e1x_expanded_real_weight_rows.json",
     "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
-    "vocab_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
-    "repaired_real_weight_execution": ROOT / "build/reports/e1x_repaired_real_weight_execution.json",
-    "attn_out_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
-    "attn_qkv_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json",
-    "mlp_gate_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json",
-    "mlp_up_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json",
-    "mlp_down_sampled_k_real_weight_rows": ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json",
+    "vocab_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
+    "repaired_real_weight_execution": ROOT
+    / "build/reports/e1x_repaired_real_weight_execution.json",
+    "attn_out_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
+    "attn_qkv_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json",
+    "mlp_gate_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json",
+    "mlp_up_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json",
+    "mlp_down_sampled_k_real_weight_rows": ROOT
+    / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json",
     "vector_kernel_template": ROOT / "build/reports/e1x_vector_kernel_template.json",
     "looped_vector_kernel_skeleton": ROOT / "build/reports/e1x_looped_vector_kernel_skeleton.json",
     "per_layer_vector_codegen": ROOT / "build/reports/e1x_per_layer_vector_codegen.json",
-    "sampled_vector_kernel_executor": ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json",
+    "sampled_vector_kernel_executor": ROOT
+    / "build/reports/e1x_sampled_vector_kernel_executor.json",
     "vector_kernel_window_executor": ROOT / "build/reports/e1x_vector_kernel_window_executor.json",
     "vector_window_fabric_checksum": ROOT / "build/reports/e1x_vector_window_fabric_checksum.json",
     "window_shard_linkage": ROOT / "build/reports/e1x_window_shard_linkage.json",
     "window_repair_linkage": ROOT / "build/reports/e1x_window_repair_linkage.json",
     "window_route_validation": ROOT / "build/reports/e1x_window_route_validation.json",
     "window_repair_rom_linkage": ROOT / "build/reports/e1x_window_repair_rom_linkage.json",
-    "window_execution_trace_linkage": ROOT / "build/reports/e1x_window_execution_trace_linkage.json",
+    "window_execution_trace_linkage": ROOT
+    / "build/reports/e1x_window_execution_trace_linkage.json",
     "fabric_reduction": ROOT / "build/reports/e1x_fabric_reduction.json",
     "power_thermal": ROOT / "build/reports/e1x_power_thermal.json",
     "core_cocotb": ROOT / "build/reports/e1x_core_cocotb.json",
@@ -141,7 +150,9 @@ def check_reports_present(reports: dict[str, dict]) -> list[dict[str, str]]:
             f"{path.relative_to(ROOT)} present",
             f"missing {path.relative_to(ROOT)}",
         )
-        checks.append({"id": f"e1x_bundle_{name}_report_present", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_bundle_{name}_report_present", "status": status, "detail": detail}
+        )
         if exists:
             reports[name] = load_report(path)
     return checks
@@ -191,11 +202,13 @@ def check_report_evidence_paths(name: str, report: dict) -> list[dict[str, str]]
         + "missing evidence paths: "
         + ", ".join(missing[:5]),
     )
-    checks.append({
-        "id": f"e1x_bundle_{name}_evidence_paths_exist",
-        "status": status,
-        "detail": detail,
-    })
+    checks.append(
+        {
+            "id": f"e1x_bundle_{name}_evidence_paths_exist",
+            "status": status,
+            "detail": detail,
+        }
+    )
     return checks
 
 
@@ -224,7 +237,9 @@ def collect_missing_evidence_paths(reports: dict[str, dict]) -> list[dict[str, o
     return missing
 
 
-def collect_dependency_counts(reports: dict[str, dict], missing_evidence: list[dict[str, object]]) -> dict[str, int]:
+def collect_dependency_counts(
+    reports: dict[str, dict], missing_evidence: list[dict[str, object]]
+) -> dict[str, int]:
     declared_evidence_path_count = sum(
         len(report.get("evidence_paths", []))
         for report in reports.values()
@@ -233,7 +248,9 @@ def collect_dependency_counts(reports: dict[str, dict], missing_evidence: list[d
     return {
         "required_report_count": len(REQUIRED_REPORTS),
         "present_report_count": len(reports),
-        "passing_report_count": sum(1 for report in reports.values() if report.get("status") == "PASS"),
+        "passing_report_count": sum(
+            1 for report in reports.values() if report.get("status") == "PASS"
+        ),
         "declared_evidence_path_count": declared_evidence_path_count,
         "missing_evidence_path_count": sum(int(item["missing_count"]) for item in missing_evidence),
     }
@@ -303,10 +320,7 @@ def check_report_freshness(name: str, report: dict) -> dict[str, str]:
 def main() -> int:
     reports: dict[str, dict] = {}
     checks = check_reports_present(reports)
-    checks.extend(
-        check_report_passes(name, report)
-        for name, report in sorted(reports.items())
-    )
+    checks.extend(check_report_passes(name, report) for name, report in sorted(reports.items()))
     for name, report in sorted(reports.items()):
         checks.extend(check_report_evidence_paths(name, report))
         checks.append(check_report_freshness(name, report))
@@ -424,7 +438,9 @@ def main() -> int:
             and int(repair_capacity.get("max_total_words", 0)) >= 3582
             and int(repair_capacity.get("production_fuse_window_words", 0)) >= 4096
             and int(repair_capacity.get("production_remap_entries", 0)) >= 4096
-            and 0.0 < float(repair_capacity.get("production_dedicated_repair_sram_vs_local_core_sram", 0.0)) < 1.0
+            and 0.0
+            < float(repair_capacity.get("production_dedicated_repair_sram_vs_local_core_sram", 0.0))
+            < 1.0
             and int(repair_capacity.get("failing_check_count", 1)) == 0,
             "repair fuse/ROM window and dedicated repair SRAM are sized against normal/high-failure repair images",
         ),
@@ -450,7 +466,12 @@ def main() -> int:
         ),
         (
             "real_graph_kernel_schedule_present",
-            int(kernel.get("programmed_layer_count", kernel.get("real_graph_kernel_dispatch_layers", 0))) >= 283
+            int(
+                kernel.get(
+                    "programmed_layer_count", kernel.get("real_graph_kernel_dispatch_layers", 0)
+                )
+            )
+            >= 283
             or int(benchmark.get("real_graph_kernel_dispatch_layers", 0)) >= 283,
             "real-graph kernel dispatch covers the checked layer graph",
         ),
@@ -513,7 +534,9 @@ def main() -> int:
             and int(full_payload_manifest.get("committed_probe_word_count", 0)) == 454_101
             and int(full_payload_manifest.get("payload_manifest_checksum", 0))
             == 15_384_439_414_980_776_514
-            and 0.0 < float(full_payload_manifest.get("probe_word_fraction_of_loader_stream", 0.0)) < 0.001
+            and 0.0
+            < float(full_payload_manifest.get("probe_word_fraction_of_loader_stream", 0.0))
+            < 0.001
             and full_payload_manifest.get("residual_blocker")
             == "full_quantized_weight_payload_executor_missing"
             and int(full_payload_manifest.get("failing_check_count", 1)) == 0,
@@ -527,7 +550,8 @@ def main() -> int:
             and int(full_payload_repair.get("normal_payload_remapped_records", 0)) == 279
             and int(full_payload_repair.get("high_failure_payload_remapped_records", 0)) == 3_012
             and float(full_payload_repair.get("high_vs_normal_payload_remap_ratio", 0.0)) > 10.0
-            and int(full_payload_repair.get("normal_route_checksum", 0)) == 3_286_450_877_122_388_120
+            and int(full_payload_repair.get("normal_route_checksum", 0))
+            == 3_286_450_877_122_388_120
             and int(full_payload_repair.get("high_failure_route_checksum", 0))
             == 8_141_847_437_961_269_241
             and int(full_payload_repair.get("combined_payload_repair_checksum", 0))
@@ -542,7 +566,8 @@ def main() -> int:
             int(full_payload_repair_rom.get("payload_shard_record_count", 0)) == 151_367
             and int(full_payload_repair_rom.get("payload_loader_word_count", 0)) == 1_627_034_880
             and int(full_payload_repair_rom.get("normal_payload_remap_word_count", 0)) == 279
-            and int(full_payload_repair_rom.get("high_failure_payload_remap_word_count", 0)) == 3_012
+            and int(full_payload_repair_rom.get("high_failure_payload_remap_word_count", 0))
+            == 3_012
             and full_payload_repair_rom.get("normal_payload_remap_words_sha256")
             == "b941ac08aa1daaa9037e57443bf1700625fb598d79f04de20240d60ea9ba6ddd"
             and full_payload_repair_rom.get("high_failure_payload_remap_words_sha256")
@@ -565,7 +590,9 @@ def main() -> int:
             and int(full_payload_repaired_run.get("normal_total_cycles", 0)) == 47_501_642_583
             and int(full_payload_repaired_run.get("high_failure_total_cycles", 0)) == 63_132_355_414
             and float(full_payload_repaired_run.get("high_vs_normal_cycle_ratio", 0.0)) > 1.3
-            and 0.7 < float(full_payload_repaired_run.get("high_vs_normal_decode_tps_ratio", 0.0)) < 0.8
+            and 0.7
+            < float(full_payload_repaired_run.get("high_vs_normal_decode_tps_ratio", 0.0))
+            < 0.8
             and int(full_payload_repaired_run.get("normal_output_checksum", 0))
             == 8_263_636_289_739_888_019
             and int(full_payload_repaired_run.get("high_failure_output_checksum", 0))
@@ -595,7 +622,8 @@ def main() -> int:
             and int(tensor_cycle.get("executed_mac_count", 0)) >= 26180
             and int(tensor_cycle.get("scalar_cycle_count", 0)) >= 108116
             and int(tensor_cycle.get("pe_cocotb_testcases", 0)) >= 16
-            and tensor_cycle.get("residual_blocker") == "vectorized_full_tensor_fabric_executor_missing"
+            and tensor_cycle.get("residual_blocker")
+            == "vectorized_full_tensor_fabric_executor_missing"
             and int(tensor_cycle.get("failing_check_count", 1)) == 0,
             "cycle-level scalar tensor executor replays every sampled W4A8 proof row and links to PE RTL cocotb",
         ),
@@ -611,7 +639,8 @@ def main() -> int:
             + int(fabric_reduction.get("total_reduction_wavelets", -1))
             and int(fabric_reduction.get("peak_color_fabric_cycles", 0)) > 0
             and int(fabric_reduction.get("reduction_merge_cocotb_testcases", 0)) >= 5
-            and fabric_reduction.get("residual_blocker") == "vectorized_full_tensor_fabric_executor_missing"
+            and fabric_reduction.get("residual_blocker")
+            == "vectorized_full_tensor_fabric_executor_missing"
             and int(fabric_reduction.get("failing_check_count", 1)) == 0,
             "fabric-reduction gate recomputes scheduled reduction wavelets, links per-color timing, and requires bounded RTL merge primitive evidence",
         ),
@@ -646,8 +675,7 @@ def main() -> int:
             "sampled_tensor_output_checksum_present",
             int(tensor_output.get("proof_layer_count", 0)) >= 283
             and int(tensor_output.get("sampled_output_row_count", 0)) >= 1132
-            and int(tensor_output.get("sampled_output_checksum", 0))
-            == 14_414_877_542_268_347_137
+            and int(tensor_output.get("sampled_output_checksum", 0)) == 14_414_877_542_268_347_137
             and int(tensor_output.get("normal_trace_output_checksum", 0)) > 0
             and int(tensor_output.get("high_failure_trace_output_checksum", 0)) > 0
             and int(tensor_output.get("normal_trace_output_checksum", 0))
@@ -688,8 +716,7 @@ def main() -> int:
             and float(execution_ladder.get("lane_mac_gain_vs_real_sample", 0.0)) > 2600.0
             and int(execution_ladder.get("sampled_output_checksum", 0))
             == 14_414_877_542_268_347_137
-            and int(execution_ladder.get("routed_window_checksum", 0))
-            == 4_718_384_912_712_357_942
+            and int(execution_ladder.get("routed_window_checksum", 0)) == 4_718_384_912_712_357_942
             and int(execution_ladder.get("routing_color_count", 0)) == 24
             and int(execution_ladder.get("merged_group_count", 0)) == 283
             and execution_ladder.get("residual_blocker")
@@ -720,7 +747,8 @@ def main() -> int:
             int(full_checksum_manifest.get("committed_layer_count", 0)) == 283
             and int(full_checksum_manifest.get("committed_output_row_count", 0)) == 2_608_640
             and int(full_checksum_manifest.get("committed_mac_count", 0)) == 13_015_864_320
-            and int(full_checksum_manifest.get("committed_vector_word_op_count", 0)) == 1_627_345_920
+            and int(full_checksum_manifest.get("committed_vector_word_op_count", 0))
+            == 1_627_345_920
             and int(full_checksum_manifest.get("committed_row_probe_count", 0)) == 849
             and int(full_checksum_manifest.get("row_identity_manifest_checksum", 0))
             == 5_613_227_195_448_189_553
@@ -834,8 +862,10 @@ def main() -> int:
             and int(attn_out_sampled_k.get("executed_layer_count", 0)) == 40
             and int(attn_out_sampled_k.get("sampled_k", 0)) == 64
             and int(attn_out_sampled_k.get("executed_attn_out_output_row_count", 0)) == 204_800
-            and int(attn_out_sampled_k.get("executed_attn_out_sampled_k_mac_count", 0)) == 13_107_200
-            and int(attn_out_sampled_k.get("represented_attn_out_full_k_mac_count", 0)) == 1_048_576_000
+            and int(attn_out_sampled_k.get("executed_attn_out_sampled_k_mac_count", 0))
+            == 13_107_200
+            and int(attn_out_sampled_k.get("represented_attn_out_full_k_mac_count", 0))
+            == 1_048_576_000
             and 0.07 < float(attn_out_sampled_k.get("row_coverage_fraction", 0.0)) < 0.09
             and 0.001 < float(attn_out_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
             and 0.08 < float(attn_out_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.09
@@ -856,8 +886,10 @@ def main() -> int:
             and int(attn_qkv_sampled_k.get("executed_layer_count", 0)) == 40
             and int(attn_qkv_sampled_k.get("sampled_k", 0)) == 32
             and int(attn_qkv_sampled_k.get("executed_attn_qkv_output_row_count", 0)) == 614_400
-            and int(attn_qkv_sampled_k.get("executed_attn_qkv_sampled_k_mac_count", 0)) == 19_660_800
-            and int(attn_qkv_sampled_k.get("represented_attn_qkv_full_k_mac_count", 0)) == 3_145_728_000
+            and int(attn_qkv_sampled_k.get("executed_attn_qkv_sampled_k_mac_count", 0))
+            == 19_660_800
+            and int(attn_qkv_sampled_k.get("represented_attn_qkv_full_k_mac_count", 0))
+            == 3_145_728_000
             and 0.23 < float(attn_qkv_sampled_k.get("row_coverage_fraction", 0.0)) < 0.24
             and 0.001 < float(attn_qkv_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
             and 0.24 < float(attn_qkv_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.25
@@ -878,8 +910,10 @@ def main() -> int:
             and int(mlp_gate_sampled_k.get("executed_layer_count", 0)) == 40
             and int(mlp_gate_sampled_k.get("sampled_k", 0)) == 32
             and int(mlp_gate_sampled_k.get("executed_mlp_gate_output_row_count", 0)) == 552_960
-            and int(mlp_gate_sampled_k.get("executed_mlp_gate_sampled_k_mac_count", 0)) == 17_694_720
-            and int(mlp_gate_sampled_k.get("represented_mlp_gate_full_k_mac_count", 0)) == 2_831_155_200
+            and int(mlp_gate_sampled_k.get("executed_mlp_gate_sampled_k_mac_count", 0))
+            == 17_694_720
+            and int(mlp_gate_sampled_k.get("represented_mlp_gate_full_k_mac_count", 0))
+            == 2_831_155_200
             and 0.21 < float(mlp_gate_sampled_k.get("row_coverage_fraction", 0.0)) < 0.22
             and 0.001 < float(mlp_gate_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.002
             and 0.21 < float(mlp_gate_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.22
@@ -923,9 +957,12 @@ def main() -> int:
             and int(mlp_down_sampled_k.get("sampled_k", 0)) == 32
             and int(mlp_down_sampled_k.get("executed_mlp_down_output_row_count", 0)) == 204_800
             and int(mlp_down_sampled_k.get("executed_mlp_down_sampled_k_mac_count", 0)) == 6_553_600
-            and int(mlp_down_sampled_k.get("represented_mlp_down_full_k_mac_count", 0)) == 2_831_155_200
+            and int(mlp_down_sampled_k.get("represented_mlp_down_full_k_mac_count", 0))
+            == 2_831_155_200
             and 0.07 < float(mlp_down_sampled_k.get("row_coverage_fraction", 0.0)) < 0.08
-            and 0.0005 < float(mlp_down_sampled_k.get("executed_mac_coverage_fraction", 0.0)) < 0.001
+            and 0.0005
+            < float(mlp_down_sampled_k.get("executed_mac_coverage_fraction", 0.0))
+            < 0.001
             and 0.21 < float(mlp_down_sampled_k.get("represented_full_k_mac_fraction", 0.0)) < 0.22
             and int(mlp_down_sampled_k.get("mlp_down_sampled_k_real_weight_checksum", 0))
             == 3_360_713_502_265_478_628
@@ -979,10 +1016,8 @@ def main() -> int:
             int(per_layer_codegen.get("codegen_layer_count", 0)) == 283
             and int(per_layer_codegen.get("template_body_instruction_estimate", 0))
             == 87_876_679_680
-            and int(per_layer_codegen.get("loop_control_instruction_estimate", 0))
-            == 6_517_209_600
-            and int(per_layer_codegen.get("total_kernel_instruction_estimate", 0))
-            == 94_393_889_280
+            and int(per_layer_codegen.get("loop_control_instruction_estimate", 0)) == 6_517_209_600
+            and int(per_layer_codegen.get("total_kernel_instruction_estimate", 0)) == 94_393_889_280
             and int(per_layer_codegen.get("routing_color_count", 0)) == 24
             and per_layer_codegen.get("per_layer_codegen_sha256")
             == "3815c04bfb38c664d3215e0b268e6ed8d801a7a075a1dab6ab1174d4e4635956"
@@ -1102,7 +1137,8 @@ def main() -> int:
             and int(window_route.get("high_failure_window_max_repaired_neighbor_hops", 0)) == 355
             and int(window_route.get("normal_window_remapped_neighbor_edges", 0)) > 0
             and int(window_route.get("high_failure_window_remapped_neighbor_edges", 0)) > 0
-            and int(window_route.get("normal_window_route_checksum", 0)) == 3_286_450_877_122_388_120
+            and int(window_route.get("normal_window_route_checksum", 0))
+            == 3_286_450_877_122_388_120
             and int(window_route.get("high_failure_window_route_checksum", 0))
             == 8_141_847_437_961_269_241
             and float(window_route.get("high_vs_normal_window_extra_hop_ratio", 0.0)) > 10.0
@@ -1143,7 +1179,8 @@ def main() -> int:
             and float(window_trace.get("high_vs_normal_repair_hop_penalty_ratio", 0.0)) > 8.0
             and float(window_trace.get("window_high_vs_normal_extra_hop_ratio", 0.0)) > 10.0
             and int(window_trace.get("normal_output_checksum", 0)) == 8_263_636_289_739_888_019
-            and int(window_trace.get("high_failure_output_checksum", 0)) == 3_419_781_716_949_080_192
+            and int(window_trace.get("high_failure_output_checksum", 0))
+            == 3_419_781_716_949_080_192
             and int(window_trace.get("normal_route_checks", 0)) == 4_096
             and int(window_trace.get("high_failure_route_checks", 0)) == 8_192
             and window_trace.get("high_failure_repair_rom_sha256")
@@ -1226,7 +1263,8 @@ def main() -> int:
             and int(mesh_liveness.get("mesh_route_marker_count", 0)) >= 8
             and int(mesh_liveness.get("credit_route_marker_count", 0)) >= 6
             and int(mesh_liveness.get("formal_safety_marker_count", 0)) >= 6
-            and mesh_liveness.get("residual_blocker") == "full_formal_network_liveness_proof_missing"
+            and mesh_liveness.get("residual_blocker")
+            == "full_formal_network_liveness_proof_missing"
             and int(mesh_liveness.get("failing_check_count", 1)) == 0,
             "mesh route-discipline evidence ties XY routing, credit-router safety formal, and 4x4 mesh cocotb while preserving full-liveness blocker",
         ),
@@ -1255,15 +1293,25 @@ def main() -> int:
         "freshness_check_count": len(
             [check for check in checks if check["id"].endswith("_freshness")]
         ),
-        "real_graph_normal_repair_rom_sha256": str(benchmark.get("real_graph_normal_repair_rom_sha256", "")),
-        "real_graph_high_failure_repair_rom_sha256": str(benchmark.get("real_graph_high_failure_repair_rom_sha256", "")),
+        "real_graph_normal_repair_rom_sha256": str(
+            benchmark.get("real_graph_normal_repair_rom_sha256", "")
+        ),
+        "real_graph_high_failure_repair_rom_sha256": str(
+            benchmark.get("real_graph_high_failure_repair_rom_sha256", "")
+        ),
         "real_graph_model_required_mib": float(benchmark.get("real_graph_model_required_mib", 0.0)),
-        "real_graph_model_required_vs_e1_sram": float(benchmark.get("real_graph_model_required_vs_e1_sram", 0.0)),
-        "real_graph_model_required_vs_e1x_sram": float(benchmark.get("real_graph_model_required_vs_e1x_sram", 0.0)),
+        "real_graph_model_required_vs_e1_sram": float(
+            benchmark.get("real_graph_model_required_vs_e1_sram", 0.0)
+        ),
+        "real_graph_model_required_vs_e1x_sram": float(
+            benchmark.get("real_graph_model_required_vs_e1x_sram", 0.0)
+        ),
         "real_graph_high_vs_normal_trace_cycle_ratio": float(
             benchmark.get("real_graph_high_vs_normal_trace_cycle_ratio", 0.0)
         ),
-        "yield_high_failure_spare_margin": int(yield_repair_margin.get("high_failure_spare_margin", 0)),
+        "yield_high_failure_spare_margin": int(
+            yield_repair_margin.get("high_failure_spare_margin", 0)
+        ),
         "yield_high_failure_spare_utilization": float(
             yield_repair_margin.get("high_failure_spare_utilization", 0.0)
         ),
@@ -1272,14 +1320,18 @@ def main() -> int:
         ),
         "boot_verified_rom_case_count": int(boot_fw.get("verified_rom_case_count", 0)),
         "repair_capacity_rom_case_count": int(repair_capacity.get("rom_case_count", 0)),
-        "repair_capacity_fuse_window_words": int(repair_capacity.get("production_fuse_window_words", 0)),
+        "repair_capacity_fuse_window_words": int(
+            repair_capacity.get("production_fuse_window_words", 0)
+        ),
         "repair_capacity_dedicated_sram_bytes": int(
             repair_capacity.get("production_dedicated_repair_sram_bytes", 0)
         ),
         "repair_fuse_reader_max_streamed_word_count": int(
             repair_fuse_reader.get("max_streamed_word_count", 0)
         ),
-        "repair_fuse_reader_verilator_lint_clean": bool(repair_fuse_reader.get("verilator_lint_clean")),
+        "repair_fuse_reader_verilator_lint_clean": bool(
+            repair_fuse_reader.get("verilator_lint_clean")
+        ),
         "repair_fuse_reader_residual_blocker": str(repair_fuse_reader.get("residual_blocker", "")),
         "repair_rom_cocotb_testcases": int(repair_rom.get("testcases", 0)),
         "tile_cocotb_testcases": int(tile.get("testcases", 0)),
@@ -1555,9 +1607,7 @@ def main() -> int:
         "full_norm_real_weight_rows": int(
             full_norm_real_weight.get("executed_norm_output_row_count", 0)
         ),
-        "full_norm_real_weight_macs": int(
-            full_norm_real_weight.get("executed_norm_mac_count", 0)
-        ),
+        "full_norm_real_weight_macs": int(full_norm_real_weight.get("executed_norm_mac_count", 0)),
         "full_norm_real_weight_row_fraction": float(
             full_norm_real_weight.get("row_coverage_fraction", 0.0)
         ),
@@ -1573,15 +1623,11 @@ def main() -> int:
         "vocab_sampled_k_layers": int(vocab_sampled_k.get("executed_layer_count", 0)),
         "vocab_sampled_k_value": int(vocab_sampled_k.get("sampled_k", 0)),
         "vocab_sampled_k_rows": int(vocab_sampled_k.get("executed_vocab_output_row_count", 0)),
-        "vocab_sampled_k_macs": int(
-            vocab_sampled_k.get("executed_vocab_sampled_k_mac_count", 0)
-        ),
+        "vocab_sampled_k_macs": int(vocab_sampled_k.get("executed_vocab_sampled_k_mac_count", 0)),
         "vocab_sampled_k_represented_full_k_macs": int(
             vocab_sampled_k.get("represented_vocab_full_k_mac_count", 0)
         ),
-        "vocab_sampled_k_row_fraction": float(
-            vocab_sampled_k.get("row_coverage_fraction", 0.0)
-        ),
+        "vocab_sampled_k_row_fraction": float(vocab_sampled_k.get("row_coverage_fraction", 0.0)),
         "vocab_sampled_k_checksum": int(
             vocab_sampled_k.get("vocab_sampled_k_real_weight_checksum", 0)
         ),
@@ -1636,9 +1682,7 @@ def main() -> int:
         "attn_out_sampled_k_result_sha256": str(
             attn_out_sampled_k.get("attn_out_sampled_k_result_sha256", "")
         ),
-        "attn_out_sampled_k_residual_blocker": str(
-            attn_out_sampled_k.get("residual_blocker", "")
-        ),
+        "attn_out_sampled_k_residual_blocker": str(attn_out_sampled_k.get("residual_blocker", "")),
         "attn_qkv_sampled_k_layers": int(attn_qkv_sampled_k.get("executed_layer_count", 0)),
         "attn_qkv_sampled_k_value": int(attn_qkv_sampled_k.get("sampled_k", 0)),
         "attn_qkv_sampled_k_rows": int(
@@ -1659,9 +1703,7 @@ def main() -> int:
         "attn_qkv_sampled_k_result_sha256": str(
             attn_qkv_sampled_k.get("attn_qkv_sampled_k_result_sha256", "")
         ),
-        "attn_qkv_sampled_k_residual_blocker": str(
-            attn_qkv_sampled_k.get("residual_blocker", "")
-        ),
+        "attn_qkv_sampled_k_residual_blocker": str(attn_qkv_sampled_k.get("residual_blocker", "")),
         "mlp_gate_sampled_k_layers": int(mlp_gate_sampled_k.get("executed_layer_count", 0)),
         "mlp_gate_sampled_k_value": int(mlp_gate_sampled_k.get("sampled_k", 0)),
         "mlp_gate_sampled_k_rows": int(
@@ -1682,32 +1724,24 @@ def main() -> int:
         "mlp_gate_sampled_k_result_sha256": str(
             mlp_gate_sampled_k.get("mlp_gate_sampled_k_result_sha256", "")
         ),
-        "mlp_gate_sampled_k_residual_blocker": str(
-            mlp_gate_sampled_k.get("residual_blocker", "")
-        ),
+        "mlp_gate_sampled_k_residual_blocker": str(mlp_gate_sampled_k.get("residual_blocker", "")),
         "mlp_up_sampled_k_layers": int(mlp_up_sampled_k.get("executed_layer_count", 0)),
         "mlp_up_sampled_k_value": int(mlp_up_sampled_k.get("sampled_k", 0)),
-        "mlp_up_sampled_k_rows": int(
-            mlp_up_sampled_k.get("executed_mlp_up_output_row_count", 0)
-        ),
+        "mlp_up_sampled_k_rows": int(mlp_up_sampled_k.get("executed_mlp_up_output_row_count", 0)),
         "mlp_up_sampled_k_macs": int(
             mlp_up_sampled_k.get("executed_mlp_up_sampled_k_mac_count", 0)
         ),
         "mlp_up_sampled_k_represented_full_k_macs": int(
             mlp_up_sampled_k.get("represented_mlp_up_full_k_mac_count", 0)
         ),
-        "mlp_up_sampled_k_row_fraction": float(
-            mlp_up_sampled_k.get("row_coverage_fraction", 0.0)
-        ),
+        "mlp_up_sampled_k_row_fraction": float(mlp_up_sampled_k.get("row_coverage_fraction", 0.0)),
         "mlp_up_sampled_k_checksum": int(
             mlp_up_sampled_k.get("mlp_up_sampled_k_real_weight_checksum", 0)
         ),
         "mlp_up_sampled_k_result_sha256": str(
             mlp_up_sampled_k.get("mlp_up_sampled_k_result_sha256", "")
         ),
-        "mlp_up_sampled_k_residual_blocker": str(
-            mlp_up_sampled_k.get("residual_blocker", "")
-        ),
+        "mlp_up_sampled_k_residual_blocker": str(mlp_up_sampled_k.get("residual_blocker", "")),
         "mlp_down_sampled_k_layers": int(mlp_down_sampled_k.get("executed_layer_count", 0)),
         "mlp_down_sampled_k_value": int(mlp_down_sampled_k.get("sampled_k", 0)),
         "mlp_down_sampled_k_rows": int(
@@ -1728,9 +1762,7 @@ def main() -> int:
         "mlp_down_sampled_k_result_sha256": str(
             mlp_down_sampled_k.get("mlp_down_sampled_k_result_sha256", "")
         ),
-        "mlp_down_sampled_k_residual_blocker": str(
-            mlp_down_sampled_k.get("residual_blocker", "")
-        ),
+        "mlp_down_sampled_k_residual_blocker": str(mlp_down_sampled_k.get("residual_blocker", "")),
         "vector_kernel_template_instruction_words": int(
             vector_kernel.get("template_instruction_words", 0)
         ),
@@ -1751,7 +1783,9 @@ def main() -> int:
         "looped_vector_kernel_skeleton_residual_blocker": str(
             loop_skeleton.get("residual_blocker", "")
         ),
-        "per_layer_vector_codegen_layer_count": int(per_layer_codegen.get("codegen_layer_count", 0)),
+        "per_layer_vector_codegen_layer_count": int(
+            per_layer_codegen.get("codegen_layer_count", 0)
+        ),
         "per_layer_vector_codegen_total_instruction_estimate": int(
             per_layer_codegen.get("total_kernel_instruction_estimate", 0)
         ),
@@ -1761,7 +1795,9 @@ def main() -> int:
         "per_layer_vector_codegen_residual_blocker": str(
             per_layer_codegen.get("residual_blocker", "")
         ),
-        "sampled_vector_kernel_executor_row_count": int(sampled_vector.get("executed_row_count", 0)),
+        "sampled_vector_kernel_executor_row_count": int(
+            sampled_vector.get("executed_row_count", 0)
+        ),
         "sampled_vector_kernel_executor_vector_word_ops": int(
             sampled_vector.get("executed_vector_word_op_count", 0)
         ),
@@ -1778,11 +1814,15 @@ def main() -> int:
         "vector_kernel_window_executor_vector_word_ops": int(
             vector_window.get("executed_vector_word_op_count", 0)
         ),
-        "vector_kernel_window_executor_lane_macs": int(vector_window.get("executed_lane_mac_count", 0)),
+        "vector_kernel_window_executor_lane_macs": int(
+            vector_window.get("executed_lane_mac_count", 0)
+        ),
         "vector_kernel_window_executor_row_coverage_fraction": float(
             vector_window.get("window_row_coverage_fraction", 0.0)
         ),
-        "vector_kernel_window_executor_checksum": int(vector_window.get("window_output_checksum", 0)),
+        "vector_kernel_window_executor_checksum": int(
+            vector_window.get("window_output_checksum", 0)
+        ),
         "vector_kernel_window_executor_residual_blocker": str(
             vector_window.get("residual_blocker", "")
         ),
@@ -1802,14 +1842,22 @@ def main() -> int:
         "vector_window_fabric_checksum_residual_blocker": str(
             vector_window_fabric.get("residual_blocker", "")
         ),
-        "window_shard_linkage_touched_shards": int(window_shard.get("window_touched_shard_records", 0)),
+        "window_shard_linkage_touched_shards": int(
+            window_shard.get("window_touched_shard_records", 0)
+        ),
         "window_shard_linkage_touched_loader_words": int(
             window_shard.get("window_touched_loader_words", 0)
         ),
-        "window_shard_linkage_touched_bytes": int(window_shard.get("window_touched_shard_bytes", 0)),
-        "window_shard_linkage_record_sha256": str(window_shard.get("touched_shard_record_sha256", "")),
+        "window_shard_linkage_touched_bytes": int(
+            window_shard.get("window_touched_shard_bytes", 0)
+        ),
+        "window_shard_linkage_record_sha256": str(
+            window_shard.get("touched_shard_record_sha256", "")
+        ),
         "window_shard_linkage_residual_blocker": str(window_shard.get("residual_blocker", "")),
-        "window_repair_linkage_touched_cores": int(window_repair.get("window_touched_core_count", 0)),
+        "window_repair_linkage_touched_cores": int(
+            window_repair.get("window_touched_core_count", 0)
+        ),
         "window_repair_linkage_normal_remapped": int(
             window_repair.get("normal_window_remapped_core_count", 0)
         ),
@@ -1819,9 +1867,13 @@ def main() -> int:
         "window_repair_linkage_high_vs_normal_ratio": float(
             window_repair.get("window_high_vs_normal_remap_ratio", 0.0)
         ),
-        "window_repair_linkage_core_sha256": str(window_repair.get("window_touched_core_sha256", "")),
+        "window_repair_linkage_core_sha256": str(
+            window_repair.get("window_touched_core_sha256", "")
+        ),
         "window_repair_linkage_residual_blocker": str(window_repair.get("residual_blocker", "")),
-        "window_route_validation_neighbor_edges": int(window_route.get("window_neighbor_edge_count", 0)),
+        "window_route_validation_neighbor_edges": int(
+            window_route.get("window_neighbor_edge_count", 0)
+        ),
         "window_route_validation_normal_extra_hops": int(
             window_route.get("normal_window_extra_repair_hops", 0)
         ),
@@ -1861,7 +1913,9 @@ def main() -> int:
         "fabric_reduction_total_reduction_wavelets": int(
             fabric_reduction.get("total_reduction_wavelets", 0)
         ),
-        "fabric_reduction_total_fabric_wavelets": int(fabric_reduction.get("total_fabric_wavelets", 0)),
+        "fabric_reduction_total_fabric_wavelets": int(
+            fabric_reduction.get("total_fabric_wavelets", 0)
+        ),
         "fabric_reduction_peak_color_fabric_cycles": int(
             fabric_reduction.get("peak_color_fabric_cycles", 0)
         ),

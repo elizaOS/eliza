@@ -22,9 +22,13 @@ import type { BootSummary } from "./boot-timer.ts";
 
 const BOOT_DIR = "boot";
 const MEMORY_DIR = "memory";
+const RESTART_DIR = "restart";
 const LATEST_FILE = "latest.json";
+const RESTART_EVENTS_FILE = "events.json";
 /** Keep at most this many of the most recent RSS samples on disk. */
 const MAX_SAMPLES = 240;
+/** Keep at most this many recent boot/(re)start events on disk. */
+const MAX_RESTART_EVENTS = 200;
 
 /** Node `process.memoryUsage()` snapshot, in bytes. */
 interface MemoryUsageSnapshot {
@@ -139,6 +143,75 @@ export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
     writeTelemetryFile(BOOT_DIR, fileName, record),
     writeTelemetryFile(BOOT_DIR, LATEST_FILE, record),
   ]);
+}
+
+/** A single boot/(re)start event — one is appended at the start of each boot. */
+interface BootEvent {
+  /** Epoch milliseconds when the boot began. */
+  at: number;
+  /** OS pid of the booting process. */
+  pid: number;
+  /** Supervisor spawn timestamp, when known (restart-correlation key). */
+  spawnedAtMs: number | null;
+  /** True when the API runs under `node --watch` (ELIZA_DEV_NO_WATCH=0). */
+  watch: boolean;
+  /** Short label, e.g. the BootTimer label. */
+  label: string;
+}
+
+/**
+ * Append a boot/(re)start event to
+ * `<stateDir>/telemetry/restart/events.json` (a bounded rolling array). Unlike
+ * {@link recordBootTelemetry}, which only fires once a boot *completes*, this is
+ * called at the very start of every boot, so a restart storm — where boots never
+ * finish — is still countable. The dev boot-history endpoint surfaces the array
+ * so an operator can see restart cadence. Best-effort; never throws, never
+ * delays boot (callers should `void` it). No-op when telemetry is disabled.
+ */
+export async function recordBootEvent(label: string): Promise<void> {
+  if (telemetryDisabled()) {
+    return;
+  }
+
+  const spawnedAtMs = Number(process.env.ELIZA_API_PROCESS_SPAWNED_AT_MS);
+  const event: BootEvent = {
+    at: Date.now(),
+    pid: process.pid,
+    spawnedAtMs:
+      Number.isFinite(spawnedAtMs) && spawnedAtMs > 0 ? spawnedAtMs : null,
+    watch: process.env.ELIZA_DEV_NO_WATCH === "0",
+    label,
+  };
+
+  const targetDir = telemetryDir(RESTART_DIR);
+  const targetPath = path.join(targetDir, RESTART_EVENTS_FILE);
+  try {
+    await fs.mkdir(targetDir, { recursive: true });
+    let events: BootEvent[] = [];
+    const existing = await fs.readFile(targetPath, "utf8").catch(() => null);
+    if (existing !== null) {
+      try {
+        const parsed: unknown = JSON.parse(existing);
+        if (Array.isArray(parsed)) {
+          events = parsed as BootEvent[];
+        }
+      } catch {
+        // Corrupt events file — start fresh; it gets overwritten below.
+        events = [];
+      }
+    }
+    events.push(event);
+    if (events.length > MAX_RESTART_EVENTS) {
+      events.splice(0, events.length - MAX_RESTART_EVENTS);
+    }
+    await fs.writeFile(targetPath, `${JSON.stringify(events, null, 2)}\n`);
+  } catch (err) {
+    logger.warn(
+      `[boot-telemetry] Failed to record boot event: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 /** Options for {@link startMemorySampler}. */

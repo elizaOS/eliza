@@ -31,7 +31,9 @@ def canonical_sha256(data: object) -> str:
     return sha256(encoded).hexdigest()
 
 
-def build_codegen_records(workplan: dict, template: dict, skeleton: dict) -> tuple[list[dict], list[str]]:
+def build_codegen_records(
+    workplan: dict, template: dict, skeleton: dict
+) -> tuple[list[dict], list[str]]:
     template_summary = template.get("summary", {})
     skeleton_summary = skeleton.get("summary", {})
     template_words = int(template_summary.get("template_instruction_words", 0))
@@ -102,7 +104,9 @@ def main() -> int:
         "per-layer vector-codegen inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_per_layer_vector_codegen_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_per_layer_vector_codegen_inputs_present", "status": status, "detail": detail}
+    )
 
     workplan = load_json(WORKPLAN) if WORKPLAN.is_file() else {}
     template = load_json(VECTOR_TEMPLATE) if VECTOR_TEMPLATE.is_file() else {}
@@ -118,7 +122,9 @@ def main() -> int:
         "full-output workplan, vector template, and loop skeleton reports are PASS",
         "dependency report missing or failing",
     )
-    checks.append({"id": "e1x_per_layer_vector_codegen_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_per_layer_vector_codegen_dependencies_pass", "status": status, "detail": detail}
+    )
 
     records, mismatches = build_codegen_records(workplan, template, skeleton)
     total_template_words = sum(int(record["template_body_words"]) for record in records)
@@ -139,18 +145,30 @@ def main() -> int:
         f"per-layer vector codegen records cover {len(records)} layers and {total_kernel_words} estimated words",
         "per-layer vector codegen mismatch: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_per_layer_vector_codegen_records_cover_workplan", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_per_layer_vector_codegen_records_cover_workplan",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
-    sram_ok = (
-        bool(records)
-        and all(int(record["max_core_shard_bytes"]) <= int(record["usable_bytes_per_core"]) for record in records)
+    sram_ok = bool(records) and all(
+        int(record["max_core_shard_bytes"]) <= int(record["usable_bytes_per_core"])
+        for record in records
     )
     status, detail = pass_fail(
         sram_ok,
         "per-layer vector codegen records preserve per-core SRAM fit",
         "per-layer vector codegen record exceeds usable SRAM",
     )
-    checks.append({"id": "e1x_per_layer_vector_codegen_preserves_sram_fit", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_per_layer_vector_codegen_preserves_sram_fit",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -192,7 +210,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X per-layer vector codegen failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X per-layer vector codegen failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X per-layer vector codegen; report {REPORT.relative_to(ROOT)}")
     return 0

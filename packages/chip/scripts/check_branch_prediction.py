@@ -933,7 +933,7 @@ def validate_full_trace_shard_sweep(
                 and isinstance(other_mpki, (int, float))
                 and float(best_mpki) > float(other_mpki)
             ):
-                    failures.append(f"{artifact} best_config must not regress versus {config}")
+                failures.append(f"{artifact} best_config must not regress versus {config}")
 
 
 def validate_workload_rtl_shard(

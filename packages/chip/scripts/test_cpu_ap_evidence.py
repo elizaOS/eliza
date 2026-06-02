@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -397,8 +397,7 @@ def test_linux_smoke_packages_real_riscv_hwprobe_helper() -> None:
     stale_fdt_args = [
         token
         for token in str(opensbi_args).split()
-        if token.startswith("FW_PAYLOAD_FDT_ADDR=")
-        and token != "FW_PAYLOAD_FDT_ADDR=0x80b00000"
+        if token.startswith("FW_PAYLOAD_FDT_ADDR=") and token != "FW_PAYLOAD_FDT_ADDR=0x80b00000"
     ]
     if stale_fdt_args:
         raise AssertionError(
@@ -632,9 +631,7 @@ def test_isa_cache_mmu_wiring_fails_closed_until_accepted_linux_hwprobe_success(
                 encoding="utf-8",
             )
             blocked_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            blocked = {
-                entry["mode"]: entry for entry in blocked_entries
-            }["isa-cache-mmu"]
+            blocked = {entry["mode"]: entry for entry in blocked_entries}["isa-cache-mmu"]
             if blocked["status"] != "blocked":
                 raise AssertionError(
                     "ISA/cache/MMU wiring must fail closed without hwprobe success"
@@ -664,9 +661,9 @@ def test_isa_cache_mmu_wiring_fails_closed_until_accepted_linux_hwprobe_success(
                 encoding="utf-8",
             )
             still_blocked_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            still_blocked = {
-                entry["mode"]: entry for entry in still_blocked_entries
-            }["isa-cache-mmu"]
+            still_blocked = {entry["mode"]: entry for entry in still_blocked_entries}[
+                "isa-cache-mmu"
+            ]
             if still_blocked["status"] != "blocked":
                 raise AssertionError(
                     "ISA/cache/MMU wiring must not unlock before final intake passes"
@@ -818,9 +815,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             payload.write_text("payload\n", encoding="utf-8")
             simulator.write_text("simulator\n", encoding="utf-8")
             runner.write_text(
-                "#!/bin/sh\n"
-                "echo 'STATUS: PASS chipyard.verilator_ap_benchmarks'\n"
-                "exit 0\n",
+                "#!/bin/sh\necho 'STATUS: PASS chipyard.verilator_ap_benchmarks'\nexit 0\n",
                 encoding="utf-8",
             )
             runner.chmod(0o755)
@@ -840,9 +835,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             args = type("Args", (), {"use_docker": "0"})()
 
             missing_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            missing_entry = {
-                entry["mode"]: entry for entry in missing_entries
-            }["ap-benchmarks"]
+            missing_entry = {entry["mode"]: entry for entry in missing_entries}["ap-benchmarks"]
             if missing_entry["status"] != "blocked":
                 raise AssertionError("AP benchmark export must block without Linux transcript")
             assert_contains(
@@ -852,9 +845,9 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
 
             linux_boot.write_text("eliza-evidence: status=PASS\n", encoding="utf-8")
             incomplete_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            incomplete_entry = {
-                entry["mode"]: entry for entry in incomplete_entries
-            }["ap-benchmarks"]
+            incomplete_entry = {entry["mode"]: entry for entry in incomplete_entries}[
+                "ap-benchmarks"
+            ]
             if incomplete_entry["status"] != "blocked":
                 raise AssertionError("AP benchmark export must block on incomplete transcript")
             incomplete_report = json.loads(report.read_text(encoding="utf-8"))
@@ -882,9 +875,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             stale_report = json.loads(report.read_text(encoding="utf-8"))
             assert_contains(
                 "\n".join(
-                    stale_report["candidate_generated_ap_inputs"][
-                        "linux_boot_evidence_problems"
-                    ]
+                    stale_report["candidate_generated_ap_inputs"]["linux_boot_evidence_problems"]
                 ),
                 "generated_manifest_sha256 must match",
             )
@@ -896,9 +887,9 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
                 encoding="utf-8",
             )
             missing_sidecar_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            missing_sidecar_entry = {
-                entry["mode"]: entry for entry in missing_sidecar_entries
-            }["ap-benchmarks"]
+            missing_sidecar_entry = {entry["mode"]: entry for entry in missing_sidecar_entries}[
+                "ap-benchmarks"
+            ]
             if missing_sidecar_entry["status"] != "blocked":
                 raise AssertionError(
                     "AP benchmark export must block without payload freshness sidecar"
@@ -917,9 +908,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
                 freshness_manifest.write_text(
                     json.dumps(
                         {
-                            "schema": (
-                                "eliza.firemarshal_ap_benchmarks_payload_freshness.v1"
-                            ),
+                            "schema": ("eliza.firemarshal_ap_benchmarks_payload_freshness.v1"),
                             "generated_utc": "2026-05-26T12:01:00Z",
                             "payload": {
                                 "path": wire_cpu_ap_capture_commands.rel(payload),
@@ -957,9 +946,9 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
                 encoding="utf-8",
             )
             stale_payload_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            stale_payload_entry = {
-                entry["mode"]: entry for entry in stale_payload_entries
-            }["ap-benchmarks"]
+            stale_payload_entry = {entry["mode"]: entry for entry in stale_payload_entries}[
+                "ap-benchmarks"
+            ]
             if stale_payload_entry["status"] != "blocked":
                 raise AssertionError("AP benchmark export must block on stale benchmark payload")
             stale_payload_report = json.loads(report.read_text(encoding="utf-8"))
@@ -983,9 +972,9 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             sidecar["generated_utc"] = "2026-05-26T11:59:59Z"
             freshness_manifest.write_text(json.dumps(sidecar), encoding="utf-8")
             stale_sidecar_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            stale_sidecar_entry = {
-                entry["mode"]: entry for entry in stale_sidecar_entries
-            }["ap-benchmarks"]
+            stale_sidecar_entry = {entry["mode"]: entry for entry in stale_sidecar_entries}[
+                "ap-benchmarks"
+            ]
             if stale_sidecar_entry["status"] != "blocked":
                 raise AssertionError(
                     "AP benchmark export must block on a payload older than linux-boot intake"
@@ -1001,9 +990,9 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             write_freshness_sidecar()
             os.environ["ELIZA_AP_BENCHMARKS_CMD"] = "printf stale-ap-benchmark"
             env_blocked_entries = wire_cpu_ap_capture_commands.build_entries(args)
-            env_blocked_entry = {
-                entry["mode"]: entry for entry in env_blocked_entries
-            }["ap-benchmarks"]
+            env_blocked_entry = {entry["mode"]: entry for entry in env_blocked_entries}[
+                "ap-benchmarks"
+            ]
             if env_blocked_entry["status"] != "blocked":
                 raise AssertionError(
                     "AP benchmark export must not trust a manual environment command"
@@ -1130,7 +1119,9 @@ def test_ap_benchmark_evidence_must_be_intaken_after_linux_boot() -> None:
 
 def test_ap_benchmark_wrapper_mode_avoids_linux_smoke_checker_and_forbidden_notes() -> None:
     wrapper = (ROOT / "scripts/run_chipyard_eliza_linux_smoke.sh").read_text()
-    assert_contains(wrapper, 'transcript_mode="${CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE:-linux-smoke}"')
+    assert_contains(
+        wrapper, 'transcript_mode="${CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE:-linux-smoke}"'
+    )
     assert_contains(wrapper, "linux-smoke|ap-benchmarks")
     assert_contains(wrapper, 'if [ "$transcript_mode" = "ap-benchmarks" ]; then')
     assert_contains(wrapper, wire_cpu_ap_capture_commands.AP_BENCHMARK_WRAPPER_PASS_MARKER)
@@ -1138,7 +1129,9 @@ def test_ap_benchmark_wrapper_mode_avoids_linux_smoke_checker_and_forbidden_note
     assert_contains(wrapper, "eliza-evidence: ap_benchmark_wrapper_marker=present")
     assert_contains(wrapper, "scripts/capture_cpu_ap_evidence.py intake ap-benchmarks")
 
-    header_note = "note=software reference transcripts are excluded from generated AP evidence intake"
+    header_note = (
+        "note=software reference transcripts are excluded from generated AP evidence intake"
+    )
     assert_contains(wrapper, header_note)
     forbidden_ap_terms = ("note=qemu-virt", "Renode reference transcripts")
     for forbidden in forbidden_ap_terms:
@@ -1339,9 +1332,7 @@ def test_raw_transcript_validation_uses_real_uart_tx_reconstruction() -> None:
         + "Domain0 Next Arg1         : 0x0000000080b00000\n"
         + "Domain0 Next Mode         : S-mode\n"
     )
-    uart_trace = "\n".join(
-        f"UART TX ({byte:02x}): {chr(byte)}" for byte in valid_opensbi.encode()
-    )
+    uart_trace = "\n".join(f"UART TX ({byte:02x}): {chr(byte)}" for byte in valid_opensbi.encode())
     if reconstruct_uart_tx_text(uart_trace) != valid_opensbi:
         raise AssertionError("UART TX reconstruction did not round-trip the required markers")
     problems = text_problems(uart_trace, spec, "opensbi_boot_log", raw=True)
@@ -1426,7 +1417,9 @@ def test_raw_ap_transcript_markers_have_positive_and_negative_paths() -> None:
     valid_raw = "\n".join(str(token) for token in spec["raw_required_strings"])
     valid_raw += "\nForcing kernel command line to: 'console=ttyS0 rdinit=/init'"
     valid_raw += "\nRun /init as init process"
-    valid_raw += "\n".join(["", *[str(token) for token in spec["raw_ordered_required_strings"][3:]]])
+    valid_raw += "\n".join(
+        ["", *[str(token) for token in spec["raw_ordered_required_strings"][3:]]]
+    )
     valid_raw += "\n" + ("generated AP Linux transcript line\n" * 20)
     problems = text_problems(valid_raw, spec, "linux_boot_log", raw=True)
     if problems:

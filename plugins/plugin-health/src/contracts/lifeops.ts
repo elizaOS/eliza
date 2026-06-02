@@ -2845,8 +2845,8 @@ export interface SendLifeOpsSignalMessageResponse {
 }
 
 /**
- * A single inbound Signal message as returned by {@link readSignalInbound} and
- * the signal-local-client reader.
+ * A single inbound Signal message as returned by {@link readSignalInbound} or
+ * the plugin-signal local client.
  */
 export interface LifeOpsSignalInboundMessage {
   /** Stable message ID (from the Signal service memory store or signal-cli). */

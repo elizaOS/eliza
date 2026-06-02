@@ -174,24 +174,18 @@ const PLATFORM_COPY: Record<
 > = {
   desktop: {
     label: "Desktop",
-    primary:
-      "Use the browser Bluetooth picker. The headset flow asks for both lenses and only marks connected when both are live.",
-    secondary:
-      "Chrome and Edge support Web Bluetooth on desktop. Keep the base plugged in and disconnect stale phone pairings if one lens stalls.",
+    primary: "Chrome/Edge Web Bluetooth",
+    secondary: "Pair both lenses; disconnect stale phone pairings if needed.",
   },
   ios: {
     label: "iOS",
-    primary:
-      "Use the bundled/native bridge when available. Safari does not expose Web Bluetooth for direct G1 pairing.",
-    secondary:
-      "The view still works as a bridge console inside an iOS host that provides headset and Wi-Fi commands.",
+    primary: "Native bridge required",
+    secondary: "Safari has no direct Web Bluetooth pairing path.",
   },
   android: {
     label: "Android",
-    primary:
-      "Use the native bridge for headset pairing, Wi-Fi scan, and Wi-Fi credential delivery when the host exposes it.",
-    secondary:
-      "Direct browser BLE can work in Chrome, but native pairing is the reliable setup path on Android builds.",
+    primary: "Native bridge preferred",
+    secondary: "Use the host for pairing, Wi-Fi scan, and credentials.",
   },
 };
 
@@ -1168,10 +1162,12 @@ export function SmartglassesView() {
               <Glasses className="h-4 w-4 text-accent" />
               <h1 className="text-sm font-semibold">Smartglasses</h1>
             </div>
-            <p className="mt-1 max-w-3xl text-xs text-muted">
-              Whole-headset pairing, diagnostics, bridge Wi-Fi setup, and
-              hardware test reporting.
-            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <MiniBadge label="Pairing" />
+              <MiniBadge label="Diagnostics" />
+              <MiniBadge label="Wi-Fi bridge" />
+              <MiniBadge label="Report" />
+            </div>
           </div>
           <StatusPill
             ok={headsetConnected}
@@ -1186,10 +1182,6 @@ export function SmartglassesView() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Setup</h2>
-                <p className="mt-1 text-xs text-muted">
-                  One flow connects both lenses and treats them as a single
-                  headset.
-                </p>
               </div>
               <button
                 type="button"
@@ -1207,8 +1199,7 @@ export function SmartglassesView() {
             </div>
             {!webBluetoothAvailable && (
               <p className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted">
-                Web Bluetooth is not available in this browser. Use a native
-                iOS/Android/Desktop bridge or open this view in Chrome or Edge.
+                Web Bluetooth unavailable. Use a native bridge or Chrome/Edge.
               </p>
             )}
             <HeadsetStateHint
@@ -1222,10 +1213,6 @@ export function SmartglassesView() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Test</h2>
-                <p className="mt-1 text-xs text-muted">
-                  Exercise display, serial, settings, microphone, and event
-                  paths before relying on the headset.
-                </p>
               </div>
               <button
                 type="button"
@@ -1284,11 +1271,7 @@ export function SmartglassesView() {
               <Wifi className="h-4 w-4 text-accent" />
               <h2 className="text-sm font-semibold">Wi-Fi</h2>
             </div>
-            <p className="mt-1 text-xs text-muted">
-              Available through native/bridge APIs. Direct G1 BLE does not
-              expose a verified Wi-Fi provisioning packet in the reviewed
-              upstreams.
-            </p>
+            <p className="mt-1 text-xs text-muted">Native bridge only.</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <input
                 value={wifiSsid}
@@ -1510,6 +1493,14 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
       ) : (
         <XCircle className="h-3.5 w-3.5" />
       )}
+      {label}
+    </span>
+  );
+}
+
+function MiniBadge({ label }: { label: string }) {
+  return (
+    <span className="rounded-md border border-border/50 bg-muted/20 px-2 py-1 text-2xs font-medium text-muted">
       {label}
     </span>
   );

@@ -18,6 +18,15 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private let eventStore = EKEventStore()
+    private let maxTitleLength = 512
+    private let maxDescriptionLength = 20000
+    private let maxLocationLength = 1024
+    private let unsupportedRecurrenceFields = [
+        "recurrence",
+        "recurrenceRule",
+        "recurrenceRules",
+        "rrule",
+    ]
     private lazy var isoWithFractionalSeconds: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -275,10 +284,41 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func parseDate(_ value: String) -> Date? {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
         if let date = isoWithFractionalSeconds.date(from: value) {
             return date
         }
         return isoWithoutFractionalSeconds.date(from: value)
+    }
+
+    private func textValue(
+        _ call: CAPPluginCall,
+        key: String,
+        maxLength: Int,
+        required: Bool
+    ) -> (value: String?, error: [String: Any]?) {
+        let rawValue = call.options[key]
+        if rawValue == nil || rawValue is NSNull {
+            if required {
+                return (nil, nativeError("Calendar event \(key) is required."))
+            }
+            return (nil, nil)
+        }
+        guard rawValue is String else {
+            return (nil, nativeError("Calendar event \(key) must be a string."))
+        }
+        guard let value = call.getString(key) else {
+            if required {
+                return (nil, nativeError("Calendar event \(key) is required."))
+            }
+            return (nil, nil)
+        }
+        guard value.count <= maxLength else {
+            return (nil, nativeError("Calendar event \(key) is too long."))
+        }
+        return (value, nil)
     }
 
     private func isoString(_ date: Date?) -> String {
@@ -410,29 +450,73 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         to event: EKEvent,
         requireTitle: Bool
     ) -> [String: Any]? {
-        if let attendees = call.options["attendees"] as? [Any], !attendees.isEmpty {
+        for key in unsupportedRecurrenceFields where call.options.keys.contains(key) {
             return [
                 "ok": false,
                 "error": "unsupported_feature",
-                "message": "Apple Calendar does not allow this app to create or edit event invitees through EventKit. Remove attendees or use Google Calendar for invited meetings.",
+                "message": "Apple Calendar recurrence editing is not supported by this bridge.",
             ]
         }
 
+        if call.options.keys.contains("attendees") {
+            guard let attendees = call.options["attendees"] as? [Any] else {
+                return nativeError("Calendar event attendees must be an array.")
+            }
+            if !attendees.isEmpty {
+                return [
+                    "ok": false,
+                    "error": "unsupported_feature",
+                    "message": "Apple Calendar does not allow this app to create or edit event invitees through EventKit. Remove attendees or use Google Calendar for invited meetings.",
+                ]
+            }
+        }
+
         if call.options.keys.contains("title") || requireTitle {
-            guard let title = nonEmptyString(call.getString("title")) else {
+            let titleResult = textValue(
+                call,
+                key: "title",
+                maxLength: maxTitleLength,
+                required: true
+            )
+            if let error = titleResult.error {
+                return error
+            }
+            guard let title = nonEmptyString(titleResult.value) else {
                 return nativeError("Calendar event title is required.")
             }
             event.title = title
         }
         if call.options.keys.contains("description") {
-            event.notes = call.getString("description")
+            let descriptionResult = textValue(
+                call,
+                key: "description",
+                maxLength: maxDescriptionLength,
+                required: false
+            )
+            if let error = descriptionResult.error {
+                return error
+            }
+            event.notes = descriptionResult.value
         }
         if call.options.keys.contains("location") {
-            event.location = call.getString("location")
+            let locationResult = textValue(
+                call,
+                key: "location",
+                maxLength: maxLocationLength,
+                required: false
+            )
+            if let error = locationResult.error {
+                return error
+            }
+            event.location = locationResult.value
         }
-        if let timeZoneName = call.getString("timeZone"),
-           let timeZone = TimeZone(identifier: timeZoneName)
-        {
+        if call.options.keys.contains("timeZone") {
+            guard let timeZoneName = nonEmptyString(call.getString("timeZone")) else {
+                return nativeError("Calendar event timeZone is invalid.")
+            }
+            guard let timeZone = TimeZone(identifier: timeZoneName) else {
+                return nativeError("Calendar event timeZone is invalid.")
+            }
             event.timeZone = timeZone
         }
         if call.options.keys.contains("calendarId") {

@@ -114,6 +114,32 @@ function wrapResponseWithHeaders(response: Response, headers: Headers): Response
   });
 }
 
+/**
+ * Decide how much to bill for a handler result.
+ *
+ * - 2xx success (`response.ok`): bill the handler's reported `actualCost`, or
+ *   the full reserved `cost` when the handler didn't report one.
+ * - 5xx: the caller received no service (upstream-down after retries, circuit
+ *   open, etc.), so refund the reservation — bill only an explicit partial
+ *   `actualCost` if the handler set one, otherwise 0. This mirrors the
+ *   thrown-error path, which reconciles to 0.
+ * - everything else (3xx redirects, 4xx client errors): billed at the reserved
+ *   `cost` unless the handler reported a different `actualCost`, preserving
+ *   prior behavior.
+ */
+export function resolveBillableCost(
+  result: Pick<HandlerResult, "actualCost"> & { response: Pick<Response, "ok" | "status"> },
+  reservedCost: number,
+): number {
+  if (result.response.ok) {
+    return result.actualCost ?? reservedCost;
+  }
+  if (result.response.status >= 500) {
+    return result.actualCost ?? 0;
+  }
+  return result.actualCost ?? reservedCost;
+}
+
 function isClientErrorMessage(message: string): boolean {
   const lowered = message.toLowerCase();
   return (
@@ -244,7 +270,11 @@ export function createHandler(
         throw error;
       }
 
-      const actualCost = result.actualCost ?? cost;
+      // Only bill for actual work performed. A synthesized server-side error
+      // (5xx — upstream-down after retries, circuit open, etc.) means the
+      // caller got no service, so it refunds the reservation just like the
+      // thrown-error path above. See resolveBillableCost.
+      const actualCost = resolveBillableCost(result, cost);
       await reservation.reconcile(actualCost);
 
       if (cacheKey && cacheCandidate && config.cache) {

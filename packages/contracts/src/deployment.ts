@@ -6,7 +6,9 @@
  * remain in @elizaos/core.
  */
 
-export type DeploymentTargetRuntime = 'local' | 'cloud' | 'remote';
+export const DEPLOYMENT_TARGET_RUNTIMES = ['local', 'cloud', 'remote'] as const;
+
+export type DeploymentTargetRuntime = (typeof DEPLOYMENT_TARGET_RUNTIMES)[number];
 
 export type DeploymentTargetConfig = {
 	runtime: DeploymentTargetRuntime;

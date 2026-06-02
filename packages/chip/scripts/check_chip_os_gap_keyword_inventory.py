@@ -10,10 +10,10 @@ evidence logs, build outputs, and package caches are intentionally skipped.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -126,9 +126,7 @@ CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
     re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
     re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
 )
-CLASSIFIED_GENERATOR_PATH_PATTERNS = (
-    re.compile(r"^packages/chip/scripts/generate_[^/]+\.py$"),
-)
+CLASSIFIED_GENERATOR_PATH_PATTERNS = (re.compile(r"^packages/chip/scripts/generate_[^/]+\.py$"),)
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
     r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
@@ -324,9 +322,7 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True
-    if CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
-        return True
-    return False
+    return bool(CLASSIFIED_GENERATOR_LINE_RE.search(stripped))
 
 
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:

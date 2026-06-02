@@ -23,6 +23,7 @@ interface K8sDoc {
   apiVersion: string;
   kind: string;
   metadata: { name: string; namespace?: string };
+  spec?: Record<string, unknown>;
 }
 
 function loadAllDocs(file: string): K8sDoc[] {
@@ -87,10 +88,55 @@ describe("external-services.yaml", () => {
       expectValidK8sDoc(doc);
     }
   });
+
+  test("pins local ExternalName targets and ports", () => {
+    const byName = Object.fromEntries(
+      docs.map((doc) => [doc.metadata.name, doc]),
+    );
+
+    expect(byName.redis?.spec).toMatchObject({
+      type: "ExternalName",
+      externalName: "redis-master.eliza-infra.svc.cluster.local",
+      ports: [{ port: 6379, targetPort: 6379 }],
+    });
+    expect(byName["eliza-cloud"]?.spec).toMatchObject({
+      type: "ExternalName",
+      externalName: "host.docker.internal",
+      ports: [{ port: 3000, targetPort: 3000 }],
+    });
+  });
 });
 
 describe("redis-rest.yaml", () => {
   const docs = loadAllDocs("redis-rest.yaml");
+  const deployment = docs.find((doc) => doc.kind === "Deployment") as
+    | (K8sDoc & {
+        spec: {
+          selector: { matchLabels: Record<string, string> };
+          template: {
+            metadata: { labels: Record<string, string> };
+            spec: {
+              securityContext: Record<string, unknown>;
+              containers: Array<{
+                name: string;
+                image: string;
+                ports: Array<{ containerPort: number }>;
+                env: Array<{ name: string; value: string }>;
+                securityContext: Record<string, unknown>;
+              }>;
+            };
+          };
+        };
+      })
+    | undefined;
+  const service = docs.find((doc) => doc.kind === "Service") as
+    | (K8sDoc & {
+        spec: {
+          selector: Record<string, string>;
+          ports: Array<{ port: number; targetPort: number }>;
+        };
+      })
+    | undefined;
 
   test("declares a Deployment + Service pair", () => {
     expect(docs.length).toBe(2);
@@ -104,6 +150,58 @@ describe("redis-rest.yaml", () => {
       expect(doc.metadata.namespace).toBe("eliza-infra");
       expectValidK8sDoc(doc);
     }
+  });
+
+  test("keeps Deployment and Service selectors/ports aligned", () => {
+    expect(deployment?.spec.selector.matchLabels).toEqual({
+      app: "redis-rest",
+    });
+    expect(deployment?.spec.template.metadata.labels).toEqual({
+      app: "redis-rest",
+    });
+    expect(service?.spec.selector).toEqual({ app: "redis-rest" });
+    expect(service?.spec.ports).toEqual([{ port: 8079, targetPort: 80 }]);
+    expect(deployment?.spec.template.spec.containers[0]?.ports).toEqual([
+      { containerPort: 80 },
+    ]);
+  });
+
+  test("wires redis-rest token and Redis connection explicitly", () => {
+    const container = deployment?.spec.template.spec.containers[0];
+    expect(container?.name).toBe("redis-rest");
+    expect(container?.image).toBe("hiett/serverless-redis-http:latest");
+    expect(container?.env).toEqual(
+      expect.arrayContaining([
+        { name: "SRH_MODE", value: "env" },
+        { name: "SRH_TOKEN", value: "local_dev_token" },
+        {
+          name: "SRH_CONNECTION_STRING",
+          value: "redis://redis-master.eliza-infra.svc:6379",
+        },
+      ]),
+    );
+  });
+
+  test("keeps pod and container security hardening enabled", () => {
+    const podSpec = deployment?.spec.template.spec;
+    const containerSecurity = podSpec?.containers[0]?.securityContext;
+
+    expect(podSpec?.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      runAsUser: 10001,
+      runAsGroup: 10001,
+      fsGroup: 10001,
+      seccompProfile: { type: "RuntimeDefault" },
+    });
+    expect(containerSecurity).toMatchObject({
+      runAsNonRoot: true,
+      runAsUser: 10001,
+      runAsGroup: 10001,
+      readOnlyRootFilesystem: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+      seccompProfile: { type: "RuntimeDefault" },
+    });
   });
 });
 

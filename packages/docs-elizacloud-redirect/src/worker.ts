@@ -15,7 +15,7 @@ const TARGET_PREFIX = "/cloud";
 export default {
   fetch(request: Request): Response {
     const url = new URL(request.url);
-    let path = url.pathname;
+    let path = url.pathname.replace(/\/{2,}/g, "/");
     if (path.startsWith("/docs/")) path = path.slice("/docs".length);
     else if (path === "/docs") path = "";
     if (path === "/") path = "";

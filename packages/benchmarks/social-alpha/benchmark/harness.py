@@ -33,6 +33,51 @@ BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SMOKE_DATA_DIR = BENCHMARK_ROOT / "fixtures" / "smoke-data"
 
+EDGE_VARIANTS: tuple[dict[str, str], ...] = (
+    {
+        "id": "quoted_reply",
+        "prefix": "> earlier thread\n",
+        "suffix": "\nStill my current read.",
+    },
+    {
+        "id": "not_financial_advice",
+        "suffix": " NFA, manage risk.",
+    },
+    {
+        "id": "typo_noise",
+        "prefix": "quick take - ",
+        "suffix": " typing fast from mobile.",
+    },
+    {
+        "id": "delayed_entry",
+        "suffix": " Entry might need patience; do not chase a bad fill.",
+    },
+    {
+        "id": "thread_context",
+        "prefix": "Following up on the chart people asked about: ",
+    },
+    {
+        "id": "cashtag_punctuation",
+        "suffix": " Watch the cashtag punctuation in the message.",
+    },
+    {
+        "id": "risk_caveat",
+        "suffix": " Invalidation is a clean breakdown below support.",
+    },
+    {
+        "id": "mixed_signal_context",
+        "prefix": "Mixed chat today, but this is the actionable part: ",
+    },
+    {
+        "id": "short_format",
+        "prefix": "tl;dr: ",
+    },
+    {
+        "id": "after_volatility",
+        "suffix": " Volatility is high, so size accordingly.",
+    },
+)
+
 
 def _resolve_data_path(data_path: Path) -> Path:
     """Use the bundled smoke fixture when the full external dataset is absent."""
@@ -202,6 +247,94 @@ def load_ground_truth(data_dir: Path) -> dict[str, list[dict]]:
         return gt
 
 
+def _edge_call(call: dict, variant: dict[str, str]) -> dict:
+    edge = dict(call)
+    suffix = variant["id"]
+    edge["call_id"] = f"{call.get('call_id', 'call')}__edge_{suffix}"
+    edge["message_id"] = f"{call.get('message_id', edge['call_id'])}__edge_{suffix}"
+    edge["content"] = (
+        f"{variant.get('prefix', '')}{call.get('content', '')}{variant.get('suffix', '')}"
+    )
+    edge["scenario_id"] = suffix
+    edge["scenario_label"] = suffix.replace("_", " ")
+    edge["base_call_id"] = str(call.get("call_id", ""))
+    return edge
+
+
+def expand_ground_truth(ground_truth: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """Return base calls plus exactly ten answer-preserving chat variants."""
+    expanded_calls: list[dict] = []
+    by_user_added: dict[str, list[str]] = {}
+    token_added: dict[str, int] = {}
+
+    for call in ground_truth["calls"]:
+        expanded_calls.append(dict(call))
+        for variant in EDGE_VARIANTS:
+            edge = _edge_call(call, variant)
+            expanded_calls.append(edge)
+            user_id = str(edge.get("user_id", ""))
+            by_user_added.setdefault(user_id, []).append(str(edge["call_id"]))
+            token_address = str(edge.get("token_address", ""))
+            if token_address:
+                token_added[token_address] = token_added.get(token_address, 0) + 1
+
+    users: list[dict] = []
+    for user in ground_truth["users"]:
+        updated = dict(user)
+        added = by_user_added.get(str(user.get("user_id", "")), [])
+        existing_call_ids = list(updated.get("call_ids", []))
+        updated["call_ids"] = existing_call_ids + added
+        updated["total_calls"] = int(updated.get("total_calls", len(existing_call_ids))) + len(added)
+        users.append(updated)
+
+    tokens: list[dict] = []
+    for token in ground_truth["tokens"]:
+        updated = dict(token)
+        address = str(token.get("address", ""))
+        updated["call_count"] = int(updated.get("call_count", 0)) + token_added.get(address, 0)
+        tokens.append(updated)
+
+    return {"calls": expanded_calls, "users": users, "tokens": tokens}
+
+
+def count_scenarios(ground_truth: dict[str, list[dict]], include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(ground_truth["calls"])
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS),
+        "total": base + edge,
+    }
+
+
+def validate_scenarios(ground_truth: dict[str, list[dict]], include_edge_scenarios: bool = False) -> None:
+    calls = ground_truth["calls"]
+    call_ids = [str(call.get("call_id", "")) for call in calls]
+    duplicates = {call_id for call_id in call_ids if call_ids.count(call_id) > 1}
+    if duplicates:
+        raise click.ClickException(f"Duplicate Social-Alpha call ids: {sorted(duplicates)[:5]}")
+
+    if not include_edge_scenarios:
+        return
+
+    expanded = expand_ground_truth(ground_truth)
+    expanded_ids = [str(call.get("call_id", "")) for call in expanded["calls"]]
+    expanded_duplicates = {
+        call_id for call_id in expanded_ids if expanded_ids.count(call_id) > 1
+    }
+    if expanded_duplicates:
+        raise click.ClickException(
+            f"Duplicate expanded Social-Alpha call ids: {sorted(expanded_duplicates)[:5]}"
+        )
+    for call in expanded["calls"]:
+        if "__edge_" not in str(call.get("call_id", "")):
+            continue
+        for key in ("base_call_id", "scenario_id", "content"):
+            if not call.get(key):
+                raise click.ClickException(f"Expanded call {call.get('call_id')} missing {key}")
+
+
 def run_benchmark(
     system: SocialAlphaSystem,
     ground_truth: dict[str, list[dict]],
@@ -369,6 +502,9 @@ def print_results(results: dict[str, dict]) -> None:
 @click.option("--system", "system_name", default="baseline", help="System to benchmark (baseline or path to plugin)")
 @click.option("--model", default=None, type=str, help="Model name override for LLM-backed systems")
 @click.option("--api-base", default=None, type=str, help="OpenAI-compatible API base URL (e.g. https://api.groq.com/openai/v1)")
+@click.option("--expand-scenarios", is_flag=True, help="Run each labeled call plus ten realistic chat variants")
+@click.option("--count-scenarios", is_flag=True, help="Print base/edge/total call counts before running")
+@click.option("--validate-scenarios", is_flag=True, help="Validate call ids and expanded scenario metadata")
 def main(
     data_dir: str,
     suite: tuple[str, ...],
@@ -377,6 +513,9 @@ def main(
     system_name: str,
     model: str | None,
     api_base: str | None,
+    expand_scenarios: bool,
+    count_scenarios: bool,
+    validate_scenarios: bool,
 ) -> None:
     """Trust Marketplace Benchmark Harness."""
     data_path = _resolve_data_path(Path(data_dir))
@@ -390,9 +529,20 @@ def main(
     console.print(f"  Users:  {len(gt['users']):,}")
     console.print(f"  Tokens: {len(gt['tokens']):,}")
 
+    if validate_scenarios:
+        validate_scenarios_fn = globals()["validate_scenarios"]
+        validate_scenarios_fn(gt, include_edge_scenarios=expand_scenarios)
+    if count_scenarios:
+        count_scenarios_fn = globals()["count_scenarios"]
+        console.print(json.dumps(count_scenarios_fn(gt, expand_scenarios)))
+
     if generate_gt:
         console.print("[green]Ground truth generated. Exiting.[/]")
         return
+
+    if expand_scenarios:
+        gt = expand_ground_truth(gt)
+        console.print(f"  Expanded Calls: {len(gt['calls']):,}")
 
     # Initialize system. The legacy Python Eliza system is removed; keep
     # ``--system eliza`` as an alias for the TypeScript bridge.

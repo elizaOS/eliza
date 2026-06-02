@@ -1006,16 +1006,20 @@ async function generateTextByModelType(
   // fallback every turn.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
+  const responseFormatType =
+    typeof callerResponseFormat === "string"
+      ? callerResponseFormat
+      : callerResponseFormat &&
+          typeof callerResponseFormat === "object" &&
+          "type" in callerResponseFormat
+        ? (callerResponseFormat as { type: string }).type
+        : undefined;
   const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
-    callerResponseFormat &&
-    typeof callerResponseFormat === "object" &&
-    "type" in callerResponseFormat
-      ? (callerResponseFormat as { type: string }).type === "json_object"
-        ? { type: "json" }
-        : (callerResponseFormat as { type: string }).type === "text"
-          ? { type: "text" }
-          : undefined
-      : undefined;
+    responseFormatType === "json_object"
+      ? { type: "json" }
+      : responseFormatType === "text"
+        ? { type: "text" }
+        : undefined;
 
   const generateParams: NativeTextParams = {
     model,
@@ -1053,7 +1057,12 @@ async function generateTextByModelType(
     const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
 
     return {
-      textStream: result.textStream,
+      textStream: (async function* textStreamWithCallback() {
+        for await (const chunk of result.textStream) {
+          params.onStreamChunk?.(chunk);
+          yield chunk;
+        }
+      })(),
       text: handledPromise(result.text),
       ...(shouldReturnNativeResult ? { toolCalls: handledPromise(result.toolCalls) } : {}),
       usage: handledMappedPromise(result.usage, convertUsage),

@@ -300,9 +300,10 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": dt.datetime.now(dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],

@@ -8,7 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 SCRIPT = Path(__file__).with_name("build_chip_visualizer.py")
 SPEC = importlib.util.spec_from_file_location("build_chip_visualizer", SCRIPT)
 assert SPEC and SPEC.loader
@@ -143,8 +142,19 @@ def test_choose_def_finds_post_fill_openlane2_full_soc() -> None:
 def test_choose_gds_finds_matching_design_in_run() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        def_path = root / "pd" / "openlane" / "runs" / "RUN_sample" / "final" / "def" / "e1_chip_top.def"
-        gds_path = root / "pd" / "openlane" / "runs" / "RUN_sample" / "final" / "gds" / "e1_chip_top.klayout.gds"
+        def_path = (
+            root / "pd" / "openlane" / "runs" / "RUN_sample" / "final" / "def" / "e1_chip_top.def"
+        )
+        gds_path = (
+            root
+            / "pd"
+            / "openlane"
+            / "runs"
+            / "RUN_sample"
+            / "final"
+            / "gds"
+            / "e1_chip_top.klayout.gds"
+        )
         other_gds = root / "pd" / "openlane" / "runs" / "RUN_sample" / "final" / "gds" / "other.gds"
         def_path.parent.mkdir(parents=True)
         gds_path.parent.mkdir(parents=True)
@@ -264,8 +274,12 @@ def test_run_metrics_aggregate_uses_selected_run_step_metrics() -> None:
         late = run / "46-openroad-detailedrouting"
         early.mkdir(parents=True)
         late.mkdir(parents=True)
-        (early / "or_metrics_out.json").write_text('{"route__antenna_violation__count": 5, "route__wirelength": 10}')
-        (late / "or_metrics_out.json").write_text('{"route__wirelength": 20, "route__drc_errors": 0}')
+        (early / "or_metrics_out.json").write_text(
+            '{"route__antenna_violation__count": 5, "route__wirelength": 10}'
+        )
+        (late / "or_metrics_out.json").write_text(
+            '{"route__wirelength": 20, "route__drc_errors": 0}'
+        )
 
         metrics, sources = build_chip_visualizer.load_run_metrics(run)
 
@@ -301,7 +315,9 @@ def test_collect_measurements_adds_ir_drop_bins_and_wirelengths() -> None:
             {"route__drc_errors__iter:1": 12, "route__wirelength__iter:1": 34},
         )
 
-    assert measurements["route_iterations"] == [{"iteration": 1, "drc_errors": 12, "wirelength": 34}]
+    assert measurements["route_iterations"] == [
+        {"iteration": 1, "drc_errors": 12, "wirelength": 34}
+    ]
     assert measurements["wirelengths"]["top_nets"][0]["length_um"] == 1500.0
     assert measurements["ir_drop"]["nets"]["VPWR"]["tiles"]
 

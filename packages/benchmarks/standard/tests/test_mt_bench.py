@@ -236,3 +236,45 @@ def test_mt_bench_cli_end_to_end(tmp_path: Path) -> None:
     # Mock judge always returns Rating [[8]] → score 0.8.
     assert data["metrics"]["score"] == 0.8
     assert data["benchmark"] == BENCHMARK_ID
+
+
+def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
+    out_dir = tmp_path / "out"
+    rc = main_entry(
+        _MTBenchFactory(),
+        output_filename="mt-bench-results.json",
+        argv=[
+            "--mock",
+            "--output",
+            str(out_dir),
+            "--limit",
+            "1",
+            "--expand-scenarios",
+            "--count-scenarios",
+            "--validate-scenarios",
+            "--judge-api-key-env",
+            "DOES_NOT_EXIST",
+        ],
+    )
+    assert rc == 0
+    assert '"base": 1' in capsys.readouterr().out
+
+    rc = main_entry(
+        _MTBenchFactory(),
+        output_filename="mt-bench-results.json",
+        argv=[
+            "--mock",
+            "--output",
+            str(out_dir),
+            "--limit",
+            "1",
+            "--expand-scenarios",
+            "--judge-api-key-env",
+            "DOES_NOT_EXIST",
+        ],
+    )
+    assert rc == 0
+    data = json.loads((out_dir / "mt-bench-results.json").read_text("utf-8"))
+    assert data["dataset_version"].endswith("+edge-v1")
+    assert data["n"] == 22
+    assert data["metrics"]["score"] == 0.8

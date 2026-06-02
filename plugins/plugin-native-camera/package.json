@@ -41,13 +41,16 @@
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
+    "test": "vitest run --config vitest.config.ts",
     "watch": "tsc --watch"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
+    "fast-check": "^3.23.2",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

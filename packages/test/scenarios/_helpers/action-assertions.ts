@@ -92,6 +92,15 @@ function actionBlob(action: CapturedAction): string {
   return parts.join(" | ");
 }
 
+function isSynthesizedReply(action: CapturedAction): boolean {
+  const data = action.result?.data;
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    (data as { source?: unknown }).source === "synthesized-reply"
+  );
+}
+
 function matchesPattern(value: string, pattern: Pattern): boolean {
   if (typeof pattern === "string") {
     return value.toLowerCase().includes(pattern.toLowerCase());
@@ -147,11 +156,13 @@ function validateActionExpectation(
   actions: CapturedAction[],
   expectation: ActionExpectation,
 ): ScenarioCheckResult {
-  const matched = actions.filter((action) =>
-    actionMatchesScenarioExpectation(
-      action.actionName,
-      expectation.acceptedActions,
-    ),
+  const matched = actions.filter(
+    (action) =>
+      !isSynthesizedReply(action) &&
+      actionMatchesScenarioExpectation(
+        action.actionName,
+        expectation.acceptedActions,
+      ),
   );
   const minCount = expectation.minCount ?? 1;
   if (matched.length < minCount) {

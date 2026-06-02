@@ -8,6 +8,9 @@ import {
   createXConnectorAccountProvider,
   materializeEnvAccountIfMissing,
 } from "./connector-account-provider.js";
+
+export { XDmAdapter } from "./lifeops-message-adapter.js";
+
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
 import { XWorkflowCredentialProvider } from "./workflow-credential-provider.js";

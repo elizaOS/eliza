@@ -25,7 +25,8 @@ function parseTitle(content: string): string {
 
 function parseDescription(content: string): string {
   const withoutTitle = content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
-  return withoutTitle.length > 0 ? withoutTitle : content.trim();
+  const withoutDescriptionLabel = withoutTitle.replace(/^description[:\s]+/i, "").trim();
+  return withoutDescriptionLabel.length > 0 ? withoutDescriptionLabel : content.trim();
 }
 
 export async function handleImageDescription(

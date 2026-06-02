@@ -206,6 +206,26 @@ def test_jsonl_fixture_loads_all_seven_subtasks():
     assert loaded_types == set(VISUALWEBBENCH_TASK_TYPES)
 
 
+def test_jsonl_fixture_edge_expansion_adds_ten_variants_per_task():
+    ds = VisualWebBenchDataset()
+    asyncio.run(
+        ds.load(
+            use_huggingface=False,
+            use_sample_tasks=True,
+            include_edge_scenarios=True,
+        )
+    )
+
+    assert ds.count_scenarios() == {
+        "base": 7,
+        "edge": 70,
+        "total": 77,
+        "edge_multiplier": 10,
+    }
+    assert ds.validate_scenarios() == []
+    assert len({task.id for task in ds.tasks}) == 77
+
+
 def test_dataset_refuses_to_load_with_no_source():
     ds = VisualWebBenchDataset()
     with pytest.raises(RuntimeError):
@@ -253,6 +273,22 @@ def test_runner_smoke_one_per_subtask(tmp_path: Path) -> None:
     data = json.loads(results_path.read_text())
     assert data["benchmark"] == "visualwebbench"
     assert data["total_tasks"] == 7
+
+
+def test_runner_expanded_sample_tasks_with_oracle(tmp_path: Path) -> None:
+    config = VisualWebBenchConfig(
+        output_dir=str(tmp_path),
+        mock=True,
+        use_huggingface=False,
+        use_sample_tasks=True,
+        include_edge_scenarios=True,
+    )
+    report = asyncio.run(VisualWebBenchRunner(config).run_benchmark())
+
+    assert report.total_tasks == 77
+    assert report.overall_accuracy > 0.95
+    trace_dir = tmp_path / "traces"
+    assert len(list(trace_dir.glob("*.json"))) == 77
 
 
 def test_runner_refuses_without_mock_or_provider() -> None:

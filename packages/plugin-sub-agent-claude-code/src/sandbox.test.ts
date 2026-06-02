@@ -1,7 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { chmodSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import fc from "fast-check";
 import {
   buildSandboxedCommand,
   filterEnv,
@@ -50,6 +60,40 @@ describe("filterEnv", () => {
     });
     expect(result.ANTHROPIC_BASE_URL).toBe("https://api.anthropic.com");
   });
+
+  it("fuzzes extraEnv keys so sensitive names are never forwarded", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(
+          "TOKEN",
+          "SECRET",
+          "KEY",
+          "PASSWORD",
+          "CREDENTIAL",
+          "DATABASE_URL",
+          "WALLET",
+          "PRIVATE",
+          "MNEMONIC",
+          "API_KEY",
+        ),
+        fc.string({ minLength: 1, maxLength: 24 }).filter((value) => {
+          return /^[A-Za-z0-9_]+$/.test(value);
+        }),
+        fc.string({ minLength: 1, maxLength: 24 }).filter((value) => {
+          return /^[A-Za-z0-9_]+$/.test(value);
+        }),
+        (marker, left, right) => {
+          const key = `${left}_${marker}_${right}`;
+          expect(() =>
+            filterEnv({} as NodeJS.ProcessEnv, SAFE_ENV_KEYS, {
+              [key]: "do-not-forward",
+            }),
+          ).toThrow(/sensitive env var/);
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
 });
 
 describe("resolveSafeCwd", () => {
@@ -59,12 +103,8 @@ describe("resolveSafeCwd", () => {
   });
 
   it("rejects a path outside the workspace root and tmp", () => {
-    // realpath of homedir is never under /tmp on macOS or Linux, and never
-    // inside the freshly-created workspace below — so it must be rejected.
     const root = realpathSync(mkdtempSync(join(tmpdir(), "ws-")));
-    const outside = realpathSync(process.env.HOME ?? "/usr");
-    // Sanity: if HOME happens to be under tmpdir for some reason, bail.
-    if (outside.startsWith(realpathSync(tmpdir()))) return;
+    const outside = realpathSync("/dev");
     expect(() => resolveSafeCwd(outside, [root])).toThrow(SubAgentCwdError);
   });
 
@@ -72,6 +112,17 @@ describe("resolveSafeCwd", () => {
     expect(() => resolveSafeCwd("relative/path", ["/tmp"])).toThrow(
       SubAgentCwdError,
     );
+  });
+
+  it("rejects files and symlink escapes", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "ws-")));
+    const file = join(root, "file.txt");
+    const escapePath = join(root, "escape");
+    writeFileSync(file, "not a directory");
+    symlinkSync("/dev", escapePath);
+
+    expect(() => resolveSafeCwd(file, [root])).toThrow(SubAgentCwdError);
+    expect(() => resolveSafeCwd(escapePath, [root])).toThrow(SubAgentCwdError);
   });
 });
 
@@ -89,6 +140,14 @@ describe("resolveSafeBinary", () => {
     chmodSync(fake, 0o755);
     expect(() => resolveSafeBinary(fake)).toThrow(SubAgentBinaryError);
   });
+
+  it("resolves a bare binary name only from whitelisted PATH entries", () => {
+    const binary = resolveSafeBinary("env", {
+      PATH: ["/tmp/not-allowed", "/usr/bin"].join(":"),
+    } as NodeJS.ProcessEnv);
+
+    expect(binary).toBe("/usr/bin/env");
+  });
 });
 
 describe("buildSandboxedCommand", () => {
@@ -99,5 +158,20 @@ describe("buildSandboxedCommand", () => {
     });
     expect(plan.sandbox).toBe("none");
     expect(plan.cmd).toEqual(["/bin/echo", "hi"]);
+  });
+
+  it("discovers bundled Linux wrapper without truncating the bwrap argv", async () => {
+    const wrapper = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "sandbox",
+      "linux-bwrap.sh",
+    );
+
+    expect(existsSync(wrapper)).toBe(true);
+    expect(statSync(wrapper).mode & 0o111).not.toBe(0);
+    await expect(Bun.file(wrapper).text()).resolves.not.toContain(
+      "2>/dev/null || true \\",
+    );
   });
 });

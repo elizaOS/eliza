@@ -67,6 +67,7 @@ export function buildProgram(options?: {
 		.name(cliName)
 		.version(version)
 		.description(`${cliName} - ElizaOS agent CLI`);
+	program.exitOverride();
 
 	const ctx: CliContext = {
 		program,
@@ -97,6 +98,13 @@ export async function runCli(
 	try {
 		await program.parseAsync(argv ?? process.argv);
 	} catch (error) {
+		const commanderError = error as { code?: string; message?: string };
+		if (
+			commanderError.code === "commander.helpDisplayed" ||
+			commanderError.code === "commander.version"
+		) {
+			return;
+		}
 		if (error instanceof Error) {
 			// Commander throws an error for --help and --version
 			if (error.message.includes("outputHelp")) {

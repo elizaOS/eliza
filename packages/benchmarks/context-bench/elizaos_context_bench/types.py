@@ -198,6 +198,7 @@ class ContextBenchConfig:
     save_detailed_logs: bool = True
     generate_report: bool = True
     generate_heatmap: bool = True
+    include_edge_scenarios: bool = False
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""

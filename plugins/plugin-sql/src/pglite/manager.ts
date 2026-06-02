@@ -23,6 +23,14 @@ type PglitePidFileStatus =
   | "check-failed";
 
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
+  // A lock whose liveness we cannot positively confirm (EPERM / non-ESRCH probe
+  // error, i.e. a possibly recycled cross-user PID) and whose recorded createdAt
+  // is older than this window is treated as stale, so a recycled PID cannot
+  // permanently brick boot. Confirmed-live PIDs are honored regardless of age.
+  // 7 days comfortably exceeds any real unconfirmable window while still
+  // bounding the false-positive blast radius. See isLockActive.
+  private static readonly LOCK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
   private client: PGlite;
   private options: PGliteOptions;
   private shuttingDown = false;
@@ -34,8 +42,17 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   constructor(options: PGliteOptions) {
     this.options = options;
     this.acquireDataDirLockIfNeeded();
-    this.client = this.createClient(options);
-    this.setupShutdownHandlers();
+    try {
+      this.client = this.createClient(options);
+      this.setupShutdownHandlers();
+    } catch (err) {
+      // If client creation (WASM/FS init) throws, no reference to this manager
+      // escapes the constructor, so close() can never run. Release the data-dir
+      // lock here so the open fd and on-disk lock file don't leak — otherwise a
+      // same-process retry would self-deadlock on its own (still-running) PID.
+      this.releaseDataDirLock();
+      throw err;
+    }
   }
 
   public getConnection(): PGlite {
@@ -120,22 +137,56 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     return `${dataDir}/eliza-pglite.lock`;
   }
 
-  private getLockPid(lockPath: string): number | null {
+  private getLockInfo(lockPath: string): { pid: number | null; createdAt: number | null } {
     try {
       const raw = readFileSync(lockPath, "utf-8");
-      const parsed = JSON.parse(raw) as { pid?: unknown };
-      return typeof parsed.pid === "number" && parsed.pid > 0 ? parsed.pid : null;
+      const parsed = JSON.parse(raw) as { pid?: unknown; createdAt?: unknown };
+      const pid = typeof parsed.pid === "number" && parsed.pid > 0 ? parsed.pid : null;
+      const createdAtMs = typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
+      const createdAt = Number.isNaN(createdAtMs) ? null : createdAtMs;
+      return { pid, createdAt };
     } catch {
-      return null;
+      return { pid: null, createdAt: null };
     }
   }
 
-  private isPidRunning(pid: number): boolean {
+  /**
+   * Decide whether an existing lock should be honored as held by a live owner.
+   *
+   * Single-writer safety comes first: a *confirmed-running* PID is always
+   * honored, regardless of how old its `createdAt` is. A long-running agent
+   * (days or weeks of uptime) must never have its live lock reclaimed by a
+   * second manager — that would open a dual-writer window, which is
+   * unrecoverable, whereas a falsely-bricked boot is recoverable by removing
+   * the lock file. This matches the sibling `reconcilePglitePidFile`, which
+   * also treats a live PID as "active".
+   *
+   * The staleness window only rescues the *unconfirmable* case. A bare
+   * `process.kill(pid, 0)` is vulnerable to PID reuse, and a recycled
+   * cross-user PID surfaces as `EPERM` (or another non-`ESRCH` error) rather
+   * than a clean success. For those we cannot prove the PID belongs to a live
+   * Eliza process, so we fall back to `createdAt`: a recent lock is still
+   * respected, but one older than `LOCK_STALE_MS` (or with no usable timestamp)
+   * is treated as stale and reclaimed so an aliased PID cannot brick boot
+   * forever. `ESRCH` is unambiguous — the process is gone and the lock is stale.
+   */
+  private isLockActive(pid: number, createdAt: number | null): boolean {
     try {
       process.kill(pid, 0);
+      // Confirmed alive -> honor unconditionally (preserve single-writer).
       return true;
     } catch (err) {
-      return (err as NodeJS.ErrnoException).code !== "ESRCH";
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") {
+        // Definitely gone -> reclaim.
+        return false;
+      }
+      // Unconfirmable liveness (EPERM, etc.): honor only a recent lock; an old
+      // or timestamp-less one is treated as stale so boot can recover.
+      if (createdAt === null) {
+        return false;
+      }
+      return Date.now() - createdAt < PGliteClientManager.LOCK_STALE_MS;
     }
   }
 
@@ -167,8 +218,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
           throw this.createActiveLockError(dataDir, err);
         }
 
-        const pid = this.getLockPid(lockPath);
-        if (pid && this.isPidRunning(pid)) {
+        const { pid, createdAt } = this.getLockInfo(lockPath);
+        if (pid && this.isLockActive(pid, createdAt)) {
           throw this.createActiveLockError(
             dataDir,
             new Error(`PGlite lock file is held by running process ${pid}`)

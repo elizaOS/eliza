@@ -206,6 +206,10 @@ export * from "./runtime/response-handler-field-registry";
 export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
+export {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";

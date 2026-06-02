@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../src/accounts";
 import linePlugin, {
   buildLineDeepLink,
@@ -31,6 +32,7 @@ import linePlugin, {
   stripMarkdown,
   truncateText,
 } from "../src/index";
+import { LineWorkflowCredentialProvider } from "../src/workflow-credential-provider";
 
 // ===========================================================================
 // Plugin metadata
@@ -588,94 +590,141 @@ describe("Webhook signature validation", () => {
 });
 
 // ===========================================================================
-// Webhook event parsing
+// Webhook handling
 // ===========================================================================
 
-describe("Webhook event parsing", () => {
-  it("parses follow event structure", () => {
-    const event = {
-      type: "follow",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt1",
+describe("Webhook handling", () => {
+  function createServiceWithRuntime() {
+    const runtime = {
+      emitEvent: vi.fn(),
     };
-    expect(event.type).toBe("follow");
-    expect(event.source.userId).toBe("U123");
+    const service = new LineService();
+    (service as unknown as { runtime: typeof runtime }).runtime = runtime;
+    return { runtime, service };
+  }
+
+  it("emits structured payloads for valid webhook events", async () => {
+    const { runtime, service } = createServiceWithRuntime();
+
+    await service.handleWebhookEvents([
+      {
+        type: "message",
+        timestamp: 1234567890,
+        source: { type: "group", userId: "U123", groupId: "C123" },
+        replyToken: "rt4",
+        message: { id: "msg1", type: "text", text: "Hello!" },
+      },
+      {
+        type: "postback",
+        timestamp: 1234567891,
+        source: { type: "user", userId: "U456" },
+        replyToken: "rt3",
+        postback: { data: "action=buy", params: { date: "2024-01-01" } },
+      },
+    ] as Parameters<LineService["handleWebhookEvents"]>[0]);
+
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      [LineEventTypes.MESSAGE_RECEIVED],
+      expect.objectContaining({
+        lineSource: expect.objectContaining({ groupId: "C123" }),
+        message: expect.objectContaining({
+          groupId: "C123",
+          id: "msg1",
+          text: "Hello!",
+          type: "text",
+        }),
+        replyToken: "rt4",
+      })
+    );
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      [LineEventTypes.POSTBACK],
+      expect.objectContaining({
+        data: "action=buy",
+        params: { date: "2024-01-01" },
+        userId: "U456",
+      })
+    );
   });
 
-  it("parses unfollow event structure", () => {
-    const event = {
-      type: "unfollow",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
+  it("ignores malformed or hostile webhook payloads without emitting", async () => {
+    const { runtime, service } = createServiceWithRuntime();
+
+    await service.handleWebhookEvents([
+      null,
+      { type: "message", timestamp: 1, source: { type: "user", userId: "U1" } },
+      { type: "message", timestamp: 1, message: { type: "text", text: "missing id" } },
+      { type: "postback", timestamp: 1, postback: null },
+      { type: "postback", timestamp: 1, postback: { params: { date: "2024-01-01" } } },
+      { type: "unknown", timestamp: 1 },
+    ] as Parameters<LineService["handleWebhookEvents"]>[0]);
+
+    expect(runtime.emitEvent).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// Send payload validation
+// ===========================================================================
+
+describe("Send payload validation", () => {
+  function createServiceWithClient() {
+    const client = {
+      pushMessage: vi.fn().mockResolvedValue(undefined),
     };
-    expect(event.type).toBe("unfollow");
+    const service = new LineService();
+    (service as unknown as { client: typeof client }).client = client;
+    return { client, service };
+  }
+
+  it("rejects invalid location coordinates before sending", async () => {
+    const { client, service } = createServiceWithClient();
+
+    const result = await service.sendLocationMessage("U1234567890abcdef1234567890abcdef", {
+      type: "location",
+      title: "Invalid place",
+      address: "Unknown",
+      latitude: Number.NaN,
+      longitude: 139.7454,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("latitude");
+    expect(client.pushMessage).not.toHaveBeenCalled();
   });
 
-  it("parses join event structure", () => {
-    const event = {
-      type: "join",
-      timestamp: 1234567890,
-      source: { type: "group", groupId: "C123" },
-      replyToken: "rt2",
-    };
-    expect(event.type).toBe("join");
-    expect(event.source.groupId).toBe("C123");
-  });
+  it("rejects unsafe template URLs before sending", async () => {
+    const { client, service } = createServiceWithClient();
 
-  it("parses leave event structure", () => {
-    const event = {
-      type: "leave",
-      timestamp: 1234567890,
-      source: { type: "room", roomId: "R123" },
-    };
-    expect(event.type).toBe("leave");
-    expect(event.source.roomId).toBe("R123");
-  });
+    const result = await service.sendTemplateMessage("U1234567890abcdef1234567890abcdef", {
+      altText: "Choose",
+      template: {
+        type: "buttons",
+        text: "Pick one",
+        thumbnailImageUrl: "javascript:alert(1)",
+        actions: [{ type: "uri", label: "Open", uri: "https://example.com" }],
+      },
+    });
 
-  it("parses postback event structure", () => {
-    const event = {
-      type: "postback",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt3",
-      postback: { data: "action=buy", params: { date: "2024-01-01" } },
-    };
-    expect(event.type).toBe("postback");
-    expect(event.postback.data).toBe("action=buy");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("HTTPS");
+    expect(client.pushMessage).not.toHaveBeenCalled();
   });
+});
 
-  it("parses message event structure", () => {
-    const event = {
-      type: "message",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt4",
-      message: { id: "msg1", type: "text", text: "Hello!" },
-    };
-    expect(event.type).toBe("message");
-    expect(event.message.text).toBe("Hello!");
-  });
+// ===========================================================================
+// Workflow credentials
+// ===========================================================================
 
-  it("handles multiple events in body", () => {
-    const body = {
-      events: [
-        {
-          type: "follow",
-          timestamp: 1,
-          source: { type: "user", userId: "U1" },
-        },
-        {
-          type: "message",
-          timestamp: 2,
-          source: { type: "user", userId: "U2" },
-          message: { id: "m1", type: "text", text: "Hi" },
-        },
-      ],
-    };
-    expect(body.events).toHaveLength(2);
-    expect(body.events[0].type).toBe("follow");
-    expect(body.events[1].type).toBe("message");
+describe("Workflow credential provider", () => {
+  it("returns null when runtime credential lookup fails", async () => {
+    const runtime = {
+      getSetting: vi.fn(() => {
+        throw new Error("settings unavailable");
+      }),
+    } as unknown as IAgentRuntime;
+    const provider = new LineWorkflowCredentialProvider(runtime);
+
+    await expect(provider.resolve("user-1", "httpHeaderAuth")).resolves.toBeNull();
   });
 });
 

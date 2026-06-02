@@ -9,7 +9,37 @@ import {
   useTimeout,
   Z_SYSTEM_CRITICAL,
 } from "@elizaos/ui";
-import { Menu, X } from "lucide-react";
+import {
+  Accessibility,
+  Activity,
+  ArrowUp,
+  Axe,
+  Bird,
+  Bone,
+  ChevronsUp,
+  Cloud,
+  Dumbbell,
+  Eye,
+  Fish,
+  Footprints,
+  Frown,
+  Hand,
+  Heart,
+  Leaf,
+  type LucideIcon,
+  Menu,
+  MessageCircle,
+  Music2,
+  Rabbit,
+  Shield,
+  Skull,
+  Sparkles,
+  Swords,
+  Target,
+  WandSparkles,
+  Waves,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Types
@@ -17,51 +47,51 @@ interface EmoteItem {
   id: string;
   name: string;
   category: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 // Category icons
-const CATEGORY_ICONS: Record<string, string> = {
-  greeting: "\u{1F44B}",
-  emotion: "\u{1F622}",
-  dance: "\u{1F57A}",
-  combat: "\u{2694}",
-  idle: "\u{1F9D8}",
-  movement: "\u{1F3C3}",
-  other: "\u{2728}",
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  greeting: Hand,
+  emotion: Heart,
+  dance: Music2,
+  combat: Swords,
+  idle: Leaf,
+  movement: Footprints,
+  other: Sparkles,
 };
 
 // Emote icons
-const EMOTE_ICONS: Record<string, string> = {
-  wave: "\u{1F44B}",
-  kiss: "\u{1F48B}",
-  crying: "\u{1F62D}",
-  sorrow: "\u{1F614}",
-  "rude-gesture": "\u{1F595}",
-  "looking-around": "\u{1F440}",
-  "dance-happy": "\u{1F483}",
-  "dance-breaking": "\u{1F938}",
-  "dance-hiphop": "\u{1F57A}",
-  "dance-popping": "\u{1FAA9}",
-  "hook-punch": "\u{1F44A}",
-  punching: "\u{1F94A}",
-  "firing-gun": "\u{1F52B}",
-  "sword-swing": "\u{2694}",
-  chopping: "\u{1FA93}",
-  "spell-cast": "\u{1FA84}",
-  range: "\u{1F3F9}",
-  death: "\u{1F480}",
-  idle: "\u{1F9D8}",
-  talk: "\u{1F5E3}",
-  squat: "\u{1F9CE}",
-  fishing: "\u{1F3A3}",
-  float: "\u{1F54A}",
-  jump: "\u{1F4A8}",
-  flip: "\u{1F938}",
-  run: "\u{1F3C3}",
-  walk: "\u{1F6B6}",
-  crawling: "\u{1F40D}",
-  fall: "\u{1F4A5}",
+const EMOTE_ICONS: Record<string, LucideIcon> = {
+  wave: Hand,
+  kiss: Heart,
+  crying: Waves,
+  sorrow: Frown,
+  "rude-gesture": Hand,
+  "looking-around": Eye,
+  "dance-happy": Music2,
+  "dance-breaking": Accessibility,
+  "dance-hiphop": Activity,
+  "dance-popping": Sparkles,
+  "hook-punch": Dumbbell,
+  punching: Shield,
+  "firing-gun": Target,
+  "sword-swing": Swords,
+  chopping: Axe,
+  "spell-cast": WandSparkles,
+  range: Target,
+  death: Skull,
+  idle: Leaf,
+  talk: MessageCircle,
+  squat: Accessibility,
+  fishing: Fish,
+  float: Bird,
+  jump: ArrowUp,
+  flip: ChevronsUp,
+  run: Rabbit,
+  walk: Footprints,
+  crawling: Bone,
+  fall: Cloud,
 };
 
 // All emotes
@@ -497,55 +527,63 @@ export function EmotePicker() {
         >
           {t("wallet.all")}
         </Button>
-        {CATEGORIES.map((cat) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
-            data-testid={`emote-picker-category-${cat}`}
-            style={{
-              background:
-                activeCategory === cat
-                  ? "var(--accent)"
-                  : "rgba(255,255,255,0.06)",
-              color:
-                activeCategory === cat
-                  ? "var(--accent-foreground)"
-                  : "rgba(255,255,255,0.6)",
-            }}
-          >
-            <span className="mr-1">{CATEGORY_ICONS[cat]}</span>
-            {CATEGORY_LABELS[cat]}
-          </Button>
-        ))}
+        {CATEGORIES.map((cat) => {
+          const CategoryIcon = CATEGORY_ICONS[cat] ?? Sparkles;
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+              data-testid={`emote-picker-category-${cat}`}
+              style={{
+                background:
+                  activeCategory === cat
+                    ? "var(--accent)"
+                    : "rgba(255,255,255,0.06)",
+                color:
+                  activeCategory === cat
+                    ? "var(--accent-foreground)"
+                    : "rgba(255,255,255,0.6)",
+              }}
+            >
+              <CategoryIcon className="mr-1 h-3.5 w-3.5" aria-hidden />
+              {CATEGORY_LABELS[cat]}
+            </Button>
+          );
+        })}
       </div>
 
       {/* Emote grid */}
       <div className="max-h-[400px] overflow-y-auto p-3">
         <div className="grid grid-cols-5 gap-2">
-          {filteredEmotes.map((emote: EmoteItem) => (
-            <Button
-              variant="ghost"
-              size="icon"
-              key={emote.id}
-              onClick={() => playEmote(emote.id)}
-              disabled={playing === emote.id}
-              aria-label={`Play ${emote.name}`}
-              data-testid={`emote-picker-item-${emote.id}`}
-              title={emote.name}
-              className="flex aspect-square items-center justify-center rounded text-2xl h-auto w-auto"
-              style={{
-                background:
-                  playing === emote.id
-                    ? "var(--accent)"
-                    : "rgba(255,255,255,0.06)",
-              }}
-            >
-              {emote.icon}
-            </Button>
-          ))}
+          {filteredEmotes.map((emote: EmoteItem) =>
+            (() => {
+              const EmoteIcon = emote.icon;
+              return (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  key={emote.id}
+                  onClick={() => playEmote(emote.id)}
+                  disabled={playing === emote.id}
+                  aria-label={`Play ${emote.name}`}
+                  data-testid={`emote-picker-item-${emote.id}`}
+                  title={emote.name}
+                  className="flex aspect-square items-center justify-center rounded h-auto w-auto"
+                  style={{
+                    background:
+                      playing === emote.id
+                        ? "var(--accent)"
+                        : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <EmoteIcon className="h-6 w-6" aria-hidden />
+                </Button>
+              );
+            })(),
+          )}
         </div>
 
         {filteredEmotes.length === 0 && (

@@ -22,8 +22,10 @@ CASES = {
         "expected_repair_sha256": "157f8f7eab101ae4f9e6cc6d69c150b9403189ca3e31523e56b6c331104d0528",
     },
     "high_failure": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "defect": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
         "expected_repair_sha256": "c8ad0a7c1a907447b0624aecbb73ef36f763be20b43d253a35c56899a153d781",
     },
 }
@@ -147,7 +149,13 @@ def main() -> int:
         "repaired real-weight execution inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_repaired_real_weight_execution_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_repaired_real_weight_execution_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     full_norm = load_json(FULL_NORM_REAL_WEIGHT) if FULL_NORM_REAL_WEIGHT.is_file() else {}
@@ -162,16 +170,26 @@ def main() -> int:
         and vocab.get("status") == "PASS"
         and int(vocab.get("summary", {}).get("executed_vocab_sampled_k_mac_count", 0)) == 8_192_000
         and full_payload_repair.get("status") == "PASS"
-        and int(full_payload_repair.get("summary", {}).get("high_failure_payload_remapped_records", 0)) == 3_012
+        and int(
+            full_payload_repair.get("summary", {}).get("high_failure_payload_remapped_records", 0)
+        )
+        == 3_012
         and window_repair.get("status") == "PASS"
-        and int(window_repair.get("summary", {}).get("high_failure_window_remapped_core_count", 0)) > 0
+        and int(window_repair.get("summary", {}).get("high_failure_window_remapped_core_count", 0))
+        > 0
     )
     status, detail = pass_fail(
         deps_ok,
         "real-weight execution, full-payload repair, and window-repair linkage reports are PASS",
         "repaired real-weight execution dependency mismatch",
     )
-    checks.append({"id": "e1x_repaired_real_weight_execution_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_repaired_real_weight_execution_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = target_layers(placement)
     logical_cols = int(placement.get("logical_cols", 0))
@@ -217,14 +235,16 @@ def main() -> int:
             output_checksum = mix64(output_checksum, int(result["row_trace_checksum"]))
 
             if len(sampled_rows) < 12:
-                sampled_rows.append({
-                    "layer_index": layer_index,
-                    "kind": kind,
-                    "output_row": output_row,
-                    "logical_core_index": logical_core,
-                    "lane_mac_count": int(result["lane_mac_count"]),
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                sampled_rows.append(
+                    {
+                        "layer_index": layer_index,
+                        "kind": kind,
+                        "output_row": output_row,
+                        "logical_core_index": logical_core,
+                        "lane_mac_count": int(result["lane_mac_count"]),
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
 
             for case, data in case_data.items():
                 remap = data["remap"]
@@ -239,17 +259,21 @@ def main() -> int:
                 summary = case_summaries[case]
                 is_remapped = logical in remap
                 if is_remapped:
-                    summary["touched_remapped_core_count"] = int(summary["touched_remapped_core_count"]) + 1
+                    summary["touched_remapped_core_count"] = (
+                        int(summary["touched_remapped_core_count"]) + 1
+                    )
                     sampled = summary["sampled_remapped_rows"]
                     if isinstance(sampled, list) and len(sampled) < 8:
-                        sampled.append({
-                            "layer_index": layer_index,
-                            "kind": kind,
-                            "output_row": output_row,
-                            "logical_core_index": logical_core,
-                            "physical_row": physical[0],
-                            "physical_col": physical[1],
-                        })
+                        sampled.append(
+                            {
+                                "layer_index": layer_index,
+                                "kind": kind,
+                                "output_row": output_row,
+                                "logical_core_index": logical_core,
+                                "physical_row": physical[0],
+                                "physical_col": physical[1],
+                            }
+                        )
                 route_checksum = int(summary["route_checksum"])
                 for value in (
                     layer_index,
@@ -276,7 +300,9 @@ def main() -> int:
             f"{case} repair map routes executed real-weight rows onto usable physical cores",
             f"{case} repaired real-weight route mismatch",
         )
-        checks.append({"id": f"e1x_repaired_real_weight_execution_{case}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_repaired_real_weight_execution_{case}", "status": status, "detail": detail}
+        )
 
     repaired_ok = (
         not errors
@@ -292,7 +318,9 @@ def main() -> int:
         f"repaired execution maps {total_rows} real-weight rows across normal/high defect scenarios",
         "repaired real-weight execution mismatch: " + ", ".join(errors[:8]),
     )
-    checks.append({"id": "e1x_repaired_real_weight_execution_maps_rows", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_repaired_real_weight_execution_maps_rows", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

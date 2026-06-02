@@ -39,7 +39,7 @@ describe("verify: served 200 vs mtime freshness (GAP-C)", () => {
   let workdir: string;
   let server: Server;
   let port: number;
-  let serve200 = true;
+  let responseMode: "200" | "404" | "405" = "200";
 
   beforeEach(async () => {
     workdir = mkdtempSync(join(tmpdir(), "gapc-verify-"));
@@ -50,11 +50,16 @@ describe("verify: served 200 vs mtime freshness (GAP-C)", () => {
     // Age the file so it looks "stale" to the wall-clock freshness gate.
     utimesSync(indexPath, OLD_MTIME_S, OLD_MTIME_S);
 
-    serve200 = true;
+    responseMode = "200";
     server = createServer((_req, res) => {
-      if (!serve200) {
+      if (responseMode === "404") {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");
+        return;
+      }
+      if (responseMode === "405") {
+        res.writeHead(405, { "content-type": "text/plain" });
+        res.end("method not allowed");
         return;
       }
       res.writeHead(200, { "content-type": "text/html" });
@@ -107,12 +112,11 @@ describe("verify: served 200 vs mtime freshness (GAP-C)", () => {
     expect(result.verifiedUrls).toContain(url);
   });
 
-  it("still flags a stale local file when the URL is NOT actually served (freshness gate preserved)", async () => {
-    // Negative control: the same old-mtime file, but the server 404s, so the
-    // local file is the only liveness signal. With requireFresh the stale file
-    // must still be reported — the fix only suppresses the gate behind a live
-    // 200, it does not remove it.
-    serve200 = false;
+  it("still applies the freshness gate when the URL is reachable but not served 2xx", async () => {
+    // 405/501 are treated as reachable, not dead. They must not be treated as
+    // a live served artifact, or the mtime freshness gate gets bypassed for a
+    // stale pre-existing file.
+    responseMode = "405";
     const url = `http://127.0.0.1:${port}/color-pop/`;
     const result = await annotateUnverifiedUrls(
       `built the app — it's live at ${url}`,
@@ -124,7 +128,11 @@ describe("verify: served 200 vs mtime freshness (GAP-C)", () => {
     );
 
     expect(result.dead.length).toBeGreaterThan(0);
-    // A 404 is itself a dead signal; the key contract is the URL is flagged.
-    expect(result.dead.some((d) => d.url === url)).toBe(true);
+    expect(result.dead).toContainEqual(
+      expect.objectContaining({
+        url,
+        status: expect.stringContaining("not updated during this session"),
+      }),
+    );
   });
 });

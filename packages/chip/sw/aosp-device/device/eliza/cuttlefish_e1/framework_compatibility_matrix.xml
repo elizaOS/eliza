@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Framework compatibility matrix fragment for the eliza e1_npu HAL.
+
+  manifest.fragment.xml declares vendor.eliza.e1_npu@1.0::IE1Npu/default as a
+  live device HAL, so checkvintf --check-compat requires the framework
+  compatibility matrix to *specify* that interface; otherwise the riscv64
+  Cuttlefish build fails at the check_vintf_compatible packaging step with
+  "instances are in the device manifest but not specified in framework
+  compatibility matrix". It is a custom device HAL, so it is optional="true":
+  the framework permits it but does not require every device to provide it.
+-->
+<compatibility-matrix version="1.0" type="framework">
+    <hal format="hidl" optional="true">
+        <name>vendor.eliza.e1_npu</name>
+        <version>1.0</version>
+        <interface>
+            <name>IE1Npu</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+</compatibility-matrix>

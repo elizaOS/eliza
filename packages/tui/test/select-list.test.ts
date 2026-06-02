@@ -27,4 +27,22 @@ describe("SelectList", () => {
     assert.ok(!rendered[0].includes("\n"));
     assert.ok(rendered[0].includes("Line one Line two Line three"));
   });
+
+  it("renders at least one option when maxVisible is zero or negative", () => {
+    const items = [
+      { value: "one", label: "one" },
+      { value: "two", label: "two" },
+    ];
+
+    for (const maxVisible of [0, -3]) {
+      const list = new SelectList(items, maxVisible, testTheme);
+      const rendered = list.render(20);
+
+      assert.ok(
+        rendered.some((line) => line.includes("one")),
+        `expected visible option for maxVisible=${maxVisible}`,
+      );
+      assert.strictEqual(list.getSelectedItem()?.value, "one");
+    }
+  });
 });

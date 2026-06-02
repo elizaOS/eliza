@@ -6,6 +6,12 @@ import json
 import time
 from collections.abc import Callable
 
+from elizaos_experience_bench.edge_cases import (
+    count_expanded,
+    expand_learning_scenarios,
+    expand_retrieval_queries,
+    validate_unique_texts,
+)
 from elizaos_experience_bench.evaluators import (
     LearningCycleEvaluator,
     RerankingEvaluator,
@@ -13,6 +19,7 @@ from elizaos_experience_bench.evaluators import (
 )
 from elizaos_experience_bench.evaluators.hard_cases import HardCaseEvaluator
 from elizaos_experience_bench.generator import ExperienceGenerator
+from elizaos_experience_bench.hard_cases import get_all_cases
 from elizaos_experience_bench.types import (
     BenchmarkConfig,
     BenchmarkResult,
@@ -30,6 +37,55 @@ class ExperienceBenchmarkRunner:
     def __init__(self, config: BenchmarkConfig | None = None) -> None:
         self.config = config or BenchmarkConfig()
         self.generator = ExperienceGenerator(seed=self.config.seed)
+
+    def count_scenarios(self) -> dict[str, int]:
+        """Count generated and hand-written benchmark scenarios for this config."""
+        experiences = self.generator.generate_experiences(
+            count=self.config.num_experiences,
+            domains=self.config.domains,
+        )
+        base = 0
+        if BenchmarkSuite.RETRIEVAL in self.config.suites:
+            base += len(self.generator.generate_retrieval_queries(
+                experiences,
+                num_queries=self.config.num_retrieval_queries,
+            ))
+        if BenchmarkSuite.RERANKING in self.config.suites:
+            base += 5
+        if BenchmarkSuite.LEARNING_CYCLE in self.config.suites:
+            base += len(self.generator.generate_learning_scenarios(
+                num_scenarios=self.config.num_learning_cycles,
+            ))
+        if BenchmarkSuite.HARD_CASES in self.config.suites:
+            base += len(get_all_cases())
+        return count_expanded(base, include_edge_scenarios=self.config.include_edge_scenarios)
+
+    def validate_scenarios(self) -> list[str]:
+        """Validate the generated scenario inventory for this config."""
+        errors: list[str] = []
+        experiences = self.generator.generate_experiences(
+            count=self.config.num_experiences,
+            domains=self.config.domains,
+        )
+        if BenchmarkSuite.RETRIEVAL in self.config.suites:
+            queries = self.generator.generate_retrieval_queries(
+                experiences,
+                num_queries=self.config.num_retrieval_queries,
+            )
+            if self.config.include_edge_scenarios:
+                queries = expand_retrieval_queries(queries)
+            errors.extend(validate_unique_texts([q.query_text for q in queries], "retrieval"))
+            for query in queries:
+                if not query.relevant_indices:
+                    errors.append(f"retrieval query has no relevant indices: {query.query_text[:80]}")
+        if BenchmarkSuite.LEARNING_CYCLE in self.config.suites:
+            scenarios = self.generator.generate_learning_scenarios(
+                num_scenarios=self.config.num_learning_cycles,
+            )
+            if self.config.include_edge_scenarios:
+                scenarios = expand_learning_scenarios(scenarios)
+            errors.extend(validate_unique_texts([s.similar_query for s in scenarios], "learning"))
+        return errors
 
     def run(self) -> BenchmarkResult:
         """Run all configured benchmark suites."""
@@ -51,6 +107,8 @@ class ExperienceBenchmarkRunner:
             queries = self.generator.generate_retrieval_queries(
                 experiences, num_queries=self.config.num_retrieval_queries,
             )
+            if self.config.include_edge_scenarios:
+                queries = expand_retrieval_queries(queries)
             result.total_queries += len(queries)
 
             evaluator = RetrievalEvaluator(top_k_values=self.config.top_k_values)
@@ -69,7 +127,9 @@ class ExperienceBenchmarkRunner:
         # --- Reranking benchmark ---
         if BenchmarkSuite.RERANKING in self.config.suites:
             print(f"\n[ExperienceBench] Running RERANKING benchmark...")
-            evaluator = RerankingEvaluator()
+            evaluator = RerankingEvaluator(
+                include_edge_scenarios=self.config.include_edge_scenarios
+            )
             t0 = time.time()
             reranking_results = evaluator.evaluate()
             elapsed = time.time() - t0
@@ -98,6 +158,8 @@ class ExperienceBenchmarkRunner:
             scenarios = self.generator.generate_learning_scenarios(
                 num_scenarios=self.config.num_learning_cycles,
             )
+            if self.config.include_edge_scenarios:
+                scenarios = expand_learning_scenarios(scenarios)
 
             evaluator = LearningCycleEvaluator()
             t0 = time.time()
@@ -119,7 +181,9 @@ class ExperienceBenchmarkRunner:
         # --- Hard cases benchmark ---
         if BenchmarkSuite.HARD_CASES in self.config.suites:
             print(f"\n[ExperienceBench] Running HARD CASES benchmark...")
-            evaluator = HardCaseEvaluator()
+            evaluator = HardCaseEvaluator(
+                include_edge_scenarios=self.config.include_edge_scenarios
+            )
             t0 = time.time()
             hard_results = evaluator.evaluate()
             elapsed = time.time() - t0

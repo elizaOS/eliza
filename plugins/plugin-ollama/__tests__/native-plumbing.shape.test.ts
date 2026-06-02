@@ -310,6 +310,39 @@ describe("Ollama native text plumbing", () => {
     await expect(stream.text).resolves.toBe(JSON.stringify(plan));
   });
 
+  it("stream=true + tools (RESPONSE_HANDLER): yields fallback text when no tool call is returned", async () => {
+    const fallbackPlan = JSON.stringify({
+      processMessage: "REPLY",
+      plan: { contexts: ["simple"], reply: "hi" },
+      thought: "",
+    });
+    streamTextMock.mockImplementation(() => ({
+      textStream: (async function* () {
+        yield "ignored-delta";
+      })(),
+      text: Promise.resolve(fallbackPlan),
+      toolCalls: Promise.resolve([]),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 2 }),
+      finishReason: Promise.resolve("stop"),
+    }));
+
+    const result = await handleResponseHandler(createRuntime(), {
+      prompt: "p",
+      stream: true,
+      tools: { MESSAGE_HANDLER_PLAN: { description: "D", inputSchema: { type: "object" } } },
+      toolChoice: "required",
+    } as never);
+
+    const stream = result as TextStreamResult & { toolCalls?: Promise<unknown[]> };
+    const chunks: string[] = [];
+    for await (const c of stream.textStream) {
+      chunks.push(c);
+    }
+    expect(chunks).toEqual([fallbackPlan]);
+    await expect(stream.text).resolves.toBe(fallbackPlan);
+    await expect(stream.toolCalls).resolves.toEqual([]);
+  });
+
   it("stream=true + tools + responseSchema uses streamText (tools win, no output on wire)", async () => {
     streamTextMock.mockImplementation(() => ({
       textStream: (async function* () {

@@ -25,6 +25,7 @@ import {
   assertPasswordStrong,
   createBrowserSession,
   ensureSessionForRequest,
+  getSensitiveLimiter,
   hashPassword,
   parseSessionCookie,
   revokeSession,
@@ -75,6 +76,7 @@ interface AuthAttempt {
 const AUTH_ATTEMPT_WINDOW_MS = 60_000;
 const AUTH_ATTEMPT_MAX = 20;
 const sessionRouteAttempts = new Map<string, AuthAttempt>();
+const passwordChangeLimiter = getSensitiveLimiter("auth.password.change");
 
 function consumeAuthBucket(
   ip: string | null,
@@ -245,7 +247,7 @@ async function handleSetup(
   store: AuthStore,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
-  if (!consumeAuthBucket(meta.ip)) {
+  if (!passwordChangeLimiter.consume(meta.ip)) {
     sendJsonErrorResponse(res, 429, "Too many requests");
     return true;
   }

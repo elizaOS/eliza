@@ -9,6 +9,7 @@ import time
 from collections.abc import Awaitable, Callable
 
 from elizaos_context_bench.evaluators.retrieval import RetrievalEvaluator
+from elizaos_context_bench.edge_cases import expand_tasks
 from elizaos_context_bench.generator import ContextGenerator
 from elizaos_context_bench.types import (
     ContextBenchConfig,
@@ -76,7 +77,7 @@ class MultiHopBenchmarkSuite:
                     )
                     tasks.append(task)
 
-        return tasks
+        return expand_tasks(tasks) if self.config.include_edge_scenarios else tasks
 
     async def _run_single_task(
         self,
@@ -170,7 +171,7 @@ class MultiHopBenchmarkSuite:
 
         """
         lengths = context_lengths or self.config.context_lengths
-        results: list[ContextBenchResult] = []
+        tasks: list[ContextBenchTask] = []
 
         for length in lengths:
             for _ in range(self.config.tasks_per_position):
@@ -179,8 +180,15 @@ class MultiHopBenchmarkSuite:
                     context_length=length,
                     num_hops=2,
                 )
-                result = await self._run_single_task(task)
-                results.append(result)
+                tasks.append(task)
+
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+
+        results: list[ContextBenchResult] = []
+        for task in tasks:
+            result = await self._run_single_task(task)
+            results.append(result)
 
         return results
 
@@ -200,7 +208,7 @@ class MultiHopBenchmarkSuite:
 
         """
         lengths = context_lengths or self.config.context_lengths
-        results: list[ContextBenchResult] = []
+        tasks: list[ContextBenchTask] = []
 
         for length in lengths:
             for _ in range(self.config.tasks_per_position):
@@ -209,8 +217,15 @@ class MultiHopBenchmarkSuite:
                     context_length=length,
                     num_hops=num_hops,
                 )
-                result = await self._run_single_task(task)
-                results.append(result)
+                tasks.append(task)
+
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+
+        results: list[ContextBenchResult] = []
+        for task in tasks:
+            result = await self._run_single_task(task)
+            results.append(result)
 
         return results
 

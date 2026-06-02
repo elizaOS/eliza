@@ -32,6 +32,9 @@ def _dry_args(tmp_path) -> argparse.Namespace:
         num_envs=1,
         sleep_after_execution=0.0,
         dry_run=True,
+        expand_scenarios=False,
+        count_scenarios=False,
+        validate_scenarios=False,
     )
 
 
@@ -73,6 +76,50 @@ def test_dry_run_honors_max_tasks(tmp_path, monkeypatch) -> None:
         "osworld_eliza_dry_run_4",
         "osworld_eliza_dry_run_5",
     ]
+
+
+def test_dry_run_expands_selected_tasks_ten_x(tmp_path, monkeypatch) -> None:
+    def fail_load_tasks(_args):
+        raise AssertionError("dry-run must not load real OSWorld benchmark tasks")
+
+    monkeypatch.setattr(run_multienv_eliza, "load_tasks", fail_load_tasks)
+    args = _dry_args(tmp_path)
+    args.max_tasks = 1
+    args.expand_scenarios = True
+    args.validate_scenarios = True
+
+    summary = run_multienv_eliza.run_benchmark(args)
+
+    assert summary["total_tasks"] == 11
+    assert summary["passed_tasks"] == 11
+    assert summary["include_edge_scenarios"] is True
+    assert summary["scenario_counts"] == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+    assert summary["results"][1]["task_id"] == "osworld_eliza_dry_run_1__edge_01"
+
+
+def test_osworld_task_count_and_validate_helpers() -> None:
+    tasks = [
+        {"id": "task-a", "instruction": "Do A", "snapshot": "chrome"},
+        {"id": "task-b", "instruction": "Do B", "snapshot": "gimp"},
+    ]
+
+    run_multienv_eliza.validate_tasks(tasks, include_edge_scenarios=True)
+    expanded = run_multienv_eliza.expand_tasks(tasks)
+
+    assert run_multienv_eliza.count_tasks(tasks, include_edge_scenarios=True) == {
+        "base": 2,
+        "edge": 20,
+        "edge_multiplier": 10,
+        "total": 22,
+    }
+    assert len(expanded) == 22
+    assert expanded[2]["id"] == "task-a__edge_01"
+    assert "Edge condition:" in expanded[2]["instruction"]
 
 
 def test_delegate_harness_does_not_start_eliza_server(monkeypatch) -> None:

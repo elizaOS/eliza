@@ -138,9 +138,170 @@ interface Scenario {
   config: ScenarioConfig;
 }
 
-function loadScenarios(): Scenario[] {
+type ScenarioVariant = {
+  id: string;
+  label: string;
+  description: string;
+  rewrite: (content: string) => string;
+};
+
+const EXPANSION_MULTIPLIER = 10;
+
+const SCENARIO_VARIANTS: ScenarioVariant[] = [
+  {
+    id: "polite",
+    label: "polite",
+    description: "Polite user phrasing.",
+    rewrite: (content) => `Please help with this benchmark request: ${content}`,
+  },
+  {
+    id: "urgent",
+    label: "urgent",
+    description: "Urgent user phrasing.",
+    rewrite: (content) => `This is time sensitive: ${content}`,
+  },
+  {
+    id: "mobile",
+    label: "mobile",
+    description: "Mobile-message framing.",
+    rewrite: (content) => `Sent from mobile, quick note: ${content}`,
+  },
+  {
+    id: "followup",
+    label: "follow-up",
+    description: "Follow-up thread framing.",
+    rewrite: (content) => `Following up from earlier: ${content}`,
+  },
+  {
+    id: "quoted",
+    label: "quoted",
+    description: "Quoted forwarded request.",
+    rewrite: (content) => `Forwarded request:\n> ${content}`,
+  },
+  {
+    id: "context",
+    label: "context",
+    description: "Extra operational context.",
+    rewrite: (content) => `Context: framework benchmark\n${content}`,
+  },
+  {
+    id: "brief",
+    label: "brief",
+    description: "Brevity preference.",
+    rewrite: (content) => `Keep this brief: ${content}`,
+  },
+  {
+    id: "noisy",
+    label: "noisy",
+    description: "Natural chat filler.",
+    rewrite: (content) => `Hey, sorry for the messy note, ${content}`,
+  },
+  {
+    id: "boundary",
+    label: "boundary",
+    description: "Explicit user-intent boundary.",
+    rewrite: (content) => `User intent starts here:\n${content}`,
+  },
+  {
+    id: "handoff",
+    label: "handoff",
+    description: "Teammate handoff framing.",
+    rewrite: (content) => `My teammate asked me to send this: ${content}`,
+  },
+];
+
+if (SCENARIO_VARIANTS.length !== EXPANSION_MULTIPLIER) {
+  throw new Error(
+    `Framework benchmark expansion requires exactly ${EXPANSION_MULTIPLIER} variants, found ${SCENARIO_VARIANTS.length}`,
+  );
+}
+
+function loadBaseScenarios(): Scenario[] {
   const raw = readFileSync(resolve(SHARED_DIR, "scenarios.json"), "utf-8");
   return JSON.parse(raw).scenarios;
+}
+
+function applyScenarioVariant(
+  scenario: Scenario,
+  variant: ScenarioVariant,
+): Scenario {
+  return {
+    ...scenario,
+    id: `${scenario.id}--edge-${variant.id}`,
+    name: `${scenario.name} (${variant.label})`,
+    description: `${scenario.description} Edge variant: ${variant.description}`,
+    messages: Array.isArray(scenario.messages)
+      ? scenario.messages.map((message) => ({
+          ...message,
+          content: variant.rewrite(message.content),
+        }))
+      : scenario.messages,
+  };
+}
+
+function expandScenarios(baseScenarios: readonly Scenario[]): Scenario[] {
+  const expanded = baseScenarios.flatMap((scenario) =>
+    SCENARIO_VARIANTS.map((variant) => applyScenarioVariant(scenario, variant)),
+  );
+  if (expanded.length !== baseScenarios.length * EXPANSION_MULTIPLIER) {
+    throw new Error(
+      `Framework benchmark expansion mismatch: expected ${baseScenarios.length * EXPANSION_MULTIPLIER}, found ${expanded.length}`,
+    );
+  }
+  return expanded;
+}
+
+function loadScenarios(): Scenario[] {
+  const baseScenarios = loadBaseScenarios();
+  return [...baseScenarios, ...expandScenarios(baseScenarios)];
+}
+
+function countScenarios(): {
+  suite: "framework-benchmark";
+  existing: number;
+  added: number;
+  total: number;
+  multiplierAdded: number;
+} {
+  const baseScenarios = loadBaseScenarios();
+  const expanded = expandScenarios(baseScenarios);
+  return {
+    suite: "framework-benchmark",
+    existing: baseScenarios.length,
+    added: expanded.length,
+    total: baseScenarios.length + expanded.length,
+    multiplierAdded: expanded.length / baseScenarios.length,
+  };
+}
+
+function validateScenarios(): {
+  valid: boolean;
+  total: number;
+  uniqueIds: number;
+  duplicateIds: string[];
+  expansionMatches: boolean;
+} {
+  const baseScenarios = loadBaseScenarios();
+  const expanded = expandScenarios(baseScenarios);
+  const allScenarios = [...baseScenarios, ...expanded];
+  const ids = new Set<string>();
+  const duplicateIds = new Set<string>();
+
+  for (const scenario of allScenarios) {
+    if (ids.has(scenario.id)) duplicateIds.add(scenario.id);
+    ids.add(scenario.id);
+  }
+
+  const expansionMatches =
+    expanded.length === baseScenarios.length * EXPANSION_MULTIPLIER;
+
+  return {
+    valid: duplicateIds.size === 0 && expansionMatches,
+    total: allScenarios.length,
+    uniqueIds: ids.size,
+    duplicateIds: [...duplicateIds],
+    expansionMatches,
+  };
 }
 
 function loadCharacter(): Character {
@@ -650,6 +811,17 @@ async function runMessageBenchmark(
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  if (args.includes("--count-scenarios")) {
+    console.log(JSON.stringify(countScenarios(), null, 2));
+    return;
+  }
+  if (args.includes("--validate-scenarios")) {
+    const validation = validateScenarios();
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+
   const scenarioFilter = args.find((a) => a.startsWith("--scenarios="));
   const runAll = args.includes("--all");
   const useRealLlm = args.includes("--real-llm");

@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from elizaos_trust_bench.baselines import PerfectHandler, RandomHandler
+from elizaos_trust_bench.corpus import count_corpus, validate_corpus
 from elizaos_trust_bench.runner import TrustBenchmarkRunner
 from elizaos_trust_bench.types import BenchmarkConfig, Difficulty, ThreatCategory
 
@@ -367,6 +368,21 @@ Handler descriptions:
         default=None,
         help="Model name for --handler eliza/llm (e.g. openai/gpt-oss-120b)",
     )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for every trust corpus case.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print trust corpus scenario counts and exit.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate trust corpus scenarios and exit.",
+    )
     args = parser.parse_args()
     if args.handler == "llm" and args.model_provider not in (None, *_OPENAI_COMPATIBLE_PROVIDERS):
         parser.error(
@@ -390,7 +406,21 @@ Handler descriptions:
         tags=args.tags,
         fail_threshold=args.threshold,
         output_path=args.output,
+        include_edge_scenarios=args.expand_scenarios,
     )
+
+    if args.count_scenarios or args.validate_scenarios:
+        counts = count_corpus(include_edge_scenarios=args.expand_scenarios)
+        if args.validate_scenarios:
+            errors = validate_corpus(include_edge_scenarios=args.expand_scenarios)
+            payload = {"ok": not errors, **counts}
+            if errors:
+                payload["errors"] = errors[:50]
+                payload["error_count"] = len(errors)
+            print(json.dumps(payload, indent=2))
+            sys.exit(0 if not errors else 1)
+        print(json.dumps(counts, indent=2))
+        sys.exit(0)
 
     server_manager = None
     handler = None

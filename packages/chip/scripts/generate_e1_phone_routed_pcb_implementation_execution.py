@@ -37,9 +37,7 @@ MODULE_RF = ROOT / "board/kicad/e1-phone/module-rf-pinout-execution.yaml"
 ENCLOSURE_FIT = ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml"
 FACTORY_ACCEPTANCE = ROOT / "board/kicad/e1-phone/factory-production-acceptance-checklist.yaml"
 CONCEPT_PCB = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
-ROUTED_CANDIDATE_PCB = (
-    ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
-)
+ROUTED_CANDIDATE_PCB = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
 ROUTE_INVENTORY = ROOT / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml"
 REAL_FOOTPRINT_BINDING = (
     ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"

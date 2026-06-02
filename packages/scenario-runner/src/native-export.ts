@@ -34,10 +34,27 @@ export const SCENARIO_NATIVE_EXPORT_SCHEMA =
   "eliza_scenario_native_export" as const;
 export const SCENARIO_NATIVE_EXPORT_VERSION = 1 as const;
 
+/**
+ * Per-scenario assertion outcome, keyed by scenario id. Threaded into the
+ * exporter so failed/regressed trajectories are not emitted as gold-weight
+ * training rows. The recorder's own `trajectory.status` is the mechanical
+ * lifecycle (finished/errored) and does NOT reflect assertion pass/fail — only
+ * the scenario report carries that.
+ */
+export type ScenarioOutcome = "passed" | "failed" | "skipped";
+export type ScenarioOutcomeMap = ReadonlyMap<string, ScenarioOutcome>;
+
 export interface NativeBoundaryRow {
   format: typeof NATIVE_FORMAT;
   schemaVersion: typeof NATIVE_SCHEMA_VERSION;
   boundary: typeof GENERATE_TEXT_BOUNDARY;
+  /**
+   * Scenario assertion outcome consumed by the training prep scorer
+   * (`native_success_and_score` in prepare_eliza1_trajectory_dataset.py). Kept
+   * separate from top-level `status`, which belongs to the canonical native
+   * trajectory lifecycle contract.
+   */
+  scenarioStatus?: ScenarioOutcome;
   request: {
     system?: string;
     messages?: unknown[];
@@ -98,6 +115,10 @@ export interface ScenarioNativeExportManifest {
     parsedTrajectories: number;
     skippedFiles: number;
     rows: number;
+    passedRows: number;
+    failedRows: number;
+    skippedScenarioRows: number;
+    unknownOutcomeRows: number;
   };
   runIds: string[];
   scenarioIds: string[];
@@ -209,6 +230,7 @@ function buildResponse(
  */
 export function recordedTrajectoryToNativeRows(
   trajectory: RecordedTrajectory,
+  scenarioOutcome?: ScenarioOutcome,
 ): NativeBoundaryRow[] {
   const rows: NativeBoundaryRow[] = [];
   const stages: RecordedStage[] = Array.isArray(trajectory.stages)
@@ -241,6 +263,7 @@ export function recordedTrajectoryToNativeRows(
       format: NATIVE_FORMAT,
       schemaVersion: NATIVE_SCHEMA_VERSION,
       boundary: GENERATE_TEXT_BOUNDARY,
+      ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
       request,
       response,
       trajectoryId: trajectory.trajectoryId,
@@ -289,6 +312,7 @@ export function recordedTrajectoryToNativeRows(
         source_provider:
           typeof model.provider === "string" ? model.provider : undefined,
         trajectory_status: trajectory.status,
+        ...(scenarioOutcome ? { scenario_status: scenarioOutcome } : {}),
         ...(typeof model.costUsd === "number"
           ? { source_cost_usd: model.costUsd }
           : {}),
@@ -346,10 +370,19 @@ function addString(set: Set<string>, value: unknown): void {
  * number of rows written. Trajectory files that fail to parse or aren't
  * recorded-trajectory shaped are skipped with a warning — a malformed file in
  * the run directory should not block the rest of the export.
+ *
+ * `scenarioOutcomes` maps scenario id → assertion outcome (passed/failed/
+ * skipped). Each emitted row carries its scenario outcome as `scenarioStatus`
+ * and `metadata.scenario_status` so the training prep scorer routes failed or
+ * skipped trajectories to rating="repair"/weight=0 instead of stamping them
+ * gold. Without this map the exporter cannot tell a scenario that mechanically
+ * finished but failed its assertions from a genuinely passing one — and would
+ * export both as gold.
  */
 export function exportScenarioNativeJsonl(
   runDir: string,
   outPath: string,
+  scenarioOutcomes?: ScenarioOutcomeMap,
 ): number {
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
@@ -381,7 +414,20 @@ export function exportScenarioNativeJsonl(
     addString(runIds, parsed.runId);
     addString(scenarioIds, parsed.scenarioId);
     addString(agentIds, parsed.agentId);
-    rows.push(...recordedTrajectoryToNativeRows(parsed));
+    const scenarioOutcome =
+      scenarioOutcomes && typeof parsed.scenarioId === "string"
+        ? scenarioOutcomes.get(parsed.scenarioId)
+        : undefined;
+    if (
+      scenarioOutcomes &&
+      !scenarioOutcome &&
+      typeof parsed.scenarioId === "string"
+    ) {
+      logger.warn(
+        `[scenario-runner] trajectory ${parsed.trajectoryId} has scenarioId="${parsed.scenarioId}" with no matching scenario report; exporting without a pass/fail status`,
+      );
+    }
+    rows.push(...recordedTrajectoryToNativeRows(parsed, scenarioOutcome));
   }
   mkdirSync(path.dirname(outPath), { recursive: true });
   const body =
@@ -389,6 +435,16 @@ export function exportScenarioNativeJsonl(
       ? ""
       : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
   writeFileSync(outPath, body, "utf-8");
+  let passedRows = 0;
+  let failedRows = 0;
+  let skippedScenarioRows = 0;
+  let unknownOutcomeRows = 0;
+  for (const row of rows) {
+    if (row.scenarioStatus === "passed") passedRows += 1;
+    else if (row.scenarioStatus === "failed") failedRows += 1;
+    else if (row.scenarioStatus === "skipped") skippedScenarioRows += 1;
+    else unknownOutcomeRows += 1;
+  }
   const manifestPath = defaultScenarioNativeManifestPath(outPath);
   const manifest: ScenarioNativeExportManifest = {
     schema: SCENARIO_NATIVE_EXPORT_SCHEMA,
@@ -403,14 +459,22 @@ export function exportScenarioNativeJsonl(
       parsedTrajectories,
       skippedFiles,
       rows: rows.length,
+      passedRows,
+      failedRows,
+      skippedScenarioRows,
+      unknownOutcomeRows,
     },
     runIds: [...runIds].sort(),
     scenarioIds: [...scenarioIds].sort(),
     agentIds: [...agentIds].sort(),
   };
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf-8",
+  );
   logger.info(
-    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (manifest → ${manifestPath})`,
+    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows}) (manifest → ${manifestPath})`,
   );
   return rows.length;
 }

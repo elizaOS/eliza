@@ -117,6 +117,28 @@ describe("StdinBuffer", () => {
       assert.deepStrictEqual(emittedSequences, ["\x1b[1;5H"]);
     });
 
+    it("should buffer split OSC, DCS, and APC sequences until terminated", () => {
+      const osc = "\x1b]0;window title\x07";
+      processInput("\x1b]0;");
+      assert.deepStrictEqual(emittedSequences, []);
+      processInput("window title\x07");
+      assert.deepStrictEqual(emittedSequences, [osc]);
+
+      emittedSequences = [];
+      const dcs = "\x1bP>|version response\x1b\\";
+      processInput("\x1bP>|");
+      assert.deepStrictEqual(emittedSequences, []);
+      processInput("version response\x1b\\");
+      assert.deepStrictEqual(emittedSequences, [dcs]);
+
+      emittedSequences = [];
+      const apc = "\x1b_Gi=1;OK\x1b\\";
+      processInput("\x1b_Gi=1;");
+      assert.deepStrictEqual(emittedSequences, []);
+      processInput("OK\x1b\\");
+      assert.deepStrictEqual(emittedSequences, [apc]);
+    });
+
     it("should buffer split across many chunks", () => {
       processInput("\x1b");
       processInput("[");

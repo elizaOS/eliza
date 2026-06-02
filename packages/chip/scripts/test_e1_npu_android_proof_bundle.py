@@ -38,7 +38,7 @@ def test_bundle_disables_inner_manifest_refresh_until_final_assembly() -> None:
     require(text, "assemble_rc=$?")
     require(text, "nnapi_check_rc=$?")
     require(text, "manifest_check_rc=$?")
-    require(text, '--manifest docs/evidence/android/e1-npu/android-proof-manifest.json')
+    require(text, "--manifest docs/evidence/android/e1-npu/android-proof-manifest.json")
 
 
 def main() -> int:

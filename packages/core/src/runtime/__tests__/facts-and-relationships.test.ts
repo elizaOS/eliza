@@ -269,6 +269,15 @@ describe("runFactsAndRelationshipsStage", () => {
 					source: "facts_and_relationships_stage",
 					tags: expect.arrayContaining(["fact", "extracted", "stage1"]),
 					keywords: expect.arrayContaining(["birthday", "march"]),
+					// Stage-1 facts are unverified single-message extractions: they
+					// must be classified as time-decaying `current` (not the reader's
+					// `durable` default) with explicit confidence/category/validAt so
+					// they never persist as permanent durable identity claims.
+					kind: "current",
+					category: "uncategorized",
+					confidence: 0.6,
+					verificationStatus: "self_reported",
+					validAt: expect.any(String),
 				}),
 			}),
 			"facts",

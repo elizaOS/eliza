@@ -118,6 +118,29 @@ function buildBrowserWorkspaceEventsBridgePath(url: URL | undefined): string {
   return query ? `/events?${query}` : "/events";
 }
 
+function isBrowserWorkspaceRouteBodyObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function rejectMalformedBrowserWorkspacePayload(
+  ctx: BrowserWorkspaceRouteContext,
+): true {
+  ctx.json(ctx.res, { error: "request body must be a JSON object" }, 400);
+  return true;
+}
+
+function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  try {
+    const decoded = decodeURIComponent(raw).trim();
+    return decoded ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 async function assertBrowserWorkspaceTabConnectorAccountGate(
   ctx: BrowserWorkspaceRouteContext,
   tabId: string,
@@ -172,6 +195,9 @@ export async function handleBrowserWorkspaceRoutes(
     if (pathname === "/api/browser-workspace/command" && method === "POST") {
       const body =
         (await readJsonBody<BrowserWorkspaceCommandBody>(req, res)) ?? null;
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
       if (!body?.subaction) {
         json(res, { error: "subaction is required" }, 400);
         return true;
@@ -192,7 +218,10 @@ export async function handleBrowserWorkspaceRoutes(
 
     if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
       const body =
-        (await readJsonBody<OpenBrowserWorkspaceBody>(req, res)) ?? {};
+        (await readJsonBody<OpenBrowserWorkspaceBody>(req, res)) ?? null;
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
       const connectorGate = await assertBrowserWorkspaceConnectorAccountGate({
         runtime: ctx.state?.runtime ?? null,
         connectorProvider: body.connectorProvider,
@@ -216,7 +245,11 @@ export async function handleBrowserWorkspaceRoutes(
       return false;
     }
 
-    const tabId = decodeURIComponent(match[1]).trim();
+    const tabId = decodeBrowserWorkspaceTabId(match[1]);
+    if (!tabId) {
+      json(res, { error: "valid tab id is required" }, 400);
+      return true;
+    }
     const action = match[2] ?? null;
 
     if (!action && method === "DELETE") {
@@ -270,6 +303,9 @@ export async function handleBrowserWorkspaceRoutes(
 
     if (action === "navigate" && method === "POST") {
       const body = await readJsonBody<NavigateBrowserWorkspaceBody>(req, res);
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
       if (!body?.url?.trim()) {
         json(res, { error: "url is required" }, 400);
         return true;
@@ -291,6 +327,9 @@ export async function handleBrowserWorkspaceRoutes(
 
     if (action === "eval" && method === "POST") {
       const body = await readJsonBody<EvaluateBrowserWorkspaceBody>(req, res);
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
       if (!body?.script?.trim()) {
         json(res, { error: "script is required" }, 400);
         return true;

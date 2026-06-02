@@ -30,7 +30,7 @@ export function toRuntimeSettings(runtime: {
         return v;
       }
       if (typeof v === "bigint") return v.toString();
-      return String(v);
+      return undefined;
     },
   };
 }
@@ -44,6 +44,30 @@ export function cloudServiceApisBaseUrl(
 
 function stripTrailingSlashes(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function normalizeCloudBaseUrl(rawUrl: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return null;
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    return null;
+  }
+  return stripTrailingSlashes(parsed.toString());
+}
+
+function normalizeServiceName(service: string): string | null {
+  const trimmed = service.trim().replace(/^\/+|\/+$/g, "");
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
 }
 
 function getSettingAsString(
@@ -65,8 +89,9 @@ function buildCloudProxyRoute(
   const cloudBaseRaw =
     getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
     CLOUD_BASE_FALLBACK;
-  const cloudBase = stripTrailingSlashes(cloudBaseRaw);
-  const svc = service.replace(/^\/+|\/+$/g, "");
+  const cloudBase = normalizeCloudBaseUrl(cloudBaseRaw);
+  const svc = normalizeServiceName(service);
+  if (!cloudBase || !svc) return null;
   return {
     baseUrl: `${cloudBase}/apis/${svc}`,
     headers: { Authorization: `Bearer ${cloudApiKey}` },

@@ -129,8 +129,7 @@ async def ecc_check_bits_match_golden_model(dut):
     for data in words:
         check = await encode(dut, data)
         assert check == golden_encode(data), (
-            f"encode mismatch for {data:#018x}: rtl={check:#04x} "
-            f"golden={golden_encode(data):#04x}"
+            f"encode mismatch for {data:#018x}: rtl={check:#04x} golden={golden_encode(data):#04x}"
         )
 
 
@@ -160,20 +159,16 @@ async def ecc_corrects_every_single_bit_flip(dut):
             else:
                 corrupt_data = data
                 corrupt_check = check ^ (1 << (bit - DATA_BITS))
-            syn, single, double, corrected = await decode(
-                dut, corrupt_data, corrupt_check
-            )
+            syn, single, double, corrected = await decode(dut, corrupt_data, corrupt_check)
             assert syn == ALL_COLS[bit], (
                 f"single flip at codeword bit {bit} (data {data:#018x}) "
                 f"syndrome {syn:#04x} != column {ALL_COLS[bit]:#04x}"
             )
             assert single == 1, (
-                f"single flip at codeword bit {bit} (data {data:#018x}) "
-                f"not flagged as SEC"
+                f"single flip at codeword bit {bit} (data {data:#018x}) not flagged as SEC"
             )
             assert double == 0, (
-                f"single flip at codeword bit {bit} (data {data:#018x}) "
-                f"misflagged as DED"
+                f"single flip at codeword bit {bit} (data {data:#018x}) misflagged as DED"
             )
             assert corrected == data, (
                 f"single flip at codeword bit {bit} (data {data:#018x}) "
@@ -202,15 +197,9 @@ async def ecc_detects_double_bit_flips_without_miscorrection(dut):
                     corrupt_data ^= 1 << bit
                 else:
                     corrupt_check ^= 1 << (bit - DATA_BITS)
-            syn, single, double, corrected = await decode(
-                dut, corrupt_data, corrupt_check
-            )
-            assert double == 1, (
-                f"double flip at bits {a},{b} (data {data:#018x}) not detected"
-            )
-            assert single == 0, (
-                f"double flip at bits {a},{b} (data {data:#018x}) misflagged as SEC"
-            )
+            syn, single, double, corrected = await decode(dut, corrupt_data, corrupt_check)
+            assert double == 1, f"double flip at bits {a},{b} (data {data:#018x}) not detected"
+            assert single == 0, f"double flip at bits {a},{b} (data {data:#018x}) misflagged as SEC"
             # A correct DED must never silently produce a different valid word.
             assert corrected != data or (a >= DATA_BITS and b >= DATA_BITS), (
                 f"double flip at bits {a},{b} (data {data:#018x}) "
@@ -232,9 +221,7 @@ async def ecc_exhaustive_double_pairs_one_pattern(dut):
                 corrupt_data ^= 1 << bit
             else:
                 corrupt_check ^= 1 << (bit - DATA_BITS)
-        _syn, single, double, _corrected = await decode(
-            dut, corrupt_data, corrupt_check
-        )
+        _syn, single, double, _corrected = await decode(dut, corrupt_data, corrupt_check)
         assert double == 1 and single == 0, (
             f"double flip at bits {a},{b} misclassified: single={single} double={double}"
         )
@@ -255,9 +242,9 @@ async def ecc_status_counters_track_events(dut):
         dut.dec_valid.value = 0
         await Timer(1, units="ns")
 
-    await decode_clocked(data ^ 0x1, check)                  # single (data bit 0)
-    await decode_clocked(data ^ 0x2, check)                  # single (data bit 1)
-    await decode_clocked(data ^ 0x3, check)                  # double (bits 0 and 1)
+    await decode_clocked(data ^ 0x1, check)  # single (data bit 0)
+    await decode_clocked(data ^ 0x2, check)  # single (data bit 1)
+    await decode_clocked(data ^ 0x3, check)  # double (bits 0 and 1)
     assert int(dut.corrected_count.value) == 2, int(dut.corrected_count.value)
     assert int(dut.uncorrectable_count.value) == 1, int(dut.uncorrectable_count.value)
 

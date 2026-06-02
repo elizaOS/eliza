@@ -1,6 +1,6 @@
 import type { PermissionStatus } from "@elizaos/shared";
 import { Badge, Button, useApp } from "@elizaos/ui";
-import { ShieldBan } from "lucide-react";
+import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types";
 
 function translate(
@@ -16,17 +16,19 @@ function statusBadge(
   t: (key: string) => string,
   status: PermissionStatus | undefined,
   platform: string | undefined,
-): { variant: "secondary" | "outline"; label: string } {
+): { variant: "secondary" | "outline"; label: string; ready: boolean } {
   if (!status) {
     return {
       variant: "outline",
       label: translate(t, "permissionssection.badge.unknown", "Unknown"),
+      ready: false,
     };
   }
   if (status === "denied") {
     return {
       variant: "outline",
       label: translate(t, "permissionssection.badge.needsAdmin", "Needs Admin"),
+      ready: false,
     };
   }
   if (status === "not-determined") {
@@ -37,18 +39,21 @@ function statusBadge(
         "permissionssection.badge.needsApproval",
         "Needs Approval",
       ),
+      ready: false,
     };
   }
   if (status === "granted" || status === "not-applicable") {
     return {
       variant: "secondary",
       label: translate(t, "permissionssection.badge.ready", "Ready"),
+      ready: true,
     };
   }
   if (status === "restricted") {
     return {
       variant: "outline",
       label: translate(t, "permissionssection.badge.restricted", "Restricted"),
+      ready: false,
     };
   }
   return {
@@ -61,6 +66,7 @@ function statusBadge(
             "Off in Settings",
           )
         : translate(t, "permissionssection.badge.off", "Off"),
+    ready: false,
   };
 }
 
@@ -82,31 +88,36 @@ export function WebsiteBlockerSettingsCard({
   const description = translate(
     t,
     "permissionssection.permission.websiteBlocking.description",
-    "Edit the system hosts file to block distracting websites. This may require admin or root approval each time.",
+    "Hosts-file blocking for distracting sites. Admin approval may be required.",
   );
 
   if (mode === "web" || mode === "mobile") {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
+      <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg/40">
-            <ShieldBan className="h-5 w-5 text-muted" aria-hidden />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
+            <Monitor className="h-5 w-5 text-muted" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
-            <div className="font-bold text-sm text-txt">{title}</div>
-            <p className="text-xs-tight leading-5 text-muted">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="font-bold text-sm text-txt">{title}</div>
+              <Badge variant="outline">
+                {translate(t, "permissionssection.desktopOnly", "Desktop only")}
+              </Badge>
+            </div>
+            <div className="text-xs-tight leading-5 text-muted">
               {mode === "web"
                 ? translate(
                     t,
                     "permissionssection.websiteBlocking.webInfo",
-                    "Hosts-file website blocking runs in the desktop app. Use Eliza on macOS, Windows, or Linux to enable SelfControl-style blocking for your agent.",
+                    "Use the desktop app to manage system hosts blocking.",
                   )
                 : translate(
                     t,
                     "permissionssection.websiteBlocking.mobileInfo",
-                    "Website blocking via the system hosts file is a desktop feature. Install the desktop build to manage blocked sites for LifeOps.",
+                    "Install the desktop build to manage blocked sites.",
                   )}
-            </p>
+            </div>
           </div>
         </div>
       </div>
@@ -143,24 +154,30 @@ export function WebsiteBlockerSettingsCard({
       : null;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
+    <div className="rounded-xl border border-border/60 bg-card/92 shadow-sm">
       <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg/40">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
             <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-sm text-txt">{title}</div>
               {permission ? (
-                <Badge variant={badge.variant}>{badge.label}</Badge>
+                <Badge variant={badge.variant}>
+                  {badge.ready ? (
+                    <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
+                  ) : null}
+                  {badge.label}
+                </Badge>
               ) : null}
+              {platform ? <Badge variant="outline">{platform}</Badge> : null}
             </div>
-            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
+            <div className="max-w-2xl text-xs-tight leading-5 text-muted">
               {description}
-            </p>
+            </div>
             {permission?.reason ? (
-              <p className="text-xs text-danger">{permission.reason}</p>
+              <div className="text-xs text-danger">{permission.reason}</div>
             ) : null}
           </div>
         </div>
@@ -173,6 +190,7 @@ export function WebsiteBlockerSettingsCard({
               className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void primary.action()}
             >
+              <Settings className="mr-1.5 h-4 w-4" aria-hidden />
               {primary.label}
             </Button>
           </div>

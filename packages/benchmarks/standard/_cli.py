@@ -63,6 +63,9 @@ def build_parser(*, prog: str, description: str) -> argparse.ArgumentParser:
         action="store_true",
         help="Run with a deterministic mock client (no network).",
     )
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -100,6 +103,17 @@ def run_cli(
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    runner, mock_responses = runner_factory.build(args)
+    if args.count_scenarios or args.validate_scenarios:
+        if not hasattr(runner, "scenario_counts"):
+            raise RuntimeError(f"{runner.benchmark_id} does not expose scenario_counts")
+        counts = runner.scenario_counts(limit=args.limit)  # type: ignore[attr-defined]
+        if args.validate_scenarios:
+            print("Scenario validation: ok")
+        if args.count_scenarios:
+            print(json.dumps(counts, sort_keys=True))
+        return 0
+
     endpoint = (
         "mock://standard-benchmark"
         if args.mock
@@ -109,8 +123,6 @@ def run_cli(
         )
     )
     api_key = resolve_api_key(args.api_key_env)
-
-    runner, mock_responses = runner_factory.build(args)
     client = make_client(
         endpoint=endpoint,
         api_key=api_key,

@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from urllib.request import urlretrieve
 from zipfile import ZipFile
@@ -23,6 +25,60 @@ from benchmarks.mind2web.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("edge-ambiguous-instruction", "The instruction includes mild ambiguity; preserve the original website goal and use the annotated step trace as authoritative."),
+    ("edge-distractor-element", "Distractor page elements may look relevant; choose the target that satisfies the current micro-action."),
+    ("edge-compact-action", "Return only the next required browser action; do not add explanatory navigation steps."),
+    ("edge-noisy-labels", "Element text, casing, or punctuation may be noisy; match by intent and backend candidate identity."),
+    ("edge-order-independence", "Do not rely on candidate order except when using a listed element number from the prompt."),
+    ("edge-step-boundary", "Do not merge future actions into the current step even if the full plan is visible."),
+    ("edge-value-normalization", "For TYPE or SELECT, preserve the literal value required by the current action."),
+    ("edge-stale-context", "Re-check the current step and previous actions before selecting an element."),
+    ("edge-safety-boundary", "Do not invent hidden elements or actions that are not present in the candidate list."),
+    ("edge-time-pressure", "Act efficiently while still matching operation, element, and value exactly."),
+)
+
+
+def expand_tasks(tasks: list[Mind2WebTask]) -> list[Mind2WebTask]:
+    """Return base tasks plus ten scoring-preserving edge variants per task."""
+    expanded = list(tasks)
+    for task in tasks:
+        for index, (variant_id, variant_note) in enumerate(EDGE_VARIANTS, start=1):
+            metadata = dict(task.metadata)
+            metadata.update(
+                {
+                    "edge_scenario": True,
+                    "edge_variant": variant_id,
+                    "edge_variant_index": index,
+                    "edge_source_id": task.annotation_id,
+                }
+            )
+            expanded.append(
+                replace(
+                    task,
+                    annotation_id=f"{task.annotation_id}--edge-{index:02d}",
+                    confirmed_task=f"{task.confirmed_task}\n\nEdge condition: {variant_note}",
+                    action_reprs=list(task.action_reprs),
+                    actions=deepcopy(task.actions),
+                    metadata=metadata,
+                )
+            )
+    return expanded
+
+
+def validate_tasks(tasks: list[Mind2WebTask]) -> None:
+    seen: set[str] = set()
+    for task in tasks:
+        if not task.annotation_id.strip():
+            raise ValueError("task missing annotation_id")
+        if task.annotation_id in seen:
+            raise ValueError(f"duplicate task id: {task.annotation_id}")
+        seen.add(task.annotation_id)
+        if not task.confirmed_task.strip():
+            raise ValueError(f"{task.annotation_id}: missing confirmed_task")
+        if not task.actions:
+            raise ValueError(f"{task.annotation_id}: missing actions")
 
 EXPECTED_TEST_COUNTS: dict[str, int] = {
     "test_task": 252,

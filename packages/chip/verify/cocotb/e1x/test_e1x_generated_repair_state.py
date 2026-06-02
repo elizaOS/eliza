@@ -55,7 +55,11 @@ async def load_generated_rom(dut) -> tuple[dict, dict]:
     manifest_path = required_env_path("E1X_REPAIR_MANIFEST_JSON")
     rom = json.loads(rom_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    words = [int(line.strip(), 16) for line in hex_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    words = [
+        int(line.strip(), 16)
+        for line in hex_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert words == [int(word, 16) for word in rom["words"]]
     for word in words:
         await send_word(dut, word)
@@ -95,16 +99,25 @@ async def generated_high_failure_repair_rom_programs_large_repair_state(dut):
     assert int(dut.load_done.value) == 1
     assert int(dut.load_error.value) == 0
     assert int(dut.overflow.value) == 0
-    assert int(dut.remap_count.value) == int(rom["remap_word_count"]) == int(
-        manifest["remapped_core_count"]
+    assert (
+        int(dut.remap_count.value)
+        == int(rom["remap_word_count"])
+        == int(manifest["remapped_core_count"])
     )
-    assert int(dut.route_count.value) == int(rom["route_sample_word_count"]) == len(
-        manifest["sampled_routes"]
+    assert (
+        int(dut.route_count.value)
+        == int(rom["route_sample_word_count"])
+        == len(manifest["sampled_routes"])
     )
 
     logical_cols = int(manifest["logical_cols"])
     physical_cols = int(manifest["physical_cols"])
-    remap_indices = [0, 1, len(manifest["remapped_cores"]) // 2, len(manifest["remapped_cores"]) - 1]
+    remap_indices = [
+        0,
+        1,
+        len(manifest["remapped_cores"]) // 2,
+        len(manifest["remapped_cores"]) - 1,
+    ]
     for remap_index in remap_indices:
         remap = manifest["remapped_cores"][remap_index]
         logical = coord_index(remap["logical"], logical_cols)

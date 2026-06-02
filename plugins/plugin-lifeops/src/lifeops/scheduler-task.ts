@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
-import { readTwilioCredentialsFromEnv } from "./twilio.js";
+import { readTwilioCredentialsFromEnv } from "@elizaos/plugin-phone";
 
 export const LIFEOPS_TASK_NAME = "LIFEOPS_SCHEDULER" as const;
 export const LIFEOPS_TASK_TAGS = ["queue", "repeat", "lifeops"] as const;

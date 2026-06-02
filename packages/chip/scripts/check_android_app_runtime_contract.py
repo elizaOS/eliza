@@ -377,9 +377,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
     apk_path = Path(args.apk) if args.apk else PREBUILT_APK
     gradle_id = extract_gradle_application_id(read_text(APP_GRADLE))
-    apk_id, raw_apk_id_source = apk_application_id(
-        apk_path, args.apkanalyzer, args.apk_package_id
-    )
+    apk_id, raw_apk_id_source = apk_application_id(apk_path, args.apkanalyzer, args.apk_package_id)
     apk_id_source = tool_source(raw_apk_id_source)
     permission_packages: dict[str, set[str]] = {
         rel(path): extract_permission_packages(path) for path in VENDOR_PERMISSION_XMLS

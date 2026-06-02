@@ -366,6 +366,45 @@ describe("OrchestratorTaskService — lifecycle", () => {
     ).toBeNull();
   });
 
+  it("records default evidence for human approve/reject actions", async () => {
+    const service = makeService();
+    const approved = await service.createTask(createInput());
+    await service.updateTask(approved.id, { status: "validating" });
+    const done = must(
+      await service.validateTask(approved.id, {
+        passed: true,
+        humanOverride: true,
+      }),
+      "done",
+    );
+    expect(done.status).toBe("done");
+    expect(done.events.at(-1)).toMatchObject({
+      eventType: "validation_passed",
+      data: {
+        evidence: "Human approved in the orchestrator UI.",
+        humanOverride: true,
+      },
+    });
+
+    const rejected = await service.createTask(createInput());
+    await service.updateTask(rejected.id, { status: "validating" });
+    const active = must(
+      await service.validateTask(rejected.id, {
+        passed: false,
+        humanOverride: true,
+      }),
+      "active",
+    );
+    expect(active.status).toBe("active");
+    expect(active.events.at(-1)).toMatchObject({
+      eventType: "validation_failed",
+      data: {
+        evidence: "Human rejected in the orchestrator UI.",
+        humanOverride: true,
+      },
+    });
+  });
+
   it("adds a user message and stamps the last user turn", async () => {
     const service = makeService();
     const { id } = await service.createTask(createInput());

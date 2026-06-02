@@ -5,10 +5,11 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { looksLikeTrainingCutoffLeak } from "./cutoff-leak-detector";
-import { looksLikeFabricatedModeration } from "./fabricated-moderation-detector";
 import { parseJsonObject } from "./json-output";
-import { looksLikeRefusal } from "./refusal-detector";
+import {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "./stage1-honesty-detector";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
@@ -76,25 +77,28 @@ export function parseMessageHandlerOutput(
 	// `qwen-3-235b-a22b-instruct-2507`) still emit a prompt-contract violation
 	// here even with the system-prompt rules in place: a refusal, a
 	// training-metadata/knowledge-cutoff leak, or a fabricated-moderation claim.
-	// We blank the reply when it matches any of these AND a planning path is
-	// selected — the user sees the planner's message instead. The simple path
-	// passes through unchanged (the model may legitimately decline e.g. unsafe
-	// requests there).
+	// We blank the reply when it matches any of these and route through planning
+	// for non-refusal honesty violations, so the user sees a fresh planner
+	// message instead. The simple path still preserves plain refusals: the model
+	// may legitimately decline unsafe requests there.
 	const nonSimpleContexts = contexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
+	const forceHonestyPlanning =
+		processMessage === "RESPOND" &&
+		looksLikeNonRefusalStage1HonestyViolation(replyRaw);
 	const planningPath =
-		nonSimpleContexts.length > 0 || candidateActions.length > 0;
+		nonSimpleContexts.length > 0 ||
+		candidateActions.length > 0 ||
+		forceHonestyPlanning;
 	const reply =
-		planningPath &&
-		(looksLikeRefusal(replyRaw) ||
-			looksLikeTrainingCutoffLeak(replyRaw) ||
-			looksLikeFabricatedModeration(replyRaw))
-			? ""
-			: replyRaw;
+		planningPath && looksLikeStage1HonestyViolation(replyRaw) ? "" : replyRaw;
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
-		contexts,
+		contexts:
+			forceHonestyPlanning && nonSimpleContexts.length === 0
+				? ["general"]
+				: contexts,
 		reply,
 	};
 	if (candidateActions.length > 0) {
