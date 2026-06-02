@@ -29,6 +29,18 @@ const WINDOW_SHELL_TS = readFileSync(
   resolve(__dirname, "./platform/window-shell.ts"),
   "utf8",
 );
+const HEADER_TSX = readFileSync(
+  resolve(__dirname, "./components/shell/Header.tsx"),
+  "utf8",
+);
+const OVERLAY_TSX = readFileSync(
+  resolve(__dirname, "./components/shell/ContinuousChatOverlay.tsx"),
+  "utf8",
+);
+const CHATVIEW_TSX = readFileSync(
+  resolve(__dirname, "./components/pages/ChatView.tsx"),
+  "utf8",
+);
 
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the always-present continuous chat overlay in the full app shell", () => {
@@ -40,6 +52,36 @@ describe("App standalone chat-overlay wiring", () => {
     // over every view — reviving the "floating pill is the only chat" direction.
     // It is no longer kept out of the full app shell.
     expect(APP_TSX).toContain("Always-present continuous chat overlay");
+  });
+
+  it("gates the minimal conversational-OS shell behind MINIMAL_SHELL", () => {
+    // The flag drives both the minimal home and the header-nav suppression.
+    expect(APP_TSX).toContain('from "./components/shell/shell-chrome"');
+    expect(APP_TSX).toContain("if (MINIMAL_SHELL)");
+    expect(HEADER_TSX).toContain('from "./shell-chrome"');
+    expect(HEADER_TSX).toContain("MINIMAL_SHELL ? null");
+    // Full chat workspace lives in its own component so its hooks are never
+    // called conditionally behind the MINIMAL_SHELL early-return.
+    expect(APP_TSX).toContain("function FullChatWorkspaceShellContent");
+  });
+
+  it("restores the full 3-panel chat workspace + header nav", () => {
+    expect(APP_TSX).toContain("ConversationsSidebar");
+    expect(APP_TSX).toContain("TasksEventsPanel");
+    expect(APP_TSX).toContain("DeferredSetupChecklist");
+    // Header nav restored from the still-present navigation model.
+    expect(HEADER_TSX).toContain("getTabGroups");
+    expect(HEADER_TSX).toContain("primaryDesktopGroups");
+  });
+
+  it("uses the overlay as the chat tab input (no duplicate composer)", () => {
+    // ChatView can hide its in-view composer; the chat shell passes it so the
+    // overlay is the single shared input.
+    expect(CHATVIEW_TSX).toContain("hideComposer");
+    expect(APP_TSX).toContain("hideComposer");
+    // The composer swaps mic→send once there's a draft (one trailing control).
+    expect(OVERLAY_TSX).toContain("hasDraft");
+    expect(OVERLAY_TSX).toContain("hasDraft && !recording");
   });
 
   it("classifies chat-overlay as a standalone shell, not the main app", () => {
