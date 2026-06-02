@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { filterUnavailableLocalInferenceCandidates } from "../src/services/router-handler.ts";
+import {
+	filterUnavailableLocalInference,
+	filterUnavailableLocalInferenceCandidates,
+} from "../src/services/router-handler.ts";
 
 /**
  * Factory for a minimal {@link HandlerRegistration}-shaped object.
@@ -54,6 +57,44 @@ describe("filterUnavailableLocalInferenceCandidates", () => {
 			nonLocal,
 			/* localInferenceAvailable */ false,
 			/* forceLocalInference */ false,
+		);
+		expect(result).toEqual(nonLocal);
+	});
+});
+
+describe("filterUnavailableLocalInference (slot-aware)", () => {
+	const local = reg("eliza-local-inference", 0);
+	const cloud = reg("elizacloud", 50);
+
+	it("bypasses the availability gate for TEXT_TO_SPEECH (voice handlers self-load)", async () => {
+		const candidates = [cloud, local];
+		const result = await filterUnavailableLocalInference(
+			"TEXT_TO_SPEECH",
+			"prefer-local",
+			null,
+			candidates,
+		);
+		expect(result).toEqual(candidates);
+	});
+
+	it("bypasses the availability gate for TRANSCRIPTION", async () => {
+		const candidates = [cloud, local];
+		const result = await filterUnavailableLocalInference(
+			"TRANSCRIPTION",
+			"prefer-local",
+			null,
+			candidates,
+		);
+		expect(result).toEqual(candidates);
+	});
+
+	it("returns text-slot candidates unchanged when none are local-inference", async () => {
+		const nonLocal = [cloud, reg("openai", 100)];
+		const result = await filterUnavailableLocalInference(
+			"TEXT_SMALL",
+			"prefer-local",
+			null,
+			nonLocal,
 		);
 		expect(result).toEqual(nonLocal);
 	});
