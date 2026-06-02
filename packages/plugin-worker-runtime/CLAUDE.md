@@ -151,7 +151,7 @@ Implement `WorkerChannel` in `src/envelope.ts` (or a separate file), export it, 
 ## Conventions / gotchas
 
 - **Init-time dynamic surfaces are supported.** `bootstrap()` announces the static surfaces first, then snapshots any plugin surfaces appended by `init()` and sends them as `worker-announce-dynamic` before `init-complete`. Later runtime mutation after `bootstrap()` completes is still not announced.
-- **Action callbacks are no-ops in P1.** `makeNoopCallback` stubs the `callback` arg for action handlers. Handlers that write their reply via `callback` will silently drop it; use the return value instead.
+- **Action callbacks are proxied.** If the host provides an action callback, the bridge assigns a callback id and routes worker callback payloads back over `worker-action-callback`.
 - **Service instances are lazy and per-worker.** The `serviceInstances` WeakMap in `descriptor.ts` caches the `Promise<RemoteServiceInstance>` for each `RemoteServiceClass`. The first host invocation of any method on a service triggers `service.start(runtime)`. Subsequent calls reuse the cached instance for the worker's lifetime.
 - **`runtime.registerEvent` is not wired.** Calling it inside a remote handler throws. Declare event handlers in the static `Plugin.events` object.
 - **`"tests"` surface is not host-RPC reachable.** The dispatcher explicitly rejects it with a clear error.
