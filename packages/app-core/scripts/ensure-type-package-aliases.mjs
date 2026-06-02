@@ -194,6 +194,10 @@ export function ensureBunTypesAlias(targetTypesDir) {
   if (!existsSync(parentNodeModules)) {
     return;
   }
+  // A package manager may have already linked a real @types/bun here as a
+  // symlink (bun does this). mkdirSync(recursive) throws EEXIST against a
+  // symlink/file, so clear any prior entry before materializing our shim.
+  rmSync(bunTypesDir, { recursive: true, force: true });
   ensureTypeChildDir(targetTypesDir, bunTypesDir);
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
