@@ -39,8 +39,12 @@ const DEFAULT_TUI_OWNER: InteractionOwner = {
 const VISUAL_BASELINE_OWNER: InteractionOwner = {
   spec: "packages/app/test/ui-smoke/plugin-views-visual.spec.ts",
   proves:
-    "Captures screenshot, audits visual signals, checks redundant heading paragraphs, and clicks TUI terminal commands.",
-  signals: ["redundantHeadingParagraphs", "visualSignals", "terminalCommands"],
+    "Captures screenshots, audits rendered visible text/controls, and clicks every TUI terminal command.",
+  signals: [
+    "captureScreenshotWithQualityRetry",
+    "visibleText",
+    "data-terminal-command",
+  ],
 };
 
 const GUI_INTERACTION_OWNERS: Readonly<
