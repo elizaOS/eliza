@@ -150,10 +150,11 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
 
   await openAppPath(page, "/screenshare");
 
-  await expect(page.getByRole("heading", { name: "Host" })).toBeVisible();
+  await expect(page.getByLabel("Host session id")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Capabilities" }),
+    page.getByRole("button", { name: "Start host session" }),
   ).toBeVisible();
+  await expect(page.getByText("Capabilities")).toBeVisible();
   await expect(page.getByText("Screenshot")).toBeVisible();
   await expect(page.getByText("Keyboard")).toBeVisible();
   await expect(page.getByText("playwright-frame")).toBeVisible();
@@ -164,9 +165,11 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
     .poll(() => recorder.startRequests())
     .toEqual([{ label: "This machine" }]);
   await expect(page.getByPlaceholder("Session").first()).toHaveValue(
-    "screen…ke-1",
+    "screen-smoke-1",
   );
-  await expect(page.getByPlaceholder("Token").first()).toHaveValue("•••• en-1");
+  await expect(page.getByPlaceholder("Token").first()).toHaveValue(
+    "screen-token-1",
+  );
   await expect(page.getByText("3", { exact: true })).toBeVisible();
   await expect(page.getByText("2", { exact: true })).toBeVisible();
 

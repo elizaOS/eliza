@@ -3,6 +3,32 @@ import type { JsonValue } from "@feed/shared";
 import type { Experience } from "../types";
 import { ExperienceType } from "../types";
 
+const CONTENT_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "this",
+  "to",
+  "was",
+  "were",
+  "with",
+]);
+
 export interface ExperienceChain {
   rootExperience: string; // UUID of the root experience
   chain: string[]; // Ordered list of experience IDs
@@ -108,14 +134,23 @@ export class ExperienceRelationshipManager {
   }
 
   private contentSimilarity(exp1: Experience, exp2: Experience): number {
-    // Simple keyword overlap for now
-    const words1 = new Set(exp1.learning.toLowerCase().split(/\s+/));
-    const words2 = new Set(exp2.learning.toLowerCase().split(/\s+/));
+    const tokens1 = tokenizeLearning(exp1.learning);
+    const tokens2 = tokenizeLearning(exp2.learning);
+    if (tokens1.size === 0 || tokens2.size === 0) {
+      return 0;
+    }
 
-    const intersection = new Set([...words1].filter((x) => words2.has(x)));
-    const union = new Set([...words1, ...words2]);
+    const intersectionSize = [...tokens1].filter((token) =>
+      tokens2.has(token),
+    ).length;
+    const unionSize = new Set([...tokens1, ...tokens2]).size;
+    const jaccard = intersectionSize / unionSize;
+    const overlap = Math.min(
+      intersectionSize / tokens1.size,
+      intersectionSize / tokens2.size,
+    );
 
-    return intersection.size / union.size;
+    return (jaccard + overlap) / 2;
   }
 
   findContradictions(
@@ -168,4 +203,14 @@ export class ExperienceRelationshipManager {
 
     return impact;
   }
+}
+
+function tokenizeLearning(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .match(/[a-z0-9]+/g)
+      ?.filter((token) => token.length > 2 && !CONTENT_STOP_WORDS.has(token)) ??
+      [],
+  );
 }

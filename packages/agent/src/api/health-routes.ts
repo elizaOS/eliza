@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 type CloudHealthApi = {
@@ -462,7 +463,10 @@ export async function handleHealthRoutes(
       localInferenceActive.modelId?.trim()
         ? localInferenceActive.modelId.trim()
         : undefined;
-    const model = state.model ?? activeLocalModel;
+    const model =
+      state.model ??
+      activeLocalModel ??
+      detectRuntimeModel(state.runtime ?? null, state.config);
     const { isCloudProvisionedContainer, resolveCloudApiKey } =
       await getCloudHealthApi();
     const cloudProvisioned = isCloudProvisionedContainer();

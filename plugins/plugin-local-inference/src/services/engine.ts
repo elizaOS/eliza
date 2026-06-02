@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
+import { readEffectiveAssignments } from "./assignments";
 import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
@@ -44,7 +45,6 @@ import {
 import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { MemoryMonitor } from "./memory-monitor";
-import { readEffectiveAssignments } from "./assignments";
 import { listInstalledModels } from "./registry";
 import {
 	DEFAULT_SESSION_KEY,
@@ -180,7 +180,7 @@ export type GenerateArgs = BackendGenerateArgs;
  * Resolve the active Eliza-1 bundle (root dir + tier id) from an
  * `InstalledModel`, or `null` when the model is not an Eliza-1 bundle. An
  * Eliza-1 InstalledModel carries `bundleRoot` and an `eliza-1-<tier>` id
- * (the catalog placeholder ids). Drives the local-embedding route.
+ * (the catalog seed ids). Drives the local-embedding route.
  */
 interface ActiveEliza1Bundle {
 	root: string;

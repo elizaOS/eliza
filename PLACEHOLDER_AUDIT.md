@@ -80,18 +80,35 @@ platform no-ops are separated from actionable runtime gaps.
   `TradeExecutionService` / `PerpMarketService`. Prediction positions are
   explicitly skipped for resize because the current prediction sell flow closes
   a whole selected position.
+- Finished the MCP `get_markets(type: "perpetuals" | "all")` path in
+  `packages/mcp/src/handlers/tool-handlers.ts`. It now returns real
+  `PerpMarketSnapshot` rows instead of an empty "not implemented" result, and
+  the MCP result type/server description now expose the mixed prediction/perp
+  shape.
+- Replaced MCP chat unread-count zeros with the existing unread chat
+  notification accounting used by the web API. `get_chats` now reports per-chat
+  unread counts and `get_unread_count` reports unread chat notifications for
+  the authenticated MCP user.
+- Replaced MCP referral earnings zeros with the existing
+  `FeeService.getReferralEarnings` aggregate.
+- Replaced the plugin-experience "simple for now" content match with a
+  normalized token scorer that filters punctuation and common stop words before
+  combining Jaccard and overlap scores.
 - Verified with:
   - `bun test /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts --preload /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/testing/unit/preload.ts`
   - `bun build packages/feed/packages/engine/src/npc/npc-investment-manager.ts --target=bun --outfile=/tmp/npc-investment-manager-check.js`
   - `bun build packages/feed/packages/engine/src/services/trade-execution-service.ts --target=bun --outfile=/tmp/trade-execution-service-check.js`
+  - `bun build packages/feed/packages/mcp/src/handlers/tool-handlers.ts --target=bun --outfile=/tmp/feed-mcp-tool-handlers-check.js`
+  - `bun build packages/feed/packages/agents/src/plugins/plugin-experience/src/utils/experienceRelationships.ts --target=bun --outfile=/tmp/feed-experience-relationships-check.js`
   - `git diff --check -- packages/feed/packages/agents/src/autonomous/DirectExecutors.ts packages/feed/packages/agents/src/autonomous/intel-payment-executors.ts packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`
+  - `git diff --check -- packages/feed/packages/mcp/src/handlers/tool-handlers.ts packages/feed/packages/mcp/src/types/mcp.ts packages/feed/packages/mcp/src/server/mcp-server.ts packages/feed/packages/agents/src/plugins/plugin-experience/src/utils/experienceRelationships.ts`
   - Marker scan on the touched Feed files
 - Biome note: root `biome.json` excludes `packages/feed/**`, so Biome reports
   these files as ignored.
-- Feed TypeScript note: direct `tsc --noEmit` on `packages/engine` and
-  `packages/agents` currently fails on pre-existing project-reference `dist`
-  outputs and unrelated strictness errors, so it is not a focused validation
-  signal for these edits.
+- Feed TypeScript note: direct `tsc --noEmit` on `packages/engine`,
+  `packages/agents`, and `packages/mcp` currently fails on pre-existing
+  project-reference `dist` outputs and unrelated strictness errors, so it is
+  not a focused validation signal for these edits.
 
 ### packages/plugin-worker-runtime
 
@@ -217,6 +234,44 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-ainex typecheck`
   - `bunx biome check plugins/plugin-ainex/src/types.ts plugins/plugin-ainex/test/service-actions.test.ts`
   - marker scan on the touched AiNex files
+
+### plugins/plugin-agent-skills
+
+- Replaced the stale auto-refresh watcher "for now" comment in
+  `src/services/skills.ts`. The watcher scope is now documented as a deliberate
+  workspace-skill contract; managed, bundled, and catalog skills refresh through
+  load/sync flows.
+- Verified with:
+  - `bun run --cwd plugins/plugin-agent-skills typecheck`
+  - `bunx biome check plugins/plugin-agent-skills/src/services/skills.ts`
+  - marker scan and `git diff --check` on the touched Agent Skills file
+
+### plugins/plugin-lifeops
+
+- Removed misleading stub/not-implemented wording from
+  `src/activity-profile/proactive-planner.ts`. The GN planner comment now
+  describes the activity-feed message as a deterministic feed-only artifact,
+  and the social-overuse planner comment now documents that block/task
+  follow-ups are handled by normal LifeOps actions after the owner responds.
+- Verified with:
+  - `bun build plugins/plugin-lifeops/src/activity-profile/proactive-planner.ts --target=bun --outfile=/tmp/lifeops-proactive-planner-check.js`
+  - marker scan and `git diff --check` on the touched LifeOps planner file
+
+### plugins/plugin-local-inference
+
+- Replaced stale "for now" wording in `src/services/device-bridge.ts`. The
+  persisted generate restore path is now documented as a deliberate requeue
+  contract for externally resolved requests.
+- Replaced "catalog placeholder ids" wording in `src/services/engine.ts` with
+  "catalog seed ids"; these are normal Eliza-1 tier identifiers, not runtime
+  placeholders.
+- Verified with:
+  - `bun build plugins/plugin-local-inference/src/services/device-bridge.ts --target=bun --outfile=/tmp/local-inference-device-bridge-check.js`
+  - `bunx biome check plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
+  - `git diff --check -- plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
+- Not verified with direct `bun build` of `src/services/engine.ts`: bundling
+  resolves optional `node-llama-cpp` platform packages such as
+  `@node-llama-cpp/mac-x64`, which are not installed in this workspace.
 
 ### plugins/plugin-2004scape
 
@@ -355,6 +410,16 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with plugin build and tests.
 - Not verified on a real iOS device/simulator in this workspace.
 
+### plugins/plugin-native-appblocker
+
+- Removed stale "not implemented" wording from `README.md`, `CLAUDE.md`, and
+  `AGENTS.md` for iOS timed app blocks. The package now documents this as an
+  explicit unsupported capability requiring a DeviceActivity extension, while
+  preserving the current fail-closed `blockApps(durationMinutes > 0)` behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-appblocker build`
+  - marker scan and `git diff --check` on the touched appblocker files
+
 ### plugins/plugin-sql
 
 - Finished `BaseDrizzleAdapter.patchComponents()` with JSON patch operations.
@@ -467,6 +532,15 @@ platform no-ops are separated from actionable runtime gaps.
   bridge/runtime support.
 - Vision AOSP / GGML markers indicate native-model backend readiness gaps, not
   simple TypeScript placeholders.
+- Voice pipeline markers are fail-closed safety paths:
+  - seeded Samantha/I-wave speaker presets trigger regeneration, Kokoro
+    fallback, or a loud startup error;
+  - `StubOmniVoiceBackend` cannot start live voice or synthesize speech because
+    it emits silence;
+  - the renamed openWakeWord "hey jarvis" head warns that it is experimental
+    and not the final Eliza-1 wake phrase.
+  These should remain visible until real native voice artifacts/backends are
+  staged.
 
 ### plugins/plugin-native-canvas
 
@@ -481,6 +555,13 @@ platform no-ops are separated from actionable runtime gaps.
 - Android support is listed as not yet implemented; web/non-iOS support is a
   deliberate no-op fallback (`supported: false`) because BGTaskScheduler is
   iOS-only.
+
+### plugins/plugin-native-appblocker
+
+- Reliable iOS timed app blocking still requires a DeviceActivity extension.
+  The current iOS Family Controls path supports indefinite shields plus
+  explicit `unblockApps`; timed requests fail closed with an unsupported
+  capability error instead of pretending a timer is enforced.
 
 ### plugins/plugin-openrouter
 

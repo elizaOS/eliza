@@ -284,7 +284,7 @@ export function planGm(
  *   conversation.
  *
  * - **Activity-feed surface (this function):** plans a `proactive-gn`
- *   action with a hard-coded message stub for the activity timeline only.
+ *   action with a compact deterministic message for the activity timeline.
  *   The `proactive-gn` source **is** in `CHAT_SUPPRESSED_AUTONOMY_SOURCES`
  *   (`packages/agent/src/api/server-helpers-swarm.ts`), so this never
  *   posts to chat — it only powers the activity-feed widget. Anti-spam is
@@ -292,7 +292,7 @@ export function planGm(
  *
  * Both paths are scheduled off the same `bedtimeTargetAt` source but
  * diverge on window (3h vs 2h), gate (per-day SQL vs 12h timestamp),
- * content (LLM briefing vs hard-coded stub), and chat-suppression. They
+ * content (LLM briefing vs compact feed message), and chat-suppression. They
  * are not redundant: the chat night summary is the user-visible artifact;
  * this is feed-only telemetry. Future maintainers: a unifying sweep would
  * need a routing-layer redesign (collapse the two sources, then choose a
@@ -577,9 +577,10 @@ export function planGoalCheckIns(
  * to the trailing `SOCIAL_OVERUSE_WINDOW_MINUTES` and returns a single
  * pending action when the threshold + cooldown are both satisfied.
  *
- * Scope (intentionally minimal — see §10 of the gap report for what's
- * deferred): emits the proactive intent only. The follow-up reply turn
- * (block-this/suggest-todo) is not implemented here.
+ * Scope: emits the proactive check-in prompt only. Follow-up replies such as
+ * asking to block the app or suggest a task are normal user intents handled by
+ * LifeOps actions after the owner responds; they are deliberately outside this
+ * pure planner.
  */
 export function planSocialOveruseCheck(
   profile: ActivityProfile,

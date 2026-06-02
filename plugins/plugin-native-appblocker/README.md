@@ -16,7 +16,7 @@ The plugin lets a Capacitor-based Eliza agent app:
 | Platform | Engine | Notes |
 |---|---|---|
 | Android | Usage Access + system overlay | A foreground service polls foreground events every 500 ms and shows a full-screen shield when a blocked app is detected. |
-| iOS | Family Controls + ManagedSettings | `ManagedSettingsStore` shields selected apps. Timed blocks require a DeviceActivity extension (not yet implemented); only indefinite blocks are supported on iOS. |
+| iOS | Family Controls + ManagedSettings | `ManagedSettingsStore` shields selected apps. Timed blocks require a DeviceActivity extension; this package currently supports indefinite iOS blocks only. |
 | Browser | None | Permission checks return `status: "not-applicable"`, `getStatus` returns `status: "unavailable"`, mutations return `success: false`, list methods return empty arrays. |
 
 ## API
