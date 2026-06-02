@@ -833,3 +833,4 @@ packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
 **/.zig-cache/
 **/zig-out/
 packages/os/release/
+waifu.fun/

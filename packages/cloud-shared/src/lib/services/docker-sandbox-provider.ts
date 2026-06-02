@@ -229,17 +229,61 @@ function shouldInstallStewardPlugin(
   );
 }
 
-export function requiresHeadscaleRoute(
-  env: Partial<Record<"HEADSCALE_API_KEY" | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK", string>> = {
-    HEADSCALE_API_KEY: getCloudAwareEnv().HEADSCALE_API_KEY,
-    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
-      getCloudAwareEnv().AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
-  },
-): boolean {
-  if (!env.HEADSCALE_API_KEY?.trim()) return false;
-  return !(
+type HeadscaleRouteEnv = Partial<
+  Record<
+    | "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK"
+    | "CONTAINERS_PUBLIC_BASE_DOMAIN"
+    | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
+    | "ENVIRONMENT"
+    | "HEADSCALE_API_KEY"
+    | "HEADSCALE_API_URL"
+    | "HEADSCALE_PUBLIC_URL",
+    string | undefined
+  >
+>;
+
+function isBridgeHostFallbackEnabled(env: HeadscaleRouteEnv): boolean {
+  return (
     env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
     env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
+  );
+}
+
+function hasConfiguredValue(value: string | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+function isCloudDeploymentEnvironment(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "production" || normalized === "staging";
+}
+
+export function requiresHeadscaleRoute(
+  env: HeadscaleRouteEnv = (() => {
+    // Bind once: calling getCloudAwareEnv() per-key creates a fresh Proxy
+    // per call. If the underlying CF bindings flip mid-evaluation, the eight
+    // reads would not see a consistent snapshot. Pin a single proxy and read
+    // every key from it (Copilot review on #8152).
+    const cloudEnv = getCloudAwareEnv();
+    return {
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+      CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+      ENVIRONMENT: cloudEnv.ENVIRONMENT,
+      HEADSCALE_API_KEY: cloudEnv.HEADSCALE_API_KEY,
+      HEADSCALE_API_URL: cloudEnv.HEADSCALE_API_URL,
+      HEADSCALE_PUBLIC_URL: cloudEnv.HEADSCALE_PUBLIC_URL,
+    };
+  })(),
+): boolean {
+  if (isBridgeHostFallbackEnabled(env)) return false;
+  return (
+    hasConfiguredValue(env.HEADSCALE_API_KEY) ||
+    hasConfiguredValue(env.HEADSCALE_API_URL) ||
+    hasConfiguredValue(env.HEADSCALE_PUBLIC_URL) ||
+    hasConfiguredValue(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ||
+    hasConfiguredValue(env.CONTAINERS_PUBLIC_BASE_DOMAIN) ||
+    isCloudDeploymentEnvironment(env.ENVIRONMENT)
   );
 }
 
@@ -539,6 +583,23 @@ export class DockerSandboxProvider implements SandboxProvider {
     validateAgentName(agentName);
     validateAgentId(agentId);
 
+    const env = getCloudAwareEnv();
+    // requiresHeadscaleRoute() pins its own narrow getCloudAwareEnv() snapshot
+    // internally (see its default param), so pass no arg here — handing it the
+    // broad NodeJS.ProcessEnv would not satisfy its HeadscaleRouteEnv shape.
+    const headscaleRouteRequired = requiresHeadscaleRoute();
+    const headscaleEnabled = !!env.HEADSCALE_API_KEY?.trim();
+    if (headscaleRouteRequired && !headscaleEnabled) {
+      const errorMessage =
+        "Headscale routing is required for this cloud environment, but HEADSCALE_API_KEY is not configured. " +
+        "Refusing to mark the agent running without a routable internal ingress; " +
+        "set AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1 only for legacy public-host routing.";
+      logger.error(`[docker-sandbox] ${errorMessage}`, {
+        agentId,
+      });
+      throw new Error(errorMessage);
+    }
+
     // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
@@ -622,7 +683,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       : await resolveStewardTenantCredentials({ organizationId });
 
     // 4. Optionally prepare Headscale VPN
-    const headscaleEnabled = !!process.env.HEADSCALE_API_KEY;
     let headscaleIp: string | null = null;
 
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars
@@ -633,6 +693,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         vpnEnvVars = vpnSetup.envVars;
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
+        if (headscaleRouteRequired) {
+          if (dbNode) {
+            await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
+              logger.warn(
+                `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+              );
+            });
+          }
+          throw err;
+        }
         logger.warn(
           `[docker-sandbox] Headscale VPN preparation failed for ${agentId}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -1006,9 +1076,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    if (requiresHeadscaleRoute() && !headscaleIp) {
+    if (headscaleRouteRequired && !headscaleIp) {
       const errorMessage =
-        "Headscale VPN is configured, but the sandbox did not register a headscale_ip. " +
+        "Headscale routing is required, but the sandbox did not register a headscale_ip. " +
         "Refusing to mark the agent running without a routable internal ingress; " +
         "set AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1 only for legacy public-host routing.";
       logger.error(`[docker-sandbox] ${errorMessage}`, {

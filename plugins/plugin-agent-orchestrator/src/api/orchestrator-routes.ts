@@ -11,6 +11,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  LLM_GOAL_VERIFIER_NAME,
+  verifyGoalCompletion,
+} from "../services/goal-llm-verifier.js";
 import type { TaskThreadDetailDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type {
@@ -410,6 +414,65 @@ async function dispatchOrchestratorRoutes(
         return true;
       }
       sendJson(res, forked, 201);
+      return true;
+    }
+
+    // POST /tasks/:taskId/auto-validate  { completionEvidence: string }
+    //
+    // LLM-based goal verifier: reads the task's `acceptanceCriteria` and the
+    // caller-supplied completion evidence, asks a small model to judge whether
+    // every criterion is met, and forwards the verdict to `validateTask` under
+    // `verifier: "llm-goal-verifier"`. Opt-in per call so an LLM-billed
+    // judgment never fires without an explicit caller. See
+    // {@link verifyGoalCompletion} for the judge prompt and parser.
+    //
+    // Refs: elizaOS/eliza#8124
+    if (method === "POST" && sub === "auto-validate" && segments.length === 2) {
+      const body = await parseBody(req).catch(() => null);
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
+      const completionEvidence = asString(body.completionEvidence) ?? "";
+      const doc = await service.getTask(taskId);
+      if (!doc) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      if (doc.status !== "validating") {
+        sendError(
+          res,
+          `Task must be validating before auto-validation can run (current: ${doc.status})`,
+          409,
+        );
+        return true;
+      }
+      const verdict = await verifyGoalCompletion(ctx.runtime, {
+        goal: doc.goal,
+        acceptanceCriteria: doc.acceptanceCriteria,
+        completionEvidence,
+      });
+      const task = await service
+        .validateTask(taskId, {
+          passed: verdict.passed,
+          summary: verdict.summary,
+          evidence: verdict.rawResponse || completionEvidence,
+          verifier: LLM_GOAL_VERIFIER_NAME,
+        })
+        .catch((error: unknown) => {
+          sendError(
+            res,
+            error instanceof Error ? error.message : "Validation failed",
+            409,
+          );
+          return undefined;
+        });
+      if (task === undefined) return true;
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, { task, verdict });
       return true;
     }
 

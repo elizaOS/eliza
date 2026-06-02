@@ -1712,7 +1712,7 @@ export async function autoResolveDiscordAppId(): Promise<void> {
       "https://discord.com/api/v10/oauth2/applications/@me",
       {
         headers: { Authorization: `Bot ${discordToken}` },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(3_000),
       },
     );
 
@@ -1767,7 +1767,7 @@ export async function autoFetchCloudGithubToken(
         Authorization: `Bearer ${cloudApiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(3_000),
     });
 
     if (!res.ok) {
@@ -3267,12 +3267,22 @@ export async function startEliza(
     );
     applySandboxConnectorOwnership(process.env, config);
   }
-  // Kick off the Discord App ID lookup (network, up to a 10s timeout) without
-  // blocking. It only writes DISCORD_APPLICATION_ID, which nothing reads until
-  // the Discord connector initializes during plugin resolution — so we await it
-  // at the join point before resolvePlugins() and let the round-trip overlap
-  // the vault hydration + setup work below instead of serializing boot.
+  // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
+  // network, up to a 3s timeout each) without blocking. They only write
+  // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
+  // BLOCKING_CORE_PLUGIN reads. The Discord connector and GitHub/git plugins
+  // both live in the DEFERRED set, so these joins are awaited inside
+  // runDeferredBoot() (before the deferred plugin waves register), not on the
+  // gated blocking path. Firing them here lets the round-trips overlap the
+  // vault hydration + setup work below and the entire blocking resolve.
+  //
+  // autoFetchCloudGithubToken needs the cloud agent id. config.cloud?.agentId
+  // is available now; the function falls back to its own no-op guards (no cloud
+  // key / no managed namespace) when the id is absent this early.
   const discordAppIdPromise = autoResolveDiscordAppId();
+  const cloudGithubTokenPromise = autoFetchCloudGithubToken(
+    config.cloud?.agentId?.trim(),
+  );
 
   // 2b. Propagate cloud config into process.env for ElizaCloud plugin
   applyCloudConfigToEnv(config);
@@ -3531,14 +3541,33 @@ export async function startEliza(
   //     Failure is non-fatal — the agent can still start with other providers.
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
+  //
+  //     Split into the local-only model.primary derivation (synchronous, needed
+  //     before resolvePlugins()) and the network-touching Claude Code OAuth
+  //     probe (deferred, awaited in runDeferredBoot so it never blocks plugin
+  //     resolution). The OAuth probe mutates neither config nor process.env —
+  //     it only logs availability — so deferring it changes no resolve input.
+  let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentials } = await import("../auth/index.ts");
-    await applySubscriptionCredentials(config);
+    const { applySubscriptionCredentialsLocal } = await import(
+      "../auth/index.ts"
+    );
+    applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to apply subscription credentials (agent will continue without them): ${formatError(err)}`,
+      `[eliza] Failed to apply local subscription credentials (agent will continue without them): ${formatError(err)}`,
     );
   }
+  subscriptionCredentialsDeferredPromise = (async () => {
+    const { applySubscriptionCredentialsDeferred } = await import(
+      "../auth/index.ts"
+    );
+    await applySubscriptionCredentialsDeferred();
+  })().catch((err) => {
+    logger.warn(
+      `[eliza] Failed to probe Claude Code subscription credentials (agent will continue without them): ${formatError(err)}`,
+    );
+  });
 
   // 2h. Cloud mode — if the user chose cloud during first-run setup (or on a
   //     subsequent start with cloud config), skip local runtime setup and
@@ -3692,12 +3721,6 @@ export async function startEliza(
     }
   }
 
-  // 5a. If cloud is configured and no local GitHub token, try fetching from
-  // cloud. Kick off without blocking (network, up to a 10s timeout); it only
-  // writes GITHUB_TOKEN, consumed by GitHub/git plugins during resolution.
-  const cloudGithubTokenPromise = autoFetchCloudGithubToken(
-    config.cloud?.agentId?.trim() || agentId,
-  );
   bootTimer.lap("pre-resolve-setup");
 
   const elizaPlugin = createElizaPlugin({
@@ -3705,11 +3728,6 @@ export async function startEliza(
 
     agentId,
   });
-
-  // Join point: ensure the boot-time network lookups have written their env
-  // vars before any plugin/connector init reads them. Both promises self-handle
-  // their errors, so this only waits — it never throws.
-  await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
 
   // 6. Resolve and load plugins
   // In headless (GUI) mode before first-run setup, the user hasn't configured a
@@ -4610,6 +4628,9 @@ export async function startEliza(
     bootTimer.lap("svc:pre-init");
 
     if (blockDeferredPluginImports) {
+      // In block-deferred mode the Discord/GitHub plugins register here (not in
+      // runDeferredBoot), so join the env-var lookups before this wave.
+      await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
       await preregisterCorePluginsInDependencyWaves({
         runtime,
         resolvedPlugins,
@@ -4742,6 +4763,18 @@ export async function startEliza(
   // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
   // this group, so the existing wave algorithm preserves ordering.
   const runDeferredBoot = async (): Promise<void> => {
+    // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
+    // before resolving the deferred plugin set — the Discord connector and the
+    // GitHub/git plugins live in this deferred wave and read the env vars these
+    // promises write. Also join the Claude Code OAuth probe (informational
+    // logging only). All self-handle their errors, so this only waits.
+    await Promise.all([
+      discordAppIdPromise,
+      cloudGithubTokenPromise,
+      subscriptionCredentialsDeferredPromise,
+    ]);
+    bootTimer.lap("deferred:env-lookups");
+
     if (!blockDeferredPluginImports) {
       const deferredResolvedPlugins = await resolveDeferredPluginsForBoot();
       await registerDeferredRuntimePlugins(deferredResolvedPlugins);

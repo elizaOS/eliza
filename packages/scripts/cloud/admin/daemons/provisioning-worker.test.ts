@@ -15,7 +15,7 @@ describe("assertProvisioningWorkerPreflight", () => {
       env: { ELIZA_KMS_BACKEND: "local" },
     });
     expect(getOrCreateKey).toHaveBeenCalledWith(
-      "system:provisioning-worker-preflight",
+      "system:provisioning-worker-preflight/v1",
     );
   });
 

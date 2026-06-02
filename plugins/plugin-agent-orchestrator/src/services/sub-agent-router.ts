@@ -350,21 +350,27 @@ export class SubAgentRouter extends Service {
   // of message-events per hour at most.
   private readonly completionFirstPostedSession: Map<string, string> =
     new Map();
-  private completionHasPostedFromOtherSession(
+  // Synchronous compare-and-set: claim the lineage's completion slot for this
+  // session, or return false if another session already holds it. Re-claiming
+  // from the SAME session returns true, so same-session progressive completes
+  // still post. There must be NO await between the get and the set, so a
+  // concurrent same-lineage retry can't slip a second post past the guard. The
+  // previous design split the check and the mark across the awaited delivery
+  // loop, leaving a TOCTOU window where two retry sessions both passed the check
+  // and double-posted (eliza#7967).
+  private tryClaimCompletion(
     completionKey: string,
     sessionId: string,
   ): boolean {
-    const firstSession = this.completionFirstPostedSession.get(completionKey);
-    return firstSession !== undefined && firstSession !== sessionId;
-  }
-  private markCompletionPosted(completionKey: string, sessionId: string): void {
-    if (this.completionFirstPostedSession.has(completionKey)) return;
+    const holder = this.completionFirstPostedSession.get(completionKey);
+    if (holder !== undefined) return holder === sessionId;
     this.completionFirstPostedSession.set(completionKey, sessionId);
     while (this.completionFirstPostedSession.size > 1024) {
       const oldestKey = this.completionFirstPostedSession.keys().next().value;
       if (!oldestKey) break;
       this.completionFirstPostedSession.delete(oldestKey);
     }
+    return true;
   }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
@@ -533,39 +539,62 @@ export class SubAgentRouter extends Service {
       this.stateLostCapNotified.delete(lk);
     }
 
-    // Backstop for the cross-session state_lost respawn cascade. Each respawn
-    // is a NEW session, so the per-session roundTripCap below never fires.
-    // Count state_lost events per stable origin lineage; once past the cap,
-    // stop re-injecting the event into the planner (suppress the synthetic
-    // inbound) so the parent is no longer prompted to spawn yet another one.
+    // Deterministic recovery for the cross-session state_lost cascade. A lost
+    // session used to be re-injected into the planner so the planner would
+    // spawn a fresh sub-agent — which leaked a "the sub-agent crashed, let me
+    // try again" message to the user alongside the eventual deliverable, and
+    // each respawn is a NEW session so the per-session roundTripCap never
+    // fired. Instead, recover inside the router (mirroring retryIncompleteBuild)
+    // and suppress the dead session's narration entirely. Bounded per stable
+    // origin lineage; once the cap is exhausted, post ONE honest terminal
+    // failure instead of hanging silently.
+    let stateLostExhausted = false;
+    let stateLostRespawnCount = 0;
     if (
       event === "error" &&
       pickPayloadString(data, "failureKind") === "session_state_lost"
     ) {
       const lineageKey = respawnLineageKey(session, origin);
-      const respawnCount =
+      stateLostRespawnCount =
         (this.stateLostRespawnCounts.get(lineageKey) ?? 0) + 1;
-      this.stateLostRespawnCounts.set(lineageKey, respawnCount);
+      this.stateLostRespawnCounts.set(lineageKey, stateLostRespawnCount);
       while (this.stateLostRespawnCounts.size > 1024) {
         const oldest = this.stateLostRespawnCounts.keys().next().value;
         if (oldest === undefined) break;
         this.stateLostRespawnCounts.delete(oldest);
       }
-      if (respawnCount > this.stateLostRespawnCap) {
-        if (!this.stateLostCapNotified.has(lineageKey)) {
-          this.stateLostCapNotified.add(lineageKey);
-          this.log(
-            "warn",
-            "state_lost respawn cap reached; suppressing further respawn injections for this origin lineage",
-            {
-              sessionId,
-              count: respawnCount,
-              cap: this.stateLostRespawnCap,
-            },
-          );
-        }
+      if (stateLostRespawnCount > this.stateLostRespawnCap) {
+        // Cap exhausted: stop the dead session and report ONE honest terminal
+        // failure (deduped per lineage). Do NOT respawn again and do NOT route
+        // through the completion-claim slot (that is task_complete-only —
+        // eliza#7967); fall through to the normal delivery path below with a
+        // forced terminal narration so the user is not left with a silent hang.
         await acp.stopSession(sessionId).catch(() => {});
-        return;
+        if (this.stateLostCapNotified.has(lineageKey)) return;
+        this.stateLostCapNotified.add(lineageKey);
+        this.log(
+          "warn",
+          "state_lost respawn cap reached; reporting terminal failure for this origin lineage",
+          {
+            sessionId,
+            count: stateLostRespawnCount,
+            cap: this.stateLostRespawnCap,
+          },
+        );
+        stateLostExhausted = true;
+      } else {
+        // Under cap: recover deterministically inside the router. On success,
+        // suppress the dead session's tail events and return WITHOUT posting —
+        // the recovered child's task_complete becomes the only user-facing
+        // message. On failure (no initialTask / spawn threw), fall through to
+        // the normal error narration so the user gets an honest report instead
+        // of silence.
+        const respawned = await this.respawnStateLost(session);
+        if (respawned) {
+          this.verifyRetryHandedOffSessions.add(sessionId);
+          await acp.stopSession(sessionId).catch(() => {});
+          return;
+        }
       }
     }
 
@@ -682,9 +711,11 @@ export class SubAgentRouter extends Service {
     // link 404s even though the directory exists under the ASCII-hyphen
     // name — breaking it for both the verification probe AND the user.
     const baseText = normalizeUrlsInText(
-      capExceeded
-        ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-        : composeNarration(event, origin.label, session, data, changeSet),
+      stateLostExhausted
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
+        : capExceeded
+          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+          : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the
@@ -712,6 +743,16 @@ export class SubAgentRouter extends Service {
       text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
+    }
+    // When the deliverable IS the printed/tool output and there is no change
+    // set and no verified URL, composeNarration→stripToolTranscript has just
+    // deleted it from `text`. Recover the captured block from the RAW response
+    // (before stripping) so the parent relays it verbatim instead of replying
+    // with an empty completion. Gated to a single short block so multi-KB
+    // transcripts stay on the model-rendered (summarized) path.
+    let deliverable: string | undefined;
+    if (event === "task_complete" && !changeSet && verifiedUrls.length === 0) {
+      deliverable = extractShortToolDeliverable(data);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -749,20 +790,21 @@ export class SubAgentRouter extends Service {
     // suppressed.
     const completionKey =
       event === "task_complete" ? completionLineageKey(session, origin) : null;
-    if (completionKey) {
-      if (this.completionHasPostedFromOtherSession(completionKey, sessionId)) {
-        this.log(
-          "debug",
-          "suppressing duplicate sub-agent task_complete for lineage; another session already posted for this task",
-          {
-            sessionId,
-            completionKey,
-            event,
-          },
-        );
-        rollbackRoundTrip();
-        return;
-      }
+    // Atomically claim the lineage's completion slot BEFORE the awaited delivery
+    // loop, so two same-lineage retry sessions completing in the same window
+    // cannot both pass the check and double-post (eliza#7967).
+    if (completionKey && !this.tryClaimCompletion(completionKey, sessionId)) {
+      this.log(
+        "debug",
+        "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
+        {
+          sessionId,
+          completionKey,
+          event,
+        },
+      );
+      rollbackRoundTrip();
+      return;
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
@@ -820,8 +862,16 @@ export class SubAgentRouter extends Service {
             subAgent: true,
             subAgentSessionId: sessionId,
             subAgentLabel: origin.label,
-            subAgentEvent: capExceeded ? "round_trip_cap_exceeded" : event,
-            subAgentStatus: capExceeded ? "stopped" : session.status,
+            subAgentEvent: stateLostExhausted
+              ? "state_lost_exhausted"
+              : capExceeded
+                ? "round_trip_cap_exceeded"
+                : event,
+            subAgentStatus: stateLostExhausted
+              ? "failed"
+              : capExceeded
+                ? "stopped"
+                : session.status,
             subAgentAgentType: session.agentType,
             subAgentRoundTrip: nextCount,
             subAgentRoundTripCap: this.roundTripCap,
@@ -843,6 +893,7 @@ export class SubAgentRouter extends Service {
             ...(verifiedUrls.length > 0
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
+            ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
               ? { originMessageId: origin.parentMessageId }
@@ -905,16 +956,12 @@ export class SubAgentRouter extends Service {
       }
     }
 
-    // Record this session as the "first poster" for this origin so any
-    // later retry sub-agent (different sessionId) for the same parent
-    // prompt is absorbed silently (issue elizaOS/eliza#7967). Same-
-    // session progressive task_completes are unaffected because the
-    // dedupe check compares sessionIds. Must run AFTER the handleMessage
-    // / createMemory loop so an early failure doesn't poison future
-    // retries that might actually succeed.
-    if (completionKey) {
-      this.markCompletionPosted(completionKey, sessionId);
-    }
+    // The lineage slot was already claimed atomically before the delivery loop
+    // (tryClaimCompletion), so there is nothing to mark here. The claim suppresses
+    // a later retry sub-agent (different sessionId) for the same parent prompt
+    // (issue elizaOS/eliza#7967); same-session progressive task_completes are
+    // unaffected because the claim is keyed by sessionId, and a verify-retry
+    // handoff returns earlier (above) so an incomplete build never claims.
   }
 
   private buildReplyCallback(
@@ -958,6 +1005,71 @@ export class SubAgentRouter extends Service {
       });
       return delivered ? [delivered] : [];
     };
+  }
+
+  /**
+   * Recover a session that reported `session_state_lost` by deterministically
+   * spawning a fresh sub-agent inside the router — carrying the byte-identical
+   * origin metadata and the original task — instead of re-injecting the error
+   * and relying on the parent planner to spawn the replacement (which leaked a
+   * "the sub-agent crashed, let me try again" message to the user). Returns
+   * true when a replacement was spawned (the caller suppresses the dead
+   * session's events and posts nothing — the child's own task_complete is the
+   * only user-facing message). Returns false when the original task is
+   * unavailable or no spawn service is registered, in which case the caller
+   * falls through to an honest failure post.
+   *
+   * Lineage capping lives in handleEvent (stateLostRespawnCounts +
+   * stateLostRespawnCap), parallel to the verify-retry budget, so a flapping
+   * session can't respawn unbounded.
+   */
+  private async respawnStateLost(session: SessionInfo): Promise<boolean> {
+    const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // SessionInfo itself doesn't carry it. Without it we can't reconstruct the
+    // work, so surface the failure honestly instead of respawning a blank one.
+    const originalTask =
+      typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
+    if (!originalTask) return false;
+
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
+    if (!service?.spawnSession) return false;
+
+    try {
+      const result = await service.spawnSession({
+        agentType: session.agentType,
+        workdir: session.workdir,
+        initialTask: originalTask,
+        approvalPreset: session.approvalPreset,
+        // Carry the original metadata forward verbatim — origin routing keys
+        // (roomId/source/...) plus the unchanged `initialTask` — so the
+        // replacement reports back to the same user thread. retryOfSessionId
+        // records the lineage; keepAliveAfterComplete:false mirrors the
+        // verify-retry recovery.
+        metadata: {
+          ...meta,
+          keepAliveAfterComplete: false,
+          retryOfSessionId: session.id,
+        },
+      });
+      this.log("info", "re-dispatched sub-agent after session_state_lost", {
+        sessionId: session.id,
+        retrySessionId: result.sessionId,
+      });
+      return true;
+    } catch (err) {
+      this.log(
+        "warn",
+        "state_lost respawn spawn failed; surfacing the failure instead",
+        {
+          sessionId: session.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return false;
+    }
   }
 
   /**
@@ -1599,6 +1711,36 @@ function stripToolTranscript(text: string): string {
     .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Maximum size of a captured tool-output block we will relay verbatim. Above
+// this, the deliverable is a multi-KB transcript and stays on the
+// model-rendered (summarized) path rather than being dumped to the user.
+const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
+
+// Recover the deliverable when it is the sub-agent's printed/tool output and
+// composeNarration→stripToolTranscript has deleted it. Extracts the inner body
+// of the FIRST `[tool output: …] … [/tool output]` block from the RAW response
+// (the same envelope captureTerminalToolOutput emits). Returns it only when it
+// is a single short block (≤2KB); multi-block or multi-KB transcripts return
+// undefined so they stay on the summarized path.
+export function extractShortToolDeliverable(data: unknown): string | undefined {
+  const response =
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  if (!response) return undefined;
+  const blocks = response.match(
+    /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
+  );
+  if (!blocks || blocks.length !== 1) return undefined;
+  const inner = blocks[0]
+    .replace(/^\[tool output:[^\]]*\]/, "")
+    .replace(/\[\/tool output\]$/, "")
+    .trim();
+  if (!inner) return undefined;
+  if (Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES) {
+    return undefined;
+  }
+  return inner;
 }
 
 function composeNarration(

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import * as actualCore from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-workflow-service';
 import {
@@ -7,9 +8,20 @@ import {
   WORKFLOW_DISPATCH_SERVICE_TYPE,
 } from '../../src/services/workflow-dispatch';
 
+// `mock.module` replaces the module globally for the rest of the bun-test run,
+// so preserve every real `@elizaos/core` export and swap in a complete spy
+// logger. A partial logger here would strip `.info`/`.error` (and `Service`)
+// from every test file loaded afterward.
 mock.module('@elizaos/core', () => ({
+  ...actualCore,
   logger: {
+    trace: mock(() => {}),
+    debug: mock(() => {}),
+    info: mock(() => {}),
     warn: mock(() => {}),
+    error: mock(() => {}),
+    fatal: mock(() => {}),
+    child: mock(() => logger),
   },
 }));
 

@@ -121,12 +121,38 @@ export function resolveSpawnWorkdir(
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     return { workdir: expandedExplicit };
   }
+  const fallbackWorkdir = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit) {
     logger.warn(
-      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${process.cwd()}`,
+      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallbackWorkdir}`,
     );
   }
-  return { workdir: process.cwd() };
+  return { workdir: fallbackWorkdir };
+}
+
+/**
+ * Last-resort spawn cwd when a task matched no route/convention/explicit
+ * workdir. Honors the documented default ACP workspace settings
+ * (`ELIZA_ACP_WORKSPACE_ROOT` / `ACPX_DEFAULT_CWD` — the same ones
+ * `AcpService.spawnSession` consults) so simple, non-repo tasks land in a
+ * dedicated scratch dir instead of writing into the runtime's own source
+ * checkout. Falls back to `process.cwd()` only when neither is configured,
+ * preserving the run-in-place default for self-checkout workflows.
+ */
+function resolveDefaultSpawnWorkdir(
+  runtime: IAgentRuntime | undefined,
+): string {
+  const configured =
+    (typeof runtime?.getSetting === "function"
+      ? ((runtime.getSetting("ELIZA_ACP_WORKSPACE_ROOT") as
+          | string
+          | undefined) ??
+        (runtime.getSetting("ACPX_DEFAULT_CWD") as string | undefined))
+      : undefined) ??
+    readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
+    readConfigEnvKey("ACPX_DEFAULT_CWD");
+  const trimmed = configured?.trim();
+  return trimmed ? expandHomePath(trimmed) : process.cwd();
 }
 
 export function resolveWorkdirByConvention(
@@ -240,7 +266,14 @@ function parseWorkdirRoutes(raw: string | undefined): WorkdirRoute[] {
         entry &&
         typeof entry === "object" &&
         typeof entry.id === "string" &&
-        typeof entry.workdir === "string",
+        typeof entry.workdir === "string" &&
+        // The guard claims WorkdirRoute, so it must actually validate the
+        // array-typed fields routeMatches() iterates with .some() — otherwise a
+        // misconfigured `"matchAll": "foo"` reaches routeMatches and throws.
+        (entry.matchAll === undefined || Array.isArray(entry.matchAll)) &&
+        (entry.matchAny === undefined || Array.isArray(entry.matchAny)) &&
+        (entry.excludeAny === undefined || Array.isArray(entry.excludeAny)) &&
+        (entry.urlMappings === undefined || Array.isArray(entry.urlMappings)),
     );
   } catch (err) {
     logger.warn(

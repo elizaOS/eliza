@@ -28,7 +28,7 @@ export const AGENT_FLAVORS: AgentFlavor[] = [
     id: "eliza",
     name: "Eliza Agent",
     description:
-      "V2 elizaOS agent — bridge API + Steward integration. Web UI disabled by default; enable with ELIZA_UI_ENABLE=true.",
+      "V2 elizaOS agent — bridge API + Steward integration. Web UI enabled by default (token-gated by the agent-router via the per-agent ELIZA_API_TOKEN); disable per-agent with ELIZA_UI_ENABLE=false.",
     dockerImage: containersEnv.defaultAgentImage(),
   },
   {

@@ -124,10 +124,13 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          # contracts must build BEFORE core: packages/core/tsconfig.declarations.json
-          # maps `@elizaos/contracts` to `../contracts/dist/index.d.ts` and the
-          # declarations tsc step fails with TS2307 if that file is missing.
+          # contracts and logger must build BEFORE core:
+          # packages/core/tsconfig.declarations.json maps `@elizaos/contracts` to
+          # `../contracts/dist/index.d.ts` and `@elizaos/logger` to
+          # `../logger/dist/index.d.ts`; the core declarations tsc step fails with
+          # TS2307 (src/logger.ts) if either dist is missing.
           (cd packages/contracts && bun run build)
+          (cd packages/logger && bun run build)
           node packages/shared/scripts/generate-keywords.mjs --target ts
           (cd packages/core && bun run build.ts --node-only)
           # security → plugin-remote-manifest → plugin-worker-runtime: ordered by

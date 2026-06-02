@@ -26,6 +26,7 @@ import {
   resolveApiSecurityConfig,
   resolveDesktopApiPort,
 } from "@elizaos/core";
+import { isCloudReachable } from "@elizaos/shared";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CloudCredentials, DeviceAuthResponse, DevicePlatform } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
@@ -474,9 +475,15 @@ export class CloudAuthService extends Service {
   }
 
   private async validateApiKey(key: string): Promise<boolean> {
+    if (!(await isCloudReachable())) {
+      logger.warn(
+        "[CloudAuth] Cloud unreachable at boot — skipping API key validation; key will be used as-is"
+      );
+      return false;
+    }
     try {
       const validationClient = new CloudApiClient(this.client.getBaseUrl(), key);
-      await validationClient.get("/models", { timeoutMs: 10_000 });
+      await validationClient.get("/models", { timeoutMs: 2_500 });
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

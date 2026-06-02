@@ -1,11 +1,13 @@
 /**
  * Tests for resolveBillableCost — the proxy engine's billing decision.
  *
- * Regression: a no-upstream fast-fail 5xx response (for example a circuit-open
- * 503) used to reconcile the full reserved `cost`, over-billing the org for a
- * request that returned no service. Provider-attempted 5xx responses may still
- * represent real upstream spend, so handlers must report actualCost: 0 when no
- * upstream work happened.
+ * Regression: a synthesized 5xx response (upstream-down after retries, a
+ * circuit-open 503, etc.) used to reconcile the full reserved `cost`,
+ * over-billing the org for a request that returned no service. We only charge
+ * the caller when we actually got charged upstream, so a 5xx refunds the
+ * reservation unless the handler reports an explicit partial `actualCost` (the
+ * real upstream charge). Abuse is contained by rate limiting + the circuit
+ * breaker, not by over-billing failed requests.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -31,12 +33,12 @@ describe("resolveBillableCost", () => {
     expect(resolveBillableCost({ response: res(302) }, RESERVED)).toBe(RESERVED);
   });
 
-  test("5xx without actualCost preserves reserved cost for provider-attempted failures", () => {
-    expect(resolveBillableCost({ response: res(502) }, RESERVED)).toBe(RESERVED);
+  test("502 upstream-down without actualCost refunds to 0 (the regression)", () => {
+    expect(resolveBillableCost({ response: res(502) }, RESERVED)).toBe(0);
   });
 
-  test("503 circuit-open with explicit zero actualCost refunds to 0", () => {
-    expect(resolveBillableCost({ response: res(503), actualCost: 0 }, RESERVED)).toBe(0);
+  test("503 circuit-open refunds to 0", () => {
+    expect(resolveBillableCost({ response: res(503) }, RESERVED)).toBe(0);
   });
 
   test("500 with an explicit partial actualCost bills only that partial cost", () => {
