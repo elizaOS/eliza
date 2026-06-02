@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { shouldCreateDesktopTray } from "./desktop-tray-config";
+import {
+  shouldCreateDesktopTray,
+  shouldStartTrayFirst,
+} from "./desktop-tray-config";
 
 const desktopNativePath = fileURLToPath(
   new URL("./native/desktop.ts", import.meta.url),
@@ -36,5 +39,49 @@ describe("desktop tray config", () => {
     expect(nativeDesktopSource).toContain(
       "options.menu ?? FALLBACK_TRAY_MENU_ITEMS",
     );
+  });
+});
+
+describe("shouldStartTrayFirst", () => {
+  it("is opt-in: off by default even on macOS", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
+  });
+
+  it("is enabled on macOS when ELIZA_DESKTOP_TRAY_FIRST is truthy", () => {
+    expect(
+      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
+    ).toBe(true);
+    expect(
+      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "true" }, "darwin", []),
+    ).toBe(true);
+  });
+
+  it("stays off on non-macOS platforms even when requested", () => {
+    expect(
+      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "win32", []),
+    ).toBe(false);
+    expect(
+      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "linux", []),
+    ).toBe(false);
+  });
+
+  it("stays off when the tray itself is disabled", () => {
+    expect(
+      shouldStartTrayFirst(
+        { ELIZA_DESKTOP_TRAY_FIRST: "1", ELIZA_DESKTOP_DISABLE_TRAY: "1" },
+        "darwin",
+        [],
+      ),
+    ).toBe(false);
+  });
+
+  it("stays off in kiosk shell mode", () => {
+    expect(
+      shouldStartTrayFirst(
+        { ELIZA_DESKTOP_TRAY_FIRST: "1", ELIZAOS_SHELL_MODE: "kiosk" },
+        "darwin",
+        [],
+      ),
+    ).toBe(false);
   });
 });

@@ -31,7 +31,10 @@ import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
 import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
-import { shouldCreateDesktopTray } from "./desktop-tray-config";
+import {
+  shouldCreateDesktopTray,
+  shouldStartTrayFirst,
+} from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
@@ -2314,19 +2317,33 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  recordStartupPhase("creating_window", {
-    pid: process.pid,
-  });
-  const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-    createDesktopRpc("main");
-  const mainWin = attachMainWindow(
-    await createMainWindow(mainRpc),
-    mainRpc,
-    mainSendToWebview,
-  );
-  recordStartupPhase("window_ready", {
-    pid: process.pid,
-  });
+  const trayFirst = shouldStartTrayFirst();
+  let mainWin: BrowserWindow | null = null;
+  if (trayFirst) {
+    // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
+    // only surface; the main window is created lazily via restoreWindow() /
+    // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a
+    // deep link. setTrayFirstMode hides the Dock icon until a window is shown.
+    logger.info("[Main] Tray-first startup — deferring main window creation");
+    getDesktopManager().setTrayFirstMode(true);
+    recordStartupPhase("window_ready", {
+      pid: process.pid,
+    });
+  } else {
+    recordStartupPhase("creating_window", {
+      pid: process.pid,
+    });
+    const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+      createDesktopRpc("main");
+    mainWin = attachMainWindow(
+      await createMainWindow(mainRpc),
+      mainRpc,
+      mainSendToWebview,
+    );
+    recordStartupPhase("window_ready", {
+      pid: process.pid,
+    });
+  }
   seedFirstPartyRemotePluginsForStartup();
 
   // Configure the floating chat manager now that the renderer URL is resolved.
@@ -2430,7 +2447,8 @@ async function main(): Promise<void> {
   });
 
   // If launched with --hidden (e.g. auto-launch with openAsHidden), minimize immediately.
-  if (process.argv.includes("--hidden")) {
+  // In tray-first mode there is no window yet (mainWin is null) — nothing to minimize.
+  if (mainWin && process.argv.includes("--hidden")) {
     try {
       mainWin.minimize();
     } catch (err) {

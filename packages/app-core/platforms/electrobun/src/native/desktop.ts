@@ -328,6 +328,8 @@ export class DesktopManager {
     | null = null;
   private requestQuitCallback: (() => void | Promise<void>) | null = null;
   private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
+  /** Tray-first mode: Dock icon follows main-window presence (macOS). */
+  private trayFirstMode = false;
 
   // Track menu items for context-menu-clicked matching
   private trayMenuItems: Map<string, TrayMenuItem> = new Map();
@@ -448,6 +450,7 @@ export class DesktopManager {
     if (!window || this.mainWindow === window) {
       this.teardownWindowEvents(this.mainWindow);
       this.mainWindow = null;
+      this.syncTrayFirstDock(false);
     }
   }
 
@@ -1154,6 +1157,7 @@ X-GNOME-Autostart-enabled=true
       win.minimize();
     }
     this._windowHidden = true;
+    this.syncTrayFirstDock(false);
   }
 
   async focusWindow(): Promise<void> {
@@ -1203,6 +1207,7 @@ X-GNOME-Autostart-enabled=true
       win.focus();
     }
     this._windowHidden = false;
+    this.syncTrayFirstDock(true);
   }
 
   private setupWindowEvents(): void {
@@ -1653,6 +1658,29 @@ X-GNOME-Autostart-enabled=true
     }
 
     return this.getDockIconVisibility();
+  }
+
+  /**
+   * Enable tray-first mode: the Dock icon is hidden until a main window is
+   * shown, then follows window presence (hidden when the window is hidden or
+   * closed). Call once at startup. No-op off macOS (setDockIconVisibility
+   * guards the native call).
+   */
+  setTrayFirstMode(enabled: boolean): void {
+    this.trayFirstMode = enabled;
+    if (enabled) {
+      void this.setDockIconVisibility({ visible: false }).catch(() => {});
+    }
+  }
+
+  /**
+   * Toggle the Dock icon to match window presence, only in tray-first mode.
+   * Routed through every show/hide path so reopen-from-tray (which bypasses
+   * the window create path) keeps the Dock icon correct.
+   */
+  private syncTrayFirstDock(visible: boolean): void {
+    if (!this.trayFirstMode) return;
+    void this.setDockIconVisibility({ visible }).catch(() => {});
   }
 
   async showSelectionContextMenu(options: {
