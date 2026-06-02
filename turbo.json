@@ -21,8 +21,11 @@
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
+        "@elizaos/plugin-mcp#build",
         "@elizaos/plugin-pdf#build",
         "@elizaos/plugin-streaming#build",
+        "@elizaos/plugin-workflow#build",
+        "@elizaos/security#build",
         "@elizaos/capacitor-contacts#build",
         "@elizaos/capacitor-phone#build",
         "@elizaos/capacitor-wifi#build"
@@ -347,6 +350,17 @@
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-app-manager#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/app-core#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/agent#build",
         "^build"
       ],
       "outputs": []
