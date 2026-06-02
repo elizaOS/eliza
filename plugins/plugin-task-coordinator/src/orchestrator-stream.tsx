@@ -273,6 +273,8 @@ type Atom =
       at: number;
       order: number;
       type: "notice";
+      eventId: string;
+      sessionId: string | null;
       eventType: string;
       summary: string;
     };
@@ -283,7 +285,16 @@ type Atom =
 function messageLane(message: CodingAgentTaskMessageRecord): string {
   if (message.senderKind === "user") return "user";
   const stream = message.direction === "stderr" ? "err" : "out";
-  return `${message.senderKind}:${message.sessionId ?? ""}:${stream}`;
+  // Fall back to the message id, not a shared empty string, so unrelated
+  // session-less output never coalesces into one rendered turn.
+  return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
+}
+
+function toolGroupKey(
+  event: CodingAgentTaskEventRecord,
+  toolCallId: string,
+): string {
+  return `${event.sessionId ?? event.threadId ?? "sessionless"}:${toolCallId}`;
 }
 
 /** Turn the polled message + event records into the ordered conversation the
@@ -294,7 +305,10 @@ export function buildConversation(
   resolveSenderName: (message: CodingAgentTaskMessageRecord) => string,
   finishedSessionIds: ReadonlySet<string>,
 ): ConversationBlock[] {
-  const toolEvents = new Map<string, CodingAgentTaskEventRecord[]>();
+  const toolEvents = new Map<
+    string,
+    { id: string; events: CodingAgentTaskEventRecord[] }
+  >();
   const toolFirstSeen = new Map<string, number>();
   const atoms: Atom[] = [];
   let order = 0;
@@ -320,11 +334,12 @@ export function buildConversation(
     if (call) {
       const id =
         pickString(call, "id", "toolCallId", "callId") ?? `tool-${event.id}`;
-      const list = toolEvents.get(id);
-      if (list) list.push(event);
+      const groupKey = toolGroupKey(event, id);
+      const group = toolEvents.get(groupKey);
+      if (group) group.events.push(event);
       else {
-        toolEvents.set(id, [event]);
-        toolFirstSeen.set(id, event.timestamp);
+        toolEvents.set(groupKey, { id, events: [event] });
+        toolFirstSeen.set(groupKey, event.timestamp);
       }
       continue;
     }
@@ -333,13 +348,16 @@ export function buildConversation(
       at: event.timestamp,
       order: order++,
       type: "notice",
+      eventId: event.id,
+      sessionId: event.sessionId,
       eventType: event.eventType,
       summary: event.summary,
     });
   }
 
-  for (const [id, list] of toolEvents) {
-    const tool = toToolView(id, list);
+  for (const [groupKey, group] of toolEvents) {
+    const list = group.events;
+    const tool = toToolView(group.id, groupKey, list);
     // opencode never persists a tool's terminal status — its events top out at
     // `in_progress`. Once the owning session has finished, a still-"running"
     // tool has in fact completed, so reflect that instead of a perpetual spinner.
@@ -352,7 +370,7 @@ export function buildConversation(
       tool.status = "done";
     }
     atoms.push({
-      at: toolFirstSeen.get(id) ?? list[0].timestamp,
+      at: toolFirstSeen.get(groupKey) ?? list[0].timestamp,
       order: order++,
       type: "tool",
       tool,
@@ -373,6 +391,7 @@ export function buildConversation(
       const text = stripAnsi(atom.message.content);
       if (openLane && openLane.lane === lane) {
         openLane.block.content += text;
+        openLane.block.messageIds.push(atom.message.id);
         continue;
       }
       if (lane === "user") {
@@ -381,6 +400,8 @@ export function buildConversation(
           key: `msg-${atom.message.id}`,
           at: atom.at,
           content: text,
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -392,6 +413,8 @@ export function buildConversation(
           senderName: resolveSenderName(atom.message),
           content: text,
           tone: atom.message.direction === "stderr" ? "error" : "normal",
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -402,7 +425,7 @@ export function buildConversation(
     if (atom.type === "tool") {
       blocks.push({
         kind: "tool",
-        key: `tool-${atom.tool.id}`,
+        key: `tool-${atom.tool.groupKey}`,
         at: atom.at,
         tool: atom.tool,
       });
@@ -410,8 +433,11 @@ export function buildConversation(
       const meta = noticeMeta(atom.eventType);
       blocks.push({
         kind: "notice",
-        key: `evt-${atom.order}`,
+        key: `evt-${atom.eventId}`,
         at: atom.at,
+        eventId: atom.eventId,
+        eventType: atom.eventType,
+        sessionId: atom.sessionId,
         icon: meta.icon,
         tone: meta.tone,
         text: atom.summary.trim() || meta.label,
@@ -429,11 +455,30 @@ export function buildConversation(
 // in-repo precedent (config-field's preview renderer).
 
 const FENCE = /```([\w-]*)\n?([\s\S]*?)```/g;
+const SAFE_MARKDOWN_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+function hasUnsafeControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+}
+
+export function sanitizeMarkdownUrl(href: string): string | null {
+  const value = href.trim();
+  if (!value || hasUnsafeControlCharacter(value)) return null;
+
+  const protocolMatch = /^[a-z][a-z0-9+.-]*:/i.exec(value);
+  if (!protocolMatch) return value;
+
+  const protocol = protocolMatch[0].toLowerCase();
+  return SAFE_MARKDOWN_LINK_PROTOCOLS.has(protocol) ? value : null;
+}
 
 function renderInline(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern =
-    /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^\s)]+)\)/g;
   let last = 0;
   let index = 0;
   let match = pattern.exec(text);
@@ -455,10 +500,18 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
         </code>,
       );
     } else if (match[3] !== undefined) {
+      const href = sanitizeMarkdownUrl(match[4]);
+      if (!href) {
+        nodes.push(<span key={`${keyBase}-l${index}`}>{match[3]}</span>);
+        last = match.index + match[0].length;
+        index += 1;
+        match = pattern.exec(text);
+        continue;
+      }
       nodes.push(
         <a
           key={`${keyBase}-l${index}`}
-          href={match[4]}
+          href={href}
           target="_blank"
           rel="noreferrer"
           className="text-accent underline underline-offset-2"
