@@ -68,6 +68,9 @@ export function OdysseusShell(): ReactNode {
   const [customColors, setCustomColors] = useState<ThemePalette>(() =>
     readPref<ThemePalette>(PREF_KEYS.customTheme, ODYSSEUS_THEMES.dark),
   );
+  const [bgPattern, setBgPattern] = useState<string>(() =>
+    readPref<string>(PREF_KEYS.bgPattern, "none"),
+  );
 
   const refreshThreads = useCallback(async () => {
     const next = await client
@@ -153,6 +156,11 @@ export function OdysseusShell(): ReactNode {
     setDensity(next);
   }, []);
 
+  const pickBg = useCallback((next: string) => {
+    writePref(PREF_KEYS.bgPattern, next);
+    setBgPattern(next);
+  }, []);
+
   const onCustomChange = useCallback(
     (key: "bg" | "fg" | "panel" | "border" | "red", value: string) => {
       setCustomColors((prev) => {
@@ -186,7 +194,7 @@ export function OdysseusShell(): ReactNode {
 
   return (
     <div
-      className={`odysseus-root od-density-${density}`}
+      className={`odysseus-root od-density-${density}${bgPattern !== "none" ? ` od-bg-${bgPattern}` : ""}`}
       style={{ ...themeStyle, fontFamily: FONT_MAP[font] }}
       data-od-theme={themeName}
       data-testid="odysseus-shell"
@@ -212,6 +220,8 @@ export function OdysseusShell(): ReactNode {
         onSetDensity={pickDensity}
         custom={customColors}
         onCustomChange={onCustomChange}
+        bgPattern={bgPattern}
+        onSetBg={pickBg}
       />
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SkillsPanel open={skillsOpen} onClose={() => setSkillsOpen(false)} />

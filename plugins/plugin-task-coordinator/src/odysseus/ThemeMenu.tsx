@@ -16,6 +16,7 @@ const FONTS: ThemeFont[] = ["mono", "sans", "serif"];
 const DENSITIES: ThemeDensity[] = ["compact", "comfortable", "spacious"];
 type CustomKey = "bg" | "fg" | "panel" | "border" | "red";
 const CUSTOM_KEYS: CustomKey[] = ["bg", "fg", "panel", "border", "red"];
+const BG_PATTERNS = ["none", "dots"] as const;
 
 export function ThemeMenu({
   open,
@@ -28,6 +29,8 @@ export function ThemeMenu({
   onSetDensity,
   custom,
   onCustomChange,
+  bgPattern,
+  onSetBg,
 }: {
   open: boolean;
   current: ThemeName;
@@ -39,6 +42,8 @@ export function ThemeMenu({
   onSetDensity: (density: ThemeDensity) => void;
   custom: ThemePalette;
   onCustomChange: (key: CustomKey, value: string) => void;
+  bgPattern: string;
+  onSetBg: (pattern: string) => void;
 }): ReactNode {
   if (!open) return null;
   return (
@@ -102,6 +107,19 @@ export function ThemeMenu({
               onClick={() => onSetDensity(d)}
             >
               {d}
+            </button>
+          ))}
+        </div>
+        <div className="od-theme-section">Background</div>
+        <div className="od-theme-row">
+          {BG_PATTERNS.map((b) => (
+            <button
+              type="button"
+              key={b}
+              className={`od-theme-pill${bgPattern === b ? " active" : ""}`}
+              onClick={() => onSetBg(b)}
+            >
+              {b}
             </button>
           ))}
         </div>

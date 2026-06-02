@@ -506,6 +506,11 @@ export const ODYSSEUS_CSS = `
 .odysseus-root.od-density-spacious { font-size:16px; }
 .odysseus-root.od-density-spacious .od-msg { padding:14px 18px; }
 
+/* bg patterns (odysseus static/style.css .bg-pattern-dots; canvas patterns
+   perlin/petals/sparkles/synapse are a later effects port) */
+.odysseus-root.od-bg-dots { background-image: radial-gradient(color-mix(in srgb, var(--fg) 5%, transparent) 1px, transparent 1px);
+  background-size:20px 20px; }
+
 /* ── search palette (Ctrl+K) ── */
 .odysseus-root .od-search-overlay { position:absolute; inset:0; z-index:50; display:flex;
   align-items:flex-start; justify-content:center; padding-top:12vh; background:rgba(0,0,0,.45); }
