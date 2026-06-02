@@ -104,6 +104,7 @@ export type {
   RemotePluginWorkerMessage,
   StreamChunkMessage,
   StreamEndMessage,
+  WorkerActionCallbackMessage,
   WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
   WorkerEventMessage,

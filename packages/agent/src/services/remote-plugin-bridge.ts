@@ -13,9 +13,8 @@
  * `composeState`, etc.) and the result is shipped back as
  * `host-rpc-result`.
  *
- * P1 wires: actions, providers, events, models, evaluators.
- * Deferred: services, routes, views (P2), action callbacks (P1 step 4
- * follow-up), streaming model tokens (P2).
+ * P1 wires: actions, providers, events, models, evaluators, action callbacks.
+ * Deferred: services, routes, views (P2), streaming model tokens (P2).
  */
 
 import type {
@@ -35,6 +34,7 @@ import type {
   JsonValue,
   RemoteFunctionRef,
   RemotePluginWorkerMessage,
+  WorkerActionCallbackMessage,
   WorkerAnnouncePluginMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
@@ -73,6 +73,7 @@ type RpcId = string;
 interface AttachedState {
   pluginName: string | null;
   pending: Map<number, PendingRequest>;
+  actionCallbacks: Map<string, NonNullable<Parameters<Action["handler"]>[4]>>;
   nextRequestId: () => number;
   unsubscribe: (() => void) | undefined;
 }
@@ -90,6 +91,7 @@ export class RemotePluginBridge {
     this.state = {
       pluginName: null,
       pending: new Map(),
+      actionCallbacks: new Map(),
       nextRequestId: (() => {
         let n = 0;
         return () => {
@@ -119,6 +121,7 @@ export class RemotePluginBridge {
       slot.reject(rejection);
     }
     this.state.pending.clear();
+    this.state.actionCallbacks.clear();
     if (this.state.pluginName) {
       await this.runtime.unloadPlugin(this.state.pluginName).catch(() => {
         // ignore unload failures during tear-down
@@ -134,6 +137,9 @@ export class RemotePluginBridge {
         return;
       case "worker-rpc-result":
         this.handleRpcResult(message as WorkerRpcResultMessage);
+        return;
+      case "worker-action-callback":
+        await this.handleActionCallback(message as WorkerActionCallbackMessage);
         return;
       case "host-rpc":
         await this.handleHostRpc(message as HostRpcMessage);
@@ -299,24 +305,32 @@ export class RemotePluginBridge {
       message,
       state,
       options,
-      _callback,
+      callback,
       responses,
     ) => {
-      // P1: callback is stubbed on the worker side; pass undefined
-      // through. Action handlers that need callback() to surface text
-      // already typically rely on the orchestrator's progress channel
-      // anyway. Real callback marshalling lands in P1 step 4.
-      const result = await this.workerRpc<JsonValue>(
-        "action",
-        descriptor.handler.id,
-        {
-          message: this.normalize(message),
-          state: this.normalize(state),
-          options: this.normalize(options ?? null),
-          responses: this.normalize(responses ?? null),
-        },
-      );
-      return result as unknown as ReturnType<Action["handler"]>;
+      let callbackId: string | undefined;
+      if (callback) {
+        callbackId = `action-callback:${this.state.nextRequestId()}`;
+        this.state.actionCallbacks.set(callbackId, callback);
+      }
+      try {
+        const result = await this.workerRpc<JsonValue>(
+          "action",
+          descriptor.handler.id,
+          {
+            message: this.normalize(message),
+            state: this.normalize(state),
+            options: this.normalize(options ?? null),
+            responses: this.normalize(responses ?? null),
+            ...(callbackId ? { callbackId } : {}),
+          },
+        );
+        return result as unknown as ReturnType<Action["handler"]>;
+      } finally {
+        if (callbackId) {
+          this.state.actionCallbacks.delete(callbackId);
+        }
+      }
     };
 
     const validate: Validator = validateRef
@@ -544,6 +558,14 @@ export class RemotePluginBridge {
         ),
       );
     }
+  }
+
+  private async handleActionCallback(
+    message: WorkerActionCallbackMessage,
+  ): Promise<void> {
+    const callback = this.state.actionCallbacks.get(message.callbackId);
+    if (!callback) return;
+    await callback(message.payload as never);
   }
 
   private async handleHostRpc(message: HostRpcMessage): Promise<void> {

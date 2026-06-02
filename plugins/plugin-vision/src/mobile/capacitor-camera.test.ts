@@ -1,13 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { MobileCameraSource } from "./capacitor-camera";
 import {
+  CapacitorCameraSource,
   CapacitorCameraStub,
   clearMobileCameraSource,
   getMobileCameraSource,
   registerMobileCameraSource,
 } from "./capacitor-camera";
 
+interface TestCapacitorHost {
+  Capacitor?: {
+    Plugins?: {
+      ElizaVision?: {
+        listCameras?: () => Promise<
+          Array<{ id: string; name: string; connected: boolean }>
+        >;
+        open?: () => Promise<void>;
+        captureJpeg?: () => Promise<string>;
+        close?: () => Promise<void>;
+      };
+    };
+  };
+}
+
 describe("MobileCameraSource registry", () => {
+  afterEach(() => {
+    clearMobileCameraSource();
+    delete (globalThis as unknown as TestCapacitorHost).Capacitor;
+  });
+
   it("returns null when no source is registered", () => {
     clearMobileCameraSource();
     expect(getMobileCameraSource()).toBeNull();
@@ -67,5 +88,28 @@ describe("MobileCameraSource registry", () => {
     await expect(stub.open()).rejects.toBeInstanceOf(Error);
     await expect(stub.captureJpeg()).rejects.toBeInstanceOf(Error);
     await expect(stub.close()).resolves.toBeUndefined();
+  });
+
+  it("auto-discovers a Capacitor ElizaVision bridge", async () => {
+    (globalThis as unknown as TestCapacitorHost).Capacitor = {
+      Plugins: {
+        ElizaVision: {
+          listCameras: async () => [
+            { id: "back", name: "Back camera", connected: true },
+          ],
+          open: async () => {},
+          captureJpeg: async () => Buffer.from("jpeg").toString("base64"),
+          close: async () => {},
+        },
+      },
+    };
+
+    const source = getMobileCameraSource();
+
+    expect(source).toBeInstanceOf(CapacitorCameraSource);
+    await expect(source?.listCameras()).resolves.toEqual([
+      { id: "back", name: "Back camera", connected: true },
+    ]);
+    await expect(source?.captureJpeg()).resolves.toEqual(Buffer.from("jpeg"));
   });
 });

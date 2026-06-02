@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -106,16 +106,19 @@ function contentTypeFor(filePath: string): string {
   }
 }
 
-function resolveDistAssetPath(requestedPath: string): string | null {
+function resolveDistAssetPath(
+  requestedPath: string,
+  distDir: string,
+): string | null {
   const normalizedPath = requestedPath.replace(/^\/+/, "");
   const segments = normalizedPath.split("/").filter(Boolean);
   for (let index = 0; index < segments.length; index += 1) {
     const candidatePath = path.resolve(
-      APP_DIST_DIR,
+      distDir,
       segments.slice(index).join("/"),
     );
     if (
-      candidatePath.startsWith(APP_DIST_DIR) &&
+      candidatePath.startsWith(distDir) &&
       existsSync(candidatePath) &&
       path.extname(candidatePath).length > 0
     ) {
@@ -158,6 +161,7 @@ async function proxyUiRequest(args: {
   apiBase: string;
   request: IncomingMessage;
   response: ServerResponse<IncomingMessage>;
+  uiDistDir: string;
 }): Promise<void> {
   const requestUrl = new URL(args.request.url ?? "/", "http://127.0.0.1");
 
@@ -198,10 +202,10 @@ async function proxyUiRequest(args: {
       ? "index.html"
       : requestUrl.pathname.replace(/^\/+/, "");
   let filePath =
-    resolveDistAssetPath(requestedPath) ??
+    resolveDistAssetPath(requestedPath, args.uiDistDir) ??
     resolveCompanionPublicAssetPath(requestedPath);
   const isAssetRequest = path.extname(requestedPath).length > 0;
-  const indexHtmlPath = path.join(APP_DIST_DIR, "index.html");
+  const indexHtmlPath = path.join(args.uiDistDir, "index.html");
   if (!filePath && isAssetRequest) {
     args.response.writeHead(404, {
       "Content-Type": "application/json",
@@ -315,6 +319,7 @@ function relayWebSocket(args: {
 async function startUiProxyServer(args: {
   apiBase: string;
   port: number;
+  uiDistDir: string;
 }): Promise<Server> {
   const server = createServer(async (request, response) => {
     try {
@@ -322,6 +327,7 @@ async function startUiProxyServer(args: {
         apiBase: args.apiBase,
         request,
         response,
+        uiDistDir: args.uiDistDir,
       });
     } catch (error) {
       if (response.headersSent || response.writableEnded) {
@@ -524,6 +530,16 @@ async function ensureUiDistReady(): Promise<void> {
   }
 }
 
+async function snapshotUiDist(stateDir: string): Promise<string> {
+  const snapshotDir = path.join(stateDir, "ui-dist");
+  await cp(APP_DIST_DIR, snapshotDir, {
+    recursive: true,
+    force: true,
+  });
+  await access(path.join(snapshotDir, "index.html"));
+  return snapshotDir;
+}
+
 async function submitFirstRun(apiBase: string): Promise<void> {
   if (!LIVE_PROVIDER) {
     throw new Error(
@@ -589,6 +605,7 @@ async function startStubStack(): Promise<StartedStack> {
   const stateDir = await mkdtemp(
     path.join(os.tmpdir(), "eliza-ui-smoke-stub-"),
   );
+  const uiDistDir = await snapshotUiDist(stateDir);
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
     cwd: REPO_ROOT,
@@ -623,6 +640,7 @@ async function startStubStack(): Promise<StartedStack> {
   const uiServer = await startUiProxyServer({
     apiBase,
     port: UI_PORT,
+    uiDistDir,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
 
@@ -645,6 +663,7 @@ async function startRealStack(): Promise<StartedStack> {
   const stateDir = await mkdtemp(
     path.join(os.tmpdir(), "eliza-ui-smoke-live-"),
   );
+  const uiDistDir = await snapshotUiDist(stateDir);
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn(
     "node",
@@ -701,6 +720,7 @@ async function startRealStack(): Promise<StartedStack> {
   const uiServer = await startUiProxyServer({
     apiBase,
     port: UI_PORT,
+    uiDistDir,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
 

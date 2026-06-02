@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  RemotePluginWorkerMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -31,14 +32,19 @@ function makeRegistry(entry?: HandlerEntry): HandlerRegistry {
 }
 
 function mockChannel(): {
-  send: (m: WorkerRpcResultMessage) => void;
-  outbox: WorkerRpcResultMessage[];
+  send: (m: RemotePluginWorkerMessage) => void;
+  outbox: RemotePluginWorkerMessage[];
 } {
-  const outbox: WorkerRpcResultMessage[] = [];
+  const outbox: RemotePluginWorkerMessage[] = [];
   return {
     send: (m) => outbox.push(m),
     outbox,
   };
+}
+
+function rpcResult(message: RemotePluginWorkerMessage): WorkerRpcResultMessage {
+  expect(message.type).toBe("worker-rpc-result");
+  return message as WorkerRpcResultMessage;
 }
 
 describe("dispatcher HMAC enforcement", () => {
@@ -66,8 +72,9 @@ describe("dispatcher HMAC enforcement", () => {
       args: { message: null, state: null },
     } as WorkerRpcMessage);
     expect(channel.outbox).toHaveLength(1);
-    expect(channel.outbox[0]?.ok).toBe(false);
-    expect(channel.outbox[0]?.error?.code).toBe("RPC_AUTH_FAILED");
+    const result = rpcResult(channel.outbox[0] as RemotePluginWorkerMessage);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("RPC_AUTH_FAILED");
   });
 
   it("accepts messages with a valid MAC", async () => {
@@ -105,7 +112,9 @@ describe("dispatcher HMAC enforcement", () => {
       mac: hexEncode(tagBytes),
     } as WorkerRpcMessage);
     expect(channel.outbox).toHaveLength(1);
-    expect(channel.outbox[0]?.ok).toBe(true);
+    expect(rpcResult(channel.outbox[0] as RemotePluginWorkerMessage).ok).toBe(
+      true,
+    );
   });
 
   it("rejects hostile MAC strings without invoking handlers", async () => {
@@ -181,8 +190,9 @@ describe("dispatcher permission gating", () => {
       target: "a",
       args: { message: null, state: null, options: null, responses: null },
     } as WorkerRpcMessage);
-    expect(channel.outbox[0]?.ok).toBe(false);
-    expect(channel.outbox[0]?.error?.code).toBe("PERMISSION_DENIED");
+    const result = rpcResult(channel.outbox[0] as RemotePluginWorkerMessage);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("PERMISSION_DENIED");
     expect(sink.snapshot()).toHaveLength(1);
     expect(sink.snapshot()[0]?.action).toBe("plugin.denied");
   });
@@ -213,7 +223,56 @@ describe("dispatcher permission gating", () => {
       target: "a",
       args: { message: null, state: null, options: null, responses: null },
     } as WorkerRpcMessage);
-    expect(channel.outbox[0]?.ok).toBe(true);
+    expect(rpcResult(channel.outbox[0] as RemotePluginWorkerMessage).ok).toBe(
+      true,
+    );
+  });
+});
+
+describe("dispatcher action callbacks", () => {
+  it("sends callback payloads back to the host callback channel", async () => {
+    const channel = mockChannel();
+    const registry = makeRegistry({
+      id: "a",
+      surface: "action",
+      target: "doStuff",
+      handler: async (_runtime, _message, _state, _options, callback) => {
+        await (callback as (data: { text: string }) => Promise<void>)({
+          text: "progress",
+        });
+        return { ok: true };
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 1,
+      surface: "action",
+      target: "a",
+      args: {
+        message: null,
+        state: null,
+        options: null,
+        responses: null,
+        callbackId: "callback-1",
+      },
+    } as WorkerRpcMessage);
+
+    expect(channel.outbox[0]).toEqual({
+      type: "worker-action-callback",
+      callbackId: "callback-1",
+      payload: { text: "progress" },
+    });
+    expect(rpcResult(channel.outbox[1] as RemotePluginWorkerMessage)).toEqual({
+      type: "worker-rpc-result",
+      requestId: 1,
+      ok: true,
+      payload: { ok: true },
+    });
   });
 
   it("allows provider surface with bun:read and passes runtime/message/state to the handler", async () => {

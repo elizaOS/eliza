@@ -3856,7 +3856,6 @@ ${report.tokenReports.join("\n")}
 				);
 			}
 
-			// This is a placeholder for any data you might want to return from the script
 			return parsed.recommendations;
 		} catch (error) {
 			logger.error(
