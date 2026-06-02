@@ -132,9 +132,11 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZA_API_TOKEN: apiToken,
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
       ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
-      // Public web UI off by default. Operators can re-enable per-agent with
-      // ELIZA_UI_ENABLE=true via existingEnv when needed for ops/debug.
-      ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "false",
+      // Public web UI on by default — users access it via the agent
+      // subdomain (https://<agent-id>.elizacloud.ai), gated by
+      // ELIZA_API_TOKEN at the agent-router. Set ELIZA_UI_ENABLE=false in
+      // existingEnv to opt out per-agent.
+      ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "true",
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
