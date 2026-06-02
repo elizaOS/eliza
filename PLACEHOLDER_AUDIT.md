@@ -47,12 +47,17 @@ platform no-ops are separated from actionable runtime gaps.
   `not_implemented`.
 - Added `src/features/advanced-planning/actions/plan.test.ts` covering all four
   subactions.
+- Removed the stale `TODO(storage)` marker from
+  `src/connectors/account-manager.ts`. The durable path already exists through
+  an installed `ConnectorAccountStorage` service or the database adapter bridge;
+  the in-memory class is the explicit tests/no-durable-storage fallback.
 - Verified with:
   - `bun run --cwd packages/core test src/__tests__/pairing-migration.test.ts`
   - `bun run --cwd packages/core test src/features/advanced-planning/actions/plan.test.ts`
   - `bun run --cwd packages/core typecheck`
   - `bunx biome check packages/core/src/services/pairing-migration.ts packages/core/src/__tests__/pairing-migration.test.ts`
   - `bunx biome check packages/core/src/features/advanced-planning/actions/plan.ts packages/core/src/features/advanced-planning/actions/plan.test.ts`
+  - `bunx biome check packages/core/src/connectors/account-manager.ts`
 
 ### packages/feed
 
