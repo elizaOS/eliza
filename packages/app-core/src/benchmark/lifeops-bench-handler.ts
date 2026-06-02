@@ -431,20 +431,30 @@ export class LifeOpsBenchHandler {
 // the bench server's private utilities.
 // ---------------------------------------------------------------------------
 
+/**
+ * Request bodies are untrusted JSON parsed from the wire (see `readJsonBody`),
+ * so they are genuinely open maps: the named fields document the keys we read,
+ * and the index signature reflects that arbitrary additional keys may be
+ * present. This also lets each body flow into the `Record<string, unknown>`
+ * accessor helpers (`requireNonEmptyString`/`optionalString`) without a cast.
+ */
 interface ResetBody {
   task_id?: unknown;
   world_snapshot_path?: unknown;
   now_iso?: unknown;
+  [key: string]: unknown;
 }
 
 interface MessageBody {
   task_id?: unknown;
   text?: unknown;
   context?: unknown;
+  [key: string]: unknown;
 }
 
 interface TeardownBody {
   task_id?: unknown;
+  [key: string]: unknown;
 }
 
 function readJsonBody(
