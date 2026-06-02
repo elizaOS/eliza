@@ -1,5 +1,5 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ArrowRight, PlugZap } from "lucide-react";
+import { PlugZap } from "lucide-react";
 
 function slugify(value: string): string {
   return (
@@ -33,11 +33,11 @@ function MissingSourceCta({
       onClick={onCta}
       aria-label={ctaLabel}
       title={ctaLabel}
-      className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/40 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/16 bg-bg/40 text-txt transition-colors hover:border-accent/30 hover:text-accent"
       {...agentProps}
     >
-      <span>{ctaLabel}</span>
-      <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+      <PlugZap className="h-3.5 w-3.5" aria-hidden />
+      <span className="sr-only">{ctaLabel}</span>
     </button>
   );
 }

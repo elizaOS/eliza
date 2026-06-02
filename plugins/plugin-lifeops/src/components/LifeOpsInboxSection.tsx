@@ -65,6 +65,26 @@ interface ChannelStyle {
   icon: ReactNode;
 }
 
+function InboxStatusIcon({
+  loading = false,
+  label,
+}: {
+  loading?: boolean;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center px-4 py-8 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? <Spinner size={14} /> : <Sparkles className="h-4 w-4" />}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 const CHANNEL_STYLES: Record<LifeOpsInboxChannel, ChannelStyle> = {
   gmail: {
     label: "Gmail",
@@ -403,7 +423,7 @@ function MailWorkflowButton({
       {...agentProps}
     >
       {icon}
-      <span>{loading ? "Loading..." : label}</span>
+      <span className="sr-only">{loading ? "Loading" : label}</span>
     </button>
   );
 }
@@ -594,7 +614,8 @@ function ThreadRow({
             title="Unreplied for over 24h"
           >
             <AlarmClock className="h-2.5 w-2.5" aria-hidden />
-            Missed · {formatMissedAge(missedAge)}
+            <span className="sr-only">Missed</span>
+            <span>{formatMissedAge(missedAge)}</span>
           </span>
         ) : null}
         <button
@@ -913,9 +934,9 @@ function ReaderPane({
                       {formatAbsoluteTime(item.receivedAt)}
                     </span>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
+                  <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
                     {item.snippet}
-                  </p>
+                  </div>
                 </article>
               );
             },
@@ -1010,7 +1031,7 @@ function InboxUnsubscribeButton({
 
   const label =
     state === "working"
-      ? "Unsubscribing…"
+      ? "Unsubscribing"
       : state === "done"
         ? "Unsubscribed"
         : state === "error"
@@ -1081,7 +1102,7 @@ function InboxListPane({
             value={inbox.searchQuery}
             onChange={(e) => inbox.setSearchQuery(e.target.value)}
             placeholder={t("lifeopsInbox.search", {
-              defaultValue: "Search…",
+              defaultValue: "Search",
             })}
             aria-label={t("lifeopsInbox.searchAria", {
               defaultValue: "Search inbox",
@@ -1100,15 +1121,17 @@ function InboxListPane({
         })}
       >
         {isEmpty ? (
-          <div className="px-4 py-8 text-center text-xs text-muted">
-            {inbox.searchQuery
-              ? t("lifeopsInbox.noResults", {
-                  defaultValue: "No matches.",
-                })
-              : t("lifeopsInbox.empty", {
-                  defaultValue: emptyLabel ?? "Inbox clear.",
-                })}
-          </div>
+          <InboxStatusIcon
+            label={
+              inbox.searchQuery
+                ? t("lifeopsInbox.noResults", {
+                    defaultValue: "No matches",
+                  })
+                : t("lifeopsInbox.empty", {
+                    defaultValue: emptyLabel ?? "Inbox clear",
+                  })
+            }
+          />
         ) : groupedMode ? (
           visibleThreadGroups.map((group) => (
             <ThreadRow
@@ -1624,7 +1647,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
           {gmailAccountOptions.map((opt) => (
             <GmailAccountChip
               key={opt.id}
-              label={`Gmail · ${opt.label}`}
+              label={`Gmail ${opt.label}`}
               active={selectedGmailAccount === opt.id}
               onClick={() => setSelectedGmailAccount(opt.id)}
             />
@@ -1655,10 +1678,10 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       {inbox.error ? (
         <div className="px-5 py-4 text-xs text-rose-300">{inbox.error}</div>
       ) : inbox.loading && inbox.messages.length === 0 ? (
-        <div className="flex items-center gap-2 px-5 py-8 text-xs text-muted">
-          <Spinner size={14} />
-          {t("lifeopsInbox.loading", { defaultValue: "Loading inbox…" })}
-        </div>
+        <InboxStatusIcon
+          loading
+          label={t("lifeopsInbox.loading", { defaultValue: "Loading inbox" })}
+        />
       ) : (
         <div className="flex min-h-0 flex-1">
           {compactLayout ? (

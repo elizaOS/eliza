@@ -13,12 +13,14 @@ import {
   CalendarClock,
   FileText,
   Globe2,
+  Loader2,
   Pencil,
   Plus,
   Save,
   Shield,
   Trash2,
   User,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -42,11 +44,12 @@ function DocumentEditButton({
       type="button"
       size="sm"
       variant="outline"
+      aria-label={`Edit ${doc.filename}`}
+      title="Edit"
       onClick={() => onEdit(doc)}
       {...agentProps}
     >
-      <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-      Edit
+      <Pencil className="h-3.5 w-3.5" aria-hidden />
     </Button>
   );
 }
@@ -73,12 +76,17 @@ function DocumentDeleteButton({
       type="button"
       size="sm"
       variant="outline"
+      aria-label={`Delete ${doc.filename}`}
+      title={deleting ? "Deleting" : "Delete"}
       onClick={() => onDelete(doc.id)}
       disabled={deleting}
       {...agentProps}
     >
-      <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-      {deleting ? "Deleting..." : "Delete"}
+      {deleting ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+      ) : (
+        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+      )}
     </Button>
   );
 }
@@ -150,12 +158,17 @@ function DocumentComposer({
           ref={save.ref}
           type="button"
           size="sm"
+          aria-label={saving ? "Saving document" : "Save document"}
+          title={saving ? "Saving" : "Save"}
           onClick={onCreate}
           disabled={saving || draftContent.trim().length === 0}
           {...save.agentProps}
         >
-          <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          {saving ? "Saving..." : "Save"}
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Save className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       </div>
     </div>
@@ -216,22 +229,29 @@ function DocumentEditDraft({
           type="button"
           variant="outline"
           size="sm"
+          aria-label="Cancel document edit"
+          title="Cancel"
           onClick={onCancel}
           disabled={editingSaving}
           {...cancel.agentProps}
         >
-          Cancel
+          <X className="h-3.5 w-3.5" aria-hidden />
         </Button>
         <Button
           ref={save.ref}
           type="button"
           size="sm"
+          aria-label={editingSaving ? "Saving document edit" : "Save document edit"}
+          title={editingSaving ? "Saving" : "Save"}
           onClick={onSave}
           disabled={editingSaving || editingDraft.trim().length === 0}
           {...save.agentProps}
         >
-          <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          {editingSaving ? "Saving..." : "Save"}
+          {editingSaving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Save className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       </div>
     </div>
@@ -448,6 +468,8 @@ export function LifeOpsDocumentsSection() {
             type="button"
             variant="outline"
             size="sm"
+            aria-label="Cancel new document"
+            title="Cancel"
             onClick={() => {
               setComposing(false);
               setDraftTitle("");
@@ -456,19 +478,20 @@ export function LifeOpsDocumentsSection() {
             disabled={saving}
             {...newNoteToggle.agentProps}
           >
-            Cancel
+            <X className="h-3.5 w-3.5" aria-hidden />
           </Button>
         ) : (
           <Button
             ref={newNoteToggle.ref}
             type="button"
             size="sm"
+            aria-label="New document note"
+            title="New note"
             onClick={() => setComposing(true)}
             disabled={loading}
             {...newNoteToggle.agentProps}
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            New note
+            <Plus className="h-3.5 w-3.5" aria-hidden />
           </Button>
         )}
       </div>
@@ -485,16 +508,22 @@ export function LifeOpsDocumentsSection() {
       ) : null}
 
       {loading ? (
-        <div className="rounded-xl border border-border/30 bg-card/30 px-3 py-6 text-center text-sm text-muted">
-          Loading documents...
+        <div className="flex min-h-24 items-center justify-center rounded-xl border border-border/30 bg-card/30 text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <span className="sr-only">Loading documents</span>
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-danger/25 bg-danger/8 px-3 py-4 text-sm text-danger">
-          {error}
+        <div
+          className="flex min-h-20 items-center justify-center rounded-xl border border-danger/25 bg-danger/8 text-danger"
+          title={error}
+        >
+          <Shield className="h-4 w-4" aria-hidden />
+          <span className="sr-only">{error}</span>
         </div>
       ) : sortedDocuments.length === 0 ? (
-        <div className="rounded-xl border border-border/30 bg-card/30 px-3 py-6 text-center text-sm text-muted">
-          No owner-private documents yet. Use "New note" to add one.
+        <div className="flex min-h-24 items-center justify-center rounded-xl border border-border/30 bg-card/30 text-muted">
+          <FileText className="h-5 w-5" aria-hidden />
+          <span className="sr-only">No owner-private documents</span>
         </div>
       ) : (
         <ul className="flex flex-col gap-2">

@@ -221,6 +221,7 @@
     "@elizaos/plugin-edge-tts": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",

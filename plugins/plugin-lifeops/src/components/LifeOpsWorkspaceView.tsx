@@ -14,6 +14,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { CalendarClock, Check, Loader2, Plus, X } from "lucide-react";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -213,7 +214,7 @@ function eventOriginLabel(event: LifeOpsCalendarEvent): string | null {
   if (parts.length === 0) {
     return null;
   }
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
 function toLocalDateKey(date: Date, timeZone: string): string {
@@ -1102,6 +1103,30 @@ function AccountBadge({ label }: { label: string | null | undefined }) {
   );
 }
 
+function WorkspaceStatusIcon({
+  loading = false,
+  label,
+}: {
+  loading?: boolean;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center py-6 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? (
+        <Loader2 className="h-5 w-5 animate-spin opacity-75" aria-hidden />
+      ) : (
+        <CalendarClock className="h-5 w-5 opacity-70" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function CalendarColumn({
   workspace,
   timeZone,
@@ -1137,24 +1162,24 @@ function CalendarColumn({
       ) : null}
 
       {!workspace.calendarEnabled ? (
-        <div className="text-xs text-muted">
-          {t("lifeopsworkspace.grantCalendarAccess", {
-            defaultValue:
-              "Grant calendar access for this Google account in Setup.",
+        <WorkspaceStatusIcon
+          label={t("lifeopsworkspace.grantCalendarAccess", {
+            defaultValue: "Calendar access needed",
           })}
-        </div>
+        />
       ) : workspace.loading && eventCount === 0 ? (
-        <div className="text-xs text-muted">
-          {t("lifeopsworkspace.loadingEvents", {
-            defaultValue: "Loading events…",
+        <WorkspaceStatusIcon
+          loading
+          label={t("lifeopsworkspace.loadingEvents", {
+            defaultValue: "Calendar loading",
           })}
-        </div>
+        />
       ) : eventCount === 0 ? (
-        <div className="text-xs text-muted">
-          {t("lifeopsworkspace.nothingScheduled", {
-            defaultValue: "Nothing scheduled. Use New event below to add one.",
+        <WorkspaceStatusIcon
+          label={t("lifeopsworkspace.nothingScheduled", {
+            defaultValue: "Calendar clear",
           })}
-        </div>
+        />
       ) : (
         <div className="space-y-3">
           {workspace.groupedCalendarEvents.map((group) => (
@@ -1230,16 +1255,23 @@ function CalendarColumn({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={() => setComposerOpen((current) => !current)}
+            aria-label={
+              composerOpen
+                ? t("lifeopsworkspace.hideNewEvent", {
+                    defaultValue: "Hide new event",
+                  })
+                : t("lifeopsworkspace.newEvent", {
+                    defaultValue: "New event",
+                  })
+            }
           >
-            {composerOpen
-              ? t("lifeopsworkspace.hideNewEvent", {
-                  defaultValue: "Hide new event",
-                })
-              : t("lifeopsworkspace.newEvent", {
-                  defaultValue: "New event",
-                })}
+            {composerOpen ? (
+              <X className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+            )}
           </Button>
 
           {composerOpen ? (
@@ -1308,13 +1340,20 @@ function CalendarColumn({
                 }
                 onClick={() => void workspace.handleCreateEvent()}
               >
-                {workspace.creatingEvent
-                  ? t("lifeopsworkspace.creating", {
-                      defaultValue: "Creating…",
-                    })
-                  : t("lifeopsworkspace.createEvent", {
-                      defaultValue: "Create event",
-                    })}
+                {workspace.creatingEvent ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="sr-only">
+                  {workspace.creatingEvent
+                    ? t("lifeopsworkspace.creating", {
+                        defaultValue: "Creating event",
+                      })
+                    : t("lifeopsworkspace.createEvent", {
+                        defaultValue: "Create event",
+                      })}
+                </span>
               </Button>
             </div>
           ) : null}
@@ -1441,10 +1480,12 @@ function GmailRecommendationsPanel({
   );
   if (recommendations.length === 0) {
     return (
-      <div className="rounded-2xl bg-card/18 px-3 py-3 text-xs text-muted">
-        {t("lifeopsworkspace.noGmailRecommendations", {
-          defaultValue: "No Gmail recommendations for this query.",
-        })}
+      <div className="rounded-2xl bg-card/18 px-3 py-3">
+        <WorkspaceStatusIcon
+          label={t("lifeopsworkspace.noGmailRecommendations", {
+            defaultValue: "Recommendations clear",
+          })}
+        />
       </div>
     );
   }
@@ -1610,22 +1651,24 @@ function EmailColumn({
       {!workspace.emailEnabled ? (
         <div className="text-xs text-muted">
           {t("lifeopsworkspace.grantGmailAccess", {
-            defaultValue:
-              "Grant Gmail access for this Google account in Setup.",
+            defaultValue: "Gmail locked",
           })}
         </div>
       ) : messageCount === 0 ? (
         <div className="space-y-3">
           <GmailControls workspace={workspace} t={t} />
-          <div className="text-xs text-muted">
-            {workspace.loading
-              ? t("lifeopsworkspace.loadingRecentMail", {
-                  defaultValue: "Loading recent mail…",
-                })
-              : t("lifeopsworkspace.inboxClear", {
-                  defaultValue: "Inbox clear. Nothing to triage right now.",
-                })}
-          </div>
+          <WorkspaceStatusIcon
+            loading={workspace.loading}
+            label={
+              workspace.loading
+                ? t("lifeopsworkspace.loadingRecentMail", {
+                    defaultValue: "Reading mail",
+                  })
+                : t("lifeopsworkspace.inboxClear", {
+                    defaultValue: "Inbox clear",
+                  })
+            }
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -1843,7 +1886,7 @@ function EmailColumn({
             >
               {workspace.drafting
                 ? t("lifeopsworkspace.drafting", {
-                    defaultValue: "Drafting...",
+                    defaultValue: "Drafting",
                   })
                 : t("lifeopsworkspace.draftReply", {
                     defaultValue: "Draft reply",
@@ -1862,7 +1905,7 @@ function EmailColumn({
             >
               {workspace.sending
                 ? t("lifeopsworkspace.sending", {
-                    defaultValue: "Sending...",
+                    defaultValue: "Sending",
                   })
                 : t("common.send", {
                     defaultValue: "Send",
@@ -1928,8 +1971,7 @@ export function LifeOpsWorkspaceView() {
             defaultValue: "Calendar",
           })}
           hint={t("lifeopsworkspace.calendarLockedHint", {
-            defaultValue:
-              "Connect Google for both User and Agent in Setup above to see today's events and create new ones here.",
+            defaultValue: "Google owner and agent required",
           })}
           owner={owner}
           agent={agent}
@@ -1940,8 +1982,7 @@ export function LifeOpsWorkspaceView() {
             defaultValue: "Email",
           })}
           hint={t("lifeopsworkspace.emailLockedHint", {
-            defaultValue:
-              "Connect Google for both User and Agent in Setup above to triage replies and draft responses here.",
+            defaultValue: "Google owner and agent required",
           })}
           owner={owner}
           agent={agent}

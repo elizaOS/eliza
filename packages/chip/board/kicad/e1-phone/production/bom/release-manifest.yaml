@@ -6,7 +6,7 @@ created_at: '2026-05-22'
 tool_or_supplier_revision: generate_e1_phone_factory_output_candidates.py
 input_artifact_hashes:
   board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
-  board/kicad/e1-phone/component-height-step-integration.yaml: 9343f603961eb11f780221f3dd40cc8f8bc5ad46083085b541797ddfcc5e3dbc
+  board/kicad/e1-phone/component-height-step-integration.yaml: bd0d3f56b08234eec3b599a76cc49bec552da037568a4b3f17acf75bf69ea1ba
   board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml: 434679db9c6a7b8ab506d62808a03ca7a1425a57853b2ca5b110eecd9de30af7
 reviewer: unreviewed
 reviewed_at: unreviewed_local_candidate_2026-05-22
@@ -7863,14 +7863,14 @@ candidate_children:
 - bom.csv
 - release-manifest.yaml
 candidate_child_count: 2
-candidate_child_bytes_total: 215303
+candidate_child_bytes_total: 216400
 candidate_child_hashes:
 - path: bom.csv
   bytes: 957
   sha256: 9ac0acde558d36ab599dc4b52f2fae5293cb69ac93b00d0e91f4960a33eac30c
 - path: release-manifest.yaml
-  bytes: 214346
-  sha256: 4ee14eb298ef425392e6436e90d50c85ab37eb22c986cfa10d697d4ec71a666c
+  bytes: 215443
+  sha256: 9acc567026cd0948761f1f0807d73f3892ce513d42b6fb3bef6299c5fdfa1384
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:

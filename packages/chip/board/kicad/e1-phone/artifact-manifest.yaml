@@ -158,6 +158,7 @@ current_artifacts:
     - board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml
     - board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.md
     - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml
     - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
     - board/kicad/e1-phone/routed-board-step-export-contract.yaml
     - board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml
@@ -283,7 +284,7 @@ release_gates:
       - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
     local_candidate_evidence:
       routed_board_step_candidate_present: true
-      full_cad_boolean_status: pass
+      full_cad_boolean_status: blocked_boolean_interference_incomplete
       full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
       full_cad_boolean_release_credit: false
       routed_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
@@ -688,7 +689,7 @@ enclosure_placement_release_package_gate:
     ready_for_enclosure_allowed: false
     board_step_readiness_status: blocked_local_routed_step_candidate_not_release
     routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
-    component_height_step_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+    component_height_step_status: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
     production_step_present: false
     routed_kicad_board_required: true
     supplier_3d_models_required: true

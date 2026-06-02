@@ -41,6 +41,12 @@ describe("LifeOps package boundaries", () => {
     const healthAction = readPackageFile("src/actions/health.ts");
     const screenTimeAction = readPackageFile("src/actions/screen-time.ts");
     const healthProvider = readPackageFile("src/providers/health.ts");
+    const mobileSignalsSetupCard = readPackageFile(
+      "src/components/MobileSignalsSetupCard.tsx",
+    );
+    const assistantSection = readPackageFile(
+      "src/components/LifeOpsAssistantSection.tsx",
+    );
     const sleepRoutes = readPackageFile("src/routes/sleep-routes.ts");
     const sleepServiceMixin = readPackageFile(
       "src/lifeops/service-mixin-sleep.ts",
@@ -52,10 +58,89 @@ describe("LifeOps package boundaries", () => {
     expect(healthAction).toContain('from "@elizaos/plugin-health"');
     expect(healthAction).toContain("createOwnerHealthAction");
     expect(healthAction).toContain("createHealthActionRunner");
+    for (const publicBarrel of [
+      readPackageFile("src/index.ts"),
+      readPackageFile("src/lifeops/index.ts"),
+    ]) {
+      expect(publicBarrel).not.toContain("detectHealthBackend");
+      expect(publicBarrel).not.toContain("getDailySummary");
+      expect(publicBarrel).not.toContain("getDataPoints");
+      expect(publicBarrel).not.toContain("getRecentSummaries");
+      expect(publicBarrel).not.toContain("HealthBridgeError");
+    }
     expect(screenTimeAction).toContain('from "@elizaos/plugin-health"');
     expect(screenTimeAction).toContain("createOwnerScreenTimeAction");
     expect(screenTimeAction).toContain("createScreenTimeActionRunner");
+    expect(assistantSection).not.toContain("@elizaos/plugin-health/ui");
+    expect(assistantSection).not.toContain("HEALTH_ASSISTANT_COMMANDS");
+    expect(assistantSection).not.toContain("HEALTH_ASSISTANT_INTENTS");
     expect(healthProvider).toContain("createHealthProvider");
+    expect(mobileSignalsSetupCard).toContain(
+      'from "@elizaos/plugin-health/screen-time/mobile-signal-setup"',
+    );
+    expect(mobileSignalsSetupCard).toContain(
+      "mobileSignalPermissionTargetForAction",
+    );
+    expect(mobileSignalsSetupCard).not.toContain(
+      "function requestTargetForAction",
+    );
+    expect(mobileSignalsSetupCard).not.toContain("function actionBadge");
+    const settingsSection = readPackageFile(
+      "src/components/LifeOpsSettingsSection.tsx",
+    );
+    const googleHook = readPackageFile("src/hooks/useGoogleLifeOpsConnector.ts");
+    expect(settingsSection).not.toContain("useLifeOpsHealthConnectors");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useLifeOpsHealthConnectors.ts")),
+    ).toBe(false);
+    expect(settingsSection).not.toContain("HealthProviderActionButton");
+    expect(settingsSection).not.toContain("HealthPendingAuthActions");
+    expect(settingsSection).not.toContain("health.connect(");
+    expect(settingsSection).not.toContain("health.disconnect(");
+    expect(settingsSection).not.toContain("health.sync(");
+    const apiClient = readPackageFile("src/api/client-lifeops.ts");
+    const routeManifest = readPackageFile("src/routes/plugin.ts");
+    const routes = readPackageFile("src/routes/lifeops-routes.ts");
+    expect(apiClient).not.toContain("startHealthLifeOpsConnector");
+    expect(apiClient).not.toContain("disconnectHealthLifeOpsConnector");
+    expect(apiClient).not.toContain("syncLifeOpsHealth");
+    expect(apiClient).not.toContain(
+      "/api/lifeops/connectors/health/${encodeURIComponent(provider)}/start",
+    );
+    expect(apiClient).not.toContain(
+      "/api/lifeops/connectors/health/${encodeURIComponent(provider)}/disconnect",
+    );
+    expect(apiClient).not.toContain("/api/lifeops/health/sync");
+    for (const source of [routeManifest, routes]) {
+      expect(source).not.toContain("/api/lifeops/health/sync");
+      expect(source).not.toContain("/api/lifeops/connectors/health/:provider/start");
+      expect(source).not.toContain(
+        "/api/lifeops/connectors/health/:provider/disconnect",
+      );
+      expect(source).not.toContain(
+        "^\\/api\\/lifeops\\/connectors\\/health\\/([^/]+)\\/start$",
+      );
+      expect(source).not.toContain(
+        "^\\/api\\/lifeops\\/connectors\\/health\\/([^/]+)\\/disconnect$",
+      );
+    }
+    expect(settingsSection).toContain("HealthConnectorRedirectCard");
+    expect(settingsSection).toContain('dispatchFocusConnector("health")');
+    expect(settingsSection).toContain("GoogleManagementButton");
+    expect(settingsSection).toContain('dispatchFocusConnector("google")');
+    expect(settingsSection).not.toContain("GoogleConnectButton");
+    expect(settingsSection).not.toContain("GoogleAddAccountButton");
+    expect(settingsSection).not.toContain("GoogleDisconnectButton");
+    expect(settingsSection).not.toContain("GoogleAccountDisconnectButton");
+    expect(settingsSection).not.toContain("PendingAuthBanner");
+    expect(settingsSection).not.toContain("settings-google-${side}-connect");
+    expect(settingsSection).not.toContain("settings-google-${side}-disconnect");
+    expect(settingsSection).not.toContain("settings-google-${side}-add");
+    expect(settingsSection).not.toContain("settings-google-${side}-auth");
+    expect(googleHook).not.toContain("deleteConnectorAccount");
+    expect(googleHook).not.toContain("pendingAuthUrl");
+    expect(googleHook).not.toContain("connectAdditional");
+    expect(googleHook).not.toContain("disconnectAccount");
     expect(sleepRoutes).toContain("createHealthSleepRouteHandler");
     expect(sleepRoutes).toContain('from "@elizaos/plugin-health"');
     expect(sleepRoutes).not.toContain("parseWindowDaysQuery");
@@ -123,6 +208,20 @@ describe("LifeOps package boundaries", () => {
     const statusChip = readPackageFile(
       "src/components/BrowserBridgeStatusChip.tsx",
     );
+    const settingsSection = readPackageFile(
+      "src/components/LifeOpsSettingsSection.tsx",
+    );
+    const uiEntrypoint = readPackageFile("src/ui.ts");
+    const apiClient = readPackageFile("src/api/client-lifeops.ts");
+    const connectorAction = readPackageFile("src/actions/connector.ts");
+    const routeManifest = readPackageFile("src/routes/plugin.ts");
+    const routes = readPackageFile("src/routes/lifeops-routes.ts");
+    const publicBarrels = [
+      readPackageFile("src/index.ts"),
+      readPackageFile("src/public.ts"),
+      readPackageFile("src/lifeops/index.ts"),
+      readPackageFile("src/contracts/index.ts"),
+    ];
 
     expect(statusMixin).toContain('from "@elizaos/plugin-browser"');
     expect(screenTimeMixin).toContain('from "@elizaos/plugin-browser"');
@@ -137,6 +236,56 @@ describe("LifeOps package boundaries", () => {
     expect(coreMixin).toContain("createBrowserBridgeCompanionStatus");
     expect(coreMixin).toContain('from "@elizaos/plugin-browser"');
     expect(statusChip).toContain('from "@elizaos/plugin-browser"');
+    expect(settingsSection).toContain("BrowserBridgeRedirectCard");
+    expect(settingsSection).not.toContain("BrowserBridgeSetupPanel");
+    expect(uiEntrypoint).not.toContain("BrowserBridgeSetupPanel");
+    expect(uiEntrypoint).not.toContain("LifeOpsBrowserSetupPanel");
+    expect(uiEntrypoint).not.toContain("./components/BrowserBridgeSetupPanel");
+    expect(apiClient).toContain("getBrowserBridgeSettings");
+    expect(apiClient).toContain("listBrowserBridgeCompanions");
+    expect(apiClient).not.toContain("updateBrowserBridgeSettings");
+    expect(apiClient).not.toContain("getBrowserBridgePackageStatus");
+    expect(apiClient).not.toContain("autoPairBrowserBridgeCompanion");
+    expect(apiClient).not.toContain("createBrowserBridgeCompanionPairing");
+    expect(apiClient).not.toContain("buildBrowserBridgeCompanionPackage");
+    expect(apiClient).not.toContain("openBrowserBridgeCompanionPackagePath");
+    expect(apiClient).not.toContain("openBrowserBridgeCompanionManager");
+    expect(apiClient).not.toContain("downloadBrowserBridgeCompanionPackage");
+    expect(apiClient).not.toContain("listBrowserBridgeTabs");
+    expect(apiClient).not.toContain("getBrowserBridgeCurrentPage");
+    expect(apiClient).not.toContain("syncBrowserBridgeState");
+    expect(connectorAction).not.toContain(
+      "service.createBrowserCompanionPairing",
+    );
+    expect(connectorAction).not.toContain("Browser bridge pairing created");
+    expect(routeManifest).not.toContain("/api/lifeops/browser/register");
+    expect(routes).not.toContain("/api/lifeops/browser/register");
+    expect(routes).not.toContain("recordBrowserSessionRegistration");
+    expect(routes).not.toContain("BrowserSessionRegistration");
+    for (const publicBarrel of publicBarrels) {
+      expect(publicBarrel).not.toContain("detectPasswordManagerBackend");
+      expect(publicBarrel).not.toContain(
+        "getBrowserBridgeCompanionPackageStatus",
+      );
+      expect(publicBarrel).not.toContain("password-manager-bridge");
+      expect(publicBarrel).not.toContain('from "@elizaos/plugin-browser"');
+    }
+    expect(
+      existsSync(resolve(packageRoot, "src/lifeops/password-manager-bridge.ts")),
+    ).toBe(false);
+    expect(
+      existsSync(
+        resolve(packageRoot, "src/components/BrowserBridgeSetupPanel.tsx"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        resolve(
+          packageRoot,
+          "src/components/BrowserBridgeSetupPanel.visual-copy.test.ts",
+        ),
+      ),
+    ).toBe(false);
     expect(
       existsSync(resolve(packageRoot, "src/lifeops/browser-readiness.ts")),
     ).toBe(false);
@@ -204,9 +353,8 @@ describe("LifeOps package boundaries", () => {
     expect(pluginSource).toContain(
       'import { CalendlyAdapter } from "@elizaos/plugin-calendly"',
     );
-    expect(messagingIndex).toContain(
-      'export { CalendlyAdapter } from "@elizaos/plugin-calendly"',
-    );
+    expect(messagingIndex).not.toContain("CalendlyAdapter");
+    expect(messagingIndex).not.toContain("@elizaos/plugin-calendly");
     expect(
       existsSync(
         resolve(
@@ -224,9 +372,8 @@ describe("LifeOps package boundaries", () => {
     expect(pluginSource).toContain(
       'import { GoogleGmailAdapter } from "@elizaos/plugin-google"',
     );
-    expect(messagingIndex).toContain(
-      'export { GoogleGmailAdapter } from "@elizaos/plugin-google"',
-    );
+    expect(messagingIndex).not.toContain("GoogleGmailAdapter");
+    expect(messagingIndex).not.toContain("@elizaos/plugin-google");
     expect(
       existsSync(
         resolve(packageRoot, "src/lifeops/messaging/adapters/gmail-adapter.ts"),
@@ -244,6 +391,171 @@ describe("LifeOps package boundaries", () => {
     expect(adapterFiles).toEqual([]);
   });
 
+  it("does not re-export connector-owned message adapters from the LifeOps messaging barrel", () => {
+    const messagingIndex = readPackageFile("src/lifeops/messaging/index.ts");
+
+    expect(messagingIndex).toContain("createOwnerSendPolicy");
+    for (const adapterSymbol of [
+      "BrowserBridgeAdapter",
+      "CalendlyAdapter",
+      "GoogleGmailAdapter",
+      "XDmAdapter",
+    ]) {
+      expect(messagingIndex).not.toContain(adapterSymbol);
+    }
+    for (const connectorPackage of [
+      "@elizaos/plugin-browser",
+      "@elizaos/plugin-calendly",
+      "@elizaos/plugin-google",
+      "@elizaos/plugin-x",
+    ]) {
+      expect(messagingIndex).not.toContain(connectorPackage);
+    }
+  });
+
+  it("keeps messaging account setup in connector plugins instead of LifeOps views", () => {
+    const messagingCards = readPackageFile(
+      "src/components/MessagingConnectorCards.tsx",
+    );
+    const discordHook = readPackageFile("src/hooks/useDiscordConnector.ts");
+    const telegramHook = readPackageFile("src/hooks/useTelegramConnector.ts");
+    const signalHook = readPackageFile("src/hooks/useSignalConnector.ts");
+    const whatsappHook = readPackageFile("src/hooks/useWhatsAppConnector.ts");
+    const xHook = readPackageFile("src/hooks/useLifeOpsXConnector.ts");
+    const apiClient = readPackageFile("src/api/client-lifeops.ts");
+    const routeManifest = readPackageFile("src/routes/plugin.ts");
+    const routes = readPackageFile("src/routes/lifeops-routes.ts");
+    const connectorAction = readPackageFile("src/actions/connector.ts");
+    const signalMixin = readPackageFile(
+      "src/lifeops/service-mixin-signal.ts",
+    );
+    const signalContribution = readPackageFile("src/lifeops/connectors/signal.ts");
+
+    expect(messagingCards).toContain("ConnectorManagementButton");
+    expect(messagingCards).toContain("connector-telegram-refresh");
+    expect(messagingCards).not.toContain("connector-telegram-phone");
+    expect(messagingCards).not.toContain("connector-telegram-code");
+    expect(messagingCards).not.toContain("connector-telegram-password");
+    expect(messagingCards).not.toContain("Send Telegram code");
+    expect(messagingCards).not.toContain("Verify Telegram code");
+    expect(messagingCards).not.toContain("Submit Telegram password");
+    expect(telegramHook).not.toContain("startTelegramAuth");
+    expect(telegramHook).not.toContain("submitTelegramAuth");
+    expect(telegramHook).not.toContain("cancelTelegramAuth");
+    expect(telegramHook).not.toContain("disconnectTelegramConnector");
+    expect(apiClient).not.toContain("startTelegramAuth");
+    expect(apiClient).not.toContain("submitTelegramAuth");
+    expect(apiClient).not.toContain("cancelTelegramAuth");
+    expect(apiClient).not.toContain("disconnectTelegramConnector");
+    for (const source of [routeManifest, routes, apiClient]) {
+      expect(source).not.toContain("/api/lifeops/connectors/telegram/start");
+      expect(source).not.toContain("/api/lifeops/connectors/telegram/submit");
+      expect(source).not.toContain("/api/lifeops/connectors/telegram/cancel");
+      expect(source).not.toContain(
+        "/api/lifeops/connectors/telegram/disconnect",
+      );
+    }
+    expect(connectorAction).not.toContain("service.disconnectTelegram");
+    const telegramMixin = readPackageFile(
+      "src/lifeops/service-mixin-telegram.ts",
+    );
+    const telegramContribution = readPackageFile(
+      "src/lifeops/connectors/telegram.ts",
+    );
+    expect(telegramMixin).not.toContain("startTelegramAuth");
+    expect(telegramMixin).not.toContain("submitTelegramAuth");
+    expect(telegramMixin).not.toContain("disconnectTelegram");
+    expect(telegramContribution).not.toContain("service.disconnectTelegram");
+    expect(messagingCards).toContain("connector-signal-refresh");
+    expect(messagingCards).not.toContain("connector-signal-link");
+    expect(messagingCards).not.toContain("connector-signal-cancel-pairing");
+    expect(messagingCards).not.toContain("Signal pairing QR code");
+    expect(messagingCards).not.toContain("Generating QR code");
+    expect(messagingCards).not.toContain("Link Signal");
+    expect(messagingCards).not.toContain("Cancel Signal pairing");
+    expect(signalHook).not.toContain("startLifeOpsSignalPairing");
+    expect(signalHook).not.toContain("getLifeOpsSignalPairingStatus");
+    expect(signalHook).not.toContain("stopLifeOpsSignalPairing");
+    expect(signalHook).not.toContain("disconnectSignalConnector");
+    expect(apiClient).not.toContain("startLifeOpsSignalPairing");
+    expect(apiClient).not.toContain("getLifeOpsSignalPairingStatus");
+    expect(apiClient).not.toContain("stopLifeOpsSignalPairing");
+    expect(apiClient).not.toContain("disconnectSignalConnector");
+    for (const source of [routeManifest, routes, apiClient]) {
+      expect(source).not.toContain("/api/lifeops/connectors/signal/pair");
+      expect(source).not.toContain(
+        "/api/lifeops/connectors/signal/pairing-status",
+      );
+      expect(source).not.toContain("/api/lifeops/connectors/signal/stop");
+      expect(source).not.toContain("/api/lifeops/connectors/signal/disconnect");
+    }
+    expect(connectorAction).not.toContain("service.disconnectSignal");
+    expect(signalContribution).not.toContain("service.disconnectSignal");
+    expect(signalMixin).not.toContain("startSignalPairing");
+    expect(signalMixin).not.toContain("getSignalPairingStatus");
+    expect(signalMixin).not.toContain("stopSignalPairing");
+    expect(signalMixin).not.toContain("disconnectSignal");
+    expect(messagingCards).toContain("connector-whatsapp-refresh");
+    expect(messagingCards).not.toContain("connector-whatsapp-pair");
+    expect(messagingCards).not.toContain("WhatsAppQrOverlay");
+    expect(messagingCards).not.toContain("Pair WhatsApp");
+    expect(messagingCards).not.toContain("Hide WhatsApp QR");
+    expect(messagingCards).not.toContain("WhatsApp QR Code");
+    expect(
+      existsSync(resolve(packageRoot, "src/components/WhatsAppQrOverlay.tsx")),
+    ).toBe(false);
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useWhatsAppPairing.ts")),
+    ).toBe(false);
+    expect(whatsappHook).not.toContain("startPairing");
+    expect(whatsappHook).not.toContain("stopPairing");
+    expect(whatsappHook).not.toContain("disconnect");
+    expect(whatsappHook).not.toContain("onWsEvent");
+    expect(messagingCards).toContain("connector-discord-refresh");
+    expect(messagingCards).not.toContain("connector-discord-connect");
+    expect(messagingCards).not.toContain("connector-discord-disconnect");
+    expect(messagingCards).not.toContain("connector-discord-open-desktop");
+    expect(messagingCards).not.toContain("connector-discord-source");
+    expect(messagingCards).not.toContain("Open Discord in Eliza Desktop Browser");
+    expect(discordHook).not.toContain("startDiscordConnector");
+    expect(discordHook).not.toContain("disconnectDiscordConnector");
+    expect(apiClient).not.toContain("startDiscordConnector");
+    expect(apiClient).not.toContain("disconnectDiscordConnector");
+    for (const source of [routeManifest, routes, apiClient]) {
+      expect(source).not.toContain("/api/lifeops/connectors/discord/connect");
+      expect(source).not.toContain(
+        "/api/lifeops/connectors/discord/disconnect",
+      );
+    }
+    const discordContribution = readPackageFile(
+      "src/lifeops/connectors/discord.ts",
+    );
+    expect(connectorAction).not.toContain("service.authorizeDiscordConnector");
+    expect(connectorAction).not.toContain("service.disconnectDiscord");
+    expect(discordContribution).not.toContain("service.disconnectDiscord");
+    expect(xHook).not.toContain("startXLifeOpsConnector");
+    expect(xHook).not.toContain("disconnectXLifeOpsConnector");
+    expect(xHook).not.toContain("connect,");
+    expect(xHook).not.toContain("disconnect,");
+    expect(apiClient).not.toContain("startXLifeOpsConnector");
+    expect(apiClient).not.toContain("disconnectXLifeOpsConnector");
+    expect(apiClient).not.toContain("upsertXLifeOpsConnector");
+    for (const source of [routeManifest, routes, apiClient]) {
+      expect(source).not.toContain("/api/lifeops/connectors/x/start");
+      expect(source).not.toContain("/api/lifeops/connectors/x/disconnect");
+      expect(source).not.toContain("/api/lifeops/connectors/x/success");
+      expect(source).not.toContain('/api/lifeops/connectors/x"');
+    }
+    const xMixin = readPackageFile("src/lifeops/service-mixin-x.ts");
+    const xContribution = readPackageFile("src/lifeops/connectors/x.ts");
+    expect(connectorAction).not.toContain("service.startXConnector");
+    expect(connectorAction).not.toContain("service.disconnectXConnector");
+    expect(xContribution).not.toContain("service.disconnectXConnector");
+    expect(xMixin).not.toContain("startXConnector");
+    expect(xMixin).not.toContain("disconnectXConnector");
+    expect(xMixin).not.toContain("upsertXConnector");
+  });
+
   it("does not own a rendered sleep inspection panel in the LifeOps view layer", () => {
     expect(
       existsSync(
@@ -253,5 +565,28 @@ describe("LifeOps package boundaries", () => {
     expect(
       readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
     ).not.toContain("SleepInspectionPanel");
+    expect(
+      readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
+    ).not.toContain("useLifeOpsScheduleState");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useLifeOpsScheduleState.ts")),
+    ).toBe(false);
+    expect(
+      existsSync(
+        resolve(packageRoot, "src/hooks/useLifeOpsScheduleInspection.ts"),
+      ),
+    ).toBe(false);
+    expect(
+      readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
+    ).not.toContain("useLifeOpsCapabilitiesStatus");
+    expect(
+      readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
+    ).not.toContain("LifeOpsSchedulePanel");
+    expect(
+      readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
+    ).not.toContain(".connect(");
+    expect(
+      readPackageFile("src/components/LifeOpsOperationalPanels.tsx"),
+    ).not.toContain(".disconnect(");
   });
 });

@@ -15,6 +15,11 @@ currency: USD
 volume_columns: [100, 1000, 10000, 100000, 1000000]
 source_observation_policy:
   observed_at: '2026-05-31'
+  current_revalidation_date: '2026-06-02'
+  revalidation_note: >
+    Public source spot-check tightened lifecycle and CAD-model status fields.
+    Public pages are availability signals only; release still requires supplier
+    response packs, downloaded-and-hashed CAD, samples, and approval.
   preferred_sources:
     - manufacturer page or datasheet for lifecycle, dimensions, interfaces, drawings, and CAD availability
     - authorized distributor page for orderability, stock, MOQ, standard package, and price breaks
@@ -55,6 +60,7 @@ records:
       - {quantity: 300, unit_price: 16.50}
       - {quantity: 1000, unit_price: 15.40}
     step_or_3d_availability: not_publicly_observed_requires_supplier_signed_drawing_and_step
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: false, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [17.40, 20.00], 1000: [15.40, 16.50], 10000: [13.00, 15.00], 100000: [11.00, 13.50], 1000000: [9.50, 12.00]}
     confidence: medium
     blockers:
@@ -81,6 +87,7 @@ records:
       - {quantity: 1000, unit_price: 11.65}
       - {quantity: 10000, unit_price: 8.35}
     step_or_3d_availability: supplier_process_indicates_module_drawings_after_cooperation_not_public_step
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: false, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [14.00, 18.00], 1000: [10.50, 12.50], 10000: [8.35, 9.50], 100000: [6.50, 8.00], 1000000: [5.50, 7.00]}
     confidence: medium
     blockers:
@@ -103,6 +110,7 @@ records:
     observed_moq_price_breaks_usd: []
     price_break_gap: no_current_public_price_ladder_captured_for_exact_SF_G5035S60FY_listing
     step_or_3d_availability: supplier_process_indicates_module_drawings_after_cooperation_not_public_step
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: false, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [8.50, 11.00], 1000: [6.95, 8.00], 10000: [5.95, 6.75], 100000: [4.50, 5.80], 1000000: [3.50, 5.00]}
     confidence: medium
     blockers:
@@ -133,6 +141,7 @@ records:
       - {quantity: 4000, unit_price: 0.44278}
       - {quantity: 8000, unit_price: 0.42165}
     step_or_3d_availability: digikey_eda_cad_models_link_observed_and_manufacturer_spec_available
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [0.55, 0.65], 1000: [0.47, 0.53], 10000: [0.40, 0.45], 100000: [0.34, 0.40], 1000000: [0.28, 0.35]}
     confidence: high
     blockers:
@@ -156,6 +165,7 @@ records:
     observed_moq_price_breaks_usd: []
     price_break_gap: exact_BM28_50DP_public_price_breaks_not_captured_in_this_refresh
     step_or_3d_availability: hirose_official_step_iges_2d_drawing_and_distributor_eda_model_links_observed
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [4.00, 8.00], 1000: [3.00, 6.00], 10000: [2.20, 4.50], 100000: [1.60, 3.20], 1000000: [1.20, 2.50]}
     confidence: medium
     blockers:
@@ -186,6 +196,7 @@ records:
       - {quantity: 500, unit_price: 18.50456}
       - {quantity: 1000, unit_price: 17.14116}
     step_or_3d_availability: no_public_step_confirmed_murata_dxf_footprint_and_antenna_files_observed
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [19.49, 25.39], 1000: [17.14, 19.50], 10000: [13.00, 17.00], 100000: [9.00, 13.00], 1000000: [7.00, 10.00]}
     confidence: high_for_orderability_medium_for_high_volume
     blockers:
@@ -215,6 +226,7 @@ records:
       observed_price_signal_usd: {quantity_1: 26.35, quantity_250: 19.28}
       caveat: LTE_Cat_1bis_is_not_5G_RedCap_and_requires_product_requirement_decision
     step_or_3d_availability: official_lga_step_and_design_pack_not_publicly_confirmed_requires_quectel_design_in_or_portal
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: false, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [95.00, 160.00], 1000: [70.00, 120.00], 10000: [50.00, 85.00], 100000: [35.00, 60.00], 1000000: [28.00, 45.00]}
     confidence: low_medium
     blockers:
@@ -235,6 +247,8 @@ records:
       design_dependency: enclosure_and_ground_plane_tuned
     observed_moq_price_breaks_usd: []
     step_or_3d_availability: public_datasheets_and_some_eda_models_observed_by_distributor_but_final_phone_antenna_requires_custom_RFQ_and_tuning_files
+    physical_antenna_radiator_model_status: not_modeled_supplier_required
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [8.00, 16.00], 1000: [5.00, 10.00], 10000: [3.00, 6.00], 100000: [2.00, 4.00], 1000000: [1.40, 3.00]}
     confidence: low
     blockers:
@@ -256,6 +270,7 @@ records:
     observed_moq_price_breaks_usd:
       - {quantity: 100, unit_price_range: [10.00, 11.00]}
     step_or_3d_availability: not_publicly_observed_requires_signed_pack_drawing_cell_swell_allowance_and_supplier_model
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: false, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [10.00, 13.00], 1000: [7.00, 10.50], 10000: [5.00, 8.00], 100000: [3.80, 6.00], 1000000: [3.00, 5.00]}
     confidence: low
     blockers:
@@ -282,6 +297,7 @@ records:
       - {mpn: SHR-04V-S-B, quantity: 2000, unit_price: 0.06052}
       - {mpn: SHR-04V-S-B, quantity: 4000, unit_price: 0.05763}
     step_or_3d_availability: distributor_and_third_party_eda_models_likely_available_exact_download_not_hashed
+    public_model_status: {public_step_confirmed: false, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [0.80, 1.80], 1000: [0.60, 1.40], 10000: [0.45, 1.00], 100000: [0.30, 0.75], 1000000: [0.22, 0.55]}
     confidence: medium
     blockers:
@@ -309,6 +325,7 @@ records:
       - {quantity: 250, unit_price: 6.99208}
       - {quantity: 2000, unit_price: 6.32123}
     step_or_3d_availability: digikey_eda_cad_models_link_observed
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [6.80, 7.50], 1000: [5.80, 6.60], 10000: [4.50, 5.60], 100000: [3.60, 4.80], 1000000: [3.00, 4.20]}
     confidence: medium
     blockers:
@@ -324,6 +341,7 @@ records:
       - https://www.digikey.com/en/htmldatasheets/production/3372468/0/0/1/tps65987d.html
     observed_specs:
       function: stand_alone_usb_type_c_and_power_delivery_controller
+      lifecycle_revalidation_2026_06_02: not_recommended_for_new_designs_observed_on_ti_public_page
       usb_pd: USB_PD_3_0_certified
       type_c: USB_Type_C_specification_certified
       body_size_mm: {width: 7.0, depth: 7.0}
@@ -331,9 +349,11 @@ records:
       dead_battery_support: true
     observed_moq_price_breaks_usd: []
     step_or_3d_availability: ti_and_distributor_cad_models_expected_for_exact_orderable_suffix_but_not_hashed_in_this_refresh
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [5.50, 8.00], 1000: [4.20, 6.00], 10000: [3.20, 4.80], 100000: [2.50, 3.80], 1000000: [2.00, 3.20]}
     confidence: low_medium
     blockers:
+      - TPS65987D public lifecycle revalidation observed not-recommended-for-new-designs status; alternate PD controller review required before EVT freeze
       - confirm whether full PD controller is required or if MAX77860 CC detection path is enough for E1 EVT
       - firmware policy flow, SPI flash configuration, exact orderable MPN, and CAD/land-pattern intake
   - category: common_passives_rf_matching_esd
@@ -354,6 +374,7 @@ records:
       - {mpn: RC0402FR-0710KL, quantity: 100000, unit_price_signal_cny: 0.01657}
       - {mpn: LQG15HN3N3C02D, note: price_break_page_observed_but_line_values_not_captured_in_this_refresh}
     step_or_3d_availability: distributor_eda_models_available_for_representative_parts_exact_BOM_requires_routed_export
+    public_model_status: {public_step_confirmed: true, eda_model_confirmed: true, downloaded_hashed: false, supplier_approved: false}
     cost_range_usd: {100: [12.00, 22.00], 1000: [8.00, 15.00], 10000: [5.50, 10.00], 100000: [3.80, 7.50], 1000000: [3.00, 6.00]}
     confidence: low_medium
     blockers:
@@ -394,6 +415,7 @@ rollup:
     - no_routed_kicad_bom_for_passive_quantity_cost_or_placement validation
     - cellular_region_sku_carrier_certification_RF_tuning_and_SAR_scope_open
     - battery_safety_documents_pack_swelling_and_charge_thermal_validation_open
+    - TPS65987D_lifecycle_alternate_PD_controller_review_open
 forbidden_claims:
   - supplier_selected
   - AVL_ready

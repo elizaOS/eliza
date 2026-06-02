@@ -160,9 +160,13 @@ def test_next_command_plan_covers_target_side_npu_capture() -> None:
         "check_e1_npu_android_proof_manifest.py",
         "check_sustained_run_evidence.py",
         "check_power_thermal_scope.py",
+        'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+        'ANDROID_SERIAL="${CHIP_ANDROID_ADB_SERIAL:-$CHIP_ANDROID_ADB_HOSTPORT}"',
     ):
         if token not in command_text:
             raise AssertionError(command_text)
+    if "\nadb devices\n" in f"\n{command_text}\n":
+        raise AssertionError(f"NPU next-command plan used generic adb discovery: {command_text}")
     print("PASS NPU next-command plan covers target-side capture")
 
 

@@ -1,5 +1,4 @@
 import type {
-  LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
@@ -66,33 +65,8 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
     };
   }, [side]);
 
-  const connect = useCallback(
-    async (mode?: LifeOpsConnectorMode) => {
-      try {
-        setActionPending(true);
-        const connectMode =
-          mode ?? status?.mode ?? status?.defaultMode ?? "local";
-        const result = await client.startXLifeOpsConnector({
-          mode: connectMode,
-          side,
-        });
-        const nextStatus = await client.getXLifeOpsConnectorStatus(
-          result.mode,
-          side,
-        );
-        setStatus(nextStatus);
-        setError(null);
-      } catch (cause) {
-        setError(formatConnectorError(cause, "X connector connect failed."));
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side, status],
-  );
-
   const post = useCallback(
-    async (text: string, mode?: LifeOpsConnectorMode) => {
+    async (text: string, mode?: LifeOpsXConnectorStatus["mode"]) => {
       try {
         setActionPending(true);
         setLastPost(null);
@@ -113,26 +87,6 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
     [side, status?.mode],
   );
 
-  const disconnect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      await client.disconnectXLifeOpsConnector({
-        side,
-        mode: status?.mode,
-      });
-      const nextStatus = await client.getXLifeOpsConnectorStatus(
-        status?.mode,
-        side,
-      );
-      setStatus(nextStatus);
-      setError(null);
-    } catch (cause) {
-      setError(formatConnectorError(cause, "X connector disconnect failed."));
-    } finally {
-      setActionPending(false);
-    }
-  }, [side, status?.mode]);
-
   return {
     status,
     loading,
@@ -140,8 +94,6 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
     error,
     lastPost,
     refresh,
-    connect,
-    disconnect,
     post,
   } as const;
 }

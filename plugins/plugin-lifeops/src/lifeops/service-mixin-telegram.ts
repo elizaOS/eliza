@@ -4,9 +4,6 @@ import {
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
-  type StartLifeOpsTelegramAuthRequest,
-  type StartLifeOpsTelegramAuthResponse,
-  type SubmitLifeOpsTelegramAuthRequest,
   type VerifyLifeOpsTelegramConnectorRequest,
   type VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
@@ -46,9 +43,6 @@ const FULL_TELEGRAM_CAPABILITIES: LifeOpsTelegramCapability[] = [
 
 const TELEGRAM_PLUGIN_SETUP_MESSAGE =
   "Telegram is managed by @elizaos/plugin-telegram. Configure and enable the Telegram connector plugin; LifeOps no longer uses local Telegram API credentials.";
-
-const TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE =
-  "Telegram account auth has moved to @elizaos/plugin-telegram. Use the Telegram connector setup routes (/api/telegram-account/auth/start and /api/telegram-account/auth/submit); LifeOps no longer stores Telegram API credentials.";
 
 type TelegramPluginServiceLike = {
   messageManager?: unknown;
@@ -272,39 +266,6 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         storedCredentialsAvailable: false,
         grant: null,
         ...(degradations.length > 0 ? { degradations } : {}),
-      };
-    }
-
-    async startTelegramAuth(
-      _request: StartLifeOpsTelegramAuthRequest,
-    ): Promise<StartLifeOpsTelegramAuthResponse> {
-      fail(410, TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE);
-    }
-
-    async submitTelegramAuth(
-      _request: SubmitLifeOpsTelegramAuthRequest,
-    ): Promise<StartLifeOpsTelegramAuthResponse> {
-      fail(410, TELEGRAM_ACCOUNT_AUTH_MIGRATED_MESSAGE);
-    }
-
-    async disconnectTelegram(
-      requestedSide?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsTelegramConnectorStatus> {
-      const side =
-        normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-      return {
-        provider: "telegram",
-        side,
-        connected: false,
-        reason: "disconnected",
-        identity: null,
-        grantedCapabilities: [],
-        authState: "idle",
-        authError: null,
-        phone: null,
-        managedCredentialsAvailable: false,
-        storedCredentialsAvailable: false,
-        grant: null,
       };
     }
 

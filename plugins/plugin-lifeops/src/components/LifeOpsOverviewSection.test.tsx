@@ -105,8 +105,6 @@ describe("LifeOpsOverviewSignalsPanel", () => {
   it("renders compact assistant signal buttons without panel copy", () => {
     const { container } = render(
       <LifeOpsOverviewSignalsPanel
-        sleep={{ value: "Slept" }}
-        screen={{ value: "2h 15m" }}
         social={{ value: "45m" }}
         onNavigate={navigate}
       />,
@@ -114,10 +112,6 @@ describe("LifeOpsOverviewSignalsPanel", () => {
 
     expect(container.querySelectorAll("p")).toHaveLength(0);
     expect(screen.getByTestId("lifeops-overview-signals")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ask about sleep" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Ask about screen" }),
-    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Ask about social" }),
     ).toBeTruthy();
@@ -129,16 +123,12 @@ describe("LifeOpsOverviewSignalsPanel", () => {
   it("routes every overview signal into the assistant", () => {
     render(
       <LifeOpsOverviewSignalsPanel
-        sleep={{ value: "Sleeping now", sleepingNow: true }}
-        screen={{ value: "No data" }}
         social={{ value: "12m" }}
         onNavigate={navigate}
       />,
     );
 
     for (const label of [
-      "Ask about sleep",
-      "Ask about screen",
       "Ask about social",
       "Ask about signals",
     ]) {
@@ -146,7 +136,7 @@ describe("LifeOpsOverviewSignalsPanel", () => {
       expect(navigate).toHaveBeenLastCalledWith("assistant");
     }
 
-    expect(navigate).toHaveBeenCalledTimes(4);
+    expect(navigate).toHaveBeenCalledTimes(2);
   });
 
   it("renders nothing when no signals are available", () => {

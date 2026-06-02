@@ -5,14 +5,18 @@ import {
   type MobileSignalsSetupAction,
 } from "@elizaos/capacitor-mobile-signals";
 import {
-  Badge,
+  mobileSignalPermissionTargetForAction,
+  mobileSignalSetupActionBadge,
+  mobileSignalSetupPrimaryActionLabel,
+} from "@elizaos/plugin-health/screen-time/mobile-signal-setup";
+import {
   Button,
   isElectrobunRuntime,
   isNative,
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Activity, Monitor, RefreshCw, Smartphone } from "lucide-react";
+import { Activity, Check, Monitor, RefreshCw, Settings, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 function DeviceSetupRefreshButton({
@@ -37,13 +41,13 @@ function DeviceSetupRefreshButton({
       type="button"
       size="sm"
       variant="outline"
-      className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+      className="h-9 w-9 rounded-xl p-0"
       disabled={disabled}
       onClick={onRefresh}
       {...agentProps}
     >
-      <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-      {label}
+      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+      <span className="sr-only">{label}</span>
     </Button>
   );
 }
@@ -72,64 +76,26 @@ function DeviceSetupActionButton({
       type="button"
       size="sm"
       variant={action.canRequest ? "default" : "outline"}
-      className="min-h-8 shrink-0 rounded-xl px-2.5 text-2xs font-semibold"
+      className="h-8 w-8 shrink-0 rounded-xl p-0"
       disabled={disabled}
       onClick={onAct}
       {...agentProps}
     >
-      {label}
+      {action.canRequest ? (
+        <Check className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <Settings className="h-3.5 w-3.5" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
     </Button>
   );
 }
 
-type TranslateOptions = { defaultValue?: string } & Record<
-  string,
-  string | number | boolean | null | undefined
->;
-
-type TranslateFn = (key: string, options?: TranslateOptions) => string;
-
 type BusyAction = "refresh" | "request" | `open:${string}` | null;
 
-function actionBadge(
-  action: MobileSignalsSetupAction,
-  t: TranslateFn,
-): { variant: "secondary" | "outline"; label: string } {
-  if (action.status === "ready") {
-    return {
-      variant: "secondary",
-      label: t("lifeopssettings.deviceSetupReady", { defaultValue: "Ready" }),
-    };
-  }
-  if (action.status === "unavailable") {
-    return {
-      variant: "outline",
-      label: t("lifeopssettings.deviceSetupUnavailable", {
-        defaultValue: "Unavailable",
-      }),
-    };
-  }
-  return {
-    variant: "outline",
-    label: t("lifeopssettings.deviceSetupNeedsAction", {
-      defaultValue: "Needs action",
-    }),
-  };
-}
-
-function primaryActionLabel(
-  action: MobileSignalsSetupAction,
-  t: TranslateFn,
+function nonMobileBadgeLabel(
+  t: (key: string, options?: { defaultValue?: string }) => string,
 ): string {
-  if (action.canRequest) {
-    return t("lifeopssettings.deviceSetupGrant", { defaultValue: "Grant" });
-  }
-  return t("lifeopssettings.deviceSetupOpenSettings", {
-    defaultValue: "Open Settings",
-  });
-}
-
-function nonMobileBadgeLabel(t: TranslateFn): string {
   return isElectrobunRuntime()
     ? t("lifeopssettings.deviceSetupDesktop", {
         defaultValue: "Desktop",
@@ -137,15 +103,6 @@ function nonMobileBadgeLabel(t: TranslateFn): string {
     : t("lifeopssettings.deviceSetupWeb", {
         defaultValue: "Web",
       });
-}
-
-function requestTargetForAction(
-  action: MobileSignalsSetupAction,
-): MobileSignalsPermissionTarget | null {
-  if (action.id === "health_permissions") return "health";
-  if (action.id === "screen_time_authorization") return "screenTime";
-  if (action.id === "notification_settings") return "notifications";
-  return null;
 }
 
 function DeviceRuntimeGlyph({
@@ -169,6 +126,47 @@ function DeviceRuntimeGlyph({
       title={label}
     >
       <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  );
+}
+
+function DeviceSetupMessagePip({ message }: { message: string }) {
+  return (
+    <span
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/40 bg-bg/35 text-muted"
+      role="status"
+      aria-label={message}
+      title={message}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+      <span className="sr-only">{message}</span>
+    </span>
+  );
+}
+
+function DeviceActionStatusPip({
+  label,
+  ready,
+}: {
+  label: string;
+  ready: boolean;
+}) {
+  return (
+    <span
+      className={[
+        "inline-flex h-5 w-5 items-center justify-center rounded-full border",
+        ready
+          ? "border-emerald-500/30 bg-emerald-500/12 text-emerald-500"
+          : "border-border/40 bg-bg/35 text-muted",
+      ].join(" ")}
+      aria-label={label}
+      title={label}
+    >
+      {ready ? (
+        <Check className="h-3 w-3" aria-hidden />
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+      )}
     </span>
   );
 }
@@ -222,7 +220,9 @@ export function MobileSignalsSetupCard() {
       if (!plugin || typeof plugin.requestPermissions !== "function") {
         return;
       }
-      const target = requestTargetForAction(action);
+      const target = mobileSignalPermissionTargetForAction(
+        action,
+      ) as MobileSignalsPermissionTarget | null;
       if (!target) {
         return;
       }
@@ -308,7 +308,7 @@ export function MobileSignalsSetupCard() {
                 ready={runtimeReady}
               />
             </div>
-            {message ? <p className="text-xs text-muted">{message}</p> : null}
+            {message ? <DeviceSetupMessagePip message={message} /> : null}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
@@ -327,7 +327,7 @@ export function MobileSignalsSetupCard() {
       {nativeMobile && actions.length > 0 ? (
         <div className="grid gap-2 border-t border-border/60 px-4 py-3 md:grid-cols-2">
           {actions.map((action: MobileSignalsSetupAction) => {
-            const badge = actionBadge(action, t);
+            const badge = mobileSignalSetupActionBadge(action, t);
             const canAct =
               action.status !== "ready" &&
               (action.canRequest ||
@@ -342,21 +342,20 @@ export function MobileSignalsSetupCard() {
                     <div className="text-xs font-semibold text-txt">
                       {action.label}
                     </div>
-                    <Badge variant={badge.variant} className="text-3xs">
-                      {badge.label}
-                    </Badge>
+                    <DeviceActionStatusPip
+                      label={badge.label}
+                      ready={action.status === "ready"}
+                    />
                   </div>
                   {action.reason ? (
-                    <p className="text-xs-tight leading-5 text-muted">
-                      {action.reason}
-                    </p>
+                    <span className="sr-only">{action.reason}</span>
                   ) : null}
                 </div>
                 {canAct ? (
                   <DeviceSetupActionButton
                     action={action}
                     disabled={busy !== null}
-                    label={primaryActionLabel(action, t)}
+                    label={mobileSignalSetupPrimaryActionLabel(action, t)}
                     onAct={() =>
                       action.canRequest
                         ? void requestPermissions(action)

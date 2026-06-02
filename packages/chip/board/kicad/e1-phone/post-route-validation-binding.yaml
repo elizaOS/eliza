@@ -34,7 +34,7 @@ upstream_status:
   routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
   routed_layout_readiness: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
   first_article_route_execution_order: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
-  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_approved_clearance_and_signoff
   enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
   supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
   pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
@@ -55,8 +55,8 @@ local_routed_candidate_validation_state:
   real_footprint_board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
   real_footprint_binding: board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
   source_binding: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
-  board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
-  real_footprint_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+  board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
+  real_footprint_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
   matches_real_footprint_board: true
   footprint_count: 89
   legacy_e1phone_footprint_ref_count: 0
@@ -322,7 +322,7 @@ cross_checks:
   factory_and_enclosure_coupling_remains_fail_closed: true
 
 release_blockers:
-  - local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2304 DRC rows, 366 ERC rows, and no signed waivers
+  - local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2201 DRC rows, 366 ERC rows, and no signed waivers
   - post-route SI/PI length, skew, impedance, return-path, current-density, and load-step evidence is missing
   - RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing
   - USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing

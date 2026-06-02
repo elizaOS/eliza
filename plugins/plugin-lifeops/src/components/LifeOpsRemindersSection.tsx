@@ -124,6 +124,33 @@ const DEFAULT_SNOOZE: SnoozeOption = SNOOZE_OPTIONS[1] ?? {
   request: { preset: "15m" },
 };
 
+function ReminderStatusIcon({
+  icon,
+  loading = false,
+  label,
+}: {
+  icon: "alarm" | "reminder";
+  loading?: boolean;
+  label: string;
+}) {
+  const Icon = icon === "alarm" ? AlarmClock : Bell;
+  return (
+    <div
+      className="flex items-center justify-center py-8 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? (
+        <Loader2 className="h-5 w-5 animate-spin opacity-75" aria-hidden />
+      ) : (
+        <Icon className="h-5 w-5 opacity-70" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -494,7 +521,7 @@ function SnoozeSplitButton({
             }}
             className="block w-full border-t border-border/12 px-3 py-1.5 text-left text-[11px] font-medium text-txt transition-colors hover:bg-bg-muted/40"
           >
-            Custom…
+            Custom
           </button>
         </div>
       ) : null}
@@ -1543,10 +1570,10 @@ export function LifeOpsRemindersSection() {
           onComplete={handleComplete}
           onCustomSnooze={handleCustomSnooze}
           loadingLabel={t("lifeopsreminders.loading", {
-            defaultValue: "Loading reminders…",
+            defaultValue: "Reminders loading",
           })}
           emptyLabel={t("lifeopsreminders.empty", {
-            defaultValue: "All clear. No active reminders.",
+            defaultValue: "No reminders",
           })}
         />
       ) : (
@@ -1618,18 +1645,11 @@ function RemindersTabBody({
 }: RemindersTabBodyProps) {
   if (loading && reminderCount === 0) {
     return (
-      <div className="flex items-center gap-2 py-6 text-xs text-muted">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {loadingLabel}
-      </div>
+      <ReminderStatusIcon icon="reminder" loading label={loadingLabel} />
     );
   }
   if (reminderCount === 0) {
-    return (
-      <div className="rounded-2xl border border-border/12 bg-card/12 px-4 py-10 text-center text-xs text-muted">
-        {emptyLabel}
-      </div>
-    );
+    return <ReminderStatusIcon icon="reminder" label={emptyLabel} />;
   }
   return (
     <div className="space-y-4">
@@ -1742,10 +1762,10 @@ function AlarmsTabBody({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] text-muted">
-          Clock-time LifeOps alerts. One-time alarms sync to Reminders.app on
-          macOS after native sync succeeds.
-        </div>
+        <AlarmClock
+          className="h-4 w-4 text-muted"
+          aria-label="Alarm schedule"
+        />
         <button
           ref={addToggle.ref}
           type="button"
@@ -1767,16 +1787,11 @@ function AlarmsTabBody({
       ) : null}
 
       {loading && alarmEntries.length === 0 ? (
-        <div className="flex items-center gap-2 py-6 text-xs text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading alarms…
-        </div>
+        <ReminderStatusIcon icon="alarm" loading label="Alarms loading" />
       ) : null}
 
       {!loading && alarmEntries.length === 0 ? (
-        <div className="rounded-2xl border border-border/12 bg-card/12 px-4 py-10 text-center text-xs text-muted">
-          No alarms yet. Click “Add alarm” to schedule one.
-        </div>
+        <ReminderStatusIcon icon="alarm" label="No alarms" />
       ) : null}
 
       {alarmEntries.length > 0 ? (

@@ -98,7 +98,7 @@ Public-market category bands for researched off-the-shelf parts only are **$148-
 ## 6. Supplier pinouts
 
 `board/kicad/e1-phone/supplier-pinouts/` — 11 public pinouts captured (Firefly Core-3566JD4 RK3566 compute SoM, GCT USB4105, Hirose DF40, Panasonic EVQ-P7, Murata 2EA, Quectel RG255C, OV13855, GC5035, Chenghao CH550FH01A, TI TPS65987, ADI MAX77860) + `pinout-evidence-manifest.yaml`.
-**Compute NDA blocker RETIRED:** the former sole NDA-gated item (bare Unisoc T606/T616 SoC BGA) is resolved by sourcing compute as the Firefly Core-3566JD4 RK3566 SoM with a public 260-pin SODIMM connector pinout (`compute-som-pinout.yaml`). **Zero NDA-gated lines remain.** The bare-SoC + NDA route is retained as an optional cost-down — see `review/compute-sourcing-resolution.md` and `supplier-pinouts/README.md`.
+**Compute NDA blocker RETIRED for Path A SoM integration:** the former sole NDA-gated application-processor line is avoided by sourcing compute as the Firefly Core-3566JD4 RK3566 SoM with a public 260-pin SODIMM connector pinout (`compute-som-pinout.yaml`). **Zero NDA-gated lines remain for the default Path A carrier-board integration.** The bare-SoC + LPDDR PHY route remains an optional cost-down path with controlled-document blockers — see `review/compute-sourcing-resolution.md` and `supplier-pinouts/README.md`.
 
 ## 7. Molding / manufacturing / assembly
 

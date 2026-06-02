@@ -4,7 +4,7 @@ import type {
   CloudOAuthConnection,
 } from "@elizaos/ui";
 import { Badge, Button } from "@elizaos/ui";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   LifeOpsActiveReminderView,
@@ -56,6 +56,20 @@ function cadenceLabel(cadence: LifeOpsCadence): string {
     case "weekly":
       return cadence.weekdays.length > 0 ? "Weekly" : "As needed";
   }
+}
+
+function CompactEmptyState({ label }: { label: string }) {
+  return (
+    <div
+      className="flex items-center py-3 text-muted/60"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      <Sparkles className="h-3.5 w-3.5" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 export function occurrenceSortValue(occurrence: LifeOpsOccurrenceView): number {
@@ -200,7 +214,7 @@ export function OccurrenceList({
   occurrences: LifeOpsOccurrenceView[];
 }) {
   if (occurrences.length === 0) {
-    return <div className="py-3 text-xs text-muted/60">No active items.</div>;
+    return <CompactEmptyState label="Items clear" />;
   }
 
   return (
@@ -229,9 +243,7 @@ export function OccurrenceList({
             <span>{humanizeLifeOpsLabel(occurrence.domain)}</span>
           </div>
           {occurrence.description.trim().length > 0 ? (
-            <div className="mt-2 text-xs leading-5 text-muted">
-              {occurrence.description}
-            </div>
+            <span className="sr-only">{occurrence.description}</span>
           ) : null}
         </div>
       ))}
@@ -241,7 +253,7 @@ export function OccurrenceList({
 
 export function GoalList({ goals }: { goals: LifeOpsGoalDefinition[] }) {
   if (goals.length === 0) {
-    return <div className="py-3 text-xs text-muted/60">No active goals.</div>;
+    return <CompactEmptyState label="Goals clear" />;
   }
 
   return (
@@ -267,9 +279,9 @@ export function GoalList({ goals }: { goals: LifeOpsGoalDefinition[] }) {
                 <div className="truncate text-sm font-semibold text-txt">
                   {goal.title}
                 </div>
-                <div className="mt-1 text-xs leading-5 text-muted">
-                  {goalDescription || "No goal detail yet."}
-                </div>
+                {goalDescription ? (
+                  <span className="sr-only">{goalDescription}</span>
+                ) : null}
               </div>
               <Badge variant="secondary" className="text-2xs">
                 {humanizeLifeOpsLabel(goal.reviewState)}
@@ -293,7 +305,7 @@ export function ReminderList({
   reminders: LifeOpsActiveReminderView[];
 }) {
   if (reminders.length === 0) {
-    return <div className="py-3 text-xs text-muted/60">No live reminders.</div>;
+    return <CompactEmptyState label="Reminders clear" />;
   }
 
   return (

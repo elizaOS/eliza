@@ -202,17 +202,17 @@ kicad_package_state:
   development_routed_tracks_present_for_local_review: true
   development_footprints_replaced_for_local_review: true
   detailed_routed_step_candidate_path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  detailed_routed_step_candidate_bytes: 33644081
+  detailed_routed_step_candidate_bytes: 33644627
   detailed_routed_step_candidate_release_credit: false
   detailed_routed_step_candidate_component_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   detailed_routed_step_candidate_component_envelope_count: 89
-  full_cad_boolean_status: pass
+  full_cad_boolean_status: blocked_boolean_interference_incomplete
   full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
-  full_cad_boolean_parts_loaded: 258
-  full_cad_boolean_pair_count_brep_evaluated: 989
+  full_cad_boolean_parts_loaded: 0
+  full_cad_boolean_pair_count_brep_evaluated: 0
   full_cad_boolean_unintentional_clash_count: 0
-  full_cad_boolean_scope_result_count: 11
-  full_cad_boolean_passing_scope_result_count: 11
+  full_cad_boolean_scope_result_count: 0
+  full_cad_boolean_passing_scope_result_count: 0
   full_cad_boolean_release_credit: false
   component_model_manifest_model_to_footprint_binding: true
   component_model_manifest_pad_name_binding: true
@@ -445,7 +445,7 @@ kicad_package_state:
   - routed_board_release_intake_complete
   - supplier_approved_footprints_replaced_development_patterns
 literal_todo_stub_sweep:
-  scanned_code_file_count: 57
+  scanned_code_file_count: 59
   scanned_code_files:
   - scripts/check_e1_phone_assemblability.py
   - scripts/check_e1_phone_board_package.py
@@ -483,6 +483,7 @@ literal_todo_stub_sweep:
   - scripts/generate_e1_phone_exploded_animation.py
   - scripts/generate_e1_phone_factory_output_candidates.py
   - scripts/generate_e1_phone_interface_closure.py
+  - scripts/generate_e1_phone_instance_pin_step_disposition.py
   - scripts/generate_e1_phone_layout_metrics.py
   - scripts/generate_e1_phone_layout_optimization_execution.py
   - scripts/generate_e1_phone_manufacturing_closure.py
@@ -503,6 +504,7 @@ literal_todo_stub_sweep:
   - scripts/generate_e1_phone_supplier_return_evidence_acceptance_matrix.py
   - scripts/generate_e1_phone_supplier_return_intake_placeholders.py
   - scripts/generate_e1_phone_supplier_sourcing_audit.py
+  - scripts/normalize_e1_phone_release_evidence_metadata.py
   - scripts/test_generate_e1_phone_cad.py
   searched_marker_classes:
   - explicit_code_task_markers

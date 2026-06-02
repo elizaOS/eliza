@@ -51,7 +51,7 @@ local_non_release_progress:
   routed_step_candidate_present: true
   routed_step_candidate_path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
   routed_step_candidate_release_credit: false
-  routed_step_candidate_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  routed_step_candidate_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
   routed_step_candidate_matches_development_source: true
   routed_step_candidate_footprint_envelope_count: 89
   routed_step_candidate_pad_contact_visual_count: 1452
@@ -68,6 +68,21 @@ local_non_release_progress:
   pattern_explicit_support_pattern_count: 11
   pattern_all_support_patterns_have_explicit_provenance: true
   pattern_all_electrical_pad_counts_match_manifest: true
+  instance_pin_step_status: instance_pin_pattern_step_disposition_complete_not_release
+  instance_pin_step_component_instance_count: 89
+  instance_pin_step_routed_board_footprint_count: 89
+  instance_pin_step_pinout_bound_instance_count: 22
+  instance_pin_step_support_pattern_instance_count: 67
+  instance_pin_step_pending_supplier_pad_map_or_order_instance_count: 13
+  instance_pin_step_public_candidate_package_conflict_instance_count: 3
+  instance_pin_step_local_step_instance_count: 89
+  instance_pin_step_local_step_hash_match_count: 89
+  instance_pin_step_local_contract_pass_count: 89
+  instance_pin_step_local_review_pass_count: 89
+  instance_pin_step_supplier_approved_instance_count: 0
+  instance_pin_step_release_credit_instance_count: 0
+  instance_pin_step_local_failure_count: 0
+  instance_pin_step_release_credit: false
   cad_connection_passing_count: 32
   cad_connection_terminal_marker_count: 64
   cad_connection_terminal_pair_count: 32
@@ -186,7 +201,7 @@ release_gates:
     reason: routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs exist only as blocked candidates
   - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
     metric: candidate_step_size_bytes
-    current_value: 33644081
+    current_value: 33644627
     required_value: 0
     reason: local routed STEP candidate exists but is not release evidence
   - source: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
@@ -260,7 +275,7 @@ release_gates:
     metric: status
     current_value: blocked_waiting_for_physical_routed_board_clearance_result
     required_value: pass
-    reason: mechanical review has no routed-board clearance rerun
+    reason: mechanical review has no routed-board release-clearance result
   - source: board/kicad/e1-phone/end-to-end-readiness.yaml
     metric: ready_for_enclosure
     current_value: false
@@ -380,7 +395,7 @@ hard_stop_conditions:
 - missing required routed or factory output count is nonzero
 - required artifact content is template-only, presence-only, unvalidated, or unapproved
 - board STEP intake uses local routed-board candidate evidence without supplier approval
-- routed-board clearance rerun is missing
+- routed-board release-clearance result is missing
 - first-article transcript or traveler is missing
 - supplier-returned geometry, drawings, and traceability are absent or unvalidated
 forbidden_claims:

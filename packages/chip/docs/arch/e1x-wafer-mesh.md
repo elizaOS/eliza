@@ -287,6 +287,14 @@ manifests and records the remaining physical-routing-signoff boundary, with:
 python3 scripts/check_e1x_full_k_repair_route_cost.py
 ```
 
+Run the full-K repair route-cost-by-kind gate, which checks that the
+hyper-dense normal/high remap displacement totals are attributable to explicit
+layer kinds and pins the high-failure displacement hotspots, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_route_cost_by_kind.py
+```
+
 Run the full norm real-weight row gate, which executes every output row for the
 complete `norm` layer class across its full K dimension and records the
 remaining matmul-heavy full-output checksum blocker, with:

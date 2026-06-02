@@ -405,7 +405,7 @@ def release_action_inventory(
             "blocked_clearance_cases": len(routed_gap.get("blocked_clearance_cases", [])),
             "handoff_packets": len(handoff_gap),
             "required_action": (
-                "rerun all clearance cases against routed KiCad STEP with supplier "
+                "complete all release-clearance cases against routed KiCad STEP with supplier "
                 "component models, then attach physical-fit, process, drawing-pack, "
                 "CMM/FAI, and approval-signature handoff evidence"
             ),
@@ -645,11 +645,11 @@ def first_article_physical_fit_action_inventory(
             action = "export the approved routed KiCad board with production component STEP models"
         elif "routed-board-clearance" in path:
             evidence_class = "physical_routed_board_clearance_result"
-            action = "rerun all physical clearance cases against the approved routed STEP"
+            action = "measure all physical clearance cases against the approved routed STEP"
         elif "full-cad-boolean-interference" in path:
             evidence_class = "routed_full_cad_boolean_interference_report"
             action = (
-                "rerun boolean interference on the approved routed board and enclosure assembly"
+                "measure boolean interference on the approved routed board and enclosure assembly"
             )
         elif "assembly.pdf" in path:
             evidence_class = "released_assembly_drawing"

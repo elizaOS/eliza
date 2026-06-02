@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Search,
   ShieldBan,
+  Sparkles,
   Smartphone,
   Square,
   Timer,
@@ -69,6 +70,20 @@ function formatEndsAt(value: string | null): string | null {
     return value;
   }
   return date.toLocaleString();
+}
+
+function AppBlockerStatusIcon({ label }: { label: string }) {
+  return (
+    <div
+      className="flex items-center justify-center py-4 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      <Sparkles className="h-4 w-4 opacity-70" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
@@ -458,13 +473,13 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   );
                 })}
                 {filteredApps.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-xs text-muted">
-                    {translate(
+                  <AppBlockerStatusIcon
+                    label={translate(
                       t,
                       "permissionssection.appBlocking.noApps",
-                      "No installed apps matched that search.",
+                      "Apps clear",
                     )}
-                  </div>
+                  />
                 ) : null}
               </div>
             </div>
@@ -559,7 +574,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                     : translate(
                         t,
                         "permissionssection.appBlocking.noneSelected",
-                        "No iPhone apps selected yet.",
+                        "Selection clear",
                       )}
               </div>
             </div>

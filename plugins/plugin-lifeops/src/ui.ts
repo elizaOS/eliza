@@ -20,10 +20,6 @@ export function registerLifeOpsApp(): void {
 }
 
 export * from "./components/AppBlockerSettingsCard.js";
-export {
-  BrowserBridgeSetupPanel,
-  BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
-} from "./components/BrowserBridgeSetupPanel.js";
 export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.js";
 export * from "./components/LifeOpsAssistantSection.js";
 export * from "./components/LifeOpsPageSections.js";

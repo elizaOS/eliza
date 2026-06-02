@@ -1,24 +1,23 @@
 import type { ModelOption } from "@elizaos/shared";
-import { Button, client, SegmentedControl, useApp } from "@elizaos/ui";
 import {
-  Activity,
+  Button,
+  client,
+  dispatchFocusConnector,
+  SegmentedControl,
+  useApp,
+} from "@elizaos/ui";
+import {
   AlertTriangle,
   CalendarDays,
-  Copy,
   ExternalLink,
   GitBranch,
   HardDrive,
   HeartPulse,
   Mail,
   Plug2,
-  Plus,
-  RefreshCw,
   Sparkles,
   ToggleRight,
   Unplug,
-  Watch,
-  Weight,
-  X,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -33,16 +32,11 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
 } from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
-import { useLifeOpsHealthConnectors } from "../hooks/useLifeOpsHealthConnectors";
-import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.js";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
-const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
 const VISIBLE_CONNECTOR_MODES = ["local"] as const;
 type VisibleConnectorMode = (typeof VISIBLE_CONNECTOR_MODES)[number];
 
@@ -314,99 +308,6 @@ function MiniMeter({
 
 type GoogleConnectorController = ReturnType<typeof useGoogleLifeOpsConnector>;
 
-function PendingAuthBanner({
-  url,
-  side,
-  onDismiss,
-}: {
-  url: string;
-  side: LifeOpsConnectorSide;
-  onDismiss: () => void;
-}) {
-  const { t } = useApp();
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(url);
-  }, [url]);
-
-  const handleOpen = useCallback(() => {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.hostname !== "accounts.google.com"
-    ) {
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [url]);
-
-  const copyLabel = t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" });
-  const openLabel = t("common.open", { defaultValue: "Open" });
-  const dismissLabel = t("common.dismiss", { defaultValue: "Dismiss" });
-  const copy = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-auth-copy`,
-    role: "button",
-    label: `${copyLabel} (${side})`,
-    group: "lifeops-google",
-    description: "Copy the Google authorization URL",
-    onActivate: () => void handleCopy(),
-  });
-  const open = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-auth-open`,
-    role: "button",
-    label: `${openLabel} (${side})`,
-    group: "lifeops-google",
-    description: "Open the Google authorization URL",
-    onActivate: handleOpen,
-  });
-  const dismiss = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-auth-dismiss`,
-    role: "button",
-    label: `${dismissLabel} (${side})`,
-    group: "lifeops-google",
-    description: "Dismiss the Google authorization banner",
-    onActivate: onDismiss,
-  });
-
-  return (
-    <div className="rounded-2xl bg-card/22 px-3 py-3 text-xs text-muted">
-      <div className="flex flex-wrap gap-2">
-        <Button
-          ref={copy.ref}
-          size="sm"
-          variant="outline"
-          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
-          onClick={() => void handleCopy()}
-          {...copy.agentProps}
-        >
-          <Copy className="mr-1.5 h-3.5 w-3.5" />
-          {copyLabel}
-        </Button>
-        <Button
-          ref={open.ref}
-          size="sm"
-          variant="outline"
-          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
-          onClick={handleOpen}
-          {...open.agentProps}
-        >
-          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-          {openLabel}
-        </Button>
-        <Button
-          ref={dismiss.ref}
-          size="sm"
-          variant="ghost"
-          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
-          onClick={onDismiss}
-          {...dismiss.agentProps}
-        >
-          {dismissLabel}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function GithubConnectButton({
   side,
   github,
@@ -538,57 +439,31 @@ function GithubRow({
   );
 }
 
-function GoogleConnectButton({
+function GoogleManagementButton({
   side,
   label,
   disabled,
-  onConnect,
 }: {
   side: LifeOpsConnectorSide;
   label: string;
   disabled: boolean;
-  onConnect: () => void;
 }) {
+  const { setActionNotice, setTab } = useApp();
+  const openGoogleConnector = useCallback(() => {
+    setTab("connectors");
+    dispatchFocusConnector("google");
+    setActionNotice(
+      "Google account setup is managed in Connectors. Configure Google there, then refresh LifeOps.",
+      "info",
+      4200,
+    );
+  }, [setActionNotice, setTab]);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-connect`,
+    id: `settings-google-${side}-manage`,
     role: "button",
     label: `${label} Google (${side})`,
     group: "lifeops-google",
-    description: `Connect the ${side} Google account`,
-  });
-  return (
-    <Button
-      ref={ref}
-      size="sm"
-      className="h-8 w-8 rounded-xl p-0"
-      disabled={disabled}
-      onClick={onConnect}
-      title={label}
-      aria-label={label}
-      {...agentProps}
-    >
-      <Plug2 className="h-3.5 w-3.5" aria-hidden />
-    </Button>
-  );
-}
-
-function GoogleAddAccountButton({
-  side,
-  label,
-  disabled,
-  onAdd,
-}: {
-  side: LifeOpsConnectorSide;
-  label: string;
-  disabled: boolean;
-  onAdd: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-add`,
-    role: "button",
-    label: `${label} Google account (${side})`,
-    group: "lifeops-google",
-    description: `Add another ${side} Google account`,
+    description: `Open the ${side} Google account in Connectors`,
   });
   return (
     <Button
@@ -597,83 +472,13 @@ function GoogleAddAccountButton({
       variant="outline"
       className="h-8 w-8 rounded-xl p-0"
       disabled={disabled}
-      onClick={onAdd}
+      onClick={openGoogleConnector}
       title={label}
       aria-label={label}
       {...agentProps}
     >
-      <Plus className="h-3.5 w-3.5" aria-hidden />
+      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
     </Button>
-  );
-}
-
-function GoogleDisconnectButton({
-  side,
-  label,
-  disabled,
-  onDisconnect,
-}: {
-  side: LifeOpsConnectorSide;
-  label: string;
-  disabled: boolean;
-  onDisconnect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-disconnect`,
-    role: "button",
-    label: `${label} Google (${side})`,
-    group: "lifeops-google",
-    description: `Disconnect the ${side} Google account`,
-  });
-  return (
-    <Button
-      ref={ref}
-      size="sm"
-      variant="outline"
-      className="h-8 w-8 rounded-xl p-0"
-      disabled={disabled}
-      onClick={onDisconnect}
-      title={label}
-      aria-label={label}
-      {...agentProps}
-    >
-      <Unplug className="h-3.5 w-3.5" aria-hidden />
-    </Button>
-  );
-}
-
-function GoogleAccountDisconnectButton({
-  side,
-  grantId,
-  label,
-  disabled,
-  onDisconnect,
-}: {
-  side: LifeOpsConnectorSide;
-  grantId: string;
-  label: string;
-  disabled: boolean;
-  onDisconnect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `settings-google-${side}-account-disconnect-${grantId}`,
-    role: "button",
-    label,
-    group: "lifeops-google",
-    description: "Disconnect this Google account",
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="text-muted transition-colors hover:text-danger"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onDisconnect}
-      {...agentProps}
-    >
-      <X className="h-3.5 w-3.5" aria-hidden />
-    </button>
   );
 }
 
@@ -742,18 +547,11 @@ function GoogleConnectorSideCard({
   const { t } = useApp();
   const {
     accounts,
-    actionPending,
-    connect,
-    connectAdditional,
-    disconnect,
-    disconnectAccount,
     error,
     loading,
-    pendingAuthUrl,
     selectMode,
     status,
   } = connector;
-  const [dismissedAuthUrl, setDismissedAuthUrl] = useState<string | null>(null);
   const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
@@ -784,12 +582,8 @@ function GoogleConnectorSideCard({
         status?.reason === "token_missing"
       ? "warning"
       : "muted";
-  const controlDisabled = loading || actionPending;
+  const controlDisabled = loading;
   const visibleMode: VisibleConnectorMode = "local";
-  const visibleAuthUrl =
-    pendingAuthUrl && pendingAuthUrl !== dismissedAuthUrl
-      ? pendingAuthUrl
-      : null;
   const preferredGrantId = status?.grant?.id ?? null;
 
   useEffect(() => {
@@ -911,35 +705,11 @@ function GoogleConnectorSideCard({
             className="min-w-40 flex-1 bg-bg/40 p-0.5 sm:w-auto sm:flex-none"
             buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
           />
-          {!status?.connected ? (
-            <GoogleConnectButton
-              side={side}
-              label={
-                status?.reason === "needs_reauth"
-                  ? t("common.reconnect", { defaultValue: "Reconnect" })
-                  : t("common.connect", { defaultValue: "Connect" })
-              }
-              disabled={controlDisabled}
-              onConnect={() => void connect()}
-            />
-          ) : null}
-          {status?.connected &&
-          connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
-            <GoogleAddAccountButton
-              side={side}
-              label={t("common.add", { defaultValue: "Add" })}
-              disabled={controlDisabled}
-              onAdd={() => void connectAdditional()}
-            />
-          ) : null}
-          {status?.connected && connectedAccounts.length <= 1 ? (
-            <GoogleDisconnectButton
-              side={side}
-              label={t("common.disconnect", { defaultValue: "Disconnect" })}
-              disabled={controlDisabled}
-              onDisconnect={() => void disconnect()}
-            />
-          ) : null}
+          <GoogleManagementButton
+            side={side}
+            label={t("common.manage", { defaultValue: "Manage" })}
+            disabled={controlDisabled}
+          />
         </div>
       </div>
 
@@ -970,21 +740,6 @@ function GoogleConnectorSideCard({
                           defaultValue: "Active",
                         })}
                         tone="ok"
-                      />
-                    ) : null}
-                    {account.grant?.id ? (
-                      <GoogleAccountDisconnectButton
-                        side={side}
-                        grantId={account.grant.id}
-                        label={t("lifeopssettings.disconnectAccount", {
-                          defaultValue: "Disconnect {{label}}",
-                          label: accountIdentity.primary,
-                        })}
-                        disabled={controlDisabled}
-                        onDisconnect={() => {
-                          if (!account.grant?.id) return;
-                          void disconnectAccount(account.grant.id);
-                        }}
                       />
                     ) : null}
                   </div>
@@ -1048,11 +803,12 @@ function GoogleConnectorSideCard({
           </summary>
           <div className="mt-3 space-y-2">
             {calendarLoading ? (
-              <div className="text-xs text-muted">
-                {t("lifeopssettings.loadingCalendars", {
-                  defaultValue: "Loading calendars…",
+              <StatusDot
+                label={t("lifeopssettings.loadingCalendars", {
+                  defaultValue: "Reading calendars",
                 })}
-              </div>
+                tone="muted"
+              />
             ) : calendars.length > 0 ? (
               <div className="grid gap-2">
                 {calendars.map((calendar) => {
@@ -1071,11 +827,12 @@ function GoogleConnectorSideCard({
                 })}
               </div>
             ) : (
-              <div className="text-xs text-muted">
-                {t("lifeopssettings.noCalendars", {
-                  defaultValue: "No readable calendars found.",
+              <StatusDot
+                label={t("lifeopssettings.noCalendars", {
+                  defaultValue: "Calendars clear",
                 })}
-              </div>
+                tone="muted"
+              />
             )}
             {calendarError ? (
               <div className="text-xs text-danger">{calendarError}</div>
@@ -1084,370 +841,113 @@ function GoogleConnectorSideCard({
         </details>
       ) : null}
 
-      {visibleAuthUrl ? (
-        <PendingAuthBanner
-          url={visibleAuthUrl}
-          side={side}
-          onDismiss={() => setDismissedAuthUrl(visibleAuthUrl)}
-        />
-      ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
       <GithubRow github={github} side={side} />
     </section>
   );
 }
 
-const HEALTH_PROVIDER_META: Record<
-  LifeOpsHealthConnectorProvider,
-  {
-    label: string;
-    Icon: typeof Activity;
-  }
-> = {
-  strava: { label: "Strava", Icon: Activity },
-  fitbit: { label: "Fitbit", Icon: Watch },
-  withings: { label: "Withings", Icon: Weight },
-  oura: { label: "Oura", Icon: HeartPulse },
-};
-
-function healthStatusTone(status: LifeOpsHealthConnectorStatus | undefined) {
-  if (status?.connected && status.reason !== "sync_failed") return "ok";
-  if (
-    status?.reason === "needs_reauth" ||
-    status?.reason === "config_missing" ||
-    status?.reason === "sync_failed"
-  ) {
-    return "warning";
-  }
-  return "muted";
-}
-
-function healthStatusText(
-  status: LifeOpsHealthConnectorStatus | undefined,
-  t: TranslateFn,
-): string {
-  if (!status) {
-    return t("common.loading", { defaultValue: "Loading" });
-  }
-  if (status.reason === "sync_failed") {
-    return t("lifeopssettings.syncFailed", { defaultValue: "Sync failed" });
-  }
-  return statusLabel(status.reason, status.connected, t);
-}
-
-function healthIdentityText(
-  status: LifeOpsHealthConnectorStatus | undefined,
-  provider: LifeOpsHealthConnectorProvider,
-): string {
-  const identity = status?.identity;
-  if (!identity) {
-    return HEALTH_PROVIDER_META[provider].label;
-  }
-  const fields = [
-    identity.email,
-    identity.username,
-    identity.name,
-    identity.firstname && identity.lastname
-      ? `${identity.firstname} ${identity.lastname}`
-      : null,
-    identity.id,
-    identity.userId,
-  ];
-  const match = fields.find(
-    (value): value is string =>
-      typeof value === "string" && value.trim().length > 0,
-  );
-  return match?.trim() ?? HEALTH_PROVIDER_META[provider].label;
-}
-
-function HealthPendingAuthActions({
-  url,
-  provider,
-  onDismiss,
-}: {
-  url: string;
-  provider: LifeOpsHealthConnectorProvider;
-  onDismiss: () => void;
-}) {
-  const { t } = useApp();
-  const copyUrl = useCallback(async () => {
-    await navigator.clipboard.writeText(url);
-  }, [url]);
-  const openUrl = useCallback(() => {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [url]);
-  const copyLabel = t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" });
-  const openLabel = t("common.open", { defaultValue: "Open" });
-  const dismissLabel = t("common.dismiss", { defaultValue: "Dismiss" });
-  const copy = useAgentElement<HTMLButtonElement>({
-    id: `settings-health-${provider}-auth-copy`,
-    role: "button",
-    label: `${copyLabel} (${HEALTH_PROVIDER_META[provider].label})`,
-    group: "lifeops-health",
-    description: `Copy the ${HEALTH_PROVIDER_META[provider].label} authorization URL`,
-    onActivate: () => void copyUrl(),
+function HealthConnectorRedirectCard() {
+  const { setActionNotice, setTab, t } = useApp();
+  const openLabel = t("lifeopssettings.openHealthConnectorSettings", {
+    defaultValue: "Open health connector settings",
   });
+  const openHealthSettings = useCallback(() => {
+    setTab("connectors");
+    dispatchFocusConnector("health");
+    setActionNotice(
+      "Health connector setup is managed by plugin-health. Configure health providers there, then return to LifeOps.",
+      "info",
+      4200,
+    );
+  }, [setActionNotice, setTab]);
   const open = useAgentElement<HTMLButtonElement>({
-    id: `settings-health-${provider}-auth-open`,
+    id: "settings-health-open-connector",
     role: "button",
-    label: `${openLabel} (${HEALTH_PROVIDER_META[provider].label})`,
+    label: openLabel,
     group: "lifeops-health",
-    description: `Open the ${HEALTH_PROVIDER_META[provider].label} authorization URL`,
-    onActivate: openUrl,
+    description: "Open plugin-health connector setup",
+    onActivate: openHealthSettings,
   });
-  const dismiss = useAgentElement<HTMLButtonElement>({
-    id: `settings-health-${provider}-auth-dismiss`,
-    role: "button",
-    label: `${dismissLabel} (${HEALTH_PROVIDER_META[provider].label})`,
-    group: "lifeops-health",
-    description: `Dismiss the ${HEALTH_PROVIDER_META[provider].label} authorization banner`,
-    onActivate: onDismiss,
-  });
+
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      <Button
-        ref={copy.ref}
-        size="sm"
-        variant="outline"
-        className="h-7 w-7 rounded-lg p-0"
-        onClick={() => void copyUrl()}
-        title={copyLabel}
-        aria-label={copyLabel}
-        {...copy.agentProps}
-      >
-        <Copy className="h-3.5 w-3.5" aria-hidden />
-      </Button>
+    <section className="flex items-center justify-between gap-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+          <HeartPulse className="h-4 w-4 text-muted" aria-hidden />
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-txt">
+            {t("lifeopssettings.healthConnectorsTitle", {
+              defaultValue: "Health",
+            })}
+          </h3>
+          <StatusDot label="plugin-health owns setup" tone="muted" />
+        </div>
+      </div>
       <Button
         ref={open.ref}
         size="sm"
-        variant="outline"
-        className="h-7 w-7 rounded-lg p-0"
-        onClick={openUrl}
+        className="h-8 w-8 rounded-xl p-0"
+        onClick={openHealthSettings}
         title={openLabel}
         aria-label={openLabel}
         {...open.agentProps}
       >
         <ExternalLink className="h-3.5 w-3.5" aria-hidden />
       </Button>
-      <Button
-        ref={dismiss.ref}
-        size="sm"
-        variant="ghost"
-        className="h-7 w-7 rounded-lg p-0"
-        onClick={onDismiss}
-        title={dismissLabel}
-        aria-label={dismissLabel}
-        {...dismiss.agentProps}
-      >
-        <X className="h-3.5 w-3.5" aria-hidden />
-      </Button>
-    </div>
+    </section>
   );
 }
 
-function HealthRefreshButton({
-  disabled,
-  label,
-  onRefresh,
-}: {
-  disabled: boolean;
-  label: string;
-  onRefresh: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "settings-health-refresh",
-    role: "button",
-    label,
-    group: "lifeops-health",
-    description: "Refresh all health connector statuses",
+function BrowserBridgeRedirectCard() {
+  const { setActionNotice, setTab, t } = useApp();
+  const openLabel = t("lifeopssettings.openBrowserBridgeSettings", {
+    defaultValue: "Open browser bridge settings",
   });
-  return (
-    <Button
-      ref={ref}
-      size="sm"
-      variant="outline"
-      className="h-8 w-8 rounded-xl p-0"
-      disabled={disabled}
-      onClick={onRefresh}
-      title={label}
-      aria-label={label}
-      {...agentProps}
-    >
-      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-    </Button>
-  );
-}
-
-function HealthProviderActionButton({
-  provider,
-  kind,
-  label,
-  disabled,
-  onAction,
-}: {
-  provider: LifeOpsHealthConnectorProvider;
-  kind: "sync" | "connect" | "disconnect";
-  label: string;
-  disabled: boolean;
-  onAction: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `settings-health-${provider}-${kind}`,
+  const openBrowserSettings = useCallback(() => {
+    setTab("browser");
+    setActionNotice(
+      "Browser bridge setup is managed by plugin-browser. Configure browser companions there, then refresh LifeOps.",
+      "info",
+      4200,
+    );
+  }, [setActionNotice, setTab]);
+  const open = useAgentElement<HTMLButtonElement>({
+    id: "settings-browser-bridge-open",
     role: "button",
-    label: `${label} ${HEALTH_PROVIDER_META[provider].label}`,
-    group: "lifeops-health",
-    description: `${label} the ${HEALTH_PROVIDER_META[provider].label} health connector`,
+    label: openLabel,
+    group: "lifeops-browser-bridge",
+    description: "Open plugin-browser bridge setup",
+    onActivate: openBrowserSettings,
   });
-  const Icon = kind === "disconnect" ? Unplug : kind === "sync" ? RefreshCw : Plug2;
-  return (
-    <Button
-      ref={ref}
-      size="sm"
-      variant={kind === "connect" ? "default" : "outline"}
-      className="h-8 w-8 rounded-xl p-0"
-      disabled={disabled}
-      onClick={onAction}
-      title={label}
-      aria-label={label}
-      {...agentProps}
-    >
-      <Icon className="h-3.5 w-3.5" aria-hidden />
-    </Button>
-  );
-}
-
-function HealthConnectorsCard() {
-  const { t } = useApp();
-  const health = useLifeOpsHealthConnectors("owner");
-  const [dismissedAuthUrls, setDismissedAuthUrls] = useState<
-    Partial<Record<LifeOpsHealthConnectorProvider, string | null>>
-  >({});
-
-  const dismissAuthUrl = useCallback(
-    (provider: LifeOpsHealthConnectorProvider, url: string) => {
-      setDismissedAuthUrls((current) => ({ ...current, [provider]: url }));
-    },
-    [],
-  );
 
   return (
-    <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
-            <HeartPulse className="h-4 w-4 text-muted" aria-hidden />
-          </div>
+    <section className="flex items-center justify-between gap-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+          <HardDrive className="h-4 w-4 text-muted" aria-hidden />
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-txt">
-            {t("lifeopssettings.healthConnectorsTitle", {
-              defaultValue: "Health",
+            {t("lifeopssettings.browserBridgeTitle", {
+              defaultValue: "Browser bridge",
             })}
           </h3>
+          <StatusDot label="plugin-browser owns setup" tone="muted" />
         </div>
-        <HealthRefreshButton
-          disabled={health.loading || health.refreshing}
-          label={t("common.refresh", { defaultValue: "Refresh" })}
-          onRefresh={() => void health.refresh()}
-        />
       </div>
-
-      <div className="grid gap-2 sm:grid-cols-2">
-        {health.providers.map((provider) => {
-          const meta = HEALTH_PROVIDER_META[provider];
-          const ProviderIcon = meta.Icon;
-          const status = health.statusesByProvider[provider];
-          const pendingAuthUrl = health.pendingAuthUrlByProvider[provider];
-          const visibleAuthUrl =
-            pendingAuthUrl && dismissedAuthUrls[provider] !== pendingAuthUrl
-              ? pendingAuthUrl
-              : null;
-          const statusText = healthStatusText(status, t);
-          const controlDisabled =
-            health.loading ||
-            health.actionPendingProvider === provider ||
-            health.syncPendingProvider === provider;
-          return (
-            <div
-              key={provider}
-              className="min-w-0 rounded-2xl bg-bg/40 px-3 py-3"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/24 bg-card/28">
-                  <ProviderIcon className="h-4 w-4 text-muted" aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-txt">
-                      {meta.label}
-                    </span>
-                    <StatusDot
-                      label={statusText}
-                      tone={healthStatusTone(status)}
-                    />
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-muted">
-                    {healthIdentityText(status, provider)}
-                  </div>
-                  {status?.lastSyncAt ? (
-                    <div className="mt-0.5 truncate text-[11px] text-muted">
-                      {new Date(status.lastSyncAt).toLocaleString()}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {status?.connected ? (
-                    <HealthProviderActionButton
-                      provider={provider}
-                      kind="sync"
-                      label={t("common.sync", { defaultValue: "Sync" })}
-                      disabled={controlDisabled}
-                      onAction={() => void health.sync(provider)}
-                    />
-                  ) : null}
-                  {!status?.connected ? (
-                    <HealthProviderActionButton
-                      provider={provider}
-                      kind="connect"
-                      label={
-                        status?.reason === "needs_reauth"
-                          ? t("common.reconnect", { defaultValue: "Reconnect" })
-                          : t("common.connect", { defaultValue: "Connect" })
-                      }
-                      disabled={controlDisabled}
-                      onAction={() => void health.connect(provider)}
-                    />
-                  ) : (
-                    <HealthProviderActionButton
-                      provider={provider}
-                      kind="disconnect"
-                      label={t("common.disconnect", {
-                        defaultValue: "Disconnect",
-                      })}
-                      disabled={controlDisabled}
-                      onAction={() => void health.disconnect(provider)}
-                    />
-                  )}
-                </div>
-              </div>
-              {visibleAuthUrl ? (
-                <HealthPendingAuthActions
-                  url={visibleAuthUrl}
-                  provider={provider}
-                  onDismiss={() => dismissAuthUrl(provider, visibleAuthUrl)}
-                />
-              ) : null}
-              {health.errorByProvider[provider] ? (
-                <div className="mt-2 text-xs text-danger">
-                  {health.errorByProvider[provider]}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+      <Button
+        ref={open.ref}
+        size="sm"
+        className="h-8 w-8 rounded-xl p-0"
+        onClick={openBrowserSettings}
+        title={openLabel}
+        aria-label={openLabel}
+        {...open.agentProps}
+      >
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+      </Button>
     </section>
   );
 }
@@ -1600,12 +1100,6 @@ function SmartFeaturesCard() {
               defaultValue: "Smart features",
             })}
           </h3>
-          <p className="mt-0.5 text-xs text-muted">
-            {t("lifeopssettings.smartFeaturesDescription", {
-              defaultValue:
-                "LLM-based priority scoring for the inbox. Falls back to the keyword heuristic when disabled or unavailable.",
-            })}
-          </p>
         </div>
       </div>
 
@@ -1643,6 +1137,10 @@ function SmartFeaturesCard() {
             value={model}
             disabled={loading || saving || optionsLoading || !enabled}
             onChange={(e) => handleModelChange(e.target.value)}
+            title={t("lifeopssettings.priorityScoringModelHint", {
+              defaultValue:
+                "Model id passed to runtime.useModel. Leave blank to use the runtime default small model.",
+            })}
             {...modelSelect.agentProps}
           >
             <option value="">
@@ -1676,12 +1174,6 @@ function SmartFeaturesCard() {
             })}
           />
         )}
-        <p className="text-[11px] text-muted">
-          {t("lifeopssettings.priorityScoringModelHelp", {
-            defaultValue:
-              "Used to score inbox messages 0–100 and bucket them into Important / Planning / Casual.",
-          })}
-        </p>
       </div>
 
       {error ? <div className="text-xs text-danger">{error}</div> : null}
@@ -1830,12 +1322,6 @@ function EmailIntelligenceCard() {
               defaultValue: "Email intelligence",
             })}
           </h3>
-          <p className="mt-0.5 text-xs text-muted">
-            {t("lifeopssettings.emailIntelligenceDescription", {
-              defaultValue:
-                "Classify incoming Gmail and pull bills into the Money dashboard. Rules run first; the LLM is only asked when rules are ambiguous.",
-            })}
-          </p>
         </div>
       </div>
 
@@ -1890,6 +1376,10 @@ function EmailIntelligenceCard() {
             value={model}
             disabled={loading || saving || optionsLoading || !enabled}
             onChange={(event) => onModelChange(event.target.value)}
+            title={t("lifeopssettings.emailClassifierModelHint", {
+              defaultValue:
+                "Model used only for ambiguous emails. Leave blank to use the runtime default small model.",
+            })}
             {...modelSelect.agentProps}
           >
             <option value="">
@@ -1914,15 +1404,13 @@ function EmailIntelligenceCard() {
             disabled={loading || saving || !enabled}
             onChange={(event) => setModel(event.target.value)}
             onBlur={() => onModelChange(model)}
+            title={t("lifeopssettings.emailClassifierModelHint", {
+              defaultValue:
+                "Model used only for ambiguous emails. Leave blank to use the runtime default small model.",
+            })}
             {...modelSelect.agentProps}
           />
         )}
-        <p className="text-[11px] text-muted">
-          {t("lifeopssettings.emailClassifierModelHelp", {
-            defaultValue:
-              "Used only for ambiguous emails (when rules can't decide). Rules cover most senders cheaply.",
-          })}
-        </p>
       </div>
 
       {error ? <div className="text-xs text-danger">{error}</div> : null}
@@ -2009,7 +1497,7 @@ export function LifeOpsSettingsSection({
       ) : null}
 
       <MobileSignalsSetupCard />
-      <HealthConnectorsCard />
+      <HealthConnectorRedirectCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GoogleConnectorSideCard
@@ -2024,7 +1512,7 @@ export function LifeOpsSettingsSection({
         />
       </div>
 
-      <BrowserBridgeSetupPanel />
+      <BrowserBridgeRedirectCard />
 
       <SmartFeaturesCard />
 

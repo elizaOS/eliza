@@ -517,7 +517,7 @@ function GoalReviewPanel({ review }: { review: LifeOpsGoalReview }) {
               defaultValue: "Suggested next steps:",
             })}
           </span>{" "}
-          {review.suggestions.map((suggestion) => suggestion.title).join(" • ")}
+          {review.suggestions.map((suggestion) => suggestion.title).join(", ")}
         </div>
       ) : null}
       {review.summary.missingEvidence &&
@@ -528,7 +528,7 @@ function GoalReviewPanel({ review }: { review: LifeOpsGoalReview }) {
               defaultValue: "Missing evidence:",
             })}
           </span>{" "}
-          {review.summary.missingEvidence.join(" • ")}
+          {review.summary.missingEvidence.join(", ")}
         </div>
       ) : null}
       {review.summary.lastActivityAt ? (
@@ -700,11 +700,7 @@ function OccurrenceRow({
               />
             ) : null}
           </div>
-          {description ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-              {description}
-            </p>
-          ) : null}
+          {description ? <span className="sr-only">{description}</span> : null}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
             {dueLabel ? <span>{dueLabel}</span> : null}
             {cadenceSecondary ? <span>{cadenceSecondary}</span> : null}
@@ -814,9 +810,7 @@ function GoalRow({
         </span>
       </div>
       {description.length > 0 ? (
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-          {description}
-        </p>
+        <span className="sr-only">{description}</span>
       ) : null}
       {cadenceText ? (
         <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
@@ -1055,7 +1049,7 @@ function ScheduleSection({
             formatDateTime(schedule.lastSleepEndedAt) ??
             schedule.lastSleepEndedAt,
           duration: schedule.lastSleepDurationMinutes
-            ? ` • ${formatMinutesDuration(schedule.lastSleepDurationMinutes)}`
+            ? `, ${formatMinutesDuration(schedule.lastSleepDurationMinutes)}`
             : "",
         })
       : t("lifeopsoverview.sleepStatus", {
@@ -1088,7 +1082,7 @@ function ScheduleSection({
     if (minutesSinceWake !== null) {
       if (minutesUntilBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimeUpcoming", {
-          defaultValue: "Woke {{wakeMinutes}} ago · bedtime in {{bedMinutes}}",
+          defaultValue: "Woke {{wakeMinutes}} ago, bedtime in {{bedMinutes}}",
           wakeMinutes: formatMinutesDuration(minutesSinceWake),
           bedMinutes: formatMinutesDuration(minutesUntilBedtimeTarget),
         });
@@ -1096,7 +1090,7 @@ function ScheduleSection({
       if (minutesSinceBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimePast", {
           defaultValue:
-            "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
+            "Woke {{wakeMinutes}} ago, bedtime was {{bedMinutes}} ago",
           wakeMinutes: formatMinutesDuration(minutesSinceWake),
           bedMinutes: formatMinutesDuration(minutesSinceBedtimeTarget),
         });
@@ -1537,10 +1531,10 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
             title={
               loading
                 ? t("lifeopsoverview.refreshing", {
-                    defaultValue: "Refreshing life ops…",
+                    defaultValue: "Refreshing life ops",
                   })
                 : t("lifeopsoverview.empty", {
-                    defaultValue: "No life ops yet",
+                    defaultValue: "Life ops clear",
                   })
             }
           />

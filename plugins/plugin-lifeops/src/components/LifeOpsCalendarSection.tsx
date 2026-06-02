@@ -19,7 +19,7 @@ import {
   useMediaQuery,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type CalendarViewMode,
@@ -225,7 +225,31 @@ function formatAgendaEventMeta(event: LifeOpsCalendarEvent): string {
   const details = [timeLabel, event.location || null, originLabel].filter(
     (value): value is string => Boolean(value),
   );
-  return details.join(" · ");
+  return details.join(", ");
+}
+
+function CalendarStatusIcon({
+  loading = false,
+  label,
+}: {
+  loading?: boolean;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center py-12 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? (
+        <Spinner size={16} />
+      ) : (
+        <CalendarClock className="h-5 w-5 opacity-70" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 interface EventPosition {
@@ -523,8 +547,13 @@ function DayColumnGrid({
               {event.title}
             </div>
             <div className="mt-0.5 truncate text-[10px] leading-tight opacity-90">
-              {formatTimeOfDay(event.startAt)}
-              {event.location ? ` · ${event.location}` : ""}
+              <span>{formatTimeOfDay(event.startAt)}</span>
+              {event.location ? (
+                <>
+                  <span className="mx-1 inline-block h-1 w-1 rounded-full bg-current opacity-60" />
+                  <span>{event.location}</span>
+                </>
+              ) : null}
             </div>
           </button>
         );
@@ -895,11 +924,7 @@ function AgendaView({
   );
 
   if (sections.length === 0) {
-    return (
-      <div className="rounded-2xl border border-border/12 bg-bg/20 px-4 py-8 text-xs text-muted">
-        {emptyLabel}
-      </div>
-    );
+    return <CalendarStatusIcon label={emptyLabel} />;
   }
 
   return (
@@ -1160,10 +1185,12 @@ export function LifeOpsCalendarSection(
         ) : null}
 
         {calendar.loading && calendar.events.length === 0 ? (
-          <div className="flex items-center gap-2 py-12 text-xs text-muted">
-            <Spinner size={14} />
-            {t("lifeopsCalendar.loading", { defaultValue: "Loading events…" })}
-          </div>
+          <CalendarStatusIcon
+            loading
+            label={t("lifeopsCalendar.loading", {
+              defaultValue: "Calendar loading",
+            })}
+          />
         ) : compactLayout ? (
           <AgendaView
             days={days}
@@ -1171,7 +1198,7 @@ export function LifeOpsCalendarSection(
             selectedEventId={selectedEventId}
             onSelectEvent={handleSelectEvent}
             emptyLabel={t("lifeopsCalendar.empty", {
-              defaultValue: "Nothing scheduled.",
+              defaultValue: "Calendar clear",
             })}
           />
         ) : calendar.viewMode === "month" ? (

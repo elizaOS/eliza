@@ -343,6 +343,42 @@ def _set_env_locomotion_prior_residual_scale(env, residual_scale: float) -> None
     )
 
 
+def _uses_staged_biped_prior(task_id: str, staged_biped_action_prior: str) -> bool:
+    if staged_biped_action_prior == "none":
+        return False
+    return task_id in {
+        "weight_shift_left",
+        "weight_shift_right",
+        "lift_left_foot",
+        "lift_right_foot",
+        "step_in_place",
+        "step_forward",
+    }
+
+
+def _effective_locomotion_prior_residual_scale(
+    *,
+    task_id: str,
+    staged_biped_action_prior: str,
+    locomotion_action_prior: str = "none",
+    current_scale: float,
+) -> float:
+    if _uses_staged_biped_prior(task_id, staged_biped_action_prior):
+        return 0.0
+    if (
+        task_id in {"walk_forward_bridge", "walk_forward_mid_bridge"}
+        and locomotion_action_prior == "hiwonder_bounded_step_walk"
+    ):
+        return 0.0
+    return float(current_scale)
+
+
+def _starts_final_bounded_walk_with_zero_residual(
+    *, task_id: str, locomotion_action_prior: str
+) -> bool:
+    return task_id == "walk_forward" and locomotion_action_prior == "hiwonder_bounded_step_walk"
+
+
 def _action_scale_gate_passed(
     promotion_eval: dict,
     *,
@@ -473,6 +509,63 @@ def _stable_partial_progress_gate_passed(promotion_eval: dict, *, task_id: str) 
         value = _stat("tracked_delta_y_m", "min")
         return value is not None and value <= -0.04
     return False
+
+
+def _bounded_step_walk_final_residual_gate_passed(
+    promotion_eval: dict,
+    *,
+    task_id: str,
+) -> bool:
+    """Admit final walk residuals only after a stable near-target prior.
+
+    The bounded-step prior is already a strong causal controller for the final
+    walk. Letting residuals ramp on generic 5 cm partial progress can degrade
+    that prior before the residual policy has earned meaningful authority. This
+    gate keeps residual learning available, but only once the prior is close to
+    the final displacement target and the physical side constraints are clean.
+    """
+    if task_id != "walk_forward":
+        return _stable_partial_progress_gate_passed(promotion_eval, task_id=task_id)
+    if float(promotion_eval.get("failure_rate", 1.0)) > 0.0:
+        return False
+    if float(promotion_eval.get("physical_fall_rate", 0.0) or 0.0) > 0.0:
+        return False
+    if float(promotion_eval.get("support_contract_failure_rate", 0.0) or 0.0) > 0.0:
+        return False
+    checks = (
+        promotion_eval.get("physical_checks")
+        if isinstance(promotion_eval.get("physical_checks"), dict)
+        else {}
+    )
+    required_checks = (
+        "tracked_height_present",
+        "no_fall",
+        "tracked_lateral_drift_bound",
+        "yaw_drift_bound",
+        "min_alternating_foot_contacts",
+        "min_swing_foot_clearance_m",
+        "max_foot_slip_m_s",
+        "max_self_collision_count",
+    )
+    if any(checks.get(key) is not True for key in required_checks):
+        return False
+
+    summary = (
+        promotion_eval.get("movement_summary")
+        if isinstance(promotion_eval.get("movement_summary"), dict)
+        else {}
+    )
+    tracked_dx = summary.get("tracked_delta_x_m")
+    if not isinstance(tracked_dx, dict):
+        return False
+    max_dx = _optional_float(tracked_dx.get("max"))
+    if max_dx is None:
+        return False
+    task_success = {
+        task.id: task.success for task in load_curriculum().tasks
+    }.get(task_id, {})
+    final_target = _optional_float(task_success.get("delta_x_m_min")) or 0.30
+    return max_dx + 1e-9 >= 0.90 * final_target
 
 
 def _physical_checks(task_id: str, summary: dict[str, dict[str, float | None]]) -> dict[str, bool]:
@@ -861,6 +954,10 @@ def _evaluate_task_success(
         physical_checks["max_self_collision_count"] = (
             observed_max is not None and observed_max <= collision_limit
         )
+    if "left_foot_contact_required" in task.success:
+        physical_checks["left_foot_contact_required"] = success_rate >= 1.0
+    if "right_foot_contact_required" in task.success:
+        physical_checks["right_foot_contact_required"] = success_rate >= 1.0
     return {
         "episodes": len(successes),
         "success_rate": success_rate,
@@ -977,6 +1074,7 @@ def train_robot(
     min_phase_success_rate: float = 1.0,
     phase_eval_interval_steps: int | None = None,
     locomotion_action_prior: str = "none",
+    staged_biped_action_prior: str = "none",
     locomotion_prior_residual_scale: float = 1.0,
     locomotion_prior_residual_scale_initial: float | None = None,
     locomotion_prior_residual_scale_increment: float = (
@@ -1005,16 +1103,21 @@ def train_robot(
     out_dir.mkdir(parents=True, exist_ok=True)
     profile = load_profile(profile_id)
     curriculum = load_curriculum()
+    active_action_prior = (
+        locomotion_action_prior
+        if locomotion_action_prior != "none"
+        else staged_biped_action_prior
+    )
     action_scale_schedule = _build_action_scale_schedule(
         target_scale=action_scale,
         initial_scale=_initial_action_scale_for_training(
             target_scale=action_scale,
             requested_initial_scale=action_scale_initial,
-            locomotion_action_prior=locomotion_action_prior,
+            locomotion_action_prior=active_action_prior,
         ),
         increment=action_scale_increment,
         min_success_rate=min_phase_success_rate,
-        allow_stable_partial_progress=locomotion_action_prior == "none",
+        allow_stable_partial_progress=active_action_prior == "none",
         allow_safe_locomotion_prior_scale=locomotion_action_prior != "none",
     )
     current_action_scale = float(action_scale_schedule["initial_scale"])
@@ -1022,7 +1125,7 @@ def train_robot(
         target_scale=locomotion_prior_residual_scale,
         initial_scale=locomotion_prior_residual_scale_initial,
         increment=locomotion_prior_residual_scale_increment,
-        locomotion_action_prior=locomotion_action_prior,
+        locomotion_action_prior=active_action_prior,
     )
     current_locomotion_prior_residual_scale = float(
         residual_scale_schedule["initial_scale"]
@@ -1049,6 +1152,7 @@ def train_robot(
             episode_steps=episode_steps,
             action_scale=current_action_scale,
             locomotion_action_prior=locomotion_action_prior,
+            staged_biped_action_prior=staged_biped_action_prior,
             locomotion_prior_residual_scale=current_locomotion_prior_residual_scale,
             locomotion_prior_residual_mode=locomotion_prior_residual_mode,
             locomotion_prior_feedback_pitch=locomotion_prior_feedback_pitch,
@@ -1169,6 +1273,29 @@ def train_robot(
         if task not in all_active:
             raise ValueError(f"task {task!r} not in env active tasks {list(all_active)}")
         task_spec = all_active[task]
+        phase_residual_target_scale = (
+            0.0
+            if _effective_locomotion_prior_residual_scale(
+                task_id=task,
+                staged_biped_action_prior=staged_biped_action_prior,
+                locomotion_action_prior=locomotion_action_prior,
+                current_scale=float(residual_scale_schedule["target_scale"]),
+            )
+            == 0.0
+            else float(residual_scale_schedule["target_scale"])
+        )
+        phase_residual_scale_start = _effective_locomotion_prior_residual_scale(
+            task_id=task,
+            staged_biped_action_prior=staged_biped_action_prior,
+            locomotion_action_prior=locomotion_action_prior,
+            current_scale=current_locomotion_prior_residual_scale,
+        )
+        if _starts_final_bounded_walk_with_zero_residual(
+            task_id=task,
+            locomotion_action_prior=locomotion_action_prior,
+        ):
+            phase_residual_scale_start = 0.0
+        _set_env_locomotion_prior_residual_scale(env, phase_residual_scale_start)
         env.active_tasks = [task_spec]
         pre_ev = evaluate(
             controller,
@@ -1189,7 +1316,6 @@ def train_robot(
         phase_train_returns = []
         phase_scale_start = current_action_scale
         phase_scale_events = []
-        phase_residual_scale_start = current_locomotion_prior_residual_scale
         phase_residual_scale_events = []
         promoted = False
         first_promotion_step: int | None = None
@@ -1197,11 +1323,26 @@ def train_robot(
         while phase_steps_run < steps_per_task:
             if hasattr(controller, "set_actor_update_scale"):
                 target_residual_scale = float(residual_scale_schedule["target_scale"])
-                if locomotion_action_prior == "none":
+                effective_residual_scale = _effective_locomotion_prior_residual_scale(
+                    task_id=task,
+                    staged_biped_action_prior=staged_biped_action_prior,
+                    locomotion_action_prior=locomotion_action_prior,
+                    current_scale=current_locomotion_prior_residual_scale,
+                )
+                if _starts_final_bounded_walk_with_zero_residual(
+                    task_id=task,
+                    locomotion_action_prior=locomotion_action_prior,
+                ):
+                    effective_residual_scale = float(
+                        env.config.locomotion_prior_residual_scale
+                    )
+                if active_action_prior == "none":
                     actor_update_scale = 1.0
+                elif effective_residual_scale <= 0.0:
+                    actor_update_scale = 0.0
                 elif target_residual_scale > 0.0:
                     actor_update_scale = (
-                        current_locomotion_prior_residual_scale / target_residual_scale
+                        effective_residual_scale / target_residual_scale
                     )
                 else:
                     actor_update_scale = 0.0
@@ -1239,16 +1380,27 @@ def train_robot(
                 promotion_eval,
                 task_id=task,
                 min_success_rate=min_phase_success_rate,
-                allow_stable_partial_progress=locomotion_action_prior == "none",
+                allow_stable_partial_progress=active_action_prior == "none",
                 allow_safe_locomotion_prior_scale=locomotion_action_prior != "none",
+            )
+            residual_partial_gate_passed = (
+                _bounded_step_walk_final_residual_gate_passed(
+                    promotion_eval,
+                    task_id=task,
+                )
+                if (
+                    task == "walk_forward"
+                    and locomotion_action_prior == "hiwonder_bounded_step_walk"
+                )
+                else _stable_partial_progress_gate_passed(
+                    promotion_eval,
+                    task_id=task,
+                )
             )
             residual_gate_passed = _promotion_passed(
                 promotion_eval,
                 min_phase_success_rate,
-            ) or _stable_partial_progress_gate_passed(
-                promotion_eval,
-                task_id=task,
-            )
+            ) or residual_partial_gate_passed
             target_scale = float(action_scale_schedule["target_scale"])
             if (
                 action_scale_schedule["enabled"]
@@ -1293,9 +1445,10 @@ def train_robot(
                 }
                 phase_scale_events.append(event)
                 action_scale_events.append(event)
-            residual_target_scale = float(residual_scale_schedule["target_scale"])
+            residual_target_scale = float(phase_residual_target_scale)
             if (
                 residual_scale_schedule["enabled"]
+                and residual_target_scale > 0.0
                 and residual_gate_passed
                 and current_locomotion_prior_residual_scale < residual_target_scale
             ):
@@ -1325,14 +1478,22 @@ def train_robot(
                     "failure_rate": float(promotion_eval["failure_rate"]),
                     "physical_success": bool(promotion_eval["physical_success"]),
                     "partial_progress_gate": bool(
-                        _stable_partial_progress_gate_passed(
-                            promotion_eval,
-                            task_id=task,
-                        )
+                        residual_partial_gate_passed
                     ),
                 }
                 phase_residual_scale_events.append(event)
                 residual_scale_events.append(event)
+        phase_residual_scale_end = _effective_locomotion_prior_residual_scale(
+            task_id=task,
+            staged_biped_action_prior=staged_biped_action_prior,
+            locomotion_action_prior=locomotion_action_prior,
+            current_scale=current_locomotion_prior_residual_scale,
+        )
+        if _starts_final_bounded_walk_with_zero_residual(
+            task_id=task,
+            locomotion_action_prior=locomotion_action_prior,
+        ):
+            phase_residual_scale_end = float(env.config.locomotion_prior_residual_scale)
         if promotion_eval is None:
             promotion_eval = {
                 "episodes": 0,
@@ -1380,10 +1541,10 @@ def train_robot(
                     phase_residual_scale_start
                 ),
                 "locomotion_prior_residual_scale_end": float(
-                    current_locomotion_prior_residual_scale
+                    phase_residual_scale_end
                 ),
                 "locomotion_prior_residual_scale_target": float(
-                    residual_scale_schedule["target_scale"]
+                    phase_residual_target_scale
                 ),
                 "locomotion_prior_residual_scale_events": phase_residual_scale_events,
                 "train_steps": int(phase_steps_run),
@@ -1473,10 +1634,10 @@ def train_robot(
                     phase_residual_scale_start
                 ),
                 "locomotion_prior_residual_scale_end": float(
-                    current_locomotion_prior_residual_scale
+                    phase_residual_scale_end
                 ),
                 "locomotion_prior_residual_scale_target": float(
-                    residual_scale_schedule["target_scale"]
+                    phase_residual_target_scale
                 ),
                 "locomotion_prior_residual_scale_events": phase_residual_scale_events,
                 "steps_trained": int(phase_steps_run),
@@ -1609,6 +1770,7 @@ def train_robot(
         "seed": int(seed),
         "domain_rand": bool(domain_rand),
         "locomotion_action_prior": locomotion_action_prior,
+        "staged_biped_action_prior": staged_biped_action_prior,
         "locomotion_prior_residual_scale": float(locomotion_prior_residual_scale),
         "locomotion_prior_residual_mode": locomotion_prior_residual_mode,
         "locomotion_prior_residual_scale_schedule": {
@@ -1697,7 +1859,13 @@ def main(argv: list[str] | None = None) -> None:
             "hiwonder_sine",
             "hiwonder_contact_sine",
             "hiwonder_low_slip_contact_sine",
+            "hiwonder_bounded_step_walk",
         ),
+        default="none",
+    )
+    p.add_argument(
+        "--staged-biped-action-prior",
+        choices=("none", "hiwonder_staged_biped"),
         default="none",
     )
     p.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
@@ -1757,6 +1925,7 @@ def main(argv: list[str] | None = None) -> None:
         log_sigma_init=args.log_sigma_init,
         normalize=not args.no_normalize,
         locomotion_action_prior=args.locomotion_action_prior,
+        staged_biped_action_prior=args.staged_biped_action_prior,
         locomotion_prior_residual_scale=args.locomotion_prior_residual_scale,
         locomotion_prior_residual_scale_initial=(
             args.locomotion_prior_residual_scale_initial

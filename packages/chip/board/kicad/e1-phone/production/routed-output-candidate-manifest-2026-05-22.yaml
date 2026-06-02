@@ -5,14 +5,14 @@ claim_boundary: Generated local routed-output candidate files. These reduce miss
   and do not prove routed release, fabrication, enclosure, factory, or end-to-end readiness.
 source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
 source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-source_step_size_bytes: 33644081
-source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
-source_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+source_step_size_bytes: 33644627
+source_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
+source_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
 routed_candidate_source_binding:
   source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
   candidate_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  source_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
-  candidate_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+  source_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
+  candidate_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
   candidate_matches_source_board: true
   source_placeholder_marker_count: 0
   candidate_placeholder_marker_count: 0
@@ -28,9 +28,9 @@ routed_candidate_source_binding:
 routed_step_visual_detail:
   source_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
-  source_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
-  source_step_sha256: fbb8b372614d6b9ed8dbe7b5fb01e2472cbc2ee784b786b1a0c2cf85e5a11fec
-  routed_intake_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  source_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
+  source_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
+  routed_intake_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
   footprint_envelope_count: 89
   pad_contact_visual_count: 1452
   route_segment_visual_count: 306
@@ -7932,6 +7932,28 @@ kicad_cad_traceability:
     incomplete_cad_connections: []
     captured_pinout_files_missing: []
     incomplete_captured_pinout_details: []
+instance_pin_step_disposition:
+  source: board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml
+  status: instance_pin_pattern_step_disposition_complete_not_release
+  component_instance_count: 89
+  routed_board_footprint_count: 89
+  pinout_bound_instance_count: 22
+  support_pattern_instance_count: 67
+  pending_supplier_pad_map_or_order_instance_count: 13
+  public_candidate_package_conflict_instance_count: 3
+  local_step_instance_count: 89
+  local_step_hash_match_count: 89
+  local_contract_pass_count: 89
+  local_review_pass_count: 89
+  supplier_approved_instance_count: 0
+  release_credit_instance_count: 0
+  local_failure_count: 0
+  record_count: 89
+  all_records_local_review_pass: true
+  all_records_have_local_step: true
+  all_records_local_step_hashes_match: true
+  all_records_release_credit_false: true
+  release_credit: false
 artifact_count: 45
 release_credit: false
 artifacts:

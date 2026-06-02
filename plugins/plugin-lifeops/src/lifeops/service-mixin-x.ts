@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import type {
   CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsXConnectorRequest,
   LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
@@ -9,9 +8,6 @@ import type {
   LifeOpsXConnectorStatus,
   LifeOpsXDm,
   LifeOpsXPostResponse,
-  StartLifeOpsXConnectorRequest,
-  StartLifeOpsXConnectorResponse,
-  UpsertLifeOpsXConnectorRequest,
 } from "../contracts/index.js";
 import { LIFEOPS_X_CAPABILITIES } from "../contracts/index.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
@@ -24,7 +20,6 @@ import {
   sendXConversationMessageWithRuntimeService,
   sendXDirectMessageWithRuntimeService,
 } from "./runtime-service-delegates.js";
-import { normalizeOptionalRecord } from "./service-helpers-misc.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -32,7 +27,6 @@ import type {
 } from "./service-mixin-core.js";
 import {
   fail,
-  normalizeEnumValue,
   normalizeOptionalBoolean,
   normalizeOptionalString,
   requireNonEmptyString,
@@ -52,15 +46,6 @@ export interface LifeOpsXService {
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
     requestedAccountId?: string | null,
-  ): Promise<LifeOpsXConnectorStatus>;
-  startXConnector(
-    request: StartLifeOpsXConnectorRequest,
-  ): Promise<StartLifeOpsXConnectorResponse>;
-  disconnectXConnector(
-    request: DisconnectLifeOpsXConnectorRequest,
-  ): Promise<LifeOpsXConnectorStatus>;
-  upsertXConnector(
-    request: UpsertLifeOpsXConnectorRequest,
   ): Promise<LifeOpsXConnectorStatus>;
   createXPost(
     request: CreateLifeOpsXPostRequest,
@@ -125,19 +110,6 @@ type XMixinDependencies = LifeOpsServiceBase & {
     channelType: LifeOpsChannelPolicy["channelType"],
   ): Promise<LifeOpsChannelPolicy | null>;
 };
-
-function normalizeXCapabilityRequest(
-  value: unknown,
-): LifeOpsXConnectorCapability[] {
-  const entries = Array.isArray(value) ? value : [];
-  if (entries.length === 0) {
-    fail(400, "capabilities must include at least one X capability");
-  }
-  const capabilities = entries.map((entry) =>
-    normalizeEnumValue(entry, "capabilities", LIFEOPS_X_CAPABILITIES),
-  );
-  return [...new Set(capabilities)];
-}
 
 function createSyntheticXGrant(
   agentId: string,
@@ -383,155 +355,6 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         dmInbound: capabilityFlags.dmRead,
         grant,
       };
-    }
-
-    async startXConnector(
-      request: StartLifeOpsXConnectorRequest,
-    ): Promise<StartLifeOpsXConnectorResponse> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const _mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      const requestedAccountId = xRequestedAccountId(request);
-      const runtimeStatus = await getXAccountStatusWithRuntimeService({
-        runtime: this.runtime,
-        accountId: requestedAccountId,
-      });
-      const accountId =
-        runtimeStatus.status === "handled"
-          ? runtimeStatus.value.accountId
-          : requestedAccountId;
-      const capabilities =
-        runtimeStatus.status === "handled" && runtimeStatus.value.connected
-          ? xRuntimeAvailableCapabilities(
-              side,
-              runtimeStatus.value.grantedCapabilities,
-            )
-          : [];
-      if (capabilities.length === 0) {
-        fail(
-          xDelegationFailureStatus(
-            runtimeStatus.status === "handled"
-              ? runtimeStatus.value.reason
-              : runtimeStatus.reason,
-          ),
-          "X plugin runtime service is not connected.",
-        );
-      }
-      const status = await this.upsertXConnector({
-        side,
-        mode: "local",
-        capabilities,
-        grantedScopes:
-          runtimeStatus.status === "handled"
-            ? runtimeStatus.value.grantedScopes
-            : [],
-        identity:
-          runtimeStatus.status === "handled"
-            ? (runtimeStatus.value.identity ?? {})
-            : {},
-        metadata: {
-          source: "plugin-x-runtime",
-          ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
-        },
-      });
-      return {
-        provider: "x",
-        side,
-        mode: status.mode,
-        requestedCapabilities: status.grantedCapabilities,
-        redirectUri: "",
-        authUrl: "",
-      };
-    }
-
-    async disconnectXConnector(
-      request: DisconnectLifeOpsXConnectorRequest = {},
-    ): Promise<LifeOpsXConnectorStatus> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
-      await this.repository.deleteConnectorGrant(
-        this.agentId(),
-        "x",
-        mode,
-        side,
-      );
-      return this.getXConnectorStatus(mode, side, xRequestedAccountId(request));
-    }
-
-    async upsertXConnector(
-      request: UpsertLifeOpsXConnectorRequest,
-    ): Promise<LifeOpsXConnectorStatus> {
-      const side =
-        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const mode =
-        normalizeOptionalConnectorMode(request.mode, "mode") ?? "local";
-      const existing = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "x",
-        mode,
-        side,
-      );
-      const capabilities = normalizeXCapabilityRequest(request.capabilities);
-      const scopes = Array.isArray(request.grantedScopes)
-        ? request.grantedScopes.map((scope, index) =>
-            requireNonEmptyString(scope, `grantedScopes[${index}]`),
-          )
-        : [];
-      const identity =
-        normalizeOptionalRecord(request.identity, "identity") ?? {};
-      const metadata =
-        normalizeOptionalRecord(request.metadata, "metadata") ?? {};
-      const requestedAccountId =
-        xRequestedAccountId(request) ?? xRequestedAccountId(metadata);
-      const grantMetadata = {
-        ...metadata,
-        ...(requestedAccountId
-          ? {
-              accountId: requestedAccountId,
-              connectorAccountId: requestedAccountId,
-            }
-          : {}),
-      };
-      const grant = existing
-        ? {
-            ...existing,
-            connectorAccountId:
-              requestedAccountId ?? existing.connectorAccountId,
-            identity,
-            grantedScopes: scopes,
-            capabilities,
-            metadata: {
-              ...existing.metadata,
-              ...grantMetadata,
-            },
-            updatedAt: new Date().toISOString(),
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "x",
-            connectorAccountId: requestedAccountId ?? undefined,
-            side,
-            identity,
-            grantedScopes: scopes,
-            capabilities,
-            tokenRef: null,
-            mode,
-            metadata: grantMetadata,
-            lastRefreshAt: new Date().toISOString(),
-          });
-      await this.repository.upsertConnectorGrant(grant);
-      await this.recordConnectorAudit(
-        `x:${mode}`,
-        "x connector updated",
-        { request },
-        {
-          capabilities,
-        },
-      );
-      return this.getXConnectorStatus(mode, side, requestedAccountId);
     }
 
     async getXDmDigest(

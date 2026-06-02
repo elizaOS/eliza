@@ -66,8 +66,9 @@ exposes everything the e1-phone needs:
 ### PATH A — SoM, buildable from public data (default)
 
 Buy the Core-3566JD4-class SoM. Connector pinout is public, BSP is public,
-module is buyable at MOQ 1. **No NDA anywhere in the compute path.** This is the
-path the current BoM and unit-cost rollup use.
+module is buyable at MOQ 1. **No NDA anywhere in the Path A SoM carrier-board
+compute integration path.** This is the path the current BoM and unit-cost
+rollup use; it does not retire the optional bare-SoC/LPDDR PHY blockers below.
 
 ### PATH B — bare SoC, cost-down at scale (optional, later)
 

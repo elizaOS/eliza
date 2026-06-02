@@ -10,7 +10,7 @@ Template: `mechanical/e1-phone/review/routed-board-clearance-results-template.cs
 - PASS: `concept_pcb_step_not_release_evidence`
 - PASS: `development_routed_step_available_for_local_review`
 - PASS: `height_critical_components_have_cad_envelopes`
-- PASS: `clearance_rerun_cases_defined`
+- PASS: `routed_step_release_clearance_cases_defined`
 - BLOCKED: `routed_step_clearance_results_present`
 
 ## Release Rule

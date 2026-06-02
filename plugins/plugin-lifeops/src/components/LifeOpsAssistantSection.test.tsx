@@ -4,7 +4,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_INTENTS,
-  HEALTH_ASSISTANT_INTENTS,
   LIFEOPS_ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
   LifeOpsAssistantIntentGrid,
@@ -89,13 +88,14 @@ describe("LifeOpsAssistantIntentGrid", () => {
     ).toBe(LIFEOPS_ASSISTANT_INTENTS.length);
   });
 
-  it("renders plugin-health commands as health-owned assistant intents", () => {
+  it("keeps plugin-health commands out of the LifeOps assistant deck", () => {
     render(<LifeOpsAssistantIntentGrid onLaunch={() => undefined} />);
 
-    expect(HEALTH_ASSISTANT_INTENTS.length).toBeGreaterThan(0);
-    for (const intent of HEALTH_ASSISTANT_INTENTS) {
-      expect(intent.id).toMatch(/^health:/);
-      expect(screen.getByLabelText(intent.label)).toBeTruthy();
+    expect(LIFEOPS_ASSISTANT_INTENTS).toHaveLength(ASSISTANT_INTENTS.length);
+    for (const intent of LIFEOPS_ASSISTANT_INTENTS) {
+      expect(intent.id).not.toMatch(/^health:/);
+      expect(intent.prompt.toLowerCase()).not.toContain("sleep recap");
+      expect(intent.prompt.toLowerCase()).not.toContain("screen time");
     }
   });
 

@@ -46,73 +46,73 @@ required_inputs:
 
 clearance_cases:
   - case_id: haptic_to_battery
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 1
     risk_level: high
     required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
     pass: false
   - case_id: split_interconnect_connectors_on_pcb_islands
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 1
     risk_level: high
     required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
     pass: false
   - case_id: usb_shell_to_external_aperture
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 1
     risk_level: high
     required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
     pass: false
   - case_id: battery_back_void_foam_to_pouch
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 2
     risk_level: medium
     required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
     pass: false
   - case_id: battery_to_pcb_islands
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 2
     risk_level: medium
     required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
     pass: false
   - case_id: bottom_mic_to_usb
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
     pass: false
   - case_id: front_camera_to_earpiece
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
     pass: false
   - case_id: haptic_to_pcb_islands
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
     pass: false
   - case_id: rear_camera_to_battery
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
     pass: false
   - case_id: split_interconnect_flex_to_battery_edge
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
     pass: false
   - case_id: split_interconnect_flex_within_side_rail
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
     pass: false
   - case_id: usb_to_bottom_speaker
-    status: blocked_waiting_routed_step_rerun
+    status: blocked_local_boolean_candidate_not_release
     rerun_priority: 3
     risk_level: normal
     required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
@@ -150,15 +150,15 @@ cross_checks:
   clearance_cases_match_mechanical_rerun_matrix: true
   release_report_matches_post_route_validation_output: true
   current_mechanical_clearance_json_is_not_release_evidence: true
-  all_clearance_cases_blocked_until_routed_step_rerun: true
+  all_clearance_cases_blocked_until_release_evidence: true
   selected_hardware_clearance_domains_fail_closed: true
   routed_step_supplier_models_boolean_physical_fit_and_functional_logs_required: true
 
 release_blockers:
-  - routed KiCad STEP with supplier component models is missing
+  - routed KiCad STEP exists only as a blocked local candidate, not approved production release evidence
   - production routed-board clearance release report is missing
   - current routed-board-clearance JSON is only a fail-closed intake/template
-  - all 12 clearance cases require routed STEP rerun and remain incomplete
+  - all 12 clearance cases require approved routed STEP, supplier component models, physical fit, and reviewer signoff
   - concept CAD boolean interference result cannot release enclosure placement
   - physical fit, functional logs, assembly drawing, ERC, DRC, and supplier 3D binding evidence are missing
 

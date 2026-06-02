@@ -20,7 +20,7 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `candidate_board_matches_real_footprint_source` | `True` |
 | `candidate_board_placeholder_marker_count` | `0` |
 | `candidate_board_legacy_e1phone_footprint_ref_count` | `0` |
-| `candidate_step_size_bytes` | `33644081` |
+| `candidate_step_size_bytes` | `33644627` |
 | `candidate_step_component_model_count` | `89` |
 | `candidate_step_pinout_bound_model_count` | `22` |
 | `candidate_step_cad_connection_count` | `32` |
@@ -46,7 +46,7 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | --- | ---: |
 | Status | `blocked_local_candidate_outputs_not_release` |
 | Release credit | `False` |
-| STEP bytes | `33644081` |
+| STEP bytes | `33644627` |
 | Component envelopes | `89` |
 | Pad/contact visuals | `1452` |
 | Route segment visuals | `306` |

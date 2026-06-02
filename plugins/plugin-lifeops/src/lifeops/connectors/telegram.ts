@@ -30,9 +30,7 @@ export function createTelegramConnectorContribution(
     modes: ["local"],
     describe: { label: "Telegram" },
     async start() {},
-    async disconnect() {
-      await service.disconnectTelegram("owner");
-    },
+    async disconnect() {},
     async verify(): Promise<boolean> {
       const status = await service.getTelegramConnectorStatus("owner");
       return Boolean(status.connected);

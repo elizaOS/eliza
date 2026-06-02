@@ -43,6 +43,8 @@ DEFAULT_TASKS = (
     "stand_up",
     "sit_down",
     "walk_forward",
+    "walk_forward_bridge",
+    "walk_forward_mid_bridge",
     "walk_backward",
     "sidestep_left",
     "sidestep_right",
@@ -306,6 +308,45 @@ def _count_alternating_contacts(
     return switches
 
 
+def _contact_state(left: float | None, right: float | None) -> str:
+    if left is None or right is None:
+        return "unknown"
+    left_on = left > 0.5
+    right_on = right > 0.5
+    if left_on and right_on:
+        return "double_support"
+    if left_on:
+        return "left"
+    if right_on:
+        return "right"
+    return "no_support"
+
+
+def _last_single_support(left_contacts: list[float], right_contacts: list[float]) -> str | None:
+    for left, right in reversed(list(zip(left_contacts, right_contacts, strict=False))):
+        state = _contact_state(left, right)
+        if state in {"left", "right"}:
+            return state
+    return None
+
+
+def _support_sequence(
+    left_contacts: list[float],
+    right_contacts: list[float],
+    *,
+    max_entries: int = 16,
+) -> list[str]:
+    sequence: list[str] = []
+    last: str | None = None
+    for left, right in zip(left_contacts, right_contacts, strict=False):
+        state = _contact_state(left, right)
+        if state == last:
+            continue
+        sequence.append(state)
+        last = state
+    return sequence[-max_entries:]
+
+
 def _trace_series(traces: dict[str, list[float]], root_key: str, tracked_key: str) -> list[float]:
     tracked = traces.get(tracked_key, [])
     return tracked if tracked else traces.get(root_key, [])
@@ -353,6 +394,144 @@ def _fell_during_candidate(row: dict) -> bool:
 
 def _wrap_pi(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def _distance_frontier(success: dict, traces: dict[str, list[float]]) -> list[dict]:
+    frontier: list[dict] = []
+    for name, root_key, tracked_key, direction in (
+        ("delta_x_m_min", "delta_x", "tracked_delta_x", "min"),
+        ("delta_x_m_max", "delta_x", "tracked_delta_x", "max"),
+        ("delta_y_m_min", "delta_y", "tracked_delta_y", "min"),
+        ("delta_y_m_max", "delta_y", "tracked_delta_y", "max"),
+    ):
+        if name not in success:
+            continue
+        target = float(success[name])
+        series = _trace_series(traces, root_key, tracked_key)
+        if not series:
+            frontier.append(
+                {
+                    "predicate": name,
+                    "target_m": target,
+                    "source": "tracked_body" if traces.get(tracked_key) else "root",
+                    "best_m": None,
+                    "final_m": None,
+                    "gap_m": None,
+                    "progress_fraction": 0.0,
+                    "sample_index": None,
+                }
+            )
+            continue
+        if direction == "min":
+            best = max(series)
+            sample_index = int(np.argmax(series))
+            gap = max(0.0, target - best)
+            progress = best / target if target > 0.0 else 0.0
+        else:
+            best = min(series)
+            sample_index = int(np.argmin(series))
+            gap = max(0.0, best - target)
+            progress = abs(min(0.0, best)) / abs(target) if target < 0.0 else 0.0
+        frontier.append(
+            {
+                "predicate": name,
+                "target_m": target,
+                "source": "tracked_body" if traces.get(tracked_key) else "root",
+                "best_m": best,
+                "final_m": series[-1],
+                "gap_m": gap,
+                "progress_fraction": float(max(0.0, min(progress, 1.5))),
+                "sample_index": sample_index,
+            }
+        )
+    return frontier
+
+
+def _walk_eval_diagnostics(
+    *,
+    success: dict,
+    final_info: dict,
+    traces: dict[str, list[float]],
+) -> dict:
+    left_contacts = traces.get("left_foot_contact", [])
+    right_contacts = traces.get("right_foot_contact", [])
+    final_left = left_contacts[-1] if left_contacts else None
+    final_right = right_contacts[-1] if right_contacts else None
+    final_phase = _finite_or_none(final_info.get("gait_phase"))
+    if final_phase is None and traces.get("gait_phase"):
+        final_phase = traces["gait_phase"][-1]
+    expected_support = None
+    if final_phase is not None:
+        phase_sin = math.sin(final_phase)
+        if phase_sin > 0.0:
+            expected_support = "left"
+        elif phase_sin < 0.0:
+            expected_support = "right"
+        else:
+            expected_support = "neutral"
+    else:
+        phase_sin = None
+
+    states = [
+        _contact_state(left, right)
+        for left, right in zip(left_contacts, right_contacts, strict=False)
+    ]
+    alternating_switch_count = _count_alternating_contacts(left_contacts, right_contacts)
+    required_switches = (
+        int(success["min_alternating_foot_contacts"])
+        if "min_alternating_foot_contacts" in success
+        else None
+    )
+    observed_left_single = any(state == "left" for state in states)
+    observed_right_single = any(state == "right" for state in states)
+    max_left_slip = _safe_max(traces.get("left_foot_slip", []))
+    max_right_slip = _safe_max(traces.get("right_foot_slip", []))
+    slip_values = [value for value in (max_left_slip, max_right_slip) if value is not None]
+    max_slip = max(slip_values) if slip_values else _safe_max(traces.get("foot_slip", []))
+
+    return {
+        "gait_phase_rad": {
+            "final": final_phase,
+            "sin": phase_sin,
+            "cos": None if final_phase is None else math.cos(final_phase),
+            "expected_support_foot": expected_support,
+        },
+        "contacts": {
+            "final_left": None if final_left is None else bool(final_left),
+            "final_right": None if final_right is None else bool(final_right),
+            "final_state": _contact_state(final_left, final_right),
+            "left_single_support_samples": sum(1 for state in states if state == "left"),
+            "right_single_support_samples": sum(1 for state in states if state == "right"),
+            "double_support_samples": sum(1 for state in states if state == "double_support"),
+            "no_support_samples": sum(1 for state in states if state == "no_support"),
+            "alternating_switch_count": alternating_switch_count,
+            "required_alternating_switch_count": required_switches,
+            "observed_both_single_support_feet": observed_left_single and observed_right_single,
+            "declared_alternation_met": None
+            if required_switches is None
+            else alternating_switch_count >= required_switches,
+            "support_sequence_tail": _support_sequence(left_contacts, right_contacts),
+        },
+        "support_foot": {
+            "final": _contact_state(final_left, final_right),
+            "last_single": _last_single_support(left_contacts, right_contacts),
+        },
+        "pitch_rad": {
+            "final": _finite_or_none(final_info.get("imu_pitch")),
+            "max_abs": _safe_max_abs(traces.get("imu_pitch", [])),
+            "min": _safe_min(traces.get("imu_pitch", [])),
+            "max": _safe_max(traces.get("imu_pitch", [])),
+        },
+        "slip_m_s": {
+            "final_left": _finite_or_none(final_info.get("left_foot_slip_m_s")),
+            "final_right": _finite_or_none(final_info.get("right_foot_slip_m_s")),
+            "max_left": max_left_slip,
+            "max_right": max_right_slip,
+            "max": max_slip,
+            "limit": _finite_or_none(success.get("max_foot_slip_m_s")),
+        },
+        "distance_frontier": _distance_frontier(success, traces),
+    }
 
 
 def _termination_reason(
@@ -791,8 +970,8 @@ def _deterministic_action(env: TextConditionedProfileEnv, task_id: str, step: in
     for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
         name = joint.name.lower()
         side = -1.0 if name.startswith("l_") else 1.0
-        if task_id in {"walk_forward", "walk_backward"}:
-            direction = 1.0 if task_id == "walk_forward" else -1.0
+        if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge", "walk_backward"}:
+            direction = -1.0 if task_id == "walk_backward" else 1.0
             if "hip_pitch" in name:
                 action[idx] = 0.7 * phase * side * direction
             elif "knee" in name:
@@ -818,7 +997,7 @@ def _deterministic_action(env: TextConditionedProfileEnv, task_id: str, step: in
 
 
 def _controller_command(task_id: str) -> tuple[float, float, float] | None:
-    if task_id == "walk_forward":
+    if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge"}:
         return (0.20, 0.0, 0.0)
     if task_id == "walk_backward":
         return (-0.16, 0.0, 0.0)
@@ -840,7 +1019,7 @@ def _locomotion_progress_fraction(
     tracked_delta_x: float | None,
     tracked_delta_y: float | None,
 ) -> float:
-    if task_id in {"walk_forward", "walk_backward"}:
+    if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge", "walk_backward"}:
         delta = tracked_delta_x
         min_key = "delta_x_m_min"
         max_key = "delta_x_m_max"
@@ -1081,7 +1260,7 @@ def _make_bezier_action(
 
 
 def _motion_clip_for_task(task_id: str) -> tuple[str, Callable[[np.ndarray], np.ndarray]] | None:
-    if task_id == "walk_forward":
+    if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge"}:
         return "walk_forward_clip.npz", lambda joints: joints
     if task_id == "walk_backward":
         def _backward(joints: np.ndarray) -> np.ndarray:
@@ -1196,7 +1375,7 @@ def _make_sinusoidal_action(
 
     def _action(step: int) -> np.ndarray | None:
         nonlocal last_action
-        if task_id not in {"walk_forward", "walk_backward"}:
+        if task_id not in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge", "walk_backward"}:
             return None
         action = _sine_action(step)
         switch_step = params.get("hold_switch_step")
@@ -1232,6 +1411,7 @@ def _make_env_locomotion_prior_action(
         "hiwonder_sine": env._locomotion_hiwonder_sine_prior_action,  # noqa: SLF001
         "hiwonder_contact_sine": env._locomotion_hiwonder_contact_sine_prior_action,  # noqa: SLF001
         "hiwonder_low_slip_contact_sine": env._locomotion_hiwonder_low_slip_contact_sine_prior_action,  # noqa: SLF001
+        "hiwonder_bounded_step_walk": env._locomotion_hiwonder_bounded_step_walk_prior_action,  # noqa: SLF001
     }
     method = method_by_prior[prior_name]
 
@@ -1271,6 +1451,459 @@ def _make_switched_deterministic_action(
                 action = float(post_scale) * last_action
         last_action = action.copy()
         return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    return _action
+
+
+def _make_hiwonder_staged_biped_action(
+    env: TextConditionedProfileEnv,
+    task_id: str,
+) -> Callable[[int], np.ndarray | None]:
+    """Open-loop smoke primitive for staged single-support prerequisites."""
+    if task_id not in {
+        "weight_shift_left",
+        "weight_shift_right",
+        "lift_left_foot",
+        "lift_right_foot",
+        "step_in_place",
+        "step_forward",
+    }:
+        return lambda _step: None
+
+    def _lift_action(lift_side: str, roll: float) -> np.ndarray:
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = -0.25
+            elif "knee" in name:
+                action[idx] = 0.75
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = 0.20
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _weight_shift_action(stance_side: str) -> np.ndarray:
+        # A conservative roll preload. It should not claim a solved one-foot
+        # stance; it only exposes whether the robot can bias support without
+        # violating height/drift/yaw/slip gates.
+        roll = 0.20 if stance_side == "left" else -0.20
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _forward_lift_action(lift_side: str) -> np.ndarray:
+        roll = 0.40 if lift_side == "left" else -0.40
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = 0.10
+            elif "knee" in name:
+                action[idx] = 0.75
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = 0.20
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _action(step: int) -> np.ndarray | None:
+        if task_id == "weight_shift_left":
+            return _weight_shift_action("left")
+        if task_id == "weight_shift_right":
+            return _weight_shift_action("right")
+        if task_id == "lift_left_foot":
+            if step < 30:
+                return _lift_action("left", roll=0.45)
+            return np.zeros(env.action_space.shape, dtype=np.float32)
+        if task_id == "lift_right_foot":
+            if step < 30:
+                return _lift_action("right", roll=-0.45)
+            return np.zeros(env.action_space.shape, dtype=np.float32)
+        if task_id == "step_forward":
+            if step >= 60:
+                return np.zeros(env.action_space.shape, dtype=np.float32)
+            cycle = step % 36
+            if cycle < 8:
+                return _forward_lift_action("left")
+            if cycle < 14:
+                return np.zeros(env.action_space.shape, dtype=np.float32)
+            if cycle < 22:
+                return _forward_lift_action("right")
+            return np.zeros(env.action_space.shape, dtype=np.float32)
+        # Alternate brief single-foot lift attempts with a neutral recovery.
+        # Longer first lifts prove a foot can clear, but tip over before the
+        # second stance; this timing reaches two single-support switches and
+        # then settles upright.
+        cycle = step % 36
+        if cycle < 8:
+            return _lift_action("left", roll=0.45)
+        if cycle < 14:
+            return np.zeros(env.action_space.shape, dtype=np.float32)
+        if cycle < 30:
+            return _lift_action("right", roll=-0.45)
+        return np.zeros(env.action_space.shape, dtype=np.float32)
+
+    return _action
+
+
+def _make_hiwonder_bounded_walk_progress_action(
+    env: TextConditionedProfileEnv,
+    task_id: str,
+    *,
+    params: dict[str, Any],
+) -> Callable[[int], np.ndarray | None]:
+    """Bounded HiWonder walk candidate built from the staged forward step.
+
+    This intentionally remains a smoke/search primitive: it repeats the
+    validated step-forward lift shape, stops once bounded progress is reached,
+    then holds the current joint pose with light yaw/lateral correction.
+    """
+    if task_id not in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge"}:
+        return lambda _step: None
+
+    cycle_steps = int(params.get("cycle_steps", 42))
+    left_lift_steps = int(params.get("left_lift_steps", 8))
+    neutral_steps = int(params.get("neutral_steps", 6))
+    right_lift_steps = int(params.get("right_lift_steps", 8))
+    drive_steps = int(params.get("drive_steps", 240))
+    stop_delta_x_m = float(params.get("stop_delta_x_m", 0.305))
+    roll_amplitude = float(params.get("roll_amplitude", 0.35))
+    hip_pitch = float(params.get("hip_pitch", 0.25))
+    knee = float(params.get("knee", 0.85))
+    ankle_pitch = float(params.get("ankle_pitch", 0.20))
+    yaw_gain = float(params.get("yaw_gain", 0.0))
+    lateral_gain = float(params.get("lateral_gain", 0.0))
+    hold_yaw_gain = float(params.get("hold_yaw_gain", 0.2))
+    hold_lateral_gain = float(params.get("hold_lateral_gain", 0.4))
+    hold_correction_mix = float(params.get("hold_correction_mix", 0.25))
+    settle_blend_steps = max(1, int(params.get("settle_blend_steps", 20)))
+    hold_action: np.ndarray | None = None
+    settle_started_step: int | None = None
+
+    def _tracked_delta() -> tuple[float, float, float, float]:
+        pose = env._root_pose_summary()  # noqa: SLF001
+        tracked = env._tracked_pose_summary(pose)  # noqa: SLF001
+        delta_x = float(tracked["x"] - env._episode_start_tracked_x)  # noqa: SLF001
+        delta_y = float(tracked["y"] - env._episode_start_tracked_y)  # noqa: SLF001
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - env._episode_start_yaw)  # noqa: SLF001
+        return delta_x, delta_y, yaw, float(pose.get("roll", 0.0))
+
+    def _forward_lift_action(lift_side: str) -> np.ndarray:
+        _, delta_y, yaw, roll_now = _tracked_delta()
+        roll = (
+            (roll_amplitude if lift_side == "left" else -roll_amplitude)
+            + lateral_gain * delta_y
+            + 0.15 * roll_now
+        )
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            side_sign = 1.0 if side == "left" else -1.0
+            if "hip_yaw" in name:
+                action[idx] = yaw_gain * side_sign * yaw
+            elif "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = hip_pitch
+            elif "knee" in name:
+                action[idx] = knee
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = ankle_pitch
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _hold_action() -> np.ndarray:
+        nonlocal hold_action
+        if hold_action is None:
+            hold_action = _joint_pose_action(env)
+        _, delta_y, yaw, _ = _tracked_delta()
+        correction = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side_sign = 1.0 if name.startswith(("l_", "left_")) else -1.0
+            if "hip_yaw" in name:
+                correction[idx] = hold_yaw_gain * side_sign * yaw
+            elif "hip_roll" in name:
+                correction[idx] = hold_lateral_gain * delta_y
+            elif "ank_roll" in name or "ankle_roll" in name:
+                correction[idx] = -hold_lateral_gain * delta_y
+        return np.clip(
+            (1.0 - hold_correction_mix) * hold_action + correction,
+            -1.0,
+            1.0,
+        ).astype(np.float32)
+
+    neutral = np.zeros(env.action_space.shape, dtype=np.float32)
+
+    def _drive_action(step: int) -> np.ndarray:
+        cycle = step % cycle_steps
+        if cycle < left_lift_steps:
+            return _forward_lift_action("left")
+        if cycle < left_lift_steps + neutral_steps:
+            return neutral
+        if cycle < left_lift_steps + neutral_steps + right_lift_steps:
+            return _forward_lift_action("right")
+        return neutral
+
+    def _action(step: int) -> np.ndarray | None:
+        nonlocal settle_started_step
+        delta_x, _, _, _ = _tracked_delta()
+        should_settle = step >= drive_steps or delta_x >= stop_delta_x_m
+        if should_settle and settle_started_step is None:
+            settle_started_step = step
+        if settle_started_step is None:
+            return _drive_action(step)
+        alpha = min(
+            1.0,
+            float(step - settle_started_step + 1) / float(settle_blend_steps),
+        )
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        return np.clip(
+            (1.0 - alpha) * _drive_action(step) + alpha * _hold_action(),
+            -1.0,
+            1.0,
+        ).astype(np.float32)
+
+    return _action
+
+
+def _make_hiwonder_walk_forward_phase_machine_action(
+    env: TextConditionedProfileEnv,
+    task_id: str,
+    *,
+    params: dict[str, Any],
+) -> Callable[[int], np.ndarray | None]:
+    """Bounded drive -> settle -> balance-hold candidate for full walk_forward.
+
+    The drive defaults are intentionally centered on the current
+    hiwonder_bounded_step_walk env prior that proves walk_forward_mid_bridge.
+    This variant only changes when and how the controller settles/holds; it
+    does not alter curriculum success predicates.
+    """
+    if task_id != "walk_forward":
+        return lambda _step: None
+
+    cycle_steps = int(params.get("cycle_steps", 52))
+    left_lift_steps = int(params.get("left_lift_steps", 8))
+    neutral_steps = int(params.get("neutral_steps", 16))
+    right_lift_steps = int(params.get("right_lift_steps", 8))
+    drive_steps = int(params.get("drive_steps", 220))
+    stop_delta_x_m = float(params.get("stop_delta_x_m", 0.305))
+    settle_delta_x_m = float(params.get("settle_delta_x_m", stop_delta_x_m))
+    tilt_settle_rad = float(params.get("tilt_settle_rad", 0.48))
+    roll_amplitude = float(params.get("roll_amplitude", 0.30))
+    hip_pitch = float(params.get("hip_pitch", 0.40))
+    knee = float(params.get("knee", 0.85))
+    ankle_pitch = float(params.get("ankle_pitch", 0.20))
+    yaw_gain = float(params.get("yaw_gain", 0.40))
+    lateral_gain = float(params.get("lateral_gain", -0.40))
+    roll_feedback = float(params.get("roll_feedback", 0.15))
+    settle_blend_steps = max(1, int(params.get("settle_blend_steps", 24)))
+    hold_mode = str(params.get("hold_mode", "neutral"))
+    hold_pose_mix = float(params.get("hold_pose_mix", 0.0))
+    pitch_gain = float(params.get("pitch_gain", 0.0))
+    knee_pitch_gain = float(params.get("knee_pitch_gain", 0.0))
+    ankle_pitch_gain = float(params.get("ankle_pitch_gain", 0.0))
+    plant_knee = float(params.get("plant_knee", 0.0))
+    plant_ankle_pitch = float(params.get("plant_ankle_pitch", 0.0))
+    roll_gain = float(params.get("roll_gain", 0.0))
+    yaw_hold_gain = float(params.get("yaw_hold_gain", 0.0))
+    lateral_hold_gain = float(params.get("lateral_hold_gain", 0.0))
+    drive_after_tilt_scale = float(params.get("drive_after_tilt_scale", 0.0))
+    settle_started_step: int | None = None
+    captured_action: np.ndarray | None = None
+    neutral_action = np.zeros(env.action_space.shape, dtype=np.float32)
+
+    def _tracked_delta() -> tuple[float, float, float, float, float]:
+        pose = env._root_pose_summary()  # noqa: SLF001
+        tracked = env._tracked_pose_summary(pose)  # noqa: SLF001
+        delta_x = float(tracked["x"] - env._episode_start_tracked_x)  # noqa: SLF001
+        delta_y = float(tracked["y"] - env._episode_start_tracked_y)  # noqa: SLF001
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - env._episode_start_yaw)  # noqa: SLF001
+        return (
+            delta_x,
+            delta_y,
+            yaw,
+            float(pose.get("roll", 0.0)),
+            float(pose.get("pitch", 0.0)),
+        )
+
+    def _drive_action(step: int) -> np.ndarray:
+        _, delta_y, yaw, roll_now, pitch_now = _tracked_delta()
+        cycle = step % cycle_steps
+        if cycle < left_lift_steps:
+            lift_side = "left"
+        elif cycle < left_lift_steps + neutral_steps:
+            return neutral_action
+        elif cycle < left_lift_steps + neutral_steps + right_lift_steps:
+            lift_side = "right"
+        else:
+            return neutral_action
+
+        pitch_scale = 1.0
+        if abs(pitch_now) >= tilt_settle_rad:
+            pitch_scale = drive_after_tilt_scale
+        roll = (
+            (roll_amplitude if lift_side == "left" else -roll_amplitude)
+            + lateral_gain * delta_y
+            + roll_feedback * roll_now
+        )
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            side_sign = 1.0 if side == "left" else -1.0
+            if "hip_yaw" in name:
+                action[idx] = yaw_gain * side_sign * yaw
+            elif "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = pitch_scale * hip_pitch
+            elif "knee" in name:
+                action[idx] = knee
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = ankle_pitch
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _hold_action() -> np.ndarray:
+        nonlocal captured_action
+        if captured_action is None:
+            captured_action = _joint_pose_action(env)
+        _, delta_y, yaw, roll_now, pitch_now = _tracked_delta()
+        base = neutral_action if hold_mode == "neutral" else captured_action
+        if hold_pose_mix > 0.0:
+            base = (1.0 - hold_pose_mix) * base + hold_pose_mix * captured_action
+        if hold_mode == "pitch_brake":
+            correction = np.zeros(env.action_space.shape, dtype=np.float32)
+            pitch_sign = 1.0 if pitch_now >= 0.0 else -1.0
+            for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+                name = joint.name.lower()
+                side_sign = 1.0 if name.startswith(("l_", "left_")) else -1.0
+                if "hip_pitch" in name:
+                    correction[idx] = -pitch_gain * pitch_now
+                elif "knee" in name:
+                    correction[idx] = plant_knee + knee_pitch_gain * abs(pitch_now)
+                elif "ank_pitch" in name or "ankle_pitch" in name:
+                    correction[idx] = plant_ankle_pitch + ankle_pitch_gain * pitch_sign * abs(
+                        pitch_now
+                    )
+                elif "hip_yaw" in name:
+                    correction[idx] = yaw_hold_gain * side_sign * yaw
+                elif "hip_roll" in name:
+                    correction[idx] = roll_gain * roll_now
+                elif "ank_roll" in name or "ankle_roll" in name:
+                    correction[idx] = -roll_gain * roll_now
+        else:
+            correction = _balance_correction_action(
+                env,
+                roll=roll_now,
+                pitch=pitch_now,
+                yaw=yaw,
+                pitch_gain=pitch_gain,
+                roll_gain=roll_gain,
+                yaw_gain=yaw_hold_gain,
+            )
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            if "hip_roll" in name:
+                correction[idx] += lateral_hold_gain * delta_y
+            elif "ank_roll" in name or "ankle_roll" in name:
+                correction[idx] -= lateral_hold_gain * delta_y
+        return np.clip(base + correction, -1.0, 1.0).astype(np.float32)
+
+    def _action(step: int) -> np.ndarray | None:
+        nonlocal settle_started_step, captured_action
+        delta_x, _, _, _, pitch_now = _tracked_delta()
+        should_settle = (
+            step >= drive_steps
+            or delta_x >= settle_delta_x_m
+            or (abs(pitch_now) >= tilt_settle_rad and delta_x >= stop_delta_x_m)
+        )
+        if should_settle and settle_started_step is None:
+            settle_started_step = step
+            captured_action = _joint_pose_action(env)
+        if settle_started_step is None:
+            return _drive_action(step)
+        alpha = min(
+            1.0,
+            float(step - settle_started_step + 1) / float(settle_blend_steps),
+        )
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        drive = _drive_action(step)
+        hold = _hold_action()
+        return np.clip((1.0 - alpha) * drive + alpha * hold, -1.0, 1.0).astype(
+            np.float32
+        )
+
+    return _action
+
+
+def _make_hiwonder_short_lunge_hold_action(
+    env: TextConditionedProfileEnv,
+    task_id: str,
+    *,
+    params: dict[str, Any],
+) -> Callable[[int], np.ndarray | None]:
+    if task_id not in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge"}:
+        return lambda _step: None
+    drive_scale = float(params.get("drive_scale", 0.4))
+    drive_steps = int(params.get("drive_steps", 34))
+    settle_blend_steps = max(1, int(params.get("settle_blend_steps", 20)))
+    pitch_gain = float(params.get("pitch_gain", 1.0))
+    roll_gain = float(params.get("roll_gain", 0.3))
+    yaw_gain = float(params.get("yaw_gain", 0.2))
+    hold_mix = float(params.get("hold_mix", 0.7))
+    hold_action: np.ndarray | None = None
+
+    def _action(step: int) -> np.ndarray | None:
+        nonlocal hold_action
+        drive = drive_scale * _deterministic_action(env, task_id, step)
+        if step < drive_steps:
+            return np.clip(drive, -1.0, 1.0).astype(np.float32)
+        if hold_action is None:
+            hold_action = _joint_pose_action(env)
+        pose = env._root_pose_summary()  # noqa: SLF001
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - env._episode_start_yaw)  # noqa: SLF001
+        correction = _balance_correction_action(
+            env,
+            roll=float(pose.get("roll", 0.0)),
+            pitch=float(pose.get("pitch", 0.0)),
+            yaw=yaw,
+            pitch_gain=pitch_gain,
+            roll_gain=roll_gain,
+            yaw_gain=yaw_gain,
+        )
+        alpha = min(1.0, float(step - drive_steps + 1) / float(settle_blend_steps))
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        hold = (1.0 - hold_mix) * hold_action + correction
+        return np.clip((1.0 - alpha) * drive + alpha * hold, -1.0, 1.0).astype(
+            np.float32
+        )
 
     return _action
 
@@ -1370,6 +2003,22 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
     specs = [
         _PrimitiveSpec("deterministic_smoke", 0.3, _make_deterministic_action),
     ]
+    if profile_id == "hiwonder-ainex" and task_id in {
+        "weight_shift_left",
+        "weight_shift_right",
+        "lift_left_foot",
+        "lift_right_foot",
+        "step_in_place",
+        "step_forward",
+    }:
+        specs.insert(
+            0,
+            _PrimitiveSpec(
+                "hiwonder_staged_biped",
+                1.0,
+                _make_hiwonder_staged_biped_action,
+            ),
+        )
     if task_id == "stand_up":
         specs.insert(
             0,
@@ -1416,11 +2065,384 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
         )
         if _motion_clip_for_task(task_id) is not None:
             specs.append(_PrimitiveSpec("motion_clip", 1.0, _make_motion_clip_action))
-        if task_id in {"walk_forward", "walk_backward"}:
+        if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge", "walk_backward"}:
+            if task_id in {"walk_forward", "walk_forward_bridge", "walk_forward_mid_bridge"}:
+                bounded_walk_params = (
+                    {
+                        "cycle_steps": 36,
+                        "left_lift_steps": 8,
+                        "neutral_steps": 6,
+                        "right_lift_steps": 8,
+                        "drive_steps": 180,
+                        "stop_delta_x_m": 0.305,
+                        "roll_amplitude": 0.40,
+                        "hip_pitch": 0.10,
+                        "knee": 0.75,
+                        "ankle_pitch": 0.20,
+                        "yaw_gain": 0.0,
+                        "lateral_gain": 0.0,
+                        "hold_yaw_gain": 0.2,
+                        "hold_lateral_gain": 0.4,
+                        "hold_correction_mix": 0.25,
+                        "settle_blend_steps": 20,
+                    },
+                    {
+                        "cycle_steps": 42,
+                        "left_lift_steps": 8,
+                        "neutral_steps": 6,
+                        "right_lift_steps": 8,
+                        "drive_steps": 240,
+                        "stop_delta_x_m": 0.305,
+                        "roll_amplitude": 0.32,
+                        "hip_pitch": 0.25,
+                        "knee": 0.85,
+                        "ankle_pitch": 0.20,
+                        "yaw_gain": 0.8,
+                        "lateral_gain": -0.4,
+                        "hold_yaw_gain": 0.2,
+                        "hold_lateral_gain": 0.4,
+                        "hold_correction_mix": 0.25,
+                        "settle_blend_steps": 20,
+                    },
+                    {
+                        "cycle_steps": 42,
+                        "left_lift_steps": 8,
+                        "neutral_steps": 6,
+                        "right_lift_steps": 8,
+                        "drive_steps": 240,
+                        "stop_delta_x_m": 0.305,
+                        "roll_amplitude": 0.35,
+                        "hip_pitch": 0.25,
+                        "knee": 1.0,
+                        "ankle_pitch": 0.20,
+                        "yaw_gain": 0.0,
+                        "lateral_gain": 0.0,
+                        "hold_yaw_gain": 0.2,
+                        "hold_lateral_gain": 0.4,
+                        "hold_correction_mix": 0.25,
+                        "settle_blend_steps": 20,
+                    },
+                    {
+                        "cycle_steps": 40,
+                        "left_lift_steps": 8,
+                        "neutral_steps": 4,
+                        "right_lift_steps": 8,
+                        "drive_steps": 240,
+                        "stop_delta_x_m": 0.305,
+                        "roll_amplitude": 0.24,
+                        "hip_pitch": 0.32,
+                        "knee": 0.95,
+                        "ankle_pitch": 0.20,
+                        "yaw_gain": 0.8,
+                        "lateral_gain": -0.4,
+                        "hold_yaw_gain": 0.2,
+                        "hold_lateral_gain": 0.4,
+                        "hold_correction_mix": 0.25,
+                        "settle_blend_steps": 20,
+                    },
+                )
+                for idx, params in enumerate(bounded_walk_params):
+                    specs.append(
+                        _PrimitiveSpec(
+                            f"hiwonder_bounded_step_forward_walk_{idx}",
+                            1.0,
+                            partial(
+                                _make_hiwonder_bounded_walk_progress_action,
+                                params=params,
+                            ),
+                            dict(params),
+                        )
+                    )
+                if task_id == "walk_forward":
+                    phase_machine_params = (
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 220,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.305,
+                            "tilt_settle_rad": 0.50,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.48,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 18,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.45,
+                            "roll_gain": 0.20,
+                            "yaw_hold_gain": 0.12,
+                            "lateral_hold_gain": -0.25,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 48,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 12,
+                            "right_lift_steps": 8,
+                            "drive_steps": 210,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.305,
+                            "tilt_settle_rad": 0.50,
+                            "roll_amplitude": 0.28,
+                            "hip_pitch": 0.44,
+                            "knee": 0.82,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.35,
+                            "lateral_gain": -0.35,
+                            "roll_feedback": 0.12,
+                            "settle_blend_steps": 16,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.35,
+                            "roll_gain": 0.15,
+                            "yaw_hold_gain": 0.10,
+                            "lateral_hold_gain": -0.20,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 44,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 10,
+                            "right_lift_steps": 8,
+                            "drive_steps": 200,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.305,
+                            "tilt_settle_rad": 0.52,
+                            "roll_amplitude": 0.26,
+                            "hip_pitch": 0.40,
+                            "knee": 0.82,
+                            "ankle_pitch": 0.18,
+                            "yaw_gain": 0.30,
+                            "lateral_gain": -0.30,
+                            "roll_feedback": 0.10,
+                            "settle_blend_steps": 14,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.30,
+                            "roll_gain": 0.10,
+                            "yaw_hold_gain": 0.08,
+                            "lateral_hold_gain": -0.15,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 220,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.305,
+                            "tilt_settle_rad": 0.50,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.48,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 22,
+                            "hold_mode": "captured",
+                            "hold_pose_mix": 0.25,
+                            "pitch_gain": -0.35,
+                            "roll_gain": 0.15,
+                            "yaw_hold_gain": 0.10,
+                            "lateral_hold_gain": -0.20,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 132,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.245,
+                            "tilt_settle_rad": 0.44,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 12,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.20,
+                            "roll_gain": 0.10,
+                            "yaw_hold_gain": 0.05,
+                            "lateral_hold_gain": -0.10,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 146,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.260,
+                            "tilt_settle_rad": 0.48,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 12,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.15,
+                            "roll_gain": 0.08,
+                            "yaw_hold_gain": 0.05,
+                            "lateral_hold_gain": -0.08,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 156,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.275,
+                            "tilt_settle_rad": 0.52,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 10,
+                            "hold_mode": "neutral",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": -0.10,
+                            "roll_gain": 0.06,
+                            "yaw_hold_gain": 0.04,
+                            "lateral_hold_gain": -0.06,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 240,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.230,
+                            "tilt_settle_rad": 0.60,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 2,
+                            "hold_mode": "pitch_brake",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": 1.50,
+                            "roll_gain": 0.10,
+                            "yaw_hold_gain": 0.20,
+                            "lateral_hold_gain": -0.40,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 240,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.225,
+                            "tilt_settle_rad": 0.60,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 4,
+                            "hold_mode": "pitch_brake",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": 1.00,
+                            "roll_gain": 0.10,
+                            "yaw_hold_gain": 0.20,
+                            "lateral_hold_gain": -0.40,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                        {
+                            "cycle_steps": 52,
+                            "left_lift_steps": 8,
+                            "neutral_steps": 16,
+                            "right_lift_steps": 8,
+                            "drive_steps": 240,
+                            "stop_delta_x_m": 0.305,
+                            "settle_delta_x_m": 0.200,
+                            "tilt_settle_rad": 0.60,
+                            "roll_amplitude": 0.30,
+                            "hip_pitch": 0.40,
+                            "knee": 0.85,
+                            "ankle_pitch": 0.20,
+                            "yaw_gain": 0.40,
+                            "lateral_gain": -0.40,
+                            "roll_feedback": 0.15,
+                            "settle_blend_steps": 12,
+                            "hold_mode": "pitch_brake",
+                            "hold_pose_mix": 0.0,
+                            "pitch_gain": 1.00,
+                            "roll_gain": 0.10,
+                            "yaw_hold_gain": 0.20,
+                            "lateral_hold_gain": -0.40,
+                            "drive_after_tilt_scale": 0.0,
+                        },
+                    )
+                    for idx, params in enumerate(phase_machine_params):
+                        specs.append(
+                            _PrimitiveSpec(
+                                f"hiwonder_walk_forward_phase_machine_{idx}",
+                                1.0,
+                                partial(
+                                    _make_hiwonder_walk_forward_phase_machine_action,
+                                    params=params,
+                                ),
+                                dict(params),
+                            )
+                        )
+                short_lunge_params = {
+                    "drive_scale": 0.4,
+                    "drive_steps": 34,
+                    "settle_blend_steps": 20,
+                    "pitch_gain": 1.0,
+                    "roll_gain": 0.3,
+                    "yaw_gain": 0.2,
+                    "hold_mix": 0.7,
+                }
+                specs.append(
+                    _PrimitiveSpec(
+                        "hiwonder_short_lunge_hold",
+                        1.0,
+                        partial(
+                            _make_hiwonder_short_lunge_hold_action,
+                            params=short_lunge_params,
+                        ),
+                        dict(short_lunge_params),
+                    )
+                )
             for prior_name in (
                 "hiwonder_sine",
                 "hiwonder_contact_sine",
                 "hiwonder_low_slip_contact_sine",
+                "hiwonder_bounded_step_walk",
             ):
                 specs.append(
                     _PrimitiveSpec(
@@ -1628,10 +2650,13 @@ def _rollout_candidate(
         "tracked_delta_z": [],
         "imu_roll": [],
         "imu_pitch": [],
+        "gait_phase": [],
         "left_foot_contact": [],
         "right_foot_contact": [],
         "swing_foot_clearance": [],
         "foot_slip": [],
+        "left_foot_slip": [],
+        "right_foot_slip": [],
         "self_collision_count": [],
     }
     result = None
@@ -1658,6 +2683,7 @@ def _rollout_candidate(
             "tracked_delta_z",
             "imu_roll",
             "imu_pitch",
+            "gait_phase",
         ):
             value = _finite_or_none(last_info.get(key))
             if value is not None:
@@ -1683,6 +2709,8 @@ def _rollout_candidate(
             value = _finite_or_none(last_info.get(key))
             if value is not None:
                 traces["foot_slip"].append(value)
+                trace_key = "left_foot_slip" if key.startswith("left_") else "right_foot_slip"
+                traces[trace_key].append(value)
         value = _finite_or_none(last_info.get("self_collision_count"))
         if value is not None:
             traces["self_collision_count"].append(value)
@@ -1770,6 +2798,11 @@ def _rollout_candidate(
             "min": _safe_min(traces["imu_pitch"]),
             "max": _safe_max(traces["imu_pitch"]),
         },
+        "walk_eval": _walk_eval_diagnostics(
+            success=task.success,
+            final_info=last_info,
+            traces=traces,
+        ),
         "success_predicates": success_predicates,
         "unmet_success_predicates": [
             row["predicate"] for row in success_predicates if row["unmet"]
@@ -1862,6 +2895,7 @@ def _candidate_summary(row: dict) -> dict:
         "max_abs_imu_pitch_rad": row.get("max_abs_imu_pitch_rad"),
         "max_success_window_s": row.get("max_success_window_s"),
         "tracked_body": row.get("diagnostics", {}).get("tracked_body"),
+        "walk_eval": row.get("diagnostics", {}).get("walk_eval"),
         "progress_ratio": row["progress_ratio"],
         "unmet_success_predicates": row["diagnostics"]["unmet_success_predicates"],
         "candidate_score": row["candidate_score"],
@@ -1922,7 +2956,7 @@ def validate(profile: str, tasks: tuple[str, ...], *, max_steps: int) -> dict:
     return {
         "schema": "robot-task-feasibility-v1",
         "profile_id": profile,
-        "controller": "hiwonder_closed_loop_progress_settle_plus_existing_primitives",
+        "controller": "hiwonder_bounded_walk_progress_plus_existing_primitives",
         "max_steps": max_steps,
         "tasks": rows,
         "n_tasks": len(rows),

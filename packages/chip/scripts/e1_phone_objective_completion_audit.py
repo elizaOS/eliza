@@ -75,6 +75,9 @@ def main() -> int:
         BOARD_ROOT / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
     )
     pad_pin_audit = load_yaml(BOARD_ROOT / "development-pad-pin-coverage-audit-2026-05-22.yaml")
+    instance_disposition = load_yaml(
+        BOARD_ROOT / "instance-pin-step-disposition-2026-06-02.yaml"
+    )
     public_cad_intake = load_yaml(BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml")
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"
@@ -131,6 +134,12 @@ def main() -> int:
     package_conflict_records = pad_pin_audit.get("public_candidate_package_conflict_records", [])
     if not isinstance(package_conflict_records, list):
         package_conflict_records = []
+    instance_summary = instance_disposition.get("summary", {})
+    if not isinstance(instance_summary, dict):
+        instance_summary = {}
+    instance_records = instance_disposition.get("records", [])
+    if not isinstance(instance_records, list):
+        instance_records = []
     public_cad_records = public_cad_intake.get("records", [])
     if not isinstance(public_cad_records, list):
         public_cad_records = []
@@ -598,6 +607,47 @@ def main() -> int:
             mechanical_component_dir.get("all_lane_component_records_reference_surrogate") is True
         ),
         "component_model_directory_release_allowed": component_dir.get("release_allowed") is True,
+        "instance_pin_step_status": instance_disposition.get("status", ""),
+        "instance_pin_step_component_instance_count": int(
+            instance_summary.get("component_instance_count") or 0
+        ),
+        "instance_pin_step_routed_board_footprint_count": int(
+            instance_summary.get("routed_board_footprint_count") or 0
+        ),
+        "instance_pin_step_pinout_bound_instance_count": int(
+            instance_summary.get("pinout_bound_instance_count") or 0
+        ),
+        "instance_pin_step_support_pattern_instance_count": int(
+            instance_summary.get("support_pattern_instance_count") or 0
+        ),
+        "instance_pin_step_pending_supplier_pad_map_or_order_instance_count": int(
+            instance_summary.get("pending_supplier_pad_map_or_order_instance_count") or 0
+        ),
+        "instance_pin_step_public_candidate_package_conflict_instance_count": int(
+            instance_summary.get("public_candidate_package_conflict_instance_count") or 0
+        ),
+        "instance_pin_step_local_step_instance_count": int(
+            instance_summary.get("local_step_instance_count") or 0
+        ),
+        "instance_pin_step_local_step_hash_match_count": int(
+            instance_summary.get("local_step_hash_match_count") or 0
+        ),
+        "instance_pin_step_local_contract_pass_count": int(
+            instance_summary.get("local_contract_pass_count") or 0
+        ),
+        "instance_pin_step_local_review_pass_count": int(
+            instance_summary.get("local_review_pass_count") or 0
+        ),
+        "instance_pin_step_supplier_approved_instance_count": int(
+            instance_summary.get("supplier_approved_instance_count") or 0
+        ),
+        "instance_pin_step_release_credit_instance_count": int(
+            instance_summary.get("release_credit_instance_count") or 0
+        ),
+        "instance_pin_step_local_failure_count": int(
+            instance_summary.get("local_failure_count") or 0
+        ),
+        "instance_pin_step_release_credit": instance_disposition.get("release_credit") is True,
     }
     detailed_trace_manifests = {
         "scope": "local_non_release_kicad_to_cad_trace_records",
@@ -628,6 +678,8 @@ def main() -> int:
         ),
         "supplier_lane_surrogate_record_count": len(supplier_lane_surrogate_records),
         "supplier_lane_surrogate_records": supplier_lane_surrogate_records,
+        "instance_pin_step_record_count": len(instance_records),
+        "instance_pin_step_records": instance_records,
         "cad_connection_record_count": len(
             local_enclosure_cad.get("cad_connection_record_manifest", []) or []
         ),
@@ -668,6 +720,19 @@ def main() -> int:
             and record.get("all_component_records_release_credit_false") is True
             and record.get("all_component_records_reference_this_surrogate") is True
             for record in supplier_lane_surrogate_records
+            if isinstance(record, dict)
+        ),
+        "all_instance_pin_step_records_local_review_pass_and_release_credit_false": all(
+            record.get("local_review_pass") is True
+            and record.get("local_contract_pass") is True
+            and record.get("local_step_exists") is True
+            and record.get("local_step_sha256_matches") is True
+            and record.get("local_step_size_matches") is True
+            and record.get("local_step_imported_as_solid") is True
+            and record.get("local_step_bbox_matches_envelope") is True
+            and record.get("supplier_approved") is False
+            and record.get("release_credit") is False
+            for record in instance_records
             if isinstance(record, dict)
         ),
         "release_credit": False,
@@ -787,6 +852,7 @@ def main() -> int:
             "board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
             "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml",
+            "board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml",
             "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
             "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
             "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",

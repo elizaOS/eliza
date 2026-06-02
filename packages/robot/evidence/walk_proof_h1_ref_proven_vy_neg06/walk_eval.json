@@ -1,0 +1,27 @@
+{
+  "env": "H1JoystickGaitTracking",
+  "checkpoint": "checkpoints/h1_ref_proven/final_params",
+  "command": [
+    1.0,
+    -0.6,
+    0.0
+  ],
+  "mean_reward": 0.14306199579313397,
+  "contacts_from": "foot_floor_sensors",
+  "steps": 500,
+  "elapsed_s": 10.0,
+  "delta_x_m": 6.626335144042969,
+  "delta_y_m": 0.1267363578081131,
+  "distance_m": 6.62754702326354,
+  "mean_forward_velocity_m_s": 0.6626335144042969,
+  "commanded_velocity_m_s": 1.0,
+  "velocity_tracking_abs_err_m_s": 0.33736648559570315,
+  "min_base_height_m": 0.9395986199378967,
+  "mean_base_height_m": 0.9793543486062162,
+  "lateral_drift_m": 0.1267363578081131,
+  "foot_contact_switches": 37,
+  "fell": false,
+  "walk_forward_pass": true,
+  "fail_reasons": [],
+  "video": "evidence/walk_proof_h1_ref_proven_vy_neg06/walk_forward.mp4"
+}

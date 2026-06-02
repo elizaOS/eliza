@@ -216,10 +216,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             " ".join(runtime_batch["commands"]),
         )
         runtime_commands = " ".join(runtime_batch["commands"])
+        self.assertNotIn("adb devices", runtime_batch["commands"])
+        self.assertIn(
+            'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+            runtime_batch["commands"],
+        )
         self.assertIn(
             "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
             runtime_commands,
         )
+        self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:6520", runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
         self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', runtime_commands)

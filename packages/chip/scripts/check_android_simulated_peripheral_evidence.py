@@ -46,6 +46,7 @@ RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
+ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 REQUIRED_COMPONENTS = {
     "rear_camera",
     "front_camera",
@@ -464,6 +465,11 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
                 "commands": [
                     "adb devices",
+                    (
+                        f"{CAPTURE_SCRIPT} "
+                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}" '
+                        + " ".join(components)
+                    ),
                     (
                         f"{CAPTURE_SCRIPT} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)

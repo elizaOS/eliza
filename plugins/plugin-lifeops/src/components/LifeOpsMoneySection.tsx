@@ -61,6 +61,29 @@ import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { LifeOpsLinkBankButton } from "./LifeOpsLinkBankButton.js";
 import { LifeOpsLinkPaypalButton } from "./LifeOpsLinkPaypalButton.js";
 
+function MoneyStatusIcon({
+  icon,
+  label,
+  spinning = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  spinning?: boolean;
+}) {
+  return (
+    <div
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/20 bg-bg-muted/24 text-muted"
+      role="status"
+      title={label}
+    >
+      <span className={spinning ? "animate-spin" : undefined} aria-hidden>
+        {icon}
+      </span>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -264,14 +287,14 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         `Paste CSV content for "${source.label}" (first row = header):`,
       );
       if (!csvText || csvText.trim().length === 0) return;
-      setImportStatus(`Importing CSV into ${source.label}…`);
+      setImportStatus(`CSV import active for ${source.label}`);
       try {
         const result = await client.importLifeOpsPaymentCsv({
           sourceId: source.id,
           csvText,
         });
         setImportStatus(
-          `Imported ${result.inserted} new transactions (${result.skipped} already on file${
+          `CSV imported ${result.inserted} new transactions (${result.skipped} already on file${
             result.errors.length > 0 ? `, ${result.errors.length} errors` : ""
           }).`,
         );
@@ -309,7 +332,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
 
   const onSyncPlaid = useCallback(
     async (source: LifeOpsPaymentSource) => {
-      setImportStatus(`Syncing ${source.label} via Plaid…`);
+      setImportStatus(`Plaid sync active for ${source.label}`);
       try {
         const result = await client.syncLifeOpsPlaidTransactions({
           sourceId: source.id,
@@ -330,7 +353,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
 
   const onSyncPaypal = useCallback(
     async (source: LifeOpsPaymentSource) => {
-      setImportStatus(`Syncing ${source.label} via PayPal…`);
+      setImportStatus(`PayPal sync active for ${source.label}`);
       try {
         const result = await client.syncLifeOpsPaypalTransactions({
           sourceId: source.id,
@@ -507,9 +530,12 @@ export function LifeOpsMoneySection(): JSX.Element | null {
 
   if (loading && !dashboard) {
     return (
-      <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-        Loading money dashboard…
+      <div className="flex items-center justify-center p-6">
+        <MoneyStatusIcon
+          icon={<Loader2 className="h-4 w-4" />}
+          label="Loading money dashboard"
+          spinning
+        />
       </div>
     );
   }
@@ -577,9 +603,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
       </header>
 
       {importStatus ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-          {importStatus}
-        </div>
+        <MoneyStatusIcon
+          icon={<Sparkles className="h-3.5 w-3.5" aria-hidden />}
+          label={importStatus}
+        />
       ) : null}
 
       <CloudCreditsBalance
@@ -630,7 +657,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
               </div>
             </header>
             {dash.sources.length === 0 ? (
-              <div className="text-xs text-muted">No sources.</div>
+              <MoneyStatusIcon
+                icon={<CreditCard className="h-3.5 w-3.5" />}
+                label="No money sources"
+              />
             ) : (
               <ul className="space-y-2">
                 {dash.sources.map((source) => (
@@ -715,7 +745,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
             <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
             {dash.spending.topCategories.length === 0 ? (
-              <div className="text-xs text-muted">No categories.</div>
+              <MoneyStatusIcon
+                icon={<TrendingDown className="h-3.5 w-3.5" />}
+                label="No spending categories"
+              />
             ) : (
               <ul className="space-y-1.5">
                 {dash.spending.topCategories.map((category) => (
@@ -754,7 +787,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           </h2>
         </header>
         {dash.upcomingBills.length === 0 ? (
-          <div className="text-xs text-muted">No bills from email.</div>
+          <MoneyStatusIcon
+            icon={<CalendarClock className="h-3.5 w-3.5" />}
+            label="No bills from email"
+          />
         ) : (
           <ul className="space-y-1.5">
             {dash.upcomingBills.map((bill) => (
@@ -831,7 +867,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <h2 className="text-sm font-semibold">Recurring charges</h2>
         </header>
         {dash.recurring.length === 0 ? (
-          <div className="text-xs text-muted">No recurring charges.</div>
+          <MoneyStatusIcon
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
+            label="No recurring charges"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-xs">
@@ -940,9 +979,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
       ) : null}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Refreshing…
-        </div>
+        <MoneyStatusIcon
+          icon={<Loader2 className="h-3.5 w-3.5" />}
+          label="Refreshing money dashboard"
+          spinning
+        />
       ) : null}
     </div>
   );
@@ -985,9 +1026,11 @@ function CloudCreditsBalance(props: {
           label="Open Cloud settings"
           description="Open the Eliza Cloud settings"
           onClick={props.onOpenSettings}
-          className="font-medium text-txt underline-offset-2 hover:underline"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
+          title="Open Cloud settings"
+          aria-label="Open Cloud settings"
         >
-          Settings
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
         </MoneyIconButton>
       </section>
     );
@@ -1052,9 +1095,17 @@ function CloudCreditsActivity(props: {
         ) : null}
       </header>
       {recent.length === 0 ? (
-        <div className="text-xs text-muted">
-          {props.loading ? "Loading…" : "No recent activity"}
-        </div>
+        <MoneyStatusIcon
+          icon={
+            props.loading ? (
+              <Loader2 className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )
+          }
+          label={props.loading ? "Loading credit activity" : "No recent activity"}
+          spinning={props.loading}
+        />
       ) : (
         <ul className="space-y-1.5">
           {recent.map((txn) => {

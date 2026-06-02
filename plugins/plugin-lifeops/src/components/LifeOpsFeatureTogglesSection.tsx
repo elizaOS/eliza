@@ -1,6 +1,6 @@
 import { Button, client, Switch, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Cloud, DollarSign, Loader2, LogIn, RefreshCw } from "lucide-react";
+import { Check, Cloud, DollarSign, Loader2, LogIn, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   LifeOpsFeatureFlagRowDto,
@@ -75,7 +75,7 @@ function FeatureFlagsSignInButton({
       ref={ref}
       variant="outline"
       size="sm"
-      className="!mt-0 h-9 rounded-lg"
+      className="!mt-0 h-9 w-9 rounded-lg p-0"
       onClick={onSignIn}
       disabled={busy}
       title="Sign in to Cloud"
@@ -86,7 +86,7 @@ function FeatureFlagsSignInButton({
       ) : (
         <LogIn className="h-3.5 w-3.5" aria-hidden />
       )}
-      <span>{busy ? "Opening" : "Sign in"}</span>
+      <span className="sr-only">{busy ? "Opening Cloud" : "Sign in"}</span>
     </Button>
   );
 }
@@ -110,7 +110,7 @@ function FeatureFlagsSyncButton({
       ref={ref}
       variant="outline"
       size="sm"
-      className="!mt-0 h-9 rounded-lg"
+      className="!mt-0 h-9 w-9 rounded-lg p-0"
       onClick={onSync}
       disabled={syncing}
       title="Sync from Cloud"
@@ -120,7 +120,9 @@ function FeatureFlagsSyncButton({
         className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
         aria-hidden
       />
-      <span>{syncing ? "Syncing" : "Sync"}</span>
+      <span className="sr-only">
+        {syncing ? "Syncing features" : "Sync features"}
+      </span>
     </Button>
   );
 }
@@ -241,8 +243,14 @@ export function LifeOpsFeatureTogglesSection() {
         </div>
       )}
       {syncedNote && !error && (
-        <div className="mb-3 rounded-lg border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed text-ok">
-          {syncedNote}
+        <div
+          className="mb-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-ok/30 bg-ok/5 text-ok"
+          role="status"
+          aria-label={syncedNote}
+          title={syncedNote}
+        >
+          <Check className="h-3.5 w-3.5" aria-hidden />
+          <span className="sr-only">{syncedNote}</span>
         </div>
       )}
 
@@ -296,14 +304,15 @@ export function LifeOpsFeatureTogglesSection() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted">
-                    {feature.description}
-                  </p>
+                  <span className="sr-only">{feature.description}</span>
                   {showCloudHint && (
-                    <p className="text-xs-tight text-muted">
-                      Cloud sign-in enables managed billing; local toggle uses
-                      your credentials.
-                    </p>
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/35 bg-bg/40 text-muted"
+                      title="Cloud sign-in enables managed billing; local toggle uses your credentials."
+                      aria-label="Cloud sign-in enables managed billing; local toggle uses your credentials."
+                    >
+                      <Cloud className="h-3 w-3" aria-hidden />
+                    </span>
                   )}
                 </div>
                 <FeatureToggleSwitch

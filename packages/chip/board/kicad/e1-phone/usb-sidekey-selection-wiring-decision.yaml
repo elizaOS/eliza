@@ -51,7 +51,7 @@ selected_hardware_stack:
     promote_only_if:
       - waterproof MPN, gasket, aperture, drain, shell datum, and cable-overmold clearance are selected
       - USB3 or DisplayPort lanes are bonded, muxed, routed, simulated, and validated
-      - routed board STEP and enclosure aperture are rerun with final connector model
+      - routed board STEP and enclosure aperture are cleared with final connector model
   usb_pd_controller:
     vendor: Texas Instruments
     part: TPS65987DDH
@@ -169,7 +169,7 @@ bringup_and_release_policy:
     - TPS65987 pinout/configuration, firmware/provisioning path, CC attach on both plug flips, dead-battery boot, PPS transcript, and Type-C HAL evidence
     - MAX77860 symbol/footprint, I2C readback, NTC/ID readback, CC/CV charge cycle, JEITA hot/cold, OTG policy, and thermal copper review
     - side-key switch or flex signed drawing, force/travel sample CSV, solder-load path, wake/recovery firmware logs, debounce/leakage, and fixture access
-    - routed board STEP with USB-C shell, plug overmold, side-key load path, and enclosure clearance rerun
+    - routed board STEP with USB-C shell, plug overmold, side-key load path, and approved enclosure release clearance
 cross_checks:
   usb_evt0_connector_matches_package_binding: true
   usb_waterproof_superspeed_alternate_not_promoted: true
@@ -190,7 +190,7 @@ release_blockers:
   - USB-PD controller firmware/configuration, CC attach, dead-battery boot, PPS/EPR, Type-C class, and HAL evidence are missing.
   - Charger schematic, I2C readback, NTC/ID readback, CC/CV cycle, JEITA hot/cold, current-limit, and thermal validation are missing.
   - Side-key switch/flex drawing, force/travel sample data, enclosure load path, wake/recovery combo logs, and debounce/leakage review are missing.
-  - Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and enclosure clearance rerun are missing.
+  - Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and approved enclosure release clearance are missing.
 forbidden_claims:
   - usb_sidekey_selection_final
   - usb_c_ready

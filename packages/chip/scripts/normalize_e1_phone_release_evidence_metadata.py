@@ -155,9 +155,11 @@ def main() -> int:
             changed.append(path)
     print(
         "STATUS: normalized E1 phone release evidence metadata "
-        f"changed={len(changed)} checked={len(FIRST_ARTICLE_FILES) + len(MECHANICAL_FILES)}"
+        "changed="
+        f"{len(set(changed))} checked="
+        f"{len(FIRST_ARTICLE_FILES) + len(MECHANICAL_FILES) + len(ROUTED_RELEASE_FILES)}"
     )
-    for path in changed:
+    for path in sorted(set(changed)):
         print(f"  - {path}")
     return 0
 

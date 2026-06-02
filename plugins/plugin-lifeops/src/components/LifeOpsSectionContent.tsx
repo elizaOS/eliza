@@ -38,7 +38,7 @@ export function LifeOpsSectionContent({
         <LifeOpsInboxSection
           channels={LIFEOPS_MESSAGE_CHANNELS}
           title="Messages"
-          emptyLabel="No messages."
+          emptyLabel="Messages clear"
         />
       );
     case "mail":
@@ -46,7 +46,7 @@ export function LifeOpsSectionContent({
         <LifeOpsInboxSection
           channels={LIFEOPS_MAIL_CHANNELS}
           title="Mail"
-          emptyLabel="No mail."
+          emptyLabel="Mail clear"
         />
       );
     case "reminders":
