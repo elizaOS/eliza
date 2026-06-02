@@ -327,7 +327,7 @@ kicad_package_state:
   public_cad_source_record_count: 20
   public_cad_source_step_or_3d_observed_count: 12
   public_cad_source_footprint_or_eda_observed_count: 19
-  public_cad_source_local_downloaded_hashed_count: 1
+  public_cad_source_local_downloaded_hashed_count: 3
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5
@@ -387,6 +387,9 @@ kicad_package_state:
   cad_connection_coverage_all_records_have_solid_step_parts: true
   cad_connection_coverage_all_records_have_cad_step_bytes: true
   cad_connection_coverage_all_records_have_cad_parts: true
+  cad_connection_coverage_mechanical_envelope_defined_count: 32
+  cad_connection_coverage_all_records_have_mechanical_envelope: true
+  cad_connection_coverage_mechanical_envelope_release_credit: false
   cad_connection_coverage_all_records_release_credit_false: true
   cad_connection_coverage_physical_medium_counts:
     battery_power_flex: 1
@@ -427,6 +430,60 @@ kicad_package_state:
   cad_connection_coverage_controlled_impedance_requirement_defined_count: 32
   cad_connection_coverage_bend_radius_requirement_defined_count: 32
   cad_connection_coverage_supplier_release_required_count: 32
+  cad_connection_coverage_release_boundary_summary:
+    evidence_class: local_cad_connection_marker_coverage_not_release
+    critical_interface_connection_ids:
+      display_touch:
+      - display_bias_power_flex
+      - display_touch_fpc
+      rear_camera:
+      - rear_camera_csi_fpc
+      - rear_camera_power_flex
+      front_camera:
+      - front_camera_csi_fpc
+      - front_camera_power_flex
+      usb_power_battery:
+      - battery_lead_flex
+      - charger_to_battery_power_sense
+      - pd_controller_to_charger_control
+      - usb_c_escape_tail
+      - usb_c_to_pd_controller_escape
+      cellular_wifi_rf:
+      - cellular_antenna_aperture_tuner
+      - cellular_diversity_rf_feed
+      - cellular_gnss_rf_feed
+      - cellular_main_rf_feed
+      - wifi_bt_rf0_feed
+      - wifi_bt_rf1_feed
+      nfc:
+      - nfc_loop_antenna_flex
+      audio_haptic_sensor:
+      - bottom_microphone_flex
+      - bottom_speaker_lead_pair
+      - earpiece_receiver_lead_flex
+      - haptic_flex
+      - sensor_hub_i2c_flex
+      - top_microphone_flex
+      shield_ground:
+      - radio_shield_ground_spring
+      - soc_shield_ground_spring
+      board_to_board:
+      - compute_som_sodimm_carrier
+      - split_interconnect_side_flex
+    all_critical_interface_groups_present: true
+    all_connections_have_terminal_markers: true
+    all_connections_have_solid_step_parts: true
+    all_connections_bound_to_routed_development_records: true
+    all_connections_supplier_release_required: true
+    all_connections_release_credit_false: true
+    supplier_required_deliverables:
+    - approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail
+    - approved RF feed, matching-network, antenna, and tuner layout with impedance evidence
+    - approved board-to-board connector, ground-spring, wire-lead, and harness drawings
+    - clean production DRC/ERC plus signed waivers for every remaining violation
+    - supplier-approved component STEP/B-rep models and mechanical drawings
+    - measured routed-board clearance and first-article signoff
+    release_credit: false
   cad_connection_coverage_records_bound_into_routed_output_metadata: true
   cad_connection_coverage_release_credit: false
   routed_output_candidate_traceability_cad_connection_physical_medium_counts:

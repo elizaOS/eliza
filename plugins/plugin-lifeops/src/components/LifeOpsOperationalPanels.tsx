@@ -25,7 +25,6 @@ import { useCallback, useState } from "react";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
-import { SleepInspectionPanel } from "./SleepInspectionPanel.js";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -534,7 +533,6 @@ export function LifeOpsSchedulePanel() {
           </span>
         ) : null}
       </div>
-      {merged ? <SleepInspectionPanel /> : null}
       <div className="flex flex-wrap gap-2 text-xs">
         {merged ? (
           <>

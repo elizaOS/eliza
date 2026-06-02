@@ -5107,6 +5107,8 @@ cad_connection_coverage:
   all_represented_routes_have_layer_source_and_class: true
   visual_route_span_total_mm: 456.0
   endpoint_pair_distance_total_mm: 1521.175
+  mechanical_envelope_defined_count: 32
+  mechanical_envelope_release_credit: false
   physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
@@ -5146,6 +5148,60 @@ cad_connection_coverage:
   controlled_impedance_requirement_defined_count: 32
   bend_radius_requirement_defined_count: 32
   supplier_release_required_connection_count: 32
+  release_boundary_summary:
+    evidence_class: local_cad_connection_marker_coverage_not_release
+    critical_interface_connection_ids:
+      display_touch:
+      - display_bias_power_flex
+      - display_touch_fpc
+      rear_camera:
+      - rear_camera_csi_fpc
+      - rear_camera_power_flex
+      front_camera:
+      - front_camera_csi_fpc
+      - front_camera_power_flex
+      usb_power_battery:
+      - battery_lead_flex
+      - charger_to_battery_power_sense
+      - pd_controller_to_charger_control
+      - usb_c_escape_tail
+      - usb_c_to_pd_controller_escape
+      cellular_wifi_rf:
+      - cellular_antenna_aperture_tuner
+      - cellular_diversity_rf_feed
+      - cellular_gnss_rf_feed
+      - cellular_main_rf_feed
+      - wifi_bt_rf0_feed
+      - wifi_bt_rf1_feed
+      nfc:
+      - nfc_loop_antenna_flex
+      audio_haptic_sensor:
+      - bottom_microphone_flex
+      - bottom_speaker_lead_pair
+      - earpiece_receiver_lead_flex
+      - haptic_flex
+      - sensor_hub_i2c_flex
+      - top_microphone_flex
+      shield_ground:
+      - radio_shield_ground_spring
+      - soc_shield_ground_spring
+      board_to_board:
+      - compute_som_sodimm_carrier
+      - split_interconnect_side_flex
+    all_critical_interface_groups_present: true
+    all_connections_have_terminal_markers: true
+    all_connections_have_solid_step_parts: true
+    all_connections_bound_to_routed_development_records: true
+    all_connections_supplier_release_required: true
+    all_connections_release_credit_false: true
+    supplier_required_deliverables:
+    - approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail
+    - approved RF feed, matching-network, antenna, and tuner layout with impedance evidence
+    - approved board-to-board connector, ground-spring, wire-lead, and harness drawings
+    - clean production DRC/ERC plus signed waivers for every remaining violation
+    - supplier-approved component STEP/B-rep models and mechanical drawings
+    - measured routed-board clearance and first-article signoff
+    release_credit: false
   release_credit: false
   connection_ids:
   - display_touch_fpc
@@ -7052,6 +7108,9 @@ kicad_cad_traceability:
   cad_connection_controlled_impedance_count: 16
   cad_connection_controlled_impedance_requirement_defined_count: 32
   cad_connection_bend_radius_requirement_defined_count: 32
+  cad_connection_mechanical_envelope_defined_count: 32
+  cad_connection_all_records_have_mechanical_envelope: true
+  cad_connection_mechanical_envelope_release_credit: false
   cad_connection_supplier_release_required_count: 32
   incomplete_footprint_count: 0
   incomplete_cad_connection_count: 0
@@ -7084,1261 +7143,1261 @@ child_artifact_inventory:
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   name: component-3d-model-manifest.yaml
-  size_bytes: 673178
-  sha256: 55f083b2a2e831d33680c9e6e11294110afae587c64f2c41ea845456f92198d7
+  size_bytes: 694833
+  sha256: 6b529ba1bfd827da4e1af7154cb5742ef5ba64a934856bf756591e5ce2af1bef
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
   name: C_AMP.local-envelope.step
   size_bytes: 15598
-  sha256: 1b7519fd104fb4caf5d76d08d7d0d48e721ec8787cf0539d73df7bb57bb0f64f
+  sha256: 5cd4feef1eb0a3374cee2264b0e06c9eabadee2742d5160bcbf1798d450b0f31
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AMP.local-model.json
   name: C_AMP.local-model.json
-  size_bytes: 4501
-  sha256: e88e941559820616dc37d73ec772acbf78aacf61db87be2c8de2da079b50b1c5
+  size_bytes: 4736
+  sha256: a595f97449930684776f53f63c1cc90b1a85c4114931cd0ae95c5e25cdef1887
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
   name: C_AON.local-envelope.step
-  size_bytes: 15596
-  sha256: 929aa8598559dc439bad63c6050e4b23fadc32aed735c86d56c06cb51cbc3f33
+  size_bytes: 15598
+  sha256: 5964f8e4e4192321c1583231ee23b91e29fe2ac224388034f6ea108f1285b0ed
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AON.local-model.json
   name: C_AON.local-model.json
-  size_bytes: 4611
-  sha256: 136980c8bd8e0a55644c75bfcb5ed6885efc3ac740797707e3c8da4ddadb7def
+  size_bytes: 4846
+  sha256: 088bb370391d6dc969603f0ec459e900896952ec78868e948edd700dd48aa2d4
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
   name: C_AP_RAILS.local-envelope.step
-  size_bytes: 15596
-  sha256: a584916b717b11e481bd3ada44dcbe88a0548450d5aa1c91c518e12054030eaa
+  size_bytes: 15598
+  sha256: 5275015697fde4e5e2e23fdf7c7787611e5e69560ac2bf93d6e32e3e580dc282
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-model.json
   name: C_AP_RAILS.local-model.json
-  size_bytes: 4636
-  sha256: 0ca1c3158cc32b9fa57da1b5fd080faf3996ef4ff95a10a40d9a1ddd9e9eb1de
+  size_bytes: 4871
+  sha256: a48463ae5efbd1eab76b9eba5ba8486ce7269eacfe0c805cdd8a239c89ad0663
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
   name: C_AUDIO.local-envelope.step
   size_bytes: 15598
-  sha256: fb94ae96d5d6aeeeb80bfd1f2dbe990838fca8934f128c3b5f869d4092110e25
+  sha256: bd7c6d420a9148870b620e59f337aa5b151d6d6209677dfae9085402ea1eaa55
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-model.json
   name: C_AUDIO.local-model.json
-  size_bytes: 4675
-  sha256: 52f36d215c24469d0f7d53fca8d999848400883cb3c2cf87a6c1d44899d12b01
+  size_bytes: 4910
+  sha256: eed114ff7b6fba5c5e3d9ba1062036655424984d49e100126e9558044669b596
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
   name: C_CAM_RAILS.local-envelope.step
-  size_bytes: 15596
-  sha256: b3e894b6edba30759b1d7bda4c5861ff2958dfa74d1af67f598745470d329bbb
+  size_bytes: 15598
+  sha256: 70b282f277c742d8a84393ac36537406e225bacdb22820c1ce3998bfd8e46597
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-model.json
   name: C_CAM_RAILS.local-model.json
-  size_bytes: 4641
-  sha256: 67d6445a23e983f7d68131290312c3e56428556a15bf7ea7ac2082815203bdfe
+  size_bytes: 4876
+  sha256: d988012c06ec6501e2c61007aff2e5a8f22273cf16819faa6a2b82c23b06e883
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
   name: C_DISP_RAILS.local-envelope.step
-  size_bytes: 15596
-  sha256: b00f5cd7705f6be828d6f0cd79c2873fda0b2beba1be983607c39d9b7c5bb805
+  size_bytes: 15598
+  sha256: 0ae877cc454740159ba6b896dcfae60a9087e1acfbfdae50066584b753aa47c1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-model.json
   name: C_DISP_RAILS.local-model.json
-  size_bytes: 4646
-  sha256: e1ceef20bd0eb269302c12d79fce54b84ab51f323bf238de736bdacc8f20bdcc
+  size_bytes: 4881
+  sha256: 55bd9149f27c9c8e20f35a740a6b8907a0cb4086b97f456852f69fa562517753
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
   name: C_PMIC_IN.local-envelope.step
-  size_bytes: 15596
-  sha256: a584916b717b11e481bd3ada44dcbe88a0548450d5aa1c91c518e12054030eaa
+  size_bytes: 15598
+  sha256: 86878d8b31c603a5539143957c40e5cec266bd8201addbed8bfbfdc696084f67
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-model.json
   name: C_PMIC_IN.local-model.json
-  size_bytes: 4685
-  sha256: 13bc7b7521648f0238a335ecca3ce4cc17f80f8978841247cd87832d14061f47
+  size_bytes: 4920
+  sha256: 0b391aad38fdd38fa506d8c7507ef262eddcb538cbb5784bc215cc39b33a3100
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
   name: C_RF_RAILS.local-envelope.step
-  size_bytes: 15596
-  sha256: b3e894b6edba30759b1d7bda4c5861ff2958dfa74d1af67f598745470d329bbb
+  size_bytes: 15598
+  sha256: 0da5390d81425a58a61268b2257c3c446cc2cca719ef838e7745c0f67c66fc6b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-model.json
   name: C_RF_RAILS.local-model.json
-  size_bytes: 4636
-  sha256: ed8e833e82a41b648da80842bf614025472ca44655f37281606a0564167777ac
+  size_bytes: 4871
+  sha256: 0c5740367069513c1c5e1a6db9bd32417edc660165ffa0e6a2780f53f72d9f8c
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
   name: C_SOC_CORE.local-envelope.step
-  size_bytes: 15596
-  sha256: c5b2e97c2a8b0dfa7bc24b63cdceff53490694505a90441ec1405a970ca42899
+  size_bytes: 15598
+  sha256: 7630ac5669231dde0484fd4ba54f22ccc870d9610eeccf11afa82f22fa5994fc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-model.json
   name: C_SOC_CORE.local-model.json
-  size_bytes: 4524
-  sha256: f3d3c81d6e8029d26c017ff8895b4ec9c6d047481ae928a7ebb2c090083b8dcd
+  size_bytes: 4759
+  sha256: 6b0a42dd1b0ce2d08aa1cebafa0030100ec3018d63e68f456305d6bac3dea35e
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
   name: C_USBPD.local-envelope.step
-  size_bytes: 15596
-  sha256: 74f7b1661a7bbfd4e24d6bfde2486a5ff5cbbf7136abb50219383fb2af99f0b0
+  size_bytes: 15598
+  sha256: a0ac0987db667ebbd083d7eb02167e20ebc4ebd99c650e12f0bf0ab3d1f116e6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-model.json
   name: C_USBPD.local-model.json
-  size_bytes: 4510
-  sha256: 086a7ee262eddb617255a18214558ee12a79cdc6b4b816f5ee25c3413be2b3da
+  size_bytes: 4745
+  sha256: 516daad75aec8167c0e832113207a16d8f9977c741151bfc87aee7be6a966b00
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
   name: D_CAM0_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: 2b1e411ce4c21c08794d07d07b003d3ba70f4ae3647051b674b544250e3eb836
+  sha256: 13c69c8d3c91aab19e04e57a9c5a68bbc0573d7015a47af39a6b6631fa81de1b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-model.json
   name: D_CAM0_ESD.local-model.json
-  size_bytes: 5469
-  sha256: 08c47cfe5cba091eda404e0dc27cdb9d8b874f7e795926ac153482bbdd31c2e3
+  size_bytes: 5704
+  sha256: 0ff56cdd79b021b5288d4178b3ae0b009e4d9bab2cd577d64f93c659e75d70dc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
   name: D_CAM1_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: 0b520991348771158fa2e5fa256ac2a1873178557b0433407515515abe5f820b
+  sha256: 9a56e7e5f98c2f6b16a69e157d60721b6a165fc479f951bcdccab6bb62c59772
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-model.json
   name: D_CAM1_ESD.local-model.json
-  size_bytes: 5471
-  sha256: f7ffa29cf5d9fcfdc6a08d1259c5a805bbdea93d270820d55961adad7d331619
+  size_bytes: 5706
+  sha256: 320126c9afbe11d4570a16c59776a7e20ba76e5f87d678043e15c8aae5e750f9
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
   name: D_CC_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: 19d7a575bbe612dccee5654e2875e0e7ed18ce171ebba26d1f7a431e92d197ba
+  sha256: b91d5fa6e404a9f2f69ddbc93d7ce543eeb7ec647993169108cfcded38b6bf26
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-model.json
   name: D_CC_ESD.local-model.json
-  size_bytes: 5335
-  sha256: b8014724344bc23636e0750b21dfba1130797149004aed0db37b9410a0a1af26
+  size_bytes: 5570
+  sha256: 25dfa2369f39de5069b82eefc8cf8259eba991e86e72ea1c6676d46e8e8ffe85
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
   name: D_DSI_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: a12c0b4ff75ca8617dffd96a7c55700dd76538dd1c4d024f33e48d6259be4701
+  sha256: 81abbc8438383f40dd4b84ef3e6f3db3fa9d960c6cbeb66dd4fcacdc7c202fa0
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-model.json
   name: D_DSI_ESD.local-model.json
-  size_bytes: 5468
-  sha256: af2edc25aecd4bf7ee8985010ab9e3f877457d8536bdfc238448a56ecac1d2bf
+  size_bytes: 5703
+  sha256: 2d30765a839cacb432740b45672865ab842f9b8fd3aa2a5e6354ac52c58b01c4
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
   name: D_KEYS_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: e199c1d34a83e8e57b4577faf94a1ac112a2b188f14ee8109bad63eb6f6b51c3
+  sha256: 5f31ac511c75ed829c78eeb810757a595ae64a07973f4b8cac3ac3d0fe6b85b5
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-model.json
   name: D_KEYS_ESD.local-model.json
-  size_bytes: 5471
-  sha256: 0d0499b84751352eac616ae909891e4bad75290eb57301716bbbbeb5f979e611
+  size_bytes: 5706
+  sha256: 2a98bedd3befc9f6b1fc2ae11a6c4937d6f48e769510961a7ed632723c292d1c
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
   name: D_MIC.local-envelope.step
   size_bytes: 15572
-  sha256: 63d02dcaa277bc50a39564d89770663a1e2788b41324b2acf723db3c4d2f34df
+  sha256: c50761f1854c6c79be9fc00e2189b8870c9d8df958c1249ac87e6c83ba8790ef
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_MIC.local-model.json
   name: D_MIC.local-model.json
-  size_bytes: 5485
-  sha256: de34c5ec9a347e52155da20a59e3f2f2d2aa94915a178d3d0d9c9641b5d5eb12
+  size_bytes: 5720
+  sha256: 585bf0abc11df02693b11e6c128cb61ca7065a9343089b2b4a370b7490b5b6b3
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
   name: D_SPK.local-envelope.step
-  size_bytes: 15570
-  sha256: 0e36cd4634c0e94137c6e996164bdb29edce6d5126d32fa97b17b517b77e93de
+  size_bytes: 15572
+  sha256: 3b47f1c08c477fec7fb17f9e797561bed55deb36285a8cdba8e4d6fd58b44aa7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_SPK.local-model.json
   name: D_SPK.local-model.json
-  size_bytes: 4661
-  sha256: 33e6ed247334ca9d0e2c3236dc2868ba5a209f522cb56541e2e8f9aeb895ca17
+  size_bytes: 4896
+  sha256: b1ed33fc1209faf75b22eabd38903518066070b049d80f4bca584d6b627b1d1f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
   name: D_TOUCH_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: fa6a61aba573118e00d4268fc2b014d2bb164477f2c51b21ef122ce2a4f3e3af
+  sha256: de7f39bdc3cd5f11e9f03c1d8b72f761e7741a86cbe81454d6de883f52fa2e26
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-model.json
   name: D_TOUCH_ESD.local-model.json
-  size_bytes: 5478
-  sha256: dd15aadbccb0ff0460988cf8d0097a12af7706c950146b9bfc0222f40cb0b482
+  size_bytes: 5713
+  sha256: 719274984c128035e48ce7a27638b98c72d0665301e285dd7643cb6821b73f07
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
   name: D_USB2_ESD.local-envelope.step
   size_bytes: 15572
-  sha256: 52f035b1a9718429f5f68e3cfa8e32994b67c99aed17274e059ad9a85486e3c3
+  sha256: 7539072e61e508c353ad582c0fa795af0329125d89528489247a897a524285eb
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-model.json
   name: D_USB2_ESD.local-model.json
-  size_bytes: 5345
-  sha256: 06c5b9ed870a694e9e09e68622bfba361715ed711347627ae9a2e3c6ed54016d
+  size_bytes: 5580
+  sha256: ac033ce0b9afe8d0b037c412df84021e7b51b9c360b521940a4d7b14b15681b1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
   name: D_USIM.local-envelope.step
-  size_bytes: 15570
-  sha256: e8f9fce7f135bc55a083c3366aca1e57632bb508cdbb3286171e0b7020166284
+  size_bytes: 15572
+  sha256: 935bd093c5044f005996f37a380d53c990eefa76f69ae31869dfc140aa98dc72
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_USIM.local-model.json
   name: D_USIM.local-model.json
-  size_bytes: 6313
-  sha256: 60b3763ca57935eb0f9c7d05dfbdb4c25a0ac78dd87150f92871fcc51ba2affe
+  size_bytes: 6531
+  sha256: 3480b0a381118dd2f762010af41321e01f09fb45097e5384a1fdddc30df630d9
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
   name: D_VBUS_TVS.local-envelope.step
   size_bytes: 15572
-  sha256: c4edadcdcbed89b7dd78f6d3a96ced25c41022e2d8b48317442541e060065bfb
+  sha256: 084a81a10584dd68996bfff0ce56915af3c77961b356679ed3e6b000454a0d0d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-model.json
   name: D_VBUS_TVS.local-model.json
-  size_bytes: 4521
-  sha256: bb3a56d387844452a3006c76fda9e8c0b1bebb7e4fd3638be54bfce9fa2866b4
+  size_bytes: 4756
+  sha256: 78baa7b45bf0c96210819d1dda80b12a8fcd10384116e8b7d4b3f2b708ec4b37
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
   name: FID_BR.local-envelope.step
-  size_bytes: 15626
-  sha256: 1cf7032b84f361faff1df49443dc44daf7dc3d7698e6a4a89cb4be611c0ffa22
+  size_bytes: 15628
+  sha256: ee616bc0727a6f31ebdbd5598dfc26b998ad62ffb57981fcd4233029fd872209
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_BR.local-model.json
   name: FID_BR.local-model.json
-  size_bytes: 4297
-  sha256: bdf0696501e5e0f2093edb4f3c9d86bcfe55c9b55e58d25c62dab572471f3d17
+  size_bytes: 4532
+  sha256: 4523d1920380c937847f1540c0a6cbac04064d52af03aabc4ac9c39d3ccb43d3
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
   name: FID_TL.local-envelope.step
-  size_bytes: 15626
-  sha256: dbef6114fa450803a76e57671fefdc76479a513176f17518dd622a05ab6c0db8
+  size_bytes: 15628
+  sha256: dc6a8ad1096cd864d944aa3f7c3463a19161df7d29035cda4dce78c63cdafa33
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_TL.local-model.json
   name: FID_TL.local-model.json
-  size_bytes: 4294
-  sha256: 5ba0e04b72c9898d1220e590829a469b87e80c5cc76da05a757029b648df3d35
+  size_bytes: 4529
+  sha256: 358d1192e5d3cffc3a7924e0166c640a2c191ae1fe5c45c300b344d07f686245
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
   name: FID_TR.local-envelope.step
-  size_bytes: 15626
-  sha256: f3946affafe44f326a9ee240ff013cb9bc13786b9393d0b81759d2f938c83ea3
+  size_bytes: 15628
+  sha256: 1e22a0038996d9f3ccc61acf817eb64b7ecad1352f4fcb5c237338f280e591e1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FID_TR.local-model.json
   name: FID_TR.local-model.json
-  size_bytes: 4295
-  sha256: 0274fbaa51cd95ec57c6798912932eb1e1cabc0979d663f7c64fdfa482fa22da
+  size_bytes: 4530
+  sha256: 91c9dcc95d22f0e7c5f4439376e1e08fa5088fd52ac0745c3e76fe1b8a865e01
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
   name: FL_CHG_IN.local-envelope.step
-  size_bytes: 15596
-  sha256: b0e6a29ea1ea975645129aa9a33a07b73efb6944c6b5477d0be692c2e12b2668
+  size_bytes: 15598
+  sha256: 0d4e31188be37511b94600e10afee4c0637f7b4b8b49194f426f0ffa1f3a9a1a
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-model.json
   name: FL_CHG_IN.local-model.json
-  size_bytes: 4520
-  sha256: 05dfba9b83ade51f21b353b64e9eff3a71ec40b0b8f3c1de621d7112f9b50814
+  size_bytes: 4755
+  sha256: 76941ae6f7a224d76825a24cb29f6482ce6994c5488afe507ac374dc0b4b15bd
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
   name: J_BATTERY.local-envelope.step
   size_bytes: 15486
-  sha256: d76e018033c8d61cee5ef104c0e452536be97d977716cbd9cc805bf8f146284e
+  sha256: ecc1981b7d9d76b01e28056a6278a9a8bcdd21f8689597c2640e6e95518e99a6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-model.json
   name: J_BATTERY.local-model.json
-  size_bytes: 5120
-  sha256: dcbec09ec241741025417c86ca191d2fedd63d87610ba403a21854097e094a4a
+  size_bytes: 5338
+  sha256: b6a698a86d0f2ddc79178af6a8d6edc1bcc0b6709d9024241c1d49b71d259f21
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
   name: J_DEBUG.local-envelope.step
-  size_bytes: 15596
-  sha256: 17d41c795404318b3e4adaabfc973f83815ef8692bc707658380247c3c806f21
+  size_bytes: 15598
+  sha256: b9aa9a22d608e89ca191e3e47e2bb0983323d2d0880f49ee5c7a3bf49459e4e6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-model.json
   name: J_DEBUG.local-model.json
-  size_bytes: 4509
-  sha256: 25c10956bbd1eb85c58c884c189e571ed2ea3c7cd1da40313494ee8240f79325
+  size_bytes: 4744
+  sha256: 11fe1a8fa898ef7c4d3308acb61985ec87b976ddf5cbd1dff0b24e34c3a37236
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
   name: J_DISPLAY_TOUCH.local-envelope.step
   size_bytes: 15576
-  sha256: 444e88cc8e8212dfae9999edb9d7bd5c6c30d2112ae2046ce63d79f447f1615b
+  sha256: ece64c8fea583b08a34b9929324a52a97bffc0a9cb6c06fc3ae3b4acd8cb1cd2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-model.json
   name: J_DISPLAY_TOUCH.local-model.json
-  size_bytes: 12995
-  sha256: 6f3d6c2b79fc922fa040c9dc118c88f5034ade13755be5d0de6be7c55ee2893b
+  size_bytes: 13213
+  sha256: 1710a5953dd2f5ee4a2e3008fc11ed4898138c6a9badff1b744f9cccc1f4a62f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
   name: J_FRONT_CAMERA.local-envelope.step
   size_bytes: 15490
-  sha256: 3b7876512056e56b3c56b136636bb3ef4e6dc14aab84db14363855279d94e135
+  sha256: 0a500fe8ff181b15c6d6f492fded94793db083801b04e4d0da96a3d2ff0dfdbe
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-model.json
   name: J_FRONT_CAMERA.local-model.json
-  size_bytes: 10393
-  sha256: cdfdc2f4f24c15f5fa084881152256ad0e56a71b0f91b9d43942d5d6491ccd24
+  size_bytes: 10611
+  sha256: a25810fb829ba13dcf4082e2eddf842fcf0e4c072cb9f4bca6fa8080a50516f1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
   name: J_REAR_CAMERA.local-envelope.step
   size_bytes: 15490
-  sha256: 97124beba25fe35a49fa175a8185caed3aa56242548b390ef67960f01e457d46
+  sha256: 0c50d7e8ab572dd77efeafed5d5ec9a358154e7a797f8496a2d402a890c6eabd
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-model.json
   name: J_REAR_CAMERA.local-model.json
-  size_bytes: 9181
-  sha256: a6ef3dc26e211636d452a9d7565b373505d7251a5a6ce9c64fe61d850882f48d
+  size_bytes: 9655
+  sha256: 34bfbca827f1057334cea2833bb68bc9ab54992d88ceb007092af69dca7b2c44
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
   name: J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
   size_bytes: 15546
-  sha256: 9a1a8a8b4160b6343eda87d5495e944779e2bfc789cc7bb29fa12279d417d4f7
+  sha256: c0221056f99116ebb301c559e756b9220be567d14da7e78629148425ab4dbace
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-model.json
   name: J_TOP_BOTTOM_FLEX_BOTTOM.local-model.json
-  size_bytes: 21609
-  sha256: 2bccd88094f23f063ad4635fffc44ff3c6aacb57c3a227dcc3dfda2bcb698624
+  size_bytes: 21810
+  sha256: 58ea70f47616a0357dc544f05ce0828b0a37569a7204afc8008f0f9a0d1326ba
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
   name: J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
   size_bytes: 15546
-  sha256: b785df39c188e7f4a019025e786dc5418d923501b454c4caaedf075adaff4dfa
+  sha256: 9b1c61c2719c1123252832fa5055e4242c71950e2d1f87264c8da8772631b5dc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-model.json
   name: J_TOP_BOTTOM_FLEX_TOP.local-model.json
-  size_bytes: 21593
-  sha256: bfe7b02c8f071d8133007f7da9bb76db6bcfaf56619b75cfb63195cfe7815540
+  size_bytes: 21794
+  sha256: 6af2058faa91ab0599071b447dc883bf9c63cea30f3b3286675ebcebe03e3fc6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
   name: J_USB_C.local-envelope.step
   size_bytes: 15576
-  sha256: 7d12a85683ef34095c8d9e6183ba18d44357fca6ae9ecf30bf53b00d5d2c1c30
+  sha256: 5a2b31ecb44d8385c5464007fa6ac1247e240e3ddd991447849de6fe948dbc62
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-model.json
   name: J_USB_C.local-model.json
-  size_bytes: 9768
-  sha256: 6460b9961b9643883de109f230f1f32716d35809dbdb24fa2da1113023e01bc8
+  size_bytes: 9986
+  sha256: 5ea511d9cfe79a33968465bdb2edec0288a44f4c941d5af107ba424befd04f79
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
   name: MH_BL.local-envelope.step
-  size_bytes: 15634
-  sha256: ddcfeebb6c4a2c3c97cee31f9900d4d1802edd30e91bc972ae6cf1956967b644
+  size_bytes: 15638
+  sha256: e92eb9977cbc7d3a035b630dde2b71249a00b61ac82a6f282f693d28ac954f59
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_BL.local-model.json
   name: MH_BL.local-model.json
-  size_bytes: 4859
-  sha256: 59192093c23dcca5fa1b9a46c6f50e0cb6a54016cc1fa13e7f08b11b43bed45e
+  size_bytes: 5094
+  sha256: 31a69c0819e55a845c01761a8e2e7fb135e5d38102fb123f52d4f98be4da25e9
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
   name: MH_BR.local-envelope.step
-  size_bytes: 15634
-  sha256: 4f01fc9d42c710d2ab8fd501fcc0e4b443835c53f36bb566b7486d2006507bf8
+  size_bytes: 15638
+  sha256: fb5ec041dc74710ef95b2b4317c12feccd83b448818030ff4a3eeecd739dee4c
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_BR.local-model.json
   name: MH_BR.local-model.json
-  size_bytes: 4860
-  sha256: ee7abdce824e562af50a8475500249da184341ff203aaa9a6c121f9ca68f8d2b
+  size_bytes: 5095
+  sha256: 78f5a64e1542d13bdd257127a3ad0fc31b6927a608242b6e6d098e921d62bd43
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
   name: MH_TL.local-envelope.step
-  size_bytes: 15634
-  sha256: 65005855912af365afd8ed7c368c91b2d747dd1a1b715b2ee38e060cafed39bb
+  size_bytes: 15636
+  sha256: e65b3466745fa03cdcf905ad4fbe09826836ec57dc02655f59d3dcd6d5e9b769
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_TL.local-model.json
   name: MH_TL.local-model.json
-  size_bytes: 4858
-  sha256: ca3a108440d919ef0ac622e08db709f0949cdbed09443cac9ab77a816cced403
+  size_bytes: 5093
+  sha256: de0f067f0e7ae4ab90c53c03386c226e739c57325621dc3014eefe5d80aa5fe8
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
   name: MH_TR.local-envelope.step
-  size_bytes: 15634
-  sha256: ddcfeebb6c4a2c3c97cee31f9900d4d1802edd30e91bc972ae6cf1956967b644
+  size_bytes: 15638
+  sha256: ee9a51546c413336e26e47356e58917776febd8280f4df3d59668fc988cb8fdf
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MH_TR.local-model.json
   name: MH_TR.local-model.json
-  size_bytes: 4859
-  sha256: 8698d828d099b632d6819593375d6a6050644b4fa0de64a05fb64aaed1260b0f
+  size_bytes: 5094
+  sha256: bcf225b7da0494b60ca6ba9d9c902ff7dfe07e7ec3d8b17395264944e84113dc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
   name: MN_CELL_DIV.local-envelope.step
-  size_bytes: 15574
-  sha256: 3319d9aefebdeea2e52a794ca49a698d99a5af1db75708b5c54cd47331b98a0e
+  size_bytes: 15576
+  sha256: b9c36a4aafec9d877132bfede7f1b3d2735601b393ee6eaf367646fd33e0f39d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-model.json
   name: MN_CELL_DIV.local-model.json
-  size_bytes: 5266
-  sha256: c32f41c26c13834662afe7f823a3b9102e831aae8256771dfc6d7df4fb479943
+  size_bytes: 5501
+  sha256: 28d2502a55ebb1caa36e2a97ecadbf6f4cab6643a66e435c7eae60ea1d84fd5b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
   name: MN_CELL_MAIN.local-envelope.step
-  size_bytes: 15574
-  sha256: e04673f3a493287f92566a212fee4d82c5a0c82596e625cda654304e8407c559
+  size_bytes: 15576
+  sha256: 6fa38140160d7b2433fb7b7c36c9296e666cb327421d3b9e4e9a79478f6c5f29
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-model.json
   name: MN_CELL_MAIN.local-model.json
-  size_bytes: 5270
-  sha256: 4f1c0d102b394f28898d52c083a8be0c65c4616f84c0ca0b7befc0e71a8385e9
+  size_bytes: 5505
+  sha256: 8fcc688ed3ebb325e0430db8ded5dc4092f61e503a7417db408ac9d62c2b7d80
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
   name: MN_GNSS.local-envelope.step
-  size_bytes: 15574
-  sha256: 112286fb3df478cc78ad6d34a1ba334e10b956697535a73f7bfd40243938413e
+  size_bytes: 15576
+  sha256: 9d0f313e6647503945d4e2f56837ed39bf642740a92db16ff3f83ed89becfac2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-model.json
   name: MN_GNSS.local-model.json
-  size_bytes: 5246
-  sha256: d2d07f9314fa54d905ea879ee4ae39a89777b991029958108a11192ba34cce73
+  size_bytes: 5481
+  sha256: b10d03074d61d2148cd7ba150a5ea3dd68013e62bad80168b721b945f70e984d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
   name: MN_NFC.local-envelope.step
-  size_bytes: 15574
-  sha256: fb42cfe14cf50e6bcca4f1181d0e4b66a7d24a3acb055f800882366d0c56bbce
+  size_bytes: 15576
+  sha256: f69d8ea3bfb00c1bbe20b456fb35fefd73fe487b63e211acb2d141a665a647f5
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-model.json
   name: MN_NFC.local-model.json
-  size_bytes: 5212
-  sha256: 32260c803823af89d6ddb4b9650712d6d42173a0de7d593ee251a089b500d164
+  size_bytes: 5430
+  sha256: 4d986693f7592024aa83e34e70095e14ed3e21798bc1bb0cfcb8a21e55c2e19f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
   name: MN_WIFI0.local-envelope.step
-  size_bytes: 15574
-  sha256: 63623e3788187aa8711e8625801f7cf6454bb6dbd7abe5bb062c030b9c3b76cf
+  size_bytes: 15576
+  sha256: e161c01abb684658218a062232bd091070a7973cdb94552fdee94ae75f4d9af9
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-model.json
   name: MN_WIFI0.local-model.json
-  size_bytes: 5264
-  sha256: 118fda4a07d260a99a7afce68cb6af9fcd29c4a904b700918257ad5e1892334a
+  size_bytes: 5499
+  sha256: 35405476adf7ed2d4940eff5ddea622986e4cf03a9ff199fcb9136e15db81e16
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
   name: MN_WIFI1.local-envelope.step
-  size_bytes: 15574
-  sha256: 086965f269c38c9cba75afcb158d74de808aaec4993477830bde74365dc30a3d
+  size_bytes: 15576
+  sha256: 32378c777f0893aa9ca04241d4228200ffe430f427d6d29252695546d4735db1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-model.json
   name: MN_WIFI1.local-model.json
-  size_bytes: 5264
-  sha256: 72e1549b27d0c9a3978994858bec366bdf669b42760d3c8dab4fc013b7ba6f45
+  size_bytes: 5499
+  sha256: 91a7a7653d5b248dd3df3cad2a8c3777814e24d21f133fa0e909142792054a0a
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
   name: RC_1.local-envelope.step
   size_bytes: 15572
-  sha256: 1a0150ce6469fc6fe65ac573c17e1671e4d446a01a6e3cd33231a39d09e84ef1
+  sha256: 7fe5358c83a3d6cd25fb95dee3dd0d1bdf33965e7897ab15eaca9aa7eb965455
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_1.local-model.json
   name: RC_1.local-model.json
-  size_bytes: 5721
-  sha256: 5dcfaeb6619aa5abc63f26c1e57dfc6f8fbcf4c3b86a633fdb650d7ce90080e3
+  size_bytes: 5956
+  sha256: f2aecbf6e03c4815b565474b5191ec239a0057c736dea45d9a3cd92fc1582043
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
   name: RC_2.local-envelope.step
   size_bytes: 15572
-  sha256: 20bdc00993b5f099dc13a10b14f03ea637223f0dea7cd2210923a963d7f14f11
+  sha256: 1125fcf336eeedcf61c1f080c6f3b3b1d1339e45c16e970d0a70ec510e3a9c2b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_2.local-model.json
   name: RC_2.local-model.json
-  size_bytes: 5721
-  sha256: be48e63cf14caeeff3129abe683efaaef0b520fe05071d6e90a5233bc1f45c12
+  size_bytes: 5956
+  sha256: 7259df4982eb308d62066c793e36a5399f3d319bc9c2afe4af8169d9c5fcf102
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
   name: RC_3.local-envelope.step
   size_bytes: 15572
-  sha256: 6482160e1993333ec7584c400346371ac2f4500ca048c293dde007be9a8bf891
+  sha256: b1cbcccf87f2bf899b90e56f80fa87c5d25cb249c32046bf3ba04a64f950f1a4
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RC_3.local-model.json
   name: RC_3.local-model.json
-  size_bytes: 5722
-  sha256: fb225836fd55747742d720cccba63c3b7df628126f8b5c56a7e8c90d7ff9e6f1
+  size_bytes: 5957
+  sha256: a4060c3beb3018fb0cfefde30e111a5576ecf5d84d8c745be558f57b1b664031
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
   name: RFTP_CELL_DIV.local-envelope.step
-  size_bytes: 15634
-  sha256: 1f8dbcde39617339b8bf19413c1a51f6929027ab9b08596f785f574da096465d
+  size_bytes: 15636
+  sha256: c8beb3ad9aefe4eaaa1c8ae3fd918271fc7128dac09762054024a19e7c015f3f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-model.json
   name: RFTP_CELL_DIV.local-model.json
-  size_bytes: 4470
-  sha256: 48547e8ddf44b75f9efdb2414d5a02430baa98b964ad4e0ecae0453253d76bf9
+  size_bytes: 4705
+  sha256: b5ee276955ce815c830878ba4b9473a2cd621e2c7be0135a937db91d9c2a344b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
   name: RFTP_CELL_MAIN.local-envelope.step
-  size_bytes: 15634
-  sha256: 7b1b3a8a336db0085f898bf237a5262bed21dd1e87c00cd4623a936b45cf78b1
+  size_bytes: 15636
+  sha256: 882f8ae2a57e10fe48dd0ea9705b5584b3ba040c286e8ec8f948d4fef9da1aae
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-model.json
   name: RFTP_CELL_MAIN.local-model.json
-  size_bytes: 4475
-  sha256: acc7f3f8ba02445c42f428f16e924a346780f18d0dd325f1b8042228614f4a2f
+  size_bytes: 4710
+  sha256: dd2d9783600334f349d2136fcac4b34d72c377f500d093d2df4155162946b15f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
   name: RFTP_GNSS.local-envelope.step
-  size_bytes: 15634
-  sha256: c46af2fa5d0d9a6226868465bb184e3616b6ecb2e9c13b552606c4f30728f121
+  size_bytes: 15636
+  sha256: c21139d89490857a05339dc957be1bbfb91acf5495d4295ccb687f105d0e10e0
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-model.json
   name: RFTP_GNSS.local-model.json
-  size_bytes: 4450
-  sha256: fd22d933f798b146f57765bb3d02aac6bdbb8538fc34eca4cca0e29de12ae9e8
+  size_bytes: 4685
+  sha256: e32c80ae980f4533a748193de8ea95da0cc6d89963defbd79eeb518cc0127358
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
   name: RFTP_WIFI0.local-envelope.step
-  size_bytes: 15634
-  sha256: 5681f2a1b9b8562eacc233d4e475655d70f48d1f74336ac7504e8fabaac9a0a5
+  size_bytes: 15636
+  sha256: 890b2e989c54680212f8d1a61305f660104d1c656d692efb86a406a9586c99a7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-model.json
   name: RFTP_WIFI0.local-model.json
-  size_bytes: 4468
-  sha256: 94588eed021e403e9706f99304f62e44c129d16abe890fe66ac2e7c9b5fb5b57
+  size_bytes: 4703
+  sha256: c5e8c33910e013b3288e1dbb81680cf22e06fe38e89147c42c742a9bfa881425
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
   name: RFTP_WIFI1.local-envelope.step
-  size_bytes: 15634
-  sha256: b723fa9503dcf13527b04904b05d0059100cd67ab7273fd48a23925a3e14b0a1
+  size_bytes: 15636
+  sha256: 7431fc6394a7c81931d508fe248e68f79341af1339297f83b7da571ba7927990
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-model.json
   name: RFTP_WIFI1.local-model.json
-  size_bytes: 4468
-  sha256: b857d3be9881faa290e8d950a11ada8b7bc971a149bd290abe5bcbffcc4d6099
+  size_bytes: 4703
+  sha256: 68695704547af1631b0e08470ff86bbcb0d86ccfd9d9531ff3769b0d439fbde0
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
   name: RN_AUDIO_CTL.local-envelope.step
   size_bytes: 15598
-  sha256: a778b8b5325d12ab9ea1ce3ac923b7f1b1079543f58e24e14221a2a58d149017
+  sha256: 1a6016d02abd4c959afa64dd724f15a8056c1d440ab1da463deb46af59ff0ec3
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-model.json
   name: RN_AUDIO_CTL.local-model.json
-  size_bytes: 4700
-  sha256: 8bb8f1276056b1c32373f2077cf557504e56f04d93f26a2d5b3ea2d51c379bec
+  size_bytes: 4935
+  sha256: eeb45ce7aa4459b2ac3f4c679a80c50613abc9ac36112240d9e6652ce1a72279
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
   name: RN_AUDIO_DIG.local-envelope.step
   size_bytes: 15598
-  sha256: 3efdfb1b799c4772cc3bc5372e8916705739a11222e7afd34e79f7f9ad54b4f9
+  sha256: d941052a1a18d2d2eaa4cf3c2e0937fc6a899fb8eb7af912cf6c546429a5b0c2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-model.json
   name: RN_AUDIO_DIG.local-model.json
-  size_bytes: 4700
-  sha256: 34c42f8401c363880b492716b274ea898f8dd1a1e213283bb3ab9471a5f4789b
+  size_bytes: 4935
+  sha256: 58f4ccd5522aa4d46f5e648b524ee593aa11a7919944fb939f5f3175778743ee
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
   name: RN_BAT_SENSE.local-envelope.step
-  size_bytes: 15596
-  sha256: 6c4c8f9c9dac4aa47ea1dc09d886b38b446e7c9705827ca5bdfdd8a13b00b892
+  size_bytes: 15598
+  sha256: 9ea9fdb6ec0ac8f4ca68489c2673e914c047e5f850c02065c6cd764fca052137
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-model.json
   name: RN_BAT_SENSE.local-model.json
-  size_bytes: 4534
-  sha256: 7215658fd91bfa47db029578912ba5554833ca66cf6352509776fd0b1fae0d9b
+  size_bytes: 4769
+  sha256: 9144fce1c68723b1013146d699362e1a280faa89d91b5202b27aa56466615ab9
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
   name: RN_CAM_I2C.local-envelope.step
   size_bytes: 15598
-  sha256: c35f037be9daaf389ac39782b74c0b3f0569483e3dce404c91ed299044ad7f05
+  sha256: 410ce3cb7ab8950eeada854dba7d3617ee76e4d6a002c42b1bc1a075d92e3a7e
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-model.json
   name: RN_CAM_I2C.local-model.json
-  size_bytes: 4524
-  sha256: 22f63a44e3cd8533bade89c3585d284efe6d5a09350c85cc59093bf147c65b07
+  size_bytes: 4759
+  sha256: 50d4a78d915fce59e4307995a13806ec2aef1fa0eaf1831b982add138fa9113d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
   name: RN_LPDDR_CA.local-envelope.step
-  size_bytes: 15596
-  sha256: 7853a713f57d000f6accb15896866f7ed217f993422f9794c559f49955845e95
+  size_bytes: 15598
+  sha256: 2ce8e94114caf18524e747221db6557f7651694abb61fcd426b1100ce56fe27d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-model.json
   name: RN_LPDDR_CA.local-model.json
-  size_bytes: 4528
-  sha256: e20cfd3ebe266b370fef2ee2391acfae9fd79c61fddab03238885a75d0e86acb
+  size_bytes: 4763
+  sha256: 91ba5ed32bf39bbc87e422f417731e51f74828977c71e53e2cdc17e7fde0d145
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
   name: RN_LPDDR_DIFF.local-envelope.step
-  size_bytes: 15596
-  sha256: 7853a713f57d000f6accb15896866f7ed217f993422f9794c559f49955845e95
+  size_bytes: 15598
+  sha256: 95b222ab21b487816b47cc55d478490f4af7b8e1ba5508cc073b09537a920cb5
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-model.json
   name: RN_LPDDR_DIFF.local-model.json
-  size_bytes: 4538
-  sha256: 4d86975c29825ebcb219fb9c44f11121a492f59abe6aa9714ed2de3ef0953668
+  size_bytes: 4773
+  sha256: ab357e1e4b0667161f21ff38039616572bd4c3b9752302a3924f16f070f91b3f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
   name: RN_LPDDR_DQ.local-envelope.step
-  size_bytes: 15596
-  sha256: aeb91016e14bfa1c447ae64d74f3d4ae551616ff44b753d22f0131c036d45112
+  size_bytes: 15598
+  sha256: 39b11c9a7cb9b600ad174c15580d7c95190cbdf0545cd6bc87ede3c4b661151e
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-model.json
   name: RN_LPDDR_DQ.local-model.json
-  size_bytes: 4528
-  sha256: 737d111f325d34e24f7f2f8cf4ca89422281de7b65dc0c9d36274e0120c75acf
+  size_bytes: 4763
+  sha256: 26293af8895851b97ba59eae723e16471471dcde22f6703ebcc3fdcca12beef3
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
   name: RN_PMIC_CTL.local-envelope.step
-  size_bytes: 15596
-  sha256: fcc6b73bdd9b4c4d716388a3a3351655e852c1a413df0885c18a86e4294f463a
+  size_bytes: 15598
+  sha256: 818c1a2619e71ddc1a8072cf91adf1079335208ffaf957226be474cd08cd22c2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-model.json
   name: RN_PMIC_CTL.local-model.json
-  size_bytes: 4694
-  sha256: e7976cc07da667e4b4a2e08ed61323dce3a72e5bb9320bba8236e512f2c64f50
+  size_bytes: 4929
+  sha256: a5c088ff67ea047982c2c89044f08fbc94cabdedf8540705de8d2fb2ba1eba01
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
   name: RN_UFS.local-envelope.step
-  size_bytes: 15570
-  sha256: bc2773ea3895411ce9599a481c42e307473fb0416cc66b1eb4bcf8f9792e9a41
+  size_bytes: 15572
+  sha256: a6765b7f6076ef7cb1ab45458df841878ddc53e98d01f402a2be60a2f8431c20
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-model.json
   name: RN_UFS.local-model.json
-  size_bytes: 5323
-  sha256: 25f3bf117cb8b22d0ff19b49a5c7de046d64f42f990100ea7daeb75eed9668bc
+  size_bytes: 5558
+  sha256: c90cf2a79e7a114540d7cae011feb1f5de0763ddb57c7bc157df329d19956b93
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
   name: RS_PWR.local-envelope.step
-  size_bytes: 15574
-  sha256: 32d24d6baea4bb79e040502ade193b3c954166e451b0c073bb3237c7b37de464
+  size_bytes: 15576
+  sha256: 4a4684a5afff9d94b34eca40a9c498269a1dea84a8c6d06312d292976198480d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-model.json
   name: RS_PWR.local-model.json
-  size_bytes: 4519
-  sha256: 24687bf548729ae73320929a212632c30125f0e78a606ec886dd8680b3dc52c1
+  size_bytes: 4754
+  sha256: 3637f7249f8c0fadd00de167def14f56ef6579803105a82784e7b836bfae36de
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
   name: SW_POWER_VOL.local-envelope.step
   size_bytes: 15598
-  sha256: 95fe526e1c0b94167c5b16af21facb41f5ebfc36c87f36a23bca421feefbd5e3
+  sha256: d13485f90bacd0435562a952d78d28e732475a1feb31a598839742dd52316911
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-model.json
   name: SW_POWER_VOL.local-model.json
-  size_bytes: 5103
-  sha256: 1dbf19054669176c4e970bd00d4e8054c4867b9f42b5db07a3bba3428f2be50b
+  size_bytes: 5321
+  sha256: fe639530a1ca16b45d9dfdea5ae4c8a3f132323dcfc104e5fc1094a62b910462
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
   name: TP_AON_1V8.local-envelope.step
-  size_bytes: 15634
-  sha256: 0f03b9ef7f0e695cc788e44fdfd5896082b08b8e3dff03cbfd19c7e1a9bd44c9
+  size_bytes: 15636
+  sha256: 7549d7448d45b380227411b8d79aab75aa8983a89e378f23786157ef1a86ce16
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-model.json
   name: TP_AON_1V8.local-model.json
-  size_bytes: 4449
-  sha256: 1b0e8669169e815a3885ddcc16c95bba6e19fd05ac06d3b09da3be8b98207162
+  size_bytes: 4684
+  sha256: 91f8aff0a41180943b4d119e98881d7aba8adccb53cbe7864efa6aba6891ccfe
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
   name: TP_CAM_AVDD_2V8.local-envelope.step
-  size_bytes: 15634
-  sha256: bc9dccb0a4d23aa50390474571fd32f1b562b90f57d885e47f1b0f6afd6734fa
+  size_bytes: 15636
+  sha256: bf30980e2333d59d5cdedd2ed10b59984448886dc4a94889259fa8772783dccb
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-model.json
   name: TP_CAM_AVDD_2V8.local-model.json
-  size_bytes: 4363
-  sha256: 32568f2f5a8f6fc5f7cea23347bb8a37b4b4c0dd1673bf335a76392af60de6ef
+  size_bytes: 4598
+  sha256: e2abba69a5818c995596f8899a3182dd8aef615f4627d0fe57bacc8e772815f8
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
   name: TP_DISP_AVDD_5V5.local-envelope.step
-  size_bytes: 15634
-  sha256: 6d423cfcaa2c9118619e8db1965ab4955f437b87ff72b933f11856b17640d016
+  size_bytes: 15636
+  sha256: c04162eec0629f72a00c98133542535e030e2b4a5b9adfda8bccde5d94f8c40e
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-model.json
   name: TP_DISP_AVDD_5V5.local-model.json
-  size_bytes: 4368
-  sha256: bb7bb6fb1e8e413ed883f0085e52ecbeb81470130c4abf00d2e5eb59cdec20f9
+  size_bytes: 4603
+  sha256: 71488ba865118ed1d8fd1329f500a771763c103bec3c7a4f63dad441bf7f4a35
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
   name: TP_IO_1V8.local-envelope.step
-  size_bytes: 15634
-  sha256: cac6c2611dfeaabc8dd687e9fd3658485b89ffdb83cd01a6342050728d39942d
+  size_bytes: 15636
+  sha256: 053e56d78c3d827b319aa8af07824670a58c018a62cd8797c551a24db3d560b3
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-model.json
   name: TP_IO_1V8.local-model.json
-  size_bytes: 4333
-  sha256: 47261b9ddf4362ffdb61092603e9cee06a38bce44b9efbe570ce91677676aca1
+  size_bytes: 4568
+  sha256: f0f0fa5377dabe51fd574b9bdbc6ff3bd8931ca60631d3e343ee1dd25975f660
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
   name: TP_RF_VBAT.local-envelope.step
-  size_bytes: 15634
-  sha256: bc9dccb0a4d23aa50390474571fd32f1b562b90f57d885e47f1b0f6afd6734fa
+  size_bytes: 15636
+  sha256: 7f0722bee7e7148af9f8d0875b47017f0d6fcfe6989c931d594aa9682d3b6823
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-model.json
   name: TP_RF_VBAT.local-model.json
-  size_bytes: 4449
-  sha256: a48f4d67c9c1a9bba67f57f9bd5bf07cda40af8882b23fd3c0d65e4b63a5dc8e
+  size_bytes: 4684
+  sha256: b19051ed5011fd249c676ab4ec2f9a73e5da03d524638fa77c899066639d6bd6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
   name: TP_SYS.local-envelope.step
-  size_bytes: 15634
-  sha256: 0f03b9ef7f0e695cc788e44fdfd5896082b08b8e3dff03cbfd19c7e1a9bd44c9
+  size_bytes: 15636
+  sha256: 7d23317fd114499b668ad4f5ac421087d984a67c9ab9cf588623be6170427a3e
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-model.json
   name: TP_SYS.local-model.json
-  size_bytes: 4429
-  sha256: b1c52bc600ecd572e23db836d4f5fb4a0e34415f380474139eca65e7a4a51f64
+  size_bytes: 4664
+  sha256: c18af5850e71d156c703952f81efbe99ce870df942ef0d564615ee5bd9765ed2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
   name: TP_VBAT.local-envelope.step
-  size_bytes: 15634
-  sha256: ad3bcbaae2754d065249be9b156f49ae4d985e3cf8f625818193dd70860f89ef
+  size_bytes: 15636
+  sha256: 5010d92be51bf21db0dbadb57faf8d9fca7d9c02dadc5462b5cabb914d496817
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-model.json
   name: TP_VBAT.local-model.json
-  size_bytes: 4434
-  sha256: ceca1f3749fd5ff5337e299d3c88cb86256f28af96177265b481e89c5e088377
+  size_bytes: 4669
+  sha256: 22b921576168c48a2d3a9ec4a63d2da9f721a99ba37369299fd596efd987f6ca
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
   name: TP_VBUS.local-envelope.step
-  size_bytes: 15634
-  sha256: b723fa9503dcf13527b04904b05d0059100cd67ab7273fd48a23925a3e14b0a1
+  size_bytes: 15636
+  sha256: 9ab3cabea058fb4bbca0cd68d0a54b718f7bb6a9134f1154e6994da0aac4ad5a
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-model.json
   name: TP_VBUS.local-model.json
-  size_bytes: 4322
-  sha256: 0cb0b8defb12a0b8be8be6759c530061ef8af4eab96dd0de8a28d374752d69b6
+  size_bytes: 4557
+  sha256: 7da90b83d3a9010217cc0164b1e6575858ec3ef8c3b12b478d6c6bd0acb989c2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
   name: USBTP_CC1.local-envelope.step
   size_bytes: 15636
-  sha256: 452da536e59b92b718756714572e7c02e4f207d0a37d9abe7731c24a23c97072
+  sha256: 1cfb7729677eba4137ff291f0a3c2f31bbd6e6e09261605a4087c57512ad69c2
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-model.json
   name: USBTP_CC1.local-model.json
-  size_bytes: 4333
-  sha256: 58a95cfcb4d611b773cf59024341fd2064f3e9284fa28600630f5e8a407afa07
+  size_bytes: 4568
+  sha256: b95a16e05ace069ef0f1370b922f7bc82335ad1f75025cc19890ec43aa4d9869
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
   name: USBTP_CC2.local-envelope.step
   size_bytes: 15636
-  sha256: 724e1da9e123019f3bf887ae5daecc9ecb97d2519cbfffa1179eb55907c77834
+  sha256: 09614027a68b5230646b2e5968c102225eb34f04d2ff5ab67d5b1d86a54e7349
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-model.json
   name: USBTP_CC2.local-model.json
-  size_bytes: 4333
-  sha256: 1a71d353d7b6bbe02d9c05db2c15f070df9e2593a56b78d0db2f790161ac1df0
+  size_bytes: 4568
+  sha256: 23405c3fee204cfafbeffdcee6a102a34c06e6dd08fb93cc979595b7672780ea
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
   name: USBTP_DN.local-envelope.step
   size_bytes: 15636
-  sha256: 6486cc55a60f10429db3df145d628317a745bc731154586d6d5ac48790188cad
+  sha256: 1e941d0525f432e6cedacba8f65df3fe8addb846d1566a2eb771110a5c0caa6f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-model.json
   name: USBTP_DN.local-model.json
-  size_bytes: 4328
-  sha256: bd914e73388d4a562ec849d76f5e1e0d2747fbaac260c98b4a9729b94970451a
+  size_bytes: 4563
+  sha256: 5d70a9f521e393730bf228cec8980e781ae6f8f4a47c49b03fb8c2ac2d0d56c7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
   name: USBTP_DP.local-envelope.step
   size_bytes: 15636
-  sha256: 9011ca57b82730157bf66fc22c62b7aaa5855f64fc04c4faba6f8ef0bb6e0aac
+  sha256: c8a749e8b2969ce1dadea44deec52e28af2a5dded64b8ba3e6f60e9f358aa4e5
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-model.json
   name: USBTP_DP.local-model.json
-  size_bytes: 4328
-  sha256: 9fa8a2227a26aa7a18ad6924d1e5c558cdae0d1a75347851e481dcbe73107bdb
+  size_bytes: 4563
+  sha256: 42207371ab7e33237238b2b6d16887f425e3e489397f75a7cbf3cfc2e9e3b8ba
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
   name: USBTP_VBUS.local-envelope.step
   size_bytes: 15636
-  sha256: 029228bcba2e7b5e101edf824b5a657d658f47dcb63d010b09b405c8de32c9fd
+  sha256: c39b7b0be377daca1e0c7a1ec2e4c24fbcb4483ef3d69166ceb81ead66d36f72
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-model.json
   name: USBTP_VBUS.local-model.json
-  size_bytes: 4338
-  sha256: eab005e54e748f60bf91d81916704c3ebf419c1a8cbed00b10142e3282bb21cb
+  size_bytes: 4573
+  sha256: 2f74445c89c2302446ada426209b741b24e89ca897678bd2940f4a480e9145d7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
   name: U_AUDIO_SPK_MIC.local-envelope.step
   size_bytes: 15538
-  sha256: 31c214070c26653b036c83255984a60aef8ac4ae2e6814c8721010f8a75ea64b
+  sha256: abb1211092e43cc2add179c85aa7173d3c333b99f321498d98239e20bb4010c7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-model.json
   name: U_AUDIO_SPK_MIC.local-model.json
-  size_bytes: 14944
-  sha256: 9570e2fb90de0141b3bdeb51dad8469fe5b248a102f77ce31ce623ef112e3433
+  size_bytes: 15162
+  sha256: 21ef1e7151a69b0721b99696788e56a2f66ec249f411b525ab9a7fb484a96833
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
   name: U_CAM_PWR.local-envelope.step
   size_bytes: 15572
-  sha256: d3057234b32f12a2e60b275933fe53b497037f80db621e918c0d9fa115e25b8e
+  sha256: 47aacf957b31cdda01921e6f977b7a62d78f239a0974467190fc7c9b6712bb83
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-model.json
   name: U_CAM_PWR.local-model.json
-  size_bytes: 5747
-  sha256: 2edfebf6fb705e3ceaa0b47b7f80a9b4b2fb1f2e520812e41f518810fd280c8b
+  size_bytes: 5982
+  sha256: 8398e5f921c61c411ba5798281d1e94f0ff148f93fb782700a37185f73e22278
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
   name: U_CELL.local-envelope.step
   size_bytes: 15546
-  sha256: ef310252aee8fb39ea4e657737da2d1c3536b0fdea98c6d827a08683e7028532
+  sha256: 7a16d87fc070524a6482cc7b1832688b6e64239d21fb950ff71ddfb4903c1a79
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CELL.local-model.json
   name: U_CELL.local-model.json
-  size_bytes: 48008
-  sha256: 4c1ec2f7606dc1438927cfc6c8a73ce82f3133b04888337a037404d6cd2feb84
+  size_bytes: 48226
+  sha256: 305acb16ad87477405bc58337b79dc1f45f1055f4a43966ffaa3ff5e96b73a27
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
   name: U_CHARGER.local-envelope.step
   size_bytes: 15572
-  sha256: 90b153e5ebb052bca36cb81efc97bba05ed9b1d67a6ff2da02b15fa4d6d7838d
+  sha256: 63c21811d912cc11bdf6529d68428193a37b1632a9ea1851e601a226b3ee052d
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-model.json
   name: U_CHARGER.local-model.json
-  size_bytes: 21014
-  sha256: faa77231cbf93b0fb27b0904413a88f21b66c71b0be4e6e1074a0c46b98cd87c
+  size_bytes: 21232
+  sha256: 983ab2a7244fa0eed1f42e1473d713f28fe06991dda3479b534e25064447272b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
   name: U_DISP_BIAS.local-envelope.step
   size_bytes: 15486
-  sha256: 752e8cf3b8a37447e2cb8ff40c70150729b5d347f9983d0cc25399f6704817b8
+  sha256: acba2b805f3162c6c6839ba16ecfec63bd0e9bc83bb984cac4c4506eecc23f45
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-model.json
   name: U_DISP_BIAS.local-model.json
-  size_bytes: 9665
-  sha256: e697214882a56d1297ca3d3c8f369967679a787dd7a0f7bc0f64f64ae39f7f5f
+  size_bytes: 9883
+  sha256: 74533ab935bff3c84aaf3ec54f0b24cf3a2e07475bc57550ab258442e7fb883f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
   name: U_ESIM.local-envelope.step
-  size_bytes: 15510
-  sha256: feda5b21659c7d84879c8bad97c96920af4644ea47c1ea3866d21a64c11fc5b4
+  size_bytes: 15512
+  sha256: cca1663461e8f2bf41388bc0ff916c98d5ccaadea93d6a6ec6d609d58d81c3bc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-model.json
   name: U_ESIM.local-model.json
-  size_bytes: 5969
-  sha256: dc042fd4fb78d37bbdceee71ea76849bf6e4524f51358340be007adf96b7a5a7
+  size_bytes: 6187
+  sha256: 9ac67642b6a12cfa8b38ae053917cbed69f131c7a961013406b91bedf734aaff
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
   name: U_FG.local-envelope.step
-  size_bytes: 15544
-  sha256: 5b1b35aea27475cdc03b36bbf83c23ea7655ce5ac65bf4b5e8ddf691a1e8c206
+  size_bytes: 15546
+  sha256: 07b1cd4ec81b894e99c2da7bf27b90c55d4e01739034cf0323f359ecbca2472b
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_FG.local-model.json
   name: U_FG.local-model.json
-  size_bytes: 6866
-  sha256: de1f3f0bf85f5debcd5f1c32888607d04c0f32020dd0dafab4f2acbeec285aca
+  size_bytes: 7084
+  sha256: 0cbc6c90a2366b4b96cdac35d7505b9cb631568b9df8d0b5ee1c6d7aba169b8a
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
   name: U_GNSS_RF.local-envelope.step
-  size_bytes: 15596
-  sha256: a57b6f52fec15074d483990cdef89f0688dff10e1ca5156ec0de4b5feff9132c
+  size_bytes: 15598
+  sha256: c27fd80f0512729c9cf7f7828a27da0bfc6fa1e3254088123aed0d85052a06ea
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-model.json
   name: U_GNSS_RF.local-model.json
-  size_bytes: 4638
-  sha256: f2b8ca4998b9327841ebfb97ee111d126403d2932f1aad10581df124952efae9
+  size_bytes: 4873
+  sha256: b996bc107adbdc53b0438a760363ba788673ab874d4bbae3d695e896c4ba77ce
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
   name: U_HAPTIC.local-envelope.step
-  size_bytes: 15574
-  sha256: 04f145e25a4348f867b4b8ec691ee367a123f1af22f628644472952607c53aed
+  size_bytes: 15576
+  sha256: 3416ff2a4ce3a4ff98c411660e279a825ac7fa7aac4ea13445344d284004db86
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-model.json
   name: U_HAPTIC.local-model.json
-  size_bytes: 6254
-  sha256: 800fa84fcce939fa513a5f2ce92bc48c28b8eb4ddc2fc2937c03c70eeb9b3b8b
+  size_bytes: 6472
+  sha256: 645cd0200a70b5de7d855e79401c6cc4217789bbc81d1e7b4f51453a07c4bbff
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
   name: U_NFC.local-envelope.step
-  size_bytes: 15536
-  sha256: 3be2e8d980c13f6b9dfa3c7b35cb611c340bf3b3cd5a21487115402241b72ae0
+  size_bytes: 15538
+  sha256: 950d40fb404e460c8b59794c3712a9c52dea7c4a2752ecadd52a7a6ded47eed7
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_NFC.local-model.json
   name: U_NFC.local-model.json
-  size_bytes: 11377
-  sha256: 7423ae1c7908e1b9b8faad9bd0360f6383b2b7c3b7c9bcd48219572b234f35aa
+  size_bytes: 11595
+  sha256: 91a8e002a1f4722f9dad8ee69415eeac45247eecd4c3e8268f960108dd708fb0
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
   name: U_SENS.local-envelope.step
-  size_bytes: 15484
-  sha256: a2117a3de375c3052f154d196556ef7f53beb4396477dce02c64d7e1642ce73f
+  size_bytes: 15486
+  sha256: 1ab8f00696c47316a6bcc967ae94da607290e680b494e03face7e8f832fd7af6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_SENS.local-model.json
   name: U_SENS.local-model.json
-  size_bytes: 9524
-  sha256: 4a291b39ce55283020a26c8e043a21c2ffdc30743ced64b050bb4d943a3c4a64
+  size_bytes: 9742
+  sha256: c4dfed073f35690d51678b5c376d2a4c131f41538407ace7b9c10fc29cd948dc
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
   name: U_SOC_LPDDR_UFS.local-envelope.step
   size_bytes: 15516
-  sha256: 5e26e8220db610723644e98a6b379943eaa1e011c3838db0d2ee4bd3451662ed
+  sha256: 902f725dcf8590b0e9a1f4a528545de8828f169950c2aa2112bb277c46b8d222
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-model.json
   name: U_SOC_LPDDR_UFS.local-model.json
-  size_bytes: 59689
-  sha256: a6c70533f247e5a40a563971f85e7592c21f16350a797bf1b2996e8c8af1d6c9
+  size_bytes: 59907
+  sha256: 3ed0819f3d66731d120b26696e686936ab1b6243edd5307d7dbfd3b7dc22c6a1
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
   name: U_USB_PD.local-envelope.step
   size_bytes: 15538
-  sha256: cee9f0771c59d8055269017013a93ec3cdf5d79c86c2736efce011928f86be17
+  sha256: c4f8acc5e7be03304175218f1d1a3be63f1a79f9ff12bdb295f2584224cb654f
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-model.json
   name: U_USB_PD.local-model.json
-  size_bytes: 16430
-  sha256: 84c35ee083e9560014b105528db6e43f5f8b11d5d85005248df2fa056cec30b4
+  size_bytes: 16648
+  sha256: d008191fcd226fb70b16e77293eb68420f2d17bd7db0f6547f17d876bfa3c1f6
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
   name: U_WIFI_BT.local-envelope.step
   size_bytes: 15576
-  sha256: ee161c8de8e982f1d6416bb2de8e4eb0d6170216fdd080a5ac6993357fa7b7b6
+  sha256: 97d14e818a721ef3ad3735f36e8c657b21ed8f9247cbf88f172e05c0a28b8b10
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-model.json
   name: U_WIFI_BT.local-model.json
-  size_bytes: 47172
-  sha256: 859568d2da608e6d165ebc5664fecf36c92bc82043d0db363038d5584ec458dc
+  size_bytes: 47390
+  sha256: 64f12129b19016e2e6a78f256da0d50fb0a481506c69555a280426324e42c1db
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
 - path: board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
   name: release-manifest.yaml
-  size_bytes: 393526
-  sha256: e15911276ac06eca9881bec8181338a8263754b681914b2806eb1f4d89f7a69c
+  size_bytes: 396347
+  sha256: b522e61e071501714196266d9a249c43b9c0e4cc4ccb3440535aac1c654a3381
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false
@@ -8351,8 +8410,8 @@ child_artifact_inventory:
   release_credit: false
 - path: board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
   name: routed-board-with-components.step.metadata.yaml
-  size_bytes: 177968
-  sha256: 692fffe159085459a2b4525422b6a188d4ddcfca8427e43ea8678e8e5ef8c6cd
+  size_bytes: 180301
+  sha256: d73910113b92a2f988cd3900e48dbad8313ec4e7a22a5641fe51c9cd2c2c6cad
   candidate_placeholder: false
   covered_by_candidate_manifest_artifact: false
   release_credit: false

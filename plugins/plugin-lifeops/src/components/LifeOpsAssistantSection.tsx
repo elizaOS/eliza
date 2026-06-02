@@ -159,6 +159,96 @@ export const ASSISTANT_INTENTS: AssistantIntent[] = [
       "Run my weekly operating review: commitments made, commitments owed to me, schedule pressure, money admin deadlines, travel risk, and decisions.",
   },
   {
+    id: "board-pack-prep",
+    label: "Board pack prep",
+    shortLabel: "Board",
+    icon: <FileSignature className="h-4 w-4" aria-hidden />,
+    tone: "bg-violet-300",
+    prompt:
+      "Prepare the board pack brief: gather docs, open approvals, missing metrics, calendar deadlines, and unresolved risks. Show only gaps and decisions.",
+  },
+  {
+    id: "chief-of-staff-handoff",
+    label: "Chief-of-staff handoff",
+    shortLabel: "Handoff",
+    icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
+    tone: "bg-stone-300",
+    prompt:
+      "Build a chief-of-staff handoff: weekly priorities, delegated owners, blocked decisions, relationship follow-ups, and status risks.",
+  },
+  {
+    id: "event-planning",
+    label: "Event planning",
+    shortLabel: "Event",
+    icon: <CalendarCheck className="h-4 w-4" aria-hidden />,
+    tone: "bg-cyan-300",
+    prompt:
+      "Coordinate event planning: calendar holds, invite list, venue confirmation, menu or prep docs, travel buffers, and delegated follow-ups.",
+  },
+  {
+    id: "finance-dispute",
+    label: "Finance dispute",
+    shortLabel: "Dispute",
+    icon: <Landmark className="h-4 w-4" aria-hidden />,
+    tone: "bg-emerald-400",
+    prompt:
+      "Handle a finance dispute: collect receipts, payment records, related messages, approval owner, and draft the next safe action.",
+  },
+  {
+    id: "gift-milestone",
+    label: "Gift milestone",
+    shortLabel: "Gift",
+    icon: <Heart className="h-4 w-4" aria-hidden />,
+    tone: "bg-pink-300",
+    prompt:
+      "Prepare a relationship milestone gift: date, preferences from prior messages, budget, delivery deadline, and approval before purchase.",
+  },
+  {
+    id: "hiring-loop",
+    label: "Hiring loop",
+    shortLabel: "Hiring",
+    icon: <Users className="h-4 w-4" aria-hidden />,
+    tone: "bg-blue-300",
+    prompt:
+      "Coordinate the hiring loop: interview calendar, candidate docs, panel owner reminders, scorecard deadline, and follow-up messages.",
+  },
+  {
+    id: "intro-routing",
+    label: "Intro routing",
+    shortLabel: "Intros",
+    icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
+    tone: "bg-rose-300",
+    prompt:
+      "Triage inbound intro requests: decide accept, delegate, decline, or schedule; use relationship context and draft replies for approval.",
+  },
+  {
+    id: "legal-deadline",
+    label: "Legal deadline",
+    shortLabel: "Legal",
+    icon: <Shield className="h-4 w-4" aria-hidden />,
+    tone: "bg-slate-400",
+    prompt:
+      "Track the legal document deadline: signature docs, counsel messages, calendar cutoff, missing approvals, and safe follow-up drafts.",
+  },
+  {
+    id: "travel-disruption",
+    label: "Travel disruption",
+    shortLabel: "Delay",
+    icon: <Plane className="h-4 w-4" aria-hidden />,
+    tone: "bg-sky-300",
+    prompt:
+      "Recover from a travel disruption: rework itinerary, calendar conflicts, hotel and ground transport, people notifications, receipts, and approval decisions.",
+  },
+  {
+    id: "vendor-negotiation",
+    label: "Vendor negotiation",
+    shortLabel: "Vendor",
+    icon: <CreditCard className="h-4 w-4" aria-hidden />,
+    tone: "bg-green-300",
+    prompt:
+      "Prepare vendor renewal negotiation: contract docs, current spend, cancellation deadline, prior messages, approval owner, and a concise reply draft.",
+  },
+  {
     id: "delegation-map",
     label: "Delegation map",
     shortLabel: "Owners",
@@ -300,8 +390,7 @@ export const LIFEOPS_ASSISTANT_INTENTS: AssistantIntent[] = [
   ...HEALTH_ASSISTANT_INTENTS,
 ];
 
-export const LIFEOPS_VOICE_COMMAND_PROMPT =
-  "Voice command for LifeOps: ";
+export const LIFEOPS_VOICE_COMMAND_PROMPT = "Voice command for LifeOps: ";
 
 function AssistantIntentGridButton({
   intent,
@@ -464,7 +553,11 @@ export function LifeOpsAssistantSection() {
             data-testid="lifeops-assistant-voice-command"
             className="group flex min-h-[5rem] items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg-muted/35 px-4 text-txt transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 sm:w-24 sm:flex-col"
             onClick={() =>
-              openLifeOpsChat(LIFEOPS_VOICE_COMMAND_PROMPT, {}, { select: false })
+              openLifeOpsChat(
+                LIFEOPS_VOICE_COMMAND_PROMPT,
+                {},
+                { select: false },
+              )
             }
             {...voiceCommand.agentProps}
           >

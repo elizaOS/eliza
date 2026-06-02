@@ -30,6 +30,8 @@ from eliza_robot.rl.alberta.train_robot import (
     _promotion_blocker,
     _promotion_passed,
     _resolve_locomotion_prior_feedback,
+    _safe_locomotion_prior_scale_gate_passed,
+    _scale_gate_reason,
     _telemetry_sample_from_info,
     steps_per_task_from_total,
     train_robot,
@@ -387,6 +389,9 @@ def test_train_robot_manifest_is_reproducible_and_bridge_loadable(
     assert (tmp_path / "manifest.json").is_file()
 
     policy = TextConditionedPolicy(tmp_path)
+    assert policy.manifest.action_scale == pytest.approx(
+        manifest["action_scale_schedule"]["final_scale"]
+    )
     action, task = policy.act("stand_up", np.zeros(manifest["proprio_dim"], dtype=np.float32))
 
     assert task == "stand_up"
@@ -551,6 +556,159 @@ def test_action_scale_schedule_can_require_full_physical_success_only() -> None:
     }
 
 
+def test_action_scale_schedule_can_use_safe_locomotion_prior_gate() -> None:
+    schedule = _build_action_scale_schedule(
+        target_scale=1.2,
+        initial_scale=0.28,
+        increment=0.05,
+        min_success_rate=1.0,
+        allow_stable_partial_progress=False,
+        allow_safe_locomotion_prior_scale=True,
+    )
+
+    assert schedule["mode"] == "safe_locomotion_prior_gate_ramp"
+    assert schedule["criteria"] == {
+        "failure_rate_lte": 0.0,
+        "success_rate_gte": 1.0,
+        "physical_success_or_safe_locomotion_prior_scale": True,
+    }
+
+
+def test_safe_locomotion_prior_gate_allows_stable_contact_free_scale_probe() -> None:
+    evaluation = {
+        "success_rate": 0.0,
+        "failure_rate": 0.0,
+        "physical_fall_rate": 0.0,
+        "support_contract_failure_rate": 0.0,
+        "physical_success": False,
+        "physical_checks": {
+            "tracked_height_present": True,
+            "no_fall": True,
+            "tracked_delta_x_forward": False,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            "min_alternating_foot_contacts": False,
+            "min_swing_foot_clearance_m": False,
+            "max_foot_slip_m_s": True,
+            "max_self_collision_count": True,
+        },
+    }
+
+    assert _safe_locomotion_prior_scale_gate_passed(
+        evaluation,
+        task_id="walk_forward",
+    )
+    assert _action_scale_gate_passed(
+        evaluation,
+        task_id="walk_forward",
+        min_success_rate=1.0,
+        allow_stable_partial_progress=False,
+        allow_safe_locomotion_prior_scale=True,
+    )
+    assert not _action_scale_gate_passed(
+        evaluation,
+        task_id="walk_forward",
+        min_success_rate=1.0,
+        allow_stable_partial_progress=False,
+        allow_safe_locomotion_prior_scale=False,
+    )
+
+
+def test_scale_gate_reason_reports_stable_partial_progress() -> None:
+    evaluation = {
+        "success_rate": 0.0,
+        "failure_rate": 0.0,
+        "physical_success": False,
+        "physical_checks": {
+            "no_fall": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+        },
+        "movement_summary": {
+            "tracked_delta_x_m": {
+                "min": 0.0,
+                "max": 0.08,
+                "mean": 0.08,
+                "final": 0.08,
+            },
+        },
+    }
+
+    assert (
+        _scale_gate_reason(
+            evaluation,
+            task_id="walk_forward",
+            min_success_rate=1.0,
+        )
+        == "stable_partial_progress_gate_passed"
+    )
+
+
+def test_scale_gate_reason_reports_safe_locomotion_prior_gate() -> None:
+    evaluation = {
+        "success_rate": 0.0,
+        "failure_rate": 0.0,
+        "physical_fall_rate": 0.0,
+        "support_contract_failure_rate": 0.0,
+        "physical_success": False,
+        "physical_checks": {
+            "tracked_height_present": True,
+            "no_fall": True,
+            "tracked_delta_x_forward": False,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            "min_alternating_foot_contacts": False,
+            "min_swing_foot_clearance_m": False,
+            "max_foot_slip_m_s": True,
+            "max_self_collision_count": True,
+        },
+    }
+
+    assert (
+        _scale_gate_reason(
+            evaluation,
+            task_id="walk_forward",
+            min_success_rate=1.0,
+            allow_safe_locomotion_prior_scale=True,
+        )
+        == "safe_locomotion_prior_scale_gate_passed"
+    )
+
+
+@pytest.mark.parametrize(
+    "check_key",
+    (
+        "tracked_height_present",
+        "no_fall",
+        "tracked_lateral_drift_bound",
+        "yaw_drift_bound",
+        "max_foot_slip_m_s",
+        "max_self_collision_count",
+    ),
+)
+def test_safe_locomotion_prior_gate_rejects_side_gate_violations(check_key: str) -> None:
+    checks = {
+        "tracked_height_present": True,
+        "no_fall": True,
+        "tracked_lateral_drift_bound": True,
+        "yaw_drift_bound": True,
+        "max_foot_slip_m_s": True,
+        "max_self_collision_count": True,
+    }
+    checks[check_key] = False
+
+    assert not _safe_locomotion_prior_scale_gate_passed(
+        {
+            "failure_rate": 0.0,
+            "physical_fall_rate": 0.0,
+            "support_contract_failure_rate": 0.0,
+            "physical_checks": checks,
+        },
+        task_id="walk_forward",
+    )
+
+
 def test_locomotion_prior_training_starts_at_validated_prior_scale() -> None:
     assert (
         _initial_action_scale_for_training(
@@ -591,6 +749,11 @@ def test_locomotion_prior_residual_schedule_starts_at_zero_for_prior() -> None:
     assert schedule["initial_scale"] == 0.0
     assert schedule["target_scale"] == 0.25
     assert schedule["increment"] == 0.05
+    assert schedule["mode"] == "stable_partial_progress_gate_ramp"
+    assert schedule["criteria"] == {
+        "failure_rate_lte": 0.0,
+        "physical_success_or_stable_partial_progress": True,
+    }
 
 
 def test_physical_checks_use_episode_max_yaw_for_walk_forward() -> None:

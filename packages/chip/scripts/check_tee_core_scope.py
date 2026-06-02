@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,14 @@ REQUIRED_BLOCKED_CLAIMS = {
     "measured_launch",
     "attestation_quote_signed",
 }
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "confidential_vm_isolation_claim_allowed": False,
+    "memory_encryption_claim_allowed": False,
+    "measured_launch_claim_allowed": False,
+    "signed_quote_claim_allowed": False,
+    "silicon_tee_claim_allowed": False,
+}
 
 # Extract `scripts/<name>.py` referenced in a proving command, if any.
 SCRIPT_RE = re.compile(r"(scripts/[A-Za-z0-9_./-]+\.py)")
@@ -47,6 +56,10 @@ SCRIPT_RE = re.compile(r"(scripts/[A-Za-z0-9_./-]+\.py)")
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def artifact_exists(spec: str) -> bool:
@@ -125,6 +138,7 @@ def main() -> int:
             {
                 "schema": "eliza.tee_core_scope.v1",
                 "status": "tee_core_scope_release_blocked",
+                "generated_utc": utc_now(),
                 "claim_boundary": (
                     "TEE core lane scope audit only; not confidential-VM isolation, "
                     "not memory encryption, not measured launch, not a signed quote, "
@@ -134,6 +148,7 @@ def main() -> int:
                 "buildable_now": [item.get("id") for item in gate.get("buildable_now", [])],
                 "blocked_claims": [c.get("id") for c in gate.get("blocked_claims", [])],
                 "errors": errors,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "findings": [
                     {
                         "code": "tee_core_scope_release_blocked",
@@ -149,6 +164,7 @@ def main() -> int:
                     "buildable_now_count": len(gate.get("buildable_now", [])),
                     "blocked_claim_count": len(gate.get("blocked_claims", [])),
                     "release_claim_allowed": False,
+                    "false_claim_flags": FALSE_CLAIM_FLAGS,
                 },
             },
             indent=2,

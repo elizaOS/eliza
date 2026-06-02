@@ -154,6 +154,11 @@ CPU_PHONE_REPORT_REQUIREMENTS = (
     "with software/clocks/memory/thermal/power/process/calibration sections, and "
     "calibrated clock_source, power_meter, lmbench_binary, and memory_model assets."
 )
+CLAIM_FLAG_KEYS = ("claim_allowed", "phone_claim_allowed", "release_claim_allowed")
+
+
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    return {key: False for key in CLAIM_FLAG_KEYS if report.get(key) is False}
 
 
 def summarize_blocked_requirements(result: dict[str, Any], limit: int = 8) -> str | None:
@@ -1153,7 +1158,7 @@ def build_l5_l6_report(
 
     blocked = [item for item in entries if not item["claim_satisfied"]]
     claim_allowed = not blocked
-    return {
+    report = {
         "schema": "eliza.cpu_phone_l5_l6_benchmark_report.v1",
         "generated_utc": datetime.now(UTC).isoformat(),
         "status": "pass" if claim_allowed else "blocked",
@@ -1167,6 +1172,8 @@ def build_l5_l6_report(
         "entries": entries,
         "blocked_count": len(blocked),
     }
+    report["false_claim_flags"] = false_claim_flags(report)
+    return report
 
 
 def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
@@ -1325,6 +1332,8 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
         errors.append("l5/l6 report phone_claim_allowed does not match blocked_count")
     if report.get("release_claim_allowed") is not (blocked_count == 0):
         errors.append("l5/l6 report release_claim_allowed does not match blocked_count")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("l5/l6 report false_claim_flags does not match denied claim fields")
     if set(report.get("claim_levels_accepted") or []) != REQUIRED_CLAIM_LEVELS:
         errors.append("l5/l6 report claim_levels_accepted drifted")
     if set(report.get("required_benchmarks") or []) != set(REQUIRED_BENCHMARKS):
@@ -1339,7 +1348,7 @@ def build_report(report_path: Path) -> dict[str, Any]:
     blocked = [item for item in findings if item.get("status") != "pass"]
     status = "pass" if not blocked else "blocked"
     claim_allowed = status == "pass"
-    return {
+    report = {
         "schema": "eliza.cpu_phone_benchmark_claim_gate.v1",
         "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
@@ -1359,6 +1368,8 @@ def build_report(report_path: Path) -> dict[str, Any]:
         "findings": findings,
         "blocked_count": len(blocked),
     }
+    report["false_claim_flags"] = false_claim_flags(report)
+    return report
 
 
 def main() -> int:
@@ -1395,6 +1406,7 @@ def main() -> int:
         report["claim_allowed"] = False
         report["phone_claim_allowed"] = False
         report["release_claim_allowed"] = False
+        report["false_claim_flags"] = false_claim_flags(report)
         report["blocked_count"] = len(
             [item for item in report["findings"] if item.get("status") != "pass"]
         )

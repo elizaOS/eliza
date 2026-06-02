@@ -12,7 +12,8 @@ const tailscaleEnvSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .transform((value) => {
-      if (Array.isArray(value)) return value.filter((tag) => tag.length > 0);
+      if (Array.isArray(value))
+        return value.map((tag) => tag.trim()).filter((tag) => tag.length > 0);
       if (typeof value === "string" && value.length > 0)
         return value
           .split(",")
@@ -32,8 +33,16 @@ const tailscaleEnvSchema = z.object({
     .transform((value) => {
       if (value === undefined || value === "") return 3000;
       const num =
-        typeof value === "string" ? Number.parseInt(value, 10) : value;
-      if (Number.isNaN(num) || num <= 0 || num > 65535) return 3000;
+        typeof value === "string" && /^\d+$/.test(value)
+          ? Number(value)
+          : value;
+      if (
+        typeof num !== "number" ||
+        !Number.isInteger(num) ||
+        num <= 0 ||
+        num > 65535
+      )
+        return 3000;
       return num;
     })
     .default(3000),
@@ -47,8 +56,11 @@ const tailscaleEnvSchema = z.object({
     .transform((value) => {
       if (value === undefined || value === "") return 3600;
       const num =
-        typeof value === "string" ? Number.parseInt(value, 10) : value;
-      if (Number.isNaN(num) || num <= 0) return 3600;
+        typeof value === "string" && /^\d+$/.test(value)
+          ? Number(value)
+          : value;
+      if (typeof num !== "number" || !Number.isInteger(num) || num <= 0)
+        return 3600;
       return num;
     })
     .default(3600),

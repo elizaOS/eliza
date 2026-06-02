@@ -119,6 +119,31 @@ json_bool() {
 	fi
 }
 
+portable_aosp_dir() {
+	if [ -z "${aosp_dir:-}" ]; then
+		printf ''
+		return
+	fi
+	case "$aosp_dir" in
+		/home/*|/Users/*|/tmp/*|/var/tmp/*)
+			printf '<host-aosp-checkout>'
+			;;
+		*)
+			printf '%s' "$aosp_dir"
+			;;
+	esac
+}
+
+portable_report_text() {
+	text=$1
+	portable=$(portable_aosp_dir)
+	if [ -n "${aosp_dir:-}" ] && [ "$portable" != "$aosp_dir" ]; then
+		printf '%s' "$text" | sed "s#$(printf '%s' "$aosp_dir" | sed 's/[.[\\*^$()+?{}|]/\\&/g')#$portable#g"
+	else
+		printf '%s' "$text"
+	fi
+}
+
 linux_requirements_json() {
 	python3 - <<'PY'
 import json
@@ -316,12 +341,15 @@ write_report() {
 	status=$1
 	reason=$2
 	next=$3
+	report_reason=$(portable_report_text "$reason")
+	report_next=$(portable_report_text "$next")
 	host_requirements=$(host_requirements_json)
 	linux_requirements=$(linux_requirements_json)
 	handoff_commands=$(handoff_commands_json)
-	findings=$(findings_json "$status" "$reason" "$next" "$host_requirements")
+	findings=$(findings_json "$status" "$report_reason" "$report_next" "$host_requirements")
 	required_evidence=$(evidence_json full)
 	attempted_evidence=$(evidence_json build)
+	report_aosp_dir=$(portable_aosp_dir)
 	if [ "$require_full_evidence" -eq 1 ]; then
 		attempted_evidence=$(evidence_json full)
 	fi
@@ -331,9 +359,9 @@ write_report() {
   "schema": "eliza.android_sim_boot.v1",
   "generated_utc": "$(date -u +%FT%TZ)",
   "status": $(json_escape "$status"),
-  "reason": $(json_escape "$reason"),
-  "next_step": $(json_escape "$next"),
-  "aosp_dir": $(json_escape "${aosp_dir:-}"),
+  "reason": $(json_escape "$report_reason"),
+  "next_step": $(json_escape "$report_next"),
+  "aosp_dir": $(json_escape "$report_aosp_dir"),
   "aosp_dir_source": $(json_escape "$aosp_dir_source"),
   "aosp_product": $(json_escape "$aosp_product"),
   "run_cuttlefish": $(json_bool "$run_cuttlefish"),

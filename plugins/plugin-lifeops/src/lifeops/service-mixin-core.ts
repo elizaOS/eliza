@@ -9,6 +9,7 @@ import {
   type BrowserBridgeSettings,
   type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
+import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
 import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,
@@ -24,7 +25,7 @@ import {
   createLifeOpsAuditEvent,
   LifeOpsRepository,
 } from "./repository.js";
-import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
+import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync-config.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
@@ -163,7 +164,9 @@ export class LifeOpsServiceBase {
     options: LifeOpsServiceOptions = {},
   ) {
     this.repository = new LifeOpsRepository(runtime);
-    this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
+    this.scheduleSyncClient = new LifeOpsScheduleSyncClient(
+      resolveLifeOpsScheduleSyncConfigFromElizaConfig,
+    );
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;
     this.ownerEntityIdValue =

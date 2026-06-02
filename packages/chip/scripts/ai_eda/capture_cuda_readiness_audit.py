@@ -13,6 +13,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/cuda_readiness_audit"
 CLAIM_BOUNDARY = "cuda_readiness_audit_only_no_training_inference_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "downloads_assets": False,
+    "downloads_model_weights": False,
+    "optimization_claim_allowed": False,
+    "release_use_allowed": False,
+    "runs_inference": False,
+    "runs_openlane": False,
+    "runs_training": False,
+    "signoff_claim_allowed": False,
+}
 RUN_PLAN_EXECUTION_SCHEMA = "eliza.ai_eda.cuda_run_plan_execution.v1"
 RUN_PLAN_SAFETY_MATRIX_SCHEMA = "eliza.ai_eda.cuda_run_plan_safety_matrix.v1"
 REPLAY_QUEUE_SCHEMA = "eliza.ai_eda.macro_placement_replay_queue.v1"
@@ -1448,6 +1458,7 @@ def main() -> int:
             "release_use_allowed": False,
             "signoff_claim_allowed": False,
             "optimization_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
         "capabilities": {
             "payload_handoff_ready": payload_ready,

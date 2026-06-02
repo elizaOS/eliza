@@ -109,6 +109,23 @@ describe("Integration: HelloWorld Action", () => {
         text: "",
       }),
     ).resolves.toBe(true);
+    await expect(
+      helloWorldAction.validate(
+        runtime,
+        {
+          ...baseMessage,
+          content: {
+            text: "this highway is unrelated",
+            source: "test",
+          },
+        },
+        {
+          values: { recentMessages: ["hello"] },
+          data: {},
+          text: "",
+        },
+      ),
+    ).resolves.toBe(false);
   });
 });
 

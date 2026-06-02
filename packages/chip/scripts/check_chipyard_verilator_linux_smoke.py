@@ -1441,31 +1441,37 @@ def process_rows_from_ps(stdout: str) -> list[dict[str, object]]:
     return rows
 
 
-def active_chipyard_smoke_processes() -> list[dict[str, object]]:
-    try:
-        completed = subprocess.run(
-            ["ps", "-eo", "pid,ppid,etime,cmd"],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
+def command_payload_is_linux_smoke(command: str) -> bool:
+    if "eliza-e1-ap-benchmarks" in command:
+        return False
+    if "eliza-e1-linux-smoke" in command:
+        return True
+    return "chipyard-generated-ap-linux-smoke" in command
+
+
+def active_chipyard_smoke_processes(ps_stdout: str | None = None) -> list[dict[str, object]]:
+    if ps_stdout is None:
+        try:
+            completed = subprocess.run(
+                ["ps", "-eo", "pid,ppid,etime,cmd"],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        ps_stdout = completed.stdout
     active: list[dict[str, object]] = []
-    for row in process_rows_from_ps(completed.stdout):
+    for row in process_rows_from_ps(ps_stdout):
         command = str(row.get("command") or "")
         if "check_chipyard_verilator_linux_smoke.py" in command:
             continue
         if not any(marker in command for marker in ACTIVE_SMOKE_PROCESS_MARKERS):
             continue
-        if (
-            "eliza-e1-linux-smoke" not in command
-            and "chipyard-generated-ap-linux-smoke" not in command
-            and "run_chipyard_eliza_linux_smoke.sh" not in command
-        ):
+        if not command_payload_is_linux_smoke(command):
             continue
         active.append(row)
     return active

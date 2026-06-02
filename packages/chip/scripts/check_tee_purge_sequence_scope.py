@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,13 @@ from tee.purge_sequence_model import (  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "build/reports/tee_purge_sequence_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "rtl_purge_claim_allowed": False,
+    "sva_proof_claim_allowed": False,
+    "silicon_residue_claim_allowed": False,
+    "side_channel_claim_allowed": False,
+}
 
 BLOCKED_UNTIL_REAL_EVIDENCE = [
     {
@@ -49,6 +57,10 @@ BLOCKED_UNTIL_REAL_EVIDENCE = [
         "proving_command": "FPGA single-step harness (BLOCKED until bitstream)",
     },
 ]
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def model_failures() -> list[str]:
@@ -146,6 +158,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.tee_purge_sequence_scope.v1",
         "status": "tee_purge_sequence_scope_release_blocked",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "Pure-software purge-sequence ordering model only; not RTL, not an "
             "SVA proof, not silicon, and not side-channel residue evidence."
@@ -154,10 +167,12 @@ def build_report() -> dict[str, Any]:
         "blocked_until_real_evidence": BLOCKED_UNTIL_REAL_EVIDENCE,
         "checks": checks,
         "findings": structured_findings(BLOCKED_UNTIL_REAL_EVIDENCE, checks),
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([c for c in checks if c["status"] == "pass"]),
             "release_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
     }
 
@@ -169,6 +184,8 @@ def validate_report(report: dict[str, Any]) -> list[str]:
     summary = report.get("summary")
     if not isinstance(summary, dict) or summary.get("release_claim_allowed") is not False:
         errors.append("release_claim_allowed must stay false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied purge-sequence claims")
     blocked = report.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 4:
         errors.append("scope must enumerate blocked real-evidence items with proving commands")

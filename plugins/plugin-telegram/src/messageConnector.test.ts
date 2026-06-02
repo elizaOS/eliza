@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { TelegramService } from "./service";
 
@@ -150,6 +150,26 @@ describe("Telegram message connector adapter", () => {
     );
   });
 
+  it("rejects sends without a resolvable Telegram target", async () => {
+    const runtime = createRuntime();
+    const manager = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const service = createTelegramService({
+      bot: {},
+      messageManager: manager,
+    });
+
+    await expect(
+      service.handleSendMessage(
+        runtime,
+        { source: "telegram" },
+        { text: "hello" },
+      ),
+    ).rejects.toThrow(
+      "Telegram SendHandler requires channelId, roomId, or entityId.",
+    );
+    expect(manager.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("resolves known chats into connector targets", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
@@ -255,6 +275,113 @@ describe("Telegram message connector adapter", () => {
     expect(result?.summary).toBeUndefined();
     expect(result?.label).toBe("-100111");
     expect(result?.metadata).toMatchObject({ accountId: "acct-b" });
+  });
+
+  it("clamps fetch limits and filters room reads to the target account", async () => {
+    const roomId = "room-1" as never;
+    const acctAMemory = {
+      id: "memory-a",
+      roomId,
+      content: { text: "from account a" },
+      metadata: { accountId: "acct-a" },
+      createdAt: 30,
+    } as Memory;
+    const legacyMemory = {
+      id: "memory-legacy",
+      roomId,
+      content: { text: "legacy memory without account metadata" },
+      metadata: {},
+      createdAt: 20,
+    } as Memory;
+    const acctBMemory = {
+      id: "memory-b",
+      roomId,
+      content: { text: "from account b" },
+      metadata: { accountId: "acct-b" },
+      createdAt: 10,
+    } as Memory;
+    const runtime = {
+      ...createRuntime(),
+      getMemories: vi
+        .fn()
+        .mockResolvedValue([acctAMemory, legacyMemory, acctBMemory]),
+    };
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      defaultAccountId: "acct-a",
+      accountStates: new Map([
+        ["acct-a", { accountId: "acct-a" }],
+        ["acct-b", { accountId: "acct-b" }],
+      ]),
+    });
+
+    const result = await service.fetchConnectorMessages(
+      { runtime, accountId: "acct-a" } as never,
+      {
+        target: { source: "telegram", accountId: "acct-a", roomId },
+        limit: 999,
+      },
+    );
+
+    expect(runtime.getMemories).toHaveBeenCalledWith({
+      tableName: "messages",
+      roomId,
+      limit: 200,
+      orderBy: "createdAt",
+      orderDirection: "desc",
+    });
+    expect(result).toEqual([acctAMemory, legacyMemory]);
+  });
+
+  it("searches fetched connector messages case-insensitively with a sane fallback limit", async () => {
+    const roomId = "room-1" as never;
+    const runtime = {
+      ...createRuntime(),
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-1",
+          roomId,
+          content: { text: "Deploy finished cleanly" },
+          metadata: { accountId: "acct-a" },
+          createdAt: 30,
+        },
+        {
+          id: "memory-2",
+          roomId,
+          content: { text: "unrelated chatter" },
+          metadata: { accountId: "acct-a" },
+          createdAt: 20,
+        },
+        {
+          id: "memory-3",
+          roomId,
+          content: { text: "DEPLOY failed loudly" },
+          metadata: { accountId: "acct-a" },
+          createdAt: 10,
+        },
+      ] satisfies Partial<Memory>[]),
+    };
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      defaultAccountId: "acct-a",
+      accountStates: new Map([["acct-a", { accountId: "acct-a" }]]),
+    });
+
+    const result = await service.searchConnectorMessages(
+      { runtime, accountId: "acct-a" } as never,
+      {
+        target: { source: "telegram", accountId: "acct-a", roomId },
+        query: "deploy",
+        limit: -5,
+      },
+    );
+
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 100 }),
+    );
+    expect(result.map((memory) => memory.id)).toEqual(["memory-1", "memory-3"]);
   });
 
   it("starts non-default accounts when the default account has no token", async () => {

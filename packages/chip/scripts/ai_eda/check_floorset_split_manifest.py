@@ -16,6 +16,11 @@ EXPECTED_CLAIM_BOUNDARY = (
     "floorset_lite_split_manifest_training_only_no_e1_signoff_or_release_claim"
 )
 REQUIRED_SPLITS = {"train", "val", "test"}
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "e1_signoff_evidence": False,
+    "optimization_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -93,6 +98,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("e1_signoff_evidence must be false")
     if report.get("optimization_claim_allowed") is not False:
         errors.append("optimization_claim_allowed must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied FloorSet split claims")
     errors.extend(validate_artifact(report.get("source_conversion"), "source_conversion"))
     splits = report.get("splits")
     if not isinstance(splits, dict) or set(splits) != REQUIRED_SPLITS:

@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
+if __package__ in {None, ""}:
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    if sys.path and os.path.abspath(sys.path[0]) == package_dir:
+        sys.path.pop(0)
+    sys.path.insert(0, os.path.dirname(package_dir))
+    __package__ = "orchestrator_lifecycle"
+
 import argparse
 import json
 

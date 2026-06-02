@@ -844,13 +844,16 @@ export function installPrebuiltRemotePlugin(
     installedAt: previousInstall?.installedAt ?? now,
     updatedAt: now,
     permissionsGranted: normalizeRemotePluginPermissions(
-      options.permissionsGranted ?? manifest.permissions,
+      options.permissionsGranted ??
+        previousInstall?.permissionsGranted ??
+        manifest.permissions,
     ),
     devMode: options.devMode ?? previousInstall?.devMode ?? false,
     lastBuildAt: options.lastBuildAt ?? previousInstall?.lastBuildAt ?? null,
     lastBuildError: null,
     status: "installed",
-    source: options.source ?? { kind: "artifact", location: payloadDir },
+    source: options.source ??
+      previousInstall?.source ?? { kind: "artifact", location: payloadDir },
   });
 
   return loadInstalledRemotePluginRecord(storeRoot, installRecord);

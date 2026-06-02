@@ -726,6 +726,8 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
     if result.returncode != 2:
         raise AssertionError(result.stdout)
     assert_equal(status["status"], "blocked", "proof readiness status")
+    if not status.get("claim_boundary") or not status.get("generated_utc"):
+        raise AssertionError(json.dumps(status, indent=2))
     assert_equal(status["can_generate_locally"], False, "local proof generation")
     blockers = status.get("local_blockers", [])
     if not any(
@@ -738,6 +740,20 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
         for finding in findings
     ):
         raise AssertionError(json.dumps(status, indent=2))
+    if not findings or not all(finding.get("next_command") for finding in findings):
+        raise AssertionError(json.dumps(status, indent=2))
+    command_text = "\n".join(
+        command
+        for finding in findings
+        for command in finding.get("next_commands", [])
+    )
+    for token in (
+        "adb devices",
+        "capture_e1_npu_nnapi_evidence.sh",
+        "check_e1_npu_nnapi_proof.py --probe-adb",
+    ):
+        if token not in command_text:
+            raise AssertionError(command_text)
 
 
 def test_e1_npu_nnapi_proof_rejects_tops_and_capture_command_drift() -> None:

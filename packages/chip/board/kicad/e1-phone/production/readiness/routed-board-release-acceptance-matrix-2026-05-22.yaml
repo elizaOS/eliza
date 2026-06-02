@@ -5707,6 +5707,9 @@ candidate_end_to_end_context:
     cad_connection_controlled_impedance_count: 16
     cad_connection_controlled_impedance_requirement_defined_count: 32
     cad_connection_bend_radius_requirement_defined_count: 32
+    cad_connection_mechanical_envelope_defined_count: 32
+    cad_connection_all_records_have_mechanical_envelope: true
+    cad_connection_mechanical_envelope_release_credit: false
     cad_connection_supplier_release_required_count: 32
     incomplete_footprint_count: 0
     incomplete_cad_connection_count: 0
@@ -5732,6 +5735,8 @@ candidate_end_to_end_context:
     all_package_visual_counts_match_step_intake: true
     pinout_bound_model_count: 22
     support_pattern_model_count: 67
+    pattern_bound_model_count: 89
+    terminal_contract_bound_model_count: 89
     models_with_terminal_contract_or_no_electrical_pads_count: 89
     total_pad_contract_visual_count: 1452
     uncovered_pad_visual_count: 0
@@ -5743,8 +5748,10 @@ candidate_end_to_end_context:
     local_discrete_step_file_count: 89
     local_discrete_step_imported_solid_count: 89
     local_discrete_step_bbox_match_count: 89
+    local_step_bound_model_count: 89
     local_discrete_step_bytes_total: 1387362
     all_models_have_local_discrete_step_file: true
+    all_models_have_local_step_binding: true
     all_local_discrete_step_hashes_match_files: true
     all_local_discrete_step_sizes_match_files: true
     all_local_discrete_steps_import_as_solids: true
@@ -5752,6 +5759,8 @@ candidate_end_to_end_context:
     all_pinout_bound_models_have_terminal_contract: true
     all_pinout_bound_model_contracts_match_pad_visuals: true
     all_support_pattern_models_have_explicit_provenance: true
+    all_models_have_pattern_binding: true
+    all_models_have_terminal_contract_binding: true
     all_non_signal_pad_contracts_match_pad_visuals: true
     all_npth_mechanical_features_have_contract: true
     component_model_record_count: 89
@@ -5760,13 +5769,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5774,7 +5788,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
-      local_discrete_step_sha256: 20c40139c9902f481a5919c64dc8c4479796ef224992d45add4c887b7feec890
+      local_step_bound: true
+      local_discrete_step_sha256: 746c408460eb0ffc9a327e65d394ee0c7efac975de883738d2592b447baca9e4
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5783,13 +5798,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5797,7 +5817,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
-      local_discrete_step_sha256: 2871a67bbee1588bf5a992863d4370b87814d346b300bbfc30ba589610483d8b
+      local_step_bound: true
+      local_discrete_step_sha256: 42fa54500494067a54600caeca770797d444df490663351301b316e40c75b5b6
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5806,13 +5827,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5820,7 +5846,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
-      local_discrete_step_sha256: b524289a4340432d82489f784c77f91790812e828e375ab152eaaad253195171
+      local_step_bound: true
+      local_discrete_step_sha256: ba6acef52f3832ebd1e0de9fe2a4e4e7ae971dd88959be442d812d11e175aa6b
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5829,13 +5856,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5843,7 +5875,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
-      local_discrete_step_sha256: aa18023c499a4d67abca72fdf9404565a2e0b695b9691f329c60a2062ee73f8e
+      local_step_bound: true
+      local_discrete_step_sha256: 5db74d291790cd3ab0371996fcdd973fc61d8083f12b094f656b6e2bbd540551
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5852,13 +5885,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5866,7 +5904,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
-      local_discrete_step_sha256: 7bde73af0ae797886281bc73556f6576fafa7ccb64ab93f8b013cc8d99f8f5ff
+      local_step_bound: true
+      local_discrete_step_sha256: 04594625abe7ada02920f14a0435bcc5b6bfe1d8ede0fd76cb3e4caa3e265635
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5875,13 +5914,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5889,7 +5933,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
-      local_discrete_step_sha256: 409ceede65f2e55b3f1c9743f01eeaa1c4bb9a17d2cafd94b717ab0445a5fad6
+      local_step_bound: true
+      local_discrete_step_sha256: 3ab4b7df4e044cae27828e3c6a50c98e784b6e1a818ce2cd5c60eceba836faba
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5898,13 +5943,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5912,7 +5962,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
-      local_discrete_step_sha256: 65c935a288443489804bf0595cbbfaac9f4297fc945719a26d7732edb268ce9d
+      local_step_bound: true
+      local_discrete_step_sha256: 61b3feaea771a8e0bc9ff8040d63177aff53a0e85a014576d9e665fa056b12de
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5921,13 +5972,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5935,7 +5991,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
-      local_discrete_step_sha256: 3657b72e8a19f11aabea92e5f0e13a5c72b2b3747435978671f0b396562b39b1
+      local_step_bound: true
+      local_discrete_step_sha256: 1f5a7a57cc06f218127f8e3a470fb42175b9ee8a1c7e8ea97b909703fff1e7f9
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5944,13 +6001,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5958,7 +6020,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
-      local_discrete_step_sha256: 743858d0abe18fd09398198ae7a2595935088a59d39ace1f415370203261ddaf
+      local_step_bound: true
+      local_discrete_step_sha256: ced4c03908ab6ecbb4b5fa52bb865cbf466f9710789f7c1dbfa04c5d613e61ba
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5967,13 +6030,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -5981,7 +6049,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
-      local_discrete_step_sha256: ea89d935ee46f01a1243c1d8e7f056e62297a7da9a4e865c6e871be8457c7332
+      local_step_bound: true
+      local_discrete_step_sha256: b228be85e8555e9bb2c11b774bea84df36deefe264fc7fc22aaddb85b47a72c2
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -5990,13 +6059,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6004,7 +6078,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
-      local_discrete_step_sha256: 10a2a0a1418c3a989cc6011981895efc5ec1a92a5c25728f7100e35b1171c879
+      local_step_bound: true
+      local_discrete_step_sha256: cb5581ef6c294df3e99fe915511c12b1f5b81696753a258417bdd3112989a0bf
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6013,13 +6088,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6027,7 +6107,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
-      local_discrete_step_sha256: 62a4b742c0cec25931a52eb9528f5e85732faf2c690a9d18a72b9fc25174db3c
+      local_step_bound: true
+      local_discrete_step_sha256: 5404027bc1f3a1b7ab7adfd3faf7f000f2b180a6935598fda47beb49fb0c6e78
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6036,13 +6117,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6050,7 +6136,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
-      local_discrete_step_sha256: 28c251f2c996f62b4e6366635c363bc2efe56770abb440303611d29326dcbb58
+      local_step_bound: true
+      local_discrete_step_sha256: 877c425b13f67c72cc72ed65a46a00a4a80afcb0a822960b1eae0ed431409c50
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6059,13 +6146,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6073,7 +6165,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
-      local_discrete_step_sha256: e56e9252aed8f87769fe7be9780191b69d46c8f63539f2c0ffffede0585cb829
+      local_step_bound: true
+      local_discrete_step_sha256: f4a444c28eda262c137bea28b4b2ad991fa690feda240f2229fb2017ad03c8f9
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6082,13 +6175,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6096,7 +6194,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
-      local_discrete_step_sha256: 748f08ea44f1efa19af7398482cde04e09d1d379c50a1a6cd004de916acf5939
+      local_step_bound: true
+      local_discrete_step_sha256: 38d9bfdf89acd70f3b44875cbdc689947fd55f86803f41e042ee471224c05e8c
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6105,13 +6204,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6119,7 +6223,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
-      local_discrete_step_sha256: f81ae83802162af3c33f54371e63b3fedd66e7837edfba52e812433e8ae17a1a
+      local_step_bound: true
+      local_discrete_step_sha256: 1432d212e1d52c2684ef5e9bf87da5b295b3468fa2e35ef130a313c50da609a4
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6128,13 +6233,18 @@ candidate_end_to_end_context:
       footprint: TVS_DIODE_2P_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_tvs_diode
       coverage: explicit_local_two_terminal_tvs_diode_land_pattern
       land_pattern_basis: local two-terminal TVS diode development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6142,7 +6252,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
-      local_discrete_step_sha256: 3eb762fa454b891aa037919dbaef6a735601c1cb1a1d39d580ca33c0e922de19
+      local_step_bound: true
+      local_discrete_step_sha256: f757fd157457d7f133f71638b6cf7476e3da673e072ea1a5b6c52f285ed0de9d
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6151,13 +6262,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6165,7 +6281,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
-      local_discrete_step_sha256: 53c2984ce63615e5f79763ec551054dd0293d46510797b9da396825daca4cef9
+      local_step_bound: true
+      local_discrete_step_sha256: 2e940cb5a78800723c54c46e2d6d1ed491cc3e24786899ad795d7a62e8a17f87
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6174,13 +6291,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6188,7 +6310,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
-      local_discrete_step_sha256: 08d363a692d0daf091bc6c3175e3ea3f9e8e797fa28a5b8e3d31c3a2476ae8d7
+      local_step_bound: true
+      local_discrete_step_sha256: 492cdb3632bb9ca0db09a62495b6d6879c08b452233d83f3cafbd92556611e42
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6197,13 +6320,18 @@ candidate_end_to_end_context:
       footprint: USIM_ESD_LEVELSHIFT_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/usim-esd-levelshift-pinout.yaml
+      pinout_bound: true
       pinout_status: public_usim_signal_contract_pending_selected_levelshift_pinout
       coverage: exact_public_usim_signal_contract_pending_selected_levelshift_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 10
       pad_contract_covered_count: 10
       terminal_contract_count: 10
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6211,7 +6339,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
-      local_discrete_step_sha256: 1a484c37ef91bd5c75be9a1ed13f18eae0c6346acc1f32a755da06d0fa3fe86c
+      local_step_bound: true
+      local_discrete_step_sha256: 3fb8284f3e68199c74d3428bd829b002185aa923e67524ef0092f7a927c30d36
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6220,13 +6349,18 @@ candidate_end_to_end_context:
       footprint: TVS_DIODE_2P_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_tvs_diode
       coverage: explicit_local_two_terminal_tvs_diode_land_pattern
       land_pattern_basis: local two-terminal TVS diode development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6234,7 +6368,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
-      local_discrete_step_sha256: f54d4534a5b8e17cd804047eb708cacf21f0c716da758f4a99e69cac44e7dea5
+      local_step_bound: true
+      local_discrete_step_sha256: 3ac697f433ca97b21e0a6d33dce9423327a4c74cd464261069a945498c5eb09b
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6243,13 +6378,18 @@ candidate_end_to_end_context:
       footprint: FIDUCIAL_1MM_DEV
       visual_package_class: fiducial_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_fiducial_land_pattern
       coverage: explicit_local_global_fiducial_land_pattern
       land_pattern_basis: local 1.0 mm copper fiducial with solder-mask clearance
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6257,7 +6397,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
-      local_discrete_step_sha256: 6052391aa7c20ee03c25a8eee43d83720ce90870875a98e43a35b54f1708d91e
+      local_step_bound: true
+      local_discrete_step_sha256: 0076696120897e50e5b19b52189ec7092cc79c20d40a7d777ec6cafc6ffd2cc3
       local_discrete_step_bytes: 15628
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6266,13 +6407,18 @@ candidate_end_to_end_context:
       footprint: FIDUCIAL_1MM_DEV
       visual_package_class: fiducial_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_fiducial_land_pattern
       coverage: explicit_local_global_fiducial_land_pattern
       land_pattern_basis: local 1.0 mm copper fiducial with solder-mask clearance
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6280,7 +6426,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
-      local_discrete_step_sha256: a52c00ba3cdac82d316c25db3d25016627d2b8781b1d6e6d75ed54031e8d239f
+      local_step_bound: true
+      local_discrete_step_sha256: 00d0ba3095150b6901c3cd441b7da87a80ff30903fa94c4fa1f2c8a41e2bfea0
       local_discrete_step_bytes: 15628
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6289,13 +6436,18 @@ candidate_end_to_end_context:
       footprint: FIDUCIAL_1MM_DEV
       visual_package_class: fiducial_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_fiducial_land_pattern
       coverage: explicit_local_global_fiducial_land_pattern
       land_pattern_basis: local 1.0 mm copper fiducial with solder-mask clearance
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6303,7 +6455,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
-      local_discrete_step_sha256: cd21c353719c890282fd5b8d6a102a739e1dc60691cea4cdd828ffc910dcb507
+      local_step_bound: true
+      local_discrete_step_sha256: f7747a3527be4295a96a4b3030cc65f6f2a738daa8467f46fe5abd4d785fb649
       local_discrete_step_bytes: 15628
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6312,13 +6465,18 @@ candidate_end_to_end_context:
       footprint: C0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_capacitor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6326,7 +6484,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
-      local_discrete_step_sha256: e75aa1f6a0626ca4377838e5d3f621bda1ce4b469c7e7404b124c9d2926d1ab8
+      local_step_bound: true
+      local_discrete_step_sha256: a8e059966fe96c477a1c6635520206ffa71254c0072bccef0ffdb7e7cb50b4fe
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6335,13 +6494,18 @@ candidate_end_to_end_context:
       footprint: BATTERY_4P_1P00_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/battery-pack-4pin-pinout.yaml
+      pinout_bound: true
       pinout_status: public_pack_connector_signal_contract_pending_supplier_connector_pin_order
       coverage: exact_public_pack_signal_contract_pending_supplier_pin_order
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 4
       pad_contract_covered_count: 4
       terminal_contract_count: 4
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6349,7 +6513,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
-      local_discrete_step_sha256: 4aa0b1e159fbbab98ed1bd68c7faf1c9c2ac7ec7e16236112403e88a9ff3e57b
+      local_step_bound: true
+      local_discrete_step_sha256: 0ab76afe1ad906d971ca5d2fd7a86a8a9ef6eab683d2cbaffa7c749e03ec3054
       local_discrete_step_bytes: 15486
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6358,13 +6523,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6372,7 +6542,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
-      local_discrete_step_sha256: 66a5d0ca1894514544ca6f7590518aac4387daa447db41e488300d2e1051bd7a
+      local_step_bound: true
+      local_discrete_step_sha256: ac3d2a5f7598cb5dc579228345c772d81242c864d6681e4b62adbaf1208c7157
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6381,13 +6552,18 @@ candidate_end_to_end_context:
       footprint: DISPLAY_40P_0P30_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/chenghao-ch550fh01a-pinout.yaml
+      pinout_bound: true
       pinout_status: per_pin_fpc_pinout_requires_module_house_signed_specification
       coverage: signal_set_only_pending_signed_fpc_order
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 40
       pad_contract_covered_count: 40
       terminal_contract_count: 40
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6395,7 +6571,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
-      local_discrete_step_sha256: f1f7d0f45f8fdb4b3656d6ad12c115f08641ae974042f9b0fd16d3b249992c4f
+      local_step_bound: true
+      local_discrete_step_sha256: e01d2933d61ea1b292fd60863cd6f5d741042ccbef5704dc003efec8ecaef579
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6404,13 +6581,18 @@ candidate_end_to_end_context:
       footprint: CAMERA_30P_0P50_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/gc5035-pinout.yaml
+      pinout_bound: true
       pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
       coverage: signal_set_only_pending_signed_fpc_order
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 30
       pad_contract_covered_count: 30
       terminal_contract_count: 30
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6418,7 +6600,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
-      local_discrete_step_sha256: c0f31744b0399cbcbf16eeb105c237835adaedf63368707abd3e880395d0afe6
+      local_step_bound: true
+      local_discrete_step_sha256: 9045db2d056a2b7f91c2921169cf19636840d6263829d4fdc8f9f63ade5ea5f6
       local_discrete_step_bytes: 15490
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6427,13 +6610,18 @@ candidate_end_to_end_context:
       footprint: CAMERA_24P_0P50_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/ov13855-pinout.yaml
+      pinout_bound: true
       pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
       coverage: signal_set_only_pending_signed_fpc_order
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 24
       pad_contract_covered_count: 24
       terminal_contract_count: 24
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6441,7 +6629,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
-      local_discrete_step_sha256: fe1f8165383b287b39932d19fac7fc895dbf967d2c6dfa51eeae2f81fb409f5d
+      local_step_bound: true
+      local_discrete_step_sha256: 4ecf82c284873627f9f9a52bcc0e4b627fe483c45bdc685d51992f761e2e348e
       local_discrete_step_bytes: 15490
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6450,13 +6639,18 @@ candidate_end_to_end_context:
       footprint: HIROSE_DF40_80P_0P4_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: mechanical_numbering_public_signal_assignment_local
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 80
       pad_contract_covered_count: 80
       terminal_contract_count: 80
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6464,7 +6658,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
-      local_discrete_step_sha256: a1b166527dd022a07263e69a376d5cd2b7cf70b2386d98902a432bf243ff6a42
+      local_step_bound: true
+      local_discrete_step_sha256: 9afc53afc3a90f648e2bc9c2e8b26774b3224fd0292d199c4452d1ca8049361c
       local_discrete_step_bytes: 15546
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6473,13 +6668,18 @@ candidate_end_to_end_context:
       footprint: HIROSE_DF40_80P_0P4_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: mechanical_numbering_public_signal_assignment_local
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 80
       pad_contract_covered_count: 80
       terminal_contract_count: 80
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6487,7 +6687,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
-      local_discrete_step_sha256: fce1a1326892a1f0208d8b8001a1110efe4e1cd96253b2349623d5d92c87804d
+      local_step_bound: true
+      local_discrete_step_sha256: caa6ee60619954e53e9511ea9e85f35db5a91bb0f9364df126985ca3e31d2648
       local_discrete_step_bytes: 15546
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6496,13 +6697,18 @@ candidate_end_to_end_context:
       footprint: GCT_USB4105_GF_A_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/gct-usb4105-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_pin_table
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 26
       pad_contract_covered_count: 26
       terminal_contract_count: 24
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 2
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6510,7 +6716,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
-      local_discrete_step_sha256: 569e2291f33d192f1432789f553a7093a640bcffb4a31a08717055db46045c81
+      local_step_bound: true
+      local_discrete_step_sha256: 5799cd9d05e7ed93775eff57120e9a31632b91ab8b6be43b7545b0584517424c
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6519,13 +6726,18 @@ candidate_end_to_end_context:
       footprint: MOUNTING_HOLE_1P2_DEV
       visual_package_class: mechanical_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_mechanical_npth
       coverage: explicit_local_1p2mm_npth_mechanical_land_pattern
       land_pattern_basis: local 1.2 mm NPTH mechanical mounting-hole contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 0
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 1
       all_pad_visuals_have_contract: true
@@ -6533,7 +6745,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
-      local_discrete_step_sha256: 83df34151ec7b63b9c8ea48c2e7d39bf0690c038fa1416321e7efb24285df85b
+      local_step_bound: true
+      local_discrete_step_sha256: 2317cb9d7016686b9515edfcc049438f4fc2dcfafc6d211650f85cae00349d96
       local_discrete_step_bytes: 15638
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6542,13 +6755,18 @@ candidate_end_to_end_context:
       footprint: MOUNTING_HOLE_1P2_DEV
       visual_package_class: mechanical_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_mechanical_npth
       coverage: explicit_local_1p2mm_npth_mechanical_land_pattern
       land_pattern_basis: local 1.2 mm NPTH mechanical mounting-hole contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 0
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 1
       all_pad_visuals_have_contract: true
@@ -6556,7 +6774,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
-      local_discrete_step_sha256: 084b9cc40d99879d58a8f6aeba57877b809907ed156b1776be394b40e19fd833
+      local_step_bound: true
+      local_discrete_step_sha256: 777536a4dcf1c343bb71b7ec17f665ed097e440532e9fe68e05b564aa9a345a0
       local_discrete_step_bytes: 15638
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6565,13 +6784,18 @@ candidate_end_to_end_context:
       footprint: MOUNTING_HOLE_1P2_DEV
       visual_package_class: mechanical_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_mechanical_npth
       coverage: explicit_local_1p2mm_npth_mechanical_land_pattern
       land_pattern_basis: local 1.2 mm NPTH mechanical mounting-hole contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 0
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 1
       all_pad_visuals_have_contract: true
@@ -6579,7 +6803,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
-      local_discrete_step_sha256: 00b8249c5ff091bfb6989bca43348584337cf6e0015138c7b8637128f3523232
+      local_step_bound: true
+      local_discrete_step_sha256: 41bca4298d0c1bf50d8f6e0c7965e7a12e9804c2cc454c21a9cc7056136dfe0c
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6588,13 +6813,18 @@ candidate_end_to_end_context:
       footprint: MOUNTING_HOLE_1P2_DEV
       visual_package_class: mechanical_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_mechanical_npth
       coverage: explicit_local_1p2mm_npth_mechanical_land_pattern
       land_pattern_basis: local 1.2 mm NPTH mechanical mounting-hole contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 0
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 1
       all_pad_visuals_have_contract: true
@@ -6602,7 +6832,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
-      local_discrete_step_sha256: 3a29f94889a2c4a2dab34e11c0a9bab6e668e831c40d799d3b66e493afb16329
+      local_step_bound: true
+      local_discrete_step_sha256: d964800a9f127c595ddef15acc1d26bcf6e97b944a18c8ef93681562f7c542e0
       local_discrete_step_bytes: 15638
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6611,13 +6842,18 @@ candidate_end_to_end_context:
       footprint: PI_MATCH_0402_DEV
       visual_package_class: rf_matching_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_rf_match_tuning
       coverage: explicit_local_three_element_rf_pi_match_terminal_contract
       land_pattern_basis: local five-terminal 0402 RF pi-match development contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6625,7 +6861,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
-      local_discrete_step_sha256: 2b846debbfb9ceffab0ac672c88a62a202a600b9cf08f8a009bb96d9e125e914
+      local_step_bound: true
+      local_discrete_step_sha256: 2a6bd54ed50ba9c693a6d0173d2125e03fafc50f5f8e5899ef4f68e8ec3db050
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6634,13 +6871,18 @@ candidate_end_to_end_context:
       footprint: PI_MATCH_0402_DEV
       visual_package_class: rf_matching_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_rf_match_tuning
       coverage: explicit_local_three_element_rf_pi_match_terminal_contract
       land_pattern_basis: local five-terminal 0402 RF pi-match development contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6648,7 +6890,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
-      local_discrete_step_sha256: ed94256fe7d0db264e72cb869a60c8cfb04cb45a54c6aef04064a499af37610f
+      local_step_bound: true
+      local_discrete_step_sha256: 21d8f9f24cc860c7b035937a6032c164598f405b7fe123182794f2666a3e7694
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6657,13 +6900,18 @@ candidate_end_to_end_context:
       footprint: PI_MATCH_0402_DEV
       visual_package_class: rf_matching_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_rf_match_tuning
       coverage: explicit_local_three_element_rf_pi_match_terminal_contract
       land_pattern_basis: local five-terminal 0402 RF pi-match development contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6671,7 +6919,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
-      local_discrete_step_sha256: 5faeeec49217ebdcc73c354e0df4ae8629628631a0770bf326c7cc755f33c633
+      local_step_bound: true
+      local_discrete_step_sha256: 98a375a99b909115c53e85188d1574acadf038af7e6fd7a6a10fe68818dccf83
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6680,13 +6929,18 @@ candidate_end_to_end_context:
       footprint: NFC_LOOP_MATCH_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/nfc-loop-match-5pad-pinout.yaml
+      pinout_bound: true
       pinout_status: public_nfc_loop_match_contract_pending_antenna_tuning
       coverage: exact_public_nfc_loop_match_contract_pending_antenna_tuning
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6694,7 +6948,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
-      local_discrete_step_sha256: 44502f2b39afccb3c3845788be5d1d4464aba5fee5a4a8768a8c59cc6f855109
+      local_step_bound: true
+      local_discrete_step_sha256: 550000fd59caa4110c621e9620c38b2cbab8968ded0ed51fff977e47cb804e0a
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6703,13 +6958,18 @@ candidate_end_to_end_context:
       footprint: PI_MATCH_0402_DEV
       visual_package_class: rf_matching_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_rf_match_tuning
       coverage: explicit_local_three_element_rf_pi_match_terminal_contract
       land_pattern_basis: local five-terminal 0402 RF pi-match development contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6717,7 +6977,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
-      local_discrete_step_sha256: d652d56f4c63fda661906956508fbb02c2f7ca2a400ac18af5ddf16e7f832bdc
+      local_step_bound: true
+      local_discrete_step_sha256: 19a97804ec2143f517d22a2ff6d5641c7be86ed957fb628b6227d934c4a6c927
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6726,13 +6987,18 @@ candidate_end_to_end_context:
       footprint: PI_MATCH_0402_DEV
       visual_package_class: rf_matching_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_rf_match_tuning
       coverage: explicit_local_three_element_rf_pi_match_terminal_contract
       land_pattern_basis: local five-terminal 0402 RF pi-match development contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 5
       pad_contract_covered_count: 5
       terminal_contract_count: 5
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6740,7 +7006,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
-      local_discrete_step_sha256: 053d2c21c4a72fda98e4d5862b8b013d835c0323b97ca33f432abc6152ffa21a
+      local_step_bound: true
+      local_discrete_step_sha256: 06108c62027e64362a6595311f8de5970cec58fad6b2da5f141d69223bca371e
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6749,13 +7016,18 @@ candidate_end_to_end_context:
       footprint: RC_ARRAY_4CH_DEV
       visual_package_class: passive_array_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_rc_array
       coverage: explicit_local_four_channel_rc_array_terminal_contract
       land_pattern_basis: local eight-terminal RC array development contract pending selected array
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 8
       pad_contract_covered_count: 8
       terminal_contract_count: 8
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6763,7 +7035,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
-      local_discrete_step_sha256: f8ba6de81175f708d5a8e97fc7c0522977677dd176a51b74cc7aa98335a150db
+      local_step_bound: true
+      local_discrete_step_sha256: bbe9fc9aa892930cb878e16fe26aa06b08f5fa1edc84c42eef45fd8b4616dcdd
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6772,13 +7045,18 @@ candidate_end_to_end_context:
       footprint: RC_ARRAY_4CH_DEV
       visual_package_class: passive_array_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_rc_array
       coverage: explicit_local_four_channel_rc_array_terminal_contract
       land_pattern_basis: local eight-terminal RC array development contract pending selected array
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 8
       pad_contract_covered_count: 8
       terminal_contract_count: 8
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6786,7 +7064,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
-      local_discrete_step_sha256: 2855e6d53d73dc88cb449c3065e45a8e8a98e12694a827c381b0d7614d91bff9
+      local_step_bound: true
+      local_discrete_step_sha256: 9a44b5698b6b9fcb8781fcbb706cb559685fd00170226e1b99141797552a77e6
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6795,13 +7074,18 @@ candidate_end_to_end_context:
       footprint: RC_ARRAY_4CH_DEV
       visual_package_class: passive_array_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_rc_array
       coverage: explicit_local_four_channel_rc_array_terminal_contract
       land_pattern_basis: local eight-terminal RC array development contract pending selected array
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 8
       pad_contract_covered_count: 8
       terminal_contract_count: 8
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6809,7 +7093,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
-      local_discrete_step_sha256: 641bd9da1df9511ad14db0def56e5193a53800cffa02eb789013db6a2f0886a6
+      local_step_bound: true
+      local_discrete_step_sha256: 8ca74844c9b2d685520b839eec111e7b2a9ae58ff90e9d6560190ed23e67d268
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6818,13 +7103,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6832,7 +7122,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
-      local_discrete_step_sha256: d5223203c80a158f6f6fb8377fe947baaf6865eacd64fac7e3bc80880d35c487
+      local_step_bound: true
+      local_discrete_step_sha256: c4d71bb563f4cbab6da34849f912c4ec7bd0ea5d8ed97c32e044406d16097586
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6841,13 +7132,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6855,7 +7151,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
-      local_discrete_step_sha256: ae2145896a2a9d11d80019ab91d4e8066a5aa6c6263c5fc7b79cb9e822c9e674
+      local_step_bound: true
+      local_discrete_step_sha256: a22475c463164e31182c52768ffb718a62334cfa0f7776ebe6a01f2ed57bef16
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6864,13 +7161,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6878,7 +7180,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
-      local_discrete_step_sha256: bf4ec4419555a1643ec9f73a37759b9ce283393c10b5bda2d4669e546810d0be
+      local_step_bound: true
+      local_discrete_step_sha256: fa90a62f72c036b79fae5ef0f49d213cf9136d813c4d20349335186db007c4ec
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6887,13 +7190,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6901,7 +7209,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
-      local_discrete_step_sha256: 15ab700ea789a79a3dcea687831dd14767f7fcd01360e7757edf9b577efc4167
+      local_step_bound: true
+      local_discrete_step_sha256: a9f3386ce06b2d4ba19ef233989d86fe92f14e19cf48addca64b4e1d25216885
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6910,13 +7219,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6924,7 +7238,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
-      local_discrete_step_sha256: bb816081cf9e2c19937eeaed101da04c9a2e13e2bc8d80067600c4778151e3fd
+      local_step_bound: true
+      local_discrete_step_sha256: 6708b74ba87c99fa51dd3023b7297664f3a719b9506cd49d0c4b436a1616649b
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6933,13 +7248,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6947,7 +7267,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
-      local_discrete_step_sha256: 7c08247327283a71df486098ad864268f45b5f9ba01dfef55aeeafecc36196ac
+      local_step_bound: true
+      local_discrete_step_sha256: d016417221fba12ff865a265a9be1c9ac3175cc986afaec1dbbcdb3c3390a9ed
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6956,13 +7277,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6970,7 +7296,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
-      local_discrete_step_sha256: b8c6d564866f4ccb725f025901e89402f393c7910dc11ef6394477c28a78dbfc
+      local_step_bound: true
+      local_discrete_step_sha256: f0483398eb4c005a6cfeb23c07ef86cff0f4f593e59893841d372fb67e6e1f61
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -6979,13 +7306,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -6993,7 +7325,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
-      local_discrete_step_sha256: c9e31395f3ab11b2fc48e41197a0b8d5e217151471fdbaeab13dfa31efd25b07
+      local_step_bound: true
+      local_discrete_step_sha256: 220f2776b0e6da738be3f0fc117c5663d3f2887150069e38dd03212e0f23c23b
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7002,13 +7335,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7016,7 +7354,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
-      local_discrete_step_sha256: 290aa4de8f6003b806224bde2d4b68ec9046c224b5a020e60a70e2ac6df23be9
+      local_step_bound: true
+      local_discrete_step_sha256: e737958882c9a8256a7294027eeeb5cff9da593099dbf1aa50680009ebed0885
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7025,13 +7364,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7039,7 +7383,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
-      local_discrete_step_sha256: 5f4dafac054a0a1df8ecd10dbd1437f9b64b67ad9fea864b4df0b48930285433
+      local_step_bound: true
+      local_discrete_step_sha256: fcc50af1f332b543c446cb23f609b98fa8968f2b38c70dd944737fb6e096a4f0
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7048,13 +7393,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7062,7 +7412,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
-      local_discrete_step_sha256: 8b2d78cf6e95c3d5925de68cf0c2673333ebd390e1e7cb4dfd36ebfbdc80a377
+      local_step_bound: true
+      local_discrete_step_sha256: 64e782a518a5d733c83cebe21c6601ee3889f38c4879840e283f957f10ac3965
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7071,13 +7422,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7085,7 +7441,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
-      local_discrete_step_sha256: d62cfa8faf49f6de5d9b551673922d8b72d936dd58c545a50c7876e131533674
+      local_step_bound: true
+      local_discrete_step_sha256: c7d66bfcc7d672c5f131756a9d6b0b5aeb1714bfa48e9c846589a3a02387aa3d
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7094,13 +7451,18 @@ candidate_end_to_end_context:
       footprint: R0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_resistor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7108,7 +7470,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
-      local_discrete_step_sha256: 860c79c27d4872ad0f37c5bdda4be2f52e083a77172e869514932dcf420b65ee
+      local_step_bound: true
+      local_discrete_step_sha256: 27c30177d02edb4cb55bbc70c928da5f80a22880d9a1864687a03e8983c10bee
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7117,13 +7480,18 @@ candidate_end_to_end_context:
       footprint: ESD_ARRAY_6CH_DEV
       visual_package_class: protection_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_esd_array
       coverage: explicit_local_six_channel_esd_array_terminal_contract
       land_pattern_basis: local six-channel ESD/TVS array terminal contract pending selected device
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 6
       pad_contract_covered_count: 6
       terminal_contract_count: 6
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7131,7 +7499,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
-      local_discrete_step_sha256: 1826c6482e28fb593a69f365b48740493ee1c9a34cb6cf5d92dcadd232719283
+      local_step_bound: true
+      local_discrete_step_sha256: 54a48381589e4daf904bdb4bc4324c29efee021aff3dc83446ca7c60f22a8e85
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7140,13 +7509,18 @@ candidate_end_to_end_context:
       footprint: SHUNT_1206_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_1206_shunt_land_pattern
       land_pattern_basis: local 1206 two-terminal current-shunt development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7154,7 +7528,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
-      local_discrete_step_sha256: 41c514d7a17f3ff7f19d7b13a3db47f86da9446dc35a4c3a40aa7f250b35b6fa
+      local_step_bound: true
+      local_discrete_step_sha256: aa895e11833e923c0e1c01a421771ea8ce4fa4947810f9ad75c0628ace31aac1
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7163,13 +7538,18 @@ candidate_end_to_end_context:
       footprint: PANASONIC_EVQ_P7_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/panasonic-evq-p7-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_pin_table
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 4
       pad_contract_covered_count: 4
       terminal_contract_count: 4
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7177,7 +7557,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
-      local_discrete_step_sha256: 704db2ee89d199d6bf69fc9536b5ecc94467b58d1617752877e8f723ee9c8393
+      local_step_bound: true
+      local_discrete_step_sha256: 32846bdc38297acd63910e33a327b6d5a42d7d3ee8da71055bbcbdf1194e7dc8
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7186,13 +7567,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7200,7 +7586,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
-      local_discrete_step_sha256: 3a9980bd291052426f9b6ac793e3b7b728aa38fbbd405cd3eff384342e967403
+      local_step_bound: true
+      local_discrete_step_sha256: 43e7dcc1ff73a77a0242b566867cbc00f799f8adc084a9c08c31dc38f67429e3
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7209,13 +7596,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7223,7 +7615,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
-      local_discrete_step_sha256: f022d6e51b03135f38ab9600e3917f19299e6f6ddee179175e4ffe4778e735c4
+      local_step_bound: true
+      local_discrete_step_sha256: 0917ad2e2d2d808fc40e6a8948c1e4e68b44192ceeeb3dafa13cface113d36f9
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7232,13 +7625,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7246,7 +7644,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
-      local_discrete_step_sha256: 8da12403be59e9603b4096a32b4dcdcb0c883fe6923d73a1f305432ccaad1832
+      local_step_bound: true
+      local_discrete_step_sha256: 04df0a92bf1131d7564949313fa297d0aa0ed897833024c3839554d59a30b88c
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7255,13 +7654,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7269,7 +7673,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
-      local_discrete_step_sha256: 5f0cc370b6566d0776b0ffb92b00c02fbe15b4b06be9ca1c9be57decd67b73c4
+      local_step_bound: true
+      local_discrete_step_sha256: 0c91043369f0f154e7e5a26d6c5ee71fab611d27dfc75b4c6b3fb87cbfd0f2c6
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7278,13 +7683,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7292,7 +7702,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
-      local_discrete_step_sha256: 89eb1d2dd57029909a606cad78d51703f2e3ff35f651529ceac0574ba58e5e06
+      local_step_bound: true
+      local_discrete_step_sha256: 0b05ca126519846b98a94f512b763a6804030fdce793b1d3820952eca5304d2b
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7301,13 +7712,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7315,7 +7731,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
-      local_discrete_step_sha256: 563e3545eb077c97ab8ac1264d9cff2db9c69f43fe9b32e15e370c674be24252
+      local_step_bound: true
+      local_discrete_step_sha256: 87cbd9ac1d9eaa8d5c49a5ba0676188c3479aace2706d9621e3e4b8aff68bf65
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7324,13 +7741,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7338,7 +7760,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
-      local_discrete_step_sha256: 0fdc183ecb7612e3573068ee6ef0231b73f6e2f717e7d3f6e9ae80eb81ba43d8
+      local_step_bound: true
+      local_discrete_step_sha256: bb3d4ad0230d0af19442a82fd731b97904fd511166d976c3b25192f4dafa7ff6
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7347,13 +7770,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7361,7 +7789,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
-      local_discrete_step_sha256: 9ba43d2975d9b0e13a41404c5cc2ed934aa02c606d24f8d038b4afe1559d7f28
+      local_step_bound: true
+      local_discrete_step_sha256: a8d2ec1cd38b7ccee17b3373828caf6b6a3ebf7d04facc63a5724619210cde25
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7370,13 +7799,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7384,7 +7818,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
-      local_discrete_step_sha256: d24bd94a9a3af2badca8d8748bc41443b2ef90caa05c157b696a51e6ad9bc713
+      local_step_bound: true
+      local_discrete_step_sha256: 339f4ea29086ef1efd6f4247a5e11d1161e612a08b8192888cc2f32e3e7aa83e
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7393,13 +7828,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7407,7 +7847,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
-      local_discrete_step_sha256: 0b48083ff985c2f5f065b6b766ecdfc5e50b974b9ed279525cf3e05c033b01bf
+      local_step_bound: true
+      local_discrete_step_sha256: bfd0e9063aea87960e397278f2b0ded0d28e43c26e741e71b157053dccaaf08c
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7416,13 +7857,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7430,7 +7876,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
-      local_discrete_step_sha256: 77e696224a29e1fac261d9eb9fc1b5a1801a579a0c1c962597fdbe4468e0aed0
+      local_step_bound: true
+      local_discrete_step_sha256: 8a3496a717ddcac25fa05cc6dfd99a9326c531d95ef85196bbfc1fa27cd72887
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7439,13 +7886,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7453,7 +7905,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
-      local_discrete_step_sha256: 902bc2b4857e5d017729d357fa85d9df662399c333d11810ee7b1aa8a3385b94
+      local_step_bound: true
+      local_discrete_step_sha256: 4ad7c6736f177069d94d83880a381492bd1923e92ddcfb0dc2849aaaeed67dc6
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7462,13 +7915,18 @@ candidate_end_to_end_context:
       footprint: TESTPOINT_1MM_DEV
       visual_package_class: test_access_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_testpoint_land_pattern
       coverage: explicit_local_1mm_testpoint_land_pattern
       land_pattern_basis: local one-terminal 1.0 mm solderable testpoint contract
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 1
       pad_contract_covered_count: 1
       terminal_contract_count: 1
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7476,7 +7934,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
-      local_discrete_step_sha256: ebe7d918e401724b9e721a8004cc20c409845e7e88e18f1b3257d7f476155360
+      local_step_bound: true
+      local_discrete_step_sha256: 7ad563bb2020e41ff6956b1637d59b3dc490832a5b6451cdb5821fbbdcbffea3
       local_discrete_step_bytes: 15636
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7485,13 +7944,18 @@ candidate_end_to_end_context:
       footprint: AUDIO_CODEC_QFN48_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml
+      pinout_bound: true
       pinout_status: public_audio_interface_contract_pending_selected_codec_package_pinout
       coverage: exact_public_audio_signal_contract_pending_selected_codec_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 49
       pad_contract_covered_count: 49
       terminal_contract_count: 48
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 1
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7499,7 +7963,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
-      local_discrete_step_sha256: 92e1e74b62a3f22a0a3b5d59ce3a830296addfce0a04da98c2426e0e857837b5
+      local_step_bound: true
+      local_discrete_step_sha256: af7700c6b65d74c3185f8e5239be3c72c29b98638162103fa3f1f2d4fcda6c6b
       local_discrete_step_bytes: 15538
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7508,13 +7973,18 @@ candidate_end_to_end_context:
       footprint: RC_ARRAY_4CH_DEV
       visual_package_class: passive_array_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: local_terminal_contract_pending_selected_rc_array
       coverage: explicit_local_four_channel_rc_array_terminal_contract
       land_pattern_basis: local eight-terminal RC array development contract pending selected array
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 8
       pad_contract_covered_count: 8
       terminal_contract_count: 8
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7522,7 +7992,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
-      local_discrete_step_sha256: dcd4ffffa93544a05e4ed6cdc49e572c0b5dcd8c67ee34930be7e7b6a8d68c8c
+      local_step_bound: true
+      local_discrete_step_sha256: 0fa3bfe045fd8711972cde3e5d18a30351a8d03b945884c99032680a226271c3
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7531,13 +8002,18 @@ candidate_end_to_end_context:
       footprint: QUECTEL_RG255C_GEOMETRY_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/quectel-rg255c-pinout.yaml
+      pinout_bound: true
       pinout_status: public_hardware_design_pdf_captured_non_release_until_supplier_sku_pack
       coverage: exact_public_pin_table_pending_final_regional_sku_pack
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 204
       pad_contract_covered_count: 204
       terminal_contract_count: 204
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7545,7 +8021,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
-      local_discrete_step_sha256: 831a2e54c564e9dfbfcb2ede43ea66071a9dcd3d557232b42ce9807a9e298502
+      local_step_bound: true
+      local_discrete_step_sha256: 46ef74b9ed3dfce387a460fa81f205708fb5e559db80d458a2ab696735fb214a
       local_discrete_step_bytes: 15546
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7554,13 +8031,18 @@ candidate_end_to_end_context:
       footprint: ADI_MAX77860_WLP81_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_pin_table
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 81
       pad_contract_covered_count: 81
       terminal_contract_count: 81
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7568,7 +8050,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
-      local_discrete_step_sha256: 8480f70740691434fb4a03b34e51ba72463a23c5753712f30bec4e4ee051b809
+      local_step_bound: true
+      local_discrete_step_sha256: 1761eeff7356d7b2629417130796abd4c619d7174519671d441bdf194c771d0b
       local_discrete_step_bytes: 15572
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7577,13 +8060,18 @@ candidate_end_to_end_context:
       footprint: BACKLIGHT_BIAS_POWER_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/backlight-bias-qfn24-pinout.yaml
+      pinout_bound: true
       pinout_status: public_backlight_bias_signal_contract_pending_selected_driver_pinout
       coverage: exact_public_backlight_bias_signal_contract_pending_selected_driver_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 25
       pad_contract_covered_count: 25
       terminal_contract_count: 24
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 1
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7591,7 +8079,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
-      local_discrete_step_sha256: d26f7ed5eddd5c1cb258b69b192452577ea5c141119af5a174e121efdfe2bc74
+      local_step_bound: true
+      local_discrete_step_sha256: 67837414470dd4fdbf4b30491956f6040b5fc6f30a85ca23d4215d12d7f0341d
       local_discrete_step_bytes: 15486
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7600,13 +8089,18 @@ candidate_end_to_end_context:
       footprint: ESIM_LGA_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/esim-mff2-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_mff2_esim_pin_table
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 9
       pad_contract_covered_count: 9
       terminal_contract_count: 8
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 1
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7614,7 +8108,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
-      local_discrete_step_sha256: aea083e7a7fc7dd602a4a95b6d99338863fc6089a7ff3caec0187b608080bf45
+      local_step_bound: true
+      local_discrete_step_sha256: 23f50bd3765133049e9bc0cd8a5743d21b6672567cf65f0a3d4df46d70be651d
       local_discrete_step_bytes: 15512
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7623,13 +8118,18 @@ candidate_end_to_end_context:
       footprint: FUEL_GAUGE_WLCSP_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml
+      pinout_bound: true
       pinout_status: public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
       coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 12
       pad_contract_covered_count: 12
       terminal_contract_count: 12
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7637,7 +8137,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
-      local_discrete_step_sha256: f29aa49da91fd7ad9e1450ac5a1f60c0e0eb49c8f89afbdfde01064ecae1bcfb
+      local_step_bound: true
+      local_discrete_step_sha256: e987891354e8e4cb8ace6d3ab5dc26b5ede4ee79c77d57b3ba5931c1478a9a58
       local_discrete_step_bytes: 15546
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7646,13 +8147,18 @@ candidate_end_to_end_context:
       footprint: L0402_DEV
       visual_package_class: discrete_passive_land_pattern
       pinout_file: ''
+      pinout_bound: false
       pinout_status: not_pinout_bearing_standard_land_pattern
       coverage: explicit_local_standard_0402_inductor_land_pattern
       land_pattern_basis: local IPC-7351-style 0402 two-terminal development land pattern
+      pattern_bound: true
+      pattern_binding_status: support_pattern_bound_to_explicit_local_terminal_contract
+      support_pattern_bound: true
       support_pattern_has_explicit_provenance: true
       pad_visual_count: 2
       pad_contract_covered_count: 2
       terminal_contract_count: 2
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7660,7 +8166,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
-      local_discrete_step_sha256: f3704cb067d5161628239680d87060e44ebf1026d7ce4e9c487e6eeebe7884fd
+      local_step_bound: true
+      local_discrete_step_sha256: adcc5e4c9a5c1e1ef1976e5357bd6e0b2b738ac77b9d045092401d3c14f34d2c
       local_discrete_step_bytes: 15598
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7669,13 +8176,18 @@ candidate_end_to_end_context:
       footprint: HAPTIC_DRIVER_WLCSP_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml
+      pinout_bound: true
       pinout_status: public_haptic_signal_contract_pending_selected_driver_pinout
       coverage: exact_public_haptic_signal_contract_pending_selected_driver_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 9
       pad_contract_covered_count: 9
       terminal_contract_count: 9
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7683,7 +8195,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
-      local_discrete_step_sha256: 60a115ccab7c9e59845bb2be0c28e0887e72bce68741d8e686d4b980e4ea0c14
+      local_step_bound: true
+      local_discrete_step_sha256: 7bb999d62e497b6d6b9ad67e4ed4dce3e2c62717f8a34f9daae74122ec0697b1
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7692,13 +8205,18 @@ candidate_end_to_end_context:
       footprint: NFC_CONTROLLER_QFN_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/nfc-controller-qfn32-pinout.yaml
+      pinout_bound: true
       pinout_status: public_nfc_signal_contract_pending_selected_controller_pinout
       coverage: exact_public_nfc_signal_contract_pending_selected_controller_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 33
       pad_contract_covered_count: 33
       terminal_contract_count: 32
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 1
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7706,7 +8224,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
-      local_discrete_step_sha256: 728bd16350a9d23c7d505af3cd5d1f34bafcf0eb4f924f105b39d1e91f22ee3d
+      local_step_bound: true
+      local_discrete_step_sha256: 2c4fc4d4ada5f275779a4dffcab2b65ae7fea69bfac7d5f97be0b9e04f3eb3cd
       local_discrete_step_bytes: 15538
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7715,13 +8234,18 @@ candidate_end_to_end_context:
       footprint: SENSOR_HUB_QFN_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/sensor-hub-qfn24-pinout.yaml
+      pinout_bound: true
       pinout_status: public_sensor_hub_signal_contract_pending_selected_sensor_pinout
       coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 25
       pad_contract_covered_count: 25
       terminal_contract_count: 24
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 1
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7729,7 +8253,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
-      local_discrete_step_sha256: e9d1fb49d28d0d565a1af1110a8861ea01b58750b40a85ed85b1f0f08e14de87
+      local_step_bound: true
+      local_discrete_step_sha256: bff5093a1db4335e5b0cb4f661868b990484b1c89f667fd3d67bdaa1644d67f6
       local_discrete_step_bytes: 15486
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7738,13 +8263,18 @@ candidate_end_to_end_context:
       footprint: SODIMM_260P_0P5_COMPUTE_SOM_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml
+      pinout_bound: true
       pinout_status: public_som_connector_pinout
       coverage: public_som_pinout_pad_count_aligned
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 260
       pad_contract_covered_count: 260
       terminal_contract_count: 260
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7752,7 +8282,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
-      local_discrete_step_sha256: 9451d50b3a4115ede0a767c72f0359d354db4df7e04c7839fe1653d1654c9811
+      local_step_bound: true
+      local_discrete_step_sha256: b1b9a7ffb130fa417c2de1dd605c2c41848dcb7682ea84fa833618d56b77e546
       local_discrete_step_bytes: 15516
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7761,13 +8292,18 @@ candidate_end_to_end_context:
       footprint: TI_TPS65987_RSH_56QFN_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_pin_table
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 59
       pad_contract_covered_count: 59
       terminal_contract_count: 59
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7775,7 +8311,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
-      local_discrete_step_sha256: 59ea13b1e3125718b597ca9291ea63ee46fe948ada76153ac49aa53b1dceb861
+      local_step_bound: true
+      local_discrete_step_sha256: 3f664f2e0d92759b67aa76b62732cef5ab527884d2effb98ab7847bb3de87b88
       local_discrete_step_bytes: 15538
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7784,13 +8321,18 @@ candidate_end_to_end_context:
       footprint: MURATA_TYPE_2EA_GEOMETRY_DEV
       visual_package_class: pinout_bound_package_or_connector
       pinout_file: board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml
+      pinout_bound: true
       pinout_status: public_supplier_datasheet
       coverage: exact_public_terminal_table_and_public_dxf_land_pattern
       land_pattern_basis: ''
+      pattern_bound: true
+      pattern_binding_status: pinout_bound_public_or_captured_contract
+      support_pattern_bound: false
       support_pattern_has_explicit_provenance: false
       pad_visual_count: 199
       pad_contract_covered_count: 199
       terminal_contract_count: 199
+      terminal_contract_bound: true
       non_signal_pad_contract_count: 0
       npth_mechanical_feature_contract_count: 0
       all_pad_visuals_have_contract: true
@@ -7798,7 +8340,8 @@ candidate_end_to_end_context:
       non_signal_pad_contract_matches_pad_visuals: true
       npth_mechanical_feature_contract_matches_footprint: true
       local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
-      local_discrete_step_sha256: d17fb216f1667596f05c0517278a25ea1b45cd635c89112a2302bed044f251f9
+      local_step_bound: true
+      local_discrete_step_sha256: ebb119913c4e21694e3808e36d611617ce94ccae5026a2b18df4b5b093fc957f
       local_discrete_step_bytes: 15576
       local_discrete_step_imported_as_solid: true
       local_discrete_step_bbox_matches_envelope: true
@@ -7817,7 +8360,9 @@ candidate_end_to_end_context:
     supplier_approved_model_count: 0
     pinout_bound_model_record_count: 22
     support_pattern_model_record_count: 67
+    pattern_bound_model_record_count: 89
     terminal_contract_model_record_count: 85
+    terminal_contract_bound_model_record_count: 89
     terminal_contract_total_count: 1441
     total_pad_contract_visual_count: 1452
     uncovered_pad_visual_count: 0
@@ -7829,11 +8374,13 @@ candidate_end_to_end_context:
     all_model_records_source_routed_step_bound: true
     all_model_records_have_combined_step_locator: true
     all_model_records_have_local_discrete_step_file: true
+    all_model_records_have_local_step_binding: true
     all_local_discrete_step_files_import_as_solids: true
     all_local_discrete_step_bboxes_match_envelopes: true
     all_model_records_have_expected_supplier_step_file: true
     local_discrete_step_imported_solid_count: 89
     local_discrete_step_bbox_match_count: 89
+    local_step_bound_model_record_count: 89
     local_discrete_step_file_count: 89
     local_discrete_step_bytes_total: 1387362
     missing_supplier_discrete_model_count: 89
@@ -7860,6 +8407,8 @@ candidate_end_to_end_context:
     all_records_release_credit_false: true
     all_pinout_bound_records_have_terminal_contract: true
     all_support_pattern_records_have_explicit_provenance: true
+    all_model_records_have_pattern_binding: true
+    all_model_records_have_terminal_contract_binding: true
     all_terminal_contracts_match_pad_visuals: true
     all_non_signal_pad_contracts_match_pad_visuals: true
     all_npth_mechanical_features_have_contract: true
@@ -7869,8 +8418,8 @@ candidate_end_to_end_context:
     status: blocked_local_component_binding_gap_matrix_not_supplier_approval
     row_count: 89
     csv_matrix: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
-    csv_matrix_sha256: f8a74e981d4a1f51b7665064195a96d3b7806238d42062c8dcf000714da1d959
-    csv_matrix_bytes: 54975
+    csv_matrix_sha256: 75d69e33f2871e5116ea27854a6d8cbb5410c89cdf83a4a64231ce31a9aaed09
+    csv_matrix_bytes: 55197
     local_discrete_step_file_count: 89
     local_discrete_step_import_pass_count: 89
     local_discrete_step_imported_solid_count: 89
@@ -8460,11 +9009,11 @@ required_production_outputs:
   source_declared_present: false
   source: routed-layout-si-drc-burndown.required_kicad_routed_board_outputs
   source_id: routed_kicad_pcb
-  required_status: present_after_supplier_footprints_and_trial_route
+  required_status: release_approved_after_supplier_footprints_and_trial_route
   source_ids:
   - routed_kicad_pcb
   required_statuses:
-  - present_after_supplier_footprints_and_trial_route
+  - release_approved_after_supplier_footprints_and_trial_route
   - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
     scaffold
   candidate_present_blocked: true
@@ -9187,11 +9736,11 @@ candidate_present_blocked_required_outputs:
   source_declared_present: false
   source: routed-layout-si-drc-burndown.required_kicad_routed_board_outputs
   source_id: routed_kicad_pcb
-  required_status: present_after_supplier_footprints_and_trial_route
+  required_status: release_approved_after_supplier_footprints_and_trial_route
   source_ids:
   - routed_kicad_pcb
   required_statuses:
-  - present_after_supplier_footprints_and_trial_route
+  - release_approved_after_supplier_footprints_and_trial_route
   - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
     scaffold
   candidate_present_blocked: true

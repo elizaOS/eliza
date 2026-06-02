@@ -229,11 +229,13 @@ class BootSecurityChainContractTests(unittest.TestCase):
                         "schema": "eliza.gate_status.v1",
                         "gate": "boot.bootrom_positive_handoff",
                         "status": "PASS",
+                        "claim_allowed": False,
                         "phone_claim_allowed": False,
                         "release_claim_allowed": False,
                         "linux_boot_claim_allowed": False,
                         "android_boot_claim_allowed": False,
                         "silicon_secure_boot_claim_allowed": False,
+                        "production_readiness_claim_allowed": False,
                         "evidence_paths": [
                             gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(
                                 gate.ROOT

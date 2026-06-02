@@ -27,7 +27,11 @@
       "additionalProperties": false,
       "required": ["minReleaseDate", "note", "tag", "confirmed"],
       "properties": {
+        "track": { "const": "latest" },
         "minReleaseDate": { "type": "string", "format": "date" },
+        "minSecureByDefault": { "type": "boolean" },
+        "autoUpdate": { "type": "boolean" },
+        "reverifyOnUpdate": { "type": "boolean" },
         "note": { "type": "string", "minLength": 1 },
         "tag": { "type": ["string", "null"] },
         "confirmed": { "type": "boolean" }
@@ -125,7 +129,7 @@
       "required": ["name", "blockedOn", "provingCommand"],
       "properties": {
         "name": { "const": "dstack-pins-check" },
-        "blockedOn": { "type": "string", "minLength": 1 },
+        "blockedOn": { "type": ["string", "null"], "minLength": 1 },
         "provingCommand": { "type": "string", "minLength": 1 }
       }
     }

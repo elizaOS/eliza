@@ -122,8 +122,8 @@ def target_reports() -> list[dict[str, Any]]:
 
 def structured_findings(
     reports: list[dict[str, Any]], checks: list[dict[str, Any]]
-) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
     for check in checks:
         if check.get("status") == "pass":
             continue
@@ -147,6 +147,7 @@ def structured_findings(
                     "message": f"{target} scaffold status is {report.get('scaffold_status')}",
                     "evidence": "targets[].scaffold_status",
                     "next_step": "Repair the scaffold contract before using this target for BSP release evidence.",
+                    "target": target,
                 }
             )
         if report.get("evidence_status") == "PASS":
@@ -164,6 +165,7 @@ def structured_findings(
                     "next_step": str(
                         item.get("capture_command") or item.get("validation_command") or ""
                     ),
+                    "target": target,
                 }
             )
         for item in list_values(report.get("invalid_evidence")):
@@ -182,6 +184,7 @@ def structured_findings(
                         "message": text,
                         "evidence": path,
                         "next_step": f"Regenerate {path} with PASS markers, then run python3 scripts/check_software_bsp.py {target} --require-evidence.",
+                        "target": target,
                     }
                 )
         for error in list_values(report.get("errors")):
@@ -193,6 +196,7 @@ def structured_findings(
                     "message": text,
                     "evidence": target,
                     "next_step": f"Fix the {target} BSP scaffold and rerun python3 scripts/check_software_bsp.py {target} --require-evidence.",
+                    "target": target,
                 }
             )
     return findings
@@ -252,6 +256,45 @@ def next_command_plan(
             }
         )
     return plan
+
+
+def command_batch_commands(batch: dict[str, Any]) -> list[str]:
+    commands: list[str] = []
+    values = batch.get("commands")
+    if isinstance(values, list):
+        commands.extend(command for command in values if isinstance(command, str) and command)
+    command = batch.get("command")
+    if isinstance(command, str) and command:
+        commands.append(command)
+    return list(dict.fromkeys(commands))
+
+
+def finding_command_batches(
+    finding: dict[str, Any],
+    command_plan: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    target = finding.get("target")
+    if isinstance(target, str) and target:
+        return [batch for batch in command_plan if batch.get("target") == target]
+    evidence = str(finding.get("evidence", ""))
+    if evidence:
+        return [batch for batch in command_plan if str(batch.get("evidence", "")) == evidence]
+    return command_plan
+
+
+def finding_payload(
+    finding: dict[str, Any],
+    command_plan: list[dict[str, Any]],
+) -> dict[str, Any]:
+    row = dict(finding)
+    commands: list[str] = []
+    for batch in finding_command_batches(finding, command_plan):
+        commands.extend(command_batch_commands(batch))
+    commands = list(dict.fromkeys(commands))
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
 
 
 def evidence_paths_for_target(manifest: dict[str, Any], target: str) -> set[str]:
@@ -452,7 +495,7 @@ def build_report() -> dict[str, Any]:
             "nnapi_proof_template": rel(NNAPI_PROOF_TEMPLATE),
         },
         "targets": reports,
-        "findings": findings,
+        "findings": [finding_payload(finding, commands) for finding in findings],
         "next_command_plan": commands,
         "blocked_until_real_evidence": [
             "external Buildroot defconfig transcript and image manifest with PASS provenance markers",

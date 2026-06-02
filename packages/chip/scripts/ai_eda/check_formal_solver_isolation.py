@@ -15,6 +15,10 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.formal_solver_isolation.v1"
 EXPECTED_CLAIM_BOUNDARY = "single_solver_smoke_evidence_only_no_release_or_deep_proof_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "formal_proof_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -79,6 +83,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("formal_proof_claim_allowed") is not False:
         errors.append("formal_proof_claim_allowed must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied formal solver-isolation claims")
     if report.get("status") not in {
         "SOLVER_ISOLATION_PASS",
         "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS",

@@ -530,7 +530,9 @@ const parentScoringCache = new WeakMap<
 	ParentScoringTokens
 >();
 
-function getParentScoringTokens(parent: ActionCatalogParent): ParentScoringTokens {
+function getParentScoringTokens(
+	parent: ActionCatalogParent,
+): ParentScoringTokens {
 	const cached = parentScoringCache.get(parent);
 	if (cached) {
 		return cached;

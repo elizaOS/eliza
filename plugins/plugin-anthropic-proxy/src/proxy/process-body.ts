@@ -51,6 +51,41 @@ export interface ProcessBodyResult {
   };
 }
 
+function insertTopLevelField(body: string, field: string): string {
+  if (!body.startsWith("{")) return `{${field}}`;
+
+  const rest = body.slice(1);
+  const separator = rest.trimStart().startsWith("}") ? "" : ",";
+  return `{${field}${separator}${rest}`;
+}
+
+function findMatchingObjectEnd(str: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < str.length; i++) {
+    const c = str[i];
+    if (inString) {
+      if (c === "\\") {
+        i++;
+        continue;
+      }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === "{") {
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
 export function processBody(
   bodyStr: string,
   config: ProcessBodyConfig,
@@ -110,7 +145,7 @@ export function processBody(
       "}]" +
       m.slice(sysEnd);
   } else {
-    m = `{"system":[${billingBlock}],` + m.slice(1);
+    m = insertTopLevelField(m, `"system":[${billingBlock}]`);
   }
 
   // Metadata injection: device_id + session_id matching real CC format
@@ -123,21 +158,15 @@ export function processBody(
   const metaJson = `"metadata":{"user_id":${JSON.stringify(metaValue)}}`;
   const existingMeta = m.indexOf('"metadata":{');
   if (existingMeta !== -1) {
-    let depth = 0;
     let mi = existingMeta + '"metadata":'.length;
-    for (; mi < m.length; mi++) {
-      if (m[mi] === "{") depth++;
-      else if (m[mi] === "}") {
-        depth--;
-        if (depth === 0) {
-          mi++;
-          break;
-        }
-      }
+    mi = findMatchingObjectEnd(m, mi);
+    if (mi !== -1) {
+      m = m.slice(0, existingMeta) + metaJson + m.slice(mi);
+    } else {
+      m = insertTopLevelField(m, metaJson);
     }
-    m = m.slice(0, existingMeta) + metaJson + m.slice(mi);
   } else {
-    m = "{" + metaJson + "," + m.slice(1);
+    m = insertTopLevelField(m, metaJson);
   }
 
   // Layer 8: Strip trailing assistant prefill
@@ -178,7 +207,8 @@ export function processBody(
         }
       }
       while (positions.length > 0) {
-        const last = positions[positions.length - 1]!;
+        const last = positions[positions.length - 1];
+        if (!last) break;
         const obj = m.slice(last.start, last.end + 1);
         if (!obj.includes('"role":"assistant"')) break;
         let stripFrom = last.start;

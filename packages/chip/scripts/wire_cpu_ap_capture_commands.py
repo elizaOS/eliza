@@ -27,6 +27,7 @@ from cpu_ap_evidence_lib import (
     transcript_metadata_problems,
     transcript_specs,
 )
+from provenance_sanitize import sanitize_host_local_paths
 
 SMOKE_LOG = Path("build/chipyard/eliza_rocket/verilator-linux-smoke.log")
 SMOKE_RUNNER = Path("scripts/run_chipyard_eliza_linux_smoke.sh")
@@ -68,6 +69,7 @@ AP_BENCHMARK_DISK_PAYLOAD = Path(
     "eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks-bin"
 )
 AP_BENCHMARK_LINUX_BOOT_EVIDENCE = Path("build/evidence/cpu_ap/eliza_e1_linux_boot.log")
+AP_BENCHMARK_ACCEPTED_EVIDENCE = Path("build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log")
 LINUX_SMOKE_WORKLOAD = Path("sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke.sh")
 AP_BENCHMARK_TOOLS = ("coremark", "stream_c.exe", "lat_mem_rd", "fio")
 AP_BENCHMARK_WRAPPER_PASS_MARKER = "STATUS: PASS chipyard.verilator_ap_benchmarks"
@@ -125,6 +127,16 @@ AP_BENCHMARK_DERIVED_MODES = ("ap-benchmarks",)
 
 def quote(value: str) -> str:
     return shlex.quote(value)
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    return value
 
 
 def locate_payload() -> tuple[str | None, str | None]:
@@ -565,10 +577,57 @@ def accepted_linux_userspace_transcript_status() -> dict[str, object]:
     return status
 
 
+def accepted_ap_benchmark_evidence_status() -> dict[str, object]:
+    errors: list[str] = []
+    manifest = load_evidence_manifest(errors)
+    specs = transcript_specs(manifest)
+    spec = specs.get("ap_benchmark_log", {})
+    transcript = rooted(AP_BENCHMARK_ACCEPTED_EVIDENCE)
+    status: dict[str, object] = {
+        "path": str(AP_BENCHMARK_ACCEPTED_EVIDENCE),
+        "exists": transcript.is_file(),
+        "accepted": False,
+        "problems": [],
+    }
+    if errors:
+        status["problems"] = [f"manifest marker load error: {error}" for error in errors]
+        return status
+    if not spec:
+        status["problems"] = ["CPU/AP evidence manifest is missing ap_benchmark_log transcript spec"]
+        return status
+    if not transcript.is_file():
+        status["problems"] = [
+            "generated-AP AP benchmark transcript is missing: "
+            f"{AP_BENCHMARK_ACCEPTED_EVIDENCE}"
+        ]
+        return status
+    text = transcript.read_text(encoding="utf-8", errors="ignore")
+    problems = text_problems(text, spec, str(AP_BENCHMARK_ACCEPTED_EVIDENCE), raw=False)
+    problems.extend(
+        transcript_metadata_problems(
+            text,
+            str(AP_BENCHMARK_ACCEPTED_EVIDENCE),
+            generated_manifest=GENERATED_MANIFEST,
+        )
+    )
+    source_payload = evidence_marker(text, "command")
+    if AP_BENCHMARK_WRAPPER_PASS_MARKER not in text:
+        problems.append(
+            f"{AP_BENCHMARK_ACCEPTED_EVIDENCE} is missing {AP_BENCHMARK_WRAPPER_PASS_MARKER}"
+        )
+    status["problems"] = problems
+    status["accepted"] = not problems
+    status["intake_utc"] = evidence_marker(text, "intake_utc")
+    status["generated_manifest_sha256"] = evidence_marker(text, "generated_manifest_sha256")
+    status["command"] = source_payload or ""
+    return status
+
+
 def ap_benchmark_runner_report() -> dict[str, object]:
     markers, marker_errors = ap_required_markers()
     marker_status = workload_marker_status(markers)
     linux_transcript_status = accepted_linux_userspace_transcript_status()
+    accepted_benchmark_status = accepted_ap_benchmark_evidence_status()
     smoke_script = ROOT / LINUX_SMOKE_WORKLOAD
     (smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else "")
 
@@ -669,7 +728,10 @@ def ap_benchmark_runner_report() -> dict[str, object]:
             "existing generated-AP Linux smoke payload runs MMIO smoke only; it does not run "
             "CoreMark, STREAM, lat_mem_rd, or fio"
         )
-    if marker_status["status"] == "ready":
+    accepted_benchmark_evidence = bool(accepted_benchmark_status["accepted"])
+    if accepted_benchmark_evidence:
+        pass
+    elif marker_status["status"] == "ready":
         blockers.append(
             "L3 benchmark raw marker emitter is packaged, but no generated-AP Linux "
             "boot transcript has captured it yet: claim_level=L3"
@@ -683,15 +745,17 @@ def ap_benchmark_runner_report() -> dict[str, object]:
 
     report: dict[str, object] = {
         "schema": "eliza.cpu_ap_benchmark_runner_wiring.v1",
-        "status": "blocked",
+        "generated_utc": dt.datetime.now(dt.UTC).isoformat(),
+        "status": "pass" if accepted_benchmark_evidence else "blocked",
         "command_env": MODE_ENV["ap-benchmarks"],
         "command_env_set": bool(os.environ.get(MODE_ENV["ap-benchmarks"], "")),
         "runner_command_derivable": runner_command_derivable,
         "derived_command_available": command_derivable,
         "required_commands": list(AP_REQUIRED_COMMANDS),
         "claim_boundary": "blocked_report_only_no_benchmark_evidence_created",
-        "evidence_log": "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log",
+        "evidence_log": str(AP_BENCHMARK_ACCEPTED_EVIDENCE),
         "evidence_log_created": evidence_path.is_file(),
+        "accepted_benchmark_evidence": accepted_benchmark_status,
         "generated_manifest": rel(GENERATED_MANIFEST),
         "generated_manifest_exists": GENERATED_MANIFEST.is_file(),
         "required_raw_markers": markers,
@@ -841,7 +905,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         ),
     }
     AP_BENCHMARK_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    AP_BENCHMARK_REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    AP_BENCHMARK_REPORT.write_text(
+        json.dumps(provenance_safe_value(report), indent=2, sort_keys=True) + "\n"
+    )
     return report
 
 

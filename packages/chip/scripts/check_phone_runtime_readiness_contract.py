@@ -1062,6 +1062,60 @@ def next_runtime_capture_action(
     }
 
 
+def finding_capture_area(finding: Finding) -> str | None:
+    for suffix in (
+        "_runtime_evidence_incomplete",
+        "_runtime_surface_blocked",
+        "_scope_report_invalid",
+    ):
+        if finding.code.endswith(suffix):
+            return finding.code[: -len(suffix)]
+    return None
+
+
+def finding_commands(
+    finding: Finding,
+    capture_area_groups: list[dict[str, Any]],
+) -> list[str]:
+    capture_area = finding_capture_area(finding)
+    if not capture_area:
+        return []
+    for group in capture_area_groups:
+        if group.get("capture_area") != capture_area:
+            continue
+        commands: list[str] = []
+        for batch in group.get("next_command_batches", []):
+            if not isinstance(batch, dict):
+                continue
+            commands.extend(
+                command
+                for command in batch.get("capture_commands", [])
+                if isinstance(command, str) and command
+            )
+            commands.extend(
+                command
+                for command in batch.get("validation_commands", [])
+                if isinstance(command, str) and command
+            )
+        commands.extend(
+            command for command in group.get("next_commands", []) if isinstance(command, str)
+        )
+        return list(dict.fromkeys(commands))
+    return []
+
+
+def finding_payload(
+    finding: Finding,
+    capture_area_groups: list[dict[str, Any]],
+) -> dict[str, Any]:
+    row = asdict(finding)
+    commands = finding_commands(finding, capture_area_groups)
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
+
+
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
     del args
     findings: list[Finding] = []
@@ -1189,7 +1243,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
                 next_capture_action.get("blocked_evidence_file_count") if next_capture_action else 0
             ),
         },
-        "findings": [asdict(finding) for finding in findings],
+        "findings": [finding_payload(finding, capture_area_groups) for finding in findings],
         "evidence": evidence,
         "prioritized_runtime_capture_plan": capture_plan,
         "runtime_capture_area_groups": capture_area_groups,

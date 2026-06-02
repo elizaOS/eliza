@@ -247,7 +247,13 @@ export function listSlackAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Object.keys(accounts).filter(Boolean);
+  const ids = Array.from(
+    new Set(
+      Object.keys(accounts)
+        .map((id) => normalizeAccountId(id))
+        .filter(Boolean),
+    ),
+  );
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
@@ -280,7 +286,12 @@ function getAccountConfig(
     return undefined;
   }
 
-  return accounts[accountId];
+  return (
+    accounts[accountId] ??
+    Object.entries(accounts).find(
+      ([configuredId]) => normalizeAccountId(configuredId) === accountId,
+    )?.[1]
+  );
 }
 
 /**

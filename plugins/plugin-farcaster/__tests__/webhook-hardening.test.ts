@@ -97,6 +97,30 @@ describe("farcaster webhook hardening", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it("does not broadcast account-specific payloads when the selected manager is missing", async () => {
+    const other = vi.fn();
+    const service = {
+      getManagerForAccount: vi.fn(() => undefined),
+      getManagersForAgent: vi.fn(
+        () => new Map([["other", { interactions: { mode: "webhook", processWebhookData: other } }]])
+      ),
+    };
+
+    const { res, rt } = await post(
+      {
+        type: "cast.created",
+        accountId: "missing",
+        data: { hash: "0xabc", text: "hello", author: { fid: 123 } },
+      },
+      service
+    );
+
+    expect(service.getManagerForAccount).toHaveBeenCalledWith("missing", rt.agentId);
+    expect(service.getManagersForAgent).not.toHaveBeenCalled();
+    expect(other).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it("does not process non-webhook managers", async () => {
     const processWebhookData = vi.fn();
     const service = {

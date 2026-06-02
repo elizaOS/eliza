@@ -403,6 +403,83 @@ describe("Anthropic native text plumbing", () => {
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
     });
   }, 60_000);
+
+  it("falls back to prompt text when malformed messages/provider options are supplied", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 2, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "safe fallback prompt",
+      messages: [
+        { role: "user", content: "valid prefix" },
+        { role: "assistant", content: 123 },
+      ],
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: "ephemeral" },
+          injected: () => "not serializable",
+        },
+      },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: unknown }>;
+      providerOptions?: unknown;
+    };
+    expect(call.messages).toEqual([{ role: "user", content: "safe fallback prompt" }]);
+    expect(call.providerOptions).toBeUndefined();
+  });
+
+  it("passes hostile attachment metadata through as inert file parts", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 3, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "describe the attachment",
+      attachments: [
+        {
+          data: "data:application/octet-stream;base64,AAAA",
+          mediaType: "application/pdf\nanthropic-beta: prompt-caching",
+          filename: "../../etc/passwd\nx-api-key: leaked",
+        },
+      ],
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as {
+      messages: Array<{ content: Array<Record<string, unknown>> }>;
+    };
+    expect(call.messages[0].content).toEqual([
+      { type: "text", text: "describe the attachment" },
+      {
+        type: "file",
+        data: "data:application/octet-stream;base64,AAAA",
+        mediaType: "application/pdf\nanthropic-beta: prompt-caching",
+        filename: "../../etc/passwd\nx-api-key: leaked",
+      },
+    ]);
+  });
 });
 
 describe("Anthropic model defaults", () => {
@@ -426,6 +503,24 @@ describe("Anthropic model defaults", () => {
     } as IAgentRuntime;
     expect(getResponseHandlerModel(overrideRuntime)).toBe("custom-haiku");
     expect(getActionPlannerModel(overrideRuntime)).toBe("custom-opus");
+  });
+
+  it("ignores whitespace-only model overrides before falling back", async () => {
+    const { getActionPlannerModel, getResponseHandlerModel } = await import("../utils/config");
+    const runtime = {
+      getSetting: vi.fn((key: string) => {
+        const settings: Record<string, string> = {
+          ANTHROPIC_RESPONSE_HANDLER_MODEL: " \t ",
+          ANTHROPIC_ACTION_PLANNER_MODEL: "\n",
+          SMALL_MODEL: "fallback-small",
+          LARGE_MODEL: "fallback-large",
+        };
+        return settings[key];
+      }),
+    } as IAgentRuntime;
+
+    expect(getResponseHandlerModel(runtime)).toBe("fallback-small");
+    expect(getActionPlannerModel(runtime)).toBe("fallback-large");
   });
 
   it("injects segmented userContent into the wire when both messages and promptSegments are provided (planner v5 path)", async () => {

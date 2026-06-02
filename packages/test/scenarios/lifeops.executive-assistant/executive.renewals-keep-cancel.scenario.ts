@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Renewals review" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Renewals review",
+    },
   ],
   turns: [
     {
@@ -22,9 +27,22 @@ export default scenario({
       room: "main",
       text: "Review upcoming renewals: subscriptions, trials, warranties, insurance, and recurring charges. Give me only near-term keep/cancel decisions.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SUBSCRIPTIONS", "PAYMENTS", "OWNER_DOCUMENTS", "LIFE"],
+        acceptedActions: [
+          "SUBSCRIPTIONS",
+          "PAYMENTS",
+          "OWNER_DOCUMENTS",
+          "LIFE",
+        ],
         description: "renewal decision review",
-        includesAny: ["renewal", "subscription", "trial", "warranty", "insurance", "keep", "cancel"],
+        includesAny: [
+          "renewal",
+          "subscription",
+          "trial",
+          "warranty",
+          "insurance",
+          "keep",
+          "cancel",
+        ],
       }),
       responseIncludesAny: [/renew|subscription|trial|cancel|keep/i],
       responseJudge: {
@@ -35,14 +53,30 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["SUBSCRIPTIONS", "PAYMENTS", "OWNER_DOCUMENTS", "LIFE"] },
+    {
+      type: "selectedAction",
+      actionName: ["SUBSCRIPTIONS", "PAYMENTS", "OWNER_DOCUMENTS", "LIFE"],
+    },
     {
       type: "custom",
       name: "renewals-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SUBSCRIPTIONS", "PAYMENTS", "OWNER_DOCUMENTS", "LIFE"],
+        acceptedActions: [
+          "SUBSCRIPTIONS",
+          "PAYMENTS",
+          "OWNER_DOCUMENTS",
+          "LIFE",
+        ],
         description: "renewal decision review",
-        includesAny: ["renewal", "subscription", "trial", "warranty", "insurance", "keep", "cancel"],
+        includesAny: [
+          "renewal",
+          "subscription",
+          "trial",
+          "warranty",
+          "insurance",
+          "keep",
+          "cancel",
+        ],
       }),
     },
     judgeRubric({

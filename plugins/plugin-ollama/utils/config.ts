@@ -33,9 +33,9 @@ export function getSetting(
 ): string | undefined {
   const value = runtime.getSetting(key);
   if (value !== undefined && value !== null) {
-    return String(value);
+    return String(value).trim();
   }
-  return getEnvValue(key) ?? defaultValue;
+  return getEnvValue(key)?.trim() ?? defaultValue;
 }
 
 export function getBaseURL(runtime: SettingsProvider): string {

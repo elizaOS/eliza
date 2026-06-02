@@ -73,6 +73,43 @@ function validatePdfInput(input: unknown): Uint8Array {
   return input;
 }
 
+function validatePageOption(value: unknown, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    !Number.isInteger(value) ||
+    value < 1
+  ) {
+    throw new RangeError(`${name} must be a positive finite integer`);
+  }
+  return value;
+}
+
+function normalizeExtractionOptions(
+  options: PdfExtractionOptions,
+  numPages: number
+): {
+  startPage: number;
+  endPage: number;
+} {
+  const requestedStartPage = validatePageOption(options.startPage, "startPage") ?? 1;
+  const requestedEndPage = validatePageOption(options.endPage, "endPage") ?? numPages;
+  if (requestedEndPage < requestedStartPage) {
+    throw new RangeError("endPage must be greater than or equal to startPage");
+  }
+  return {
+    startPage: Math.min(requestedStartPage, numPages),
+    endPage: Math.min(requestedEndPage, numPages),
+  };
+}
+
+function parseMetadataDate(value: string | Date | undefined): Date | undefined {
+  if (value === undefined) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export class PdfService extends Service {
   static serviceType = ServiceType.PDF;
   capabilityDescription = "The agent is able to convert PDF files to text";
@@ -126,8 +163,7 @@ export class PdfService extends Service {
       const pdf = await getDocumentProxy(uint8Array);
       const numPages = pdf.numPages;
 
-      const startPage = Math.max(1, options.startPage || 1);
-      const endPage = Math.min(numPages, options.endPage || numPages);
+      const { startPage, endPage } = normalizeExtractionOptions(options, numPages);
 
       const textPages: string[] = [];
 
@@ -174,8 +210,8 @@ export class PdfService extends Service {
       keywords: info.Keywords as string | undefined,
       creator: info.Creator as string | undefined,
       producer: info.Producer as string | undefined,
-      creationDate: info.CreationDate ? new Date(info.CreationDate as string) : undefined,
-      modificationDate: info.ModDate ? new Date(info.ModDate as string) : undefined,
+      creationDate: parseMetadataDate(info.CreationDate),
+      modificationDate: parseMetadataDate(info.ModDate),
     };
 
     const pages: PdfPageInfo[] = [];

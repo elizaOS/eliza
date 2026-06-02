@@ -22,6 +22,14 @@ REQUIRED_POLICIES = {
     "hier_rtlmp_proxy",
     "chipdiffusion_proxy",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -45,6 +53,14 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
 
 
 def validate_score(score: Any, label: str) -> list[str]:
@@ -88,6 +104,7 @@ def validate_candidate(path: Path, expected_policy: str, expected_case_id: str) 
         errors.append(f"{candidate_id}: schema must be eda.e1_candidate.v1")
     if candidate.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{candidate_id}: claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(candidate, candidate_id))
     generated = candidate.get("generated_by")
     if not isinstance(generated, dict):
         errors.append(f"{candidate_id}: generated_by must be a mapping")
@@ -137,6 +154,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report claim_boundary mismatch")
     if report.get("release_use_allowed") is not False:
         errors.append("release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(report, "report"))
     if report.get("status") not in {"PASS", "PASS_WITH_BLOCKED_CASES"}:
         errors.append(f"unexpected report status {report.get('status')!r}")
     for field in ("case_count", "candidate_count", "blocked_case_count"):

@@ -38,6 +38,7 @@ GENERATED_AP_BOOT_FLAGS = (
     "generated_ap_boot_claim_allowed",
     "privileged_boot_claim_allowed",
 )
+CLAIM_FLAG_KEYS = FALSE_CLAIM_FLAGS + GENERATED_AP_BOOT_FLAGS
 
 
 def utc_now() -> str:
@@ -154,6 +155,9 @@ def build_report() -> dict[str, Any]:
             errors.append(f"{flag} must be {expected} when status is {report['status']}")
     if errors:
         report["status"] = "fail"
+    report["false_claim_flags"] = {
+        flag: False for flag in CLAIM_FLAG_KEYS if report.get(flag) is False
+    }
     return report
 
 

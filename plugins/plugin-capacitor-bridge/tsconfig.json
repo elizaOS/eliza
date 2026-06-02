@@ -19,6 +19,12 @@
 		"paths": {
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/app-core/agent-bridge": [
+				"../../packages/app-core/src/agent-bridge.ts"
+			],
+			"@elizaos/app-core/registry": [
+				"../../packages/app-core/src/registry/index.ts"
+			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],

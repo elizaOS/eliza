@@ -75,6 +75,15 @@ REPO_TOOL_DIRS = (
 HOST_SMOKE_TOOL_DIR = "benchmarks/tools"
 HOST_SMOKE_MARKER = b"eliza-host-smoke"
 HOST_SMOKE_READ_BYTES = 256 * 1024
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "aosp_claim_allowed": False,
+    "measured_benchmark_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -426,6 +435,8 @@ def build_report() -> dict[str, Any]:
             "Tapeout readiness audit for local CPU/NPU modeled evidence only; this is not "
             "AOSP, measured benchmark, PDK, physical signoff, silicon, or tapeout approval."
         ),
+        **FALSE_CLAIM_FLAGS,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "source_artifacts": {
             "readiness_scorecard": rel(SCORECARD),
             "manual_review": rel(MANUAL_REVIEW),
@@ -541,6 +552,11 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("tapeout audit must remain tapeout_release_blocked")
     if "not AOSP" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block AOSP/tapeout claims")
+    for key, value in FALSE_CLAIM_FLAGS.items():
+        if data.get(key) is not value:
+            errors.append(f"{key} must be exactly false")
+    if data.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match tapeout readiness denied claim fields")
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

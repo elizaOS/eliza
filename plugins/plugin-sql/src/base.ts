@@ -1458,10 +1458,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         unique: boolean;
         metadata: unknown;
       };
-      const mapRow = (
-        m: SelectedMemory,
-        embedding: ArrayLike<number> | null | undefined,
-      ) => ({
+      const mapRow = (m: SelectedMemory, embedding: ArrayLike<number> | null | undefined) => ({
         id: m.id as UUID,
         type: m.type,
         createdAt: m.createdAt.getTime(),
@@ -1495,9 +1492,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             return baseQuery;
           }
         })();
-        return rows.map((row) =>
-          mapRow(row.memory as SelectedMemory, row.embedding),
-        );
+        return rows.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
       }
 
       // includeEmbedding === false: skip the embeddingTable join + column. The

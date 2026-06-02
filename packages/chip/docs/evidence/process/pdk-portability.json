@@ -1,6 +1,6 @@
 {
   "schema": "eliza.process_pdk_portability_report.v1",
-  "generated_utc": "2026-05-31T00:50:05.400887+00:00",
+  "generated_utc": "2026-06-02T06:00:58.001791+00:00",
   "claim_boundary": "pdk_portability_index_only_not_production_pdk_or_tapeout_signoff",
   "claim_allowed": false,
   "release_claim_allowed": false,
@@ -10,7 +10,104 @@
   "silicon_claim_allowed": false,
   "evidence_class": "real_open_pdk_methodology_index_with_advanced_node_blocked_gates",
   "checked_index": "pd/openlane/portability-index.yaml",
-  "total_entries": 0,
+  "total_entries": 8,
   "errors": [],
-  "lanes": []
+  "lanes": [
+    {
+      "id": "sky130A_release",
+      "pdk_name": "sky130A",
+      "node_class": "open_130nm_planar_cmos",
+      "lane_class": "open_pdk_active",
+      "access_gate": "open_no_gate",
+      "config": "pd/openlane/config.sky130.json",
+      "library_manifest": "pd/library-manifests/sky130.yaml",
+      "corner_manifest": "pd/corner-manifests/sky130.yaml",
+      "role": "primary_open_methodology_baseline",
+      "fabricable": true
+    },
+    {
+      "id": "gf180mcu_release",
+      "pdk_name": "gf180mcuC",
+      "node_class": "open_180nm_mcu_cmos",
+      "lane_class": "open_pdk_active",
+      "access_gate": "open_no_gate",
+      "config": "pd/openlane/config.gf180.json",
+      "library_manifest": "pd/library-manifests/gf180.yaml",
+      "corner_manifest": "pd/corner-manifests/gf180.yaml",
+      "role": "open_methodology_secondary_lane",
+      "fabricable": true
+    },
+    {
+      "id": "ihp_sg13g2_release",
+      "pdk_name": "ihp-sg13g2",
+      "node_class": "open_130nm_bicmos",
+      "lane_class": "open_pdk_active",
+      "access_gate": "open_no_gate",
+      "config": "pd/openlane/config.ihp-sg13g2.json",
+      "library_manifest": "pd/library-manifests/ihp-sg13g2.yaml",
+      "corner_manifest": "pd/corner-manifests/ihp-sg13g2.yaml",
+      "role": "linux_capable_demonstrator_lane",
+      "fabricable": true
+    },
+    {
+      "id": "asap7_predictive",
+      "pdk_name": "ASAP7",
+      "node_class": "predictive_7nm_finfet",
+      "lane_class": "predictive_shape_only",
+      "access_gate": "open_no_gate",
+      "config": "pd/asap7/config.asap7.yaml",
+      "library_manifest": "pd/library-manifests/asap7.yaml",
+      "corner_manifest": "pd/corner-manifests/asap7.yaml",
+      "role": "finfet_physics_shape_projection",
+      "fabricable": false
+    },
+    {
+      "id": "tsmc_n2p_stub",
+      "pdk_name": "TSMC_N2P",
+      "node_class": "tsmc_n2_class_gaa_nanosheet",
+      "lane_class": "advanced_node_blocked",
+      "access_gate": "blocked_until_foundry_agreement",
+      "config": "pd/n2p-stub/access-gate.yaml",
+      "library_manifest": "pd/library-manifests/tsmc-n2p.yaml",
+      "corner_manifest": "pd/corner-manifests/tsmc-n2p.yaml",
+      "role": "primary_production_target_2028",
+      "fabricable": false
+    },
+    {
+      "id": "tsmc_a14_stub",
+      "pdk_name": "TSMC_A14",
+      "node_class": "tsmc_a14_2nd_gen_gaa",
+      "lane_class": "advanced_node_blocked",
+      "access_gate": "blocked_until_foundry_agreement",
+      "config": "pd/a14-stub/access-gate.yaml",
+      "library_manifest": "pd/library-manifests/tsmc-a14.yaml",
+      "corner_manifest": "pd/corner-manifests/tsmc-a14.yaml",
+      "role": "stretch_production_target_2028",
+      "fabricable": false
+    },
+    {
+      "id": "intel_14a_stub",
+      "pdk_name": "Intel_14A",
+      "node_class": "intel_14a_ribbonfet_2nd_gen_bspdn_high_na",
+      "lane_class": "advanced_node_blocked",
+      "access_gate": "blocked_until_foundry_agreement",
+      "config": "pd/intel-14a-stub/access-gate.yaml",
+      "library_manifest": "pd/library-manifests/intel-14a.yaml",
+      "corner_manifest": "pd/corner-manifests/intel-14a.yaml",
+      "role": "second_source_strategic_2028",
+      "fabricable": false
+    },
+    {
+      "id": "samsung_sf2p_stub",
+      "pdk_name": "Samsung_SF2P",
+      "node_class": "samsung_sf2p_3rd_gen_mbcfet_gaa",
+      "lane_class": "advanced_node_blocked",
+      "access_gate": "blocked_until_foundry_agreement",
+      "config": "pd/sf2p-stub/access-gate.yaml",
+      "library_manifest": "pd/library-manifests/samsung-sf2p.yaml",
+      "corner_manifest": "pd/corner-manifests/samsung-sf2p.yaml",
+      "role": "backup_2028_target_if_tsmc_blocked",
+      "fabricable": false
+    }
+  ]
 }

@@ -138,7 +138,7 @@ summary:
   public_cad_source_record_count: 20
   public_cad_source_step_or_3d_observed_count: 12
   public_cad_source_footprint_or_eda_observed_count: 19
-  public_cad_source_local_downloaded_hashed_count: 1
+  public_cad_source_local_downloaded_hashed_count: 3
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5
@@ -154,7 +154,7 @@ public_sourcing_intake_context:
   public_cad_source_record_count: 20
   public_cad_source_step_or_3d_observed_count: 12
   public_cad_source_footprint_or_eda_observed_count: 19
-  public_cad_source_local_downloaded_hashed_count: 1
+  public_cad_source_local_downloaded_hashed_count: 3
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5

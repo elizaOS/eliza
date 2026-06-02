@@ -27,6 +27,7 @@ export * from "./companion-auth.js";
 export * from "./contracts.js";
 export { BrowserBridgeAdapter } from "./message-adapter.js";
 export * from "./packaging.js";
+export * from "./password-manager-bridge.js";
 export { browserPlugin } from "./plugin.js";
 export * from "./routes/bridge.js";
 export * from "./schema.js";

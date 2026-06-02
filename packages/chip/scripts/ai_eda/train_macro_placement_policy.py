@@ -30,6 +30,14 @@ DEFAULT_RECORD_DIRS = (
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_policy"
 CLAIM_BOUNDARY = "macro_placement_baseline_only_no_openroad_replay_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -584,6 +592,7 @@ def candidate_for_case(
             "reason": "baseline candidate is quarantined until deterministic OpenLane/OpenROAD replay and human PD review",
         },
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
 
 
@@ -624,6 +633,7 @@ def main() -> int:
             "until their external tools are fetched, converted, and replayed"
         ),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "training_inputs": [rel(path) for path, _case in cases],
         "learned_parameters": {},
         "release_use_allowed": False,
@@ -712,6 +722,7 @@ def main() -> int:
         "run_id": args.run_id,
         "status": report_status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "record_dirs": [rel(path) for path in record_dirs],
         "case_count": len(cases),
         "candidate_count": len(emitted),

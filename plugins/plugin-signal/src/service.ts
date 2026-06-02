@@ -917,7 +917,15 @@ export class SignalService extends Service implements ISignalService {
                   } as TargetInfo),
             });
           },
-          getUser: service.getConnectorUser.bind(service),
+          getUser: (handlerRuntime, params) =>
+            service.getConnectorUser(handlerRuntime, {
+              ...params,
+              target: params.target
+                ? params.target.accountId
+                  ? params.target
+                  : ({ ...params.target, accountId: connectorAccountId } as TargetInfo)
+                : ({ source: SIGNAL_SERVICE_NAME, accountId: connectorAccountId } as TargetInfo),
+            }),
           getChatContext: async (target, context) => {
             const targetAccountId = service.normalizeAccountId(
               target.accountId ?? context.accountId ?? connectorAccountId

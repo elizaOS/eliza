@@ -20,6 +20,20 @@ def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, obje
         testcase.assertIs(report.get(key), expected, key)
 
 
+def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    findings = report.get("findings")
+    testcase.assertIsInstance(findings, list)
+    for finding in findings:
+        testcase.assertIsInstance(finding, dict)
+        testcase.assertIsInstance(finding.get("next_command"), str)
+        testcase.assertTrue(finding["next_command"])
+        testcase.assertIsInstance(finding.get("next_commands"), list)
+        testcase.assertIn(finding["next_command"], finding["next_commands"])
+    summary = report.get("summary")
+    testcase.assertIsInstance(summary, dict)
+    testcase.assertGreaterEqual(summary.get("next_command_batch_count", 0), 1)
+
+
 class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_scans_source_markers_and_excludes_generated_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -47,6 +61,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(categories["todo"], 1)
         self.assertEqual(categories["implementation_missing"], 1)
         self.assertEqual(categories["deferred_blocked"], 1)
+        assert_actionable_findings(self, report)
         self.assertEqual(
             report["scan_root_summary"],
             [
@@ -64,6 +79,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         )
         paths = {finding["path"] for finding in report["findings"]}
         self.assertEqual(paths, {"packages/chip/sw/boot.sh"})
+        self.assertTrue(all("+1 " in finding["next_command"] for finding in report["findings"][:1]))
 
     def test_empty_scan_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,6 +95,32 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["findings"], 0)
         self.assertEqual(report["scan_root_summary"], [])
+
+    def test_npu_and_benchmark_markers_route_to_specific_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            npu_doc = repo / "packages/chip/docs/npu/runtime.md"
+            npu_doc.parent.mkdir(parents=True)
+            npu_doc.write_text("NPU TODO capture accelerator evidence.\n", encoding="utf-8")
+            bench = repo / "packages/chip/sw/benchmarks/runner.sh"
+            bench.parent.mkdir(parents=True)
+            bench.write_text("echo placeholder benchmark path\n", encoding="utf-8")
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs", "packages/chip/sw"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 2)
+        assert_actionable_findings(self, report)
+        by_path = {finding["path"]: finding for finding in report["findings"]}
+        self.assertIn(
+            "python3 packages/chip/scripts/check_npu_scope.py",
+            by_path["packages/chip/docs/npu/runtime.md"]["next_commands"],
+        )
+        self.assertIn(
+            "python3 packages/chip/scripts/check_benchmark_efficiency_scope.py",
+            by_path["packages/chip/sw/benchmarks/runner.sh"]["next_commands"],
+        )
 
     def test_binary_payloads_are_not_scanned_as_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -353,6 +395,119 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
         self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
+
+    def test_plan_and_survey_docs_are_not_source_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            tee_plan = repo / "packages/chip/docs/security/tee-plan/05-cpu-memory-performance.md"
+            tee_plan.parent.mkdir(parents=True)
+            tee_plan.write_text(
+                "This experiment plan says vector arithmetic remains BLOCKED.\n"
+                "Pythia is a BLOCKED stub until a named gate lands.\n",
+                encoding="utf-8",
+            )
+            sota_report = (
+                repo
+                / "packages/chip/docs/architecture-optimization/sota-2028/cache-report.md"
+            )
+            sota_report.parent.mkdir(parents=True)
+            sota_report.write_text(
+                "The survey notes a placeholder configuration remains blocked.\n",
+                encoding="utf-8",
+            )
+            competitor = repo / "packages/chip/docs/spec-db/competitor-2028-target.yaml"
+            competitor.parent.mkdir(parents=True)
+            competitor.write_text("status: blocked until vendor data exists\n")
+            source_doc = repo / "packages/chip/docs/arch/boot.md"
+            source_doc.parent.mkdir(parents=True)
+            source_doc.write_text(
+                "Boot placeholder text that must be resolved.\n", encoding="utf-8"
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
+
+    def test_operator_docs_classify_fail_closed_scaffold_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            operator_doc = repo / "packages/chip/docs/android/riscv-bringup.md"
+            operator_doc.parent.mkdir(parents=True)
+            operator_doc.write_text(
+                "Current status is fail-closed scaffold only.\n"
+                "No stub may fake hardware success.\n"
+                "Runtime shims return unsupported when the device node is absent.\n",
+                encoding="utf-8",
+            )
+            arch_doc = repo / "packages/chip/docs/arch/npu.md"
+            arch_doc.parent.mkdir(parents=True)
+            arch_doc.write_text(
+                "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+
+    def test_arch_contract_docs_classify_claim_boundary_disclosures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            contract = repo / "packages/chip/docs/arch/interconnect.md"
+            contract.parent.mkdir(parents=True)
+            contract.write_text(
+                "This is not release evidence for memory-bandwidth claims.\n"
+                "AXI4 claims remain blocked until bridge tests exist.\n"
+                "No release claim may rely on this scaffold.\n",
+                encoding="utf-8",
+            )
+            memory_map = repo / "packages/chip/docs/arch/memory-map.md"
+            memory_map.write_text(
+                "The Linux-capable scaffold map is not yet a complete Linux device memory map.\n"
+                "NPU control scaffold accesses fail closed.\n",
+                encoding="utf-8",
+            )
+            iommu = repo / "packages/chip/docs/arch/iommu.md"
+            iommu.write_text(
+                "Sv48 first-stage is not yet locally covered.\n"
+                "PASID behavior remains blocked by the evidence gate.\n"
+                "The driver must not poll for unsupported bits.\n",
+                encoding="utf-8",
+            )
+            source_doc = repo / "packages/chip/docs/arch/npu.md"
+            source_doc.write_text(
+                "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs/arch"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+
+    def test_operator_doc_command_examples_are_not_source_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            contract = repo / "packages/chip/docs/arch/linux-capable-cpu-contract.md"
+            contract.parent.mkdir(parents=True)
+            contract.write_text(
+                "Run the local non-claiming scaffold checks:\n"
+                "make chipyard-generator-check cpu-ap-scaffold-check cpu-ap-completion-gate\n"
+                "python3 scripts/capture_cpu_ap_evidence.py plan all --format shell\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/docs/arch"])
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["findings"], 0)
 
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {

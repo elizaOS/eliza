@@ -47,6 +47,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["blocker_id"], gate.BLOCKER_ID)
         self.assertEqual(report["evidence_paths"], [])
         for key in (
+            "claim_allowed",
             "phone_claim_allowed",
             "release_claim_allowed",
             "linux_boot_claim_allowed",
@@ -54,6 +55,10 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             "silicon_secure_boot_claim_allowed",
         ):
             self.assertIs(report.get(key), False)
+        self.assertEqual(
+            {key for key, value in report["false_claim_flags"].items() if value is False},
+            set(report["false_claim_flags"]),
+        )
         self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"blocked"},
@@ -63,6 +68,8 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
             gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
             gate.TRANSCRIPT.write_text(
+                "## claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation\n"
+                "## command_exit_code: 0\n"
                 "reset-vector-fetch <_start>\n"
                 "<e1_secure_boot_main>\n"
                 "authenticated-image-verified\n",
@@ -86,6 +93,8 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
             gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
             gate.TRANSCRIPT.write_text(
+                "## claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation\n"
+                "## command_exit_code: 0\n"
                 "reset-vector-fetch <_start>\n"
                 "<e1_secure_boot_main>\n"
                 "authenticated-image-verified\n"
@@ -100,6 +109,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["status"], "PASS")
         self.assertIsNone(report["blocker_id"])
         for key in (
+            "claim_allowed",
             "phone_claim_allowed",
             "release_claim_allowed",
             "linux_boot_claim_allowed",
@@ -110,6 +120,31 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"pass"},
+        )
+        self.assertEqual(
+            {key for key, value in report["false_claim_flags"].items() if value is False},
+            set(report["false_claim_flags"]),
+        )
+
+    def test_marker_only_transcript_without_capture_provenance_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
+            gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
+            gate.TRANSCRIPT.write_text(
+                "reset-vector-fetch <_start>\n"
+                "<e1_secure_boot_main>\n"
+                "authenticated-image-verified\n"
+                "handoff-target-loaded-from-manifest 0x80200000\n"
+                "OpenSBI entry reached\n",
+                encoding="utf-8",
+            )
+            rc = gate.main()
+            report = json.loads(gate.REPORT_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 1)
+        failed = {check["id"] for check in report["checks"] if check["status"] != "pass"}
+        self.assertEqual(
+            failed,
+            {"capture_claim_boundary_recorded", "capture_command_exit_zero"},
         )
 
     def test_capture_wrapper_blocks_without_real_command(self) -> None:

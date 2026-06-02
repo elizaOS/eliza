@@ -5,11 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const VISUAL_MATRIX_SPEC = path.join(
-  HERE,
-  "ui-smoke",
-  "plugin-views-visual.spec.ts",
-);
+const VIEW_CASES_SOURCE = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
 const KEYLESS_WORKFLOW = path.join(
   REPO_ROOT,
   ".github/workflows/scenario-pr.yml",
@@ -306,7 +302,7 @@ function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
 }
 
 function readVisualMatrixCases(): VisualViewCase[] {
-  const source = readFileSync(VISUAL_MATRIX_SPEC, "utf8");
+  const source = readFileSync(VIEW_CASES_SOURCE, "utf8");
   const match = source.match(
     /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\s*(?:satisfies[\s\S]*?)?\)?\s*\.map/,
   );
@@ -315,7 +311,7 @@ function readVisualMatrixCases(): VisualViewCase[] {
 
   return Array.from(
     viewCasesSource.matchAll(
-      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}]*\})?\]/g,
+      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
     ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];

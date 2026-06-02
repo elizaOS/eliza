@@ -72,6 +72,17 @@ VALID_EDGE_STATUSES = {
     "TIED_OFF",
     "BLOCKED",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_fabric_claim_allowed": False,
+    "full_soc_routing_claim_allowed": False,
+    "coherency_claim_allowed": False,
+    "iommu_claim_allowed": False,
+    "qos_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "production_cpu_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -109,6 +120,7 @@ def write_report(status: str, blocker_id: str | None, blocker_reason: str | None
                 "qos_claim_allowed": False,
                 "linux_boot_claim_allowed": False,
                 "production_cpu_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Validates that the e1_soc_integrated cross-domain scaffold "
                     "lints, has the expected boot-smoke and cross-domain cocotb "

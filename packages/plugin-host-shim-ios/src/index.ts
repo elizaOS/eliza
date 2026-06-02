@@ -47,7 +47,7 @@ export function installIosShim(
   if (installedIosShim) return installedIosShim;
 
   const handler = window.webkit?.messageHandlers?.elizaosBridge;
-  if (!handler) {
+  if (!handler || typeof handler.postMessage !== "function") {
     throw new Error(
       "installIosShim(): window.webkit.messageHandlers.elizaosBridge missing — " +
         "is the WKWebView configured with the elizaosBridge WKScriptMessageHandler?",

@@ -17,6 +17,7 @@ RUNNER = ROOT / "benchmarks/run_benchmarks.py"
 CALIBRATION_TEST = ROOT / "scripts/test_benchmark_calibration.py"
 PARSER_TEST = ROOT / "scripts/test_benchmark_parsers.py"
 MAKEFILE = ROOT / "Makefile"
+AP_BENCHMARK_WIRING_REPORT = ROOT / "build/reports/cpu_ap_benchmark_runner_wiring.json"
 OUT = ROOT / "build/reports/benchmark_efficiency_scope.json"
 FALSE_CLAIM_FLAGS = {
     "phone_claim_allowed": False,
@@ -80,6 +81,14 @@ REQUIRED_CAPTURE_COMMANDS = {
     ),
     "launcher_agent_runtime": "scripts/android/capture_eliza_launcher_runtime_evidence.sh",
 }
+REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS = (
+    "scripts/build_firemarshal_eliza_ap_benchmarks_payload.sh",
+    "capture_chipyard_linux_evidence.sh ap-benchmarks",
+    "scripts/capture_cpu_ap_evidence.py intake ap-benchmarks",
+)
+GENERATED_AP_CLAIM_BOUNDARY = (
+    "operator_commands_only_not_calibrated_efficiency_evidence_not_L5_or_L6_release_evidence"
+)
 FORBIDDEN_SIMULATOR_SCORE_METRICS = {
     "wall_clock_score",
     "phone_score",
@@ -108,8 +117,8 @@ def code_from_text(text: str, fallback: str) -> str:
 
 def structured_findings(
     blocked_until_real_evidence: list[str], checks: list[dict[str, Any]]
-) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
     for item in blocked_until_real_evidence:
         findings.append(
             {
@@ -134,6 +143,32 @@ def structured_findings(
             }
         )
     return findings
+
+
+def command_plan_commands(
+    capture_commands: dict[str, str],
+    command_plan: list[dict[str, Any]],
+) -> list[str]:
+    commands = [command for command in capture_commands.values() if isinstance(command, str)]
+    for batch in command_plan:
+        values = batch.get("commands")
+        if isinstance(values, list):
+            commands.extend(command for command in values if isinstance(command, str) and command)
+    commands.append("python3 scripts/check_benchmark_efficiency_scope.py")
+    return list(dict.fromkeys(commands))
+
+
+def finding_payload(
+    finding: dict[str, Any],
+    capture_commands: dict[str, str],
+    command_plan: list[dict[str, Any]],
+) -> dict[str, Any]:
+    row = dict(finding)
+    commands = command_plan_commands(capture_commands, command_plan)
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
 
 
 def mapping(value: Any) -> dict[str, Any]:
@@ -257,10 +292,42 @@ def local_regression_targets_are_wired(makefile: str) -> bool:
     )
 
 
+def generated_ap_benchmark_wiring_is_actionable(report: dict[str, Any]) -> bool:
+    commands = "\n".join(str(item) for item in list_values(report.get("next_commands_after_prerequisites_exist")))
+    packaged = mapping(report.get("packaged_generated_ap_workload"))
+    return (
+        report.get("schema") == "eliza.cpu_ap_benchmark_runner_wiring.v1"
+        and report.get("derived_command_available") is True
+        and report.get("runner_command_derivable") is True
+        and packaged.get("status") == "ready"
+        and all(snippet in commands for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS)
+    )
+
+
+def generated_ap_benchmark_command_plan(wiring_report: dict[str, Any]) -> dict[str, Any]:
+    commands = [
+        str(item)
+        for item in list_values(wiring_report.get("next_commands_after_prerequisites_exist"))
+        if isinstance(item, str) and item.strip()
+    ]
+    return {
+        "id": "capture_generated_ap_l3_benchmark_markers",
+        "source": rel(AP_BENCHMARK_WIRING_REPORT),
+        "claim_boundary": GENERATED_AP_CLAIM_BOUNDARY,
+        "commands": commands,
+        "requires": [
+            "generated-AP Linux userspace reaches the benchmark workload",
+            "captured transcript includes all required L3 raw benchmark markers",
+            "rerun wire_cpu_ap_capture_commands.py and check_benchmark_efficiency_scope.py after capture",
+        ],
+    }
+
+
 def build_report() -> dict[str, Any]:
     plan = load_json_object(BENCHMARK_PLAN)
     schema = load_yaml_object(REPORT_SCHEMA)
     metadata = load_json_object(TARGET_METADATA_EXAMPLE)
+    ap_benchmark_wiring = load_json_object(AP_BENCHMARK_WIRING_REPORT)
     schema_text = REPORT_SCHEMA.read_text(encoding="utf-8")
     runner_text = RUNNER.read_text(encoding="utf-8")
     makefile = MAKEFILE.read_text(encoding="utf-8")
@@ -306,6 +373,13 @@ def build_report() -> dict[str, Any]:
             else "fail",
             "evidence": rel(MAKEFILE),
         },
+        {
+            "id": "generated_ap_l3_benchmark_capture_plan_is_actionable",
+            "status": "pass"
+            if generated_ap_benchmark_wiring_is_actionable(ap_benchmark_wiring)
+            else "fail",
+            "evidence": rel(AP_BENCHMARK_WIRING_REPORT),
+        },
     ]
     blocked_until_real_evidence = [
         "prototype-silicon or complete-phone target identity, board serial, SoC revision, and OS/BSP build ID",
@@ -319,6 +393,9 @@ def build_report() -> dict[str, Any]:
         "reviewer confirmation that simulator wall-clock, host-smoke tools, and FPGA power are excluded from phone efficiency comparisons",
     ]
     findings = structured_findings(blocked_until_real_evidence, checks)
+    command_plan = [
+        generated_ap_benchmark_command_plan(ap_benchmark_wiring),
+    ]
     return {
         "schema": "eliza.benchmark_efficiency_scope.v1",
         "generated_utc": datetime.now(UTC).isoformat(),
@@ -337,15 +414,21 @@ def build_report() -> dict[str, Any]:
             "runner": rel(RUNNER),
             "calibration_regression_test": rel(CALIBRATION_TEST),
             "parser_regression_test": rel(PARSER_TEST),
+            "generated_ap_benchmark_wiring": rel(AP_BENCHMARK_WIRING_REPORT),
         },
         "blocked_until_real_evidence": blocked_until_real_evidence,
         "next_capture_commands": REQUIRED_CAPTURE_COMMANDS,
-        "findings": findings,
+        "next_command_plan": command_plan,
+        "findings": [
+            finding_payload(finding, REQUIRED_CAPTURE_COMMANDS, command_plan)
+            for finding in findings
+        ],
         "checks": checks,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
             "release_claim_allowed": False,
+            "next_command_batch_count": 1,
         },
     }
 
@@ -407,6 +490,7 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "runner",
             "calibration_regression_test",
             "parser_regression_test",
+            "generated_ap_benchmark_wiring",
         ):
             require(isinstance(scaffolds.get(key), str), f"current_scaffolds missing {key}", errors)
     commands = data.get("next_capture_commands")
@@ -419,6 +503,31 @@ def validate_report(data: dict[str, Any]) -> list[str]:
                 f"next_capture_commands missing or changed {key}",
                 errors,
             )
+    command_plan = data.get("next_command_plan")
+    if not isinstance(command_plan, list) or not command_plan:
+        errors.append("next_command_plan must include generated-AP benchmark capture commands")
+    else:
+        first = command_plan[0]
+        if not isinstance(first, dict):
+            errors.append("next_command_plan entries must be mappings")
+        else:
+            require(
+                first.get("claim_boundary") == GENERATED_AP_CLAIM_BOUNDARY,
+                "generated-AP benchmark command plan claim boundary drifted",
+                errors,
+            )
+            require(
+                first.get("source") == rel(AP_BENCHMARK_WIRING_REPORT),
+                "generated-AP benchmark command plan source drifted",
+                errors,
+            )
+            command_text = "\n".join(str(item) for item in list_values(first.get("commands")))
+            for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS:
+                require(
+                    snippet in command_text,
+                    f"generated-AP benchmark command plan missing {snippet}",
+                    errors,
+                )
     return errors
 
 

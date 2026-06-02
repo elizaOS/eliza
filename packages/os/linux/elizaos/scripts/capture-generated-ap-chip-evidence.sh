@@ -134,6 +134,7 @@ payload: dict[str, object] = {
     ],
     "next_commands": [
         "cd ../../../chip && python3 scripts/wire_cpu_ap_capture_commands.py --format json",
+        "make -C ../../../os/linux/elizaos stage-agent-artifacts ARCH=riscv64 RISCV64_RUNTIME=node && make -C ../../../os/linux/elizaos riscv64-agent-runtime-smoke && make -C ../../../os/linux/elizaos build ARCH=riscv64 PROFILE=default",
         "cd ../../../chip && ELIZA_LINUX_BOOT_CMD=<command from wire output> python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source build/chipyard/eliza_rocket/verilator-linux-smoke.log --command '<exact generated-AP boot command>'",
         "ELIZA_GENERATED_AP_CHIP_BOOT_CMD='<real generated-AP boot command that prints serial transcript>' scripts/capture-generated-ap-chip-evidence.sh run",
         "python3 ../../../chip/scripts/check_os_rv64_chip_boot_contract.py",

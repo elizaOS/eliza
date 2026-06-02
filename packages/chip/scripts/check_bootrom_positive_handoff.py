@@ -40,12 +40,26 @@ CLAIM_BOUNDARY = (
 )
 
 REQUIRED_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "capture_claim_boundary_recorded",
+        ("claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation",),
+    ),
+    ("capture_command_exit_zero", ("## command_exit_code: 0",)),
     ("reset_vector_fetch", ("reset-vector-fetch", "<_start>")),
     ("verifier_entrypoint_executed", ("<e1_secure_boot_main>",)),
     ("authenticated_image_verified", ("authenticated-image-verified",)),
     ("handoff_target_loaded_from_manifest", ("handoff-target-loaded-from-manifest",)),
     ("opensbi_entry_reached", ("OpenSBI", "entry")),
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "phone_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_secure_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def now_iso() -> str:
@@ -79,11 +93,14 @@ def report_payload(status: str, checks: list[dict], blocker_reason: str | None) 
         "as_of": now_iso(),
         "generated_utc": now_iso(),
         "subsystem": "security",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
+        "claim_allowed": False,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
         "linux_boot_claim_allowed": False,
         "android_boot_claim_allowed": False,
         "silicon_secure_boot_claim_allowed": False,
+        "production_readiness_claim_allowed": False,
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {
             "check_count": len(checks),

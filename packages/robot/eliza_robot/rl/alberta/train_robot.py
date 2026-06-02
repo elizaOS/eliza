@@ -100,6 +100,7 @@ def _build_action_scale_schedule(
     increment: float,
     min_success_rate: float,
     allow_stable_partial_progress: bool = True,
+    allow_safe_locomotion_prior_scale: bool = False,
 ) -> dict:
     target = float(target_scale)
     initial = DEFAULT_ACTION_SCALE_INITIAL if initial_scale is None else float(initial_scale)
@@ -112,27 +113,41 @@ def _build_action_scale_schedule(
         raise ValueError("action_scale_increment must be finite and > 0")
     if initial > target:
         raise ValueError("action_scale_initial must be <= action_scale")
-    mode = (
-        "no_fall_physical_gate_ramp"
-        if allow_stable_partial_progress
-        else "full_physical_success_gate_ramp"
-    )
+    if allow_stable_partial_progress:
+        mode = "no_fall_physical_gate_ramp"
+    elif allow_safe_locomotion_prior_scale:
+        mode = "safe_locomotion_prior_gate_ramp"
+    else:
+        mode = "full_physical_success_gate_ramp"
     criteria = {
         "failure_rate_lte": 0.0,
         "success_rate_gte": float(min_success_rate),
     }
     if allow_stable_partial_progress:
         criteria["physical_success_or_stable_partial_progress"] = True
+    elif allow_safe_locomotion_prior_scale:
+        criteria["physical_success_or_safe_locomotion_prior_scale"] = True
     else:
         criteria["physical_success"] = True
-    rationale = (
-        "start at a stable small action scale, then ramp after either "
-        "full GoalChecker physical success or no-fall partial directional "
-        "progress with drift checks still passing"
-        if allow_stable_partial_progress
-        else "start at a stable small action scale, then ramp only after "
-        "full GoalChecker physical success"
-    )
+    if allow_stable_partial_progress:
+        rationale = (
+            "start at a stable small action scale, then ramp after either "
+            "full GoalChecker physical success or no-fall partial directional "
+            "progress with drift checks still passing"
+        )
+    elif allow_safe_locomotion_prior_scale:
+        rationale = (
+            "start prior-assisted locomotion at a stable gait amplitude, then "
+            "ramp action scale after eval episodes prove no fall, no support "
+            "contract failure, valid tracked height, and yaw/drift/slip/"
+            "self-collision checks still passing; promotion and residual "
+            "authority remain stricter"
+        )
+    else:
+        rationale = (
+            "start at a stable small action scale, then ramp only after "
+            "full GoalChecker physical success"
+        )
     return {
         "schema": ACTION_SCALE_SCHEDULE_SCHEMA,
         "mode": mode,
@@ -173,21 +188,22 @@ def _build_locomotion_prior_residual_schedule(
     enabled = locomotion_action_prior != "none" and initial < target
     return {
         "schema": LOCOMOTION_PRIOR_RESIDUAL_SCHEDULE_SCHEMA,
-        "mode": "full_physical_success_gate_ramp",
+        "mode": "stable_partial_progress_gate_ramp",
         "enabled": enabled,
         "initial_scale": initial,
         "target_scale": target,
         "increment": min(step, target) if target > 0.0 else step,
         "criteria": {
             "failure_rate_lte": 0.0,
-            "physical_success": True,
+            "physical_success_or_stable_partial_progress": True,
         },
         "rationale": (
             "when using a locomotion prior, start with no residual override so "
-            "the robot first demonstrates stable prior gait, then admit learned "
-            "residual control only after full GoalChecker physical success; "
-            "actor updates are scaled by current residual authority so the "
-            "residual policy only learns while its actions are causal"
+            "the robot first demonstrates stable supported motion, then admit "
+            "learned residual control after either full GoalChecker physical "
+            "success or stable partial progress; actor updates are scaled by "
+            "current residual authority so the residual policy only learns while "
+            "its actions are causal"
         ),
     }
 
@@ -333,14 +349,79 @@ def _action_scale_gate_passed(
     task_id: str,
     min_success_rate: float,
     allow_stable_partial_progress: bool = True,
+    allow_safe_locomotion_prior_scale: bool = False,
 ) -> bool:
     if float(promotion_eval.get("failure_rate", 1.0)) > 0.0:
         return False
     if _promotion_passed(promotion_eval, min_success_rate):
         return True
     if not allow_stable_partial_progress:
-        return False
+        return (
+            allow_safe_locomotion_prior_scale
+            and _safe_locomotion_prior_scale_gate_passed(
+                promotion_eval,
+                task_id=task_id,
+            )
+        )
     return _stable_partial_progress_gate_passed(promotion_eval, task_id=task_id)
+
+
+def _safe_locomotion_prior_scale_gate_passed(
+    promotion_eval: dict,
+    *,
+    task_id: str,
+) -> bool:
+    if task_id not in {
+        "walk_forward",
+        "walk_backward",
+        "sidestep_left",
+        "sidestep_right",
+    }:
+        return False
+    if float(promotion_eval.get("failure_rate", 1.0)) > 0.0:
+        return False
+    if float(promotion_eval.get("physical_fall_rate", 0.0) or 0.0) > 0.0:
+        return False
+    if float(promotion_eval.get("support_contract_failure_rate", 0.0) or 0.0) > 0.0:
+        return False
+    checks = (
+        promotion_eval.get("physical_checks")
+        if isinstance(promotion_eval.get("physical_checks"), dict)
+        else {}
+    )
+    if not checks:
+        return False
+    required_true = [
+        "tracked_height_present",
+        "no_fall",
+        "yaw_drift_bound",
+        "max_foot_slip_m_s",
+        "max_self_collision_count",
+    ]
+    if task_id in {"walk_forward", "walk_backward"}:
+        required_true.append("tracked_lateral_drift_bound")
+    else:
+        required_true.append("tracked_forward_drift_bound")
+    return all(checks.get(key) is True for key in required_true)
+
+
+def _scale_gate_reason(
+    promotion_eval: dict,
+    *,
+    task_id: str,
+    min_success_rate: float,
+    allow_safe_locomotion_prior_scale: bool = False,
+) -> str:
+    if _promotion_passed(promotion_eval, min_success_rate):
+        return "full_physical_success_gate_passed"
+    if _stable_partial_progress_gate_passed(promotion_eval, task_id=task_id):
+        return "stable_partial_progress_gate_passed"
+    if allow_safe_locomotion_prior_scale and _safe_locomotion_prior_scale_gate_passed(
+        promotion_eval,
+        task_id=task_id,
+    ):
+        return "safe_locomotion_prior_scale_gate_passed"
+    return "unknown_gate_passed"
 
 
 def _stable_partial_progress_gate_passed(promotion_eval: dict, *, task_id: str) -> bool:
@@ -934,6 +1015,7 @@ def train_robot(
         increment=action_scale_increment,
         min_success_rate=min_phase_success_rate,
         allow_stable_partial_progress=locomotion_action_prior == "none",
+        allow_safe_locomotion_prior_scale=locomotion_action_prior != "none",
     )
     current_action_scale = float(action_scale_schedule["initial_scale"])
     residual_scale_schedule = _build_locomotion_prior_residual_schedule(
@@ -1158,10 +1240,14 @@ def train_robot(
                 task_id=task,
                 min_success_rate=min_phase_success_rate,
                 allow_stable_partial_progress=locomotion_action_prior == "none",
+                allow_safe_locomotion_prior_scale=locomotion_action_prior != "none",
             )
             residual_gate_passed = _promotion_passed(
                 promotion_eval,
                 min_phase_success_rate,
+            ) or _stable_partial_progress_gate_passed(
+                promotion_eval,
+                task_id=task,
             )
             target_scale = float(action_scale_schedule["target_scale"])
             if (
@@ -1181,13 +1267,25 @@ def train_robot(
                     "step": int(phase_steps_run),
                     "from_scale": float(old_scale),
                     "to_scale": float(current_action_scale),
-                    "reason": "full_physical_success_gate_passed",
+                    "reason": _scale_gate_reason(
+                        promotion_eval,
+                        task_id=task,
+                        min_success_rate=min_phase_success_rate,
+                        allow_safe_locomotion_prior_scale=locomotion_action_prior
+                        != "none",
+                    ),
                     "gate_passed": True,
                     "success_rate": float(promotion_eval["success_rate"]),
                     "failure_rate": float(promotion_eval["failure_rate"]),
                     "physical_success": bool(promotion_eval["physical_success"]),
                     "partial_progress_gate": bool(
                         _stable_partial_progress_gate_passed(
+                            promotion_eval,
+                            task_id=task,
+                        )
+                    ),
+                    "safe_locomotion_prior_scale_gate": bool(
+                        _safe_locomotion_prior_scale_gate_passed(
                             promotion_eval,
                             task_id=task,
                         )
@@ -1217,7 +1315,11 @@ def train_robot(
                     "step": int(phase_steps_run),
                     "from_scale": float(old_residual_scale),
                     "to_scale": float(current_locomotion_prior_residual_scale),
-                    "reason": "full_physical_success_gate_passed",
+                    "reason": _scale_gate_reason(
+                        promotion_eval,
+                        task_id=task,
+                        min_success_rate=min_phase_success_rate,
+                    ),
                     "gate_passed": True,
                     "success_rate": float(promotion_eval["success_rate"]),
                     "failure_rate": float(promotion_eval["failure_rate"]),

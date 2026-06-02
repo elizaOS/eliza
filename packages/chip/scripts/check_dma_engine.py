@@ -34,6 +34,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/dma_engine.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_memory_system_claim_allowed": False,
+    "coherent_dma_claim_allowed": False,
+    "linux_dmaengine_driver_claim_allowed": False,
+    "throughput_claim_allowed": False,
+}
 
 AXI4_PKG = "rtl/interconnect/axi4/e1_axi4_pkg.sv"
 DMA_RTL = "rtl/dma/e1_dma_sg.sv"
@@ -101,6 +109,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "coherent_dma_claim_allowed": False,
                 "linux_dmaengine_driver_claim_allowed": False,
                 "throughput_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Proves e1_dma_sg is a descriptor-based scatter-gather DMA "
                     "with a full AXI4 INCR-burst read+write data mover: it "

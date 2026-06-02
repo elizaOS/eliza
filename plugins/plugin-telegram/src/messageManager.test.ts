@@ -114,6 +114,57 @@ describe("MessageManager malformed payload handling", () => {
     ]);
   });
 
+  it("keeps a text document attachment when fetching its contents fails", async () => {
+    const getFileLink = vi.fn(
+      async () => new URL("https://files.test/report.txt"),
+    );
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: vi.fn(),
+    }));
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock);
+    const manager = new MessageManager(
+      {
+        telegram: { getFileLink },
+      } as never,
+      { agentId: "agent-1" } as never,
+    );
+
+    try {
+      const result = await manager.processMessage({
+        message_id: 1,
+        date: 1,
+        chat: { id: 123, type: "private" },
+        caption: "please read this",
+        document: {
+          file_id: "doc-1",
+          file_unique_id: "unique-1",
+          file_name: "report.txt",
+          mime_type: "text/plain",
+          file_size: 42,
+        },
+      } as never);
+
+      expect(fetchMock).toHaveBeenCalledWith("https://files.test/report.txt");
+      expect(getFileLink).toHaveBeenCalledTimes(2);
+      expect(result.processedContent).toBe("please read this");
+      expect(result.attachments).toEqual([
+        expect.objectContaining({
+          id: "doc-1",
+          url: "https://files.test/report.txt",
+          title: "Text Document: report.txt",
+          source: "Document",
+          description: expect.stringContaining("Error: Unable to read content"),
+          text: "",
+        }),
+      ]);
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("does not throw when image description or file lookup fails", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/photo.jpg"),

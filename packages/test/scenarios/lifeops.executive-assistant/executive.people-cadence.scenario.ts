@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "People cadence" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "People cadence",
+    },
   ],
   turns: [
     {
@@ -35,7 +40,10 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["RELATIONSHIP", "MESSAGE", "LIFE", "INBOX"] },
+    {
+      type: "selectedAction",
+      actionName: ["RELATIONSHIP", "MESSAGE", "LIFE", "INBOX"],
+    },
     {
       type: "custom",
       name: "people-cadence-action-coverage",

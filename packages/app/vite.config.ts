@@ -371,6 +371,13 @@ function stringifyBuildLogMessage(message: unknown): string {
 function isKnownToleratedBuildWarning(message: unknown): boolean {
   const text = stringifyBuildLogMessage(message);
   if (
+    text.includes("IMPORT_IS_UNDEFINED") &&
+    text.includes("Import `tslFn`") &&
+    text.includes("three.webgpu")
+  ) {
+    return true;
+  }
+  if (
     text.includes("Use of direct eval") &&
     text.includes("@electric-sql/pglite")
   ) {
@@ -396,7 +403,21 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   }
   return (
     text.includes("../app-core/src/browser.ts") ||
-    text.includes("native-stub:node:fs/promises")
+    text.includes("native-stub:node:fs/promises") ||
+    text.includes("../ui/src/components/pages/") ||
+    text.includes("../../plugins/plugin-vincent/src/VincentAppView.tsx") ||
+    text.includes(
+      "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-companion/src/components/companion/CompanionAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
+    )
   );
 }
 

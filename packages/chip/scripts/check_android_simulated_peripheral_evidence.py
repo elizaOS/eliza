@@ -59,7 +59,7 @@ REQUIRED_LOG_PROVENANCE = (
     "eliza-evidence: target=android_simulated_peripheral component=",
     "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
     "eliza-evidence: command_env=",
-    "eliza-evidence: command_source=default",
+    "eliza-evidence: command_source=",
     "eliza-evidence: command=",
     "eliza-evidence: started_utc=",
     "COMMAND_OUTPUT_BEGIN",
@@ -492,6 +492,57 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
     return plan
 
 
+def command_batch_commands(batch: dict[str, object]) -> list[str]:
+    commands: list[str] = []
+    values = batch.get("commands")
+    if isinstance(values, list):
+        commands.extend(command for command in values if isinstance(command, str) and command)
+    command = batch.get("command")
+    if isinstance(command, str) and command:
+        commands.append(command)
+    return list(dict.fromkeys(commands))
+
+
+def finding_command_batches(
+    finding: Finding,
+    command_plan: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if ":" in finding.code:
+        _, component = finding.code.split(":", 1)
+        return [
+            batch
+            for batch in command_plan
+            if batch.get("id") == "capture_android_simulated_peripheral_evidence"
+            and component in batch.get("components", [])
+        ]
+    if finding.code in {
+        "peripheral_capture_probe_wifi_disabled",
+        "aosp_chip_product_declares_no_audio_hal",
+        "cuttlefish_e1_missing_phone_hals",
+    }:
+        return [
+            batch
+            for batch in command_plan
+            if batch.get("id") == "repair_android_peripheral_product_wiring"
+        ]
+    return command_plan
+
+
+def finding_payload(
+    finding: Finding,
+    command_plan: list[dict[str, object]],
+) -> dict[str, Any]:
+    row = asdict(finding)
+    commands: list[str] = []
+    for batch in finding_command_batches(finding, command_plan):
+        commands.extend(command_batch_commands(batch))
+    commands = list(dict.fromkeys(commands))
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
+
+
 def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
     dependency_counts: dict[str, int] = {}
@@ -513,7 +564,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
             "next_command_batch_count": len(command_plan),
         },
         "blocker_dependency_counts": dependency_counts,
-        "findings": [asdict(finding) for finding in findings],
+        "findings": [finding_payload(finding, command_plan) for finding in findings],
         "next_command_plan": command_plan,
         "evidence": evidence,
     }

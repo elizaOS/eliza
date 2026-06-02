@@ -338,6 +338,7 @@ export {
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 // Export Node-specific utilities
 export * from "./utils/plugin-loader";

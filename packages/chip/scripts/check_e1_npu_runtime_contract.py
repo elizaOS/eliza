@@ -86,6 +86,8 @@ def main() -> int:
     for flag, expected in FALSE_CONTRACT_CLAIM_FLAGS.items():
         if contract.get(flag) is not expected:
             errors.append(f"runtime contract must keep {flag}=false")
+    if contract.get("false_claim_flags") != FALSE_CONTRACT_CLAIM_FLAGS:
+        errors.append("runtime contract false_claim_flags must match denied NPU runtime claims")
 
     stablehlo_import = contract.get("stablehlo_subset_import", {})
     expected_stablehlo_precisions = {

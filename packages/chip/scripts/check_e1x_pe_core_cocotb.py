@@ -12,6 +12,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_pe_core_cocotb.json"
 MICROKERNEL_PROOF_JSON = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkernel-proof.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_riscv_compliance_claim_allowed": False,
+}
 
 RUNS = {
     "pe_core": {
@@ -130,6 +139,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X processing-element core (RV64IM_Zicsr_Zifencei integer datapath) cocotb "
             "verification with assembled programs, including an RTL-executed generated W4A8 "

@@ -82,15 +82,25 @@ records:
           - series_catalog
           - mated_height_step
           - product_number_table
-    public_step_or_3d_status: manufacturer_step_download_link_observed_not_downloaded
+    public_step_or_3d_status: manufacturer_step_link_observed_downloaded_and_hashed
     public_footprint_status: manufacturer_allegro_and_altium_links_observed_not_verified
     drawing_status: manufacturer_product_drawing_observed
-    local_download_status: not_downloaded_or_hashed
-    login_or_rfq_required: not_required_for_page_observation_unknown_for_download_terms
+    local_download_status: downloaded_and_hashed
+    downloaded_artifacts:
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_53_STEP_0001228577S.zip
+        kind: manufacturer_step_zip
+        bytes: 237383
+        sha256: 34bec3a555e535094585da3d4ba89ac8b2a1cfbbb44430ecf68db3596aa26f8e
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp
+        kind: extracted_step
+        bytes: 665174
+        sha256: 787382f59954cdb58375d04f67807c54edede419020abaf790023df4714f49d6
+    login_or_rfq_required: not_required_for_download_observed_terms_still_require_release_review
     release_credit: false
     required_next_actions:
       - choose plug/receptacle pair and plating/package suffixes for each interface
-      - download and hash both mating STEP models from Hirose
+      - verify the downloaded header STEP against the selected mating connector and final assembly stack
+      - download and hash the exact mating plug/receptacle STEP selected for each camera or split-board interface
       - regenerate KiCad connector footprints from official land pattern data
   - id: hirose_bm28b0_6_50dp_2_0_35v_53
     category: board_to_board_or_fpc_connector
@@ -138,14 +148,14 @@ records:
     exact_mpn: DF40C-80DP-0.4V(51)
     manufacturer: Hirose
     board_footprints:
-      - HIROSE_DF40C_80DP_DEV
+      - HIROSE_DF40_80P_0P4_DEV
     local_candidate_refs:
       - J_DISPLAY_TOUCH
       - J_TOP_BOTTOM_FLEX_TOP
       - J_TOP_BOTTOM_FLEX_BOTTOM
     official_or_authorized_sources:
       - type: manufacturer_product_page
-        url: https://www.hirose.com/product/p/CL0684-4036-7-51
+        url: https://www.hirose.com/en/product/p/CL0684-4001-8-51
         observed_evidence:
           - 2d_drawing
           - 3d_model_step
@@ -158,22 +168,32 @@ records:
           - symbol
           - footprint
           - model_page
-    public_step_or_3d_status: manufacturer_step_download_link_observed_not_downloaded
+    public_step_or_3d_status: manufacturer_step_link_observed_downloaded_and_hashed
     public_footprint_status: manufacturer_or_distributor_eda_link_observed_not_verified
     drawing_status: manufacturer_2d_drawing_observed
-    local_download_status: not_downloaded_or_hashed
+    local_download_status: downloaded_and_hashed
+    downloaded_artifacts:
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_51_STEP_0001218423S.zip
+        kind: manufacturer_step_zip
+        bytes: 380240
+        sha256: 05788592faabb222ab117e5f8f0aeaf0064b488427c394036226cf90372c5060
+      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp
+        kind: extracted_step
+        bytes: 1744333
+        sha256: eb23fd7196ccccae9e5eb13930c41957e5ec6eb5096e2126c5c2c32b2a5e107d
     login_or_rfq_required: membership_required_for_some_footprint_formats
     release_credit: false
     required_next_actions:
       - confirm whether DF40 or BM28 is the final stack connector family per interface
-      - download and hash exact plug and receptacle CAD models under accepted terms
+      - verify the downloaded plug STEP against the selected mating receptacle height and exact footprint
+      - download and hash the exact mating receptacle STEP for the selected display or split-board interface
       - bind mating height and insertion envelope into the split-board clearance model
   - id: murata_type_2ea_lbee5xv2ea_802
     category: wifi_bluetooth_module
     exact_mpn: LBEE5XV2EA-802
     manufacturer: Murata
     board_footprints:
-      - MURATA_TYPE2EA_LGA_DEV
+      - MURATA_TYPE_2EA_GEOMETRY_DEV
     local_candidate_refs:
       - U_WIFI_BT
     official_or_authorized_sources:
@@ -272,7 +292,7 @@ records:
     exact_mpn: TPS65987DDHRSHR
     manufacturer: Texas Instruments
     board_footprints:
-      - TI_TPS65987_QFN_DEV
+      - TI_TPS65987_RSH_56QFN_DEV
     local_candidate_refs:
       - U_USB_PD
     official_or_authorized_sources:
@@ -328,7 +348,7 @@ records:
     exact_mpn: SF-G5035S60FY
     manufacturer: Sincere First
     board_footprints:
-      - CAMERA_24P_0P50_DEV
+      - CAMERA_30P_0P50_DEV
     local_candidate_refs:
       - J_FRONT_CAMERA
     official_or_authorized_sources:
@@ -358,7 +378,7 @@ records:
     exact_mpn: RG255C-GL
     manufacturer: Quectel
     board_footprints:
-      - QUECTEL_RG255C_LGA_DEV
+      - QUECTEL_RG255C_GEOMETRY_DEV
     local_candidate_refs:
       - U_CELL
     official_or_authorized_sources:
@@ -418,7 +438,7 @@ records:
       - do not mix this alternate with CH550FH01A-CT without rerunning display connector, cover, and clearance evidence
   - id: ti_tps25751
     category: usb_pd_controller_replacement_candidate
-    exact_mpn: TPS25751
+    exact_mpn: exact_orderable_suffix_unselected_TPS25751_family
     manufacturer: Texas Instruments
     board_footprints:
       - TI_TPS25751_DEV
@@ -439,12 +459,13 @@ records:
     release_credit: false
     recommended_disposition: evaluate_as_replacement_for_tps65987d_nrnd_binding
     required_next_actions:
+      - select exact TPS25751 orderable suffix/package before CAD or footprint replacement
       - compare TPS25751 firmware, PD policy, charger-path, and Linux integration against the current TPS65987D placeholder binding
       - download and hash TI CAD/EDA package under accepted terms before replacing KiCad footprints
       - rerun USB-C/PD schematic, route, thermal, and factory-test evidence after selection
   - id: knowles_sph0641lm4h
     category: mems_microphone
-    exact_mpn: SPH0641LM4H
+    exact_mpn: SPH0641LM4H-1
     manufacturer: Knowles
     board_footprints:
       - KNOWLES_SPH0641LM4H_DEV
@@ -652,6 +673,6 @@ summary:
   public_step_or_3d_observed_count: 12
   public_footprint_or_eda_observed_count: 19
   manufacturer_step_link_observed_count: 3
-  local_downloaded_hashed_count: 1
+  local_downloaded_hashed_count: 3
   release_credit_record_count: 0
   externally_blocked_record_count: 20

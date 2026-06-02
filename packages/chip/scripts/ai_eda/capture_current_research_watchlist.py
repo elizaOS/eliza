@@ -119,6 +119,7 @@ def main() -> int:
         "status": "TARGET_CAPTURE_ONLY_CURRENT_RESEARCH_NO_IMPORT",
         "claim_boundary": CLAIM_BOUNDARY,
         **FALSE_CLAIM_FLAGS,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "source_ids": [task["id"].removesuffix("-intake") for task in candidate_tasks],
         "policy": {
             "changes_rtl": False,

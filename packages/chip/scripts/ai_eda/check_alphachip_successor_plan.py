@@ -17,6 +17,10 @@ EXPECTED_SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
 EXPECTED_CLAIM_BOUNDARY = (
     "alphachip_successor_plan_only_no_checkpoint_reproduction_or_release_claim"
 )
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "completion_claim_allowed": False,
+}
 REQUIRED_TORCH_COMMANDS = {
     "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id <cuda-host>",
@@ -82,6 +86,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("completion_claim_allowed") is not False:
         errors.append("completion_claim_allowed must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied AlphaChip successor plan claims")
     run_ids = report.get("evidence_run_ids")
     if not isinstance(run_ids, dict):
         errors.append("evidence_run_ids must be a mapping")

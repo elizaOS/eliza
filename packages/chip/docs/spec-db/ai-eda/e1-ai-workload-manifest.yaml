@@ -4,6 +4,9 @@ claim_boundary: ai_workload_manifest_only_no_benchmark_performance_or_release_cl
 policy:
   release_use_allowed: false
   performance_claim_allowed: false
+  false_claim_flags:
+    release_use_allowed: false
+    performance_claim_allowed: false
   fallback_ops_must_be_reported: true
   e1_npu_claim_requires_zero_fallback_proof: true
   calibrated_power_or_timing_required_for_tops_per_watt: true

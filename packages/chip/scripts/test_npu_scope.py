@@ -86,7 +86,40 @@ def test_structured_findings_cover_required_real_evidence() -> None:
         str(item.get("code", "")).startswith("npu_missing_real_evidence_") for item in findings
     ):
         raise AssertionError(f"NPU findings must include missing real evidence: {findings}")
+    if not all(item.get("next_command") for item in findings):
+        raise AssertionError(f"NPU findings must include row-level commands: {findings}")
+    joined = "\n".join(findings[0].get("next_commands", []))
+    for token in (
+        "capture_e1_npu_nnapi_evidence.sh",
+        "check_e1_npu_nnapi_proof.py --probe-adb",
+        "capture_e1_npu_android_proof_bundle.sh",
+    ):
+        if token not in joined:
+            raise AssertionError(f"NPU finding commands missing {token!r}: {joined}")
     print("PASS structured NPU findings cover required real evidence")
+
+
+def test_next_command_plan_covers_target_side_npu_capture() -> None:
+    report = check_npu_scope.build_report()
+    errors = check_npu_scope.validate_report(report)
+    if errors:
+        raise AssertionError(errors)
+    plan = report.get("next_command_plan", [])
+    if not plan:
+        raise AssertionError("missing NPU next_command_plan")
+    command_text = "\n".join(
+        command
+        for batch in plan
+        for command in batch.get("commands", [])
+    )
+    for token in (
+        "capture_e1_npu_nnapi_evidence.sh",
+        "check_e1_npu_nnapi_proof.py --probe-adb",
+        "check_e1_npu_android_proof_manifest.py",
+    ):
+        if token not in command_text:
+            raise AssertionError(command_text)
+    print("PASS NPU next-command plan covers target-side capture")
 
 
 def test_failed_structural_check_fails() -> None:
@@ -113,6 +146,7 @@ def main() -> None:
     test_current_level_promotion_fails()
     test_blocker_removal_fails()
     test_structured_findings_cover_required_real_evidence()
+    test_next_command_plan_covers_target_side_npu_capture()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

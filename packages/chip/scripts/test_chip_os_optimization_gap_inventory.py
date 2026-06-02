@@ -333,6 +333,152 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(artifact_ids))
 
+    def test_command_plan_harvests_underlying_capture_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "scope guard only; not runtime benchmark evidence",
+                        "next_capture_commands": {
+                            "benchmark": "capture-target-benchmark",
+                            "benchmark_duplicate": "capture-target-benchmark",
+                        },
+                        "next_command_plan": [
+                            {
+                                "id": "runtime",
+                                "commands": ["capture-runtime-npu"],
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "demo",
+                "benchmarks",
+                "packages/chip/build/reports/demo.json",
+                "demo benchmark scope",
+                "runtime optimization claim",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        batch = report["next_command_plan"][0]
+        self.assertEqual(
+            batch["claim_boundary"],
+            "operator_commands_only_not_optimization_runtime_evidence",
+        )
+        self.assertEqual(
+            batch["commands"],
+            ["capture-runtime-npu", "capture-target-benchmark"],
+        )
+        finding = report["findings"][0]
+        self.assertEqual(finding["next_command"], "capture-runtime-npu")
+        self.assertEqual(
+            finding["next_commands"],
+            ["capture-runtime-npu", "capture-target-benchmark"],
+        )
+
+    def test_command_plan_harvests_nested_runtime_logging_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/android_release_readiness_contract.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "release readiness command plan only",
+                        "findings": [
+                            {
+                                "next_commands": [
+                                    "adb devices",
+                                    "capture-launcher-runtime --logcat out/logcat.txt",
+                                ]
+                            }
+                        ],
+                        "evidence": {
+                            "prioritized_live_evidence_capture_plan": [
+                                {
+                                    "capture_area": "chip-riscv64",
+                                    "capture_commands": [
+                                        "boot-chip-android",
+                                        "capture-chip-launcher-agent",
+                                    ],
+                                    "validation_commands": ["validate-chip-launcher-agent"],
+                                }
+                            ],
+                            "live_launcher_agent_missing_evidence": {
+                                "records": [
+                                    {
+                                        "collectionCommands": ["collect-post-flash-logcat"],
+                                        "validationCommand": "validate-post-flash-logcat",
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "android_release_readiness",
+                "runtime",
+                "packages/chip/build/reports/android_release_readiness_contract.json",
+                "Android release readiness contract",
+                "release and post-flash runtime logs",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        commands = report["next_command_plan"][0]["commands"]
+        self.assertEqual(commands[0], "adb devices")
+        self.assertIn("capture-launcher-runtime --logcat out/logcat.txt", commands)
+        self.assertIn("boot-chip-android", commands)
+        self.assertIn("capture-chip-launcher-agent", commands)
+        self.assertIn("validate-chip-launcher-agent", commands)
+        self.assertIn("collect-post-flash-logcat", commands)
+        self.assertIn("validate-post-flash-logcat", commands)
+
+    def test_known_artifact_without_embedded_commands_gets_fallback_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/cpu_ap_scope.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "generated AP scope only; not runtime benchmark evidence",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "cpu_ap_scope",
+                "cpu",
+                "packages/chip/build/reports/cpu_ap_scope.json",
+                "CPU/AP Linux and benchmark evidence scope",
+                "sustained AP benchmark evidence",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertEqual(
+            report["next_command_plan"][0]["commands"],
+            ["make cpu-ap-capture-plan-shell", "make cpu-ap-evidence-check"],
+        )
+        self.assertEqual(report["findings"][0]["next_command"], "make cpu-ap-capture-plan-shell")
+
 
 if __name__ == "__main__":
     unittest.main()

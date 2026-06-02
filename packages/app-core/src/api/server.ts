@@ -139,15 +139,15 @@ import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleFirstRunRoute } from "./first-run-routes";
+import { handleFirstRunTtsRoute } from "./first-run-tts-route";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
+import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
-import { handleFirstRunRoute } from "./first-run-routes";
-import { handleFirstRunTtsRoute } from "./first-run-tts-route";
-import { handleI18nLocaleRoute } from "./i18n-locale-routes";
-import { handleInternalWakeRoute } from "./internal-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";

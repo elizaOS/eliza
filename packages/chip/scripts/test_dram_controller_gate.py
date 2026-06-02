@@ -83,6 +83,10 @@ class DramControllerGateTests(unittest.TestCase):
             "uma_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(
+            {key for key, value in payload["false_claim_flags"].items() if value is False},
+            set(payload["false_claim_flags"]),
+        )
         boundary = payload["claim_boundary"]
         self.assertIn("not Linux memory-sizing evidence", boundary)
         self.assertIn("memory-bandwidth evidence", boundary)

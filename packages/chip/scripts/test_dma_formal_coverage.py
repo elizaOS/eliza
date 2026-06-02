@@ -91,6 +91,10 @@ class DmaFormalCoverageTests(unittest.TestCase):
             "linux_dmaengine_driver_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(
+            {key for key, value in payload["false_claim_flags"].items() if value is False},
+            set(payload["false_claim_flags"]),
+        )
 
     def test_missing_axi_lite_prove_task_blocks(self) -> None:
         manifest_payload = valid_manifest()

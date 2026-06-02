@@ -57,6 +57,27 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
         assembled = json.loads(out.read_text())
         if assembled.get("status") != "blocked":
             raise AssertionError(json.dumps(assembled, indent=2))
+        if not assembled.get("generated_utc") or not assembled.get("date_utc"):
+            raise AssertionError(json.dumps(assembled, indent=2))
+        assembly_report = json.loads(report.read_text(encoding="utf-8"))
+        if not assembly_report.get("claim_boundary") or not assembly_report.get("generated_utc"):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        findings = assembly_report.get("findings", [])
+        if not findings or not all(finding.get("next_command") for finding in findings):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        command_text = "\n".join(
+            command
+            for finding in findings
+            for command in finding.get("next_commands", [])
+        )
+        for token in (
+            "scripts/android/run_vts_smoke.sh",
+            "scripts/android/run_cts_smoke.sh",
+            "capture_e1_npu_nnapi_evidence.sh",
+            "check_e1_npu_android_proof_manifest.py",
+        ):
+            if token not in command_text:
+                raise AssertionError(command_text)
         check = run(
             [
                 sys.executable,
@@ -70,6 +91,11 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
         )
         if check.returncode != 2:
             raise AssertionError(check.stdout)
+        check_report = json.loads((Path(td) / "check.json").read_text(encoding="utf-8"))
+        if not check_report.get("generated_utc"):
+            raise AssertionError(json.dumps(check_report, indent=2))
+        if "not_android_boot" not in str(check_report.get("claim_boundary", "")):
+            raise AssertionError(json.dumps(check_report, indent=2))
 
 
 def test_assembly_passes_with_all_artifacts() -> None:
@@ -123,6 +149,11 @@ def test_assembly_passes_with_all_artifacts() -> None:
         )
         if check.returncode != 0:
             raise AssertionError(check.stdout)
+        check_report = json.loads((temp_root / "check.json").read_text(encoding="utf-8"))
+        if not check_report.get("generated_utc"):
+            raise AssertionError(json.dumps(check_report, indent=2))
+        if "not_android_boot" not in str(check_report.get("claim_boundary", "")):
+            raise AssertionError(json.dumps(check_report, indent=2))
 
 
 def main() -> int:

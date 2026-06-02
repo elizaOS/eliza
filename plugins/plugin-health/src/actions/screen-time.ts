@@ -1,4 +1,5 @@
 import type {
+  Action,
   ActionParameter,
   ActionResult,
   HandlerCallback,
@@ -415,6 +416,59 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
     schema: { type: "string" as const },
   },
 ];
+
+export const OWNER_SCREEN_TIME_ACTIONS = [
+  "summary",
+  "today",
+  "weekly",
+  "weekly_average_by_app",
+  "by_app",
+  "by_website",
+  "activity_report",
+  "time_on_app",
+  "time_on_site",
+  "browser_activity",
+] as const;
+
+export interface CreateOwnerScreenTimeActionOptions {
+  validate: Action["validate"];
+  handler: Action["handler"];
+}
+
+export function createOwnerScreenTimeAction({
+  validate,
+  handler,
+}: CreateOwnerScreenTimeActionOptions): Action {
+  return {
+    name: "OWNER_SCREENTIME",
+    similes: [
+      "SCREENTIME",
+      "SCREEN_TIME",
+      "ACTIVITY_REPORT",
+      ...SCREEN_TIME_SIMILES,
+    ],
+    description:
+      "Owner screen-time/activity analytics: local activity, app usage, browser.",
+    descriptionCompressed:
+      "owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
+    parameters: [
+      {
+        name: "action",
+        description: "Owner screentime op.",
+        required: false,
+        schema: {
+          type: "string" as const,
+          enum: [...OWNER_SCREEN_TIME_ACTIONS],
+        },
+      },
+      ...SCREEN_TIME_PARAMETERS.filter(
+        (parameter) => parameter.name !== "subaction",
+      ),
+    ],
+    validate,
+    handler,
+  };
+}
 
 export function createScreenTimeActionRunner(
   adapters: CreateScreenTimeActionRunnerOptions,

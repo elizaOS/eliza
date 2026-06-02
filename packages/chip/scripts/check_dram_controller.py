@@ -43,6 +43,15 @@ from xml.sax.saxutils import escape
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/dram_controller.json"
 COCOTB_RESULT = ROOT / "build/reports/dram_controller_cocotb_results.xml"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_memory_claim_allowed": False,
+    "memory_bandwidth_claim_allowed": False,
+    "lpddr_phy_claim_allowed": False,
+    "silicon_capacity_claim_allowed": False,
+    "uma_claim_allowed": False,
+}
 COCOTB_NATIVE_RESULTS = (
     ROOT / "verify/cocotb/memory/results.xml",
     ROOT / "verify/cocotb/results/e1_dram_ctrl_mem_tb_test_dram_memory.xml",
@@ -125,6 +134,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "lpddr_phy_claim_allowed": False,
                 "silicon_capacity_claim_allowed": False,
                 "uma_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Proves e1_dram_ctrl is a real full-AXI4 slave front-end "
                     "(read/write bursts INCR/WRAP/FIXED, AxSIZE byte addressing, "

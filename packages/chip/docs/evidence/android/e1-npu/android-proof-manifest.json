@@ -1,9 +1,9 @@
 {
   "artifacts": {
     "absent_device_probe_log": {
-      "bytes": 875,
+      "bytes": 863,
       "path": "docs/evidence/android/e1-npu/absent-device-probe.log",
-      "sha256": "2b649c4de9cf2bdaa692064dbbe87f229525e5f72ecbb59f5809684abf91346d"
+      "sha256": "8e0f6480a861b0c0356b2110232844de264b06dfdcf698e7ebfb6b3a14a305f8"
     },
     "cts_result": {
       "bytes": 1,
@@ -16,19 +16,19 @@
       "sha256": "blocked:missing_or_empty_artifact"
     },
     "selinux_neverallow_log": {
-      "bytes": 105379,
+      "bytes": 107603,
       "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-      "sha256": "8a49bfb4233fb4e61766b239fa06055cb252cbf19a19b2dfca2409c10ebf83fd"
+      "sha256": "ce3751a21647ed0fe831a058ddfe2561e1b604f6a89aa98a50d1d26aa356a53f"
     },
     "selinux_policy_build_log": {
-      "bytes": 86070,
+      "bytes": 83603,
       "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-      "sha256": "16c6b7482be289346b994f011aa9c0f821e3dfdfd7965179f90ff98c2d76fca3"
+      "sha256": "7e07c49b3c55a696ef9af87b147feccf26e06057d8b4a1b70b11749de116d55d"
     },
     "vintf_check_log": {
-      "bytes": 11217,
+      "bytes": 10704,
       "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-      "sha256": "917d5a0ef11f5241692d53d025a97afbfaf8f408ccac9e6178d168523e202d93"
+      "sha256": "800fd60209fc3f10d31429a2deeb59e8d8d684f6b505e1d2249e05c31cce0e3c"
     },
     "vts_result": {
       "bytes": 1,
@@ -45,9 +45,9 @@
     "vts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_vts_smoke.sh"
   },
   "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
-  "date_utc": "2026-05-27T22:15:56Z",
+  "date_utc": "2026-06-02T02:07:07Z",
   "generated_by": "scripts/assemble_e1_npu_android_proof_manifest.py",
-  "generated_utc": "2026-05-28T20:06:56Z",
+  "generated_utc": "2026-06-02T02:07:07Z",
   "proof_gate": {
     "android_boot_claim": "none_until_all_required_artifacts_pass",
     "compatibility_claim": "none",

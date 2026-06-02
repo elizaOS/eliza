@@ -21,6 +21,40 @@ vi.mock(
 
 const openLifeOpsChat = vi.fn();
 
+const EXECUTIVE_ASSISTANT_INTENT_IDS = [
+  "approval-batch",
+  "board-pack-prep",
+  "chief-of-staff-handoff",
+  "command-brief",
+  "delegate",
+  "delegation-map",
+  "documents",
+  "closeout",
+  "event-planning",
+  "expenses",
+  "family-logistics",
+  "finance-dispute",
+  "gift-milestone",
+  "hiring-loop",
+  "home-ops",
+  "interruption-firebreak",
+  "intro-routing",
+  "legal-deadline",
+  "meeting-prep",
+  "outage-recovery",
+  "people",
+  "privacy-redaction",
+  "remote-agent-stuck",
+  "renewals",
+  "status-compression",
+  "travel-disruption",
+  "travel",
+  "vendor-negotiation",
+  "vip-escalation",
+  "waiting-on",
+  "weekly-operating-review",
+] as const;
+
 vi.mock("./LifeOpsChatAdapter.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
@@ -62,6 +96,14 @@ describe("LifeOpsAssistantIntentGrid", () => {
     for (const intent of HEALTH_ASSISTANT_INTENTS) {
       expect(intent.id).toMatch(/^health:/);
       expect(screen.getByLabelText(intent.label)).toBeTruthy();
+    }
+  });
+
+  it("keeps the assistant deck aligned to executive assistant scenarios", () => {
+    const intentIds = new Set(ASSISTANT_INTENTS.map((intent) => intent.id));
+
+    for (const id of EXECUTIVE_ASSISTANT_INTENT_IDS) {
+      expect(intentIds.has(id)).toBe(true);
     }
   });
 });

@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_fabric_cocotb.json"
 CREDIT_ROUTER_REPORT = ROOT / "build/reports/e1x_credit_router_cocotb.json"
 MESH_FABRIC_REPORT = ROOT / "build/reports/e1x_mesh_fabric_cocotb.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_network_liveness_claim_allowed": False,
+}
 RUNS = {
     "router": {
         "top": "e1x_mesh_router_tb",
@@ -206,6 +215,7 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X fabric cocotb verification: legacy combinational mesh router, repair-aware "
             "router, ROM-routed router/2x2 mesh, production input-buffered credit router "

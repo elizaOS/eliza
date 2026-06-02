@@ -188,6 +188,20 @@ def test_boot_script_reports_uninstalled_repo_launcher() -> None:
         )
 
 
+def test_boot_script_sanitizes_host_local_aosp_dir_in_report() -> None:
+    result = run([str(BOOT)], {"AOSP_DIR": "/home/shaw/aosp-missing"})
+    if result.returncode != 2:
+        raise AssertionError(
+            f"expected boot script to block, got {result.returncode}\n{result.stdout}"
+        )
+    data = json.loads(REPORT.read_text())
+    encoded = json.dumps(data, sort_keys=True)
+    if data.get("aosp_dir") != "<host-aosp-checkout>":
+        raise AssertionError(encoded)
+    if "/home/shaw" in encoded:
+        raise AssertionError(encoded)
+
+
 def test_aosp_linux_preflight_blocks_without_aosp_dir() -> None:
     saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
     try:
@@ -371,6 +385,7 @@ def main() -> int:
             test_checker_reports_blocked_report,
             test_checker_rejects_pass_without_required_aosp_evidence,
             test_boot_script_reports_uninstalled_repo_launcher,
+            test_boot_script_sanitizes_host_local_aosp_dir_in_report,
             test_aosp_linux_preflight_blocks_without_aosp_dir,
             test_aosp_linux_preflight_sanitizes_host_local_paths,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,

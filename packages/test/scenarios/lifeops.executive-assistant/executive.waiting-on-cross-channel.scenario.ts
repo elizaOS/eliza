@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Waiting-on review" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Waiting-on review",
+    },
   ],
   turns: [
     {
@@ -22,9 +27,23 @@ export default scenario({
       room: "main",
       text: "Find what I'm waiting on across email, Telegram, Discord, docs, and calendar. Draft the smallest set of follow-ups without duplicating active tasks.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "INBOX", "RELATIONSHIP", "LIFE", "OWNER_DOCUMENTS", "CALENDAR"],
+        acceptedActions: [
+          "MESSAGE",
+          "INBOX",
+          "RELATIONSHIP",
+          "LIFE",
+          "OWNER_DOCUMENTS",
+          "CALENDAR",
+        ],
         description: "cross-channel waiting-on review",
-        includesAny: ["waiting", "follow-up", "email", "Telegram", "Discord", "docs"],
+        includesAny: [
+          "waiting",
+          "follow-up",
+          "email",
+          "Telegram",
+          "Discord",
+          "docs",
+        ],
       }),
       responseIncludesAny: [/waiting|follow/i, /email|telegram|discord|doc/i],
       responseJudge: {
@@ -35,14 +54,38 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["MESSAGE", "INBOX", "RELATIONSHIP", "LIFE", "OWNER_DOCUMENTS", "CALENDAR"] },
+    {
+      type: "selectedAction",
+      actionName: [
+        "MESSAGE",
+        "INBOX",
+        "RELATIONSHIP",
+        "LIFE",
+        "OWNER_DOCUMENTS",
+        "CALENDAR",
+      ],
+    },
     {
       type: "custom",
       name: "waiting-on-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "INBOX", "RELATIONSHIP", "LIFE", "OWNER_DOCUMENTS", "CALENDAR"],
+        acceptedActions: [
+          "MESSAGE",
+          "INBOX",
+          "RELATIONSHIP",
+          "LIFE",
+          "OWNER_DOCUMENTS",
+          "CALENDAR",
+        ],
         description: "cross-channel waiting-on review",
-        includesAny: ["waiting", "follow-up", "email", "Telegram", "Discord", "docs"],
+        includesAny: [
+          "waiting",
+          "follow-up",
+          "email",
+          "Telegram",
+          "Discord",
+          "docs",
+        ],
       }),
     },
     judgeRubric({

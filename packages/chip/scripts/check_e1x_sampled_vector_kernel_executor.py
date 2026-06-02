@@ -9,6 +9,16 @@ from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_output_claim_allowed": False,
+    "full_tensor_execution_claim_allowed": False,
+}
 
 PROOF = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkernel-proof.json"
 PER_LAYER_CODEGEN = ROOT / "build/reports/e1x_per_layer_vector_codegen.json"
@@ -241,6 +251,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Sampled vector-kernel executor evidence for packed int4 vector-word "
             "operations from every real-graph proof layer, linked to the per-layer "

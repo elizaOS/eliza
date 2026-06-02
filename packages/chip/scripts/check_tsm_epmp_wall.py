@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/tsm_epmp_wall.json"
@@ -43,6 +45,12 @@ COCOTB_DIR = ROOT / "verify/cocotb/security"
 COCOTB_MAKEFILE = "Makefile.tsm_epmp"
 COCOTB_RESULTS = COCOTB_DIR / "results_tsm_epmp.xml"
 COCOTB_SIM_BUILD = "sim_build_tsm_epmp"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "production_security_claim_allowed": False,
+    "integrated_pmp_pipeline_claim_allowed": False,
+    "silicon_tee_claim_allowed": False,
+}
 
 EXPECTED_TESTS = (
     "reset_posture_fail_closed",
@@ -71,6 +79,18 @@ def _verilator() -> str | None:
 
 def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
+
+
+def provenance_safe(value: Any) -> Any:
+    from provenance_sanitize import sanitize_host_local_paths
+
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): provenance_safe(item) for key, item in value.items()}
+    return value
 
 
 def check_lint(verilator: str) -> dict:
@@ -103,9 +123,17 @@ def check_lint(verilator: str) -> dict:
     }
 
 
-def check_cocotb() -> dict:
+def check_cocotb(verilator: str) -> dict:
     if COCOTB_RESULTS.exists():
         COCOTB_RESULTS.unlink()
+    env = os.environ.copy()
+    verilator_dir = str(Path(verilator).resolve().parent)
+    try:
+        python_bin = subprocess.check_output(
+            ["cocotb-config", "--python-bin"], text=True, cwd=ROOT
+        ).strip()
+    except Exception:  # noqa: BLE001
+        python_bin = sys.executable or "python3"
     rc = subprocess.run(
         [
             "make",
@@ -113,12 +141,16 @@ def check_cocotb() -> dict:
             str(COCOTB_DIR),
             "-f",
             COCOTB_MAKEFILE,
+            f"VERILATOR_BIN_DIR={verilator_dir}",
+            f"PYTHON={python_bin}",
+            f"PYTHON_BIN={python_bin}",
             f"SIM_BUILD={COCOTB_SIM_BUILD}",
             f"COCOTB_RESULTS_FILE={COCOTB_RESULTS.name}",
         ],
         capture_output=True,
         text=True,
         cwd=ROOT,
+        env=env,
     )
     if not COCOTB_RESULTS.is_file():
         last = rc.stderr.splitlines()[-1] if rc.stderr else ""
@@ -168,7 +200,7 @@ def main() -> int:
         )
     else:
         checks.append(check_lint(verilator))
-        checks.append(check_cocotb())
+        checks.append(check_cocotb(verilator))
 
     has_fail = any(c["status"] == "fail" for c in checks)
     has_block = any(c["status"] == "blocked" for c in checks)
@@ -220,13 +252,16 @@ def main() -> int:
             "build/reports/security_lifecycle_scope.json."
         ),
         "release_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),
             "failures": [c["id"] for c in checks if c["status"] != "pass"],
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
         "checks": checks,
     }
+    report = provenance_safe(report)
     REPORT.write_text(json.dumps(report, indent=2) + "\n")
 
     print(f"STATUS: {status} tsm-epmp-wall-check -> {REPORT.relative_to(ROOT)}")

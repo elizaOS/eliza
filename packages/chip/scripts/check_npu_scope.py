@@ -134,10 +134,75 @@ def code_from_text(text: str, fallback: str) -> str:
     return "_".join(parts[:10]) or fallback
 
 
+NPU_NEXT_COMMAND_PLAN = [
+    {
+        "id": "capture_e1_npu_nnapi_target_proof",
+        "scope": "android_or_linux_target",
+        "claim_boundary": "operator_commands_only_not_npu_runtime_or_release_evidence",
+        "commands": [
+            "adb devices",
+            "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh",
+            "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
+        ],
+        "requires": [
+            "Android or Linux target exposing a real e1-npu NNAPI accelerator or delegate",
+            "benchmark_model available on target",
+            "model and transcript hashes recorded in benchmarks/capabilities/e1_npu_nnapi.proof.json",
+        ],
+    },
+    {
+        "id": "capture_e1_npu_android_proof_bundle",
+        "scope": "android_target_compatibility",
+        "claim_boundary": "operator_commands_only_not_android_boot_cts_vts_or_nnapi_evidence",
+        "commands": [
+            "scripts/android/capture_e1_npu_android_proof_bundle.sh",
+            "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+            "python3 scripts/check_e1_npu_android_proof_manifest.py",
+        ],
+        "requires": [
+            "booted Android target with VINTF, SELinux, CTS/VTS smoke, NNAPI query, and absent-device artifacts",
+            "all Android e1-NPU proof manifest artifacts captured with PASS status",
+        ],
+    },
+    {
+        "id": "capture_e1_npu_power_thermal_efficiency",
+        "scope": "calibrated_power_thermal",
+        "claim_boundary": "operator_commands_only_not_sustained_efficiency_evidence",
+        "commands": [
+            "test -n \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND\"",
+            "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+            "python3 scripts/check_phone_runtime_readiness_contract.py",
+        ],
+        "requires": [
+            "calibrated power meter and thermal instrumentation",
+            "sustained NPU workload with aligned frequency, power, thermal, and throttle traces",
+        ],
+    },
+]
+
+
+def command_plan_commands(plan: list[dict[str, Any]]) -> list[str]:
+    commands: list[str] = []
+    for batch in plan:
+        values = batch.get("commands")
+        if isinstance(values, list):
+            commands.extend(command for command in values if isinstance(command, str) and command)
+    return list(dict.fromkeys(commands))
+
+
+def finding_payload(finding: dict[str, Any], command_plan: list[dict[str, Any]]) -> dict[str, Any]:
+    row = dict(finding)
+    commands = command_plan_commands(command_plan)
+    if commands:
+        row["next_command"] = commands[0]
+        row["next_commands"] = commands
+    return row
+
+
 def structured_findings(
     required_real_evidence: list[str], checks: list[dict[str, Any]]
-) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
     for item in required_real_evidence:
         findings.append(
             {
@@ -401,6 +466,7 @@ def build_report() -> dict[str, Any]:
         "reviewed MLPerf Mobile or equivalent closed-loop workload evidence covers latency, power, thermals, clocks, memory, and process state",
     ]
     findings = structured_findings(required_real_evidence, checks)
+    command_plan = NPU_NEXT_COMMAND_PLAN
     return {
         "schema": "eliza.npu_scope.v1",
         "status": "npu_scope_release_blocked",
@@ -426,7 +492,8 @@ def build_report() -> dict[str, Any]:
             "npu_context_queue_checker": rel(NPU_CONTEXT_QUEUE_CHECKER),
         },
         "required_real_evidence": required_real_evidence,
-        "findings": findings,
+        "findings": [finding_payload(finding, command_plan) for finding in findings],
+        "next_command_plan": command_plan,
         "proof_artifacts": {
             "required_capability_json": "benchmarks/capabilities/e1_npu_nnapi.proof.json",
             "required_android_manifest": "docs/evidence/android/e1-npu/android-proof-manifest.json",
@@ -500,6 +567,24 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     findings = data.get("findings")
     if not isinstance(findings, list) or not findings:
         errors.append("findings must list structured NPU blockers")
+    command_plan = data.get("next_command_plan")
+    if not isinstance(command_plan, list) or not command_plan:
+        errors.append("next_command_plan must list target-side NPU capture commands")
+    else:
+        command_text = "\n".join(
+            command
+            for batch in command_plan
+            if isinstance(batch, dict)
+            for command in list_values(batch.get("commands"))
+            if isinstance(command, str)
+        )
+        for token in (
+            "capture_e1_npu_nnapi_evidence.sh",
+            "check_e1_npu_nnapi_proof.py --probe-adb",
+            "capture_e1_npu_android_proof_bundle.sh",
+            "check_e1_npu_android_proof_manifest.py",
+        ):
+            require(token in command_text, f"next_command_plan missing {token}", errors)
     proof = data.get("proof_artifacts")
     if not isinstance(proof, dict):
         errors.append("proof_artifacts must be a mapping")

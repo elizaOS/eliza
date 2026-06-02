@@ -77,8 +77,10 @@ describe("Twilio SMS billing", () => {
   test("resolves configured SMS segment cost with a shared fallback", () => {
     expect(resolveTwilioSmsCostPerSegment(undefined)).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
     expect(resolveTwilioSmsCostPerSegment("0.01")).toBe(0.01);
+    expect(resolveTwilioSmsCostPerSegment(" 0.01 ")).toBe(0.01);
     expect(resolveTwilioSmsCostPerSegment(0)).toBe(0);
     expect(resolveTwilioSmsCostPerSegment("-1")).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
+    expect(resolveTwilioSmsCostPerSegment("0.01USD")).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
     expect(resolveTwilioSmsCostPerSegment("not-a-number")).toBe(
       DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
     );

@@ -19,6 +19,7 @@ import {
   loadRemotePluginListEntries,
   loadRemotePluginStoreSnapshot,
   RemotePluginStoreError,
+  readRemotePluginInstallRecord,
   readRemotePluginRegistry,
   resolveRemotePluginPathInside,
   toRemotePluginViewUrl,
@@ -232,6 +233,242 @@ describe("remote plugin store", () => {
         ],
       });
       expect(JSON.stringify(snapshot)).not.toContain(storeRoot);
+    }));
+
+  it("preserves install metadata and grants when reinstalling a prebuilt plugin", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+
+      installPrebuiltRemotePlugin(storeRoot, payloadDir, {
+        currentHash: "hash-1",
+        devMode: true,
+        lastBuildAt: 1700000000100,
+        now: () => 1700000000000,
+        permissionsGranted: {
+          host: { windows: true },
+          bun: { read: false },
+          isolation: "isolated-process",
+        },
+        source: { kind: "local", path: join(dir, "source-v1") },
+      });
+
+      const updatedPayloadDir = writePayload(join(dir, "updated"), {
+        ...manifest,
+        version: "1.1.0",
+        description: "Updated search helper",
+      });
+      const reinstalled = installPrebuiltRemotePlugin(
+        storeRoot,
+        updatedPayloadDir,
+        {
+          now: () => 1700000005000,
+        },
+      );
+
+      expect(reinstalled.manifest.version).toBe("1.1.0");
+      expect(reinstalled.install).toMatchObject({
+        id: "bunny.search",
+        version: "1.1.0",
+        currentHash: "hash-1",
+        installedAt: 1700000000000,
+        updatedAt: 1700000005000,
+        devMode: true,
+        lastBuildAt: 1700000000100,
+        lastBuildError: null,
+        permissionsGranted: {
+          host: { windows: true },
+          bun: { read: false },
+          isolation: "isolated-process",
+        },
+        source: { kind: "local", path: join(dir, "source-v1") },
+      });
+
+      const [snapshotEntry] =
+        loadRemotePluginStoreSnapshot(storeRoot).remotePlugins;
+      expect(snapshotEntry).toMatchObject({
+        id: "bunny.search",
+        version: "1.1.0",
+        currentHash: "hash-1",
+        installedAt: 1700000000000,
+        updatedAt: 1700000005000,
+        devMode: true,
+        lastBuildAt: 1700000000100,
+        lastBuildError: null,
+        sourceKind: "local",
+        grantedPermissions: {
+          host: { windows: true },
+          bun: { read: false },
+          isolation: "isolated-process",
+        },
+      });
+    }));
+
+  it("validates persisted install records read from disk", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const paths = getRemotePluginStorePaths(storeRoot, "bunny.search");
+      mkdirSync(paths.rootDir, { recursive: true });
+
+      const persisted = {
+        id: "bunny.search",
+        name: "Search",
+        version: "1.0.0",
+        currentHash: "hash-from-record",
+        installedAt: 1700000000000,
+        updatedAt: 1700000000100,
+        permissionsGranted: {
+          host: { windows: true },
+          bun: { read: true },
+        },
+        status: "installed",
+        source: {
+          kind: "artifact",
+          location: "file:///search.tgz",
+        },
+      };
+      writeFileSync(
+        paths.installPath,
+        JSON.stringify(persisted, null, 2),
+        "utf8",
+      );
+
+      const record = readRemotePluginInstallRecord(storeRoot, "bunny.search");
+      expect(record).toMatchObject({
+        currentHash: "hash-from-record",
+        devMode: false,
+        lastBuildAt: null,
+        lastBuildError: null,
+        permissionsGranted: {
+          host: { windows: true },
+          bun: { read: true },
+          isolation: "shared-worker",
+        },
+        source: {
+          kind: "artifact",
+          location: "file:///search.tgz",
+          updateLocation: null,
+          tarballLocation: null,
+          currentHash: "hash-from-record",
+          baseUrl: null,
+        },
+      });
+
+      writeFileSync(
+        paths.installPath,
+        JSON.stringify(
+          {
+            ...persisted,
+            source: {
+              ...persisted.source,
+              currentHash: null,
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+      expect(
+        readRemotePluginInstallRecord(storeRoot, "bunny.search")?.source,
+      ).toMatchObject({ currentHash: "hash-from-record" });
+
+      for (const [name, patch, message] of [
+        [
+          "unknown-host-permission",
+          { permissionsGranted: { host: { teleport: true } } },
+          /unknown permission/,
+        ],
+        [
+          "non-boolean-bun-permission",
+          { permissionsGranted: { bun: { read: "yes" } } },
+          /expected boolean/,
+        ],
+        ["bad-status", { status: "pending" }, /bad status/],
+        [
+          "bad-source-kind",
+          { source: { kind: "workspace", path: "src" } },
+          /Invalid install\.source\.kind/,
+        ],
+      ] as const) {
+        writeFileSync(
+          paths.installPath,
+          JSON.stringify({ ...persisted, ...patch }, null, 2),
+          "utf8",
+        );
+        expect(
+          () => readRemotePluginInstallRecord(storeRoot, "bunny.search"),
+          name,
+        ).toThrow(message);
+      }
+    }));
+
+  it("validates persisted registry records read from disk", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      mkdirSync(storeRoot, { recursive: true });
+      writeFileSync(
+        join(storeRoot, "registry.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            remotePlugins: {
+              "bunny.search": {
+                id: "bunny.search",
+                name: "Search",
+                version: "1.0.0",
+                currentHash: null,
+                installedAt: 1700000000000,
+                updatedAt: 1700000000100,
+                permissionsGranted: {
+                  host: { windows: true },
+                  isolation: "shared-worker",
+                },
+                status: "installed",
+                source: {
+                  kind: "local",
+                  path: join(dir, "source"),
+                },
+              },
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      expect(
+        Object.keys(readRemotePluginRegistry(storeRoot).remotePlugins),
+      ).toEqual(["bunny.search"]);
+
+      writeFileSync(
+        join(storeRoot, "registry.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            remotePlugins: {
+              "bunny.search": {
+                id: "bad.search",
+                name: "Search",
+                version: "1.0.0",
+                currentHash: null,
+                installedAt: 1700000000000,
+                updatedAt: 1700000000100,
+                permissionsGranted: { host: { windows: "yes" } },
+                status: "installed",
+                source: { kind: "local", path: join(dir, "source") },
+              },
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+      expect(() => readRemotePluginRegistry(storeRoot)).toThrow(
+        /install\.permissionsGranted\.host\.windows/,
+      );
     }));
 
   it("builds compact list entries from installed remote plugins", () =>

@@ -1,5 +1,11 @@
 schema: eliza.phone_soc_minimum_blocks.v1
 status: pre_hardware_release_blocked
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
 claim_boundary: >
   This inventory describes the minimum block set for an Android-capable RISC-V
   AI phone SoC. Repo-local artifacts are architecture contracts and scaffolds

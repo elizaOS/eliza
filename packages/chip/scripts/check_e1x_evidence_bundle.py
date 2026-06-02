@@ -10,7 +10,9 @@ REPORT = ROOT / "build/reports/e1x_evidence_bundle.json"
 
 REQUIRED_REPORTS = {
     "benchmark": ROOT / "build/reports/e1x_benchmark.json",
+    "e1_comparison_audit": ROOT / "build/reports/e1x_e1_comparison_audit.json",
     "yield_repair_margin": ROOT / "build/reports/e1x_yield_repair_margin.json",
+    "clustered_repair_stress": ROOT / "build/reports/e1x_clustered_repair_stress.json",
     "graph_mapper": ROOT / "build/reports/e1x_graph_mapper.json",
     "kernel_codegen": ROOT / "build/reports/e1x_kernel_codegen.json",
     "model_load_stream": ROOT / "build/reports/e1x_model_load_stream.json",
@@ -30,11 +32,17 @@ REQUIRED_REPORTS = {
     "full_output_workplan": ROOT / "build/reports/e1x_full_output_workplan.json",
     "full_output_checksum_manifest": ROOT / "build/reports/e1x_full_output_checksum_manifest.json",
     "expanded_real_weight_rows": ROOT / "build/reports/e1x_expanded_real_weight_rows.json",
+    "stratified_full_k_real_weight_rows": ROOT
+    / "build/reports/e1x_stratified_full_k_real_weight_rows.json",
+    "stratified_full_k_repair_execution": ROOT
+    / "build/reports/e1x_stratified_full_k_repair_execution.json",
     "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
     "vocab_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
     "repaired_real_weight_execution": ROOT
     / "build/reports/e1x_repaired_real_weight_execution.json",
+    "real_weight_coverage_ladder": ROOT
+    / "build/reports/e1x_real_weight_coverage_ladder.json",
     "attn_out_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
     "attn_qkv_sampled_k_real_weight_rows": ROOT
@@ -331,7 +339,9 @@ def main() -> int:
         checks.append(check_report_freshness(name, report))
 
     benchmark = reports.get("benchmark", {}).get("summary", {})
+    e1_comparison_audit = reports.get("e1_comparison_audit", {}).get("summary", {})
     yield_repair_margin = reports.get("yield_repair_margin", {}).get("summary", {})
+    clustered_repair_stress = reports.get("clustered_repair_stress", {}).get("summary", {})
     repair_rom = reports.get("repair_rom_cocotb", {}).get("summary", {})
     repair_capacity = reports.get("repair_capacity", {}).get("summary", {})
     repair_fuse_reader = reports.get("repair_fuse_reader", {}).get("summary", {})
@@ -355,9 +365,12 @@ def main() -> int:
     full_workplan = reports.get("full_output_workplan", {}).get("summary", {})
     full_checksum_manifest = reports.get("full_output_checksum_manifest", {}).get("summary", {})
     expanded_real_weight = reports.get("expanded_real_weight_rows", {}).get("summary", {})
+    stratified_full_k = reports.get("stratified_full_k_real_weight_rows", {}).get("summary", {})
+    stratified_full_k_repair = reports.get("stratified_full_k_repair_execution", {}).get("summary", {})
     full_norm_real_weight = reports.get("full_norm_real_weight_rows", {}).get("summary", {})
     vocab_sampled_k = reports.get("vocab_sampled_k_real_weight_rows", {}).get("summary", {})
     repaired_real_weight = reports.get("repaired_real_weight_execution", {}).get("summary", {})
+    real_weight_ladder = reports.get("real_weight_coverage_ladder", {}).get("summary", {})
     attn_out_sampled_k = reports.get("attn_out_sampled_k_real_weight_rows", {}).get("summary", {})
     attn_qkv_sampled_k = reports.get("attn_qkv_sampled_k_real_weight_rows", {}).get("summary", {})
     mlp_gate_sampled_k = reports.get("mlp_gate_sampled_k_real_weight_rows", {}).get("summary", {})
@@ -409,6 +422,32 @@ def main() -> int:
             "benchmark gates normal/high real-graph repair ROM sidecars",
         ),
         (
+            "e1_vs_e1x_comparison_architecture_audit",
+            e1_comparison_audit.get("e1_comparison_basis") == "open_2028_sota_160tops"
+            and float(e1_comparison_audit.get("e1_baseline_local_sram_mib", 0.0)) == 64.0
+            and float(e1_comparison_audit.get("e1x_local_sram_mib", 0.0)) == 8208.0
+            and float(e1_comparison_audit.get("e1x_vs_e1_sram_ratio", 0.0)) == 128.25
+            and float(e1_comparison_audit.get("model_required_vs_e1_sram", 0.0)) > 100.0
+            and 0.86
+            < float(e1_comparison_audit.get("model_required_vs_e1x_sram", 0.0))
+            < 0.87
+            and int(e1_comparison_audit.get("normal_total_cycles", 0)) == 47_501_642_583
+            and int(e1_comparison_audit.get("high_failure_total_cycles", 0)) == 63_132_355_414
+            and float(e1_comparison_audit.get("high_vs_normal_cycle_ratio", 0.0)) > 1.3
+            and 0.75
+            < float(e1_comparison_audit.get("high_vs_normal_decode_tps_ratio", 0.0))
+            < 0.76
+            and float(e1_comparison_audit.get("peak_power_density_w_per_mm2", 1.0)) < 0.1
+            and float(e1_comparison_audit.get("schedule_power_density_w_per_mm2", 1.0))
+            < 0.001
+            and e1_comparison_audit.get("comparison_tuple_sha256")
+            == "1ae2297132e3a59f826898b9e5dd85cbe82f25b16c438b127a60bb53075fa082"
+            and e1_comparison_audit.get("residual_blocker")
+            == "comparison_is_architecture_model_not_silicon_benchmark"
+            and int(e1_comparison_audit.get("failing_check_count", 1)) == 0,
+            "E1/E1X comparison audit links canonical E1 baseline, E1X residency, repaired traces, and power/thermal bounds",
+        ),
+        (
             "yield_repair_margin_high_failure_stress",
             int(yield_repair_margin.get("case_count", 0)) >= 2
             and int(yield_repair_margin.get("high_failure_remapped_cores", 0)) >= 3510
@@ -419,6 +458,28 @@ def main() -> int:
             and float(yield_repair_margin.get("high_vs_normal_remap_ratio", 0.0)) > 10.0
             and int(yield_repair_margin.get("failing_check_count", 1)) == 0,
             "yield/repair-margin gate validates normal/high defect maps, remaps, route samples, and spare budget",
+        ),
+        (
+            "clustered_repair_stress_cross_stripe_margin",
+            int(clustered_repair_stress.get("case_count", 0)) == 5
+            and int(clustered_repair_stress.get("repairable_case_count", 0)) == 3
+            and int(clustered_repair_stress.get("overload_case_count", 0)) == 2
+            and int(clustered_repair_stress.get("logical_rows", 0)) == 512
+            and int(clustered_repair_stress.get("logical_cols", 0)) == 342
+            and int(clustered_repair_stress.get("spare_rows", 0)) == 16
+            and int(clustered_repair_stress.get("spare_cols", 0)) == 16
+            and int(clustered_repair_stress.get("spare_cores", 0)) == 13_920
+            and int(clustered_repair_stress.get("cross_stripe_remapped_cores", 0)) == 13_408
+            and int(clustered_repair_stress.get("cross_stripe_spare_margin", 0)) == 512
+            and 0.96 < float(clustered_repair_stress.get("cross_stripe_spare_utilization", 0.0)) < 0.97
+            and float(clustered_repair_stress.get("cross_stripe_vs_high_failure_remap_ratio", 0.0))
+            > 3.8
+            and clustered_repair_stress.get("stress_case_sha256")
+            == "3fc4dfdc8cecb4a182cef27b4dd9b72f72982041494c1f5a87a571a86786cd06"
+            and clustered_repair_stress.get("residual_blocker")
+            == "clustered_stress_is_architecture_model_not_foundry_yield"
+            and int(clustered_repair_stress.get("failing_check_count", 1)) == 0,
+            "clustered repair stress proves 16x16 row/column stripe repair headroom and detects over-budget cases",
         ),
         (
             "real_graph_repair_roms_rtl_loader_route_table",
@@ -798,6 +859,56 @@ def main() -> int:
             "expanded real-weight executor computes first/mid/last full-K W4A8 rows for every placed layer while preserving the full-output blocker",
         ),
         (
+            "stratified_full_k_real_weight_rows_execute_full_k_samples",
+            int(stratified_full_k.get("placement_layer_count", 0)) == 283
+            and int(stratified_full_k.get("rows_per_layer_target", 0)) == 16
+            and int(stratified_full_k.get("executed_stratified_full_k_output_row_count", 0))
+            == 4_528
+            and int(stratified_full_k.get("executed_stratified_full_k_mac_count", 0))
+            == 22_119_696
+            and 0.001 < float(stratified_full_k.get("row_coverage_fraction", 0.0)) < 0.002
+            and 0.001 < float(stratified_full_k.get("mac_coverage_fraction", 0.0)) < 0.002
+            and float(stratified_full_k.get("mac_gain_vs_expanded_full_k_rows", 0.0))
+            == 5.333333333333333
+            and int(stratified_full_k.get("stratified_full_k_checksum", 0))
+            == 13_706_112_457_522_307_321
+            and stratified_full_k.get("stratified_layer_result_sha256")
+            == "44653e48fe734bd4fd981b41484c6068ed7bdfeb67cee889e854d1649cf4ed91"
+            and stratified_full_k.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and stratified_full_k.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(stratified_full_k.get("failing_check_count", 1)) == 0,
+            "stratified full-K real-weight executor computes 16 rows per placed layer across full K",
+        ),
+        (
+            "stratified_full_k_repair_execution_preserves_outputs",
+            int(stratified_full_k_repair.get("executed_layer_count", 0)) == 283
+            and int(stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0))
+            == 4_528
+            and int(stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0))
+            == 22_119_696
+            and int(stratified_full_k_repair.get("touched_logical_core_count", 0)) == 3_313
+            and int(stratified_full_k_repair.get("output_invariant_checksum", 0))
+            == 1_101_709_542_541_624_471
+            and int(stratified_full_k_repair.get("normal_route_checksum", 0))
+            == 488_624_955_115_915_561
+            and int(stratified_full_k_repair.get("high_failure_route_checksum", 0))
+            == 11_749_464_960_701_465_404
+            and int(stratified_full_k_repair.get("normal_route_checksum", 0))
+            != int(stratified_full_k_repair.get("high_failure_route_checksum", 0))
+            and int(stratified_full_k_repair.get("normal_touched_remapped_rows", 0)) == 5
+            and int(stratified_full_k_repair.get("high_failure_touched_remapped_rows", 0)) == 97
+            and float(stratified_full_k_repair.get("high_vs_normal_touched_remap_ratio", 0.0))
+            == 19.4
+            and stratified_full_k_repair.get("sampled_stratified_rows_sha256")
+            == "bde87dfb102b537486283d80fb831738b837fd56f332553f348beda75a132bb7"
+            and stratified_full_k_repair.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(stratified_full_k_repair.get("failing_check_count", 1)) == 0,
+            "repair-aware stratified full-K execution preserves logical outputs while normal/high-failure routes diverge",
+        ),
+        (
             "full_norm_real_weight_rows_execute_whole_kind",
             full_norm_real_weight.get("executed_kind") == "norm"
             and int(full_norm_real_weight.get("executed_norm_layer_count", 0)) == 81
@@ -839,27 +950,52 @@ def main() -> int:
         ),
         (
             "repaired_real_weight_execution_preserves_outputs",
-            int(repaired_real_weight.get("executed_layer_count", 0)) == 83
-            and int(repaired_real_weight.get("executed_real_weight_row_count", 0)) == 478_720
-            and int(repaired_real_weight.get("executed_real_weight_mac_count", 0)) == 8_606_720
-            and int(repaired_real_weight.get("touched_logical_core_count", 0)) == 3_847
+            int(repaired_real_weight.get("executed_layer_count", 0)) == 283
+            and int(repaired_real_weight.get("executed_real_weight_row_count", 0)) == 2_608_640
+            and int(repaired_real_weight.get("executed_real_weight_mac_count", 0)) == 83_317_760
+            and int(repaired_real_weight.get("touched_logical_core_count", 0)) == 151_367
             and int(repaired_real_weight.get("output_invariant_checksum", 0))
-            == 1_513_790_197_994_659_005
+            == 7_830_244_848_299_761_912
             and int(repaired_real_weight.get("normal_route_checksum", 0))
-            == 5_656_197_490_747_142_705
+            == 3_248_974_677_569_690_675
             and int(repaired_real_weight.get("high_failure_route_checksum", 0))
-            == 15_868_043_245_877_341_904
+            == 36_983_080_900_949_662
             and int(repaired_real_weight.get("normal_route_checksum", 0))
             != int(repaired_real_weight.get("high_failure_route_checksum", 0))
-            and int(repaired_real_weight.get("normal_touched_remapped_rows", 0)) == 68
-            and int(repaired_real_weight.get("high_failure_touched_remapped_rows", 0)) == 11_787
-            and float(repaired_real_weight.get("high_vs_normal_touched_remap_ratio", 0.0)) > 170.0
+            and int(repaired_real_weight.get("normal_touched_remapped_rows", 0)) == 4_069
+            and int(repaired_real_weight.get("high_failure_touched_remapped_rows", 0)) == 54_211
+            and float(repaired_real_weight.get("high_vs_normal_touched_remap_ratio", 0.0)) > 13.0
             and repaired_real_weight.get("sampled_executed_rows_sha256")
             == "692863e80ac6c9cb3cb10fe4a49bcf2d66c0183838cb76ab66378ffa41d8c605"
             and repaired_real_weight.get("residual_blocker")
             == "full_output_real_weight_checksum_missing"
             and int(repaired_real_weight.get("failing_check_count", 1)) == 0,
             "repair-aware real-weight execution preserves logical outputs while normal/high-failure physical route checksums diverge",
+        ),
+        (
+            "real_weight_coverage_ladder_all_rows_represented",
+            int(real_weight_ladder.get("component_count", 0)) == 7
+            and int(real_weight_ladder.get("represented_layer_count", 0)) == 283
+            and int(real_weight_ladder.get("represented_output_row_count", 0)) == 2_608_640
+            and int(real_weight_ladder.get("full_output_row_count", 0)) == 2_608_640
+            and float(real_weight_ladder.get("represented_row_coverage_fraction", 0.0)) == 1.0
+            and int(real_weight_ladder.get("executed_real_weight_mac_count", 0)) == 83_317_760
+            and int(real_weight_ladder.get("represented_full_k_mac_count", 0)) == 13_015_864_320
+            and int(real_weight_ladder.get("full_mac_count", 0)) == 13_015_864_320
+            and 0.006 < float(real_weight_ladder.get("executed_mac_coverage_fraction", 0.0)) < 0.007
+            and float(real_weight_ladder.get("represented_full_k_mac_fraction", 0.0)) == 1.0
+            and int(real_weight_ladder.get("missing_full_k_real_weight_mac_count", 0))
+            == 12_932_546_560
+            and int(real_weight_ladder.get("repaired_touched_logical_core_count", 0)) == 151_367
+            and int(real_weight_ladder.get("repaired_high_failure_remapped_rows", 0)) == 54_211
+            and real_weight_ladder.get("coverage_components_sha256")
+            == "e0b869c2f4976674d9bd0570f3b7b2be879cdc91169d524002bd46df44e73938"
+            and real_weight_ladder.get("workplan_sha256")
+            == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+            and real_weight_ladder.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(real_weight_ladder.get("failing_check_count", 1)) == 0,
+            "real-weight coverage ladder accounts for all scheduled rows and full-K MAC identities while preserving sampled-K blocker",
         ),
         (
             "attn_out_sampled_k_real_weight_rows_execute_all_rows",
@@ -1314,6 +1450,30 @@ def main() -> int:
         "real_graph_high_vs_normal_trace_cycle_ratio": float(
             benchmark.get("real_graph_high_vs_normal_trace_cycle_ratio", 0.0)
         ),
+        "e1_comparison_audit_sram_ratio": float(
+            e1_comparison_audit.get("e1x_vs_e1_sram_ratio", 0.0)
+        ),
+        "e1_comparison_audit_model_required_vs_e1_sram": float(
+            e1_comparison_audit.get("model_required_vs_e1_sram", 0.0)
+        ),
+        "e1_comparison_audit_model_required_vs_e1x_sram": float(
+            e1_comparison_audit.get("model_required_vs_e1x_sram", 0.0)
+        ),
+        "e1_comparison_audit_cycle_ratio": float(
+            e1_comparison_audit.get("high_vs_normal_cycle_ratio", 0.0)
+        ),
+        "e1_comparison_audit_decode_tps_ratio": float(
+            e1_comparison_audit.get("high_vs_normal_decode_tps_ratio", 0.0)
+        ),
+        "e1_comparison_audit_peak_power_density_w_per_mm2": float(
+            e1_comparison_audit.get("peak_power_density_w_per_mm2", 0.0)
+        ),
+        "e1_comparison_audit_tuple_sha256": str(
+            e1_comparison_audit.get("comparison_tuple_sha256", "")
+        ),
+        "e1_comparison_audit_residual_blocker": str(
+            e1_comparison_audit.get("residual_blocker", "")
+        ),
         "yield_high_failure_spare_margin": int(
             yield_repair_margin.get("high_failure_spare_margin", 0)
         ),
@@ -1322,6 +1482,24 @@ def main() -> int:
         ),
         "yield_high_vs_normal_remap_ratio": float(
             yield_repair_margin.get("high_vs_normal_remap_ratio", 0.0)
+        ),
+        "clustered_repair_cross_stripe_remapped_cores": int(
+            clustered_repair_stress.get("cross_stripe_remapped_cores", 0)
+        ),
+        "clustered_repair_cross_stripe_spare_margin": int(
+            clustered_repair_stress.get("cross_stripe_spare_margin", 0)
+        ),
+        "clustered_repair_cross_stripe_spare_utilization": float(
+            clustered_repair_stress.get("cross_stripe_spare_utilization", 0.0)
+        ),
+        "clustered_repair_overload_case_count": int(
+            clustered_repair_stress.get("overload_case_count", 0)
+        ),
+        "clustered_repair_stress_case_sha256": str(
+            clustered_repair_stress.get("stress_case_sha256", "")
+        ),
+        "clustered_repair_residual_blocker": str(
+            clustered_repair_stress.get("residual_blocker", "")
         ),
         "boot_verified_rom_case_count": int(boot_fw.get("verified_rom_case_count", 0)),
         "repair_capacity_rom_case_count": int(repair_capacity.get("rom_case_count", 0)),
@@ -1606,6 +1784,51 @@ def main() -> int:
         "expanded_real_weight_residual_blocker": str(
             expanded_real_weight.get("residual_blocker", "")
         ),
+        "stratified_full_k_rows": int(
+            stratified_full_k.get("executed_stratified_full_k_output_row_count", 0)
+        ),
+        "stratified_full_k_macs": int(
+            stratified_full_k.get("executed_stratified_full_k_mac_count", 0)
+        ),
+        "stratified_full_k_mac_gain": float(
+            stratified_full_k.get("mac_gain_vs_expanded_full_k_rows", 0.0)
+        ),
+        "stratified_full_k_checksum": int(
+            stratified_full_k.get("stratified_full_k_checksum", 0)
+        ),
+        "stratified_full_k_result_sha256": str(
+            stratified_full_k.get("stratified_layer_result_sha256", "")
+        ),
+        "stratified_full_k_residual_blocker": str(
+            stratified_full_k.get("residual_blocker", "")
+        ),
+        "stratified_full_k_repair_rows": int(
+            stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0)
+        ),
+        "stratified_full_k_repair_macs": int(
+            stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0)
+        ),
+        "stratified_full_k_repair_touched_cores": int(
+            stratified_full_k_repair.get("touched_logical_core_count", 0)
+        ),
+        "stratified_full_k_repair_output_checksum": int(
+            stratified_full_k_repair.get("output_invariant_checksum", 0)
+        ),
+        "stratified_full_k_repair_normal_route_checksum": int(
+            stratified_full_k_repair.get("normal_route_checksum", 0)
+        ),
+        "stratified_full_k_repair_high_failure_route_checksum": int(
+            stratified_full_k_repair.get("high_failure_route_checksum", 0)
+        ),
+        "stratified_full_k_repair_high_failure_remapped_rows": int(
+            stratified_full_k_repair.get("high_failure_touched_remapped_rows", 0)
+        ),
+        "stratified_full_k_repair_rows_sha256": str(
+            stratified_full_k_repair.get("sampled_stratified_rows_sha256", "")
+        ),
+        "stratified_full_k_repair_residual_blocker": str(
+            stratified_full_k_repair.get("residual_blocker", "")
+        ),
         "full_norm_real_weight_layers": int(
             full_norm_real_weight.get("executed_norm_layer_count", 0)
         ),
@@ -1666,6 +1889,33 @@ def main() -> int:
         ),
         "repaired_real_weight_residual_blocker": str(
             repaired_real_weight.get("residual_blocker", "")
+        ),
+        "real_weight_ladder_components": int(real_weight_ladder.get("component_count", 0)),
+        "real_weight_ladder_layers": int(real_weight_ladder.get("represented_layer_count", 0)),
+        "real_weight_ladder_rows": int(real_weight_ladder.get("represented_output_row_count", 0)),
+        "real_weight_ladder_row_fraction": float(
+            real_weight_ladder.get("represented_row_coverage_fraction", 0.0)
+        ),
+        "real_weight_ladder_executed_macs": int(
+            real_weight_ladder.get("executed_real_weight_mac_count", 0)
+        ),
+        "real_weight_ladder_represented_full_k_macs": int(
+            real_weight_ladder.get("represented_full_k_mac_count", 0)
+        ),
+        "real_weight_ladder_executed_mac_fraction": float(
+            real_weight_ladder.get("executed_mac_coverage_fraction", 0.0)
+        ),
+        "real_weight_ladder_represented_full_k_fraction": float(
+            real_weight_ladder.get("represented_full_k_mac_fraction", 0.0)
+        ),
+        "real_weight_ladder_missing_full_k_macs": int(
+            real_weight_ladder.get("missing_full_k_real_weight_mac_count", 0)
+        ),
+        "real_weight_ladder_components_sha256": str(
+            real_weight_ladder.get("coverage_components_sha256", "")
+        ),
+        "real_weight_ladder_residual_blocker": str(
+            real_weight_ladder.get("residual_blocker", "")
         ),
         "attn_out_sampled_k_layers": int(attn_out_sampled_k.get("executed_layer_count", 0)),
         "attn_out_sampled_k_value": int(attn_out_sampled_k.get("sampled_k", 0)),

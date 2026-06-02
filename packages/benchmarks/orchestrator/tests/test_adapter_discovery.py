@@ -654,6 +654,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_osworld_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_gauntlet_real_surfpool_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_real_audio_assets", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_quality_real_inputs", lambda: True)
@@ -1329,10 +1330,11 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
 
     for benchmark_id in ("mmlu", "humaneval", "gsm8k", "mt_bench"):
         adapter = adapters[benchmark_id]
-        assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+        assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
         assert _is_harness_compatible(adapter, "eliza") is True
         assert _is_harness_compatible(adapter, "hermes") is True
         assert _is_harness_compatible(adapter, "openclaw") is True
+        assert _is_harness_compatible(adapter, "smithers") is True
 
 
 def test_framework_publishes_real_harness_rows() -> None:
@@ -1361,10 +1363,11 @@ def test_agentbench_routes_cross_harness_adapter_clients(
         "agentbench"
     ]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
+    assert _is_harness_compatible(adapter, "smithers") is True
 
     command = entry.build_command(
         tmp_path,
@@ -1524,20 +1527,22 @@ def test_task_sample_and_check_scores_reject_empty_workloads() -> None:
 def test_mint_routes_all_three_harnesses() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["mint"]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
+    assert _is_harness_compatible(adapter, "smithers") is True
 
 
 def test_realm_routes_cross_harness_delegate_client(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["realm"]
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}["realm"]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
+    assert _is_harness_compatible(adapter, "smithers") is True
 
     command = entry.build_command(
         tmp_path,
@@ -3390,7 +3395,7 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
     assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
 
 
-def test_vision_language_bundle_rejects_manifest_without_mtp(
+def test_vision_language_bundle_accepts_text_and_mmproj_without_mtp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3417,7 +3422,7 @@ def test_vision_language_bundle_rejects_manifest_without_mtp(
     )
     monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
 
-    assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is False
+    assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

@@ -4,10 +4,10 @@ import {
 	DEPLOYMENT_TARGET_RUNTIMES,
 	ELIZA_CLOUD_SERVICES,
 	type EvmWalletRpcProvider,
+	LINKED_ACCOUNT_PROVIDER_IDS,
 	type LinkedAccountAccountSource,
 	type LinkedAccountConfig,
 	type LinkedAccountHealth,
-	type LinkedAccountProviderId,
 	SERVICE_TRANSPORTS,
 	type ServiceRouteAccountStrategy,
 	type ServiceRouteConfig,
@@ -35,20 +35,6 @@ import {
 	normalizeWalletRpcSelections,
 	WALLET_RPC_PROVIDER_OPTIONS,
 } from "./wallet.js";
-
-const linkedAccountProviders = [
-	"anthropic-subscription",
-	"openai-codex",
-	"gemini-cli",
-	"zai-coding",
-	"kimi-coding",
-	"deepseek-coding",
-	"anthropic-api",
-	"openai-api",
-	"deepseek-api",
-	"zai-api",
-	"moonshot-api",
-] as const satisfies readonly LinkedAccountProviderId[];
 
 const linkedAccountHealthValues = [
 	"ok",
@@ -258,7 +244,7 @@ describe("core contract implementation alignment", () => {
 	});
 
 	it("accepts linked account contract literals and preserves optional fields", () => {
-		for (const providerId of linkedAccountProviders) {
+		for (const providerId of LINKED_ACCOUNT_PROVIDER_IDS) {
 			expect(
 				normalizeLinkedAccountRecord(validLinkedAccount({ providerId }))
 					?.providerId,

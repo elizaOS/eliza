@@ -50,6 +50,10 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-wallet-ui"),
     },
     {
+      key: "@elizaos/app-model-tester",
+      load: () => import("@elizaos/app-model-tester"),
+    },
+    {
       key: "@elizaos/plugin-contacts/register",
       load: () => import("@elizaos/plugin-contacts/register"),
     },

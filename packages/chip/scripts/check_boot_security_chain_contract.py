@@ -63,6 +63,8 @@ REQUIRED_BOOTROM_SIM_MARKERS = {
     "verifier_entrypoint_executed",
 }
 REQUIRED_POSITIVE_HANDOFF_MARKERS = {
+    "capture_claim_boundary_recorded",
+    "capture_command_exit_zero",
     "reset_vector_fetch",
     "verifier_entrypoint_executed",
     "authenticated_image_verified",
@@ -487,11 +489,13 @@ def check_positive_handoff(findings: list[Finding]) -> None:
     )
 
     claim_flags = (
+        "claim_allowed",
         "phone_claim_allowed",
         "release_claim_allowed",
         "linux_boot_claim_allowed",
         "android_boot_claim_allowed",
         "silicon_secure_boot_claim_allowed",
+        "production_readiness_claim_allowed",
     )
     leaking_flags = [flag for flag in claim_flags if report.get(flag) is not False]
     add_if(

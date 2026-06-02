@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openlane_replay_handoff"
 SCHEMA = "eliza.ai_eda.openlane_replay_handoff.v1"
 CLAIM_BOUNDARY = "openlane_replay_handoff_only_no_openlane_execution_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "optimization_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -440,6 +444,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "optimization_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "status": status,
         "ready_candidate_count": len(selected_ids),
         "queue_ready_candidate_count": len(ready_queue),

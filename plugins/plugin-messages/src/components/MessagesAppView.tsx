@@ -202,8 +202,7 @@ function TuiThreadButton({
         gridTemplateColumns: "4ch minmax(8ch, 1fr) 6ch",
         gap: 10,
         border: "none",
-        borderTop:
-          index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
         background: selected ? "rgba(125,211,252,0.12)" : "transparent",
         color: "#cbd5e1",
         padding: "8px 0",

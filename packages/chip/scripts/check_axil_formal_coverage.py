@@ -10,6 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FORMAL_MANIFEST = ROOT / "build/reports/formal_manifest.json"
 REPORT = ROOT / "build/reports/axil_formal_coverage.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "full_soc_routing_claim_allowed": False,
+    "unbounded_protocol_claim_allowed": False,
+    "coherency_claim_allowed": False,
+    "qos_claim_allowed": False,
+    "production_fabric_claim_allowed": False,
+}
 
 REQUIRED_TARGETS = {
     "e1_dbg_mmio_bridge": {
@@ -114,6 +123,9 @@ def write_report(status: str, errors: list[str], manifest: dict | None) -> None:
                 "full_soc_routing_claim_allowed": False,
                 "unbounded_protocol_claim_allowed": False,
                 "coherency_claim_allowed": False,
+                "qos_claim_allowed": False,
+                "production_fabric_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Checks that the formal manifest records passing AXI-Lite "
                     "formal targets for the debug bridge, DMA master, DRAM target, "

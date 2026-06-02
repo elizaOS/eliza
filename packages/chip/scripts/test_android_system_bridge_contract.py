@@ -193,8 +193,13 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             " ".join(runtime_batch["commands"]),
         )
         runtime_commands = " ".join(runtime_batch["commands"])
+        self.assertIn(
+            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+            runtime_commands,
+        )
         self.assertIn("--adb-connect 127.0.0.1:6520", runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
+        self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', runtime_commands)
         self.assertIn(
             "--output packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json",
             runtime_commands,
@@ -202,6 +207,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn(
             "--logcat packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log",
             runtime_commands,
+        )
+        missing_runtime = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "system_bridge_runtime_evidence_missing"
+        )
+        self.assertEqual(missing_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            " ".join(missing_runtime["next_commands"]),
         )
 
     def test_implemented_packaged_bridge_contract_passes_static_checks(self) -> None:
@@ -397,6 +412,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_runtime_claim_boundary_mismatch", codes)
         self.assertIn("system_bridge_runtime_status_not_pass", codes)
         self.assertIn("system_bridge_runtime_result_not_zero", codes)
+        blocked_runtime = next(
+            finding
+            for finding in report["findings"]
+            if finding["code"] == "system_bridge_runtime_status_not_pass"
+        )
+        self.assertEqual(blocked_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            " ".join(blocked_runtime["next_commands"]),
+        )
 
     def test_local_manifest_permission_xmls_must_be_copyfiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

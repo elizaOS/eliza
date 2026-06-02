@@ -913,6 +913,45 @@ def test_active_attempt_metadata_reports_live_kernel_virtual_trace() -> None:
             raise AssertionError(metadata)
 
 
+def test_active_linux_smoke_process_filter_ignores_ap_benchmarks_payload() -> None:
+    ps_stdout = "\n".join(
+        [
+            "  PID  PPID     ELAPSED CMD",
+            (
+                " 1234     1       00:10 sh scripts/run_chipyard_eliza_linux_smoke.sh "
+                "CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE=ap-benchmarks "
+                "BINARY=/repo/eliza-e1-ap-benchmarks-bin-nodisk"
+            ),
+            (
+                " 1235  1234       00:09 /repo/simulator-chipyard.harness-ElizaRocketConfig "
+                "+loadmem=/repo/eliza-e1-ap-benchmarks-bin-nodisk"
+            ),
+        ]
+    )
+    active = smoke.active_chipyard_smoke_processes(ps_stdout)
+    if active:
+        raise AssertionError(active)
+
+
+def test_active_linux_smoke_process_filter_keeps_linux_smoke_payload() -> None:
+    ps_stdout = "\n".join(
+        [
+            "  PID  PPID     ELAPSED CMD",
+            (
+                " 1234     1       00:10 sh scripts/run_chipyard_eliza_linux_smoke.sh "
+                "BINARY=/repo/eliza-e1-linux-smoke-bin-nodisk"
+            ),
+            (
+                " 1235  1234       00:09 /repo/simulator-chipyard.harness-ElizaRocketConfig "
+                "+loadmem=/repo/eliza-e1-linux-smoke-bin-nodisk"
+            ),
+        ]
+    )
+    active = smoke.active_chipyard_smoke_processes(ps_stdout)
+    if len(active) != 2:
+        raise AssertionError(active)
+
+
 def test_simdram_audit_requires_observable_loadmem_marker() -> None:
     audit = smoke.sim_memory_model_audit()
     simdram = audit.get("simdram")
@@ -1325,6 +1364,8 @@ def main() -> int:
         test_uart_tx_reconstruction_classifies_opensbi_banner_only,
         test_active_attempt_metadata_prefers_current_rebuild_temp_log,
         test_active_attempt_metadata_reports_live_kernel_virtual_trace,
+        test_active_linux_smoke_process_filter_ignores_ap_benchmarks_payload,
+        test_active_linux_smoke_process_filter_keeps_linux_smoke_payload,
         test_simdram_audit_requires_observable_loadmem_marker,
         test_simulator_artifact_blocks_when_simdram_source_is_newer,
         test_loadmem_diagnosis_explains_trace_entry_without_marker,

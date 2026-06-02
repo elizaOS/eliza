@@ -50,6 +50,7 @@
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { isExpired } from "./ttl";
 import type { FormAutofillData, FormSession, FormSubmission } from "./types";
 import {
   FORM_AUTOFILL_COMPONENT,
@@ -82,6 +83,8 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
     typeof data.roomId === "string"
   );
 };
+
+const isLiveSession = (session: FormSession): boolean => !isExpired(session);
 
 const isFormSubmission = (data: JsonValue | object): data is FormSubmission => {
   if (!isRecord(data)) return false;
@@ -142,7 +145,10 @@ export async function getActiveSession(
 
   // Only return if active (not stashed, submitted, cancelled, or expired)
   // WHY: Other statuses require explicit action to restore/continue
-  if (session.status === "active" || session.status === "ready") {
+  if (
+    isLiveSession(session) &&
+    (session.status === "active" || session.status === "ready")
+  ) {
     return session;
   }
 
@@ -173,7 +179,10 @@ export async function getAllActiveSessions(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.status === "active" || session.status === "ready") {
+        if (
+          isLiveSession(session) &&
+          (session.status === "active" || session.status === "ready")
+        ) {
           sessions.push(session);
         }
       }
@@ -206,7 +215,7 @@ export async function getStashedSessions(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.status === "stashed") {
+        if (isLiveSession(session) && session.status === "stashed") {
           sessions.push(session);
         }
       }
@@ -240,7 +249,7 @@ export async function getSessionById(
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
       if (component.data && isFormSession(component.data)) {
         const session = component.data;
-        if (session.id === sessionId) {
+        if (isLiveSession(session) && session.id === sessionId) {
           return session;
         }
       }

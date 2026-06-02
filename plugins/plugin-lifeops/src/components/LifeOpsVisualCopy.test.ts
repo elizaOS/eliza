@@ -10,6 +10,19 @@ function readComponent(name: string): string {
 }
 
 describe("LifeOps visual copy", () => {
+  it("keeps LifeOps app metadata focused on personal assistant ownership", () => {
+    const pluginSource = readFileSync(resolve(here, "../plugin.ts"), "utf8");
+    const uiSource = readFileSync(resolve(here, "../ui.ts"), "utf8");
+    const metadataSource = `${pluginSource}\n${uiSource}`;
+
+    expect(metadataSource).toContain("Personal assistant workspace");
+    expect(metadataSource).toContain('"assistant"');
+    expect(metadataSource).not.toContain('"health"');
+    expect(metadataSource).not.toContain("and health");
+    expect(metadataSource).not.toContain("screen-time");
+    expect(metadataSource).not.toContain("screen time");
+  });
+
   it("keeps money section empty states compact and separator text plain", () => {
     const source = readComponent("LifeOpsMoneySection.tsx");
 
@@ -19,14 +32,11 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain("×");
   });
 
-  it("keeps messaging and sleep connector copy free of raw arrow or dot separators", () => {
+  it("keeps messaging connector copy free of raw arrow or dot separators", () => {
     const messaging = readComponent("MessagingConnectorCards.tsx");
-    const sleep = readComponent("SleepInspectionPanel.tsx");
 
     expect(messaging).not.toContain(" → ");
     expect(messaging).not.toContain(" • ");
-    expect(sleep).not.toContain(" → ");
-    expect(sleep).not.toContain(" · ");
   });
 
   it("keeps reminder controls from reintroducing paragraph helper copy", () => {

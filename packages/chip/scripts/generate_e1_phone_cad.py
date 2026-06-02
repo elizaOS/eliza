@@ -2791,6 +2791,58 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             return None
         return [round((float(low[idx]) + float(high[idx])) / 2.0, 3) for idx in range(3)]
 
+    def connection_mechanical_envelope(
+        *,
+        contract: dict[str, Any],
+        part_bbox: dict[str, Any],
+        endpoint_center_distance_mm: float | None,
+        represented_route_records: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
+        numeric_span = [
+            round(float(value), 3)
+            for value in span
+            if isinstance(value, int | float) or str(value).replace(".", "", 1).isdigit()
+        ]
+        sorted_span = sorted(numeric_span)
+        nominal_thickness_mm = sorted_span[0] if sorted_span else None
+        nominal_width_mm = sorted_span[1] if len(sorted_span) >= 2 else None
+        visual_marker_length_mm = sorted_span[-1] if sorted_span else None
+        routed_length_total_mm = round(
+            sum(float(route.get("length_mm") or 0.0) for route in represented_route_records),
+            3,
+        )
+        controlled_targets = sorted(
+            {
+                f"{target.get('constraint')}={target.get('value')}ohm"
+                for route in represented_route_records
+                for target in route.get("controlled_impedance_targets_ohm", [])
+                if isinstance(target, dict) and target.get("constraint") and target.get("value")
+            }
+        )
+        return {
+            "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+            "physical_medium": contract.get("physical_medium"),
+            "connection_type": contract.get("connection_type"),
+            "cad_span_mm": numeric_span,
+            "nominal_visual_width_mm": nominal_width_mm,
+            "nominal_visual_thickness_mm": nominal_thickness_mm,
+            "visual_marker_length_mm": visual_marker_length_mm,
+            "endpoint_center_distance_mm": endpoint_center_distance_mm,
+            "routed_trace_length_total_mm": routed_length_total_mm,
+            "min_bend_radius_mm": contract.get("min_bend_radius_mm"),
+            "bend_radius_basis": (
+                "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing"
+            ),
+            "controlled_impedance_required": bool(contract.get("controlled_impedance_required")),
+            "controlled_impedance_targets": controlled_targets,
+            "impedance_requirement": contract.get("impedance_requirement"),
+            "slack_or_service_loop_status": (
+                "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required"
+            ),
+            "release_credit": False,
+        }
+
     connection_rows = []
     for contract in contracts:
         part = part_rows_by_name.get(str(contract["cad_part"]), {})
@@ -2854,6 +2906,12 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
                 ),
                 3,
             )
+        mechanical_envelope = connection_mechanical_envelope(
+            contract=contract,
+            part_bbox=part_bbox,
+            endpoint_center_distance_mm=endpoint_center_distance_mm,
+            represented_route_records=represented_route_records,
+        )
         terminal_step_bytes_total = sum(int(row.get("bytes", 0) or 0) for row in terminal_rows)
         connection_step_part_names = [str(contract["cad_part"]), from_terminal, to_terminal]
         routed_net_presence = {net: net in routed_nets for net in represented_nets}
@@ -2938,6 +2996,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "from_endpoint_center_mm": from_center,
             "to_endpoint_center_mm": to_center,
             "endpoint_center_distance_mm": endpoint_center_distance_mm,
+            "mechanical_envelope": mechanical_envelope,
             "endpoints_present": str(contract["from"]) in solid_names
             and str(contract["to"]) in solid_names,
             "routed_net_presence": routed_net_presence,
@@ -2977,6 +3036,70 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         electrical_class_counts[str(row["electrical_class"])] = (
             electrical_class_counts.get(str(row["electrical_class"]), 0) + 1
         )
+    critical_interface_connection_ids = {
+        "display_touch": sorted(row["id"] for row in connection_rows if "display" in row["id"]),
+        "rear_camera": sorted(row["id"] for row in connection_rows if "rear_camera" in row["id"]),
+        "front_camera": sorted(row["id"] for row in connection_rows if "front_camera" in row["id"]),
+        "usb_power_battery": sorted(
+            row["id"]
+            for row in connection_rows
+            if any(token in row["id"] for token in ["usb", "pd_", "charger", "battery"])
+        ),
+        "cellular_wifi_rf": sorted(
+            row["id"]
+            for row in connection_rows
+            if row["physical_medium"] in {"rf_50ohm_feed", "rf_tuner_interconnect"}
+        ),
+        "nfc": sorted(row["id"] for row in connection_rows if "nfc" in row["id"]),
+        "audio_haptic_sensor": sorted(
+            row["id"]
+            for row in connection_rows
+            if any(
+                token in row["id"]
+                for token in ["speaker", "microphone", "earpiece", "haptic", "sensor"]
+            )
+        ),
+        "shield_ground": sorted(row["id"] for row in connection_rows if "ground_spring" in row["id"]),
+        "board_to_board": sorted(
+            row["id"]
+            for row in connection_rows
+            if row["physical_medium"] == "board_to_board_edge_connector"
+            or "split_interconnect" in row["id"]
+        ),
+    }
+    release_boundary_summary = {
+        "evidence_class": "local_cad_connection_marker_coverage_not_release",
+        "critical_interface_connection_ids": critical_interface_connection_ids,
+        "all_critical_interface_groups_present": all(
+            bool(ids) for ids in critical_interface_connection_ids.values()
+        ),
+        "all_connections_have_terminal_markers": all(
+            row["terminal_markers_present"] for row in connection_rows
+        ),
+        "all_connections_have_solid_step_parts": all(
+            row["solid_step_parts_present"] for row in connection_rows
+        ),
+        "all_connections_bound_to_routed_development_records": all(
+            row["all_represented_routes_have_layer_source_and_class"]
+            and row["all_represented_nets_have_route_trace"]
+            for row in connection_rows
+        ),
+        "all_connections_supplier_release_required": all(
+            row["supplier_release_required"] for row in connection_rows
+        ),
+        "all_connections_release_credit_false": all(
+            row["release_credit"] is False for row in connection_rows
+        ),
+        "supplier_required_deliverables": [
+            "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
+            "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
+            "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
+            "clean production DRC/ERC plus signed waivers for every remaining violation",
+            "supplier-approved component STEP/B-rep models and mechanical drawings",
+            "measured routed-board clearance and first-article signoff",
+        ],
+        "release_credit": False,
+    }
     connection_coverage = {
         **{k: v for k, v in existing.items() if k != "connections"},
         "required_connection_count": len(connection_rows),
@@ -3039,6 +3162,10 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             sum(float(row["endpoint_center_distance_mm"] or 0.0) for row in connection_rows),
             3,
         ),
+        "mechanical_envelope_defined_count": sum(
+            1 for row in connection_rows if isinstance(row.get("mechanical_envelope"), dict)
+        ),
+        "mechanical_envelope_release_credit": False,
         "physical_medium_counts": dict(sorted(physical_medium_counts.items())),
         "electrical_class_counts": dict(sorted(electrical_class_counts.items())),
         "controlled_impedance_connection_count": sum(
@@ -3053,6 +3180,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         "supplier_release_required_connection_count": sum(
             1 for row in connection_rows if row["supplier_release_required"]
         ),
+        "release_boundary_summary": release_boundary_summary,
         "status": "cad_connection_markers_complete_not_release"
         if all(row["pass"] for row in connection_rows)
         else "blocked_cad_connection_marker_gap",
@@ -3074,11 +3202,21 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         f"- Represented nets: {connection_coverage['represented_net_count_total']}",
         f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
         f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Mechanical envelopes: {connection_coverage['mechanical_envelope_defined_count']}",
+        f"- Critical interface groups present: {str(release_boundary_summary['all_critical_interface_groups_present']).lower()}",
+        f"- Supplier-release-required connections: {connection_coverage['supplier_release_required_connection_count']}",
         f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
+        "",
+        "## Release Boundary",
+        "",
+    ]
+    for deliverable in release_boundary_summary["supplier_required_deliverables"]:
+        coverage_lines.append(f"- {deliverable}")
+    coverage_lines.extend([
         "",
         "## Connections",
         "",
-    ]
+    ])
     for row in connection_rows:
         result = "PASS" if row["pass"] else "BLOCKED"
         coverage_lines.append(
@@ -3087,7 +3225,8 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             f"routes={row['represented_route_count']}, "
             f"terminals=`{row['from_terminal_part']}`/`{row['to_terminal_part']}`, "
             f"span={row['visual_route_span_mm']} mm, "
-            f"endpoint_distance={row['endpoint_center_distance_mm']} mm"
+            f"endpoint_distance={row['endpoint_center_distance_mm']} mm, "
+            f"envelope_basis=`{row['mechanical_envelope']['basis']}`"
         )
     (REVIEW_DIR / "cad-connection-coverage.md").write_text("\n".join(coverage_lines) + "\n")
     return connection_coverage
@@ -6137,6 +6276,70 @@ def write_solid_cad_handoff_artifacts(
         electrical_class_counts[row["electrical_class"]] = (
             electrical_class_counts.get(row["electrical_class"], 0) + 1
         )
+    critical_interface_connection_ids = {
+        "display_touch": sorted(row["id"] for row in connection_rows if "display" in row["id"]),
+        "rear_camera": sorted(row["id"] for row in connection_rows if "rear_camera" in row["id"]),
+        "front_camera": sorted(row["id"] for row in connection_rows if "front_camera" in row["id"]),
+        "usb_power_battery": sorted(
+            row["id"]
+            for row in connection_rows
+            if any(token in row["id"] for token in ["usb", "pd_", "charger", "battery"])
+        ),
+        "cellular_wifi_rf": sorted(
+            row["id"]
+            for row in connection_rows
+            if row["physical_medium"] in {"rf_50ohm_feed", "rf_tuner_interconnect"}
+        ),
+        "nfc": sorted(row["id"] for row in connection_rows if "nfc" in row["id"]),
+        "audio_haptic_sensor": sorted(
+            row["id"]
+            for row in connection_rows
+            if any(
+                token in row["id"]
+                for token in ["speaker", "microphone", "earpiece", "haptic", "sensor"]
+            )
+        ),
+        "shield_ground": sorted(row["id"] for row in connection_rows if "ground_spring" in row["id"]),
+        "board_to_board": sorted(
+            row["id"]
+            for row in connection_rows
+            if row["physical_medium"] == "board_to_board_edge_connector"
+            or "split_interconnect" in row["id"]
+        ),
+    }
+    release_boundary_summary = {
+        "evidence_class": "local_cad_connection_marker_coverage_not_release",
+        "critical_interface_connection_ids": critical_interface_connection_ids,
+        "all_critical_interface_groups_present": all(
+            bool(ids) for ids in critical_interface_connection_ids.values()
+        ),
+        "all_connections_have_terminal_markers": all(
+            row["terminal_markers_present"] for row in connection_rows
+        ),
+        "all_connections_have_solid_step_parts": all(
+            row["solid_step_parts_present"] for row in connection_rows
+        ),
+        "all_connections_bound_to_routed_development_records": all(
+            row["all_represented_routes_have_layer_source_and_class"]
+            and row["all_represented_nets_have_route_trace"]
+            for row in connection_rows
+        ),
+        "all_connections_supplier_release_required": all(
+            row["supplier_release_required"] for row in connection_rows
+        ),
+        "all_connections_release_credit_false": all(
+            row["release_credit"] is False for row in connection_rows
+        ),
+        "supplier_required_deliverables": [
+            "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
+            "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
+            "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
+            "clean production DRC/ERC plus signed waivers for every remaining violation",
+            "supplier-approved component STEP/B-rep models and mechanical drawings",
+            "measured routed-board clearance and first-article signoff",
+        ],
+        "release_credit": False,
+    }
     connection_coverage = {
         "schema": "eliza.e1_phone_cad_connection_coverage.v1",
         "date": "2026-05-22",
@@ -6224,6 +6427,7 @@ def write_solid_cad_handoff_artifacts(
         "supplier_release_required_connection_count": sum(
             1 for row in connection_rows if row["supplier_release_required"]
         ),
+        "release_boundary_summary": release_boundary_summary,
         "release_credit": False,
         "connections": connection_rows,
     }
@@ -6244,11 +6448,20 @@ def write_solid_cad_handoff_artifacts(
         f"- Represented nets: {connection_coverage['represented_net_count_total']}",
         f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
         f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Critical interface groups present: {str(release_boundary_summary['all_critical_interface_groups_present']).lower()}",
+        f"- Supplier-release-required connections: {connection_coverage['supplier_release_required_connection_count']}",
         f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
+        "",
+        "## Release Boundary",
+        "",
+    ]
+    for deliverable in release_boundary_summary["supplier_required_deliverables"]:
+        coverage_lines.append(f"- {deliverable}")
+    coverage_lines.extend([
         "",
         "## Connections",
         "",
-    ]
+    ])
     for row in connection_rows:
         result = "PASS" if row["pass"] else "BLOCKED"
         coverage_lines.append(
@@ -16005,6 +16218,74 @@ def write_board_step_readiness_artifacts(
             return completed.returncode, completed.stdout
         return None, ""
 
+    def run_kicad_json_probe(
+        probe_id: str,
+        output_path: Path,
+        *args: str,
+        timeout_s: int = 120,
+    ) -> dict[str, Any]:
+        report: dict[str, Any] = {
+            "command": " ".join(
+                [
+                    str(Path(kicad_command(*args)[0]).relative_to(ROOT))
+                    if Path(kicad_command(*args)[0]).is_relative_to(ROOT)
+                    else str(kicad_command(*args)[0]),
+                    *kicad_command(*args)[1:],
+                ]
+            ),
+            "output": str(output_path.relative_to(ROOT)),
+            "exit_code": None,
+            "kicad_version": "",
+            "violation_count": 0,
+            "unconnected_item_count": 0,
+            "output_present": False,
+            "output_bytes": 0,
+            "output_sha256": "",
+            "release_credit": False,
+        }
+        if not kicad_cli_available:
+            report["blocked_reason"] = "kicad_cli_not_available"
+            return report
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with suppress(Exception):
+            completed = subprocess.run(
+                kicad_command(*args),
+                cwd=ROOT,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout_s,
+            )
+            report["exit_code"] = completed.returncode
+            report["stdout_excerpt"] = completed.stdout.strip()[-800:]
+        if output_path.is_file():
+            report["output_present"] = True
+            report["output_bytes"] = output_path.stat().st_size
+            report["output_sha256"] = file_sha256(output_path)
+            with suppress(Exception):
+                data = json.loads(output_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    report["kicad_version"] = str(data.get("kicad_version") or "")
+                    if probe_id == "drc":
+                        violations = data.get("violations", [])
+                        unconnected = data.get("unconnected_items", [])
+                        report["violation_count"] = (
+                            len(violations) if isinstance(violations, list) else 0
+                        )
+                        report["unconnected_item_count"] = (
+                            len(unconnected) if isinstance(unconnected, list) else 0
+                        )
+                    elif probe_id == "erc":
+                        sheets = data.get("sheets", [])
+                        report["violation_count"] = sum(
+                            len(sheet.get("violations", []))
+                            for sheet in sheets
+                            if isinstance(sheet, dict)
+                            and isinstance(sheet.get("violations", []), list)
+                        )
+        return report
+
     version_rc, kicad_version_output = kicad_probe("version")
     sch_help_rc, sch_help = kicad_probe("sch", "--help")
     pcb_help_rc, pcb_help = kicad_probe("pcb", "--help")
@@ -16025,6 +16306,199 @@ def write_board_step_readiness_artifacts(
     required_release_commands_available = (
         sch_erc_available and pcb_drc_available and pcb_step_export_available
     )
+    local_kicad_report_dir = REVIEW_DIR / "local-kicad-cli"
+    local_drc_report_path = local_kicad_report_dir / "routed-drc.json"
+    local_erc_report_path = local_kicad_report_dir / "e1-phone-erc.json"
+    local_drc_probe = (
+        run_kicad_json_probe(
+            "drc",
+            local_drc_report_path,
+            "pcb",
+            "drc",
+            "--format",
+            "json",
+            "--output",
+            str(local_drc_report_path.relative_to(ROOT)),
+            "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        )
+        if pcb_drc_available
+        else {}
+    )
+    local_erc_probe = (
+        run_kicad_json_probe(
+            "erc",
+            local_erc_report_path,
+            "sch",
+            "erc",
+            "--format",
+            "json",
+            "--output",
+            str(local_erc_report_path.relative_to(ROOT)),
+            "board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
+        )
+        if sch_erc_available
+        else {}
+    )
+    drc_violation_count = int(local_drc_probe.get("violation_count") or 0)
+    drc_unconnected_item_count = int(local_drc_probe.get("unconnected_item_count") or 0)
+    erc_violation_count = int(local_erc_probe.get("violation_count") or 0)
+
+    def local_kicad_report_rows(path: Path, report_type: str) -> list[dict[str, Any]]:
+        if not path.is_file():
+            return []
+        with suppress(Exception):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return []
+            if report_type == "drc":
+                rows = []
+                for row in data.get("violations", []):
+                    if isinstance(row, dict):
+                        rows.append({**row, "source_bucket": "violations"})
+                for row in data.get("unconnected_items", []):
+                    if isinstance(row, dict):
+                        rows.append({**row, "source_bucket": "unconnected_items"})
+                return rows
+            rows = []
+            for sheet in data.get("sheets", []):
+                if not isinstance(sheet, dict):
+                    continue
+                sheet_path = sheet.get("path", "")
+                for row in sheet.get("violations", []):
+                    if isinstance(row, dict):
+                        rows.append({**row, "sheet_path": sheet_path})
+            return rows
+        return []
+
+    def summarize_kicad_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        by_type: dict[str, int] = {}
+        by_severity: dict[str, int] = {}
+        examples: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            violation_type = str(row.get("type") or row.get("source_bucket") or "unknown")
+            severity = str(row.get("severity") or "unknown")
+            by_type[violation_type] = by_type.get(violation_type, 0) + 1
+            by_severity[severity] = by_severity.get(severity, 0) + 1
+            if violation_type not in examples:
+                examples[violation_type] = {
+                    "type": violation_type,
+                    "severity": severity,
+                    "description": row.get("description", ""),
+                    "source_bucket": row.get("source_bucket", ""),
+                    "sheet_path": row.get("sheet_path", ""),
+                    "item_descriptions": [
+                        item.get("description", "")
+                        for item in row.get("items", [])
+                        if isinstance(item, dict)
+                    ][:4],
+                }
+        return {
+            "total_count": len(rows),
+            "by_type": dict(sorted(by_type.items(), key=lambda item: (-item[1], item[0]))),
+            "by_severity": dict(
+                sorted(by_severity.items(), key=lambda item: (-item[1], item[0]))
+            ),
+            "examples_by_type": [
+                examples[key]
+                for key in sorted(examples, key=lambda key: (-by_type[key], key))
+            ],
+        }
+
+    local_drc_rows = local_kicad_report_rows(local_drc_report_path, "drc")
+    local_erc_rows = local_kicad_report_rows(local_erc_report_path, "erc")
+    local_kicad_triage = {
+        "schema": "eliza.e1_phone_local_kicad_cli_drc_erc_triage.v1",
+        "claim_boundary": (
+            "Engineering triage derived from local KiCad JSON DRC/ERC reports. "
+            "This is not production DRC/ERC signoff, waiver approval, or release evidence."
+        ),
+        "source_reports": {
+            "drc": str(local_drc_report_path.relative_to(ROOT)),
+            "erc": str(local_erc_report_path.relative_to(ROOT)),
+        },
+        "source_hashes": {
+            "drc_sha256": file_sha256(local_drc_report_path)
+            if local_drc_report_path.is_file()
+            else "",
+            "erc_sha256": file_sha256(local_erc_report_path)
+            if local_erc_report_path.is_file()
+            else "",
+        },
+        "status": (
+            "blocked_local_kicad_drc_erc_violations_present"
+            if local_drc_rows or local_erc_rows
+            else "blocked_local_kicad_drc_erc_not_run"
+        ),
+        "drc": summarize_kicad_rows(local_drc_rows),
+        "erc": summarize_kicad_rows(local_erc_rows),
+        "release_credit": False,
+        "next_actions": [
+            "Fix high-count DRC classes first: clearance, unconnected items, solder mask bridges, copper-edge clearance, forbidden items, shorts, and tracks crossing.",
+            "Fix high-count ERC classes first: dangling labels, unconnected pins, not-driven power pins, off-grid endpoints, symbol issues, and footprint links.",
+            "After cleanup, regenerate local KiCad reports and only promote production reports after reviewer-approved clean results or explicit signed waivers.",
+        ],
+    }
+    local_kicad_triage_path = local_kicad_report_dir / "drc-erc-triage.json"
+    local_kicad_triage_path.write_text(json.dumps(local_kicad_triage, indent=2) + "\n")
+    triage_lines = [
+        "# E1 Phone Local KiCad DRC/ERC Triage",
+        "",
+        f"Status: `{local_kicad_triage['status']}`",
+        "",
+        "This report is derived from local KiCad JSON outputs and has no release credit.",
+        "",
+        "## DRC Types",
+        "",
+    ]
+    for violation_type, count in local_kicad_triage["drc"]["by_type"].items():
+        triage_lines.append(f"- `{violation_type}`: {count}")
+    triage_lines.extend(["", "## ERC Types", ""])
+    for violation_type, count in local_kicad_triage["erc"]["by_type"].items():
+        triage_lines.append(f"- `{violation_type}`: {count}")
+    triage_lines.extend(["", "## Next Actions", ""])
+    for action in local_kicad_triage["next_actions"]:
+        triage_lines.append(f"- {action}")
+    (local_kicad_report_dir / "drc-erc-triage.md").write_text(
+        "\n".join(triage_lines) + "\n"
+    )
+    local_drc_total_count = int(local_drc_probe.get("violation_count") or 0) + int(
+        local_drc_probe.get("unconnected_item_count") or 0
+    )
+    local_erc_total_count = int(local_erc_probe.get("violation_count") or 0)
+    drc_erc_evidence_lineage = {
+        "claim_boundary": (
+            "Raw local KiCad reports, local triage, and preflight evidence are "
+            "engineering evidence only. Production DRC/ERC report paths remain "
+            "blocked candidate metadata until clean raw KiCad payloads, waivers, "
+            "and reviewer signoff are archived."
+        ),
+        "raw_local_drc_report": str(local_drc_report_path.relative_to(ROOT)),
+        "raw_local_drc_report_sha256": file_sha256(local_drc_report_path)
+        if local_drc_report_path.is_file()
+        else "",
+        "raw_local_erc_report": str(local_erc_report_path.relative_to(ROOT)),
+        "raw_local_erc_report_sha256": file_sha256(local_erc_report_path)
+        if local_erc_report_path.is_file()
+        else "",
+        "local_triage_report": str(local_kicad_triage_path.relative_to(ROOT)),
+        "local_triage_report_sha256": file_sha256(local_kicad_triage_path)
+        if local_kicad_triage_path.is_file()
+        else "",
+        "preflight_report": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
+        "production_drc_report_path": "board/kicad/e1-phone/production/reports/drc.json",
+        "production_erc_report_path": "board/kicad/e1-phone/production/reports/erc.json",
+        "production_report_paths_are_candidate_metadata": True,
+        "production_report_raw_kicad_payload_required_for_release": True,
+        "local_drc_violation_count": int(local_drc_probe.get("violation_count") or 0),
+        "local_drc_unconnected_item_count": int(
+            local_drc_probe.get("unconnected_item_count") or 0
+        ),
+        "local_drc_total_count": local_drc_total_count,
+        "local_erc_total_count": local_erc_total_count,
+        "local_drc_top_types": local_kicad_triage["drc"].get("by_type", {}),
+        "local_erc_top_types": local_kicad_triage["erc"].get("by_type", {}),
+        "release_credit": False,
+    }
     kicad_cli_preflight = {
         "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
         "claim_boundary": (
@@ -16051,21 +16525,40 @@ def write_board_step_readiness_artifacts(
             "kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
         "drc_status": (
-            "blocked_kicad_cli_drc_not_run"
+            "blocked_kicad_cli_drc_violations"
+            if drc_violation_count or drc_unconnected_item_count
+            else "blocked_kicad_cli_drc_not_run"
             if pcb_drc_available
             else "blocked_kicad_cli_lacks_pcb_drc"
         ),
         "erc_status": (
-            "blocked_kicad_cli_erc_not_run"
+            "blocked_kicad_cli_erc_violations"
+            if erc_violation_count
+            else "blocked_kicad_cli_erc_not_run"
             if sch_erc_available
             else "blocked_kicad_cli_lacks_sch_erc"
         ),
         "step_export_status": pcb_step_export_status,
+        "local_non_release_reports": {
+            "claim_boundary": (
+                "Persisted local KiCad 9 JSON probes. These preserve violation "
+                "evidence for engineering triage and do not replace production "
+                "release DRC/ERC reports."
+            ),
+            "drc": local_drc_probe,
+            "erc": local_erc_probe,
+        },
+        "local_triage_report": str(local_kicad_triage_path.relative_to(ROOT)),
+        "local_triage_report_sha256": file_sha256(local_kicad_triage_path)
+        if local_kicad_triage_path.is_file()
+        else "",
+        "drc_erc_evidence_lineage": drc_erc_evidence_lineage,
         "release_credit": False,
         "next_action": (
-            "Install a release-capable KiCad CLI with sch erc, pcb drc, and pcb "
-            "export step; rerun DRC/ERC/STEP against the approved routed board "
-            "and archive raw JSON plus waivers before promoting the routed-board intake."
+            "KiCad can generate local DRC/ERC JSON, but the current routed "
+            "candidate is not clean. Fix or waive violations against an approved "
+            "routed board, then archive production JSON reports and reviewer "
+            "signoff before promoting the routed-board intake."
         ),
     }
     routed_kicad_preflight_path.write_text(json.dumps(kicad_cli_preflight, indent=2) + "\n")
@@ -16517,6 +17010,9 @@ def write_board_step_readiness_artifacts(
         }
 
     def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+        mechanical_envelope = record.get("mechanical_envelope")
+        if not isinstance(mechanical_envelope, dict):
+            mechanical_envelope = {}
         return {
             "id": record.get("id"),
             "connection_type": record.get("connection_type"),
@@ -16540,6 +17036,11 @@ def write_board_step_readiness_artifacts(
             "solid_step_parts_present": record.get("solid_step_parts_present") is True,
             "all_represented_routes_have_layer_source_and_class": (
                 record.get("all_represented_routes_have_layer_source_and_class") is True
+            ),
+            "mechanical_envelope": mechanical_envelope,
+            "mechanical_envelope_defined": bool(mechanical_envelope),
+            "mechanical_envelope_release_credit": (
+                mechanical_envelope.get("release_credit") is True
             ),
             "release_credit": record.get("release_credit") is True,
         }
@@ -16649,6 +17150,18 @@ def write_board_step_readiness_artifacts(
             for record in cad_connection_records
             if isinstance(record, dict)
         ),
+        "connection_mechanical_envelope_count": sum(
+            1
+            for record in cad_connection_records
+            if isinstance(record, dict) and isinstance(record.get("mechanical_envelope"), dict)
+        ),
+        "all_connection_records_have_mechanical_envelope": all(
+            isinstance(record.get("mechanical_envelope"), dict)
+            and record["mechanical_envelope"].get("basis")
+            and record["mechanical_envelope"].get("release_credit") is False
+            for record in cad_connection_records
+            if isinstance(record, dict)
+        ),
         "routed_development_intake": str(routed_development_intake_path.relative_to(ROOT)),
         "routed_output_manifest": str(routed_output_manifest_path.relative_to(ROOT)),
     }
@@ -16678,6 +17191,9 @@ def write_board_step_readiness_artifacts(
         and detailed_routed_step_candidate["all_route_records_have_net_layer_class_and_source"]
         and detailed_routed_step_candidate["all_component_records_have_local_step"]
         and detailed_routed_step_candidate["all_connection_records_have_cad_step"]
+        and detailed_routed_step_candidate["connection_mechanical_envelope_count"]
+        == detailed_routed_step_candidate["cad_connection_record_count"]
+        and detailed_routed_step_candidate["all_connection_records_have_mechanical_envelope"]
         and detailed_routed_step_candidate["release_credit"] is False
     )
     routed_intake_detail = {
@@ -16726,6 +17242,12 @@ def write_board_step_readiness_artifacts(
         ],
         "all_connection_records_have_cad_step": detailed_routed_step_candidate[
             "all_connection_records_have_cad_step"
+        ],
+        "connection_mechanical_envelope_count": detailed_routed_step_candidate[
+            "connection_mechanical_envelope_count"
+        ],
+        "all_connection_records_have_mechanical_envelope": detailed_routed_step_candidate[
+            "all_connection_records_have_mechanical_envelope"
         ],
         "release_credit": False,
     }

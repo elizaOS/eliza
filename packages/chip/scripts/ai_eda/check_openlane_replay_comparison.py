@@ -17,6 +17,13 @@ EXPECTED_SCHEMA = "eliza.ai_eda.openlane_replay_comparison.v1"
 EXPECTED_CLAIM_BOUNDARY = "openlane_replay_comparison_evidence_only_no_release_claim"
 
 
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if report.get("status") != "COMPARISON_READY":
+        flags["optimization_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -87,6 +94,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         and report.get("optimization_claim_allowed") is not True
     ):
         errors.append("ready comparison must allow optimization claim gate")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("false_claim_flags must match denied replay comparison claims")
     artifacts = report.get("artifacts")
     if not isinstance(artifacts, dict):
         return errors + ["artifacts must be a mapping"]

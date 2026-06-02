@@ -82,6 +82,30 @@ describe("Feishu message connector", () => {
 		expect(sendMessage).toHaveBeenCalledWith("oc_test", { text: "hello" });
 	});
 
+	it("rejects sends without a resolvable Feishu chat target", async () => {
+		const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
+			getRoom: vi.fn().mockResolvedValue({ id: "room_without_channel" }),
+		});
+		const service = Object.create(FeishuService.prototype) as FeishuService;
+		Reflect.set(service, "messageManager", { sendMessage: vi.fn() });
+
+		await expect(
+			service.handleSendMessage(
+				runtime,
+				{ source: "feishu" } as TargetInfo,
+				{ text: "hello" } as Content,
+			),
+		).rejects.toThrow("requires channelId or roomId");
+
+		await expect(
+			service.handleSendMessage(
+				runtime,
+				{ source: "feishu", roomId: "room_without_channel" } as TargetInfo,
+				{ text: "hello" } as Content,
+			),
+		).rejects.toThrow("Could not resolve Feishu chat ID");
+	});
+
 	it("supports stored message fetch and search connector workflows", async () => {
 		const roomId = "00000000-0000-0000-0000-000000000123";
 		const runtime = Object.assign(Object.create(null) as IAgentRuntime, {

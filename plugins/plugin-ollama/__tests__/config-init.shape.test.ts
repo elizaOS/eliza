@@ -33,6 +33,37 @@ describe("Ollama config and init plumbing", () => {
     ).toBe("http://endpoint:11434/api");
   });
 
+  it("trims settings before resolving URLs and falls back from blank values", () => {
+    expect(
+      getBaseURL(
+        runtime({
+          OLLAMA_API_ENDPOINT: "   ",
+          OLLAMA_API_URL: " http://api-url:11434/api ",
+        })
+      )
+    ).toBe("http://api-url:11434/api");
+    expect(getApiBase(runtime({ OLLAMA_BASE_URL: " http://remote:11434/ " }))).toBe(
+      "http://remote:11434"
+    );
+  });
+
+  it("does not throw when init validation fetch fails with a non-Error value", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw "socket closed";
+    });
+    const initRuntime = {
+      ...runtime({ OLLAMA_BASE_URL: " http://remote:11434 " }),
+      fetch: fetchMock,
+    } as unknown as IAgentRuntime & { fetch: typeof fetch };
+
+    await expect(ollamaPlugin.init?.({}, initRuntime)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith("http://remote:11434/api/tags", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
   it("uses runtime.fetch for init validation", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ models: [] })));
     const initRuntime = {

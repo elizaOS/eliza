@@ -84,6 +84,11 @@ export async function handleStartTunnel(
     const parsed = Number.parseInt(explicitPort, 10);
     if (isValidPort(parsed)) port = parsed;
   }
+  if (explicitPort !== undefined && port === undefined) {
+    const message = 'Invalid tunnel port. Port must be an integer between 1 and 65535.';
+    if (callback) await callback({ text: message });
+    return { success: false, error: 'invalid tunnel port' };
+  }
 
   if (port === undefined) {
     const userMessage = message.content.text ?? '';

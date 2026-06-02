@@ -15,6 +15,10 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.openlane_replay_handoff.v1"
 EXPECTED_CLAIM_BOUNDARY = "openlane_replay_handoff_only_no_openlane_execution_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "optimization_claim_allowed": False,
+}
 REQUIRED_ARTIFACTS = {
     "replay_plan",
     "replay_queue",
@@ -83,6 +87,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("optimization_claim_allowed") is not False:
         errors.append("optimization_claim_allowed must remain false for handoff-only evidence")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied replay handoff claims")
     if report.get("status") not in {"HANDOFF_READY_FOR_PD_HOST", "BLOCKED_HANDOFF"}:
         errors.append("unsupported status")
     if report.get("status") == "HANDOFF_READY_FOR_PD_HOST" and report.get("blockers"):

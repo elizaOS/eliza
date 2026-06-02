@@ -75,6 +75,19 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
         raise AssertionError(
             f"benchmark efficiency findings must include missing real evidence: {findings}"
         )
+    if not all(item.get("next_command") for item in findings):
+        raise AssertionError(
+            f"benchmark efficiency findings must include row-level commands: {findings}"
+        )
+    joined = "\n".join(findings[0].get("next_commands", []))
+    for token in (
+        "benchmarks/run_benchmarks.py run",
+        "capture_e1_npu_nnapi_evidence.sh",
+        "capture_cpu_ap_evidence.py intake ap-benchmarks",
+        "check_benchmark_efficiency_scope.py",
+    ):
+        if token not in joined:
+            raise AssertionError(f"benchmark finding commands missing {token!r}: {joined}")
     print("PASS structured benchmark efficiency findings cover blocked real evidence")
 
 
@@ -106,6 +119,24 @@ def test_capture_command_removal_fails() -> None:
     print("PASS capture command removal rejected")
 
 
+def test_generated_ap_benchmark_command_plan_is_checked() -> None:
+    report = check_benchmark_efficiency_scope.build_report()
+    plans = report.get("next_command_plan", [])
+    if len(plans) != 1:
+        raise AssertionError(f"expected one generated-AP command plan: {plans!r}")
+    plan = plans[0]
+    if plan.get("claim_boundary") != check_benchmark_efficiency_scope.GENERATED_AP_CLAIM_BOUNDARY:
+        raise AssertionError(f"generated-AP claim boundary drifted: {plan!r}")
+    command_text = "\n".join(str(item) for item in plan.get("commands", []))
+    for snippet in check_benchmark_efficiency_scope.REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS:
+        if snippet not in command_text:
+            raise AssertionError(f"generated-AP command plan missing {snippet!r}: {plan!r}")
+    mutated = copy.deepcopy(report)
+    mutated["next_command_plan"][0]["commands"] = ["scripts/build_firemarshal_eliza_ap_benchmarks_payload.sh"]
+    expect_error(mutated, "capture_cpu_ap_evidence.py intake ap-benchmarks")
+    print("PASS generated-AP benchmark command plan checked")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
@@ -115,6 +146,7 @@ def main() -> None:
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
     test_capture_command_removal_fails()
+    test_generated_ap_benchmark_command_plan_is_checked()
 
 
 if __name__ == "__main__":

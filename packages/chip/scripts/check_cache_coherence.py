@@ -136,6 +136,20 @@ def check_lint(verilator: str) -> dict:
     }
 
 
+def summarize_junit_results(results: Path) -> tuple[set[str], list[str]]:
+    tree = ET.parse(results)
+    seen: set[str] = set()
+    failed: list[str] = []
+    for tc in tree.iter("testcase"):
+        name = tc.get("name", "")
+        seen.add(name)
+        for tag in ("failure", "error", "skipped"):
+            if tc.find(tag) is not None:
+                failed.append(f"{name}<{tag}>")
+                break
+    return seen, failed
+
+
 def run_cocotb(spec: dict) -> dict:
     results = COCOTB_DIR / spec["results"]
     if results.exists():
@@ -161,13 +175,7 @@ def run_cocotb(spec: dict) -> dict:
             "status": "blocked",
             "detail": f"no {spec['results']}; cocotb/verilator unavailable. {last}",
         }
-    tree = ET.parse(results)
-    seen, failed = set(), []
-    for tc in tree.iter("testcase"):
-        name = tc.get("name", "")
-        seen.add(name)
-        if tc.find("failure") is not None or tc.find("error") is not None:
-            failed.append(name)
+    seen, failed = summarize_junit_results(results)
     missing = [t for t in spec["expected"] if t not in seen]
     if failed or missing:
         return {

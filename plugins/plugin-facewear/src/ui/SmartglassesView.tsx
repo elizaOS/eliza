@@ -1,3 +1,4 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   BatteryCharging,
   Bluetooth,
@@ -11,7 +12,6 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   type DisplayPage,
@@ -702,7 +702,8 @@ export function SmartglassesView() {
       label: "Connect Headset",
       group: "setup",
       status: headsetConnected ? "active" : "inactive",
-      description: "Pair both left and right smartglasses lenses as one headset",
+      description:
+        "Pair both left and right smartglasses lenses as one headset",
     });
   const { ref: runCheckRef, agentProps: runCheckAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -1605,6 +1606,7 @@ function PlatformTabButton({
   isActive,
   onSelect,
 }: {
+  key?: PlatformKey;
   platformKey: PlatformKey;
   isActive: boolean;
   onSelect: (key: PlatformKey) => void;
@@ -1627,9 +1629,7 @@ function PlatformTabButton({
       aria-current={isActive ? "page" : undefined}
       aria-label={`${label} platform`}
       className={`h-8 rounded px-2 text-xs font-medium ${
-        isActive
-          ? "bg-bg text-txt shadow-sm"
-          : "text-muted hover:text-txt"
+        isActive ? "bg-bg text-txt shadow-sm" : "text-muted hover:text-txt"
       }`}
       {...agentProps}
     >

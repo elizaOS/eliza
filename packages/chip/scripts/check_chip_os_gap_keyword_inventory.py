@@ -102,6 +102,9 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         re.I,
     ),
     re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
+    re.compile(r"^packages/chip/docs/security/tee-plan/.*\.md$", re.I),
+    re.compile(r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I),
+    re.compile(r"^packages/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
 )
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
@@ -127,6 +130,12 @@ CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
     re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
 )
 CLASSIFIED_GENERATOR_PATH_PATTERNS = (re.compile(r"^packages/chip/scripts/generate_[^/]+\.py$"),)
+CLASSIFIED_OPERATOR_DOC_PATH_PATTERNS = (
+    re.compile(
+        r"^packages/chip/docs/(?:android|arch|sw|toolchain|benchmarks|npu|pd)/.*\.(?:md|yaml|yml)$",
+        re.I,
+    ),
+)
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
     r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
@@ -141,6 +150,27 @@ CLASSIFIED_GENERATOR_LINE_RE = re.compile(
     r"non[-_]release|evidence_class|demo|template|generated|generator|"
     r"placeholder|remain(?:s)? blocked|not yet|"
     r"scaffold files|concept/scaffold|Replace .*placeholder|Not fabrication-bound"
+    r")",
+    re.I,
+)
+CLASSIFIED_OPERATOR_DOC_LINE_RE = re.compile(
+    r"("
+    r"fail[- ]closed scaffold|repo[- ]local scaffold check|"
+    r"scaffold audit|explicit stub rationale|no stub may fake|"
+    r"return unsupported when (?:the )?(?:device node|hardware|backend).*absent|"
+    r"unsupported operations without crashing|unsupported access paths fail closed|"
+    r"not .* evidence|not .* implementation|"
+    r"not yet (?:complete|locally covered|run)|does not yet (?:prove|run)|"
+    r"(?:is |are )?blocked until .* evidence|"
+    r"evidence blocked|remains? blocked|placeholder files do not close this gate|"
+    r"claim(?:s)? remain(?:s)? blocked until|must block until|"
+    r"before .* replace the scaffold|must .* before .* readiness claim|"
+    r"no .* claim may rely on this scaffold|"
+    r"test scaffold until generated|non[- ]Linux scaffold|"
+    r"fail[- ]closed on unsupported|poll for unsupported bits|"
+    r"non[- ]claiming scaffold checks|"
+    r"scaffold map|control scaffold|scaffold accesses|scaffold routes|"
+    r"virtual[- ]device smoke|operator guide|capture plan"
     r")",
     re.I,
 )
@@ -199,6 +229,35 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         ),
     ),
 )
+
+GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_gap_keyword_inventory.py"
+
+
+def cleanup_commands(path: Path, line_number: int) -> list[str]:
+    path_text = rel(path)
+    parts = set(path.parts)
+    commands = [
+        f"${{EDITOR:-vi}} +{line_number} {path_text}",
+    ]
+    lower_path = path_text.lower()
+    if "npu" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_npu_scope.py")
+    if "benchmark" in lower_path or "benchmarks" in parts:
+        commands.append("python3 packages/chip/scripts/check_benchmark_efficiency_scope.py")
+    if "cpu_ap" in lower_path or "chipyard" in lower_path or "riscv" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_cpu_ap_scope.py")
+    if "android" in parts or "aosp" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_android_sim_boot.py")
+    if "linux" in parts or "elizaos" in parts:
+        commands.append("python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only")
+    if "runtime" in lower_path or "peripheral" in lower_path:
+        commands.append("python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py")
+    commands.append(GENERIC_RECHECK_COMMAND)
+    deduped: list[str] = []
+    for command in commands:
+        if command not in deduped:
+            deduped.append(command)
+    return deduped
 
 
 def utc_now() -> str:
@@ -325,6 +384,18 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
     return bool(CLASSIFIED_GENERATOR_LINE_RE.search(stripped))
 
 
+def is_classified_operator_doc_line(path: Path, line: str) -> bool:
+    relative = rel(path)
+    if not any(pattern.search(relative) for pattern in CLASSIFIED_OPERATOR_DOC_PATH_PATTERNS):
+        return False
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if re.match(r"^(?:make|python3|scripts/)[\w./ -]+$", stripped):
+        return True
+    return bool(CLASSIFIED_OPERATOR_DOC_LINE_RE.search(stripped))
+
+
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for category, description, pattern in PATTERNS:
@@ -335,11 +406,14 @@ def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any
             continue
         if is_classified_generator_line(path, line):
             continue
+        if is_classified_operator_doc_line(path, line):
+            continue
         if any(
             benign_category == category and benign_pattern.search(line)
             for benign_category, benign_pattern in BENIGN_LINE_PATTERNS
         ):
             continue
+        commands = cleanup_commands(path, line_number)
         findings.append(
             {
                 "category": category,
@@ -354,6 +428,8 @@ def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any
                     "completing the implementation before using it as boot, launcher, "
                     "agent, or release evidence."
                 ),
+                "next_command": commands[0],
+                "next_commands": commands,
             }
         )
     return findings
@@ -381,6 +457,10 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_category = Counter(str(item["category"]) for item in findings)
     by_path = Counter(str(item["path"]) for item in findings)
     by_root = scan_root_summary(findings, roots)
+    command_batches = {
+        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
+        for item in findings
+    }
     status = "blocked" if findings else "pass"
     return {
         "schema": SCHEMA,
@@ -394,6 +474,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
             "findings": len(findings),
             "categories": dict(sorted(by_category.items())),
             "paths_with_findings": len(by_path),
+            "next_command_batch_count": len(command_batches),
         },
         "scan_roots": roots,
         "scan_root_summary": by_root,

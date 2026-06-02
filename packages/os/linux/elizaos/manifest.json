@@ -1,5 +1,5 @@
 {
-  "id": "elizaos-linux-riscv64-gui-20260527t181540z",
+  "id": "elizaos-linux-riscv64-gui-20260531t150921z",
   "kind": "raw-image",
   "target": {
     "platform": "linux",
@@ -8,11 +8,11 @@
     "hypervisor": "qemu",
     "firmware": "GRUB EFI RISC-V"
   },
-  "filename": "elizaos-linux-riscv64-gui-20260527T181540Z.iso",
+  "filename": "elizaos-linux-riscv64-gui-20260531T150921Z.iso",
   "downloadUrl": null,
   "status": "candidate",
-  "sizeBytes": 926879744,
-  "sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7",
+  "sizeBytes": 908881920,
+  "sha256": "3db0d432dae2959dc0ef800cdfcf84908cf8a5f7d8420ae45fd716c5d995c0b2",
   "signature": {
     "status": "pending",
     "url": null

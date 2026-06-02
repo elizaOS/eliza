@@ -28,11 +28,10 @@ function makeRuntime(env: Record<string, string>): ModelUsageEventPayload["runti
   } as ModelUsageEventPayload["runtime"];
 }
 
-function requireInferencePayload(
-  payload: ReturnType<typeof buildInferenceSpentPayload>
-): NonNullable<ReturnType<typeof buildInferenceSpentPayload>> {
+function requireInferenceSpentPayload(payload: ReturnType<typeof buildInferenceSpentPayload>) {
+  expect(payload).not.toBeNull();
   if (!payload) {
-    throw new Error("expected inference payload to be built");
+    throw new Error("expected inference spent payload");
   }
   return payload;
 }
@@ -204,14 +203,14 @@ describe("postInferenceSpent", () => {
       CONFIG,
       makePayload({ prompt: 100, completion: 50 }, { costUsd: 0.01 })
     );
-    const inferencePayload = requireInferencePayload(payload);
-    const result = await postInferenceSpent(CONFIG, inferencePayload, fakeFetch);
+    const spentPayload = requireInferenceSpentPayload(payload);
+    const result = await postInferenceSpent(CONFIG, spentPayload, fakeFetch);
 
     expect(result.ok).toBe(true);
     expect(calls).toHaveLength(1);
     const sentBody = String(calls[0].init.body);
     const headers = calls[0].init.headers as Record<string, string>;
-    const expectedSig = signWaifuWebhook(sentBody, inferencePayload.timestamp, CONFIG.secret);
+    const expectedSig = signWaifuWebhook(sentBody, spentPayload.timestamp, CONFIG.secret);
     expect(headers["X-Waifu-Webhook-Signature"]).toBe(expectedSig);
     // Only the canonical header is sent; the legacy duplicate is dropped.
     expect(headers["X-Waifu-Signature"]).toBeUndefined();
@@ -225,7 +224,7 @@ describe("postInferenceSpent", () => {
     }) as unknown as typeof fetch;
 
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 10, completion: 5 }));
-    await postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch);
+    await postInferenceSpent(CONFIG, requireInferenceSpentPayload(payload), fakeFetch);
     expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -237,7 +236,7 @@ describe("postInferenceSpent", () => {
     }) as unknown as typeof fetch;
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 1, completion: 1 }));
     await expect(
-      postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch)
+      postInferenceSpent(CONFIG, requireInferenceSpentPayload(payload), fakeFetch)
     ).resolves.toMatchObject({
       ok: false,
     });
@@ -249,7 +248,7 @@ describe("postInferenceSpent", () => {
     }) as unknown as typeof fetch;
     const payload = buildInferenceSpentPayload(CONFIG, makePayload({ prompt: 1, completion: 1 }));
     await expect(
-      postInferenceSpent(CONFIG, requireInferencePayload(payload), fakeFetch)
+      postInferenceSpent(CONFIG, requireInferenceSpentPayload(payload), fakeFetch)
     ).resolves.toMatchObject({
       ok: false,
     });

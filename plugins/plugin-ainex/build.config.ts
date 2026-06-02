@@ -9,5 +9,7 @@ export default defineConfig({
   clean: true,
   target: "node22",
   fixedExtension: false,
-  external: ["@elizaos/core", "ws", "zod", "sharp"],
+  deps: {
+    neverBundle: ["@elizaos/core", "ws", "zod", "sharp"],
+  },
 });

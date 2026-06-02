@@ -8,6 +8,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/arch/e1x-dft.md"
 REPORT = ROOT / "build/reports/e1x_dft_strategy.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "atpg_coverage_claim_allowed": False,
+    "scan_signoff_claim_allowed": False,
+}
 
 REQUIRED_SECTIONS = (
     "## Scope and Fail-Closed Boundary",
@@ -114,6 +124,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X DFT strategy document completeness gate only. It couples the SECDED ECC "
             "and March C- MBIST RTL/cocotb evidence to the fail-closed foundry scan/ATPG "
