@@ -16,7 +16,7 @@ const FONTS: ThemeFont[] = ["mono", "sans", "serif"];
 const DENSITIES: ThemeDensity[] = ["compact", "comfortable", "spacious"];
 type CustomKey = "bg" | "fg" | "panel" | "border" | "red";
 const CUSTOM_KEYS: CustomKey[] = ["bg", "fg", "panel", "border", "red"];
-const BG_PATTERNS = ["none", "dots", "sparkles"] as const;
+const BG_PATTERNS = ["none", "dots", "sparkles", "petals"] as const;
 
 export function ThemeMenu({
   open,

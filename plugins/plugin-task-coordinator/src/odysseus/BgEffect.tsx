@@ -6,12 +6,13 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
-type CanvasPattern = "sparkles";
+type CanvasPattern = "sparkles" | "petals";
 const ANIMATIONS: Record<
   CanvasPattern,
   (canvas: HTMLCanvasElement) => () => void
 > = {
   sparkles: runSparkles,
+  petals: runPetals,
 };
 
 function effectColor(canvas: HTMLCanvasElement): string {
@@ -98,7 +99,101 @@ function runSparkles(canvas: HTMLCanvasElement): () => void {
   };
 }
 
-export const CANVAS_BG_PATTERNS: CanvasPattern[] = ["sparkles"];
+// Verbatim port of odysseus theme.js _initPetals — gentle falling petals.
+function runPetals(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0;
+  let h = 0;
+  const petals: {
+    x: number;
+    y: number;
+    size: number;
+    rot: number;
+    vr: number;
+    vy: number;
+    drift: number;
+    driftSpeed: number;
+    wobble: number;
+  }[] = [];
+  const make = () => ({
+    x: Math.random() * w,
+    y: -10 - Math.random() * 40,
+    size: 3 + Math.random() * 5,
+    rot: Math.random() * Math.PI * 2,
+    vr: (Math.random() - 0.5) * 0.03,
+    vy: 0.3 + Math.random() * 0.6,
+    drift: Math.random() * Math.PI * 2,
+    driftSpeed: 0.008 + Math.random() * 0.012,
+    wobble: 0.3 + Math.random() * 0.8,
+  });
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (petals.length === 0)
+      for (let i = 0; i < 30; i++) {
+        const p = make();
+        p.y = Math.random() * h;
+        petals.push(p);
+      }
+  };
+  resize();
+  window.addEventListener("resize", resize);
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, w, h);
+    const c = effectColor(canvas);
+    for (const p of petals) {
+      p.y += p.vy;
+      p.rot += p.vr;
+      p.drift += p.driftSpeed;
+      p.x += Math.sin(p.drift) * p.wobble;
+      if (p.y > h + 15) Object.assign(p, make());
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.ellipse(
+        -p.size * 0.2,
+        0,
+        p.size * 0.6,
+        p.size * 0.3,
+        0.3,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.ellipse(
+        p.size * 0.2,
+        0,
+        p.size * 0.6,
+        p.size * 0.3,
+        -0.3,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+  };
+}
+
+export const CANVAS_BG_PATTERNS: CanvasPattern[] = ["sparkles", "petals"];
 
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {
   const ref = useRef<HTMLCanvasElement>(null);
