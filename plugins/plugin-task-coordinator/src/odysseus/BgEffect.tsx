@@ -11,7 +11,9 @@ type CanvasPattern =
   | "petals"
   | "rain"
   | "constellations"
-  | "embers";
+  | "embers"
+  | "synapse"
+  | "perlin";
 const ANIMATIONS: Record<
   CanvasPattern,
   (canvas: HTMLCanvasElement) => () => void
@@ -21,6 +23,8 @@ const ANIMATIONS: Record<
   rain: runRain,
   constellations: runConstellations,
   embers: runEmbers,
+  synapse: runSynapse,
+  perlin: runPerlin,
 };
 
 function hexRgba(hex: string, a: number): string {
@@ -28,6 +32,25 @@ function hexRgba(hex: string, a: number): string {
   if (h.length < 6) return `rgba(156,222,242,${a})`;
   const n = Number.parseInt(h.slice(0, 6), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+// Value-noise helpers ported from odysseus theme.js (_bgNoise2d / _bgSmoothNoise).
+function bgNoise2d(x: number, y: number): number {
+  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+function bgSmoothNoise(x: number, y: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const a = bgNoise2d(ix, iy);
+  const b = bgNoise2d(ix + 1, iy);
+  const cc = bgNoise2d(ix, iy + 1);
+  const d = bgNoise2d(ix + 1, iy + 1);
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  return a + (b - a) * ux + (cc - a) * uy + (a - b - cc + d) * ux * uy;
 }
 
 function effectColor(canvas: HTMLCanvasElement): string {
@@ -467,12 +490,167 @@ function runEmbers(canvas: HTMLCanvasElement): () => void {
   };
 }
 
+// Verbatim port of odysseus theme.js _initSynapse — grid pulses with trails.
+function runSynapse(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const GRID = 24;
+  const MAX_PULSES = 20;
+  const SPEED_MIN = 2;
+  const SPEED_MAX = 22;
+  const TRAIL_LEN = 12;
+  let w = 0;
+  let h = 0;
+  let cols = 0;
+  let rows = 0;
+  const pulses: { x: number; y: number; dx: number; dy: number }[] = [];
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.ceil(w / GRID);
+    rows = Math.ceil(h / GRID);
+  };
+  resize();
+  window.addEventListener("resize", resize);
+  const spawn = () => {
+    const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
+    if (Math.random() > 0.5)
+      pulses.push({
+        x: -TRAIL_LEN,
+        y: Math.floor(Math.random() * (rows + 1)) * GRID,
+        dx: speed,
+        dy: 0,
+      });
+    else
+      pulses.push({
+        x: Math.floor(Math.random() * (cols + 1)) * GRID,
+        y: -TRAIL_LEN,
+        dx: 0,
+        dy: speed,
+      });
+  };
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, w, h);
+    const c = effectColor(canvas);
+    if (pulses.length < MAX_PULSES && Math.random() < 0.12) spawn();
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const p = pulses[i];
+      p.x += p.dx;
+      p.y += p.dy;
+      if (p.x > w + TRAIL_LEN || p.y > h + TRAIL_LEN) {
+        pulses.splice(i, 1);
+        continue;
+      }
+      const tx = p.x - (p.dx > 0 ? TRAIL_LEN : 0);
+      const ty = p.y - (p.dy > 0 ? TRAIL_LEN : 0);
+      const grad = ctx.createLinearGradient(tx, ty, p.x, p.y);
+      grad.addColorStop(0, "transparent");
+      grad.addColorStop(1, c);
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+  };
+}
+
+// Verbatim port of odysseus theme.js _initPerlinFlow — noise-driven particle streams.
+function runPerlin(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0;
+  let h = 0;
+  let t = 0;
+  const particles: { x: number; y: number; life: number }[] = [];
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (particles.length === 0)
+      for (let i = 0; i < 200; i++)
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          life: Math.random(),
+        });
+  };
+  resize();
+  window.addEventListener("resize", resize);
+  const fade = () => {
+    const bg =
+      getComputedStyle(canvas).getPropertyValue("--bg").trim() || "#282c34";
+    const hh = bg.replace("#", "");
+    if (hh.length < 6) return "rgba(40,44,52,0.02)";
+    const n = Number.parseInt(hh.slice(0, 6), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.02)`;
+  };
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    ctx.fillStyle = fade();
+    ctx.fillRect(0, 0, w, h);
+    const c = effectColor(canvas);
+    for (const p of particles) {
+      const angle =
+        bgSmoothNoise(p.x * 0.004 + t * 0.0008, p.y * 0.004 + 100) *
+        Math.PI *
+        6;
+      const speed = 1 + bgSmoothNoise(p.x * 0.003, p.y * 0.003 + 50) * 1.5;
+      p.x += Math.cos(angle) * speed;
+      p.y += Math.sin(angle) * speed;
+      p.life -= 0.001;
+      if (p.life <= 0 || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
+        p.x = Math.random() * w;
+        p.y = Math.random() * h;
+        p.life = 1;
+      }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+      ctx.fillStyle = c;
+      ctx.globalAlpha = p.life * 0.15;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    t++;
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+  };
+}
+
 export const CANVAS_BG_PATTERNS: CanvasPattern[] = [
   "sparkles",
   "petals",
   "rain",
   "constellations",
   "embers",
+  "synapse",
+  "perlin",
 ];
 
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {
