@@ -6365,4 +6365,496 @@ export const ODYSSEUS_CSS = `
   color:color-mix(in srgb, var(--fg) 65%, transparent);
   font-size:11px; margin-top:4px; white-space:pre-wrap;
   max-height:60px; overflow:hidden; }
+
+
+/* ===== wave5: VoiceView ===== */
+/* ── Voice & speech panel (odysseus tts-ai.js + voiceRecorder.js + the
+   #recording-indicator / #mic-btn rules in style.css). Appended to ODYSSEUS_CSS
+   in odysseus-theme.ts. Reuses .od-search-overlay/.od-search-backdrop/
+   .od-search-panel/.od-mem-head/.od-mem-title/.od-mem-stats already in
+   ODYSSEUS_CSS — only voice-specific rules below, all scoped .odysseus-root. ── */
+.odysseus-root .od-search-panel.od-voice-panel { width:460px; }
+.odysseus-root .od-voice-section { padding:14px 16px;
+  border-top:1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-voice-section:first-of-type { border-top:none; }
+.odysseus-root .od-voice-section-head { display:flex; align-items:center; gap:7px;
+  font-size:12px; font-weight:600; color:var(--fg); margin-bottom:10px; }
+.odysseus-root .od-voice-section-head svg { color:color-mix(in srgb, var(--fg) 60%, transparent); }
+
+/* TTS provider/voice field */
+.odysseus-root .od-voice-field { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.odysseus-root .od-voice-label { font-size:11px; color:color-mix(in srgb, var(--fg) 55%, transparent);
+  min-width:40px; }
+.odysseus-root .od-voice-select { flex:1; padding:7px 9px; background:var(--bg); color:var(--fg);
+  border:1px solid var(--border); border-radius:6px; font-size:12px; outline:none;
+  font-family:inherit; cursor:pointer; }
+.odysseus-root .od-voice-select:focus { border-color:color-mix(in srgb, var(--fg) 45%, transparent); }
+
+.odysseus-root .od-voice-tts-input { width:100%; box-sizing:border-box; min-height:60px; resize:vertical;
+  padding:9px 11px; background:var(--bg); color:var(--fg); border:1px solid var(--border);
+  border-radius:8px; font-size:13px; font-family:inherit; line-height:1.45; outline:none; }
+.odysseus-root .od-voice-tts-input::placeholder { color:color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-voice-tts-input:focus { border-color:color-mix(in srgb, var(--fg) 45%, transparent); }
+
+.odysseus-root .od-voice-tts-controls { display:flex; gap:8px; margin-top:10px; }
+.odysseus-root .od-voice-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 13px;
+  border-radius:7px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid var(--border);
+  background:var(--bg); color:var(--fg); transition:background .15s ease, border-color .15s ease, opacity .15s ease; }
+.odysseus-root .od-voice-btn:hover { background:color-mix(in srgb, var(--fg) 7%, transparent);
+  border-color:color-mix(in srgb, var(--fg) 40%, transparent); }
+.odysseus-root .od-voice-btn:disabled { opacity:.4; cursor:not-allowed; }
+.odysseus-root .od-voice-btn-speak { border-color:color-mix(in srgb, var(--accent, var(--fg)) 55%, transparent);
+  color:var(--accent, var(--fg)); }
+.odysseus-root .od-voice-btn-stop { border-color:var(--color-recording, var(--red));
+  color:var(--color-recording, var(--red)); }
+
+/* honest disabled state (no voice backend attached) */
+.odysseus-root .od-voice-disabled { display:flex; flex-direction:column; align-items:center; gap:6px;
+  text-align:center; padding:18px 12px; color:color-mix(in srgb, var(--fg) 50%, transparent); }
+.odysseus-root .od-voice-disabled svg { color:color-mix(in srgb, var(--fg) 35%, transparent); margin-bottom:2px; }
+.odysseus-root .od-voice-disabled-title { font-size:13px; font-weight:600;
+  color:color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-voice-disabled-sub { font-size:11.5px; line-height:1.5; max-width:300px; }
+
+.odysseus-root .od-voice-status-row { display:flex; align-items:center; gap:8px; padding:8px 0;
+  font-size:12px; color:color-mix(in srgb, var(--fg) 55%, transparent); }
+.odysseus-root .od-voice-spin { animation:od-voice-spin .8s linear infinite; }
+@keyframes od-voice-spin { to { transform:rotate(360deg); } }
+
+/* recorder row: mic button + waveform meter + MM:SS timer */
+.odysseus-root .od-voice-recorder { display:flex; align-items:center; gap:12px; }
+.odysseus-root .od-voice-mic { flex-shrink:0; width:44px; height:44px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+  background:var(--bg); color:var(--fg); border:1px solid var(--border);
+  transition:background .2s ease, border-color .2s ease, color .2s ease; }
+.odysseus-root .od-voice-mic:hover { background:color-mix(in srgb, var(--fg) 6%, transparent);
+  border-color:var(--fg); }
+.odysseus-root .od-voice-mic.recording { background:var(--color-recording, var(--red)); color:#fff;
+  border-color:var(--color-recording, var(--red)); animation:od-voice-pulse 1.5s infinite; }
+@keyframes od-voice-pulse { 0% { opacity:1; } 50% { opacity:.7; } 100% { opacity:1; } }
+
+.odysseus-root .od-voice-wave { flex:1; display:flex; align-items:center; gap:2px; height:40px;
+  padding:0 4px; overflow:hidden; }
+.odysseus-root .od-voice-wave-bar { flex:1; min-width:2px; border-radius:2px;
+  background:color-mix(in srgb, var(--fg) 35%, transparent); transition:height .08s linear; }
+.odysseus-root .od-voice-mic.recording ~ .od-voice-wave .od-voice-wave-bar {
+  background:color-mix(in srgb, var(--color-recording, var(--red)) 75%, transparent); }
+.odysseus-root .od-voice-timer { flex-shrink:0; font-variant-numeric:tabular-nums; font-size:13px;
+  color:color-mix(in srgb, var(--fg) 60%, transparent); min-width:42px; text-align:right; }
+
+.odysseus-root .od-voice-rec-indicator { display:flex; align-items:center; gap:8px; margin-top:10px;
+  font-size:12px; font-weight:500; color:var(--color-recording, var(--red)); }
+.odysseus-root .od-voice-rec-dot { width:9px; height:9px; border-radius:50%;
+  background:var(--color-recording, var(--red)); animation:od-voice-pulse 1.5s infinite; }
+
+.odysseus-root .od-voice-transcript { margin-top:10px; padding:10px 12px; border-radius:8px;
+  background:color-mix(in srgb, var(--fg) 4%, transparent); border:1px solid var(--border);
+  font-size:13px; line-height:1.5; color:var(--fg); white-space:pre-wrap; }
+.odysseus-root .od-voice-interim { color:color-mix(in srgb, var(--fg) 45%, transparent); font-style:italic; }
+.odysseus-root .od-voice-hint { margin-top:10px; font-size:11.5px; line-height:1.5;
+  color:color-mix(in srgb, var(--fg) 45%, transparent); }
+
+.odysseus-root .od-voice-err { display:flex; align-items:center; gap:6px; margin-top:10px;
+  font-size:12px; color:var(--red); }
+.odysseus-root .od-voice-err svg { flex-shrink:0; }
+/* ===== wave5: PresetsPanel ===== */
+/* ===== PresetsPanel (odysseus static/js/presets.js + .preset-* in style.css) ===== */
+/* Reuses the shared .od-search-overlay / .od-search-backdrop / .od-search-panel
+   chrome and the .od-mem-head / .od-mem-title / .od-mem-stats header (same as
+   NotesPanel/MemoryPanel). Only preset-specific rules below, scoped to
+   .odysseus-root. Sliders/temp-hints/section labels are ported 1:1 from
+   odysseus's .preset-range / .preset-temp-hints / .preset-section-header. */
+
+/* Panel: a touch wider + capped height so the list + footer fit a tall library. */
+.odysseus-root .od-search-panel.od-presets-panel {
+  width: 600px;
+  max-width: 92%;
+  display: flex;
+  flex-direction: column;
+  max-height: 78vh;
+}
+
+/* Toolbar: active-preset tag (left) + New-preset button (right). */
+.odysseus-root .od-preset-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 16px 10px;
+}
+.odysseus-root .od-preset-active-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok, var(--accent));
+}
+.odysseus-root .od-preset-active-tag.od-preset-active-none {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-weight: 500;
+}
+.odysseus-root .od-preset-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.odysseus-root .od-preset-new-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  color: var(--accent);
+}
+
+/* Preset list rows. */
+.odysseus-root .od-preset-list {
+  flex: 1;
+  min-height: 80px;
+}
+.odysseus-root .od-preset-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.odysseus-root .od-preset-item.active {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.odysseus-root .od-preset-info {
+  flex: 1;
+  min-width: 0;
+}
+.odysseus-root .od-preset-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 3px;
+}
+.odysseus-root .od-preset-badge {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-weight: 600;
+}
+.odysseus-root .od-preset-prompt {
+  font-size: 11px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.odysseus-root .od-preset-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-preset-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.odysseus-root .od-preset-activate {
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.odysseus-root .od-preset-activate:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+.odysseus-root .od-preset-activate.on {
+  border-color: var(--ok, var(--accent));
+  color: var(--ok, var(--accent));
+  background: color-mix(in srgb, var(--ok, var(--accent)) 12%, transparent);
+}
+.odysseus-root .od-preset-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.odysseus-root .od-preset-icon-btn:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.odysseus-root .od-preset-icon-btn.od-preset-del:hover {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+/* Footer honesty note. */
+.odysseus-root .od-preset-foot {
+  flex-shrink: 0;
+  padding: 10px 16px 13px;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+  font-size: 11px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* ── Editor (create / edit) — ports .preset-slider-row / .preset-range /
+   .preset-temp-hints / .preset-save-template-btn ── */
+.odysseus-root .od-preset-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 16px 16px;
+  overflow-y: auto;
+}
+.odysseus-root .od-preset-field {
+  display: flex;
+  flex-direction: column;
+}
+.odysseus-root .od-preset-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0 0 5px;
+}
+.odysseus-root .od-preset-input {
+  width: 100%;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+.odysseus-root .od-preset-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.odysseus-root .od-preset-textarea {
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+  box-sizing: border-box;
+}
+.odysseus-root .od-preset-textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.odysseus-root .od-preset-slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-preset-slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  min-width: 56px;
+  text-align: right;
+}
+.odysseus-root .od-preset-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  display: block;
+  cursor: pointer;
+}
+.odysseus-root .od-preset-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--red, var(--fg));
+  cursor: pointer;
+  border: 2px solid var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.odysseus-root .od-preset-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--red, var(--fg));
+  cursor: pointer;
+  border: 2px solid var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.odysseus-root .od-preset-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 4px;
+}
+.odysseus-root .od-preset-range::-moz-range-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 4px;
+}
+.odysseus-root .od-preset-temp-hints {
+  display: flex;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  margin-top: 5px;
+  padding: 0 2px;
+  opacity: 0.8;
+}
+.odysseus-root .od-preset-temp-hints span {
+  flex: 1;
+}
+.odysseus-root .od-preset-temp-hints span:nth-child(2) {
+  text-align: center;
+}
+.odysseus-root .od-preset-temp-hints span:last-child {
+  text-align: right;
+}
+.odysseus-root .od-preset-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+.odysseus-root .od-preset-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.odysseus-root .od-preset-cancel-btn:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+.odysseus-root .od-preset-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.odysseus-root .od-preset-save-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.odysseus-root .od-preset-save-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* ===== wave5: EmojiPicker ===== */
+/* ===== EmojiPicker — composer popover (odysseus static/js/emojiPicker.js +
+   .emoji-* rules in static/style.css). Anchored ABOVE the composer like the
+   slash-autocomplete popup (.od-slash-ac uses the same bottom:calc(100%+6px)
+   trick), scoped under .odysseus-root, theme-var driven. Append to ODYSSEUS_CSS
+   in odysseus-theme.ts, in the "sync: Composer" section next to .od-slash-ac. */
+
+/* The popover shell. The composer (.od-input-bar) is already position:relative,
+   so this docks above-left of the emoji icon button. anchorClassName can pin it
+   elsewhere if a caller wants. */
+.odysseus-root .od-emoji-popover { position:absolute; bottom:calc(100% + 6px); left:0; z-index:9000;
+  width:332px; max-width:calc(100vw - 24px); background:var(--panel, var(--bg));
+  border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.4);
+  display:flex; flex-direction:column; overflow:hidden; color:var(--fg); }
+
+/* Search row */
+.odysseus-root .od-emoji-search { display:flex; align-items:center; gap:6px; padding:8px 10px;
+  border-bottom:1px solid var(--border); }
+.odysseus-root .od-emoji-search-icon { color:var(--muted); flex-shrink:0; }
+.odysseus-root .od-emoji-search-input { flex:1; min-width:0; background:transparent; border:none;
+  outline:none; font-size:13px; font-family:inherit; color:var(--fg); padding:2px 0; }
+.odysseus-root .od-emoji-search-input::placeholder { color:color-mix(in srgb, var(--fg) 35%, transparent); }
+
+/* Category tab strip */
+.odysseus-root .od-emoji-tabs { display:flex; align-items:center; gap:2px; padding:4px 6px;
+  border-bottom:1px solid var(--border); overflow-x:auto; }
+.odysseus-root .od-emoji-tab { flex:0 0 auto; width:30px; height:30px; display:flex; align-items:center;
+  justify-content:center; background:none; border:none; border-radius:6px; cursor:pointer;
+  font-size:17px; line-height:1; color:color-mix(in srgb, var(--fg) 55%, transparent);
+  transition:background .12s, color .12s; }
+.odysseus-root .od-emoji-tab:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); color:var(--fg); }
+.odysseus-root .od-emoji-tab.active { background:color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  color:var(--accent, var(--red)); }
+
+/* Scrollable body + grid */
+.odysseus-root .od-emoji-body { max-height:260px; overflow-y:auto; padding:6px 8px 8px; }
+.odysseus-root .od-emoji-section-label { font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); padding:6px 2px 4px; opacity:.7; }
+.odysseus-root .od-emoji-grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; }
+.odysseus-root .od-emoji-cell { width:100%; aspect-ratio:1; display:flex; align-items:center;
+  justify-content:center; background:none; border:none; border-radius:6px; cursor:pointer;
+  font-size:20px; line-height:1; padding:0; transition:background .1s; }
+.odysseus-root .od-emoji-cell:hover { background:color-mix(in srgb, var(--accent, var(--red)) 16%, transparent); }
+
+/* Honest empty state (no keyword match) */
+.odysseus-root .od-emoji-empty { display:flex; flex-direction:column; align-items:center; gap:8px;
+  padding:28px 12px; color:var(--muted); font-size:12px; text-align:center; }
+
+/* Scrollbar to match the rest of the odysseus surfaces */
+.odysseus-root .od-emoji-body::-webkit-scrollbar,
+.odysseus-root .od-emoji-tabs::-webkit-scrollbar { width:8px; height:8px; }
+.odysseus-root .od-emoji-body::-webkit-scrollbar-thumb,
+.odysseus-root .od-emoji-tabs::-webkit-scrollbar-thumb {
+  background:color-mix(in srgb, var(--fg) 18%, transparent); border-radius:4px; }
 `;

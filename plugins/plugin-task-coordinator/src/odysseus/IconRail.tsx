@@ -16,11 +16,13 @@ import {
   Mail,
   MessageSquare,
   MessagesSquare,
+  Mic,
   Palette,
   PanelLeft,
   Pencil,
   Settings,
   ShieldAlert,
+  SlidersHorizontal,
   StickyNote,
   Zap,
 } from "lucide-react";
@@ -45,6 +47,8 @@ export function IconRail({
   onOpenEditor,
   onOpenGroup,
   onOpenAdmin,
+  onOpenVoice,
+  onOpenPresets,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
@@ -64,6 +68,8 @@ export function IconRail({
   onOpenEditor: () => void;
   onOpenGroup: () => void;
   onOpenAdmin: () => void;
+  onOpenVoice: () => void;
+  onOpenPresets: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -213,6 +219,24 @@ export function IconRail({
         aria-label="Admin"
       >
         <ShieldAlert size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenVoice}
+        title="Voice"
+        aria-label="Voice"
+      >
+        <Mic size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenPresets}
+        title="Presets"
+        aria-label="Presets"
+      >
+        <SlidersHorizontal size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button

@@ -48,6 +48,7 @@ import {
   type ThemePalette,
   themeVars,
 } from "./odysseus-theme";
+import { PresetsPanel } from "./PresetsPanel";
 import { ResearchView } from "./ResearchView";
 import { SearchPalette } from "./SearchPalette";
 import { SessionSidebar } from "./SessionSidebar";
@@ -56,6 +57,7 @@ import { SkillsPanel } from "./SkillsPanel";
 import { TasksView } from "./TasksView";
 import { ThemeMenu } from "./ThemeMenu";
 import { PREF_KEYS, readPref, writePref } from "./util/storage";
+import { VoiceView } from "./VoiceView";
 
 const THREAD_POLL_MS = 5_000;
 
@@ -91,6 +93,8 @@ export function OdysseusShell(): ReactNode {
   const [editorOpen, setEditorOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -328,6 +332,8 @@ export function OdysseusShell(): ReactNode {
         onOpenEditor={() => setEditorOpen(true)}
         onOpenGroup={() => setGroupOpen(true)}
         onOpenAdmin={() => setAdminOpen(true)}
+        onOpenVoice={() => setVoiceOpen(true)}
+        onOpenPresets={() => setPresetsOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -377,6 +383,8 @@ export function OdysseusShell(): ReactNode {
         initialTaskId={selectedId ?? undefined}
       />
       <AdminView open={adminOpen} onClose={() => setAdminOpen(false)} />
+      <VoiceView open={voiceOpen} onClose={() => setVoiceOpen(false)} />
+      <PresetsPanel open={presetsOpen} onClose={() => setPresetsOpen(false)} />
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

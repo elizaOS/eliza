@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Globe,
   Plus,
+  Smile,
   Square,
   Terminal,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { EmojiPicker } from "./EmojiPicker";
 
 // A leaf entry in the slash-command autocomplete (odysseus
 // static/js/slashAutocomplete.js _flatten()). `token` is what gets inserted /
@@ -86,6 +88,25 @@ export function Composer({
   const [mode, setMode] = useState<"agent" | "chat">("agent");
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
+  // Insert an emoji at the caret (or append), then restore the caret just past
+  // it — the EmojiPicker stays open so several can be picked (odysseus behavior).
+  const insertEmoji = (emoji: string) => {
+    const el = taRef.current;
+    if (el) {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      onInput(input.slice(0, start) + emoji + input.slice(end));
+      requestAnimationFrame(() => {
+        const pos = start + emoji.length;
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      });
+    } else {
+      onInput(input + emoji);
+    }
+  };
 
   // Auto-grow textarea (24px → 200px), matching odysseus. `input` is a
   // trigger-only dep: the effect re-measures the textarea whenever the value
@@ -257,6 +278,13 @@ export function Composer({
 
   return (
     <div className="od-input-bar">
+      {emojiOpen ? (
+        <EmojiPicker
+          open={emojiOpen}
+          onPick={insertEmoji}
+          onClose={() => setEmojiOpen(false)}
+        />
+      ) : null}
       {slashOpen ? (
         <div className="od-slash-ac" role="listbox" aria-label="Slash commands">
           {visible.map((command, i) => {
@@ -319,6 +347,15 @@ export function Composer({
           </button>
           <button type="button" className="od-icon-btn" title="Shell access">
             <Terminal size={16} />
+          </button>
+          <button
+            type="button"
+            className={`od-icon-btn${emojiOpen ? " active" : ""}`}
+            title="Emoji"
+            aria-label="Emoji"
+            onClick={() => setEmojiOpen((v) => !v)}
+          >
+            <Smile size={16} />
           </button>
         </div>
         <div className="od-input-right">
