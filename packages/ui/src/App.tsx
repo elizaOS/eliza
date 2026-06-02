@@ -58,8 +58,8 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
-import { OnboardingVoicePill } from "./first-run/OnboardingVoicePill";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
+import { OnboardingVoicePill } from "./first-run/OnboardingVoicePill";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";

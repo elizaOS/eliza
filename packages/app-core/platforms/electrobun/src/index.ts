@@ -81,15 +81,15 @@ import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import {
-  closeOnboardingOverlayWindow,
-  createOnboardingOverlayWindow,
-  getOnboardingOverlayWindow,
-} from "./onboarding-overlay-window";
-import {
   submitOnboardingFirstRun,
   waitForApiReady,
   waitForOnboardingNotificationChoice,
 } from "./native-onboarding";
+import {
+  closeOnboardingOverlayWindow,
+  createOnboardingOverlayWindow,
+  getOnboardingOverlayWindow,
+} from "./onboarding-overlay-window";
 import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -2408,9 +2408,7 @@ async function main(): Promise<void> {
     // The user's choice is polled via FFI. Once selected, we wait for the
     // embedded API server to be ready, POST the first-run config, then open
     // the dashboard. Falls back to the overlay window on FFI failure.
-    logger.info(
-      "[Main] Onboarding — posting native macOS notification",
-    );
+    logger.info("[Main] Onboarding — posting native macOS notification");
     recordStartupPhase("creating_window", { pid: process.pid });
 
     // Run notification flow async — don't block the event loop.
