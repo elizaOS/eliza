@@ -94,4 +94,76 @@ describe("RemotePluginBridge action callbacks", () => {
     await expect(actionPromise).resolves.toEqual({ success: true });
     expect(callbacks).toEqual([{ text: "progress" }]);
   });
+
+  it("registers dynamically announced actions with the runtime", async () => {
+    const channel = new TestChannel();
+    let registeredPlugin: Plugin | null = null;
+    const dynamicActions: Action[] = [];
+    const runtime = {
+      registerPlugin: async (plugin: Plugin) => {
+        registeredPlugin = plugin;
+      },
+      registerAction: (action: Action) => {
+        dynamicActions.push(action);
+      },
+      registerProvider: () => {},
+      registerEvaluator: () => {},
+      registerModel: () => {},
+      registerEvent: () => {},
+      registerService: async () => {},
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "worker-announce-plugin",
+      descriptor: {
+        name: "remote-dynamic",
+      },
+    });
+    await channel.emit({
+      type: "worker-announce-dynamic",
+      descriptor: {
+        name: "remote-dynamic",
+        actions: [
+          {
+            name: "DYNAMIC_ACTION",
+            handler: { rpc: true, id: "action:dynamic:handler" },
+          },
+        ],
+      },
+    });
+
+    expect(dynamicActions.map((action) => action.name)).toEqual([
+      "DYNAMIC_ACTION",
+    ]);
+    const pluginAfterDynamic = registeredPlugin as Plugin | null;
+    expect(pluginAfterDynamic?.actions?.map((action) => action.name)).toEqual([
+      "DYNAMIC_ACTION",
+    ]);
+
+    const resultPromise = dynamicActions[0]?.handler(
+      runtime,
+      { content: { text: "run dynamic" } } as never,
+      undefined,
+      undefined,
+      undefined,
+      [],
+    );
+    const rpc = channel.sent[0] as WorkerRpcMessage;
+    expect(rpc).toMatchObject({
+      type: "worker-rpc",
+      surface: "action",
+      target: "action:dynamic:handler",
+    });
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: rpc.requestId,
+      ok: true,
+      payload: { success: true },
+    });
+
+    await expect(resultPromise).resolves.toEqual({ success: true });
+  });
 });

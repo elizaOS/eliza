@@ -49,8 +49,9 @@ bootstrap(myPlugin);
 1. Creates (or accepts) a `WorkerChannel` transport.
 2. Instantiates `RuntimeProxy` and wires it to the channel.
 3. Calls `buildAnnounceDescriptor(plugin, registry)` and sends `worker-announce-plugin`.
-4. Calls `plugin.init(config, runtimeApi)` if present.
-5. Sends `init-complete`; the worker is now in dispatch mode.
+4. Snapshots declared plugin surfaces, then calls `plugin.init(config, runtimeApi)` if present.
+5. If `init()` appended new surfaces to the plugin object, sends a `worker-announce-dynamic` descriptor for just those additions.
+6. Sends `init-complete`; the worker is now in dispatch mode.
 
 **`BootstrapOptions`:**
 - `channel?: WorkerChannel` — override transport (default: auto-detect Worker vs stdio).
@@ -149,7 +150,7 @@ Implement `WorkerChannel` in `src/envelope.ts` (or a separate file), export it, 
 
 ## Conventions / gotchas
 
-- **Static surfaces only at announce time.** `buildAnnounceDescriptor` snapshots the plugin's surface arrays at bootstrap. Surfaces added after `init()` are not reflected in the descriptor sent to the host (dynamic announce is not yet implemented).
+- **Init-time dynamic surfaces are supported.** `bootstrap()` announces the static surfaces first, then snapshots any plugin surfaces appended by `init()` and sends them as `worker-announce-dynamic` before `init-complete`. Later runtime mutation after `bootstrap()` completes is still not announced.
 - **Action callbacks are no-ops in P1.** `makeNoopCallback` stubs the `callback` arg for action handlers. Handlers that write their reply via `callback` will silently drop it; use the return value instead.
 - **Service instances are lazy and per-worker.** The `serviceInstances` WeakMap in `descriptor.ts` caches the `Promise<RemoteServiceInstance>` for each `RemoteServiceClass`. The first host invocation of any method on a service triggers `service.start(runtime)`. Subsequent calls reuse the cached instance for the worker's lifetime.
 - **`runtime.registerEvent` is not wired.** Calling it inside a remote handler throws. Declare event handlers in the static `Plugin.events` object.

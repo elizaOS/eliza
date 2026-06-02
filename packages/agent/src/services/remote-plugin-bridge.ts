@@ -35,6 +35,7 @@ import type {
   RemoteFunctionRef,
   RemotePluginWorkerMessage,
   WorkerActionCallbackMessage,
+  WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
@@ -72,6 +73,7 @@ type RpcId = string;
 /** What the bridge tracks per attached worker. */
 interface AttachedState {
   pluginName: string | null;
+  plugin: Plugin | null;
   pending: Map<number, PendingRequest>;
   actionCallbacks: Map<string, NonNullable<Parameters<Action["handler"]>[4]>>;
   nextRequestId: () => number;
@@ -90,6 +92,7 @@ export class RemotePluginBridge {
     this.rpcTimeoutMs = options.rpcTimeoutMs ?? 60_000;
     this.state = {
       pluginName: null,
+      plugin: null,
       pending: new Map(),
       actionCallbacks: new Map(),
       nextRequestId: (() => {
@@ -135,6 +138,11 @@ export class RemotePluginBridge {
       case "worker-announce-plugin":
         await this.handleAnnounce(message as WorkerAnnouncePluginMessage);
         return;
+      case "worker-announce-dynamic":
+        await this.handleDynamicAnnounce(
+          message as WorkerAnnounceDynamicMessage,
+        );
+        return;
       case "worker-rpc-result":
         this.handleRpcResult(message as WorkerRpcResultMessage);
         return;
@@ -156,7 +164,27 @@ export class RemotePluginBridge {
   ): Promise<void> {
     const plugin = this.materialisePlugin(message.descriptor);
     this.state.pluginName = plugin.name;
+    this.state.plugin = plugin;
     await this.runtime.registerPlugin(plugin);
+  }
+
+  private async handleDynamicAnnounce(
+    message: WorkerAnnounceDynamicMessage,
+  ): Promise<void> {
+    const registeredPlugin = this.state.plugin;
+    if (!registeredPlugin || !this.state.pluginName) {
+      throw new Error(
+        "worker-announce-dynamic received before plugin announce",
+      );
+    }
+    const dynamicPlugin = this.materialisePlugin(message.descriptor);
+    if (dynamicPlugin.name !== this.state.pluginName) {
+      throw new Error(
+        `worker-announce-dynamic plugin mismatch: expected ${this.state.pluginName}, got ${dynamicPlugin.name}`,
+      );
+    }
+
+    await this.applyDynamicContributions(registeredPlugin, dynamicPlugin);
   }
 
   private materialisePlugin(descriptor: JsonObject): Plugin {
@@ -182,6 +210,132 @@ export class RemotePluginBridge {
     this.attachViewContributions(plugin, descriptor);
 
     return plugin;
+  }
+
+  private async applyDynamicContributions(
+    registeredPlugin: Plugin,
+    dynamicPlugin: Plugin,
+  ): Promise<void> {
+    if (dynamicPlugin.actions?.length) {
+      registeredPlugin.actions = [
+        ...(registeredPlugin.actions ?? []),
+        ...dynamicPlugin.actions,
+      ];
+      for (const action of dynamicPlugin.actions) {
+        this.runtime.registerAction(action);
+      }
+    }
+
+    if (dynamicPlugin.providers?.length) {
+      registeredPlugin.providers = [
+        ...(registeredPlugin.providers ?? []),
+        ...dynamicPlugin.providers,
+      ];
+      for (const provider of dynamicPlugin.providers) {
+        this.runtime.registerProvider(provider);
+      }
+    }
+
+    if (dynamicPlugin.evaluators?.length) {
+      registeredPlugin.evaluators = [
+        ...(registeredPlugin.evaluators ?? []),
+        ...dynamicPlugin.evaluators,
+      ];
+      for (const evaluator of dynamicPlugin.evaluators) {
+        this.runtime.registerEvaluator(evaluator);
+      }
+    }
+
+    if (dynamicPlugin.models) {
+      registeredPlugin.models = {
+        ...(registeredPlugin.models ?? {}),
+        ...dynamicPlugin.models,
+      };
+      for (const [modelType, handler] of Object.entries(dynamicPlugin.models)) {
+        this.runtime.registerModel(
+          modelType,
+          handler as Parameters<IAgentRuntime["registerModel"]>[1],
+          registeredPlugin.name,
+          registeredPlugin.priority,
+        );
+      }
+    }
+
+    if (dynamicPlugin.events) {
+      registeredPlugin.events = {
+        ...(registeredPlugin.events ?? {}),
+      } as NonNullable<Plugin["events"]>;
+      for (const [eventName, handlers] of Object.entries(
+        dynamicPlugin.events,
+      )) {
+        const existingHandlers =
+          (registeredPlugin.events as Record<string, unknown[]>)[eventName] ??
+          [];
+        (registeredPlugin.events as Record<string, unknown[]>)[eventName] = [
+          ...existingHandlers,
+          ...handlers,
+        ];
+        const registerEvent = this.runtime.registerEvent as (
+          event: string,
+          handler: (params: unknown) => Promise<void>,
+        ) => void;
+        for (const handler of handlers) {
+          registerEvent(
+            eventName,
+            handler as (params: unknown) => Promise<void>,
+          );
+        }
+      }
+    }
+
+    if (dynamicPlugin.services?.length) {
+      registeredPlugin.services = [
+        ...(registeredPlugin.services ?? []),
+        ...dynamicPlugin.services,
+      ] as Plugin["services"];
+      for (const service of dynamicPlugin.services) {
+        await this.runtime.registerService(service);
+      }
+    }
+
+    if (dynamicPlugin.routes?.length) {
+      registeredPlugin.routes = [
+        ...(registeredPlugin.routes ?? []),
+        ...dynamicPlugin.routes,
+      ];
+      const runtimeRoutes = (this.runtime as { routes?: unknown[] }).routes;
+      if (Array.isArray(runtimeRoutes)) {
+        for (const route of dynamicPlugin.routes) {
+          const rawPath = (route as { rawPath?: boolean }).rawPath === true;
+          const routePath = route.path.startsWith("/")
+            ? route.path
+            : `/${route.path}`;
+          runtimeRoutes.push({
+            ...route,
+            path: rawPath ? routePath : `/${registeredPlugin.name}${routePath}`,
+          });
+        }
+      }
+    }
+
+    if (dynamicPlugin.views?.length) {
+      registeredPlugin.views = [
+        ...(registeredPlugin.views ?? []),
+        ...dynamicPlugin.views,
+      ] as Plugin["views"];
+    }
+    if (dynamicPlugin.widgets?.length) {
+      registeredPlugin.widgets = [
+        ...(registeredPlugin.widgets ?? []),
+        ...dynamicPlugin.widgets,
+      ] as Plugin["widgets"];
+    }
+    if (dynamicPlugin.componentTypes?.length) {
+      registeredPlugin.componentTypes = [
+        ...(registeredPlugin.componentTypes ?? []),
+        ...dynamicPlugin.componentTypes,
+      ] as Plugin["componentTypes"];
+    }
   }
 
   private attachFunctionContributions(
