@@ -66,6 +66,13 @@ interface PendingCall {
 	startedAt: number;
 }
 
+interface RuntimeBridgeRequest {
+	id: number;
+	bridge: "runtime";
+	method: string;
+	params?: unknown;
+}
+
 interface SpawnedWorker {
 	slug: string;
 	worker: Worker;
@@ -79,6 +86,8 @@ interface SpawnedWorker {
 interface RuntimeWithServiceLoadPromise {
 	getServiceLoadPromise?: (serviceType: string) => Promise<Service>;
 }
+
+type RuntimeGetMemoriesParams = Parameters<IAgentRuntime["getMemories"]>[0];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +119,27 @@ function readStringFromExports(value: unknown): string | null {
 		readString(record.default) ??
 		readString(record.require)
 	);
+}
+
+function isRuntimeBridgeRequest(raw: unknown): raw is RuntimeBridgeRequest {
+	return (
+		typeof raw === "object" &&
+		raw !== null &&
+		(raw as RuntimeBridgeRequest).bridge === "runtime" &&
+		typeof (raw as RuntimeBridgeRequest).id === "number" &&
+		typeof (raw as RuntimeBridgeRequest).method === "string"
+	);
+}
+
+function readGetMemoriesParams(params: unknown): RuntimeGetMemoriesParams {
+	if (!params || typeof params !== "object" || Array.isArray(params)) {
+		throw new Error("runtime.getMemories params must be an object");
+	}
+	const record = params as Record<string, unknown>;
+	if (typeof record.tableName !== "string" || record.tableName.length === 0) {
+		throw new Error("runtime.getMemories params must include tableName");
+	}
+	return record as RuntimeGetMemoriesParams;
 }
 
 async function resolvePluginEntryPath(
@@ -276,6 +306,10 @@ export class AppWorkerHostService extends Service {
 			workerData: {
 				slug: options.slug,
 				isolation: options.isolation,
+				agentId:
+					typeof this.runtime?.agentId === "string"
+						? this.runtime.agentId
+						: null,
 				statePath: options.statePath ?? null,
 				requestedPermissions: options.requestedPermissions ?? null,
 				grantedNamespaces: options.grantedNamespaces ?? [],
@@ -294,7 +328,12 @@ export class AppWorkerHostService extends Service {
 		};
 		spawned.readyPromise = new Promise<void>((resolve, reject) => {
 			const onMessage = (raw: unknown) => {
+				if (isRuntimeBridgeRequest(raw)) {
+					void this.handleRuntimeBridgeRequest(spawned, raw);
+					return;
+				}
 				if (typeof raw !== "object" || raw === null) return;
+				if ((raw as { bridge?: unknown }).bridge === "runtime") return;
 				const msg = raw as {
 					id: number;
 					ok: boolean;
@@ -361,6 +400,40 @@ export class AppWorkerHostService extends Service {
 			throw error;
 		}
 		return this.snapshot(spawned);
+	}
+
+	private async handleRuntimeBridgeRequest(
+		spawned: SpawnedWorker,
+		req: RuntimeBridgeRequest,
+	): Promise<void> {
+		try {
+			const result = await this.dispatchRuntimeBridgeRequest(req);
+			spawned.worker.postMessage({
+				id: req.id,
+				bridge: "runtime",
+				ok: true,
+				result,
+			});
+		} catch (error) {
+			spawned.worker.postMessage({
+				id: req.id,
+				bridge: "runtime",
+				ok: false,
+				reason: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	private async dispatchRuntimeBridgeRequest(
+		req: RuntimeBridgeRequest,
+	): Promise<unknown> {
+		if (req.method !== "getMemories") {
+			throw new Error(`runtime.${req.method} is not exposed to app workers`);
+		}
+		if (typeof this.runtime?.getMemories !== "function") {
+			throw new Error("runtime.getMemories is unavailable on the host runtime");
+		}
+		return this.runtime.getMemories(readGetMemoriesParams(req.params));
 	}
 
 	/**

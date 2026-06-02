@@ -24,6 +24,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppWorkerHostService } from "../app-worker-host-service.js";
 
@@ -191,20 +192,40 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 			expect(reply.result).toEqual({ echoed: { msg: "hi from host" } });
 		});
 
-		it("invokeAction surfaces the runtime stub's failure when an action touches IAgentRuntime", async () => {
-			await service.spawn({
+		it("invokeAction bridges runtime.getMemories to the host runtime", async () => {
+			const calls: unknown[] = [];
+			const runtimeBackedService = new AppWorkerHostService({
+				agentId: "00000000-0000-0000-0000-000000000001",
+				getMemories: async (params: unknown) => {
+					calls.push(params);
+					return [
+						{
+							id: "memory-1",
+							content: { text: "from host runtime" },
+						},
+					];
+				},
+			} as unknown as IAgentRuntime);
+			await runtimeBackedService.spawn({
 				slug: "fixture-invoke-probe",
 				isolation: "worker",
 				pluginEntryPath: FIXTURE_PLUGIN_PATH,
 			});
-			const reply = await service.invoke(
+			const reply = await runtimeBackedService.invoke(
 				"fixture-invoke-probe",
 				"invokeAction",
 				{ actionName: "RUNTIME_PROBE" },
 			);
-			expect(reply.ok).toBe(false);
-			if (reply.ok) return;
-			expect(reply.reason).toContain("worker sandbox");
+			await runtimeBackedService.stop();
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(calls).toEqual([{ tableName: "messages", limit: 2 }]);
+			expect(reply.result).toEqual([
+				{
+					id: "memory-1",
+					content: { text: "from host runtime" },
+				},
+			]);
 		});
 
 		it("invokeAction returns a structured failure for unknown actions", async () => {
