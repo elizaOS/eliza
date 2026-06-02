@@ -178,6 +178,14 @@ export async function filterUnavailableLocalInference(
 	preferredProvider: string | null,
 	candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
+	// Voice slots (TTS / STT) are self-sufficient — their handlers call
+	// ensureActiveBundleVoiceReady() internally which loads the voice model
+	// on-demand. Don't gate them behind text model availability; the text
+	// model assignment check only makes sense for text generation slots.
+	if (slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION") {
+		return candidates;
+	}
+
 	const hasLocalInference = candidates.some(
 		(candidate) => candidate.provider === "eliza-local-inference",
 	);

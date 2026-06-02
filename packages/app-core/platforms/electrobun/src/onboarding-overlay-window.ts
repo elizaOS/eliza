@@ -27,6 +27,7 @@ import {
   type ElectrobunBrowserWindowOptions,
 } from "./electrobun-window-options";
 import { logger } from "./logger";
+import { makeKeyAndOrderFront } from "./native/mac-window-effects";
 
 /** rpc handle baked into the window at construction (typed via the wrapper). */
 type OverlayRpc = ElectrobunBrowserWindowOptions["rpc"];
@@ -49,30 +50,18 @@ export function createOnboardingOverlayWindow(args: {
     return overlayWindow;
   }
 
-  // Size the window to the onboarding card's footprint and dock it top-right of
-  // the work area, rather than covering the full screen. A full-screen
-  // transparent + passthrough window does NOT reliably click through on macOS:
-  // Electrobun's region-based passthrough depends on the WKWebView reporting
-  // per-pixel alpha, which it does not do dependably for dynamically-rendered
-  // (React) content, so the empty area captured every click and blocked the
-  // desktop behind. A small window sidesteps that: the OS routes clicks outside
-  // the window straight to whatever is behind it, and only the card's small
-  // rect sits on top. (passthrough stays on so the card's transparent margins
-  // still fall through where the platform honours it.) The renderer keeps the
-  // card pinned top-right within this frame (`items-start justify-end`).
-  const CARD_WIDTH = 384;
-  // Tall enough for the onboarding card plus the VoicePill stacked below it
-  // (App renders <CompactOnboarding showVoicePill />). The card alone is ~180px;
-  // the pill adds its own surface beneath.
-  const CARD_HEIGHT = 380;
+  // Use the full work area so the renderer can place UI elements anywhere on
+  // screen — the onboarding card is pinned top-right via CSS, and the voice
+  // pill is centered at the bottom. The window is transparent + passthrough,
+  // so clicks on empty regions fall through to the desktop. The
+  // makeKeyAndOrderFront call after dom-ready ensures the interactive elements
+  // (buttons, pill) receive clicks.
   const workArea = Screen.getPrimaryDisplay().workArea;
-  const width = Math.min(CARD_WIDTH, workArea.width);
-  const height = Math.min(CARD_HEIGHT, workArea.height);
   const frame = {
-    x: workArea.x + Math.max(0, workArea.width - width),
+    x: workArea.x,
     y: workArea.y,
-    width,
-    height,
+    width: workArea.width,
+    height: workArea.height,
   };
   const url = buildOnboardingOverlayRendererUrl(args.rendererUrl);
 
@@ -83,7 +72,14 @@ export function createOnboardingOverlayWindow(args: {
     frame,
     titleBarStyle: "hidden",
     transparent: true,
-    passthrough: true,
+    // Match the pill window's proven-visible config. A small, borderless,
+    // transparent window only showed reliably with activate:false — a
+    // borderless NSWindow cannot become key, and activate:true left the small
+    // window unshown (the full-screen variant happened to paint regardless).
+    // No passthrough: the window is small, so clicks outside it already reach
+    // the desktop via the OS; full-screen-style per-pixel passthrough never
+    // composited dependably and is unnecessary here.
+    activate: false,
     ...(args.rpc ? { rpc: args.rpc } : {}),
   });
 
@@ -93,6 +89,26 @@ export function createOnboardingOverlayWindow(args: {
     logger.warn(
       `[onboarding-overlay] setAlwaysOnTop failed: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+
+  // The window was created with `activate: false` so it actually renders (a
+  // borderless transparent NSWindow does not show reliably with activate:true).
+  // But a non-activated window swallows the first click as macOS window
+  // activation, making the "Use Local" / "Eliza Cloud" buttons unresponsive.
+  //
+  // Fix: once the DOM is ready (WKWebView has painted), call the native
+  // `makeKeyAndOrderFront` FFI to make the window key. This is the same
+  // pattern the main window uses (see desktop.ts showMainWindow).
+  if (process.platform === "darwin") {
+    win.webview.on("dom-ready", () => {
+      const ptr = (win as { ptr?: unknown }).ptr;
+      if (ptr) {
+        makeKeyAndOrderFront(ptr as Parameters<typeof makeKeyAndOrderFront>[0]);
+        logger.info(
+          "[onboarding-overlay] Activated window via makeKeyAndOrderFront",
+        );
+      }
+    });
   }
 
   win.on("close", () => {

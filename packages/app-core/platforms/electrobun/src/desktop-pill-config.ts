@@ -19,5 +19,7 @@ export function shouldCreateDesktopPill(
     return false;
   }
 
-  return parseTruthy(env.ELIZA_DESKTOP_PILL);
+  // Default on: the pill window is the primary voice surface. Users can
+  // suppress it with ELIZA_DESKTOP_PILL=0 or ELIZA_DESKTOP_DISABLE_PILL=1.
+  return true;
 }
