@@ -539,39 +539,62 @@ export class SubAgentRouter extends Service {
       this.stateLostCapNotified.delete(lk);
     }
 
-    // Backstop for the cross-session state_lost respawn cascade. Each respawn
-    // is a NEW session, so the per-session roundTripCap below never fires.
-    // Count state_lost events per stable origin lineage; once past the cap,
-    // stop re-injecting the event into the planner (suppress the synthetic
-    // inbound) so the parent is no longer prompted to spawn yet another one.
+    // Deterministic recovery for the cross-session state_lost cascade. A lost
+    // session used to be re-injected into the planner so the planner would
+    // spawn a fresh sub-agent — which leaked a "the sub-agent crashed, let me
+    // try again" message to the user alongside the eventual deliverable, and
+    // each respawn is a NEW session so the per-session roundTripCap never
+    // fired. Instead, recover inside the router (mirroring retryIncompleteBuild)
+    // and suppress the dead session's narration entirely. Bounded per stable
+    // origin lineage; once the cap is exhausted, post ONE honest terminal
+    // failure instead of hanging silently.
+    let stateLostExhausted = false;
+    let stateLostRespawnCount = 0;
     if (
       event === "error" &&
       pickPayloadString(data, "failureKind") === "session_state_lost"
     ) {
       const lineageKey = respawnLineageKey(session, origin);
-      const respawnCount =
+      stateLostRespawnCount =
         (this.stateLostRespawnCounts.get(lineageKey) ?? 0) + 1;
-      this.stateLostRespawnCounts.set(lineageKey, respawnCount);
+      this.stateLostRespawnCounts.set(lineageKey, stateLostRespawnCount);
       while (this.stateLostRespawnCounts.size > 1024) {
         const oldest = this.stateLostRespawnCounts.keys().next().value;
         if (oldest === undefined) break;
         this.stateLostRespawnCounts.delete(oldest);
       }
-      if (respawnCount > this.stateLostRespawnCap) {
-        if (!this.stateLostCapNotified.has(lineageKey)) {
-          this.stateLostCapNotified.add(lineageKey);
-          this.log(
-            "warn",
-            "state_lost respawn cap reached; suppressing further respawn injections for this origin lineage",
-            {
-              sessionId,
-              count: respawnCount,
-              cap: this.stateLostRespawnCap,
-            },
-          );
-        }
+      if (stateLostRespawnCount > this.stateLostRespawnCap) {
+        // Cap exhausted: stop the dead session and report ONE honest terminal
+        // failure (deduped per lineage). Do NOT respawn again and do NOT route
+        // through the completion-claim slot (that is task_complete-only —
+        // eliza#7967); fall through to the normal delivery path below with a
+        // forced terminal narration so the user is not left with a silent hang.
         await acp.stopSession(sessionId).catch(() => {});
-        return;
+        if (this.stateLostCapNotified.has(lineageKey)) return;
+        this.stateLostCapNotified.add(lineageKey);
+        this.log(
+          "warn",
+          "state_lost respawn cap reached; reporting terminal failure for this origin lineage",
+          {
+            sessionId,
+            count: stateLostRespawnCount,
+            cap: this.stateLostRespawnCap,
+          },
+        );
+        stateLostExhausted = true;
+      } else {
+        // Under cap: recover deterministically inside the router. On success,
+        // suppress the dead session's tail events and return WITHOUT posting —
+        // the recovered child's task_complete becomes the only user-facing
+        // message. On failure (no initialTask / spawn threw), fall through to
+        // the normal error narration so the user gets an honest report instead
+        // of silence.
+        const respawned = await this.respawnStateLost(session);
+        if (respawned) {
+          this.verifyRetryHandedOffSessions.add(sessionId);
+          await acp.stopSession(sessionId).catch(() => {});
+          return;
+        }
       }
     }
 
@@ -688,9 +711,11 @@ export class SubAgentRouter extends Service {
     // link 404s even though the directory exists under the ASCII-hyphen
     // name — breaking it for both the verification probe AND the user.
     const baseText = normalizeUrlsInText(
-      capExceeded
-        ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-        : composeNarration(event, origin.label, session, data, changeSet),
+      stateLostExhausted
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
+        : capExceeded
+          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+          : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the
@@ -837,8 +862,16 @@ export class SubAgentRouter extends Service {
             subAgent: true,
             subAgentSessionId: sessionId,
             subAgentLabel: origin.label,
-            subAgentEvent: capExceeded ? "round_trip_cap_exceeded" : event,
-            subAgentStatus: capExceeded ? "stopped" : session.status,
+            subAgentEvent: stateLostExhausted
+              ? "state_lost_exhausted"
+              : capExceeded
+                ? "round_trip_cap_exceeded"
+                : event,
+            subAgentStatus: stateLostExhausted
+              ? "failed"
+              : capExceeded
+                ? "stopped"
+                : session.status,
             subAgentAgentType: session.agentType,
             subAgentRoundTrip: nextCount,
             subAgentRoundTripCap: this.roundTripCap,
@@ -972,6 +1005,71 @@ export class SubAgentRouter extends Service {
       });
       return delivered ? [delivered] : [];
     };
+  }
+
+  /**
+   * Recover a session that reported `session_state_lost` by deterministically
+   * spawning a fresh sub-agent inside the router — carrying the byte-identical
+   * origin metadata and the original task — instead of re-injecting the error
+   * and relying on the parent planner to spawn the replacement (which leaked a
+   * "the sub-agent crashed, let me try again" message to the user). Returns
+   * true when a replacement was spawned (the caller suppresses the dead
+   * session's events and posts nothing — the child's own task_complete is the
+   * only user-facing message). Returns false when the original task is
+   * unavailable or no spawn service is registered, in which case the caller
+   * falls through to an honest failure post.
+   *
+   * Lineage capping lives in handleEvent (stateLostRespawnCounts +
+   * stateLostRespawnCap), parallel to the verify-retry budget, so a flapping
+   * session can't respawn unbounded.
+   */
+  private async respawnStateLost(session: SessionInfo): Promise<boolean> {
+    const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // SessionInfo itself doesn't carry it. Without it we can't reconstruct the
+    // work, so surface the failure honestly instead of respawning a blank one.
+    const originalTask =
+      typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
+    if (!originalTask) return false;
+
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
+    if (!service?.spawnSession) return false;
+
+    try {
+      const result = await service.spawnSession({
+        agentType: session.agentType,
+        workdir: session.workdir,
+        initialTask: originalTask,
+        approvalPreset: session.approvalPreset,
+        // Carry the original metadata forward verbatim — origin routing keys
+        // (roomId/source/...) plus the unchanged `initialTask` — so the
+        // replacement reports back to the same user thread. retryOfSessionId
+        // records the lineage; keepAliveAfterComplete:false mirrors the
+        // verify-retry recovery.
+        metadata: {
+          ...meta,
+          keepAliveAfterComplete: false,
+          retryOfSessionId: session.id,
+        },
+      });
+      this.log("info", "re-dispatched sub-agent after session_state_lost", {
+        sessionId: session.id,
+        retrySessionId: result.sessionId,
+      });
+      return true;
+    } catch (err) {
+      this.log(
+        "warn",
+        "state_lost respawn spawn failed; surfacing the failure instead",
+        {
+          sessionId: session.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return false;
+    }
   }
 
   /**
