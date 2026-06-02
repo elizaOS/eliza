@@ -1,21 +1,23 @@
+import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import type {
+  StreamEventEnvelope,
+  TrainingDatasetRecord,
+  TrainingJobRecord,
+  TrainingModelRecord,
+  TrainingStreamEvent,
+  TrainingTrajectoryDetail,
+  TrainingTrajectoryList,
+} from "@elizaos/ui/api";
+import { Input } from "@elizaos/ui/components";
 import {
-  Button,
-  formatTime,
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-  type StreamEventEnvelope,
-  type TrainingDatasetRecord,
-  type TrainingJobRecord,
-  type TrainingModelRecord,
-  type TrainingStreamEvent,
-  type TrainingTrajectoryDetail,
-  type TrainingTrajectoryList,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Input } from "@elizaos/ui/components";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { formatTime } from "@elizaos/ui/utils";
 import type { ReactNode } from "react";
 
 const FILTER_INPUT_CLASS =

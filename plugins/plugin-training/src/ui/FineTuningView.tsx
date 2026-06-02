@@ -1,38 +1,42 @@
 import {
   type AppDetailExtensionProps,
   Button,
-  ContentLayout,
   client,
+  registerDetailExtension,
+  useApp,
+} from "@elizaos/ui";
+import type {
+  HuggingFaceDatasetIngestResponse,
+  ListTrainingCollectionsResponse,
+  RunActionBenchmarkResponse,
+  RunBenchmarkVsCerebrasResponse,
+  RunFeedGenerationResponse,
+  RunLocalEvalComparisonResponse,
+  RunScenarioResponse,
+  RunTrainingCollectionResponse,
+  StageEliza1BundleResponse,
+  StartTrainingOptions,
+  StreamEventEnvelope,
+  TrainingAnalysisIndexResponse,
+  TrainingCollectionPreflightSummary,
+  TrainingDatasetRecord,
+  TrainingJobRecord,
+  TrainingModelRecord,
+  TrainingReadinessReportResponse,
+  TrainingStatus,
+  TrainingStreamEvent,
+  TrainingTrajectoryDetail,
+  TrainingTrajectoryList,
+} from "@elizaos/ui/api";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
+import { ContentLayout } from "@elizaos/ui/layouts";
+import {
   confirmDesktopAction,
-  type HuggingFaceDatasetIngestResponse,
-  type ListTrainingCollectionsResponse,
   openExternalUrl,
   parsePositiveFloat,
   parsePositiveInteger,
-  type RunActionBenchmarkResponse,
-  type RunBenchmarkVsCerebrasResponse,
-  type RunFeedGenerationResponse,
-  type RunLocalEvalComparisonResponse,
-  type RunScenarioResponse,
-  type RunTrainingCollectionResponse,
-  registerDetailExtension,
-  type StageEliza1BundleResponse,
-  type StartTrainingOptions,
-  type StreamEventEnvelope,
-  type TrainingAnalysisIndexResponse,
-  type TrainingCollectionPreflightSummary,
-  type TrainingDatasetRecord,
-  type TrainingJobRecord,
-  type TrainingModelRecord,
-  type TrainingReadinessReportResponse,
-  type TrainingStatus,
-  type TrainingStreamEvent,
-  type TrainingTrajectoryDetail,
-  type TrainingTrajectoryList,
-  useApp,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/utils";
 import {
   type ReactNode,
   useCallback,
@@ -1015,7 +1019,7 @@ export function FineTuningView({
 
   const loadDatasets = useCallback(async () => {
     const listed = await client.listTrainingDatasets();
-    const nextDatasets = asArray(listed.datasets);
+    const nextDatasets = asArray<TrainingDatasetRecord>(listed.datasets);
     setDatasets(nextDatasets);
     setSelectedDatasetId((prev) => {
       if (prev && nextDatasets.some((dataset) => dataset.id === prev)) {
@@ -1027,7 +1031,7 @@ export function FineTuningView({
 
   const loadJobs = useCallback(async () => {
     const listed = await client.listTrainingJobs();
-    const nextJobs = asArray(listed.jobs);
+    const nextJobs = asArray<TrainingJobRecord>(listed.jobs);
     setJobs(nextJobs);
     setSelectedJobId((prev) => {
       if (prev && nextJobs.some((job) => job.id === prev)) return prev;
@@ -1037,7 +1041,7 @@ export function FineTuningView({
 
   const loadModels = useCallback(async () => {
     const listed = await client.listTrainingModels();
-    const nextModels = asArray(listed.models);
+    const nextModels = asArray<TrainingModelRecord>(listed.models);
     setModels(nextModels);
     setSelectedModelId((prev) => {
       if (prev && nextModels.some((model) => model.id === prev)) return prev;
@@ -2167,24 +2171,27 @@ export function FineTuningView({
   }, 5000);
 
   useEffect(() => {
-    const unbind = client.onWsEvent("training_event", (rawEnvelope) => {
-      const event = asTrainingEvent(
-        rawEnvelope as Partial<StreamEventEnvelope>,
-      );
-      if (!event) return;
-      setTrainingEvents((prev) => {
-        const merged = [event, ...prev];
-        return merged.slice(0, 240);
-      });
-      if (event.kind !== "job_log") {
-        void loadStatus();
-        void loadJobs();
-        void loadModels();
-        if (event.kind === "dataset_built") {
-          void loadDatasets();
+    const unbind = client.onWsEvent(
+      "training_event",
+      (rawEnvelope: Record<string, unknown>) => {
+        const event = asTrainingEvent(
+          rawEnvelope as Partial<StreamEventEnvelope>,
+        );
+        if (!event) return;
+        setTrainingEvents((prev) => {
+          const merged = [event, ...prev];
+          return merged.slice(0, 240);
+        });
+        if (event.kind !== "job_log") {
+          void loadStatus();
+          void loadJobs();
+          void loadModels();
+          if (event.kind === "dataset_built") {
+            void loadDatasets();
+          }
         }
-      }
-    });
+      },
+    );
     return () => {
       unbind();
     };
@@ -3302,17 +3309,20 @@ export function FineTuningView({
                                             readinessActionRunning ===
                                             `history:${gap.id}`
                                           }
-                                          onClick={() =>
+                                          onClick={() => {
+                                            const capability =
+                                              gap.recommendedCapability;
+                                            if (!capability) return;
                                             void handleRunReadinessRecommendation(
                                               `history:${gap.id}`,
                                               {
-                                                capability:
-                                                  gap.recommendedCapability!,
+                                                label: gap.label,
+                                                capability,
                                                 params:
                                                   gap.recommendedParams ?? {},
                                               },
-                                            )
-                                          }
+                                            );
+                                          }}
                                         >
                                           Run {gap.id}
                                         </AgentInlineButton>
@@ -3998,11 +4008,10 @@ export function FineTuningView({
                       description="Open the feed generation export"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
-                        void openExternalUrl(
-                          localViewerUrl(
-                            feedGenerationResult.artifacts[0].exportPath,
-                          ),
-                        );
+                        const exportPath =
+                          feedGenerationResult.artifacts[0]?.exportPath;
+                        if (!exportPath) return;
+                        void openExternalUrl(localViewerUrl(exportPath));
                       }}
                     >
                       Open feed export
@@ -4888,9 +4897,12 @@ export function FineTuningView({
                     description="Open the staged bundle directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
-                      void openExternalUrl(
-                        localViewerUrl(bundleStageResult.plan.bundleDir),
-                      );
+                      const bundleDir =
+                        typeof bundleStageResult.plan?.bundleDir === "string"
+                          ? bundleStageResult.plan.bundleDir
+                          : null;
+                      if (!bundleDir) return;
+                      void openExternalUrl(localViewerUrl(bundleDir));
                     }}
                   >
                     Open bundle dir

@@ -1204,6 +1204,8 @@ export interface RunTrainingCollectionResponse {
           finalPnl: number | null;
           steps: number | null;
           firstStep: unknown;
+          firstInput: unknown;
+          firstOutput: unknown;
           reasoning: unknown;
         }>;
       };
@@ -1292,6 +1294,7 @@ export interface RunTrainingCollectionResponse {
           trainedScore: number | null;
           improvementPercent: number | null;
           referenceScore: number | null;
+          trainedVsReferencePercent: number | null;
           modelBacked: boolean;
         }>;
         baselineProgress: {

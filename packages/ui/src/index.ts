@@ -238,6 +238,13 @@ export {
   type UseShellStateResult,
   useShellState,
 } from "./components/shell/useShellState";
+export {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "./components/ui/select";
+export { SettingsControls } from "./components/ui/settings-controls";
 export { Switch } from "./components/ui/switch";
 export {
   Tabs,
@@ -403,12 +410,14 @@ export * from "./genui/index";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
+export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export { useRenderGuard } from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";
 export * from "./i18n/messages";
+export { ContentLayout } from "./layouts/content-layout/content-layout";
 export * from "./layouts/index";
 export { PageLayout } from "./layouts/page-layout/page-layout";
 export * from "./lib/floating-layers";
@@ -522,7 +531,9 @@ export {
   ttsDebug,
   ttsDebugTextPreview,
 } from "./utils";
+export { confirmDesktopAction } from "./utils/desktop-dialogs";
 export type { DesktopPowerState } from "./utils/desktop-workspace";
+export { openExternalUrl } from "./utils/openExternalUrl";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
 export * from "./voice";

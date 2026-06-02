@@ -184,11 +184,12 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const path = await import("node:path");
       const os = await import("node:os");
       const stateDir =
-        process.env.ELIZA_STATE_DIR?.trim() ||
+        process.env.TRAINING_STATE_DIR?.trim() ||
         process.env.ELIZA_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".eliza");
+      const promptTask = task === "context_routing" ? "should_respond" : task;
       const artifactPayload = {
-        task,
+        task: promptTask,
         optimizer,
         baseline: baselinePrompt,
         prompt: result.result.optimizedPrompt,
@@ -206,7 +207,10 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         const { OptimizedPromptService } = await import("@elizaos/core");
         const service = new OptimizedPromptService();
         service.setStoreRoot(path.join(stateDir, "optimized-prompts"));
-        const artifactPath = await service.setPrompt(task, artifactPayload);
+        const artifactPath = await service.setPrompt(
+          promptTask,
+          artifactPayload,
+        );
         console.log(`[train] artifact: ${artifactPath}`);
       } catch (err) {
         // Fallback: write the artifact directly to <stateDir>/optimized-prompts/<task>/vN.json
@@ -214,7 +218,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         // resolution issues during cleanup). Keeps the optimizer output
         // recoverable.
         const fs = await import("node:fs");
-        const dir = path.join(stateDir, "optimized-prompts", task);
+        const dir = path.join(stateDir, "optimized-prompts", promptTask);
         fs.mkdirSync(dir, { recursive: true });
         const existing = fs
           .readdirSync(dir)
