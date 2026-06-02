@@ -15,7 +15,7 @@ import {
   savePersistedActiveServer,
   useApp,
 } from "../state";
-import { preOpenWindow } from "../utils";
+import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -400,10 +400,12 @@ export function useFirstRunController(): FirstRunController {
     (key, value) =>
       setDraft((current) => {
         const next = { ...current, [key]: value };
-        return cloudOnly
+        const resolved = cloudOnly
           ? normalizeCloudOnlyFirstRunState({ step: "runtime", draft: next })
               .draft
           : next;
+        draftRef.current = resolved;
+        return resolved;
       }),
     [cloudOnly],
   );
@@ -554,7 +556,15 @@ export function useFirstRunController(): FirstRunController {
       setError(null);
       setState("firstRunRuntimeTarget", firstRunRuntimeTarget("cloud"));
       setState("firstRunProvider", "elizacloud");
-      if (firstRunNeedsCloudConnect(sourceDraft, elizaCloudConnected)) {
+      let cloudConnectedForFinish = elizaCloudConnected;
+      if (!cloudConnectedForFinish) {
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+      }
+      if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
         return;

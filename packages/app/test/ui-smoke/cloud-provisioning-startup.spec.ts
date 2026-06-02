@@ -70,14 +70,12 @@ async function clickIfVisible(
   timeoutMs = 2_000,
 ): Promise<boolean> {
   const target = locator.first();
-  const visible = await target
-    .isVisible({ timeout: timeoutMs })
-    .catch(() => false);
-  if (visible) {
-    await target.click();
-    return true;
-  }
-  return false;
+  await target.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
+    /* absent in this first-run variant */
+  });
+  if (!(await target.isVisible().catch(() => false))) return false;
+  await target.click();
+  return true;
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
