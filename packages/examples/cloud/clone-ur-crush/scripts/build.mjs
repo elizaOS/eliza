@@ -11,7 +11,7 @@ const packageRoot = path.resolve(
   "..",
 );
 const finalDistDir = path.join(packageRoot, ".next");
-const tempDistDirName = ".next-build";
+const tempDistDirName = `.next-build-${process.pid}`;
 const tempDistDir = path.join(packageRoot, tempDistDirName);
 const appRouteFiles = [
   "api/analyze-photo/route",
@@ -26,6 +26,55 @@ const appRouteFiles = [
 const pagesRouteFiles = ["_app", "_document", "_error"];
 
 const compatibilityFiles = [
+  {
+    file: path.join(tempDistDir, "types", "routes.d.ts"),
+    content: `// This file mirrors Next.js generated route types for this example's fixed route map.
+
+type AppRoutes = "/" | "/cloning"
+type AppRouteHandlerRoutes = "/api/analyze-photo" | "/api/create-character" | "/api/generate-field" | "/api/generate-photo" | "/api/generate-scene"
+type PageRoutes = never
+type LayoutRoutes = "/"
+type RedirectRoutes = never
+type RewriteRoutes = never
+type Routes = AppRoutes | PageRoutes | LayoutRoutes | RedirectRoutes | RewriteRoutes | AppRouteHandlerRoutes
+
+interface ParamMap {
+  "/": {}
+  "/api/analyze-photo": {}
+  "/api/create-character": {}
+  "/api/generate-field": {}
+  "/api/generate-photo": {}
+  "/api/generate-scene": {}
+  "/cloning": {}
+}
+
+export type ParamsOf<Route extends Routes> = ParamMap[Route]
+
+interface LayoutSlotMap {
+  "/": never
+}
+
+export type { AppRoutes, PageRoutes, LayoutRoutes, RedirectRoutes, RewriteRoutes, ParamMap, AppRouteHandlerRoutes }
+
+declare global {
+  interface PageProps<AppRoute extends AppRoutes> {
+    params: Promise<ParamMap[AppRoute]>
+    searchParams: Promise<Record<string, string | string[] | undefined>>
+  }
+
+  type LayoutProps<LayoutRoute extends LayoutRoutes> = {
+    params: Promise<ParamMap[LayoutRoute]>
+    children: React.ReactNode
+  } & {
+    [K in LayoutSlotMap[LayoutRoute]]: React.ReactNode
+  }
+
+  interface RouteContext<AppRouteHandlerRoute extends AppRouteHandlerRoutes> {
+    params: Promise<ParamMap[AppRouteHandlerRoute]>
+  }
+}
+`,
+  },
   {
     file: path.join(tempDistDir, "server", "pages-manifest.json"),
     content: "{}\n",
