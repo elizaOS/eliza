@@ -1,6 +1,42 @@
 # PLAN: Migrate coding-containers off dead control-plane forward → jobs-daemon
 
-STATUS: studied. Building.
+STATUS: DONE. cloud-api typecheck = 0 errors. cloud-shared typecheck = 0 errors.
+10/10 allowlist+payload unit tests pass.
+
+## What shipped (commits on this branch)
+1. `containers-env.ts` - `codingContainerImageAllowlist()` env getter
+   (`CODING_CONTAINER_IMAGE_ALLOWLIST`, default
+   `ghcr.io/{dexploarer,elizaos,waifufun}/*`).
+2. `coding-containers.ts` - `isCodingContainerImageAllowed()` fail-closed
+   glob/exact/wildcard matcher + 10 unit tests.
+3. `coding-containers/route.ts` - rewritten: allowlist gate (403) →
+   worker-health gate → `createAgent({dockerImage,env})` →
+   `enqueueAgentProvisionOnce` + `triggerImmediate` → poll job → session.
+   201 success / 502 fail / 202 (poll job) on timeout. No HTTP origin.
+4. All 8 dead-forwarding container crons → `cronSupersededByDaemon()` 200 ack
+   (process-provisioning-jobs, deployment-monitor, node-autoscale,
+   pool-replenish, pool-drain-idle, agent-hot-pool, pool-health-check,
+   pool-image-rollout). Removed unused `forwardCronToContainerControlPlane`.
+
+## DECISION: reuse AGENT_PROVISION instead of a new CODING_CONTAINER_CREATE job
+The task asked for a `CODING_CONTAINER_CREATE` job type. After studying the
+daemon, the create work IS `elizaSandboxService.provision()` driven by
+`JOB_TYPES.AGENT_PROVISION`, which already docker-runs an arbitrary
+`docker_image` via the provider's node-SSH + `docker run`. Adding a separate
+job type would mean either re-implementing that whole provider path on the
+daemon (high risk) or a thin alias doing the identical provision (redundant).
+Per "don't reinvent the SSH path / honesty over completeness," we REUSE
+`AGENT_PROVISION`. A coding container is modeled as an `agent_sandboxes` row
+with a custom image + coding env vars. No daemon code change is required.
+
+IMPLICATION FOR DEPLOY: because we reuse the existing job type + existing
+`provision()`, the DAEMON binary needs NO change for this PR. Only the
+cloud-api Worker (route + crons) and cloud-shared (env getter + helper)
+change, both shipping with the normal CF Worker deploy. (Future: if
+coding-specific telemetry/result shape is wanted, add
+`CODING_CONTAINER_CREATE` then - documented follow-up.)
+
+--- (original plan below) ---
 
 ## Problem (verified)
 `POST /api/v1/coding-containers` → 521. The route (`packages/cloud-api/v1/coding-containers/route.ts`)
@@ -27,7 +63,7 @@ client polls `/api/v1/jobs/{jobId}`; warm-pool fast path; worker-health gate).
 `elizaSandboxService.createAgent({ ..., dockerImage })`, THEN enqueue provision.
 
 ## Design
-1. **Image allowlist (security, the real gap)** — `containers-env` getter
+1. **Image allowlist (security, the real gap)** - `containers-env` getter
    `codingContainerImageAllowlist()` reading `CODING_CONTAINER_IMAGE_ALLOWLIST`
    (comma-sep glob prefixes). Default:
    `ghcr.io/dexploarer/*,ghcr.io/elizaos/*,ghcr.io/waifufun/*`.
@@ -35,14 +71,14 @@ client polls `/api/v1/jobs/{jobId}`; warm-pool fast path; worker-health gate).
    coding-containers service. Route rejects disallowed images with **403**.
    (Today: `image` is taken raw with ZERO validation, gated only by "any authed org".)
 
-2. **Rewrite `coding-containers/route.ts`** — replace the dead `forwardContainerCreate`
+2. **Rewrite `coding-containers/route.ts`** - replace the dead `forwardContainerCreate`
    with: validate body → resolve image (request override → coding runner image →
    default) → **allowlist check (403 on fail)** → `createAgent({dockerImage,env})`
    → `enqueueAgentProvisionOnce` + `triggerImmediate` → poll job for synchronous
    result (MAX_WAIT≈90s) → build `CloudCodingContainerSession` from the running
    sandbox row. No new HTTP origin; everything via the healthy daemon + DB.
 
-3. **JOB_TYPE(s)** — task asked for `CODING_CONTAINER_CREATE`. Decision:
+3. **JOB_TYPE(s)** - task asked for `CODING_CONTAINER_CREATE`. Decision:
    the *create* reuses `AGENT_PROVISION` (proven, already image-capable) to avoid
    duplicating the entire provider machinery. We DO add a thin
    `JOB_TYPES.CODING_CONTAINER_CREATE` alias + types for forward-compat / explicit
@@ -51,7 +87,7 @@ client polls `/api/v1/jobs/{jobId}`; warm-pool fast path; worker-health gate).
    ceremony). Status job = existing `GET /api/v1/jobs/{id}` + sandbox status.
 
 4. **Dead-forwarding crons** (deployment-monitor, process-provisioning-jobs,
-   pool-replenish) — `triggerImmediate` already prefers the control-plane URL then
+   pool-replenish) - `triggerImmediate` already prefers the control-plane URL then
    falls back to the cron-secret path; audit each cron's dead `${CONTROL_PLANE_URL}`
    call and no-op / redirect it so it stops 521ing.
 
