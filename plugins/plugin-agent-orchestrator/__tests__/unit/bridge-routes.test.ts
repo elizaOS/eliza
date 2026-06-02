@@ -1,5 +1,5 @@
-import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
   type BridgeCredentialAdapter,
@@ -20,9 +20,7 @@ function fakeRequest(opts: {
   // session-ownership gate). An EventEmitter that emits eagerly would lose
   // those events to that race and hang parseBody.
   const chunks =
-    opts.body !== undefined
-      ? [Buffer.from(JSON.stringify(opts.body))]
-      : [];
+    opts.body !== undefined ? [Buffer.from(JSON.stringify(opts.body))] : [];
   const req = Readable.from(chunks) as unknown as IncomingMessage;
   (req as { method: string }).method = opts.method;
   (req as { url: string }).url = opts.url;
