@@ -32,6 +32,17 @@ def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, ob
     summary = report.get("summary")
     testcase.assertIsInstance(summary, dict)
     testcase.assertGreaterEqual(summary.get("next_command_batch_count", 0), 1)
+    testcase.assertEqual(
+        summary.get("next_command_batch_count"),
+        len(report.get("next_command_plan", [])),
+    )
+    for batch in report.get("next_command_plan", []):
+        testcase.assertIsInstance(batch.get("commands"), list)
+        testcase.assertTrue(batch["commands"])
+        testcase.assertEqual(
+            batch.get("claim_boundary"),
+            "operator_cleanup_commands_only_not_boot_or_runtime_evidence",
+        )
 
 
 class ChipOsGapKeywordInventoryTests(unittest.TestCase):

@@ -6,8 +6,8 @@
     "erc": "mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json"
   },
   "source_hashes": {
-    "drc_sha256": "2a2090ed1a11fdd1305a4eb1ce09dcef890139f9d046f5b29483e21832fea26c",
-    "erc_sha256": "2bfc8f8e89a89865429836d2ea4d6d87e6c9a3eb5cec4609400679dc39609242"
+    "drc_sha256": "93dc1d605b924db690ebf4be40a16079e6f08bf12fb06f58c01c018918e3aa0e",
+    "erc_sha256": "a5e371458da5a377b1fa694e2b83729c59ef291feafb3849ebae85863a26e77d"
   },
   "status": "blocked_local_kicad_drc_erc_violations_present",
   "drc": {
@@ -45,8 +45,8 @@
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [VBUS] on F.Cu, length 5.4626 mm",
-          "Zone 'E1Phone_LOCAL_GND_BOTTOM_ISLAND_POUR' [GND] on F.Cu, B.Cu and In8.Cu, priority 30"
+          "Track [DSI_D1_N] on F.Cu, length 8.0623 mm",
+          "Zone 'E1Phone_LOCAL_GND_TOP_ISLAND_POUR' [GND] on F.Cu, B.Cu and In1.Cu, priority 30"
         ]
       },
       {
@@ -110,8 +110,8 @@
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [DSI_D3_N] on F.Cu, length 8.5440 mm",
-          "Track [DISP_TE] on F.Cu, length 12.5100 mm"
+          "Track [DISP_AVDD_5V5] on F.Cu, length 19.3093 mm",
+          "Track [DSI_D1_N] on F.Cu, length 8.0623 mm"
         ]
       },
       {

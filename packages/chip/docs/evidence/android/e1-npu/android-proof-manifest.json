@@ -18,17 +18,17 @@
     "selinux_neverallow_log": {
       "bytes": 107603,
       "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-      "sha256": "ce3751a21647ed0fe831a058ddfe2561e1b604f6a89aa98a50d1d26aa356a53f"
+      "sha256": "32d786e0f05d7439858bfa48a80bebd25984338153c4405d83c347a6b37aefd4"
     },
     "selinux_policy_build_log": {
-      "bytes": 83603,
+      "bytes": 67231,
       "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-      "sha256": "7e07c49b3c55a696ef9af87b147feccf26e06057d8b4a1b70b11749de116d55d"
+      "sha256": "d9180edd0535d2168f93fe525534893de7dc2720d60ecefad6ee9a58154cdf2a"
     },
     "vintf_check_log": {
-      "bytes": 10704,
+      "bytes": 10696,
       "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-      "sha256": "800fd60209fc3f10d31429a2deeb59e8d8d684f6b505e1d2249e05c31cce0e3c"
+      "sha256": "2a1974564e046cd0a00417fb83c1e8973c0e944c58b8326912715111beff2af3"
     },
     "vts_result": {
       "bytes": 1,
@@ -45,9 +45,9 @@
     "vts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_vts_smoke.sh"
   },
   "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
-  "date_utc": "2026-06-02T02:07:07Z",
+  "date_utc": "2026-06-02T07:51:47Z",
   "generated_by": "scripts/assemble_e1_npu_android_proof_manifest.py",
-  "generated_utc": "2026-06-02T02:07:07Z",
+  "generated_utc": "2026-06-02T07:51:47Z",
   "proof_gate": {
     "android_boot_claim": "none_until_all_required_artifacts_pass",
     "compatibility_claim": "none",

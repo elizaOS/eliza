@@ -21,6 +21,9 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 - **BrowserService** (`src/browser-service.ts`) — Pluggable target registry. Built-in targets: `workspace` (always registered), `bridge` (registered when `BrowserBridgeRouteService` is available), `stagehand` (registered when `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` is configured). External plugins register additional targets via `BrowserService.registerTarget(target)`. Service type constant: `BROWSER_SERVICE_TYPE = "browser"`.
 - **BrowserBridgeRouteService** (`src/service.ts`) — Interface (`BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin"`) that a consumer (e.g. plugin-lifeops) implements. Owns companion pairing, sync, tab/page-context CRUD, and browser session management. The routes in this plugin call into the registered implementor.
+- **Browser bridge policy** (`src/bridge-policy.ts`) — Pure token TTL / expiry, focus-window, and URL-domain helpers shared by host plugins.
+- **Browser bridge readiness** (`src/bridge-readiness.ts`) — Pure companion recency, permission, pause, and readiness-state policy used by host plugins and UI surfaces that summarize bridge setup.
+- **Browser bridge records** (`src/bridge-records.ts`) — Constructors for companion, tab, and page-context domain records. Host plugins persist records but should not redefine their shape/defaults.
 
 ### Routes
 
@@ -43,6 +46,9 @@ src/
   index.ts                         Public barrel (re-exports + bundle-safety guard)
   plugin.ts                        browserPlugin export — actions, services, providers, routes, schema, autoEnable
   browser-service.ts               BrowserService + BrowserTarget interface + BROWSER_SERVICE_TYPE
+  bridge-policy.ts                 Browser bridge token TTL / expiry, focus-window, and URL-domain helpers
+  bridge-readiness.ts              Browser bridge readiness / permission policy helpers
+  bridge-records.ts                Browser bridge companion/tab/page-context record constructors
   service.ts                       BrowserBridgeRouteService interface + BROWSER_BRIDGE_ROUTE_SERVICE_TYPE
   schema.ts                        Drizzle tables
   contracts.ts                     BrowserBridge* shared types (companions, settings, tabs, sessions)

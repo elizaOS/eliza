@@ -1092,10 +1092,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_drc_claim_boundary_candidate",
-        "raw_kicad_drc_payload_missing",
-        "raw_kicad_drc_tool_exit_code_not_zero",
-        "raw_kicad_drc_tool_version_missing"
+        "raw_kicad_drc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -1164,10 +1161,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_erc_claim_boundary_candidate",
-        "raw_kicad_erc_payload_missing",
-        "raw_kicad_erc_tool_exit_code_not_zero",
-        "raw_kicad_erc_tool_version_missing"
+        "raw_kicad_erc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -3820,13 +3814,7 @@
       "missing_routed_field:stackup_revision": 1,
       "placeholder_or_blocked_marker_present": 37,
       "raw_kicad_drc_claim_boundary_candidate": 1,
-      "raw_kicad_drc_payload_missing": 1,
-      "raw_kicad_drc_tool_exit_code_not_zero": 1,
-      "raw_kicad_drc_tool_version_missing": 1,
-      "raw_kicad_erc_claim_boundary_candidate": 1,
-      "raw_kicad_erc_payload_missing": 1,
-      "raw_kicad_erc_tool_exit_code_not_zero": 1,
-      "raw_kicad_erc_tool_version_missing": 1
+      "raw_kicad_erc_claim_boundary_candidate": 1
     },
     "blocked_by_owner": {
       "cellular_wifi_bt_rf_host": 4,
@@ -4171,13 +4159,13 @@
     {
       "code": "routed_output_content_blocked",
       "evidence": "board/kicad/e1-phone/production/reports/drc.json",
-      "message": "board/kicad/e1-phone/production/reports/drc.json: common_disposition_not_approved, common_placeholder_or_blocked_marker_present, disposition_not_approved, placeholder_or_blocked_marker_present, raw_kicad_drc_claim_boundary_candidate, raw_kicad_drc_payload_missing, raw_kicad_drc_tool_exit_code_not_zero, raw_kicad_drc_tool_version_missing",
+      "message": "board/kicad/e1-phone/production/reports/drc.json: common_disposition_not_approved, common_placeholder_or_blocked_marker_present, disposition_not_approved, placeholder_or_blocked_marker_present, raw_kicad_drc_claim_boundary_candidate",
       "severity": "blocker"
     },
     {
       "code": "routed_output_content_blocked",
       "evidence": "board/kicad/e1-phone/production/reports/erc.json",
-      "message": "board/kicad/e1-phone/production/reports/erc.json: common_disposition_not_approved, common_placeholder_or_blocked_marker_present, disposition_not_approved, placeholder_or_blocked_marker_present, raw_kicad_erc_claim_boundary_candidate, raw_kicad_erc_payload_missing, raw_kicad_erc_tool_exit_code_not_zero, raw_kicad_erc_tool_version_missing",
+      "message": "board/kicad/e1-phone/production/reports/erc.json: common_disposition_not_approved, common_placeholder_or_blocked_marker_present, disposition_not_approved, placeholder_or_blocked_marker_present, raw_kicad_erc_claim_boundary_candidate",
       "severity": "blocker"
     },
     {
@@ -5485,10 +5473,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_drc_claim_boundary_candidate",
-        "raw_kicad_drc_payload_missing",
-        "raw_kicad_drc_tool_exit_code_not_zero",
-        "raw_kicad_drc_tool_version_missing"
+        "raw_kicad_drc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -5557,10 +5542,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_erc_claim_boundary_candidate",
-        "raw_kicad_erc_payload_missing",
-        "raw_kicad_erc_tool_exit_code_not_zero",
-        "raw_kicad_erc_tool_version_missing"
+        "raw_kicad_erc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -7972,10 +7954,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_drc_claim_boundary_candidate",
-        "raw_kicad_drc_payload_missing",
-        "raw_kicad_drc_tool_exit_code_not_zero",
-        "raw_kicad_drc_tool_version_missing"
+        "raw_kicad_drc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -8096,10 +8075,7 @@
         "common_placeholder_or_blocked_marker_present",
         "disposition_not_approved",
         "placeholder_or_blocked_marker_present",
-        "raw_kicad_erc_claim_boundary_candidate",
-        "raw_kicad_erc_payload_missing",
-        "raw_kicad_erc_tool_exit_code_not_zero",
-        "raw_kicad_erc_tool_version_missing"
+        "raw_kicad_erc_claim_boundary_candidate"
       ],
       "metadata_record": {
         "accepted_record_paths": [
@@ -13779,10 +13755,7 @@
           "common_placeholder_or_blocked_marker_present",
           "disposition_not_approved",
           "placeholder_or_blocked_marker_present",
-          "raw_kicad_drc_claim_boundary_candidate",
-          "raw_kicad_drc_payload_missing",
-          "raw_kicad_drc_tool_exit_code_not_zero",
-          "raw_kicad_drc_tool_version_missing"
+          "raw_kicad_drc_claim_boundary_candidate"
         ],
         "missing_approval_metadata": false,
         "missing_generated_output": false,
@@ -13860,10 +13833,7 @@
           "common_placeholder_or_blocked_marker_present",
           "disposition_not_approved",
           "placeholder_or_blocked_marker_present",
-          "raw_kicad_erc_claim_boundary_candidate",
-          "raw_kicad_erc_payload_missing",
-          "raw_kicad_erc_tool_exit_code_not_zero",
-          "raw_kicad_erc_tool_version_missing"
+          "raw_kicad_erc_claim_boundary_candidate"
         ],
         "missing_approval_metadata": false,
         "missing_generated_output": false,

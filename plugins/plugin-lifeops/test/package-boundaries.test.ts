@@ -33,6 +33,8 @@ describe("LifeOps package boundaries", () => {
       "Connector, adapter, bridge, and transport clients",
     );
     expect(guide).toContain("belong in their relevant plugins");
+    expect(guide).toContain("Native Apple Calendar / Reminders bridge policy");
+    expect(guide).toContain("belongs in native packages");
   });
 
   it("keeps health and screen-time actions as plugin-health wrappers", () => {
@@ -61,9 +63,16 @@ describe("LifeOps package boundaries", () => {
     expect(sleepServiceMixin).toContain('from "@elizaos/plugin-health"');
     expect(sleepServiceMixin).not.toContain("computeSleepRegularity");
     expect(sleepServiceMixin).not.toContain("computePersonalBaseline");
-    expect(screenTimeServiceMixin).toContain("classifyScreenTimeTarget");
+    expect(screenTimeServiceMixin).toContain("buildScreenTimeBreakdown");
+    expect(screenTimeServiceMixin).toContain("buildScreenTimeMetrics");
+    expect(screenTimeServiceMixin).toContain("buildScreenTimeSummary");
+    expect(screenTimeServiceMixin).toContain("buildScreenTimeVisibleBuckets");
     expect(screenTimeServiceMixin).toContain("computeScreenTimeRange");
     expect(screenTimeServiceMixin).toContain("enumerateScreenTimeHistoryDays");
+    expect(screenTimeServiceMixin).toContain("androidUsageRowsFromSignals");
+    expect(screenTimeServiceMixin).toContain(
+      "mobileScreenTimeDataSourceFromSignals",
+    );
     expect(screenTimeServiceMixin).toContain("isSystemInactivityApp");
     expect(screenTimeServiceMixin).toContain('from "@elizaos/plugin-health"');
     expect(screenTimeServiceMixin).not.toContain(
@@ -71,6 +80,17 @@ describe("LifeOps package boundaries", () => {
     );
     expect(screenTimeServiceMixin).not.toContain(
       "function enumerateHistoryDays",
+    );
+    expect(screenTimeServiceMixin).not.toContain("function toSummaryItems");
+    expect(screenTimeServiceMixin).not.toContain("function toBreakdownItems");
+    expect(screenTimeServiceMixin).not.toContain(
+      "function buildVisibleBuckets",
+    );
+    expect(screenTimeServiceMixin).not.toContain(
+      "function androidUsageRowsFromSignals",
+    );
+    expect(screenTimeServiceMixin).not.toContain(
+      "function mobileScreenTimeDataSourceFromSignals",
     );
     expect(
       existsSync(resolve(packageRoot, "src/lifeops/social-taxonomy.ts")),
@@ -90,6 +110,91 @@ describe("LifeOps package boundaries", () => {
 
     expect(permissions).not.toContain("health");
     expect(permissions).not.toContain("screentime");
+  });
+
+  it("imports browser bridge readiness policy from plugin-browser", () => {
+    const statusMixin = readPackageFile("src/lifeops/service-mixin-status.ts");
+    const screenTimeMixin = readPackageFile(
+      "src/lifeops/service-mixin-screentime.ts",
+    );
+    const browserMixin = readPackageFile("src/lifeops/service-mixin-browser.ts");
+    const coreMixin = readPackageFile("src/lifeops/service-mixin-core.ts");
+    const repository = readPackageFile("src/lifeops/repository.ts");
+    const statusChip = readPackageFile(
+      "src/components/BrowserBridgeStatusChip.tsx",
+    );
+
+    expect(statusMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(screenTimeMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(browserMixin).toContain("createBrowserBridgePageContext");
+    expect(browserMixin).toContain("createBrowserBridgeTabSummary");
+    expect(browserMixin).toContain(
+      "resolveBrowserBridgeCompanionPairingTokenExpiresAt",
+    );
+    expect(browserMixin).toContain("browserBridgeDomainFromUrl");
+    expect(browserMixin).toContain("MAX_BROWSER_FOCUS_WINDOW_MS");
+    expect(browserMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(coreMixin).toContain("createBrowserBridgeCompanionStatus");
+    expect(coreMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(statusChip).toContain('from "@elizaos/plugin-browser"');
+    expect(
+      existsSync(resolve(packageRoot, "src/lifeops/browser-readiness.ts")),
+    ).toBe(false);
+    expect(statusMixin).not.toContain("./browser-readiness");
+    expect(screenTimeMixin).not.toContain("./browser-readiness");
+    expect(statusChip).not.toContain("../lifeops/browser-readiness");
+    expect(repository).not.toContain(
+      "function createBrowserBridgeCompanionStatus",
+    );
+    expect(repository).not.toContain("function createBrowserBridgeTabSummary");
+    expect(repository).not.toContain("function createBrowserBridgePageContext");
+    expect(browserMixin).not.toContain(
+      "function browserCompanionPairingTokenTtlMs",
+    );
+    expect(browserMixin).not.toContain(
+      "function browserCompanionPairingTokenExpiresAt",
+    );
+    expect(browserMixin).not.toContain("function browserDomainFromUrl");
+  });
+
+  it("imports Apple Calendar native bridge policy from plugin-native-calendar", () => {
+    const appleCalendar = readPackageFile("src/lifeops/apple-calendar.ts");
+
+    expect(appleCalendar).toContain('from "@elizaos/capacitor-calendar"');
+    expect(appleCalendar).toContain("appleCalendarMacosBridgeCandidates");
+    expect(appleCalendar).toContain(
+      "APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME",
+    );
+    expect(appleCalendar).not.toContain(
+      'const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib"',
+    );
+    expect(appleCalendar).not.toContain(
+      'path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`',
+    );
+    expect(appleCalendar).not.toContain(
+      'path: `../../../../../../${NATIVE_DYLIB_BASENAME}`',
+    );
+  });
+
+  it("imports Apple Reminders native bridge policy from plugin-native-reminders", () => {
+    const appleReminders = readPackageFile("src/lifeops/apple-reminders.ts");
+    const manifest = readPackageFile("package.json");
+
+    expect(manifest).toContain('"@elizaos/macosreminders"');
+    expect(appleReminders).toContain('from "@elizaos/macosreminders"');
+    expect(appleReminders).toContain("appleRemindersMacosBridgeCandidates");
+    expect(appleReminders).toContain(
+      "APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME",
+    );
+    expect(appleReminders).not.toContain(
+      'const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib"',
+    );
+    expect(appleReminders).not.toContain(
+      'path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`',
+    );
+    expect(appleReminders).not.toContain(
+      'path: `../../../../../../${NATIVE_DYLIB_BASENAME}`',
+    );
   });
 
   it("imports Calendly message triage from plugin-calendly instead of owning a transport adapter", () => {

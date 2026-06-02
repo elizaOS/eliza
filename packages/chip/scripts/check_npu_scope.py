@@ -102,6 +102,9 @@ REQUIRED_POWER_THERMAL_ARTIFACTS = {
     "frequency_trace",
     "calibration_record",
 }
+MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST = (
+    "benchmarks/power/manifests/e1-npu-sustained-capture.measured.json"
+)
 
 
 def utc_now() -> str:
@@ -141,7 +144,22 @@ NPU_NEXT_COMMAND_PLAN = [
         "claim_boundary": "operator_commands_only_not_npu_runtime_or_release_evidence",
         "commands": [
             "adb devices",
-            "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh",
+            (
+                "E1_NPU_WRITE_PROOF_JSON=1 "
+                "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
+                "E1_NPU_CYCLES=<measured-cycles> "
+                "E1_NPU_HZ=<measured-hz> "
+                "E1_NPU_DMA_BYTES_READ=<measured-bytes-read> "
+                "E1_NPU_DMA_BYTES_WRITTEN=<measured-bytes-written> "
+                "E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes> "
+                "E1_NPU_NNAPI_TOTAL_NODE_COUNT=<measured-total-nodes> "
+                "E1_NPU_CPU_FALLBACK_PERCENT=0 "
+                "E1_NPU_UNSUPPORTED_OP_COUNT=0 "
+                "E1_NPU_DATAFLOW_NAME=<measured-dataflow> "
+                "E1_NPU_GENERATED_BY=<operator-or-job-id> "
+                "E1_NPU_TARGET=<target-id> "
+                "scripts/android/capture_e1_npu_nnapi_evidence.sh"
+            ),
             "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
         ],
         "requires": [
@@ -170,12 +188,21 @@ NPU_NEXT_COMMAND_PLAN = [
         "claim_boundary": "operator_commands_only_not_sustained_efficiency_evidence",
         "commands": [
             "test -n \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND\"",
-            "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+            (
+                'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
+                f'--output {MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST}"'
+            ),
+            (
+                "python3 benchmarks/power/scripts/check_sustained_run_evidence.py "
+                f"{MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST}"
+            ),
+            "python3 scripts/check_power_thermal_scope.py",
             "python3 scripts/check_phone_runtime_readiness_contract.py",
         ],
         "requires": [
             "calibrated power meter and thermal instrumentation",
             "sustained NPU workload with aligned frequency, power, thermal, and throttle traces",
+            "measured sustained power/thermal manifest validates before NPU efficiency claims",
         ],
     },
 ]
@@ -190,11 +217,46 @@ def command_plan_commands(plan: list[dict[str, Any]]) -> list[str]:
     return list(dict.fromkeys(commands))
 
 
+def commands_for_finding(finding: dict[str, Any], command_plan: list[dict[str, Any]]) -> list[str]:
+    message = str(finding.get("message", "")).lower()
+    selected_ids: list[str]
+    if any(token in message for token in ("power", "thermal", "perf-per-watt", "mlperf")):
+        selected_ids = ["capture_e1_npu_power_thermal_efficiency"]
+    elif any(token in message for token in ("vts", "cts", "vintf", "selinux", "android proof")):
+        selected_ids = ["capture_e1_npu_android_proof_bundle"]
+    else:
+        selected_ids = ["capture_e1_npu_nnapi_target_proof"]
+
+    selected: list[dict[str, Any]] = [
+        batch for batch in command_plan if str(batch.get("id")) in selected_ids
+    ]
+    commands = command_plan_commands(selected)
+    if not commands:
+        commands = command_plan_commands(command_plan)
+    return commands
+
+
+def preferred_command(commands: list[str]) -> str:
+    return next(
+        (
+            command
+            for command in commands
+            if (
+                "capture_e1_npu_nnapi_evidence.sh" in command
+                or "capture_e1_npu_android_proof_bundle.sh" in command
+                or "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" in command
+            )
+            and command != 'test -n "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND"'
+        ),
+        commands[0],
+    )
+
+
 def finding_payload(finding: dict[str, Any], command_plan: list[dict[str, Any]]) -> dict[str, Any]:
     row = dict(finding)
-    commands = command_plan_commands(command_plan)
+    commands = commands_for_finding(finding, command_plan)
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = preferred_command(commands)
         row["next_commands"] = commands
     return row
 
@@ -583,6 +645,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "check_e1_npu_nnapi_proof.py --probe-adb",
             "capture_e1_npu_android_proof_bundle.sh",
             "check_e1_npu_android_proof_manifest.py",
+            "check_sustained_run_evidence.py",
+            "check_power_thermal_scope.py",
         ):
             require(token in command_text, f"next_command_plan missing {token}", errors)
     proof = data.get("proof_artifacts")

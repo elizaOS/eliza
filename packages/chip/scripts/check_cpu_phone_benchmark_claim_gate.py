@@ -845,6 +845,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "path": rel(report_path),
                 "status": "invalid",
                 "reason": "; ".join(validation_errors),
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -870,6 +872,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "status": "blocked",
                 "reason": "claim_level must be L5_PROTOTYPE_SILICON or L6_COMPLETE_PHONE",
                 "claim_level": claim_level,
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -880,6 +884,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "path": rel(report_path),
                 "status": "blocked",
                 "reason": "phone-class claim report must be a real run, not dry-run",
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -898,7 +904,6 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
         )
 
     results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
-    results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
     for bench in sorted(REQUIRED_REPORT_BENCHES):
         result = results.get(bench)
         if result is None:
@@ -908,6 +913,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "missing",
                     "reason": "required lmbench result absent from report",
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -922,6 +929,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     **(
                         {"blocked_requirements_summary": blocked_summary} if blocked_summary else {}
                     ),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -939,6 +948,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(raw_errors + metadata_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -952,6 +963,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                         "passed result must include measured provenance "
                         f"({', '.join(sorted(REQUIRED_SIDE_PROVENANCE))})"
                     ),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -963,6 +976,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(metric_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -974,6 +989,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(calibration_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -985,6 +1002,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(result_target_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -1348,6 +1367,7 @@ def build_report(report_path: Path) -> dict[str, Any]:
     blocked = [item for item in findings if item.get("status") != "pass"]
     status = "pass" if not blocked else "blocked"
     claim_allowed = status == "pass"
+    command_plan = next_command_plan(blocked)
     report = {
         "schema": "eliza.cpu_phone_benchmark_claim_gate.v1",
         "generated_utc": datetime.now(UTC).isoformat(),
@@ -1367,9 +1387,47 @@ def build_report(report_path: Path) -> dict[str, Any]:
         "l5_l6_report": rel(L5_L6_OUT),
         "findings": findings,
         "blocked_count": len(blocked),
+        "summary": {
+            "blocked_count": len(blocked),
+            "next_command_batch_count": len(command_plan),
+        },
+        "next_command_plan": command_plan,
     }
     report["false_claim_flags"] = false_claim_flags(report)
     return report
+
+
+def next_command_plan(blocked_findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    batches: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for finding in blocked_findings:
+        name = str(finding.get("name") or "benchmark")
+        command = finding.get("next_command")
+        if not isinstance(command, str) or not command:
+            unblock = manifest_unblock_metadata(name)
+            command = unblock.get("run_command") or unblock.get("next_command")
+        if not isinstance(command, str) or not command:
+            continue
+        key = (name, command)
+        if key in seen:
+            continue
+        seen.add(key)
+        batches.append(
+            {
+                "id": f"capture_cpu_phone_{name}_benchmark_evidence",
+                "area": "benchmarks",
+                "source": "packages/chip/build/reports/cpu_phone_benchmark_claim_gate.json",
+                "claim_boundary": "operator_commands_only_not_cpu_phone_benchmark_or_release_evidence",
+                "commands": [command],
+                "requires": [
+                    "real E1 prototype, silicon, or complete-phone target execution",
+                    "target metadata with software, clocks, memory, thermal, power, process, and calibration sections",
+                    "raw output transcript hashes and calibrated benchmark assets",
+                    "rerun of the CPU phone benchmark claim gate after capture",
+                ],
+            }
+        )
+    return batches
 
 
 def main() -> int:

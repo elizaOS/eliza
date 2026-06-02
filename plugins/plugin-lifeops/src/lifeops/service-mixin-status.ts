@@ -1,7 +1,10 @@
 import type { IAgentRuntime, Task } from "@elizaos/core";
-import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeSettings,
+import {
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgeReadiness,
+  type BrowserBridgeReadinessState,
+  type BrowserBridgeSettings,
+  resolveBrowserBridgeReadiness,
 } from "@elizaos/plugin-browser";
 import type { LifeOpsScheduleMergedState } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import type { HealthBackend } from "@elizaos/plugin-health";
@@ -14,11 +17,6 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
-import {
-  type BrowserBridgeReadiness,
-  type BrowserBridgeReadinessState,
-  resolveBrowserBridgeReadiness,
-} from "./browser-readiness.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";

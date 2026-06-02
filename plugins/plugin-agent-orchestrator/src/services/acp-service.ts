@@ -134,6 +134,16 @@ const DENY_ENV_PATTERNS = [
   /TERMINAL_RUN_TOKEN/i,
 ];
 
+/**
+ * A key that must never reach a sub-agent, regardless of source — parent
+ * process.env forwarding OR caller-supplied customCredentials. Both paths run
+ * through this so a spawn request cannot inject a secret (connector bot token,
+ * vault passphrase) the deny-list exists to keep out of sub-agents.
+ */
+export function isDeniedSubAgentEnvKey(key: string): boolean {
+  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+}
+
 export class AcpService extends Service {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
 
@@ -1911,10 +1921,22 @@ export class AcpService extends Service {
     const env: NodeJS.ProcessEnv = {};
     for (const [key, value] of Object.entries(process.env)) {
       if (typeof value !== "string") continue;
-      if (isEnvForwardableToSubAgent(key)) env[key] = value;
+      if (isDeniedSubAgentEnvKey(key)) continue;
+      if (shouldForwardEnv(key)) env[key] = value;
     }
     for (const [key, value] of Object.entries(customCredentials ?? {})) {
-      if (typeof value === "string") env[key] = value;
+      if (typeof value !== "string") continue;
+      // customCredentials arrive with the spawn request, not from the parent's
+      // vetted process.env, so they MUST respect the same deny-list — otherwise
+      // a caller could inject a secret the deny-list strips from process.env
+      // forwarding (connector bot tokens, the vault passphrase).
+      if (isDeniedSubAgentEnvKey(key)) {
+        this.log("warn", "rejecting customCredential matching env deny-list", {
+          key,
+        });
+        continue;
+      }
+      env[key] = value;
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value === "string") env[key] = value;
@@ -2194,7 +2216,7 @@ export function shouldForwardEnv(key: string): boolean {
  * yet must never reach a coding sub-agent, so the deny check runs first.
  */
 export function isEnvForwardableToSubAgent(key: string): boolean {
-  if (DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))) return false;
+  if (isDeniedSubAgentEnvKey(key)) return false;
   return shouldForwardEnv(key);
 }
 

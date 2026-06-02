@@ -175,7 +175,10 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
             for finding in report["findings"]
             if finding["code"] == "peripheral_evidence_blocked:rear_camera"
         )
-        self.assertEqual(rear_camera["next_command"], "adb devices")
+        self.assertIn(
+            "capture_simulated_peripheral_evidence.py",
+            rear_camera["next_command"],
+        )
         self.assertIn(
             "capture_simulated_peripheral_evidence.py",
             " ".join(rear_camera["next_commands"]),

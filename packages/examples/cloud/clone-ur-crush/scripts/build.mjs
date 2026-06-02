@@ -40,8 +40,25 @@ async function writeTempPackageMarker() {
   await rename(tempPackageWritePath, tempPackagePath);
 }
 
+async function writeTempTypesInclude() {
+  if (originalTsconfig === null) return;
+
+  const parsed = JSON.parse(originalTsconfig);
+  const include = Array.isArray(parsed.include) ? parsed.include : [];
+  const tempTypesGlob = `${tempDistDirName}/types/**/*.ts`;
+  if (!include.includes(tempTypesGlob)) {
+    parsed.include = [...include, tempTypesGlob];
+    await writeFile(
+      `${tsconfigPath}.tmp`,
+      `${JSON.stringify(parsed, null, 2)}\n`,
+    );
+    await rename(`${tsconfigPath}.tmp`, tsconfigPath);
+  }
+}
+
 async function runNextBuild() {
   await writeTempPackageMarker();
+  await writeTempTypesInclude();
 
   const exitCode = await new Promise((resolve) => {
     const child = spawn(process.execPath, [nextCliPath, "build"], {

@@ -236,7 +236,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             for finding in report["findings"]
             if finding["code"] == "system_bridge_runtime_evidence_missing"
         )
-        self.assertEqual(missing_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            missing_runtime["next_command"],
+        )
         self.assertIn(
             "capture_system_bridge_runtime_evidence.py",
             " ".join(missing_runtime["next_commands"]),
@@ -442,7 +445,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             for finding in report["findings"]
             if finding["code"] == "system_bridge_runtime_status_not_pass"
         )
-        self.assertEqual(blocked_runtime["next_command"], "adb devices")
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            blocked_runtime["next_command"],
+        )
         self.assertIn(
             "capture_system_bridge_runtime_evidence.py",
             " ".join(blocked_runtime["next_commands"]),

@@ -46,4 +46,28 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain(" → ");
     expect(source).not.toContain(" · ");
   });
+
+  it("keeps overview assistant-first and free of dashboard loading copy", () => {
+    const source = readComponent("LifeOpsOverviewSection.tsx");
+
+    expect(source).toContain("LifeOpsOverviewAssistantDock");
+    expect(source).toContain("lifeops-overview-assistant-dock");
+    expect(source).toContain("lifeops-overview-signals");
+    expect(source).not.toContain('title="Sleep"');
+    expect(source).not.toContain('title="Screen Time"');
+    expect(source).not.toContain('title="Social"');
+    expect(source).not.toContain("Loading dashboard");
+    expect(source).not.toContain("Reading screen time");
+    expect(source).not.toContain("Weekly comparison unavailable");
+  });
+
+  it("keeps desktop navigation compact and active-label only", () => {
+    const shell = readComponent("LifeOpsWorkspaceShell.tsx");
+    const nav = readComponent("LifeOpsNavRail.tsx");
+
+    expect(shell).toContain('labelMode="active"');
+    expect(shell).toContain('storageKey="lifeops:nav-rail-width:compact"');
+    expect(shell).not.toContain("defaultWidth={296}");
+    expect(nav).toContain('labelMode?: "all" | "active"');
+  });
 });

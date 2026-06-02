@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "U_SENS.step",
   "footprint": "SENSOR_HUB_QFN_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "local QFN24 sensor-hub development pattern from sensor signal contract; pending exact sensor/IMU package selection",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "6219d6065cd94126d3d4dd6a26f949d7c44dc55e5e9036e070a00b5bb30d4cb4",
+  "local_discrete_step_sha256": "a778aff33af01df578ae26882d37dbbcf9d0eb10300954acf5da7a949bc4e2dd",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

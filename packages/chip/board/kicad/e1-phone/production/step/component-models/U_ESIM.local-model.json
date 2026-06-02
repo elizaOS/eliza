@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "U_ESIM.step",
   "footprint": "ESIM_LGA_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "public MFF2/eSIM 8-pad pinout with local QFN/LGA development footprint; pending eSIM supplier package drawing approval",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "335f49adf14cb3b7446ba408f891921b2bb6556439bf2781629936174448e862",
+  "local_discrete_step_sha256": "7a6e23cb740489d0168ed3ab6f651e1d9df84f7892f99a29e55c7c7033e43ac0",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

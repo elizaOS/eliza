@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./ShopifyAppView-Np5rfDb5.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./chart-column-KB60UiF0.js","./shopping-cart-D86KdquI.js","./wifi-D2P2Wl3X.js"])))=>i.map(i=>d[i]);
-import{b as i,_ as e}from"./index-Bfd-e4HW.js";const r="@elizaos/plugin-shopify-ui",t={name:r,displayName:"Shopify",description:"Manage your Shopify store — products, orders, inventory, customers",category:"utility",icon:null,loader:()=>e(()=>import("./ShopifyAppView-Np5rfDb5.js"),__vite__mapDeps([0,1,2,3,4,5]),import.meta.url).then(o=>({default:o.ShopifyAppView}))};i(t);
-//# sourceMappingURL=register-B-TesAZY.js.map

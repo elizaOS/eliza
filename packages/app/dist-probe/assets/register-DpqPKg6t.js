@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./WifiAppView-DA3QMste.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./index-DxJKmpt-.js","./wifi-D2P2Wl3X.js"])))=>i.map(i=>d[i]);
-import{b as e,_ as t,g5 as n}from"./index-Bfd-e4HW.js";const r="@elizaos/plugin-wifi",a={name:r,displayName:"WiFi",description:"Scan, inspect, and connect to nearby Wi-Fi networks",category:"system",icon:null,androidOnly:!0,loader:()=>t(()=>import("./WifiAppView-DA3QMste.js"),__vite__mapDeps([0,1,2,3,4]),import.meta.url).then(i=>({default:i.WifiAppView}))};function o(){e(a)}n()&&o();
-//# sourceMappingURL=register-DpqPKg6t.js.map

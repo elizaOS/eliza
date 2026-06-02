@@ -69,7 +69,7 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
     init?: RequestInit,
   ) {
     const url = getUrl(input);
-    if (!url || url.hostname !== "api.anthropic.com") {
+    if (url?.hostname !== "api.anthropic.com") {
       return originalFetch(input, init);
     }
 

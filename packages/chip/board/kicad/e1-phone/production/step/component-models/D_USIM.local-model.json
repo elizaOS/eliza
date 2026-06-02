@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "D_USIM.step",
   "footprint": "USIM_ESD_LEVELSHIFT_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "local 10-terminal USIM ESD/level-shift development pattern from public signal contract; pending selected device land pattern",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "4016b8d8b4f10886f5a6280938d19467a144f753eb23b281b59aef55f0a4b295",
+  "local_discrete_step_sha256": "fbea7bdd589ec2e767f62c7549f3039c9bef1acc74a7131c87aaedc1c5a296c5",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

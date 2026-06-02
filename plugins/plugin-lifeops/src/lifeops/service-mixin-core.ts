@@ -8,6 +8,7 @@ import {
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
   type UpsertBrowserBridgeCompanionRequest,
+  createBrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser";
 import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
 import type {
@@ -21,7 +22,6 @@ import type {
 } from "../contracts/index.js";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
-  createBrowserBridgeCompanionStatus,
   createLifeOpsAuditEvent,
   LifeOpsRepository,
 } from "./repository.js";

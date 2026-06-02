@@ -52,7 +52,7 @@ describe("useRuntimeMode", () => {
       expect(last?.state.phase).toBe("ready");
     });
     const last = seen[seen.length - 1];
-    if (!last || last.state.phase !== "ready") {
+    if (last?.state.phase !== "ready") {
       throw new Error("expected ready state");
     }
     expect(last.state.snapshot.mode).toBe("cloud");
@@ -127,7 +127,7 @@ describe("useRuntimeMode", () => {
     });
     await waitFor(() => {
       const cur = seen[seen.length - 1];
-      if (!cur || cur.state.phase !== "ready") return;
+      if (cur?.state.phase !== "ready") return;
       expect(cur.state.snapshot.mode).toBe("local");
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -94,6 +94,8 @@ SUPPORTED_SUCCESS_KEYS = {
     "max_abs_delta_yaw_rad",
     "no_fall",
     "min_alternating_foot_contacts",
+    "left_foot_contact_required",
+    "right_foot_contact_required",
     "min_swing_foot_clearance_m",
     "max_foot_slip_m_s",
     "max_self_collision_count",

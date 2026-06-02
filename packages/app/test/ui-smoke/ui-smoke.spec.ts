@@ -15,13 +15,18 @@ test("chat, apps, and settings routes render through the real shell", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
+  // The chat tab now routes through the single global chat overlay
+  // (App.tsx `GlobalChatOverlay` → `<ChatView />`); the old in-shell
+  // conversations-sidebar + chat-widgets-bar (TasksEventsPanel) panels were
+  // removed when every view started routing through the chat overlay
+  // (commit 082ff2de9a "cleanups"). The ready signal is now the overlay
+  // container plus the interactive composer.
   await assertReadyChecks(
     page,
     "chat shell",
     [
-      { selector: '[data-testid="conversations-sidebar"]' },
+      { selector: '[data-testid="global-chat-overlay"]' },
       { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
     ],
     "all",
   );

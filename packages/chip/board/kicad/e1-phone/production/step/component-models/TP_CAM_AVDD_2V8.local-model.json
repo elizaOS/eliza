@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "6e99fbf1d25decdd0c57745f34b20bb104f340a7a67910a291108b672cc0f279",
+  "local_discrete_step_sha256": "e67232f20dd22018a8046d8eb8deba02c90cf0bc2b531b677ccecf014c029c04",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

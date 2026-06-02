@@ -30,6 +30,17 @@ def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, ob
     summary = report.get("summary")
     testcase.assertIsInstance(summary, dict)
     testcase.assertGreaterEqual(summary.get("next_command_batch_count", 0), 1)
+    testcase.assertEqual(
+        summary.get("next_command_batch_count"),
+        len(report.get("next_command_plan", [])),
+    )
+    for batch in report.get("next_command_plan", []):
+        testcase.assertIsInstance(batch.get("commands"), list)
+        testcase.assertTrue(batch["commands"])
+        testcase.assertEqual(
+            batch.get("claim_boundary"),
+            "operator_remediation_commands_only_not_boot_or_runtime_evidence",
+        )
 
 
 class ChipOsEvidenceProvenanceTests(unittest.TestCase):
@@ -583,6 +594,81 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 data = provenance.build_report(["packages/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
+
+    def test_npu_provenance_remediation_uses_measured_nnapi_capture_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/npu_scope.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.npu_scope.v1",
+                        "status": "npu_scope_release_blocked",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": (
+                            "current_runtime_and_sim_scaffolds_are_not_silicon_proof"
+                        ),
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        assert_actionable_findings(self, data)
+        commands = "\n".join(
+            command
+            for finding in data["findings"]
+            for command in finding.get("next_commands", [])
+        )
+        self.assertIn("E1_NPU_CPU_FALLBACK_PERCENT=0", commands)
+        self.assertIn("E1_NPU_UNSUPPORTED_OP_COUNT=0", commands)
+        self.assertIn("E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes>", commands)
+        self.assertIn("capture_e1_npu_nnapi_evidence.sh", commands)
+
+    def test_benchmark_provenance_remediation_routes_to_benchmark_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/benchmark_efficiency_scope.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.benchmark_efficiency_scope.v1",
+                        "status": "benchmark_efficiency_scope_release_blocked",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": (
+                            "benchmark scope audit only; not measured target efficiency"
+                        ),
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        assert_actionable_findings(self, data)
+        commands = "\n".join(
+            command
+            for finding in data["findings"]
+            for command in finding.get("next_commands", [])
+        )
+        self.assertIn("run_benchmarks.py run", commands)
+        self.assertIn("--claim-level L5_PROTOTYPE_SILICON", commands)
+        self.assertIn("run_benchmarks.py validate-report", commands)
+        self.assertIn("check_benchmark_efficiency_scope.py", commands)
+        self.assertIn("check_cpu_phone_benchmark_claim_gate.py", commands)
 
     def test_runtime_capture_contract_keeps_scope_without_marker_line_expansion(
         self,

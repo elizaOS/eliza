@@ -1,7 +1,7 @@
 {
     "$schema": "https://schemas.kicad.org/erc.v1.json",
     "coordinate_units": "mm",
-    "date": "2026-06-01T23:52:44-0700",
+    "date": "2026-06-02T01:02:45-0700",
     "included_severities": [
         "error",
         "warning"

@@ -98,6 +98,15 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
         raise AssertionError(f"android sim report missing structured AOSP_DIR finding: {findings}")
     if not any(item.get("code", "").startswith("android_sim_status_") for item in findings):
         raise AssertionError(f"android sim report missing structured status finding: {findings}")
+    for finding in findings:
+        next_command = finding.get("next_command", "")
+        next_commands = finding.get("next_commands", [])
+        if "boot_android_simulator.sh --run-cuttlefish" not in next_command:
+            raise AssertionError(f"android sim finding missing runnable next_command: {finding}")
+        if next_command not in next_commands:
+            raise AssertionError(f"android sim next_command not preserved in batch: {finding}")
+        if not any("check_android_sim_boot.py" in command for command in next_commands):
+            raise AssertionError(f"android sim finding missing recheck command: {finding}")
     for key in ("run_qemu", "run_renode"):
         if not isinstance(data.get(key), bool):
             raise AssertionError(f"android sim report must include boolean {key}")
@@ -118,6 +127,16 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
             raise AssertionError(
                 f"android sim report missing handoff command {command!r}: {handoff_commands}"
             )
+    next_command_plan = data.get("next_command_plan", [])
+    if len(next_command_plan) != 1:
+        raise AssertionError(f"android sim report must expose one command batch: {next_command_plan}")
+    batch = next_command_plan[0]
+    if batch.get("id") != "android_sim_full_virtual_device_evidence":
+        raise AssertionError(f"android sim command batch id mismatch: {batch}")
+    if batch.get("commands") != handoff_commands:
+        raise AssertionError(f"android sim command batch must preserve handoff commands: {batch}")
+    if batch.get("claim_boundary") != "operator_commands_only_not_android_boot_or_release_evidence":
+        raise AssertionError(f"android sim command batch boundary mismatch: {batch}")
     if data.get("evidence_manifest") != "docs/android/bsp-log-evidence-manifest.json":
         raise AssertionError("android sim report must reference the BSP log evidence manifest")
     required = data.get("required_evidence", [])

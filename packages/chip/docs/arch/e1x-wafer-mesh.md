@@ -247,6 +247,46 @@ full-output checksum blocker, with:
 python3 scripts/check_e1x_dense_stratified_full_k_repair_execution.py
 ```
 
+Run the ultra-dense stratified full-K repair execution gate, which doubles the
+dense gate again to 64 rows per placed layer and checks the same normal/high
+repair-route invariants, with:
+
+```sh
+python3 scripts/check_e1x_ultra_dense_stratified_full_k_repair_execution.py
+```
+
+Run the hyper-dense stratified full-K repair execution gate, which doubles the
+ultra-dense gate again to 128 rows per placed layer and checks the same
+normal/high repair-route invariants, with:
+
+```sh
+python3 scripts/check_e1x_hyper_dense_stratified_full_k_repair_execution.py
+```
+
+Run the full-K repair coverage ladder gate, which aggregates the 16/32/64/128
+row-per-layer repair-aware full-K reports, proves monotonic coverage growth,
+and quantifies the remaining full-output real-weight checksum gap, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_coverage_ladder.py
+```
+
+Run the full-K repair kind-coverage gate, which reconstructs the selected
+full-K rows from placement and repair manifests to prove every layer kind is
+covered at every ladder rung and remap counts match the executed reports, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_kind_coverage.py
+```
+
+Run the full-K repair route-cost gate, which measures logical-to-physical spare
+displacement for the selected full-K rows under normal and high-failure repair
+manifests and records the remaining physical-routing-signoff boundary, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_route_cost.py
+```
+
 Run the full norm real-weight row gate, which executes every output row for the
 complete `norm` layer class across its full K dimension and records the
 remaining matmul-heavy full-output checksum blocker, with:

@@ -555,7 +555,14 @@ def finding_payload(
         commands.extend(command_batch_commands(batch))
     commands = list(dict.fromkeys(commands))
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = next(
+            (
+                command
+                for command in commands
+                if "capture_simulated_peripheral_evidence.py" in command
+            ),
+            commands[0],
+        )
         row["next_commands"] = commands
     return row
 

@@ -78,6 +78,28 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
         ):
             if token not in command_text:
                 raise AssertionError(command_text)
+        command_plan = assembly_report.get("next_command_plan", [])
+        if assembly_report.get("summary", {}).get("next_command_batch_count") != len(
+            command_plan
+        ):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        if len(command_plan) != len(findings):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        plan_by_output = {
+            tuple(batch.get("expected_output_files", [])): batch for batch in command_plan
+        }
+        for finding in findings:
+            key = (finding["evidence"],)
+            batch = plan_by_output.get(key)
+            if batch is None:
+                raise AssertionError(json.dumps(command_plan, indent=2))
+            if batch.get("commands") != finding.get("next_commands"):
+                raise AssertionError(json.dumps(batch, indent=2))
+            if (
+                batch.get("claim_boundary")
+                != "operator_commands_only_not_android_npu_or_release_evidence"
+            ):
+                raise AssertionError(json.dumps(batch, indent=2))
         check = run(
             [
                 sys.executable,
@@ -96,6 +118,19 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
             raise AssertionError(json.dumps(check_report, indent=2))
         if "not_android_boot" not in str(check_report.get("claim_boundary", "")):
             raise AssertionError(json.dumps(check_report, indent=2))
+        check_plan = check_report.get("next_command_plan", [])
+        if check_report.get("summary", {}).get("next_command_batch_count") != len(check_plan):
+            raise AssertionError(json.dumps(check_report, indent=2))
+        if len(check_plan) != 1:
+            raise AssertionError(json.dumps(check_report, indent=2))
+        check_batch = check_plan[0]
+        if check_batch.get("id") != "capture_e1_npu_android_proof_bundle":
+            raise AssertionError(json.dumps(check_batch, indent=2))
+        if not any(
+            "capture_e1_npu_android_proof_bundle.sh" in command
+            for command in check_batch.get("commands", [])
+        ):
+            raise AssertionError(json.dumps(check_batch, indent=2))
 
 
 def test_assembly_passes_with_all_artifacts() -> None:

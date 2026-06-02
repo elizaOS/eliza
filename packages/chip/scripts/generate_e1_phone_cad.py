@@ -121,6 +121,54 @@ def cad_connection_mechanical_detail_summary(
     }
 
 
+def cad_connection_bend_radius_basis(contract: dict[str, Any]) -> str:
+    medium = str(contract.get("physical_medium") or "unknown_medium")
+    radius = contract.get("min_bend_radius_mm")
+    radius_text = f"{float(radius):g}mm" if isinstance(radius, int | float) else "not_applicable"
+    local_basis_by_medium = {
+        "battery_power_flex": (
+            "local_battery_flex_min_bend_radius_requirement_"
+            f"{radius_text}_pending_pack_supplier_lead_drawing"
+        ),
+        "board_to_board_edge_connector": (
+            "local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_"
+            "pending_connector_supplier_stack_drawing"
+        ),
+        "flexible_antenna_loop": (
+            "local_flexible_antenna_loop_min_bend_radius_requirement_"
+            f"{radius_text}_pending_antenna_supplier_ferrite_and_adhesive_drawing"
+        ),
+        "flexible_printed_circuit": (
+            "local_fpc_min_bend_radius_requirement_"
+            f"{radius_text}_pending_supplier_fpc_stackup_stiffener_and_bend_drawing"
+        ),
+        "ground_spring_contact": (
+            "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_"
+            "pending_supplier_force_wipe_plating_drawing"
+        ),
+        "insulated_wire_pair": (
+            "local_insulated_wire_pair_min_bend_radius_requirement_"
+            f"{radius_text}_pending_wire_gauge_insulation_and_strain_relief_drawing"
+        ),
+        "pcb_copper_trace_group": (
+            "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_"
+            "pending_clean_or_waived_drc_erc_si_pi_review"
+        ),
+        "rf_50ohm_feed": (
+            "local_rf_feed_min_bend_radius_requirement_"
+            f"{radius_text}_pending_50ohm_stackup_matching_and_vna_evidence"
+        ),
+        "rf_tuner_interconnect": (
+            "local_rf_tuner_interconnect_min_bend_radius_requirement_"
+            f"{radius_text}_pending_tuner_state_table_matching_and_vna_evidence"
+        ),
+    }
+    return local_basis_by_medium.get(
+        medium,
+        f"local_connection_min_bend_radius_requirement_{radius_text}_pending_supplier_drawing",
+    )
+
+
 def cad_connection_mechanical_envelope(
     *,
     contract: dict[str, Any],
@@ -161,7 +209,7 @@ def cad_connection_mechanical_envelope(
         "endpoint_center_distance_mm": endpoint_center_distance_mm,
         "routed_trace_length_total_mm": routed_length_total_mm,
         "min_bend_radius_mm": contract.get("min_bend_radius_mm"),
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": cad_connection_bend_radius_basis(contract),
         "controlled_impedance_required": bool(contract.get("controlled_impedance_required")),
         "controlled_impedance_targets": controlled_targets,
         "impedance_requirement": contract.get("impedance_requirement"),
@@ -2957,9 +3005,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "endpoint_center_distance_mm": endpoint_center_distance_mm,
             "routed_trace_length_total_mm": routed_length_total_mm,
             "min_bend_radius_mm": contract.get("min_bend_radius_mm"),
-            "bend_radius_basis": (
-                "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing"
-            ),
+            "bend_radius_basis": cad_connection_bend_radius_basis(contract),
             "controlled_impedance_required": bool(contract.get("controlled_impedance_required")),
             "controlled_impedance_targets": controlled_targets,
             "impedance_requirement": contract.get("impedance_requirement"),

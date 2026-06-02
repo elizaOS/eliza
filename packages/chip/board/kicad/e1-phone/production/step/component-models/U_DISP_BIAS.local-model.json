@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "U_DISP_BIAS.step",
   "footprint": "BACKLIGHT_BIAS_POWER_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "local QFN24 backlight/bias power development pattern from display-power signal contract; pending exact driver package selection",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "463b22c4d4674edbfdd69c2f6f55e9ed99b25898e51aa87756510d99179324d4",
+  "local_discrete_step_sha256": "b1f484a801d488d8e40de6a1ae22fb2c08081564252ad477af6ab0d1511fae4a",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

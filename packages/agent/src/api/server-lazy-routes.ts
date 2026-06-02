@@ -241,7 +241,7 @@ export async function handleBackgroundTasksRoute(
   ...args: Parameters<BackgroundTasksRoutesModule["handleBackgroundTasksRoute"]>
 ): ReturnType<BackgroundTasksRoutesModule["handleBackgroundTasksRoute"]> {
   const ctx = routeContext(args);
-  if (!ctx || ctx.pathname !== "/api/background/run-due-tasks") return false;
+  if (ctx?.pathname !== "/api/background/run-due-tasks") return false;
   return (
     await import("./background-tasks-routes.ts")
   ).handleBackgroundTasksRoute(...args);
@@ -426,7 +426,7 @@ export async function handleModelsRoutes(
   ...args: Parameters<ModelsRoutesModule["handleModelsRoutes"]>
 ): ReturnType<ModelsRoutesModule["handleModelsRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || ctx.pathname !== "/api/models") return false;
+  if (ctx?.pathname !== "/api/models") return false;
   return (await import("./models-routes.ts")).handleModelsRoutes(...args);
 }
 
@@ -474,7 +474,7 @@ export async function handleProviderSwitchRoutes(
   ...args: Parameters<ProviderSwitchRoutesModule["handleProviderSwitchRoutes"]>
 ): ReturnType<ProviderSwitchRoutesModule["handleProviderSwitchRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || ctx.pathname !== "/api/provider/switch") return false;
+  if (ctx?.pathname !== "/api/provider/switch") return false;
   return (
     await import("./provider-switch-routes.ts")
   ).handleProviderSwitchRoutes(...args);

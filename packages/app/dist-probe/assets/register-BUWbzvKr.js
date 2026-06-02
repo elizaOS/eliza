@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./DeviceSettingsAppView-BidZTgID.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./index-DxJKmpt-.js","./monitor-cog-DH3xghup.js","./sliders-horizontal-_lzxf8Oh.js","./wifi-D2P2Wl3X.js"])))=>i.map(i=>d[i]);
-import{b as i,_ as t,g5 as s}from"./index-Bfd-e4HW.js";const n="@elizaos/plugin-device-settings",r={name:n,displayName:"Device Settings",description:"Brightness, volume, Android roles, and device settings",category:"system",icon:null,androidOnly:!0,loader:()=>t(()=>import("./DeviceSettingsAppView-BidZTgID.js"),__vite__mapDeps([0,1,2,3,4,5,6]),import.meta.url).then(e=>({default:e.DeviceSettingsAppView}))};function o(){i(r)}s()&&o();
-//# sourceMappingURL=register-BUWbzvKr.js.map

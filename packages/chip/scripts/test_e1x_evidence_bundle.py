@@ -36,8 +36,8 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["missing_evidence_path_count"] == 0
-    assert report["summary"]["evidence_path_check_count"] == 63
-    assert report["summary"]["freshness_check_count"] == 63
+    assert report["summary"]["evidence_path_check_count"] == 68
+    assert report["summary"]["freshness_check_count"] == 68
     assert report["summary"]["real_graph_model_required_vs_e1_sram"] > 100
     assert 0.0 < report["summary"]["real_graph_model_required_vs_e1x_sram"] < 1.0
     assert report["summary"]["e1_comparison_audit_sram_ratio"] == 128.25
@@ -235,6 +235,109 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     )
     assert (
         report["summary"]["dense_stratified_full_k_repair_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["ultra_dense_stratified_full_k_repair_rows"] == 18_112
+    assert report["summary"]["ultra_dense_stratified_full_k_repair_macs"] == 88_478_784
+    assert report["summary"]["ultra_dense_stratified_full_k_repair_touched_cores"] == 13_009
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_output_checksum"]
+        == 1_604_437_103_023_062_119
+    )
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_normal_route_checksum"]
+        == 7_195_579_865_255_220_347
+    )
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_high_failure_route_checksum"]
+        == 13_035_249_012_885_092_373
+    )
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_high_failure_remapped_rows"]
+        == 406
+    )
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_rows_sha256"]
+        == "549b0da412404be0f41351fa4bdb79883089306bc480515e8eb89f6467682b7d"
+    )
+    assert (
+        report["summary"]["ultra_dense_stratified_full_k_repair_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["hyper_dense_stratified_full_k_repair_rows"] == 36_224
+    assert report["summary"]["hyper_dense_stratified_full_k_repair_macs"] == 176_957_568
+    assert report["summary"]["hyper_dense_stratified_full_k_repair_touched_cores"] == 25_937
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_output_checksum"]
+        == 17_613_454_895_497_811_098
+    )
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_normal_route_checksum"]
+        == 12_562_148_139_045_721_695
+    )
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_high_failure_route_checksum"]
+        == 8_497_411_527_252_241_509
+    )
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_high_failure_remapped_rows"]
+        == 760
+    )
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_rows_sha256"]
+        == "31f1aa362fceff9d7f16cc13f3ab5cca1d6cfff9026b1d955f1e145443ab1c0f"
+    )
+    assert (
+        report["summary"]["hyper_dense_stratified_full_k_repair_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["full_k_repair_ladder_rungs"] == 4
+    assert report["summary"]["full_k_repair_ladder_max_rows"] == 36_224
+    assert report["summary"]["full_k_repair_ladder_max_macs"] == 176_957_568
+    assert 0.013 < report["summary"]["full_k_repair_ladder_row_fraction"] < 0.014
+    assert 0.013 < report["summary"]["full_k_repair_ladder_mac_fraction"] < 0.014
+    assert report["summary"]["full_k_repair_ladder_missing_rows"] == 2_572_416
+    assert report["summary"]["full_k_repair_ladder_missing_macs"] == 12_838_906_752
+    assert report["summary"]["full_k_repair_ladder_row_gain"] == 8.0
+    assert report["summary"]["full_k_repair_ladder_mac_gain"] == 8.0
+    assert (
+        report["summary"]["full_k_repair_ladder_sha256"]
+        == "d9f0a9cffa3338ba27f2f4996bd9082c6a38d5bb7ccdb9fd6ee85eb8e2f9bcd9"
+    )
+    assert (
+        report["summary"]["full_k_repair_ladder_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["full_k_repair_kind_rungs"] == 4
+    assert report["summary"]["full_k_repair_kind_count"] == 8
+    assert report["summary"]["full_k_repair_kind_hyper_rows"] == 36_224
+    assert report["summary"]["full_k_repair_kind_hyper_macs"] == 176_957_568
+    assert report["summary"]["full_k_repair_kind_hyper_touched_cores"] == 25_937
+    assert report["summary"]["full_k_repair_kind_hyper_high_failure_remaps"] == 760
+    assert report["summary"]["full_k_repair_kind_hyper_embedding_rows"] == 128
+    assert report["summary"]["full_k_repair_kind_hyper_lm_head_rows"] == 128
+    assert report["summary"]["full_k_repair_kind_hyper_norm_rows"] == 10_368
+    assert (
+        report["summary"]["full_k_repair_kind_sha256"]
+        == "6d950882a3ecc98af6f0ae571a8c9715579b8850467694b18bcbf524976b4635"
+    )
+    assert (
+        report["summary"]["full_k_repair_kind_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["full_k_repair_route_rungs"] == 4
+    assert report["summary"]["full_k_repair_route_hyper_normal_remaps"] == 44
+    assert report["summary"]["full_k_repair_route_hyper_high_failure_remaps"] == 760
+    assert report["summary"]["full_k_repair_route_hyper_normal_distance"] == 6_824
+    assert report["summary"]["full_k_repair_route_hyper_high_failure_distance"] == 107_180
+    assert report["summary"]["full_k_repair_route_hyper_high_failure_max_distance"] == 346
+    assert report["summary"]["full_k_repair_route_hyper_distance_ratio"] > 15.0
+    assert (
+        report["summary"]["full_k_repair_route_sha256"]
+        == "0580b6c27b4aa4347ffcf0e167b251cb1b6c85444947fb58dda5989d2ba5e1dc"
+    )
+    assert (
+        report["summary"]["full_k_repair_route_residual_blocker"]
         == "full_output_real_weight_checksum_missing"
     )
     assert report["summary"]["full_norm_real_weight_layers"] == 81
