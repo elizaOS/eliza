@@ -62,7 +62,7 @@ import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_OVERLAY } from "./lib/floating-layers";
+import { Z_OVERLAY, Z_SHELL_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -1084,6 +1084,7 @@ function EmbeddedShellPill(): ReactNode {
     <div
       data-testid="embedded-shell-pill"
       className={`pointer-events-none fixed inset-0 flex items-end justify-center ${MOBILE_NAV_PADDING_CLASS}`}
+      style={{ zIndex: Z_SHELL_OVERLAY }}
     >
       <ShellFoundationMount />
     </div>

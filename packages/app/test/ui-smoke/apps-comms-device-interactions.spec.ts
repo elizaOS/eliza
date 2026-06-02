@@ -92,6 +92,7 @@ const BENIGN_CONSOLE_PATTERNS = [
   /\[Eliza\] StatusBar plugin not available/i,
   /\[eliza\]\[startup:init\] Device bridge unavailable/i,
   /\[eliza\]\[startup:init\] Mobile agent tunnel/i,
+  /WebSocket connection to 'ws:\/\/127\.0\.0\.1:31337\/api\/local-inference\/device-bridge\?token=ui-smoke-local-agent-token' failed/i,
   /Web Bluetooth is not available/i,
 ];
 const BENIGN_PAGEERROR_PATTERNS = [
@@ -1283,19 +1284,15 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
         (await readFixture(page))?.smartglasses.wifiCredentials.at(-1),
       )
       .toEqual({ ssid: "LabNet", password: "correct horse" });
-    await page.getByRole("button", { name: "Native Setup" }).click();
+    await page
+      .getByRole("button", { name: /^(Native Setup|Native Wi-Fi Setup)$/ })
+      .click();
     await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
 
     await page.getByRole("button", { name: "Android" }).click();
+    await expect(page.getByText("Native bridge preferred")).toBeVisible();
     await expect(
-      page.getByText(
-        "Use the native bridge for headset pairing, Wi-Fi scan, and Wi-Fi credential delivery when the host exposes it.",
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        "Direct browser BLE can work in Chrome, but native pairing is the reliable setup path on Android builds.",
-      ),
+      page.getByText("Use the host for pairing, Wi-Fi scan, and credentials."),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(

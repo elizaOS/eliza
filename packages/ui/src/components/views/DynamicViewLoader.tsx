@@ -81,8 +81,10 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
     import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
+  "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": () => import("../../agent-surface/index.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
+  "@elizaos/ui/components": () => import("../index.ts"),
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),

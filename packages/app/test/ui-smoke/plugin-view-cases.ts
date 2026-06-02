@@ -62,7 +62,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["orchestrator", "tui", "/orchestrator/tui"],
     ["trajectory-logger", "gui", "/trajectory-logger"],
     ["trajectory-logger", "tui", "/trajectory-logger/tui"],
-    ["training", "gui", "/training"],
+    ["training", "gui", "/apps/fine-tuning"],
     ["training", "tui", "/training/tui"],
     ["facewear", "gui", "/apps/hearwear"],
     ["facewear", "tui", "/apps/hearwear/tui"],
