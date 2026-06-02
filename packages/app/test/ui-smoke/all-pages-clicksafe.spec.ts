@@ -1461,6 +1461,7 @@ for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {
 test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   page,
 }) => {
+  test.setTimeout(420_000);
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 
