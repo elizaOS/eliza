@@ -295,8 +295,13 @@ function coveredViewType(
     : undefined;
 }
 
+// viewDeclarations() only ever yields declarations whose componentExport is a
+// present string (it filters out the rest), so narrow the core type — whose
+// componentExport is optional for remote plugins — for these local consumers.
+type CoveredView = ViewDeclaration & { componentExport: string };
+
 function capabilitiesForDeclaration(
-  declaration: ViewDeclaration,
+  declaration: CoveredView,
 ): readonly string[] {
   const owner = Object.entries(TUI_PARITY_CAPABILITIES).find(([sourcePath]) =>
     readManifest(sourcePath).includes(declaration.componentExport),
@@ -304,9 +309,9 @@ function capabilitiesForDeclaration(
   return owner?.[1] ?? [];
 }
 
-function viewDeclarations(manifestPath: string): ViewDeclaration[] {
+function viewDeclarations(manifestPath: string): CoveredView[] {
   return viewObjects(readManifest(manifestPath))
-    .map((object): ViewDeclaration | null => {
+    .map((object): CoveredView | null => {
       const id = stringField(object, "id");
       const label = stringField(object, "label");
       const path = stringField(object, "path");
@@ -324,9 +329,9 @@ function viewDeclarations(manifestPath: string): ViewDeclaration[] {
         bundlePath,
         componentExport,
         visibleInManager: true,
-      } satisfies ViewDeclaration;
+      } satisfies CoveredView;
     })
-    .filter((view): view is ViewDeclaration => view !== null);
+    .filter((view): view is CoveredView => view !== null);
 }
 
 function makeCtx(
