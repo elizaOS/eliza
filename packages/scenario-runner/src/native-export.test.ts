@@ -115,12 +115,25 @@ function syntheticTrajectory() {
   };
 }
 
+function expectSingleNativeRow(
+  rows: ReturnType<typeof recordedTrajectoryToNativeRows>,
+) {
+  expect(rows).toHaveLength(1);
+  const [row] = rows;
+  expect(row).toBeDefined();
+  if (!row) {
+    throw new Error("expected one native export row");
+  }
+  return row;
+}
+
 describe("recordedTrajectoryToNativeRows scenario outcome", () => {
   it("omits scenario outcome fields when no outcome is supplied", () => {
     const rows = recordedTrajectoryToNativeRows(syntheticTrajectory() as never);
-    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
-    expect(rows[0]!.scenarioStatus).toBeUndefined();
-    expect(rows[0]!.metadata.scenario_status).toBeUndefined();
+    const row = expectSingleNativeRow(rows);
+    expect(Object.hasOwn(row, "status")).toBe(false);
+    expect(row.scenarioStatus).toBeUndefined();
+    expect(row.metadata.scenario_status).toBeUndefined();
   });
 
   it("stamps a passing scenario outcome on each row", () => {
@@ -128,9 +141,10 @@ describe("recordedTrajectoryToNativeRows scenario outcome", () => {
       syntheticTrajectory() as never,
       "passed",
     );
-    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
-    expect(rows[0]!.scenarioStatus).toBe("passed");
-    expect(rows[0]!.metadata.scenario_status).toBe("passed");
+    const row = expectSingleNativeRow(rows);
+    expect(Object.hasOwn(row, "status")).toBe(false);
+    expect(row.scenarioStatus).toBe("passed");
+    expect(row.metadata.scenario_status).toBe("passed");
   });
 
   it("stamps scenarioStatus='failed' so a failed scenario row is not scored gold", () => {
@@ -142,18 +156,18 @@ describe("recordedTrajectoryToNativeRows scenario outcome", () => {
     // metadata.scenario_status in {failed,skipped} as success=False/score=0 →
     // rating="repair"/weight=0. Top-level status remains reserved for the
     // canonical native lifecycle contract.
-    expect(Object.hasOwn(rows[0]!, "status")).toBe(false);
-    expect(rows[0]!.scenarioStatus).toBe("failed");
-    expect(rows[0]!.metadata.trajectory_status).toBe("finished");
-    expect(rows[0]!.metadata.scenario_status).toBe("failed");
+    const row = expectSingleNativeRow(rows);
+    expect(Object.hasOwn(row, "status")).toBe(false);
+    expect(row.scenarioStatus).toBe("failed");
+    expect(row.metadata.trajectory_status).toBe("finished");
+    expect(row.metadata.scenario_status).toBe("failed");
   });
 });
 
 describe("recordedTrajectoryToNativeRows", () => {
   it("emits one eliza_native_v1 boundary row per model-call stage", () => {
     const rows = recordedTrajectoryToNativeRows(syntheticTrajectory() as never);
-    expect(rows).toHaveLength(1);
-    const row = rows[0]!;
+    const row = expectSingleNativeRow(rows);
     expect(row.format).toBe("eliza_native_v1");
     expect(row.schemaVersion).toBe(1);
     expect(row.boundary).toBe("vercel_ai_sdk.generateText");
@@ -264,7 +278,12 @@ describe("exportScenarioNativeJsonl", () => {
       expect(count).toBe(1);
       const lines = readFileSync(outPath, "utf-8").trim().split("\n");
       expect(lines).toHaveLength(1);
-      const parsed = JSON.parse(lines[0]!);
+      const [line] = lines;
+      expect(line).toBeDefined();
+      if (!line) {
+        throw new Error("expected one native JSONL line");
+      }
+      const parsed = JSON.parse(line);
       expect(parsed.format).toBe("eliza_native_v1");
       expect(parsed.metadata.source_dataset).toBe(
         "scenario_trajectory_boundary",
