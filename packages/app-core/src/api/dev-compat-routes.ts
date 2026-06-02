@@ -10,6 +10,7 @@ import {
 } from "./dev-console-log";
 import { buildRouteCatalog } from "./dev-route-catalog";
 import { resolveDevStackFromEnv } from "./dev-stack";
+import { getPerfSnapshot } from "./perf-instrument";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
@@ -24,6 +25,7 @@ import {
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
  * - `GET /api/dev/boot-history` (alias `GET /api/dev/health`)
+ * - `GET /api/dev/route-timings` (perf instrumentation; ELIZA_PERF_INSTRUMENT=1)
  */
 export async function handleDevCompatRoutes(
   req: http.IncomingMessage,
@@ -229,6 +231,23 @@ export async function handleDevCompatRoutes(
     }
     const { buildBootHistoryPayload } = await import("./dev-boot-history");
     sendJsonResponse(res, 200, await buildBootHistoryPayload());
+    return true;
+  }
+
+  // ── GET /api/dev/route-timings ──────────────────────────────────────
+  // Per-route p50/p95 latency, process DB-query count, and cache hit/miss
+  // counters accumulated when ELIZA_PERF_INSTRUMENT=1. When the flag is off
+  // the payload reports `enabled:false` with empty counters (zero hot-path
+  // cost). Loopback only — same convention as the other dev routes.
+  if (method === "GET" && url.pathname === "/api/dev/route-timings") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    sendJsonResponse(res, 200, getPerfSnapshot());
     return true;
   }
 
