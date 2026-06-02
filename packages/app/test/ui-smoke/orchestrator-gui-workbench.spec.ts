@@ -75,6 +75,7 @@ function taskDetail(overrides: JsonRecord = {}) {
     artifacts: [],
     messages: [],
     transcripts: [],
+    ...overrides,
   };
 }
 
@@ -455,7 +456,14 @@ function richOrchestratorFixture() {
         repo: "/home/shaw/milady/eliza",
         activeTool: "write",
         usageState: "estimated",
+        inputTokens: 1300,
+        outputTokens: 520,
+        reasoningTokens: 280,
+        cacheTokens: 0,
         totalTokens: 2100,
+        costUsd: 0,
+        originalTask:
+          "Generate the planner shell and persist card movement locally.",
         stoppedAt: null,
         lastActivityAt: Date.parse(NOW),
       },
@@ -471,7 +479,14 @@ function richOrchestratorFixture() {
         repo: "/home/shaw/milady/eliza",
         activeTool: "review",
         usageState: "measured",
+        inputTokens: 8400,
+        outputTokens: 2600,
+        reasoningTokens: 1345,
+        cacheTokens: 0,
         totalTokens: 12_345,
+        costUsd: 0.42,
+        originalTask:
+          "Review the planner workflow, visual affordances, and accessibility.",
         stoppedAt: null,
         lastActivityAt: Date.parse(NOW),
       },
@@ -583,10 +598,9 @@ test.describe("orchestrator GUI workbench", () => {
       "2/2",
     );
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
-      "Active (1)",
+      "active (1)",
     );
-    await expect(page.getByText("12.3K")).toBeVisible();
-    await expect(page.getByText("$0.42")).toBeVisible();
+    await expect(page.getByTitle("Usage")).toContainText("12.3K");
 
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Build Kanban planner app",
@@ -623,6 +637,38 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(inspector).toContainText("Browser smoke report");
     await expect(inspector).toContainText("cerebras · gpt-oss-120b");
     await expect(inspector).toContainText("codex · gpt-5.4");
+
+    await page.getByTestId("orchestrator-inspect-session").first().click();
+    const operatorDetail = page.getByTestId("orchestrator-operator-detail");
+    await expect(operatorDetail).toContainText("Session detail");
+    await expect(operatorDetail).toContainText("Codex Builder");
+    await expect(operatorDetail).toContainText("gpt-5.4");
+    await expect(operatorDetail).toContainText(
+      "Generate the planner shell and persist card movement locally.",
+    );
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Active tool");
+    await expect(operatorDetail).toContainText("write");
+    await operatorDetail.getByRole("tab", { name: "Usage" }).click();
+    await expect(operatorDetail).toContainText("~2.1K");
+
+    await page
+      .getByTestId("orchestrator-tool-call")
+      .first()
+      .getByRole("button")
+      .click();
+    await expect(operatorDetail).toContainText("Timeline detail");
+    await expect(operatorDetail).toContainText("tool-write-index");
+    await expect(operatorDetail).toContainText("planner/index.html");
+    await expect(operatorDetail).not.toContainText("Original task");
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Wrote planner/index.html");
+    await operatorDetail.getByRole("tab", { name: "Events" }).click();
+    await expect(operatorDetail).toContainText("tool running");
+    await expect(operatorDetail).toContainText("write planner files");
+
+    await page.getByTestId("orchestrator-open-inspector").click();
+    await expect(page.getByTestId("orchestrator-inspector")).toBeVisible();
 
     await page.getByTestId("orchestrator-priority-select").selectOption("high");
     await expect

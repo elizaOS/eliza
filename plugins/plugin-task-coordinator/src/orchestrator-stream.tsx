@@ -17,11 +17,12 @@ import {
   Loader,
   type LucideIcon,
   OctagonX,
+  PanelRightOpen,
   Search,
   Terminal,
   Wrench,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
 import { MarkdownText } from "./orchestrator-markdown";
 import { ReasoningCell } from "./orchestrator-reasoning";
@@ -46,10 +47,19 @@ type ToolStatus = "running" | "done" | "failed";
 
 export interface ToolView {
   id: string;
+  /** Task event ids merged into this rendered tool call. */
+  eventIds: string[];
+  sessionId: string | null;
   /** The tool's own name, e.g. `write`, `bash`, `read`. */
   title: string;
   /** ACP tool kind, e.g. `edit`, `execute`, `read`, `search`. */
   kind: string;
+  /** Latest raw status token from the tool event, before UI normalization. */
+  rawStatus?: string;
+  /** Tool input as emitted by the adapter; shown in the operator inspector. */
+  rawInput?: Record<string, unknown>;
+  /** Tool output as emitted by the adapter; shown in the operator inspector. */
+  rawOutput?: unknown;
   status: ToolStatus;
   /** Edited/read file, relative to the session workdir when resolvable. */
   filePath?: string;
@@ -71,7 +81,14 @@ export interface ToolView {
 }
 
 export type ConversationBlock =
-  | { kind: "user"; key: string; at: number; content: string }
+  | {
+      kind: "user";
+      key: string;
+      at: number;
+      content: string;
+      messageIds: string[];
+      sessionId: string | null;
+    }
   | {
       kind: "agent";
       key: string;
@@ -79,13 +96,25 @@ export type ConversationBlock =
       senderName: string;
       content: string;
       tone: "normal" | "error";
+      messageIds: string[];
+      sessionId: string | null;
     }
   | { kind: "tool"; key: string; at: number; tool: ToolView }
-  | { kind: "reasoning"; key: string; at: number; text: string }
+  | {
+      kind: "reasoning";
+      key: string;
+      at: number;
+      text: string;
+      eventIds: string[];
+      sessionId: string | null;
+    }
   | {
       kind: "notice";
       key: string;
       at: number;
+      eventId: string;
+      eventType: string;
+      sessionId: string | null;
       icon: LucideIcon;
       tone: string;
       text: string;
@@ -274,7 +303,9 @@ function toToolView(
   let title = "tool";
   let kind = "";
   let status: ToolStatus = "running";
+  let rawStatus: string | undefined;
   let rawInput: Record<string, unknown> | undefined;
+  let rawOutput: unknown;
   let output: string | undefined;
   let outputDiff: ToolOutput["diff"];
   let exitCode: number | undefined;
@@ -283,11 +314,16 @@ function toToolView(
     if (!call) continue;
     title = pickString(call, "title", "name", "toolName") ?? title;
     kind = pickString(call, "kind") ?? kind;
-    const rawStatus = pickString(call, "status");
-    if (rawStatus) status = TOOL_STATUS_FROM_RAW[rawStatus] ?? status;
+    const nextStatus = pickString(call, "status");
+    if (nextStatus) {
+      rawStatus = nextStatus;
+      status = TOOL_STATUS_FROM_RAW[nextStatus] ?? status;
+    }
     const nextInput = asRecord(call.rawInput) ?? asRecord(call.input);
     if (nextInput) rawInput = { ...rawInput, ...nextInput };
-    const parsed = parseToolOutput(call.output ?? call.rawOutput);
+    const nextOutput = call.output ?? call.rawOutput;
+    if (nextOutput !== undefined) rawOutput = nextOutput;
+    const parsed = parseToolOutput(nextOutput);
     if (parsed.text) output = parsed.text;
     if (
       parsed.diff?.oldText !== undefined ||
@@ -310,8 +346,13 @@ function toToolView(
       : undefined;
   return {
     id,
+    eventIds: events.map((event) => event.id),
+    sessionId: events[0]?.sessionId ?? null,
     title,
     kind,
+    rawStatus,
+    rawInput,
+    rawOutput,
     status,
     filePath: pickString(rawInput, "filePath", "file_path", "path"),
     command: pickString(rawInput, "command", "cmd", "script"),
@@ -336,11 +377,20 @@ type Atom =
       message: CodingAgentTaskMessageRecord;
     }
   | { at: number; order: number; type: "tool"; tool: ToolView }
-  | { at: number; order: number; type: "reasoning"; text: string }
+  | {
+      at: number;
+      order: number;
+      type: "reasoning";
+      text: string;
+      eventId: string;
+      sessionId: string | null;
+    }
   | {
       at: number;
       order: number;
       type: "notice";
+      eventId: string;
+      sessionId: string | null;
       eventType: string;
       summary: string;
     };
@@ -412,6 +462,8 @@ export function buildConversation(
           order: order++,
           type: "reasoning",
           text,
+          eventId: event.id,
+          sessionId: event.sessionId,
         });
       continue;
     }
@@ -420,6 +472,8 @@ export function buildConversation(
       at: event.timestamp,
       order: order++,
       type: "notice",
+      eventId: event.id,
+      sessionId: event.sessionId,
       eventType: event.eventType,
       summary: event.summary,
     });
@@ -465,6 +519,7 @@ export function buildConversation(
       const text = stripAnsi(atom.message.content);
       if (openLane && openLane.lane === lane) {
         openLane.block.content += text;
+        openLane.block.messageIds.push(atom.message.id);
         continue;
       }
       if (lane === "user") {
@@ -473,6 +528,8 @@ export function buildConversation(
           key: `msg-${atom.message.id}`,
           at: atom.at,
           content: text,
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -484,6 +541,8 @@ export function buildConversation(
           senderName: resolveSenderName(atom.message),
           content: text,
           tone: atom.message.direction === "stderr" ? "error" : "normal",
+          messageIds: [atom.message.id],
+          sessionId: atom.message.sessionId,
         };
         blocks.push(block);
         openLane = { lane, block };
@@ -492,14 +551,17 @@ export function buildConversation(
     }
     openLane = null;
     if (atom.type === "reasoning") {
-      if (openReasoning) {
+      if (openReasoning && openReasoning.sessionId === atom.sessionId) {
         openReasoning.text += atom.text;
+        openReasoning.eventIds.push(atom.eventId);
       } else {
         const block = {
           kind: "reasoning" as const,
-          key: `reason-${atom.order}`,
+          key: `reason-${atom.eventId}`,
           at: atom.at,
           text: atom.text,
+          eventIds: [atom.eventId],
+          sessionId: atom.sessionId,
         };
         blocks.push(block);
         openReasoning = block;
@@ -518,8 +580,11 @@ export function buildConversation(
       const meta = noticeMeta(atom.eventType);
       blocks.push({
         kind: "notice",
-        key: `evt-${atom.order}`,
+        key: `evt-${atom.eventId}`,
         at: atom.at,
+        eventId: atom.eventId,
+        eventType: atom.eventType,
+        sessionId: atom.sessionId,
         icon: meta.icon,
         tone: meta.tone,
         text: atom.summary.trim() || meta.label,
@@ -641,6 +706,15 @@ function TruncatedNote(): ReactNode {
   );
 }
 
+function inspectKeyHandler(onInspect?: () => void) {
+  if (!onInspect) return undefined;
+  return (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onInspect();
+  };
+}
+
 /** Command output's meaningful result — the error, the exit summary, the last
  * failing line — usually lives at the END, so when it's too long keep BOTH
  * ends and elide the middle rather than dropping the tail (a head-only clamp
@@ -657,7 +731,7 @@ function clampOutput(text: string): string {
 /** The expandable body of a tool card: an interleaved diff for edits, the new
  * content for writes, the command + output for shells, and the raw output
  * otherwise. */
-function ToolBody({ tool }: { tool: ToolView }): ReactNode {
+export function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   const blocks: ReactNode[] = [];
 
   if (tool.oldText !== undefined && tool.newText !== undefined) {
@@ -692,7 +766,15 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   return <div className="mt-1.5 space-y-1.5">{blocks}</div>;
 }
 
-function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
+function ToolCallCard({
+  tool,
+  selected,
+  onInspect,
+}: {
+  tool: ToolView;
+  selected?: boolean;
+  onInspect?: () => void;
+}): ReactNode {
   const Icon = toolIcon(tool);
   const badge = STATUS_BADGE[tool.status];
   const BadgeIcon = badge.icon;
@@ -728,14 +810,22 @@ function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
   );
   return (
     <div
-      className="rounded-md border border-border/50 bg-card/50"
+      className={`rounded-md border bg-card/50 transition-colors ${
+        selected
+          ? "border-muted-strong/70 ring-1 ring-muted-strong/30"
+          : "border-border/50"
+      }`}
       data-testid="orchestrator-tool-call"
     >
       <button
         type="button"
-        disabled={!hasBody}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left disabled:cursor-default"
+        onClick={() => {
+          onInspect?.();
+          if (hasBody) setOpen((value) => !value);
+        }}
+        className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left ${
+          hasBody || onInspect ? "cursor-pointer" : "cursor-default"
+        }`}
       >
         {hasBody ? (
           <ChevronRight
@@ -785,19 +875,35 @@ function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
 export function ConversationBlockView({
   block,
   locale,
+  selected,
+  onInspect,
 }: {
   block: ConversationBlock;
   locale?: string;
+  selected?: boolean;
+  onInspect?: (block: ConversationBlock) => void;
 }): ReactNode {
   if (block.kind === "user") {
+    const canInspect = Boolean(onInspect);
     return (
       <div
         className="flex flex-col items-end"
         data-testid="orchestrator-user-message"
       >
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: role/tabIndex are present exactly when inspection is enabled. */}
         <div
-          className="rounded-lg border border-border/50 bg-surface px-3 py-2 text-xs text-txt"
+          className={`rounded-lg border bg-surface px-3 py-2 text-xs text-txt transition-colors ${
+            selected
+              ? "border-muted-strong/70 ring-1 ring-muted-strong/30"
+              : "border-border/50"
+          } ${canInspect ? "cursor-pointer hover:border-muted-strong/50" : ""}`}
           style={{ maxWidth: "80%" }}
+          role={canInspect ? "button" : undefined}
+          tabIndex={canInspect ? 0 : undefined}
+          onClick={canInspect ? () => onInspect?.(block) : undefined}
+          onKeyDown={inspectKeyHandler(
+            canInspect ? () => onInspect?.(block) : undefined,
+          )}
         >
           <div className="whitespace-pre-wrap break-words leading-relaxed">
             {block.content}
@@ -811,14 +917,17 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "agent") {
+    const canInspect = Boolean(onInspect);
     // Codex Desktop renders the assistant turn FLAT (full-width markdown, no
     // bubble) with a small identity marker — only the user's turn is bubbled.
     return (
       <div
-        className="flex w-full flex-col items-start"
+        className={`flex w-full flex-col items-start rounded-md p-1 transition-colors ${
+          selected ? "bg-bg-hover/50 ring-1 ring-muted-strong/30" : ""
+        }`}
         data-testid="orchestrator-agent-message"
       >
-        <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
+        <div className="mb-1 flex w-full items-center gap-2 text-3xs text-muted">
           <span
             className="inline-block h-1.5 w-1.5 rounded-full bg-muted-strong"
             aria-hidden
@@ -829,6 +938,17 @@ export function ConversationBlockView({
           <span className="tabular-nums">
             {formatClockTime(block.at, locale)}
           </span>
+          {canInspect ? (
+            <button
+              type="button"
+              aria-label="Inspect message"
+              title="Inspect message"
+              className="ml-auto rounded p-0.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
+              onClick={() => onInspect?.(block)}
+            >
+              <PanelRightOpen className="h-3 w-3" />
+            </button>
+          ) : null}
         </div>
         <div
           className={
@@ -844,18 +964,50 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "tool") {
-    return <ToolCallCard tool={block.tool} />;
+    return (
+      <ToolCallCard
+        tool={block.tool}
+        selected={selected}
+        onInspect={onInspect ? () => onInspect(block) : undefined}
+      />
+    );
   }
 
   if (block.kind === "reasoning") {
-    return <ReasoningCell text={block.text} />;
+    const canInspect = Boolean(onInspect);
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: role/tabIndex are present exactly when inspection is enabled.
+      <div
+        className={`rounded-md transition-colors ${
+          selected ? "ring-1 ring-muted-strong/30" : ""
+        } ${canInspect ? "cursor-pointer hover:bg-bg-hover/30" : ""}`}
+        role={canInspect ? "button" : undefined}
+        tabIndex={canInspect ? 0 : undefined}
+        onClick={canInspect ? () => onInspect?.(block) : undefined}
+        onKeyDown={inspectKeyHandler(
+          canInspect ? () => onInspect?.(block) : undefined,
+        )}
+      >
+        <ReasoningCell text={block.text} />
+      </div>
+    );
   }
 
   const Icon = block.icon;
+  const canInspect = Boolean(onInspect);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: role/tabIndex are present exactly when inspection is enabled.
     <div
-      className="flex items-center gap-2 px-1 text-2xs text-muted"
+      className={`flex items-center gap-2 rounded px-1 text-2xs text-muted transition-colors ${
+        selected ? "bg-bg-hover/50 ring-1 ring-muted-strong/30" : ""
+      } ${canInspect ? "cursor-pointer hover:bg-bg-hover/30" : ""}`}
       data-testid="orchestrator-notice"
+      role={canInspect ? "button" : undefined}
+      tabIndex={canInspect ? 0 : undefined}
+      onClick={canInspect ? () => onInspect?.(block) : undefined}
+      onKeyDown={inspectKeyHandler(
+        canInspect ? () => onInspect?.(block) : undefined,
+      )}
     >
       <span className="h-px flex-1 bg-border/40" />
       <Icon className={`h-3 w-3 shrink-0 ${block.tone}`} />
