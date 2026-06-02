@@ -2877,6 +2877,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
