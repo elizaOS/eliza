@@ -24,6 +24,9 @@ vi.mock("@elizaos/capacitor-phone", () => ({
 
 import { interact, PhoneAppView, PhoneTuiView } from "./PhoneAppView";
 
+const t = (key: string, opts?: { defaultValue?: string }) =>
+  opts?.defaultValue ?? key;
+
 const sampleStatus = {
   hasTelecom: true,
   canPlaceCalls: true,
@@ -76,6 +79,14 @@ function mockBridge() {
   phoneBridge.saveCallTranscript.mockResolvedValue({
     updatedAt: 1_700_000_300_000,
   });
+}
+
+function overlayContext(exitToApps = vi.fn()) {
+  return {
+    exitToApps,
+    uiTheme: "light" as const,
+    t,
+  };
 }
 
 afterEach(() => {
@@ -234,13 +245,7 @@ describe("PhoneTuiView", () => {
   it("keeps PhoneAppView dialer state usable after a native place-call failure", async () => {
     phoneBridge.placeCall.mockRejectedValue(new Error("CALL_PHONE denied"));
 
-    render(
-      React.createElement(PhoneAppView, {
-        exitToApps: vi.fn(),
-        t: (_key: string, opts?: { defaultValue?: string }) =>
-          opts?.defaultValue ?? _key,
-      }),
-    );
+    render(React.createElement(PhoneAppView, overlayContext()));
 
     fireEvent.click(screen.getByTestId("phone-dial-key-5"));
     fireEvent.click(screen.getByTestId("phone-dial-call"));
