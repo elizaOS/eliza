@@ -1,12 +1,10 @@
 /**
- * Voice-emotion types and pure projection functions — shared by the GGML
- * classifier (`voice-emotion-classifier-ggml.ts`) and the attribution
- * pipeline (`emotion-attribution.ts`).
+ * Voice-emotion types and pure projection functions — consumed by the
+ * attribution pipeline (`emotion-attribution.ts`).
  *
  * The ONNX-backed `VoiceEmotionClassifier` class was removed when
- * `onnxruntime-node` was dropped. The GGML implementation lives in
- * `voice-emotion-classifier-ggml.ts` and uses `bun:ffi` →
- * `libvoice_classifier`.
+ * `onnxruntime-node` was dropped. No resident voice-emotion classifier
+ * remains; only the pure types and projection helpers below are kept.
  *
  * Pure exports here:
  *   - Model id constants (`WAV2SMALL_INT8_MODEL_ID`, etc.)
