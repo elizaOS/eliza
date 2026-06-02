@@ -195,6 +195,39 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 		}
 	});
 
+	// Pin the pointer-classification boundary: a message that, after its mentions
+	// are stripped, has no letters/digits in any script is a pointer (fold the
+	// buffer); anything with a word stands on its own (do not fold). Guards the
+	// \p{L}\p{N} check against being narrowed to ASCII \w, which would silently
+	// break non-English text.
+	it.each([
+		{ kind: "caret pointer", content: "<@123> ^^", folds: true },
+		{ kind: "emoji pointer", content: "<@123> 👆", folds: true },
+		{ kind: "punctuation pointer", content: "<@123> ?", folds: true },
+		{ kind: "bare mention", content: "<@123>", folds: true },
+		{ kind: "english question", content: "<@123> what is up?", folds: false },
+		{ kind: "single word", content: "<@123> this", folds: false },
+		{ kind: "unicode word", content: "<@123> ¿qué tal?", folds: false },
+		{ kind: "digits", content: "<@123> 2+2", folds: false },
+	])("folds=$folds for a $kind", ({ content, folds }) => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 10_000,
+			});
+
+			debouncer.enqueue(mockMessage("1", "prior unaddressed chatter"));
+			vi.advanceTimersByTime(3000);
+			vi.advanceTimersByTime(1000);
+			debouncer.enqueue(mockMessage("2", content));
+
+			expect(flushed[flushed.length - 1]).toEqual(folds ? ["1", "2"] : ["2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not duplicate a message present in both the buffer and the pending batch", () => {
 		vi.useFakeTimers();
 		try {
