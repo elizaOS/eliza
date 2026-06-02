@@ -383,6 +383,23 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   });
 }
 
+/**
+ * Opt-in dev knob: comma-separated app-route-plugin ids to skip on boot.
+ * Matches each loader's registry id (e.g. `lifeops`, `training`, `steward`,
+ * `hyperliquid`, `app-polymarket`, `shopify`, `vincent`, `documents`). Empty /
+ * unset => no filtering (default behavior unchanged: every app-route plugin
+ * loads). This trims time-to-ready for core/runtime work by not transpiling +
+ * registering hundreds of feature routes a core dev does not exercise.
+ */
+export function getSkippedAppRoutePluginIds(): Set<string> {
+  return new Set(
+    (process.env.ELIZA_SKIP_APP_ROUTE_PLUGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
 function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   const byId = new Map<string, AppRoutePluginRegistryEntry>();
   for (const entry of getRegistryAppRoutePluginLoaders()) {
@@ -391,7 +408,27 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
-  return [...byId.values()];
+
+  const skip = getSkippedAppRoutePluginIds();
+  if (skip.size === 0) {
+    return [...byId.values()];
+  }
+
+  const kept: AppRoutePluginRegistryEntry[] = [];
+  const skipped: string[] = [];
+  for (const entry of byId.values()) {
+    if (skip.has(entry.id)) {
+      skipped.push(entry.id);
+    } else {
+      kept.push(entry);
+    }
+  }
+  if (skipped.length > 0) {
+    logger.info(
+      `[eliza] Skipping ${skipped.length} app route plugin(s) via ELIZA_SKIP_APP_ROUTE_PLUGINS: ${skipped.join(", ")}`,
+    );
+  }
+  return kept;
 }
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
