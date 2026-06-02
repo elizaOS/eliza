@@ -332,6 +332,12 @@ export function ChatComposer({
   };
 
   const handleMicClick = () => {
+    if (voice.isListening && voice.captureMode === "push-to-talk") {
+      pushToTalkActiveRef.current = false;
+      suppressClickRef.current = false;
+      void voice.stopListening({ submit: true });
+      return;
+    }
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;

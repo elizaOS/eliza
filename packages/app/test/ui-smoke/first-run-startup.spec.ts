@@ -60,7 +60,9 @@ test("first-run onboarding renders without a render loop and lets the runtime be
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = page.getByTestId("first-run-shell");
+  const shell = page
+    .getByTestId("first-run-shell")
+    .or(page.getByTestId("onboarding-toast"));
   await expect(shell).toBeVisible({ timeout: 20_000 });
 
   // The typed prompt reveals the runtime cards. Cloud is the recommended
@@ -69,7 +71,9 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   // base); the production web bundle the ui-smoke stub serves is cloud-only
   // (see shouldUseCloudOnlyBranding in app/src/main.tsx), so it legitimately
   // shows Cloud alone. Assert the optional cards only when present.
-  const cloud = page.getByTestId("first-run-runtime-cloud");
+  const cloud = page
+    .getByTestId("first-run-runtime-cloud")
+    .or(page.getByRole("button", { name: "Eliza Cloud" }));
   await expect(cloud).toBeVisible({ timeout: 15_000 });
 
   const remote = page.getByTestId("first-run-runtime-remote");
@@ -83,9 +87,9 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   const local = page.getByTestId("first-run-runtime-local");
   if (await local.count()) {
     await local.click();
-    await expect(
-      page.getByTestId("first-run-local-all-local"),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("first-run-local-all-local")).toBeVisible({
+      timeout: 10_000,
+    });
     await cloud.click();
   } else {
     // Stay on the runtime step (clicking Remote navigates away). Re-selecting

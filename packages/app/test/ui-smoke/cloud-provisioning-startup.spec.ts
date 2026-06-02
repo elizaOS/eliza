@@ -65,9 +65,14 @@ async function fulfillJson(
   });
 }
 
-async function clickIfVisible(locator: Locator): Promise<boolean> {
+async function clickIfVisible(
+  locator: Locator,
+  timeoutMs = 2_000,
+): Promise<boolean> {
   const target = locator.first();
-  const visible = await target.isVisible({ timeout: 2_000 }).catch(() => false);
+  const visible = await target
+    .isVisible({ timeout: timeoutMs })
+    .catch(() => false);
   if (visible) {
     await target.click();
     return true;
@@ -77,11 +82,21 @@ async function clickIfVisible(locator: Locator): Promise<boolean> {
 
 async function startCloudRuntime(page: Page): Promise<void> {
   await clickIfVisible(page.getByRole("button", { name: "Get started" }));
-  const startButton = page.getByRole("button", { name: /^Start$/ });
-  if (!(await clickIfVisible(startButton))) {
-    await page.getByRole("button", { name: /^Connect$/ }).click();
-    await expect(startButton).toBeVisible({ timeout: 30_000 });
+  const compactCloudButton = page
+    .getByTestId("first-run-runtime-cloud")
+    .or(page.locator("button").filter({ hasText: /^Eliza Cloud$/ }));
+  if (await clickIfVisible(compactCloudButton, 30_000)) {
+    return;
   }
+
+  const startButton = page.getByRole("button", { name: /^Start$/ });
+  if (await clickIfVisible(startButton)) {
+    return;
+  }
+
+  const connectButton = page.getByRole("button", { name: /^Connect$/ });
+  await connectButton.click();
+  await expect(startButton).toBeVisible({ timeout: 30_000 });
   await startButton.click();
 }
 
