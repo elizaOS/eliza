@@ -118,6 +118,27 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             variant / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh",
             "#!/bin/sh\nelizaos tui-smoke --api http://127.0.0.1:31337\n",
         )
+        runtime_smoke_log = write(
+            variant / "evidence/riscv64_agent_runtime_smoke.log",
+            "elizaos-riscv64-bun-eval-ok riscv64\n"
+            "elizaos-riscv64-bun-script-file-ok riscv64\n"
+            "elizaos-riscv64-agent-runtime-artifact-ok\n",
+        )
+        runtime_smoke = write_json(
+            variant / "evidence/riscv64_agent_runtime_smoke.json",
+            {
+                "schema": "eliza.os.linux.riscv64_agent_runtime_smoke.v1",
+                "status": "pass",
+                "runtime_mode": "bun",
+                "claim_boundary": (
+                    "static_staged_runtime_artifact_check_only_not_iso_boot_or_live_agent_health"
+                ),
+                "generated_utc": "2026-06-02T00:00:00Z",
+                "transcript": str(runtime_smoke_log),
+                "transcript_sha256": "0" * 64,
+                "failures": [],
+            },
+        )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
             mock.patch.object(gate, "VARIANT", variant),
@@ -134,6 +155,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             mock.patch.object(gate, "RELEASE_CHECK", release_check),
             mock.patch.object(gate, "TUI_SMOKE_UNIT", tui_unit),
             mock.patch.object(gate, "TUI_SMOKE_SCRIPT", tui_script),
+            mock.patch.object(gate, "RISCV64_AGENT_RUNTIME_SMOKE", runtime_smoke),
         ]
         return patches, manifest, qemu, variant
 
@@ -342,8 +364,30 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         self.assertIn("stage-agent-artifacts ARCH=riscv64", stage["command"])
         self.assertIn("RISCV64_RUNTIME=node", stage["command"])
         self.assertIn("riscv64-agent-runtime-smoke", stage["command"])
+        self.assertEqual(
+            report["evidence"]["riscv64_agent_runtime_smoke"]["passed"],
+            True,
+        )
         smoke_only = findings["generated_ap_payload_boot_smoke_only"]
         self.assertIn(stage["command"], smoke_only["next_commands"])
+        assert_no_product_claims(report)
+
+    def test_missing_riscv64_agent_runtime_smoke_is_prerequisite_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, _, _, variant = self._patch_tree(Path(tmpdir))
+            (variant / "evidence/riscv64_agent_runtime_smoke.json").unlink()
+            with PatchStack(patches):
+                report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
+
+        findings = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn("riscv64_agent_runtime_smoke_not_pass", findings)
+        runtime = report["evidence"]["riscv64_agent_runtime_smoke"]
+        self.assertEqual(runtime["status"], "missing")
+        self.assertIs(runtime["passed"], False)
+        self.assertIn(
+            "stage-agent-artifacts ARCH=riscv64",
+            "\n".join(findings["riscv64_agent_runtime_smoke_not_pass"]["next_commands"]),
+        )
         assert_no_product_claims(report)
 
     def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 REPORT_SCHEMA = ROOT / "docs/benchmarks/report-schema.yaml"
 TARGET_METADATA_EXAMPLE = ROOT / "benchmarks/configs/target-metadata.example.json"
+TARGET_METADATA_CONTRACT = ROOT / "benchmarks/configs/target-metadata.contract.json"
 RUNNER = ROOT / "benchmarks/run_benchmarks.py"
 CALIBRATION_TEST = ROOT / "scripts/test_benchmark_calibration.py"
 PARSER_TEST = ROOT / "scripts/test_benchmark_parsers.py"
@@ -62,6 +63,56 @@ REQUIRED_REAL_METADATA = {
 REQUIRED_REAL_CALIBRATION_ASSETS = {
     "clock_source",
     "power_meter",
+}
+REAL_METADATA_REQUIRED_FIELDS: dict[str, dict[str, Any]] = {
+    "software": {
+        "os": str,
+        "kernel": str,
+        "firmware": str,
+        "runtime": str,
+        "build_id": str,
+    },
+    "clocks": {
+        "source": str,
+        "cpu_hz": (int, float),
+        "npu_hz": (int, float),
+        "memory_hz": (int, float),
+        "governor": str,
+    },
+    "memory": {
+        "type": str,
+        "capacity_bytes": int,
+        "bandwidth_bytes_per_second": (int, float),
+        "channels": int,
+    },
+    "thermal": {
+        "ambient_c": (int, float),
+        "die_c": (int, float),
+        "cooling": str,
+        "throttle_state": str,
+    },
+    "power": {
+        "source": str,
+        "watts": (int, float),
+        "measurement_method": str,
+        "sample_count": int,
+        "averaging_window_seconds": (int, float),
+    },
+    "process": {
+        "node": str,
+        "pdk": str,
+        "process_effects_contract": dict,
+        "process_corner_count": int,
+        "worst_process_corner": str,
+        "pdk_signoff_claim": str,
+    },
+    "calibration": {
+        "status": str,
+        "source": str,
+        "ground_truth_reference": str,
+        "last_calibrated_utc": "utc_timestamp",
+        "assets": dict,
+    },
 }
 REQUIRED_CAPTURE_COMMANDS = {
     "target_benchmark_report": (
@@ -261,6 +312,60 @@ def target_metadata_example_is_non_release(metadata: dict[str, Any]) -> bool:
     )
 
 
+def type_name(expected: Any) -> str:
+    if expected is str:
+        return "string"
+    if expected is int:
+        return "integer"
+    if expected == (int, float):
+        return "number"
+    if expected is dict:
+        return "object"
+    return str(expected)
+
+
+def target_metadata_contract_matches_runner(contract: dict[str, Any]) -> bool:
+    boundary = str(contract.get("claim_boundary", ""))
+    required_fields = mapping(contract.get("required_fields"))
+    required_sections = set(str(item) for item in list_values(contract.get("required_sections")))
+    calibration_assets = set(
+        str(item) for item in list_values(contract.get("required_calibration_assets"))
+    )
+    process_contract = mapping(contract.get("process_effects_contract"))
+    asset_fields = set(
+        str(item) for item in list_values(contract.get("calibration_asset_required_fields"))
+    )
+    if contract.get("schema") != "eliza.benchmark_target_metadata_contract.v1":
+        return False
+    if "not benchmark evidence" not in boundary or "not a release efficiency claim" not in boundary:
+        return False
+    if required_sections != set(REAL_METADATA_REQUIRED_FIELDS):
+        return False
+    if calibration_assets != REQUIRED_REAL_CALIBRATION_ASSETS:
+        return False
+    if asset_fields != {"status", "source", "sha256", "evidence"}:
+        return False
+    if process_contract.get("path") != "docs/spec-db/process-14a-effects.yaml":
+        return False
+    if "64-character lowercase SHA-256" not in str(process_contract.get("sha256", "")):
+        return False
+    for section, fields in REAL_METADATA_REQUIRED_FIELDS.items():
+        section_contract = mapping(required_fields.get(section))
+        for field, expected_type in fields.items():
+            if section_contract.get(field) != type_name(expected_type):
+                return False
+    notes = "\n".join(str(item) for item in list_values(contract.get("release_gate_notes")))
+    return contains_all(
+        notes,
+        (
+            "dry_run=false L5/L6 benchmark reports",
+            "calibrated clock_source and power_meter assets",
+            "archived under packages/chip",
+            "Simulator wall-clock",
+        ),
+    )
+
+
 def runner_enforces_release_boundaries(text: str) -> bool:
     return contains_all(
         text,
@@ -295,13 +400,39 @@ def local_regression_targets_are_wired(makefile: str) -> bool:
 def generated_ap_benchmark_wiring_is_actionable(report: dict[str, Any]) -> bool:
     commands = "\n".join(str(item) for item in list_values(report.get("next_commands_after_prerequisites_exist")))
     packaged = mapping(report.get("packaged_generated_ap_workload"))
+    accepted = mapping(report.get("accepted_benchmark_evidence"))
     return (
         report.get("schema") == "eliza.cpu_ap_benchmark_runner_wiring.v1"
-        and report.get("derived_command_available") is True
-        and report.get("runner_command_derivable") is True
-        and packaged.get("status") == "ready"
-        and all(snippet in commands for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS)
+        and (
+            (
+                report.get("derived_command_available") is True
+                and report.get("runner_command_derivable") is True
+                and packaged.get("status") == "ready"
+                and all(snippet in commands for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS)
+            )
+            or accepted.get("accepted") is True
+        )
     )
+
+
+def generated_ap_benchmark_evidence_is_intaken(report: dict[str, Any]) -> bool:
+    accepted = mapping(report.get("accepted_benchmark_evidence"))
+    if accepted.get("accepted") is not True:
+        return False
+    path = ROOT / str(accepted.get("path") or "")
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8", errors="replace")
+    required_markers = (
+        "CoreMark/MHz:",
+        "STREAM Triad:",
+        "lat_mem_rd:",
+        "fio:",
+        "process effects contract: simulator-only benchmark, no silicon process evidence",
+        "eliza-evidence: ap_benchmark_wrapper_marker=present",
+        "eliza-evidence: status=PASS",
+    )
+    return all(marker in text for marker in required_markers)
 
 
 def generated_ap_benchmark_command_plan(wiring_report: dict[str, Any]) -> dict[str, Any]:
@@ -327,6 +458,7 @@ def build_report() -> dict[str, Any]:
     plan = load_json_object(BENCHMARK_PLAN)
     schema = load_yaml_object(REPORT_SCHEMA)
     metadata = load_json_object(TARGET_METADATA_EXAMPLE)
+    metadata_contract = load_json_object(TARGET_METADATA_CONTRACT)
     ap_benchmark_wiring = load_json_object(AP_BENCHMARK_WIRING_REPORT)
     schema_text = REPORT_SCHEMA.read_text(encoding="utf-8")
     runner_text = RUNNER.read_text(encoding="utf-8")
@@ -360,6 +492,13 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(TARGET_METADATA_EXAMPLE),
         },
         {
+            "id": "target_metadata_contract_matches_runner_requirements",
+            "status": "pass"
+            if target_metadata_contract_matches_runner(metadata_contract)
+            else "fail",
+            "evidence": rel(TARGET_METADATA_CONTRACT),
+        },
+        {
             "id": "benchmark_runner_fails_closed_for_efficiency_claims",
             "status": "pass" if runner_enforces_release_boundaries(runner_text) else "fail",
             "evidence": rel(RUNNER),
@@ -379,6 +518,21 @@ def build_report() -> dict[str, Any]:
             if generated_ap_benchmark_wiring_is_actionable(ap_benchmark_wiring)
             else "fail",
             "evidence": rel(AP_BENCHMARK_WIRING_REPORT),
+        },
+        {
+            "id": "generated_ap_l3_benchmark_evidence_is_intaken",
+            "status": "pass"
+            if generated_ap_benchmark_evidence_is_intaken(ap_benchmark_wiring)
+            else "fail",
+            "evidence": str(
+                mapping(ap_benchmark_wiring.get("accepted_benchmark_evidence")).get(
+                    "path", rel(AP_BENCHMARK_WIRING_REPORT)
+                )
+            ),
+            "claim_boundary": (
+                "generated-AP simulator benchmark evidence only; not calibrated L5/L6 "
+                "phone efficiency, silicon power, TOPS/W, or commercial comparison evidence"
+            ),
         },
     ]
     blocked_until_real_evidence = [
@@ -411,11 +565,15 @@ def build_report() -> dict[str, Any]:
             "benchmark_plan": rel(BENCHMARK_PLAN),
             "report_schema": rel(REPORT_SCHEMA),
             "target_metadata_example": rel(TARGET_METADATA_EXAMPLE),
+            "target_metadata_contract": rel(TARGET_METADATA_CONTRACT),
             "runner": rel(RUNNER),
             "calibration_regression_test": rel(CALIBRATION_TEST),
             "parser_regression_test": rel(PARSER_TEST),
             "generated_ap_benchmark_wiring": rel(AP_BENCHMARK_WIRING_REPORT),
         },
+        "accepted_generated_ap_benchmark_evidence": mapping(
+            ap_benchmark_wiring.get("accepted_benchmark_evidence")
+        ),
         "blocked_until_real_evidence": blocked_until_real_evidence,
         "next_capture_commands": REQUIRED_CAPTURE_COMMANDS,
         "next_command_plan": command_plan,
@@ -487,12 +645,28 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "benchmark_plan",
             "report_schema",
             "target_metadata_example",
+            "target_metadata_contract",
             "runner",
             "calibration_regression_test",
             "parser_regression_test",
             "generated_ap_benchmark_wiring",
         ):
             require(isinstance(scaffolds.get(key), str), f"current_scaffolds missing {key}", errors)
+    accepted_generated_ap = data.get("accepted_generated_ap_benchmark_evidence")
+    if not isinstance(accepted_generated_ap, dict):
+        errors.append("accepted_generated_ap_benchmark_evidence must be a mapping")
+    else:
+        require(
+            accepted_generated_ap.get("accepted") is True,
+            "accepted generated-AP benchmark evidence must be intaken",
+            errors,
+        )
+        require(
+            isinstance(accepted_generated_ap.get("path"), str)
+            and bool(accepted_generated_ap.get("path")),
+            "accepted generated-AP benchmark evidence path missing",
+            errors,
+        )
     commands = data.get("next_capture_commands")
     if not isinstance(commands, dict):
         errors.append("next_capture_commands must be a mapping")

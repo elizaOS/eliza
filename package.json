@@ -245,7 +245,7 @@
     "packages/feed/tools/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.4.16",
     "@capacitor/core": "8.3.1",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
@@ -282,7 +282,7 @@
     "secp256k1": "^5.0.1",
     "tsdown": "^0.22.0",
     "tsx": "^4.21.0",
-    "turbo": "^2.7.4",
+    "turbo": "^2.9.16",
     "typescript": "^6.0.3",
     "vite": "8.0.13",
     "vitest": "^4.0.17"
@@ -315,7 +315,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/plugin-solana": "2.0.0-alpha.3",
-    "@biomejs/biome": "2.4.14",
+    "@biomejs/biome": "2.4.16",
     "@types/node": "25.6.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",

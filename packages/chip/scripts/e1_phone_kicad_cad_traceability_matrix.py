@@ -500,6 +500,36 @@ def build_report() -> dict[str, Any]:
             "cad_connection_mechanical_envelope_release_credit": any(
                 record.get("mechanical_envelope_release_credit") is True for record in cad_rows
             ),
+            "cad_connection_manufacturing_detail_defined_count": int(
+                connections.get("manufacturing_detail_defined_count", 0) or 0
+            ),
+            "cad_connection_geometry_defined_count": int(
+                connections.get("connection_geometry_defined_count", 0) or 0
+            ),
+            "cad_connection_bend_or_connector_basis_defined_count": int(
+                connections.get("connection_bend_or_connector_basis_defined_count", 0) or 0
+            ),
+            "cad_connection_impedance_or_current_basis_defined_count": int(
+                connections.get("connection_impedance_or_current_basis_defined_count", 0) or 0
+            ),
+            "cad_connection_all_records_have_manufacturing_geometry": bool(
+                connections.get("all_connections_have_manufacturing_geometry")
+            ),
+            "cad_connection_all_records_have_bend_or_connector_basis": bool(
+                connections.get("all_connections_have_bend_or_connector_basis")
+            ),
+            "cad_connection_all_records_have_impedance_or_current_basis": bool(
+                connections.get("all_connections_have_impedance_or_current_basis")
+            ),
+            "cad_connection_all_records_have_endpoint_distance": bool(
+                connections.get("all_connections_have_endpoint_distance")
+            ),
+            "cad_connection_supplier_drawing_requirement_medium_count": int(
+                connections.get("supplier_drawing_requirement_medium_count", 0) or 0
+            ),
+            "cad_connection_supplier_drawing_requirements_by_medium": connections.get(
+                "supplier_drawing_requirements_by_medium", {}
+            ),
             "cad_connection_supplier_release_required_count": int(
                 connections.get("supplier_release_required_connection_count", 0) or 0
             ),

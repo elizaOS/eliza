@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
+import pytest
+
 import scripts.search_hiwonder_random_sine_gaits as random_sine_search
+from eliza_robot.rl.text_conditioned.profile_env import (
+    ProfileEnvConfig,
+    TextConditionedProfileEnv,
+)
 from scripts.search_hiwonder_open_loop_gaits import _candidate_specs, _failure_frontier
 from scripts.search_hiwonder_random_sine_gaits import (
     _candidate_params,
@@ -22,6 +29,10 @@ from scripts.sweep_hiwonder_near_gait_hold import (
     _candidate_entries_from_search_report,
     _raw_distance_key,
 )
+from scripts.validate_task_feasibility import (
+    _make_sinusoidal_action,
+    _primitive_specs,
+)
 
 
 def test_hiwonder_gait_search_includes_seeded_sinusoidal_probes() -> None:
@@ -36,6 +47,82 @@ def test_hiwonder_gait_search_includes_seeded_sinusoidal_probes() -> None:
     seeded = {spec.name: spec for spec in _candidate_specs() if spec.name.startswith("sinusoidal")}
     assert seeded["sinusoidal_seeded_4"].params is not None
     assert seeded["sinusoidal_seeded_5"].params is not None
+
+
+def test_hiwonder_feasibility_includes_env_locomotion_priors() -> None:
+    names = {spec.name for spec in _primitive_specs("hiwonder-ainex", "walk_forward")}
+
+    assert "configured_prior_hiwonder_sine" in names
+    assert "configured_prior_hiwonder_contact_sine" in names
+    assert "configured_prior_hiwonder_low_slip_contact_sine" in names
+    assert "env_prior_hiwonder_sine" in names
+    assert "env_prior_hiwonder_contact_sine" in names
+    assert "env_prior_hiwonder_low_slip_contact_sine" in names
+
+
+def test_hiwonder_backward_sine_remaps_full_gait_phase() -> None:
+    pytest.importorskip("mujoco")
+    env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_backward",), exclude_tasks=()),
+    )
+    env.reset(seed=0)
+    params = {
+        "scale": 0.4,
+        "hz": 1.3,
+        "phase0": 0.4,
+        "hip_bias": 0.1,
+        "hip_amp": 0.4,
+        "knee_bias": 0.2,
+        "knee_amp": 0.3,
+        "knee_phase": 0.7,
+        "ank_bias": 0.1,
+        "ank_amp": 0.25,
+        "ank_phase": -0.2,
+        "roll_bias": -0.1,
+        "roll_amp": 0.2,
+        "ank_roll_amp": 0.15,
+        "roll_phase": 0.5,
+        "ank_roll_phase_delta": 0.3,
+        "yaw_amp": 0.05,
+        "yaw_phase": 0.1,
+    }
+
+    forward = _make_sinusoidal_action(env, "walk_forward", params=params)(3)
+    backward = _make_sinusoidal_action(env, "walk_backward", params=params)(3)
+    changed = [
+        joint.name
+        for joint, fwd, back in zip(env._action_joints, forward, backward, strict=True)  # noqa: SLF001
+        if not np.isclose(fwd, back)
+    ]
+
+    assert any("knee" in name for name in changed)
+    assert any("hip_roll" in name for name in changed)
+
+
+def test_hiwonder_env_backward_prior_remaps_full_gait_phase() -> None:
+    pytest.importorskip("mujoco")
+    forward_env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_forward",), exclude_tasks=()),
+    )
+    backward_env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_backward",), exclude_tasks=()),
+    )
+    forward_env.reset(seed=0)
+    backward_env.reset(seed=0)
+
+    forward = forward_env._locomotion_hiwonder_contact_sine_prior_action()  # noqa: SLF001
+    backward = backward_env._locomotion_hiwonder_contact_sine_prior_action()  # noqa: SLF001
+    changed = [
+        joint.name
+        for joint, fwd, back in zip(forward_env._action_joints, forward, backward, strict=True)  # noqa: SLF001
+        if not np.isclose(fwd, back)
+    ]
+
+    assert any("knee" in name for name in changed)
+    assert any("hip_roll" in name for name in changed)
 
 
 def test_hiwonder_random_sine_search_candidates_are_reproducible() -> None:

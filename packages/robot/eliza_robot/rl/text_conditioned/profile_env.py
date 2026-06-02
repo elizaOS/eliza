@@ -2667,7 +2667,11 @@ class TextConditionedProfileEnv(gym.Env):
     ) -> np.ndarray:
         t_s = self._step_count * self.config.control_dt_s
         phase = 2.0 * math.pi * params["hz"] * t_s + params["phase0"]
-        direction = -1.0 if self._current_task and self._current_task.id == "walk_backward" else 1.0
+        backward = bool(self._current_task and self._current_task.id == "walk_backward")
+        direction = -1.0 if backward else 1.0
+        gait_phase = phase + (math.pi if backward else 0.0)
+        knee_phase_sign = -1.0 if backward else 1.0
+        roll_phase_sign = -1.0 if backward else 1.0
         action = np.zeros(self.action_space.shape, dtype=np.float32)
         for idx, joint in enumerate(self._action_joints):
             name = joint.name.lower()
@@ -2675,22 +2679,28 @@ class TextConditionedProfileEnv(gym.Env):
             value = 0.0
             if "hip_pitch" in name:
                 value = direction * (
-                    params["hip_bias"] + side * params["hip_amp"] * math.sin(phase)
+                    params["hip_bias"] + side * params["hip_amp"] * math.sin(gait_phase)
                 )
             elif "knee" in name:
                 value = (
                     params["knee_bias"]
-                    + side * params["knee_amp"] * math.sin(phase + params["knee_phase"])
+                    + side
+                    * params["knee_amp"]
+                    * math.sin(gait_phase + knee_phase_sign * params["knee_phase"])
                 )
             elif "ank_pitch" in name:
                 value = direction * (
                     params["ank_bias"]
-                    + side * params["ank_amp"] * math.sin(phase + params["ank_phase"])
+                    + side
+                    * params["ank_amp"]
+                    * math.sin(gait_phase + knee_phase_sign * params["ank_phase"])
                 )
             elif "hip_roll" in name:
                 value = (
                     side * params["roll_bias"]
-                    + side * params["roll_amp"] * math.sin(phase + params["roll_phase"])
+                    + side
+                    * params["roll_amp"]
+                    * math.sin(gait_phase + roll_phase_sign * params["roll_phase"])
                 )
             elif "ank_roll" in name:
                 value = (
@@ -2698,13 +2708,13 @@ class TextConditionedProfileEnv(gym.Env):
                     + side
                     * params["ank_roll_amp"]
                     * math.sin(
-                        phase
-                        + params["roll_phase"]
+                        gait_phase
+                        + roll_phase_sign * params["roll_phase"]
                         + params["ank_roll_phase_delta"]
                     )
                 )
             elif "hip_yaw" in name:
-                value = side * params["yaw_amp"] * math.sin(phase + params["yaw_phase"])
+                value = side * params["yaw_amp"] * math.sin(gait_phase + params["yaw_phase"])
             action[idx] = float(np.clip(value, -1.0, 1.0))
         return action
 

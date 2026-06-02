@@ -63,6 +63,16 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             {check["status"] for check in report["checks"]},
             {"blocked"},
         )
+        self.assertEqual(report["capture_preflight"]["status"], "blocked")
+        self.assertFalse(report["capture_preflight"]["command_configured"])
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertEqual(
+            report["next_command_plan"][0]["id"], "capture_bootrom_positive_handoff"
+        )
+        self.assertIn(
+            "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD",
+            " ".join(report["next_command_plan"][0]["commands"]),
+        )
 
     def test_missing_marker_blocks_even_with_transcript(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
@@ -80,6 +90,9 @@ class BootromPositiveHandoffTests(unittest.TestCase):
 
         self.assertEqual(rc, 1)
         self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["capture_preflight"]["status"], "blocked")
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertTrue(report["next_command_plan"])
         failed = {check["id"] for check in report["checks"] if check["status"] != "pass"}
         self.assertEqual(
             failed,
@@ -125,6 +138,8 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             {key for key, value in report["false_claim_flags"].items() if value is False},
             set(report["false_claim_flags"]),
         )
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
+        self.assertEqual(report["next_command_plan"], [])
 
     def test_marker_only_transcript_without_capture_provenance_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
@@ -174,6 +189,8 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "BLOCKED")
             self.assertEqual(payload["evidence_paths"], [])
+            self.assertEqual(payload["capture_preflight"]["status"], "blocked")
+            self.assertTrue(payload["next_command_plan"])
 
     def test_capture_wrapper_validates_emitted_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,6 +225,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "PASS")
             self.assertEqual({check["status"] for check in payload["checks"]}, {"pass"})
+            self.assertEqual(payload["next_command_plan"], [])
 
 
 class PatchStack:

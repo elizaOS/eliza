@@ -156,11 +156,11 @@
         "supplier footprints and final courtyards are not loaded",
         "routed courtyard utilization and escape-density reports are missing",
         "routed board STEP and selected battery swelling envelope clearance are missing",
-        "routed KiCad PCB, DRC, filled zones, and post-route reports are missing",
+        "local routed KiCad PCB candidate has tracks and filled zones for review only; release DRC and post-route reports are missing",
         "real supplier footprints, courtyards, and STEP models are missing",
         "routed-courtyard utilization and escape-density reports are missing",
         "SI/PI, power efficiency, thermal soak, RF, coexistence, and SAR evidence are missing",
-        "routed board STEP and formal enclosure tolerance stack are missing",
+        "local routed board STEP candidate exists for review only; supplier-approved routed STEP and formal enclosure tolerance stack are missing",
         "factory probe coordinates, limits, and first-article transcript are missing"
       ],
       "required_release_outputs": [

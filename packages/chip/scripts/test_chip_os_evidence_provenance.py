@@ -758,6 +758,147 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "weak_reference_scope")
 
+    def test_technical_blocked_and_fail_words_do_not_expand_marker_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/e1x_yield_repair_margin.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.e1x_yield_repair_margin.v1",
+                        "status": "pass",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": "repair routing runtime evidence for checked graph",
+                        "details": [
+                            "normal remaps are unique, avoid blocked physical targets, and fit spare budget",
+                            "normal sampled repair routes avoid blocked cores/links",
+                            "local SRAM MBIST exposes March C- sequencing, status, fail address/bit, and injection-test hooks",
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        self.assertEqual(data["summary"]["findings"], 0)
+
+    def test_real_blocked_marker_still_reports_after_technical_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/runtime.log"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                "generated_utc: 2026-05-21T00:00:00Z\n"
+                "claim_boundary: captured chip runtime evidence\n"
+                "STATUS: BLOCKED runtime capture missing target transcript\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        self.assertEqual(data["summary"]["findings"], 1)
+        self.assertEqual(data["findings"][0]["category"], "blocked_marker")
+
+    def test_zero_blocked_fail_counters_do_not_expand_marker_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/rva23_compliance.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.rva23_compliance.v1",
+                        "status": "pass",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": "checked compliance evidence",
+                        "summary": {
+                            "blocked": 0,
+                            "fail": 0,
+                            "failed": 0,
+                        },
+                        "blocked": [],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        self.assertEqual(data["summary"]["findings"], 0)
+
+    def test_structured_scope_blocked_until_lines_do_not_expand_marker_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "docs/evidence/cpu_ap/bpu_sweep_results.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.bpu_sweep.v1",
+                        "status": "pass",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": (
+                            "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream "
+                            "real-workload MPKI claims remain blocked until those trace "
+                            "sets are captured"
+                        ),
+                        "reason": (
+                            "SPEC, Android, and JS-engine MPKI claims remain blocked "
+                            "until those trace sets are ingested"
+                        ),
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/docs/evidence"])
+
+        self.assertEqual(data["summary"]["findings"], 0)
+
+    def test_runtime_status_blocked_still_reports_after_scope_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "docs/evidence/android/eliza_runtime.log"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                "generated_utc: 2026-05-21T00:00:00Z\n"
+                "claim_boundary: android live runtime evidence\n"
+                "eliza-evidence: status=BLOCKED\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/docs/evidence"])
+
+        self.assertEqual(data["summary"]["findings"], 1)
+        self.assertEqual(data["findings"][0]["category"], "blocked_marker")
+
     def test_nonpassing_structured_reports_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

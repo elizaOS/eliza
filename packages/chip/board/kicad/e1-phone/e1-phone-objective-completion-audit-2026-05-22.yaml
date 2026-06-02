@@ -1111,6 +1111,8 @@ local_non_release_progress_evidence:
   component_model_release_allowed: false
   component_model_pinout_bound_model_count: 22
   component_model_support_pattern_model_count: 67
+  component_model_pattern_bound_model_count: 89
+  component_model_terminal_contract_bound_model_count: 89
   component_model_terminal_contract_or_no_pad_model_count: 89
   component_model_total_pad_contract_visual_count: 1452
   component_model_uncovered_pad_visual_count: 0
@@ -1119,11 +1121,15 @@ local_non_release_progress_evidence:
   component_model_local_discrete_step_file_count: 89
   component_model_local_discrete_step_imported_solid_count: 89
   component_model_local_discrete_step_bbox_match_count: 89
+  component_model_local_step_bound_model_count: 89
   component_model_local_discrete_step_bytes_total: 1387362
+  component_model_all_pattern_binding_flags_pass: true
   component_model_all_terminal_contract_flags_pass: true
   component_model_all_local_discrete_step_flags_pass: true
   component_model_directory_record_count: 89
   component_model_directory_terminal_contract_model_record_count: 85
+  component_model_directory_pattern_bound_model_record_count: 89
+  component_model_directory_terminal_contract_bound_model_record_count: 89
   component_model_directory_terminal_contract_total_count: 1441
   component_model_directory_total_pad_contract_visual_count: 1452
   component_model_directory_uncovered_pad_visual_count: 0
@@ -1135,6 +1141,7 @@ local_non_release_progress_evidence:
   component_model_directory_local_discrete_step_file_count: 89
   component_model_directory_local_discrete_step_imported_solid_count: 89
   component_model_directory_local_discrete_step_bbox_match_count: 89
+  component_model_directory_local_step_bound_model_record_count: 89
   component_model_directory_local_discrete_step_bytes_total: 1387362
   component_model_directory_supplier_step_intake_placeholder_count: 0
   component_model_directory_supplier_step_intake_local_surrogate_count: 47

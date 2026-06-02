@@ -447,6 +447,70 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         self.assertIn("collect-post-flash-logcat", commands)
         self.assertIn("validate-post-flash-logcat", commands)
 
+    def test_command_plan_joins_argv_array_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/minimum_linux_npu_target.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "minimum Linux only; not Android runtime evidence",
+                        "next_commands": [
+                            [
+                                "/usr/bin/python3",
+                                "scripts/check_minimum_linux_target.py",
+                                "--require-evidence",
+                                "docs/evidence/linux/e1 npu smoke.json",
+                            ],
+                            [
+                                "e1-npu-ml-smoke",
+                                "--device",
+                                "/dev/e1-npu",
+                                "--workload",
+                                "gemm_s8_int8_2x2x3",
+                            ],
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "minimum_linux_npu_target",
+                "npu",
+                "packages/chip/build/reports/minimum_linux_npu_target.json",
+                "minimum Linux plus NPU target",
+                "integrated Linux NPU workload evidence",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        commands = report["next_command_plan"][0]["commands"]
+        self.assertIn(
+            "/usr/bin/python3 scripts/check_minimum_linux_target.py --require-evidence "
+            "'docs/evidence/linux/e1 npu smoke.json'",
+            commands,
+        )
+        self.assertIn(
+            "e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3",
+            commands,
+        )
+        self.assertNotIn("/usr/bin/python3", commands)
+        self.assertNotIn("--device", commands)
+        self.assertNotIn("/dev/e1-npu", commands)
+
+    def test_command_plan_keeps_independent_command_lists_separate(self) -> None:
+        self.assertEqual(
+            opt.command_strings(["adb devices", "capture-launcher-runtime"]),
+            ["adb devices", "capture-launcher-runtime"],
+        )
+        self.assertEqual(
+            opt.command_strings(["boot-chip-android", "capture-chip-launcher-agent"]),
+            ["boot-chip-android", "capture-chip-launcher-agent"],
+        )
+
     def test_known_artifact_without_embedded_commands_gets_fallback_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

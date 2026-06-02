@@ -12,6 +12,8 @@ Status: cad_connection_markers_complete_not_release.
 - Represented route records: 153
 - Route classification gaps: 0
 - Mechanical envelopes: 32
+- Manufacturing geometry records: 32
+- Supplier drawing media covered: 9
 - Critical interface groups present: true
 - Supplier-release-required connections: 32
 - Release credit: false

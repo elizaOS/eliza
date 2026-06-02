@@ -440,6 +440,7 @@ capture_aosp_shell() {
 		echo "START_UTC=$start_utc"
 		echo "COMPATIBILITY_CLAIM=none"
 		if [ "$metadata_kind" = "virtual" ]; then
+			echo "eliza-evidence: claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
 			echo "BOOT_CLAIM=none"
 			echo "SCHEMA=docs/android/boot-transcript.schema.json"
 		fi

@@ -29,6 +29,28 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+LIVE_APP_BRIDGE_TEXT = """
+class ElizaAndroidSystemBridge {
+  static final String MARKER = "AndroidSystemProvider: live-state";
+  String unavailable() { return "privileged_android_system_bridge_not_bound"; }
+  String snapshot(String channel) {
+    switch (channel) {
+      case "eliza.android.wifi.state":
+      case "eliza.android.cell.state":
+      case "eliza.android.audio.state":
+      case "eliza.android.battery.state":
+      case "eliza.android.time.state":
+      case "eliza.android.connectivity.state":
+      case "eliza.android.lockscreen.state":
+        return "{}";
+      default:
+        return unavailable();
+    }
+  }
+}
+"""
+
+
 class AndroidSystemBridgeContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         system_ui = tmp / "os/android/system-ui"
@@ -170,6 +192,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_privapp_permissions_not_granted", codes)
         self.assertIn("chip_local_manifest_does_not_project_system_ui", codes)
         self.assertIn("chip_local_manifest_missing_system_bridge_service", codes)
+        self.assertIn("launcher_app_bridge_live_state_surface_incomplete", codes)
         self.assertIn("system_bridge_runtime_evidence_missing", codes)
         self.assertEqual(
             report["summary"]["blocker_dependency_counts"],
@@ -241,6 +264,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
+                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -344,6 +368,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
+                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",

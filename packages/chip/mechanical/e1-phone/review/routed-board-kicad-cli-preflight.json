@@ -4,7 +4,7 @@
   "tool": "kicad-cli",
   "available": true,
   "resolved_path": "/home/shaw/milady/eliza/packages/chip/tools/bin/kicad-cli",
-  "version": "22:57:19: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\n9.0.9",
+  "version": "23:52:42: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\n9.0.9",
   "sch_erc_available": true,
   "pcb_drc_available": true,
   "pcb_step_export_available": true,
@@ -32,10 +32,10 @@
       "violation_count": 1863,
       "unconnected_item_count": 441,
       "output_present": true,
-      "output_bytes": 1802398,
-      "output_sha256": "76580c68f1cd52c619102b6f21251fcaa798c719e6898d8fc116b79d4868f197",
+      "output_bytes": 1802399,
+      "output_sha256": "2a2090ed1a11fdd1305a4eb1ce09dcef890139f9d046f5b29483e21832fea26c",
       "release_credit": false,
-      "stdout_excerpt": "22:57:19: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\n22:57:19: Warning: Legacy zone fill strategy is not supported anymore.\nZone fills will be converted on best-effort basis.\nFound 1863 violations\nFound 441 unconnected items\nSaved DRC Report to mechanical/e1-phone/review/local-kicad-cli/routed-drc.json"
+      "stdout_excerpt": "23:52:43: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\n23:52:43: Warning: Legacy zone fill strategy is not supported anymore.\nZone fills will be converted on best-effort basis.\nFound 1863 violations\nFound 441 unconnected items\nSaved DRC Report to mechanical/e1-phone/review/local-kicad-cli/routed-drc.json"
     },
     "erc": {
       "command": "tools/bin/kicad-cli sch erc --format json --output mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
@@ -46,21 +46,21 @@
       "unconnected_item_count": 0,
       "output_present": true,
       "output_bytes": 233261,
-      "output_sha256": "c9a77f94584b76ee4a8fa3ebe25646457db008def2a403d04959c31e1585b9e5",
+      "output_sha256": "2bfc8f8e89a89865429836d2ea4d6d87e6c9a3eb5cec4609400679dc39609242",
       "release_credit": false,
-      "stdout_excerpt": "22:57:20: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\nFound 366 violations\nSaved ERC Report to mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json"
+      "stdout_excerpt": "23:52:44: Error: schema file '/usr/share/kicad/schemas/api.v1.schema.json' not found\nFound 366 violations\nSaved ERC Report to mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json"
     }
   },
   "local_triage_report": "mechanical/e1-phone/review/local-kicad-cli/drc-erc-triage.json",
-  "local_triage_report_sha256": "818f0c3fa4c09be6689418ebd02de0f4f515795c0df9d9abad9189c1d7905797",
+  "local_triage_report_sha256": "c46faab34d82a85e9f96d1f5adba63ff332843eb6400e6a3532a62084811b9ce",
   "drc_erc_evidence_lineage": {
     "claim_boundary": "Raw local KiCad reports, local triage, and preflight evidence are engineering evidence only. Production DRC/ERC report paths remain blocked candidate metadata until clean raw KiCad payloads, waivers, and reviewer signoff are archived.",
     "raw_local_drc_report": "mechanical/e1-phone/review/local-kicad-cli/routed-drc.json",
-    "raw_local_drc_report_sha256": "76580c68f1cd52c619102b6f21251fcaa798c719e6898d8fc116b79d4868f197",
+    "raw_local_drc_report_sha256": "2a2090ed1a11fdd1305a4eb1ce09dcef890139f9d046f5b29483e21832fea26c",
     "raw_local_erc_report": "mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json",
-    "raw_local_erc_report_sha256": "c9a77f94584b76ee4a8fa3ebe25646457db008def2a403d04959c31e1585b9e5",
+    "raw_local_erc_report_sha256": "2bfc8f8e89a89865429836d2ea4d6d87e6c9a3eb5cec4609400679dc39609242",
     "local_triage_report": "mechanical/e1-phone/review/local-kicad-cli/drc-erc-triage.json",
-    "local_triage_report_sha256": "818f0c3fa4c09be6689418ebd02de0f4f515795c0df9d9abad9189c1d7905797",
+    "local_triage_report_sha256": "c46faab34d82a85e9f96d1f5adba63ff332843eb6400e6a3532a62084811b9ce",
     "preflight_report": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
     "production_drc_report_path": "board/kicad/e1-phone/production/reports/drc.json",
     "production_erc_report_path": "board/kicad/e1-phone/production/reports/erc.json",

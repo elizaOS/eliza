@@ -383,7 +383,7 @@ selected_hardware_factory_release_coupling:
 
 global_remaining_blockers:
   - selected supplier response packs, signed drawings, pinouts, land patterns, STEP or B-rep models, samples, and AVL approvals are missing
-  - routed KiCad PCB, ERC, DRC, filled zones, post-route reports, and board STEP are missing
+  - local routed KiCad PCB and board STEP candidates exist for review only; release ERC, clean or waived DRC, post-route reports, and supplier-approved board STEP are missing
   - Gerber X2 or IPC-2581, ODB++ if required, drill, stackup, impedance coupon, and fab quote outputs are missing
   - production BOM/AVL, pick-and-place, assembly drawings, split-interconnect drawing, stencil, AOI/X-ray, cleaning, and DFM/DFA outputs are missing
   - fixture quote, fixture program, probe coordinates, RF calibration procedure, programming traceability, and factory limits are missing

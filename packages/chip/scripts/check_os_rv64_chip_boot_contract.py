@@ -39,6 +39,7 @@ TUI_SMOKE_UNIT = (
     VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
 )
 TUI_SMOKE_SCRIPT = VARIANT / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh"
+RISCV64_AGENT_RUNTIME_SMOKE = VARIANT / "evidence/riscv64_agent_runtime_smoke.json"
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"
 CLAIM_BOUNDARY = "chip_objective_gate_no_qemu_virt_or_first_boot_marker_substitution"
@@ -248,6 +249,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
             "generated_ap_payload_boot_smoke_only",
             "missing_agent_liveness_marker",
             "missing_tui_liveness_marker",
+            "riscv64_agent_runtime_smoke_not_pass",
         }
         for code in codes
     ):
@@ -271,6 +273,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
             "generated_ap_payload_boot_smoke_only",
             "missing_agent_liveness_marker",
             "missing_tui_liveness_marker",
+            "riscv64_agent_runtime_smoke_not_pass",
         }
         for code in codes
     ):
@@ -331,6 +334,7 @@ def finding_command_ids(code: str) -> tuple[str, ...]:
         "agent_execstart_not_packaged",
         "generated_ap_payload_boot_smoke_only",
         "linux_agent_fallback_payload_allowed",
+        "riscv64_agent_runtime_smoke_not_pass",
     )
     agent_codes = (
         "agent_live",
@@ -338,6 +342,7 @@ def finding_command_ids(code: str) -> tuple[str, ...]:
         "generated_ap_payload_boot_smoke_only",
         "missing_agent_liveness_marker",
         "missing_tui_liveness_marker",
+        "riscv64_agent_runtime_smoke_not_pass",
     )
     ids: list[str] = []
     if code.startswith(boot_codes):
@@ -450,6 +455,7 @@ def required_evidence(manifest: dict[str, object]) -> set[str]:
 def resolve_variant_path(path_value: object) -> Path | None:
     if not isinstance(path_value, str) or not path_value:
         return None
+    path_value = path_value.replace("<repo>/", f"{REPO.as_posix()}/", 1)
     candidate = Path(path_value)
     if candidate.is_file():
         return candidate
@@ -510,6 +516,41 @@ def load_evidence_json(path: Path) -> tuple[dict[str, object] | None, str | None
     if not isinstance(payload, dict):
         return None, f"evidence JSON must be an object: {rel(path)}"
     return payload, None
+
+
+def riscv64_agent_runtime_smoke_status(path: Path | None = None) -> dict[str, object]:
+    path = path or RISCV64_AGENT_RUNTIME_SMOKE
+    payload, error = load_evidence_json(path)
+    if payload is None:
+        return {
+            "path": rel(path),
+            "exists": path.is_file(),
+            "status": "missing",
+            "passed": False,
+            "error": error or "runtime smoke report missing",
+        }
+    transcript = resolve_variant_path(payload.get("transcript"))
+    failures = payload.get("failures")
+    passed = (
+        payload.get("schema") == "eliza.os.linux.riscv64_agent_runtime_smoke.v1"
+        and payload.get("status") == "pass"
+        and isinstance(failures, list)
+        and not failures
+        and transcript is not None
+        and transcript.is_file()
+    )
+    return {
+        "path": rel(path),
+        "exists": path.is_file(),
+        "status": payload.get("status"),
+        "passed": passed,
+        "runtime_mode": payload.get("runtime_mode"),
+        "claim_boundary": payload.get("claim_boundary"),
+        "transcript": rel(transcript) if transcript is not None else "",
+        "transcript_exists": transcript.is_file() if transcript is not None else False,
+        "transcript_sha256": payload.get("transcript_sha256"),
+        "failure_count": len(failures) if isinstance(failures, list) else None,
+    }
 
 
 def row_path_is_qemu_reference(row: dict[str, object], qemu_evidence_path: Path) -> bool:
@@ -959,6 +1000,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Stage the riscv64 full-agent runtime/image and boot that generated-AP payload before capturing first-boot, agent health, and TUI evidence.",
     )
     agent_install_hook = read_text(AGENT_INSTALL_HOOK) if AGENT_INSTALL_HOOK.is_file() else ""
+    runtime_smoke = riscv64_agent_runtime_smoke_status()
+    add_if(
+        findings,
+        runtime_smoke.get("passed") is not True,
+        "riscv64_agent_runtime_smoke_not_pass",
+        "staged riscv64 Eliza agent runtime artifact smoke is not passing",
+        json.dumps(runtime_smoke, sort_keys=True),
+        "Run make -C packages/os/linux/elizaos stage-agent-artifacts ARCH=riscv64 RISCV64_RUNTIME=node && make -C packages/os/linux/elizaos riscv64-agent-runtime-smoke before building the full-agent generated-AP image.",
+    )
     add_if(
         findings,
         "install_fallback_payload" in agent_install_hook
@@ -1007,6 +1057,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "agent_execstart": exec_start,
         "agent_install_hook": rel(AGENT_INSTALL_HOOK),
         "agent_fallback_allowed": "fallback_agent.py" in agent_install_hook,
+        "riscv64_agent_runtime_smoke": runtime_smoke,
         "status_report": rel(STATUS_REPORT),
         "tui_smoke_unit": rel(TUI_SMOKE_UNIT),
         "tui_smoke_script": rel(TUI_SMOKE_SCRIPT),

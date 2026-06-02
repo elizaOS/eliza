@@ -45,6 +45,132 @@ MIN_BUTTON_TRAVEL_MM = 0.18
 FLASH_BURIAL_CLEARANCE_MM = 0.20
 CONNECTION_TERMINAL_MARKER_Z_MM = 5.55
 
+
+def cad_connection_mechanical_detail_summary(
+    connection_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    def has_numeric(value: Any) -> bool:
+        return isinstance(value, int | float) and value >= 0
+
+    def mechanical_envelope(row: dict[str, Any]) -> dict[str, Any]:
+        envelope = row.get("mechanical_envelope")
+        return envelope if isinstance(envelope, dict) else {}
+
+    geometry_defined = [
+        row
+        for row in connection_rows
+        if mechanical_envelope(row).get("cad_span_mm")
+        and has_numeric(mechanical_envelope(row).get("nominal_visual_width_mm"))
+        and has_numeric(mechanical_envelope(row).get("nominal_visual_thickness_mm"))
+        and has_numeric(mechanical_envelope(row).get("visual_marker_length_mm"))
+        and has_numeric(mechanical_envelope(row).get("endpoint_center_distance_mm"))
+    ]
+    bend_basis_defined = [
+        row
+        for row in connection_rows
+        if mechanical_envelope(row).get("bend_radius_basis")
+        and (
+            mechanical_envelope(row).get("min_bend_radius_mm") is not None
+            or row.get("physical_medium") == "board_to_board_edge_connector"
+        )
+    ]
+    impedance_basis_defined = [
+        row
+        for row in connection_rows
+        if mechanical_envelope(row).get("impedance_requirement")
+        and (
+            not bool(row.get("controlled_impedance_required"))
+            or bool(mechanical_envelope(row).get("controlled_impedance_targets"))
+            or row.get("impedance_requirement") != "not_controlled_impedance"
+        )
+    ]
+    supplier_drawing_requirements_by_medium = {
+        "battery_power_flex": "approved battery flex/lead drawing with conductor gauge, NTC/ID routing, current capacity, adhesive, bend radius, and connector retention",
+        "board_to_board_edge_connector": "approved board-to-board connector/flex drawing with pin map, mating height, wipe, retention, keepout, and tolerance stack",
+        "flexible_antenna_loop": "approved NFC antenna flex drawing with loop geometry, ferrite/adhesive stack, matching target, and bend radius",
+        "flexible_printed_circuit": "approved FPC drawing with stackup, copper weights, stiffeners, adhesive, connector pinout, bend radius, and impedance/current constraints",
+        "ground_spring_contact": "approved ground-spring drawing with contact force, wipe, plating, tolerance stack, and chassis bonding path",
+        "insulated_wire_pair": "approved harness/lead drawing with wire gauge, insulation, strain relief, routing clip, service loop, and bend radius",
+        "pcb_copper_trace_group": "approved routed PCB copper with clean or waived DRC/ERC, stackup, impedance/current validation, and SI/PI review",
+        "rf_50ohm_feed": "approved RF feed drawing/layout with 50 ohm stackup, matching network, antenna clearance, VNA evidence, and coexistence review",
+        "rf_tuner_interconnect": "approved antenna tuner interconnect with RF stackup, matching state table, control routing, aperture clearance, and VNA evidence",
+    }
+    present_media = sorted({str(row.get("physical_medium")) for row in connection_rows})
+    return {
+        "manufacturing_detail_defined_count": len(geometry_defined),
+        "connection_geometry_defined_count": len(geometry_defined),
+        "connection_bend_or_connector_basis_defined_count": len(bend_basis_defined),
+        "connection_impedance_or_current_basis_defined_count": len(impedance_basis_defined),
+        "all_connections_have_manufacturing_geometry": len(geometry_defined)
+        == len(connection_rows),
+        "all_connections_have_bend_or_connector_basis": len(bend_basis_defined)
+        == len(connection_rows),
+        "all_connections_have_impedance_or_current_basis": len(impedance_basis_defined)
+        == len(connection_rows),
+        "all_connections_have_endpoint_distance": all(
+            has_numeric(mechanical_envelope(row).get("endpoint_center_distance_mm"))
+            for row in connection_rows
+        ),
+        "supplier_drawing_requirement_medium_count": len(present_media),
+        "supplier_drawing_requirements_by_medium": {
+            medium: supplier_drawing_requirements_by_medium[medium]
+            for medium in present_media
+            if medium in supplier_drawing_requirements_by_medium
+        },
+        "release_credit": False,
+    }
+
+
+def cad_connection_mechanical_envelope(
+    *,
+    contract: dict[str, Any],
+    part_bbox: dict[str, Any],
+    endpoint_center_distance_mm: float | None,
+    represented_route_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
+    numeric_span = [
+        round(float(value), 3)
+        for value in span
+        if isinstance(value, int | float) or str(value).replace(".", "", 1).isdigit()
+    ]
+    sorted_span = sorted(numeric_span)
+    nominal_thickness_mm = sorted_span[0] if sorted_span else None
+    nominal_width_mm = sorted_span[1] if len(sorted_span) >= 2 else None
+    visual_marker_length_mm = sorted_span[-1] if sorted_span else None
+    routed_length_total_mm = round(
+        sum(float(route.get("length_mm") or 0.0) for route in represented_route_records),
+        3,
+    )
+    controlled_targets = sorted(
+        {
+            f"{target.get('constraint')}={target.get('value')}ohm"
+            for route in represented_route_records
+            for target in route.get("controlled_impedance_targets_ohm", [])
+            if isinstance(target, dict) and target.get("constraint") and target.get("value")
+        }
+    )
+    return {
+        "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+        "physical_medium": contract.get("physical_medium"),
+        "connection_type": contract.get("connection_type"),
+        "cad_span_mm": numeric_span,
+        "nominal_visual_width_mm": nominal_width_mm,
+        "nominal_visual_thickness_mm": nominal_thickness_mm,
+        "visual_marker_length_mm": visual_marker_length_mm,
+        "endpoint_center_distance_mm": endpoint_center_distance_mm,
+        "routed_trace_length_total_mm": routed_length_total_mm,
+        "min_bend_radius_mm": contract.get("min_bend_radius_mm"),
+        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "controlled_impedance_required": bool(contract.get("controlled_impedance_required")),
+        "controlled_impedance_targets": controlled_targets,
+        "impedance_requirement": contract.get("impedance_requirement"),
+        "slack_or_service_loop_status": (
+            "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required"
+        ),
+        "release_credit": False,
+    }
+
 CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("display_touch_fpc", "display_fpc_connector", "display_lcm"),
     ("rear_camera_csi_fpc", "main_pcb", "rear_camera_module"),
@@ -3100,6 +3226,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         ],
         "release_credit": False,
     }
+    connection_detail_summary = cad_connection_mechanical_detail_summary(connection_rows)
     connection_coverage = {
         **{k: v for k, v in existing.items() if k != "connections"},
         "required_connection_count": len(connection_rows),
@@ -3162,6 +3289,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             sum(float(row["endpoint_center_distance_mm"] or 0.0) for row in connection_rows),
             3,
         ),
+        **connection_detail_summary,
         "mechanical_envelope_defined_count": sum(
             1 for row in connection_rows if isinstance(row.get("mechanical_envelope"), dict)
         ),
@@ -3203,6 +3331,8 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
         f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
         f"- Mechanical envelopes: {connection_coverage['mechanical_envelope_defined_count']}",
+        f"- Manufacturing geometry records: {connection_coverage['manufacturing_detail_defined_count']}",
+        f"- Supplier drawing media covered: {connection_coverage['supplier_drawing_requirement_medium_count']}",
         f"- Critical interface groups present: {str(release_boundary_summary['all_critical_interface_groups_present']).lower()}",
         f"- Supplier-release-required connections: {connection_coverage['supplier_release_required_connection_count']}",
         f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
@@ -6192,6 +6322,12 @@ def write_solid_cad_handoff_artifacts(
             contract["min_bend_radius_mm"] is not None
             or contract["physical_medium"] == "board_to_board_edge_connector"
         )
+        mechanical_envelope = cad_connection_mechanical_envelope(
+            contract=contract,
+            part_bbox=part_bbox,
+            endpoint_center_distance_mm=endpoint_center_distance_mm,
+            represented_route_records=represented_route_records,
+        )
         connection_rows.append(
             {
                 **contract,
@@ -6245,6 +6381,7 @@ def write_solid_cad_handoff_artifacts(
                 "from_endpoint_center_mm": from_center,
                 "to_endpoint_center_mm": to_center,
                 "endpoint_center_distance_mm": endpoint_center_distance_mm,
+                "mechanical_envelope": mechanical_envelope,
                 "endpoints_present": endpoints_present,
                 "routed_net_presence": routed_net_presence,
                 "all_nets_in_routed_development_board": all(routed_net_presence.values()),
@@ -6340,6 +6477,7 @@ def write_solid_cad_handoff_artifacts(
         ],
         "release_credit": False,
     }
+    connection_detail_summary = cad_connection_mechanical_detail_summary(connection_rows)
     connection_coverage = {
         "schema": "eliza.e1_phone_cad_connection_coverage.v1",
         "date": "2026-05-22",
@@ -6413,6 +6551,7 @@ def write_solid_cad_handoff_artifacts(
             sum(float(row["endpoint_center_distance_mm"] or 0.0) for row in connection_rows),
             3,
         ),
+        **connection_detail_summary,
         "physical_medium_counts": dict(sorted(physical_medium_counts.items())),
         "electrical_class_counts": dict(sorted(electrical_class_counts.items())),
         "controlled_impedance_connection_count": sum(
@@ -6448,6 +6587,8 @@ def write_solid_cad_handoff_artifacts(
         f"- Represented nets: {connection_coverage['represented_net_count_total']}",
         f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
         f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Manufacturing geometry records: {connection_coverage['manufacturing_detail_defined_count']}",
+        f"- Supplier drawing media covered: {connection_coverage['supplier_drawing_requirement_medium_count']}",
         f"- Critical interface groups present: {str(release_boundary_summary['all_critical_interface_groups_present']).lower()}",
         f"- Supplier-release-required connections: {connection_coverage['supplier_release_required_connection_count']}",
         f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
@@ -17042,6 +17183,23 @@ def write_board_step_readiness_artifacts(
             "mechanical_envelope_release_credit": (
                 mechanical_envelope.get("release_credit") is True
             ),
+            "manufacturing_geometry_defined": bool(
+                mechanical_envelope.get("cad_span_mm")
+                and mechanical_envelope.get("nominal_visual_width_mm") is not None
+                and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+                and mechanical_envelope.get("visual_marker_length_mm") is not None
+                and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+            ),
+            "bend_or_connector_basis_defined": bool(
+                mechanical_envelope.get("bend_radius_basis")
+                and (
+                    mechanical_envelope.get("min_bend_radius_mm") is not None
+                    or record.get("physical_medium") == "board_to_board_edge_connector"
+                )
+            ),
+            "impedance_or_current_basis_defined": bool(
+                mechanical_envelope.get("impedance_requirement")
+            ),
             "release_credit": record.get("release_credit") is True,
         }
 
@@ -17162,6 +17320,24 @@ def write_board_step_readiness_artifacts(
             for record in cad_connection_records
             if isinstance(record, dict)
         ),
+        "connection_manufacturing_detail_count": int(
+            cad_connection_coverage.get("manufacturing_detail_defined_count") or 0
+        ),
+        "all_connection_records_have_manufacturing_geometry": (
+            cad_connection_coverage.get("all_connections_have_manufacturing_geometry") is True
+        ),
+        "all_connection_records_have_bend_or_connector_basis": (
+            cad_connection_coverage.get("all_connections_have_bend_or_connector_basis") is True
+        ),
+        "all_connection_records_have_impedance_or_current_basis": (
+            cad_connection_coverage.get("all_connections_have_impedance_or_current_basis") is True
+        ),
+        "supplier_drawing_requirement_medium_count": int(
+            cad_connection_coverage.get("supplier_drawing_requirement_medium_count") or 0
+        ),
+        "supplier_drawing_requirements_by_medium": cad_connection_coverage.get(
+            "supplier_drawing_requirements_by_medium", {}
+        ),
         "routed_development_intake": str(routed_development_intake_path.relative_to(ROOT)),
         "routed_output_manifest": str(routed_output_manifest_path.relative_to(ROOT)),
     }
@@ -17194,6 +17370,12 @@ def write_board_step_readiness_artifacts(
         and detailed_routed_step_candidate["connection_mechanical_envelope_count"]
         == detailed_routed_step_candidate["cad_connection_record_count"]
         and detailed_routed_step_candidate["all_connection_records_have_mechanical_envelope"]
+        and detailed_routed_step_candidate["connection_manufacturing_detail_count"]
+        == detailed_routed_step_candidate["cad_connection_record_count"]
+        and detailed_routed_step_candidate["all_connection_records_have_manufacturing_geometry"]
+        and detailed_routed_step_candidate["all_connection_records_have_bend_or_connector_basis"]
+        and detailed_routed_step_candidate["all_connection_records_have_impedance_or_current_basis"]
+        and detailed_routed_step_candidate["supplier_drawing_requirement_medium_count"] > 0
         and detailed_routed_step_candidate["release_credit"] is False
     )
     routed_intake_detail = {
@@ -17248,6 +17430,24 @@ def write_board_step_readiness_artifacts(
         ],
         "all_connection_records_have_mechanical_envelope": detailed_routed_step_candidate[
             "all_connection_records_have_mechanical_envelope"
+        ],
+        "connection_manufacturing_detail_count": detailed_routed_step_candidate[
+            "connection_manufacturing_detail_count"
+        ],
+        "all_connection_records_have_manufacturing_geometry": detailed_routed_step_candidate[
+            "all_connection_records_have_manufacturing_geometry"
+        ],
+        "all_connection_records_have_bend_or_connector_basis": detailed_routed_step_candidate[
+            "all_connection_records_have_bend_or_connector_basis"
+        ],
+        "all_connection_records_have_impedance_or_current_basis": detailed_routed_step_candidate[
+            "all_connection_records_have_impedance_or_current_basis"
+        ],
+        "supplier_drawing_requirement_medium_count": detailed_routed_step_candidate[
+            "supplier_drawing_requirement_medium_count"
+        ],
+        "supplier_drawing_requirements_by_medium": detailed_routed_step_candidate[
+            "supplier_drawing_requirements_by_medium"
         ],
         "release_credit": False,
     }
@@ -19072,7 +19272,7 @@ def write_readiness_artifacts(
         else "blocked",
         "manufacturing_release_ready": manufacturing_release_ready,
         "why_not_release_ready": [
-            "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
+            "Local routed KiCad PCB and routed STEP candidates exist for visual review only; supplier-approved production routing, fabrication outputs, and first-article evidence are not released.",
             "Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers are not locked.",
             "No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical samples.",
             "No GD&T-controlled release drawing package or toolmaker DFM signoff.",

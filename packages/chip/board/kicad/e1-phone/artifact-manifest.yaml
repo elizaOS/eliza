@@ -139,6 +139,7 @@ current_artifacts:
     - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/fabrication-enclosure-e2e-release-gate-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/routed-output-content-check-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/release-approval-signature-blocker-matrix-2026-05-23.yaml

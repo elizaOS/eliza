@@ -143,6 +143,61 @@ def test_riscv64_aosp_overlay_materializes_files_not_host_symlinks() -> None:
         raise AssertionError("AOSP riscv64 overlay must not install host-local symlinks")
 
 
+def test_boot_script_virtual_smokes_emit_claim_boundary() -> None:
+    text = BOOT.read_text(encoding="utf-8")
+    expected = (
+        "eliza-evidence: "
+        "claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
+    )
+    if expected not in text:
+        raise AssertionError("Android virtual smoke transcripts must record claim boundary")
+    if text.index(expected) > text.index("SCHEMA=docs/android/boot-transcript.schema.json"):
+        raise AssertionError("claim boundary must be emitted with virtual-smoke metadata")
+
+
+def test_checker_rejects_virtual_smoke_log_without_claim_boundary() -> None:
+    if not REPORT.is_file():
+        test_boot_script_blocks_without_aosp_dir()
+    virtual_log = ROOT / "docs/evidence/android/qemu_riscv64_smoke.log"
+    saved = virtual_log.read_bytes() if virtual_log.is_file() else None
+    try:
+        virtual_log.parent.mkdir(parents=True, exist_ok=True)
+        virtual_log.write_text(
+            "eliza-evidence: target=android_virtual_smoke\n"
+            "BOOT_CLAIM=none\n"
+            "SCHEMA=docs/android/boot-transcript.schema.json\n",
+            encoding="utf-8",
+        )
+        result = run([sys.executable, str(CHECK)])
+        if result.returncode != 2:
+            raise AssertionError(
+                "expected checker to block on unsafe virtual smoke log, "
+                f"got {result.returncode}\n{result.stdout}"
+            )
+        assert_contains(result.stdout, "qemu_riscv64_smoke.log")
+        assert_contains(result.stdout, "virtual_device_smoke_only claim boundary")
+    finally:
+        if saved is None:
+            virtual_log.unlink(missing_ok=True)
+        else:
+            virtual_log.write_bytes(saved)
+
+
+def test_aosp_capture_emits_fail_closed_signal_trailers() -> None:
+    text = CAPTURE_AOSP.read_text(encoding="utf-8")
+    required = [
+        "emit_signal_trailer()",
+        "eliza-evidence: ended_utc=$end_utc",
+        "eliza-evidence: status=FAIL",
+        "eliza-evidence: interrupted_by_signal=$signal_name",
+        "trap 'emit_signal_trailer 130 INT' INT",
+        "trap 'emit_signal_trailer 143 TERM' TERM",
+    ]
+    missing = [token for token in required if token not in text]
+    if missing:
+        raise AssertionError(f"AOSP capture wrapper missing signal trailer tokens: {missing}")
+
+
 def test_checker_reports_blocked_report() -> None:
     if not REPORT.is_file():
         test_boot_script_blocks_without_aosp_dir()
@@ -391,6 +446,9 @@ def main() -> int:
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_allows_existing_checkout_without_repo,
             test_riscv64_aosp_overlay_materializes_files_not_host_symlinks,
+            test_boot_script_virtual_smokes_emit_claim_boundary,
+            test_checker_rejects_virtual_smoke_log_without_claim_boundary,
+            test_aosp_capture_emits_fail_closed_signal_trailers,
             test_android_handoff_uses_shared_build_evidence_helpers,
             test_aosp_vintf_evidence_maps_all_output_partitions,
             test_eliza_device_framework_matrix_is_imported,

@@ -3,6 +3,10 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
+import {
+  classifyScreenTimeTarget,
+  isSocialCategory,
+} from "@elizaos/plugin-health";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeHistoryPoint,
@@ -32,10 +36,6 @@ import type {
   MixinClass,
 } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
-import {
-  classifyScreenTimeTarget,
-  isSocialCategory,
-} from "./social-taxonomy.js";
 
 function isoNow(): string {
   return new Date().toISOString();

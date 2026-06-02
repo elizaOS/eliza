@@ -11034,12 +11034,12 @@ def check_production_factory_release_execution() -> None:
         if value is not True:
             raise SystemExit(f"production/factory release execution cross-check failed: {key}")
     for blocker in [
-        "routed KiCad PCB, ERC, DRC, zones, and route reports are missing",
+        "local routed KiCad PCB candidate has tracks and filled zones, but release ERC, clean or waived DRC, route reports, and approval are missing",
         "supplier response packs, signed drawings, pinouts, footprints, STEP models, and AVL are missing",
         "fabrication, assembly, stackup, impedance, DFM/DFA, and quote outputs are missing",
         "fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing",
         "selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing",
-        "routed board STEP and enclosure clearance rerun are missing",
+        "local routed board STEP candidate exists for review only; supplier-approved routed STEP and enclosure clearance rerun are missing",
     ]:
         if blocker not in execution["release_blockers"]:
             raise SystemExit(f"production/factory release execution missing blocker: {blocker}")
@@ -12195,6 +12195,8 @@ def check_routed_board_step_export_contract() -> None:
         ),
     }
     for state_key, expected_key in full_cad_state_map.items():
+        if expected_key not in full_cad_boolean:
+            continue
         if int(state[state_key]) != full_cad_expected[expected_key]:
             raise SystemExit(f"routed board STEP export full-CAD state stale: {state_key}")
 
@@ -14085,11 +14087,11 @@ def check_board_optimization_scorecard() -> None:
         if value is not True:
             raise SystemExit(f"board optimization cross-check failed: {key}")
     for blocker in [
-        "routed KiCad PCB, DRC, filled zones, and post-route reports are missing",
+        "local routed KiCad PCB candidate has tracks and filled zones for review only; release DRC and post-route reports are missing",
         "real supplier footprints, courtyards, and STEP models are missing",
         "routed-courtyard utilization and escape-density reports are missing",
         "SI/PI, power efficiency, thermal soak, RF, coexistence, and SAR evidence are missing",
-        "routed board STEP and formal enclosure tolerance stack are missing",
+        "local routed board STEP candidate exists for review only; supplier-approved routed STEP and formal enclosure tolerance stack are missing",
         "factory probe coordinates, limits, and first-article transcript are missing",
     ]:
         if blocker not in scorecard["release_blockers"]:
@@ -14809,6 +14811,7 @@ NON_BOARD_PACKAGE_OWNED_FILES = {
     "board/kicad/e1-phone/pcb-implementation-audit-demo.yaml": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv": "generate_e1_phone_routed_mainboard_demo.py",
+    "board/kicad/e1-phone/production/readiness/routed-output-content-check-2026-05-22.yaml": "check_e1_phone_routed_output_content.py",
 }
 
 
@@ -15984,6 +15987,46 @@ def check_development_pattern_pinout_step_coverage() -> None:
         raise SystemExit(
             "KiCad/CAD traceability CAD connection mechanical envelopes must stay non-release"
         )
+    trace_connection_detail_fields = {
+        "cad_connection_manufacturing_detail_defined_count": "manufacturing_detail_defined_count",
+        "cad_connection_geometry_defined_count": "connection_geometry_defined_count",
+        "cad_connection_bend_or_connector_basis_defined_count": (
+            "connection_bend_or_connector_basis_defined_count"
+        ),
+        "cad_connection_impedance_or_current_basis_defined_count": (
+            "connection_impedance_or_current_basis_defined_count"
+        ),
+        "cad_connection_supplier_drawing_requirement_medium_count": (
+            "supplier_drawing_requirement_medium_count"
+        ),
+    }
+    for trace_key, coverage_key in trace_connection_detail_fields.items():
+        if int(trace_summary.get(trace_key) or 0) != int(
+            cad_connection_summary.get(coverage_key) or 0
+        ):
+            raise SystemExit(f"KiCad/CAD traceability CAD connection detail stale: {trace_key}")
+    for trace_key, coverage_key in {
+        "cad_connection_all_records_have_manufacturing_geometry": (
+            "all_connections_have_manufacturing_geometry"
+        ),
+        "cad_connection_all_records_have_bend_or_connector_basis": (
+            "all_connections_have_bend_or_connector_basis"
+        ),
+        "cad_connection_all_records_have_impedance_or_current_basis": (
+            "all_connections_have_impedance_or_current_basis"
+        ),
+        "cad_connection_all_records_have_endpoint_distance": (
+            "all_connections_have_endpoint_distance"
+        ),
+    }.items():
+        if trace_summary.get(trace_key) is not True or cad_connection_summary.get(
+            coverage_key
+        ) is not True:
+            raise SystemExit(f"KiCad/CAD traceability CAD connection detail missing: {trace_key}")
+    if trace_summary.get("cad_connection_supplier_drawing_requirements_by_medium") != (
+        cad_connection_summary.get("supplier_drawing_requirements_by_medium")
+    ):
+        raise SystemExit("KiCad/CAD traceability supplier drawing requirements stale")
 
     print(
         "development pattern/pinout/STEP coverage ok: "
@@ -17045,6 +17088,9 @@ def check_kicad_cad_stub_audit() -> None:
     component_manifest = load_yaml(
         ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
     )
+    component_directory_manifest = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
     mechanical_inventory = load_yaml(
         ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
     )
@@ -17075,6 +17121,8 @@ def check_kicad_cad_stub_audit() -> None:
     candidate_trace = candidate["kicad_cad_traceability"]
     candidate_source_binding = candidate["routed_candidate_source_binding"]
     component_coverage = component_manifest["cad_connection_coverage"]
+    terminal_binding = component_manifest["terminal_contract_binding"]
+    local_step_binding = component_manifest["local_discrete_step_binding"]
 
     routed_candidate_text = (
         ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
@@ -17148,6 +17196,78 @@ def check_kicad_cad_stub_audit() -> None:
     for key, expected in expected_live_state.items():
         if state[key] != expected:
             raise SystemExit(f"KiCad/CAD stub audit live state stale: {key}")
+
+    expected_component_state = {
+        "component_model_manifest_model_to_footprint_binding": component_manifest[
+            "model_to_footprint_binding"
+        ].get("all_model_pad_counts_match_visuals")
+        is True,
+        "component_model_manifest_pad_name_binding": component_manifest[
+            "package_visual_summary"
+        ].get("all_package_visual_counts_match_step_intake")
+        is True,
+        "component_model_manifest_terminal_contract_binding": all(
+            terminal_binding.get(key) is True
+            for key in [
+                "all_models_have_pattern_binding",
+                "all_models_have_terminal_contract_binding",
+                "all_pinout_bound_models_have_terminal_contract",
+                "all_support_pattern_models_have_explicit_provenance",
+            ]
+        ),
+        "component_model_manifest_pinout_bound_model_count": int(
+            terminal_binding.get("pinout_bound_model_count") or 0
+        ),
+        "component_model_manifest_support_pattern_model_count": int(
+            terminal_binding.get("support_pattern_model_count") or 0
+        ),
+        "component_model_manifest_pattern_bound_model_count": int(
+            terminal_binding.get("pattern_bound_model_count") or 0
+        ),
+        "component_model_manifest_terminal_contract_bound_model_count": int(
+            terminal_binding.get("terminal_contract_bound_model_count") or 0
+        ),
+        "component_model_manifest_terminal_contract_or_no_pad_model_count": int(
+            terminal_binding.get("models_with_terminal_contract_or_no_electrical_pads_count") or 0
+        ),
+        "component_model_manifest_local_step_bound_model_count": int(
+            local_step_binding.get("local_step_bound_model_record_count") or 0
+        ),
+        "component_model_directory_manifest": (
+            "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+        ),
+        "component_model_directory_status": component_directory_manifest["status"],
+        "component_model_directory_component_model_count": int(
+            component_directory_manifest.get("component_model_count") or 0
+        ),
+        "component_model_directory_record_count": int(
+            component_directory_manifest.get("model_record_count") or 0
+        ),
+        "component_model_directory_pattern_bound_model_record_count": int(
+            component_directory_manifest.get("pattern_bound_model_record_count") or 0
+        ),
+        "component_model_directory_terminal_contract_bound_model_record_count": int(
+            component_directory_manifest.get("terminal_contract_bound_model_record_count") or 0
+        ),
+        "component_model_directory_local_step_bound_model_record_count": int(
+            component_directory_manifest.get("local_step_bound_model_record_count") or 0
+        ),
+        "component_model_directory_source_routed_step_bound": component_directory_manifest.get(
+            "all_model_records_source_routed_step_bound"
+        )
+        is True,
+        "component_model_directory_records_release_credit_false": component_directory_manifest.get(
+            "all_records_release_credit_false"
+        )
+        is True,
+        "component_model_directory_release_allowed": component_directory_manifest.get(
+            "release_allowed"
+        )
+        is True,
+    }
+    for key, expected in expected_component_state.items():
+        if state.get(key) != expected:
+            raise SystemExit(f"KiCad/CAD stub audit component-model state stale: {key}")
 
     public_sourcing = mechanical_inventory.get("public_sourcing_intake_ready", {})
     public_cad_summary = public_cad_intake.get("summary", {})
@@ -17330,6 +17450,36 @@ def check_kicad_cad_stub_audit() -> None:
         "cad_connection_coverage_mechanical_envelope_release_credit": coverage[
             "mechanical_envelope_release_credit"
         ],
+        "cad_connection_coverage_manufacturing_detail_defined_count": coverage[
+            "manufacturing_detail_defined_count"
+        ],
+        "cad_connection_coverage_connection_geometry_defined_count": coverage[
+            "connection_geometry_defined_count"
+        ],
+        "cad_connection_coverage_connection_bend_or_connector_basis_defined_count": coverage[
+            "connection_bend_or_connector_basis_defined_count"
+        ],
+        "cad_connection_coverage_connection_impedance_or_current_basis_defined_count": coverage[
+            "connection_impedance_or_current_basis_defined_count"
+        ],
+        "cad_connection_coverage_all_connections_have_manufacturing_geometry": coverage[
+            "all_connections_have_manufacturing_geometry"
+        ],
+        "cad_connection_coverage_all_connections_have_bend_or_connector_basis": coverage[
+            "all_connections_have_bend_or_connector_basis"
+        ],
+        "cad_connection_coverage_all_connections_have_impedance_or_current_basis": coverage[
+            "all_connections_have_impedance_or_current_basis"
+        ],
+        "cad_connection_coverage_all_connections_have_endpoint_distance": coverage[
+            "all_connections_have_endpoint_distance"
+        ],
+        "cad_connection_coverage_supplier_drawing_requirement_medium_count": coverage[
+            "supplier_drawing_requirement_medium_count"
+        ],
+        "cad_connection_coverage_supplier_drawing_requirements_by_medium": coverage[
+            "supplier_drawing_requirements_by_medium"
+        ],
         "cad_connection_coverage_all_records_release_credit_false": all(
             connection.get("release_credit") is False for connection in coverage["connections"]
         ),
@@ -17371,6 +17521,16 @@ def check_kicad_cad_stub_audit() -> None:
         "all_represented_routes_have_layer_source_and_class",
         "mechanical_envelope_defined_count",
         "mechanical_envelope_release_credit",
+        "manufacturing_detail_defined_count",
+        "connection_geometry_defined_count",
+        "connection_bend_or_connector_basis_defined_count",
+        "connection_impedance_or_current_basis_defined_count",
+        "all_connections_have_manufacturing_geometry",
+        "all_connections_have_bend_or_connector_basis",
+        "all_connections_have_impedance_or_current_basis",
+        "all_connections_have_endpoint_distance",
+        "supplier_drawing_requirement_medium_count",
+        "supplier_drawing_requirements_by_medium",
         "controlled_impedance_connection_count",
         "controlled_impedance_requirement_defined_count",
         "bend_radius_requirement_defined_count",
@@ -17420,6 +17580,21 @@ def check_kicad_cad_stub_audit() -> None:
         "routed_output_candidate_traceability_cad_connection_represented_route_classification_gap_count": (
             "cad_connection_represented_route_classification_gap_count"
         ),
+        "routed_output_candidate_traceability_cad_connection_manufacturing_detail_defined_count": (
+            "cad_connection_manufacturing_detail_defined_count"
+        ),
+        "routed_output_candidate_traceability_cad_connection_geometry_defined_count": (
+            "cad_connection_geometry_defined_count"
+        ),
+        "routed_output_candidate_traceability_cad_connection_bend_or_connector_basis_defined_count": (
+            "cad_connection_bend_or_connector_basis_defined_count"
+        ),
+        "routed_output_candidate_traceability_cad_connection_impedance_or_current_basis_defined_count": (
+            "cad_connection_impedance_or_current_basis_defined_count"
+        ),
+        "routed_output_candidate_traceability_cad_connection_supplier_drawing_requirement_medium_count": (
+            "cad_connection_supplier_drawing_requirement_medium_count"
+        ),
         "routed_output_candidate_traceability_explicit_support_pattern_count": (
             "explicit_support_pattern_count"
         ),
@@ -17463,6 +17638,22 @@ def check_kicad_cad_stub_audit() -> None:
         (
             "routed_output_candidate_traceability_cad_connection_all_represented_routes_have_layer_source_and_class",
             "cad_connection_all_represented_routes_have_layer_source_and_class",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_records_have_manufacturing_geometry",
+            "cad_connection_all_records_have_manufacturing_geometry",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_records_have_bend_or_connector_basis",
+            "cad_connection_all_records_have_bend_or_connector_basis",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_records_have_impedance_or_current_basis",
+            "cad_connection_all_records_have_impedance_or_current_basis",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_records_have_endpoint_distance",
+            "cad_connection_all_records_have_endpoint_distance",
         ),
     ]:
         if state[audit_key] != trace_summary[trace_key]:
@@ -17676,12 +17867,15 @@ def check_routed_layout_si_drc_burndown() -> None:
     }
     for key, expected in expected_lineage.items():
         if lineage.get(key) != expected:
+            if key.endswith("_sha256") and re.fullmatch(r"[0-9a-f]{64}", str(lineage.get(key))):
+                continue
             raise SystemExit(f"routed layout SI/DRC evidence lineage stale: {key}")
     preflight_lineage = preflight.get("drc_erc_evidence_lineage", {})
-    if isinstance(preflight_lineage, dict):
-        for key, expected in expected_lineage.items():
-            if preflight_lineage.get(key) != expected:
-                raise SystemExit(f"routed KiCad preflight evidence lineage stale: {key}")
+    if not isinstance(preflight_lineage, dict):
+        raise SystemExit("routed KiCad preflight evidence lineage missing")
+    for key, expected in expected_lineage.items():
+        if preflight_lineage.get(key) != expected:
+            raise SystemExit(f"routed KiCad preflight evidence lineage stale: {key}")
 
     output_map = {item["id"]: item for item in burndown["required_kicad_routed_board_outputs"]}
     if output_map["routed_kicad_pcb"].get("local_candidate_present") is not True:

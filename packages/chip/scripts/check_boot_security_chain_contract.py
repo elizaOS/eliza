@@ -55,6 +55,15 @@ FALSE_CLAIM_FLAGS = {
     "production_readiness_claim_allowed": False,
 }
 PLACEHOLDER_TOKENS = ("placeholder", "pre-silicon specification", "not implemented")
+DOC_EVIDENCE_CONTRACT_MARKERS = (
+    "non-claim flags",
+    "release_claim_allowed",
+    "secure_boot_claim_allowed",
+    "silicon_secure_boot_claim_allowed",
+    "false",
+    "required production evidence",
+    "machine-checkable evidence contract",
+)
 REQUIRED_BOOTROM_SIM_MARKERS = {
     "reset_vector_fetch",
     "mtvec_setup",
@@ -569,7 +578,11 @@ def check_security_docs(findings: list[Finding]) -> None:
         if not path.is_file():
             continue
         lower = read_text(path).lower()
-        if any(token in lower for token in PLACEHOLDER_TOKENS) or "status: blocked" in lower:
+        has_blocked_language = (
+            any(token in lower for token in PLACEHOLDER_TOKENS) or "status: blocked" in lower
+        )
+        has_evidence_contract = all(marker in lower for marker in DOC_EVIDENCE_CONTRACT_MARKERS)
+        if has_blocked_language and not has_evidence_contract:
             placeholder_docs.append(rel(path))
     add_if(
         findings,

@@ -90,11 +90,11 @@ local_routed_candidate_state:
       evidence only. Production DRC/ERC report paths remain blocked candidate metadata
       until clean raw KiCad payloads, waivers, and reviewer signoff are archived.
     raw_local_drc_report: mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
-    raw_local_drc_report_sha256: 76580c68f1cd52c619102b6f21251fcaa798c719e6898d8fc116b79d4868f197
+    raw_local_drc_report_sha256: 448c37095e772774c76d3f3e6ca6bfcf35832dec4ba2aa88034ac836df789d4c
     raw_local_erc_report: mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json
-    raw_local_erc_report_sha256: c9a77f94584b76ee4a8fa3ebe25646457db008def2a403d04959c31e1585b9e5
+    raw_local_erc_report_sha256: cf82c0d9edc34938bda0df62195da53257995e3db30aa97fef58d629b746fb3d
     local_triage_report: mechanical/e1-phone/review/local-kicad-cli/drc-erc-triage.json
-    local_triage_report_sha256: 818f0c3fa4c09be6689418ebd02de0f4f515795c0df9d9abad9189c1d7905797
+    local_triage_report_sha256: dbd6f9b272743188cbabba5e5d0ac77ccec60d0a535cbdba9e62a7482c62a36a
     preflight_report: mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json
     production_drc_report_path: board/kicad/e1-phone/production/reports/drc.json
     production_erc_report_path: board/kicad/e1-phone/production/reports/erc.json

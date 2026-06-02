@@ -40,6 +40,15 @@ def assert_equal(actual: object, expected: object, message: str) -> None:
         raise AssertionError(f"{message}: expected {expected!r}, got {actual!r}")
 
 
+def contract_artifacts() -> dict[str, object]:
+    contract = ROOT / run_benchmarks.TARGET_METADATA_CONTRACT_PATH
+    return {
+        "target_metadata_contract": run_benchmarks.TARGET_METADATA_CONTRACT_PATH,
+        "target_metadata_contract_sha256": run_benchmarks.sha256_file(contract),
+        "target_metadata_contract_bytes": contract.stat().st_size,
+    }
+
+
 def valid_l5_l6_report() -> dict[str, Any]:
     return {
         "schema": "eliza.benchmark_run.v1",
@@ -58,6 +67,7 @@ def valid_l5_l6_report() -> dict[str, Any]:
             "host": "target",
             "host_system": "linux",
         },
+        "artifacts": contract_artifacts(),
         "target_execution": {
             "runner": "prototype",
             "transcript_sha256": "1" * 64,

@@ -43,6 +43,9 @@ describe("LifeOps package boundaries", () => {
     const sleepServiceMixin = readPackageFile(
       "src/lifeops/service-mixin-sleep.ts",
     );
+    const screenTimeServiceMixin = readPackageFile(
+      "src/lifeops/service-mixin-screentime.ts",
+    );
 
     expect(healthAction).toContain('from "@elizaos/plugin-health"');
     expect(healthAction).toContain("createOwnerHealthAction");
@@ -58,6 +61,11 @@ describe("LifeOps package boundaries", () => {
     expect(sleepServiceMixin).toContain('from "@elizaos/plugin-health"');
     expect(sleepServiceMixin).not.toContain("computeSleepRegularity");
     expect(sleepServiceMixin).not.toContain("computePersonalBaseline");
+    expect(screenTimeServiceMixin).toContain("classifyScreenTimeTarget");
+    expect(screenTimeServiceMixin).toContain('from "@elizaos/plugin-health"');
+    expect(
+      existsSync(resolve(packageRoot, "src/lifeops/social-taxonomy.ts")),
+    ).toBe(false);
   });
 
   it("does not request health-owned app permissions from the LifeOps manifest", () => {

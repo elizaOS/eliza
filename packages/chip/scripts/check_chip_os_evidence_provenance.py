@@ -126,6 +126,27 @@ LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE = re.compile(
     r"(fail-safe mode|serial port \d+ not yet initialized)",
     re.I,
 )
+TECHNICAL_BLOCKED_FALSE_POSITIVE_RE = re.compile(
+    r"("
+    r"\bavoid blocked (?:cores|links|physical targets)\b|"
+    r"\bblocked (?:cores|links)\b|"
+    r"\bblocked-no-calibrated-assets\b|"
+    r"\bfail address/bit\b|"
+    r"\bfail address\b|"
+    r"\binjection-test hooks\b"
+    r")",
+    re.I,
+)
+ZERO_BLOCKED_FAIL_COUNTER_RE = re.compile(
+    r'^\s*"(?:blocked|fail|failed)"\s*:\s*(?:0|\[\]|\{\})\s*,?\s*$',
+    re.I,
+)
+STRUCTURED_SCOPE_BLOCKED_FALSE_POSITIVE_RE = re.compile(
+    r'^\s*"(?:claim_boundary|reason)"\s*:\s*".*'
+    r"(?:claims? remain blocked until|remain blocked until|remain BLOCKED follow-ons)"
+    r".*",
+    re.I,
+)
 REFERENCE_ONLY_RE = re.compile(
     r"(reference[_ -]?only|no[_ -]?(?:silicon|hardware|chip|boot)|"
     r"not[_ -]?(?:rtl|chip|boot|launcher|runtime|live[_ -]?runtime)|"
@@ -606,7 +627,13 @@ def is_false_positive_blocked_line(line: str) -> bool:
     fail_closed_posture = (
         "fail-closed" in lowered and "blocked" not in lowered and "status:" not in lowered
     )
-    return bool(LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE.search(line) or fail_closed_posture)
+    return bool(
+        LINUX_RUNTIME_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or TECHNICAL_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or ZERO_BLOCKED_FAIL_COUNTER_RE.search(line)
+        or STRUCTURED_SCOPE_BLOCKED_FALSE_POSITIVE_RE.search(line)
+        or fail_closed_posture
+    )
 
 
 def scan_path(path: Path) -> list[dict[str, Any]]:

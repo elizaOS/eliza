@@ -1,6 +1,6 @@
 {
   "schema": "eliza.process_pdk_portability_report.v1",
-  "generated_utc": "2026-06-02T06:00:58.001791+00:00",
+  "generated_utc": "2026-06-02T06:29:07.509649+00:00",
   "claim_boundary": "pdk_portability_index_only_not_production_pdk_or_tapeout_signoff",
   "claim_allowed": false,
   "release_claim_allowed": false,

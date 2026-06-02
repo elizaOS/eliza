@@ -484,6 +484,34 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         rel(LAUNCHER_MAIN_ACTIVITY),
         "Bind the real SystemBridge transport into the launcher WebView under __elizaAndroidBridge before AndroidSystemProvider mounts.",
     )
+    required_app_bridge_channels = {
+        "eliza.android.wifi.state",
+        "eliza.android.cell.state",
+        "eliza.android.audio.state",
+        "eliza.android.battery.state",
+        "eliza.android.time.state",
+        "eliza.android.connectivity.state",
+        "eliza.android.lockscreen.state",
+    }
+    missing_app_bridge_channels = sorted(
+        channel for channel in required_app_bridge_channels if channel not in app_bridge_text
+    )
+    add_if(
+        findings,
+        not app_bridge_path.is_file()
+        or missing_app_bridge_channels
+        or "AndroidSystemProvider: live-state" not in app_bridge_text
+        or "privileged_android_system_bridge_not_bound" not in app_bridge_text,
+        "launcher_app_bridge_live_state_surface_incomplete",
+        "launcher app-side bridge does not expose live Android state channels with a stable runtime marker and fail-closed unavailable path",
+        (
+            f"path={rel(app_bridge_path)} "
+            f"missing_channels={missing_app_bridge_channels} "
+            f"live_marker={'AndroidSystemProvider: live-state' in app_bridge_text} "
+            f"fail_closed_marker={'privileged_android_system_bridge_not_bound' in app_bridge_text}"
+        ),
+        "Implement app-side Android manager snapshots for every SystemProvider state channel and emit the live-state marker only when the bridge is actively consumed.",
+    )
     add_if(
         findings,
         'id("com.android.library")' in gradle_text
@@ -722,6 +750,12 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "bridge_service": rel(BRIDGE_SERVICE_KT),
         "bridge_service_present": BRIDGE_SERVICE_KT.is_file(),
         "launcher_main_activity": rel(LAUNCHER_MAIN_ACTIVITY),
+        "launcher_app_bridge": rel(app_bridge_path),
+        "launcher_app_bridge_live_state_channels": sorted(
+            channel for channel in required_app_bridge_channels if channel in app_bridge_text
+        ),
+        "launcher_app_bridge_live_state_marker": "AndroidSystemProvider: live-state"
+        in app_bridge_text,
         "launcher_binds_system_bridge": (
             "__elizaAndroidBridge" in launcher_text and "addJavascriptInterface" in launcher_text
         )

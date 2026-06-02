@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "64e782a518a5d733c83cebe21c6601ee3889f38c4879840e283f957f10ac3965",
+  "local_discrete_step_sha256": "54a5c84f5558d8fcb1fe7910f1c146d87d12e9932f00b4cfc4aa93cd08286d0c",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -351,6 +351,16 @@ def cad_connection_summary() -> dict[str, Any]:
                 "bend_radius_requirement_defined": bool(
                     item.get("bend_radius_requirement_defined", False)
                 ),
+                "mechanical_envelope": item.get("mechanical_envelope", {}),
+                "manufacturing_geometry_defined": bool(
+                    item.get("manufacturing_geometry_defined", False)
+                ),
+                "bend_or_connector_basis_defined": bool(
+                    item.get("bend_or_connector_basis_defined", False)
+                ),
+                "impedance_or_current_basis_defined": bool(
+                    item.get("impedance_or_current_basis_defined", False)
+                ),
                 "pass": bool(item.get("pass", False)),
                 "release_credit": bool(item.get("release_credit", True)),
             }
@@ -421,6 +431,36 @@ def cad_connection_summary() -> dict[str, Any]:
         ),
         "mechanical_envelope_release_credit": bool(
             coverage.get("mechanical_envelope_release_credit", True)
+        ),
+        "manufacturing_detail_defined_count": int(
+            coverage.get("manufacturing_detail_defined_count", 0) or 0
+        ),
+        "connection_geometry_defined_count": int(
+            coverage.get("connection_geometry_defined_count", 0) or 0
+        ),
+        "connection_bend_or_connector_basis_defined_count": int(
+            coverage.get("connection_bend_or_connector_basis_defined_count", 0) or 0
+        ),
+        "connection_impedance_or_current_basis_defined_count": int(
+            coverage.get("connection_impedance_or_current_basis_defined_count", 0) or 0
+        ),
+        "all_connections_have_manufacturing_geometry": bool(
+            coverage.get("all_connections_have_manufacturing_geometry", False)
+        ),
+        "all_connections_have_bend_or_connector_basis": bool(
+            coverage.get("all_connections_have_bend_or_connector_basis", False)
+        ),
+        "all_connections_have_impedance_or_current_basis": bool(
+            coverage.get("all_connections_have_impedance_or_current_basis", False)
+        ),
+        "all_connections_have_endpoint_distance": bool(
+            coverage.get("all_connections_have_endpoint_distance", False)
+        ),
+        "supplier_drawing_requirement_medium_count": int(
+            coverage.get("supplier_drawing_requirement_medium_count", 0) or 0
+        ),
+        "supplier_drawing_requirements_by_medium": coverage.get(
+            "supplier_drawing_requirements_by_medium", {}
         ),
         "physical_medium_counts": coverage.get("physical_medium_counts", {}),
         "electrical_class_counts": coverage.get("electrical_class_counts", {}),
@@ -541,6 +581,36 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
         ),
         "cad_connection_mechanical_envelope_release_credit": bool(
             summary.get("cad_connection_mechanical_envelope_release_credit", True)
+        ),
+        "cad_connection_manufacturing_detail_defined_count": int(
+            summary.get("cad_connection_manufacturing_detail_defined_count", 0) or 0
+        ),
+        "cad_connection_geometry_defined_count": int(
+            summary.get("cad_connection_geometry_defined_count", 0) or 0
+        ),
+        "cad_connection_bend_or_connector_basis_defined_count": int(
+            summary.get("cad_connection_bend_or_connector_basis_defined_count", 0) or 0
+        ),
+        "cad_connection_impedance_or_current_basis_defined_count": int(
+            summary.get("cad_connection_impedance_or_current_basis_defined_count", 0) or 0
+        ),
+        "cad_connection_all_records_have_manufacturing_geometry": bool(
+            summary.get("cad_connection_all_records_have_manufacturing_geometry", False)
+        ),
+        "cad_connection_all_records_have_bend_or_connector_basis": bool(
+            summary.get("cad_connection_all_records_have_bend_or_connector_basis", False)
+        ),
+        "cad_connection_all_records_have_impedance_or_current_basis": bool(
+            summary.get("cad_connection_all_records_have_impedance_or_current_basis", False)
+        ),
+        "cad_connection_all_records_have_endpoint_distance": bool(
+            summary.get("cad_connection_all_records_have_endpoint_distance", False)
+        ),
+        "cad_connection_supplier_drawing_requirement_medium_count": int(
+            summary.get("cad_connection_supplier_drawing_requirement_medium_count", 0) or 0
+        ),
+        "cad_connection_supplier_drawing_requirements_by_medium": summary.get(
+            "cad_connection_supplier_drawing_requirements_by_medium", {}
         ),
         "cad_connection_supplier_release_required_count": int(
             summary.get("cad_connection_supplier_release_required_count", 0) or 0

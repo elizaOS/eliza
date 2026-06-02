@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "0fa3bfe045fd8711972cde3e5d18a30351a8d03b945884c99032680a226271c3",
+  "local_discrete_step_sha256": "afdb79e0ba56fe9ce92f26ac0aaa910b7c6f9ddd8d396e1b5ea6f367e89ffedc",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

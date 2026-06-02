@@ -104,7 +104,46 @@ def test_scaffold_removal_fails() -> None:
     mutated = copy.deepcopy(report)
     del mutated["current_scaffolds"]["runner"]
     expect_error(mutated, "runner")
+    mutated = copy.deepcopy(report)
+    del mutated["current_scaffolds"]["target_metadata_contract"]
+    expect_error(mutated, "target_metadata_contract")
     print("PASS scaffold removal rejected")
+
+
+def test_target_metadata_contract_is_required() -> None:
+    report = check_benchmark_efficiency_scope.build_report()
+    checks = {item.get("id"): item for item in report.get("checks", [])}
+    check = checks.get("target_metadata_contract_matches_runner_requirements")
+    if not isinstance(check, dict) or check.get("status") != "pass":
+        raise AssertionError(f"target metadata contract check did not pass: {check!r}")
+    if check.get("evidence") != "benchmarks/configs/target-metadata.contract.json":
+        raise AssertionError(f"target metadata contract evidence drifted: {check!r}")
+    mutated = copy.deepcopy(report)
+    for item in mutated["checks"]:
+        if item.get("id") == "target_metadata_contract_matches_runner_requirements":
+            item["status"] = "fail"
+            break
+    expect_error(mutated, "target_metadata_contract_matches_runner_requirements")
+    print("PASS target metadata contract required")
+
+
+def test_accepted_generated_ap_benchmark_evidence_is_reported() -> None:
+    report = check_benchmark_efficiency_scope.build_report()
+    accepted = report.get("accepted_generated_ap_benchmark_evidence")
+    if not isinstance(accepted, dict) or accepted.get("accepted") is not True:
+        raise AssertionError(f"accepted generated-AP benchmark evidence missing: {accepted!r}")
+    checks = {item.get("id"): item for item in report.get("checks", [])}
+    check = checks.get("generated_ap_l3_benchmark_evidence_is_intaken")
+    if not isinstance(check, dict) or check.get("status") != "pass":
+        raise AssertionError(f"generated AP benchmark intake check did not pass: {check!r}")
+    boundary = str(check.get("claim_boundary", ""))
+    for token in ("not calibrated L5/L6", "not calibrated", "phone efficiency", "TOPS/W"):
+        if token not in boundary:
+            raise AssertionError(f"benchmark intake claim boundary missing {token!r}: {boundary}")
+    mutated = copy.deepcopy(report)
+    mutated["accepted_generated_ap_benchmark_evidence"]["accepted"] = False
+    expect_error(mutated, "accepted generated-AP benchmark evidence")
+    print("PASS accepted generated-AP benchmark evidence reported")
 
 
 def test_capture_command_removal_fails() -> None:
@@ -145,6 +184,8 @@ def main() -> None:
     test_structured_findings_cover_blocked_real_evidence()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
+    test_target_metadata_contract_is_required()
+    test_accepted_generated_ap_benchmark_evidence_is_reported()
     test_capture_command_removal_fails()
     test_generated_ap_benchmark_command_plan_is_checked()
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -476,6 +477,38 @@ COMMAND_KEYS = (
     "command",
 )
 COMMAND_KEY_SET = set(COMMAND_KEYS)
+ARGV_COMMAND_NAMES = {
+    "bash",
+    "bun",
+    "env",
+    "make",
+    "node",
+    "python",
+    "python3",
+    "sh",
+}
+
+
+def shell_token(value: str) -> str:
+    return shlex.quote(value)
+
+
+def looks_like_argv_command(values: list[str]) -> bool:
+    if len(values) < 2:
+        return False
+    first = values[0].strip()
+    if not first or re.search(r"\s", first):
+        return False
+    first_name = Path(first).name
+    if first.startswith(("/", "./", "../")) or first_name in ARGV_COMMAND_NAMES:
+        return any(
+            re.search(r"\s", value)
+            or value.startswith("-")
+            or value.endswith((".py", ".sh", ".js", ".mjs"))
+            or value.startswith(("/", "./", "../"))
+            for value in values[1:]
+        )
+    return any(value.startswith("-") for value in values[1:])
 
 
 def command_strings(value: object) -> list[str]:
@@ -483,6 +516,9 @@ def command_strings(value: object) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     if isinstance(value, list):
+        string_items = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        if len(string_items) == len(value) and looks_like_argv_command(string_items):
+            return [" ".join(shell_token(item) for item in string_items)]
         for item in value:
             commands.extend(command_strings(item))
     elif isinstance(value, dict):
@@ -493,12 +529,20 @@ def command_strings(value: object) -> list[str]:
 
 def recursive_command_strings(value: object, *, in_command_context: bool = False) -> list[str]:
     commands: list[str] = []
-    if in_command_context:
-        commands.extend(command_strings(value))
+    if in_command_context and not isinstance(value, dict):
+        return command_strings(value)
     if isinstance(value, dict):
         command_key_set = {str(key) for key in value}
         command_map = in_command_context and not (command_key_set & COMMAND_KEY_SET)
+        if in_command_context:
+            for key in COMMAND_KEYS:
+                if key in value:
+                    commands.extend(
+                        recursive_command_strings(value.get(key), in_command_context=True)
+                    )
         for key, child in value.items():
+            if in_command_context and str(key) in COMMAND_KEY_SET:
+                continue
             commands.extend(
                 recursive_command_strings(
                     child, in_command_context=command_map or str(key) in COMMAND_KEY_SET

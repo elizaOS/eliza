@@ -5,8 +5,8 @@
   },
   "bridge_package": "ai.elizaos.system.bridge",
   "claim_boundary": "booted_android_system_bridge_runtime_evidence_only",
-  "ended_utc": "2026-06-02T05:43:01Z",
-  "generated_utc": "2026-06-02T05:43:01Z",
+  "ended_utc": "2026-06-02T06:21:32Z",
+  "generated_utc": "2026-06-02T06:21:32Z",
   "js_bridge_bound": false,
   "launcher_consumed_live_state": false,
   "launcher_package": "ai.elizaos.app",
@@ -47,36 +47,36 @@
           ],
           "next_step": "Finish the eliza_ai_soc AOSP build and produce every required image before staging a release archive.",
           "present": [],
-          "product_out": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc",
+          "product_out": "$AOSP_DIR/out/target/product/eliza_ai_soc",
           "records": [
             {
               "exists": false,
               "name": "vendor.img",
-              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img",
+              "path": "$AOSP_DIR/out/target/product/eliza_ai_soc/vendor.img",
               "required_for_bootable_chip_archive": true
             },
             {
               "exists": false,
               "name": "system.img",
-              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/system.img",
+              "path": "$AOSP_DIR/out/target/product/eliza_ai_soc/system.img",
               "required_for_bootable_chip_archive": true
             },
             {
               "exists": false,
               "name": "product.img",
-              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/product.img",
+              "path": "$AOSP_DIR/out/target/product/eliza_ai_soc/product.img",
               "required_for_bootable_chip_archive": true
             },
             {
               "exists": false,
               "name": "system_ext.img",
-              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/system_ext.img",
+              "path": "$AOSP_DIR/out/target/product/eliza_ai_soc/system_ext.img",
               "required_for_bootable_chip_archive": true
             }
           ],
           "status": "missing"
         },
-        "expected_command": "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+        "expected_command": "test -n \"$AOSP_DIR\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
         "expected_evidence_logs": [
           {
             "exists": true,
@@ -225,7 +225,7 @@
           "path": "build/reports/android_sim_boot.json",
           "size_bytes": 4677
         },
-        "full_runtime_command_after_build_only": "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+        "full_runtime_command_after_build_only": "test -n \"$AOSP_DIR\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
         "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
         "stdout_stderr_access": "run_with_timeout stdout/stderr are inherited pipes; use the evidence logs and android_sim_boot report below as durable artifacts",
         "validation_commands": [
@@ -237,8 +237,8 @@
         ]
       },
       "cuttlefish_runtime": "latest_instance=",
-      "runtime_processes": "3000       1    04:48:41 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   3096       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   3254       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n 203762    1859    04:17:29 adb -L tcp:5037 fork-server server --reply-fd 4",
-      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037      0.0.0.0:*    users:((\"adb\",pid=203762,fd=11))\nLISTEN 0      4096               *:1443            *:*",
+      "runtime_processes": "3000       1    05:27:12 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   3096       1    05:27:12 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   3254       1    05:27:12 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n 203762    1859    04:56:00 adb -L tcp:5037 fork-server server --reply-fd 4",
+      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037       0.0.0.0:*    users:((\"adb\",pid=203762,fd=11))        \nLISTEN 0      4096               *:1443             *:*",
       "tools": {
         "adb": {
           "available": true,
@@ -273,8 +273,8 @@
       "system_privapp_apk_present"
     ],
     "next_operator_commands": [
-      "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
-      "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+      "test -n \"$AOSP_DIR\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+      "test -n \"$AOSP_DIR\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
       "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
       "python3 packages/chip/scripts/check_android_system_bridge_contract.py"
     ],
@@ -326,7 +326,7 @@
   "schema": "eliza.android_system_bridge_runtime_evidence.v1",
   "selinux_denial_count": 0,
   "service_registered": false,
-  "started_utc": "2026-06-02T05:43:01Z",
+  "started_utc": "2026-06-02T06:21:32Z",
   "status": "BLOCKED",
   "sys_boot_completed": false,
   "system_privapp_apk_present": false

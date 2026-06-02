@@ -231,7 +231,7 @@ cross_checks:
   all_handoff_steps_fail_closed: true
 
 release_blockers:
-  - routed KiCad PCB, schematic ERC, PCB DRC, fabrication package, routed STEP, and fab/assembler quote are missing
+  - local routed KiCad PCB and routed STEP candidates exist for review only; release ERC/DRC, fabrication package, supplier-approved routed STEP, and fab/assembler quote are missing
   - production BOM/AVL, placement files, assembly drawing, stencil, factory limits, and probe coordinates are missing
   - selected display, camera, USB-C, charger, side-key, cellular, Wi-Fi, and Bluetooth first-article transcripts are missing
   - routed clearance release, supplier-model boolean interference, and enclosure physical-fit first article are missing
