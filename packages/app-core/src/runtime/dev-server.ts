@@ -75,6 +75,7 @@ import {
   attemptPgliteAutoReset,
   getPgliteRecoveryRetrySkipPlugins,
   shutdownRuntime,
+  startDeferredLocalEmbeddingWarmup,
   startEliza,
 } from "./eliza";
 
@@ -231,6 +232,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     logger.info(
       `${getLogPrefix()} Runtime ready — agent: ${agentName} (total: ${Date.now() - bootstrapStart}ms)`,
     );
+    startDeferredLocalEmbeddingWarmup();
   } catch (err) {
     if (!runtimeBootPgliteAutoResetAttempted) {
       try {

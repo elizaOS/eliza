@@ -82,6 +82,33 @@ describe("startup integration script drift", () => {
     );
   });
 
+  it("keeps desktop API embedding warmup deferred until runtime readiness", () => {
+    const devPlatform = fs.readFileSync(
+      path.join(appCoreScriptsRoot, "dev-platform.mjs"),
+      "utf8",
+    );
+    const devServer = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "packages",
+        "app-core",
+        "src",
+        "runtime",
+        "dev-server.ts",
+      ),
+      "utf8",
+    );
+
+    expect(devPlatform).toMatch(
+      /resolveDesktopStartupEmbeddingWarmupPolicy\(\s*process\.env,\s*\)/,
+    );
+    expect(devPlatform).toContain("...apiEmbeddingWarmupPolicy.env");
+    expect(devServer).toContain("startDeferredLocalEmbeddingWarmup");
+    expect(devServer.indexOf('state: "running"')).toBeLessThan(
+      devServer.indexOf("startDeferredLocalEmbeddingWarmup();"),
+    );
+  });
+
   it.skipIf(!selfControlScriptsExpected)(
     "keeps the website blocker smoke scripts wired to real files",
     () => {
