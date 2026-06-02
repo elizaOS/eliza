@@ -23,22 +23,66 @@ const appDir = resolveMainAppDir(rootDir, "app");
 
 /** Real Node binary — when the script is started via `bun run`, process.execPath is Bun. */
 function resolveNodeExec() {
-  if (!process.versions.bun) {
+  function isCodexBundledNode(candidate) {
+    return (
+      process.platform === "darwin" &&
+      candidate.includes(
+        `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+      )
+    );
+  }
+
+  function isUsableNode(candidate) {
+    if (!candidate || isCodexBundledNode(candidate) || !fs.existsSync(candidate)) {
+      return false;
+    }
+    const probe = spawnSync(
+      candidate,
+      [
+        "-e",
+        "process.stdout.write(process.versions.bun ? 'bun' : `node:${process.versions.node || ''}`)",
+      ],
+      {
+        encoding: "utf8",
+      },
+    );
+    return probe.status === 0 && probe.stdout?.trim().startsWith("node:");
+  }
+
+  const explicitNode = process.env.ELIZA_NODE_PATH?.trim();
+  if (isUsableNode(explicitNode)) {
+    return explicitNode;
+  }
+
+  const currentIsCodexBundledNode =
+    process.platform === "darwin" &&
+    process.execPath.includes(
+      `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+    );
+  if (!process.versions.bun && !currentIsCodexBundledNode) {
     return process.execPath;
   }
   const probe = spawnSync(
     "node",
-    ["-e", "process.stdout.write(process.execPath)"],
+    [
+      "-e",
+      "process.stdout.write(process.versions.bun ? '' : process.execPath)",
+    ],
     {
       encoding: "utf8",
     },
   );
   const out = probe.stdout?.trim();
-  if (probe.status === 0 && out) {
+  const probedCodexNode =
+    process.platform === "darwin" &&
+    out.includes(
+      `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+    );
+  if (probe.status === 0 && out && !probedCodexNode) {
     return out;
   }
   throw new Error(
-    "Node.js is required to run this build (tsx + Vite CLI). Install Node 22+ or run: node scripts/run-production-build.mjs",
+    "A standard Node.js binary is required to run this build (tsx + native bindings). Install Node 22+ or set ELIZA_NODE_PATH=/absolute/path/to/node before running bun run build.",
   );
 }
 

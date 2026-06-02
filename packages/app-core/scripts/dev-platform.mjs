@@ -324,7 +324,7 @@ const forceRenderer =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "1";
 const viteWatch =
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
-  process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
+  process.env.MILADY_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||
@@ -437,7 +437,7 @@ let ranInitialViteBuild = false;
 if (needRendererBuild) {
   ranInitialViteBuild = true;
   console.log("\n[eliza] Building renderer (vite build)…");
-  execFileSync(BUN_EXECUTABLE, ["run", "vite", "build"], {
+  execFileSync(BUN_EXECUTABLE, ["--bun", "run", "vite", "build"], {
     cwd: appDir,
     env: { ...process.env },
     stdio: "inherit",
@@ -942,7 +942,9 @@ async function launch() {
     pushChild(
       "vite",
       "bun",
-      viteDepForce ? ["run", "vite", "--", "--force"] : ["run", "vite"],
+      viteDepForce
+        ? ["--bun", "run", "vite", "--", "--force"]
+        : ["--bun", "run", "vite"],
       appDir,
       {
         NODE_ENV: "development",
@@ -958,9 +960,15 @@ async function launch() {
   }
 
   if (viteRollupWatch) {
-    pushChild("vite", "bun", ["run", "vite", "build", "--watch"], appDir, {
-      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-    });
+    pushChild(
+      "vite",
+      "bun",
+      ["--bun", "run", "vite", "build", "--watch"],
+      appDir,
+      {
+        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+      },
+    );
   }
 
   const electrobunChild = pushChild(

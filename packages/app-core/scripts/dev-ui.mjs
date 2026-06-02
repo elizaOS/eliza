@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-console.log(
-  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
-);
 
 /**
  * Development script that starts:
@@ -280,10 +277,18 @@ function isUsableNode(candidate) {
     return false;
   }
   try {
-    execFileSync(candidate, ["-e", "process.stdout.write(process.platform)"], {
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return true;
+    const runtime = execFileSync(
+      candidate,
+      [
+        "-e",
+        "process.stdout.write(process.versions.bun ? 'bun' : `node:${process.versions.node || ''}`)",
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+    return runtime.startsWith("node:");
   } catch {
     return false;
   }
@@ -304,7 +309,15 @@ function resolveApiNodeCommand(env) {
     "/usr/local/bin/node",
     "/usr/bin/node",
   ].filter(Boolean);
-  return candidates.find(isUsableNode) ?? "node";
+  const resolved = candidates.find(isUsableNode);
+  if (resolved) return resolved;
+  throw new Error(
+    [
+      "No usable Node.js binary found for the API dev server.",
+      "The API child must run on Node, not Bun, because native/CJS dependencies are loaded during runtime boot.",
+      "Install Node >=24 or set ELIZA_NODE_PATH=/absolute/path/to/node before running bun run dev.",
+    ].join(" "),
+  );
 }
 
 const visionDepsRetryCommand = [
