@@ -170,6 +170,21 @@ platform no-ops are separated from actionable runtime gaps.
   `python -m pytest packages/alberta/tests/test_pipeline.py -q` fails during
   conftest import before tests run.
 
+### packages/chip
+
+- Fixed PMC firmware DVFS corner handling in `fw/pmc/src/dvfs_arbiter.c`.
+  Missing SS/FF characterization tables now fail closed by returning `NULL`
+  instead of silently reusing the TT table.
+- Fixed PMC droop telemetry in `fw/pmc/src/droop_telemetry.c`. Firmware now
+  reports the hardware aggregate counter and clears per-rail fields until RTL
+  exposes readable per-rail counters, instead of fabricating an equal split.
+- Updated `fw/pmc/include/dvfs.h` and `fw/pmc/src/main.c` wording to describe
+  the TT seed-table contract without placeholder language.
+- Added `fw/pmc/tests/test_dvfs.c` and wired it into `make -C fw/pmc test`.
+- Verified with:
+  - `make -C fw/pmc clean all test`
+  - marker scan and `git diff --check` on the touched PMC files
+
 ### packages/ui
 
 - Fixed `WidgetHost` declarative `uiSpec` fallback. It now renders via
@@ -314,6 +329,22 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-ollama typecheck`
   - marker scan and `git diff --check` on the touched Ollama docs
 - Biome note: package markdown docs are ignored by the active Biome config.
+
+### plugins/plugin-phone
+
+- Finished the companion Pairing manual-entry path in
+  `src/companion/components/Pairing.tsx`. Manual entry now accepts the same
+  base64 JSON pairing payload used by QR scanning, decodes it with
+  `decodePairingPayload`, persists native pairing status, and calls `onPaired`
+  instead of returning a T9a "for now" error.
+- Added `src/companion/components/Pairing.test.tsx` coverage for pasted payload
+  pairing.
+- Verified with:
+  - `bun run --cwd plugins/plugin-phone test src/companion/components/Pairing.test.tsx src/companion/services/session-client.test.ts`
+  - `bun run --cwd plugins/plugin-phone typecheck`
+  - `bunx biome check plugins/plugin-phone/src/companion/components/Pairing.tsx plugins/plugin-phone/src/companion/components/Pairing.test.tsx`
+  - marker scan on the touched Pairing files; only the HTML input
+    `placeholder` prop remains as a false positive
 
 ### plugins/plugin-native-talkmode
 

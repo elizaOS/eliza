@@ -376,7 +376,15 @@ export function resolveElectrobunCopyMap({
   };
 
   if (buildVariant !== "store" && embedRuntime) {
-    for (const entry of fs.readdirSync(runtimeBundleSourcePath)) {
+    // The runtime bundle dist is produced by the build pipeline before
+    // Electrobun packaging runs. Enumerate its top-level entries when present;
+    // when it is absent (e.g. config imported outside a build, as in tests),
+    // the unconditional package.json + remotes mappings below still encode the
+    // embedded-runtime contract.
+    const runtimeBundleEntries = fs.existsSync(runtimeBundleSourcePath)
+      ? fs.readdirSync(runtimeBundleSourcePath)
+      : [];
+    for (const entry of runtimeBundleEntries) {
       if (entry === "node_modules" || entry === "package.json") {
         continue;
       }

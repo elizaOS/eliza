@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-console.log(
-  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
-);
 
 /**
  * Development script that starts:

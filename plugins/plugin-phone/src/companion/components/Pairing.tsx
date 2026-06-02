@@ -72,32 +72,35 @@ export function Pairing({
       if (trimmed.length === 0) {
         setStatus({
           kind: "error",
-          message: "Enter the 6-digit code shown on your Mac.",
+          message: "Paste the pairing payload shown on your Mac.",
         });
         return;
       }
-      logger.info("[Pairing] manual code submit", { length: trimmed.length });
-      const nativeStatus = await ElizaIntent.getPairingStatus();
-      if (nativeStatus.paired && nativeStatus.agentUrl !== null) {
-        // Native pairing layer has already stored a full payload. Only the
-        // ingress URL is carried on the status object; the session token is
-        // provided by the push on session start. Until that full round-trip
-        // is live (T9a), surface a clear error so nothing silently falls
-        // through with fake data.
+      logger.info("[Pairing] manual payload submit", {
+        length: trimmed.length,
+      });
+      try {
+        const payload = decodePairingPayload(trimmed);
+        await ElizaIntent.setPairingStatus({
+          deviceId: payload.agentId,
+          agentUrl: payload.ingressUrl,
+        });
+        onPaired(payload);
+        setStatus({ kind: "idle" });
+      } catch (err) {
+        logger.warn("[Pairing] manual payload decode failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
         setStatus({
           kind: "error",
           message:
-            "Native pairing reported success but no session token yet. Scan the QR to start a session.",
+            err instanceof Error && err.message.length > 0
+              ? err.message
+              : "Could not read the pairing payload. Scan the QR code or paste the full payload.",
         });
-        return;
       }
-      setStatus({
-        kind: "error",
-        message:
-          "Manual code requires the pairing handshake (T9a data plane). Scan the QR for now.",
-      });
     },
-    [code],
+    [code, onPaired],
   );
 
   return (
@@ -111,8 +114,8 @@ export function Pairing({
 
       <section style={styles.section}>
         <p style={styles.hint}>
-          Scan the QR code shown in the Eliza desktop app, or enter the 6-digit
-          code manually.
+          Scan the QR code shown in the Eliza desktop app, or paste its pairing
+          payload manually.
         </p>
         <button
           type="button"
@@ -127,16 +130,15 @@ export function Pairing({
       <section style={styles.section}>
         <form onSubmit={submitManual} style={styles.form}>
           <label htmlFor="pairing-code" style={styles.label}>
-            Or enter code
+            Or paste payload
           </label>
           <input
             id="pairing-code"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            placeholder="------"
+            inputMode="text"
+            autoComplete="off"
+            placeholder="base64 pairing payload"
             style={styles.input}
           />
           <button type="submit" style={styles.secondary}>

@@ -664,8 +664,8 @@ export function useFirstRunController(): FirstRunController {
   );
 
   const finishRuntime = React.useCallback(
-    async () => finishRuntimeForDraft(draft),
-    [draft, finishRuntimeForDraft],
+    async () => finishRuntimeForDraft(draftRef.current),
+    [finishRuntimeForDraft],
   );
 
   const stopVoice = React.useCallback(async () => {

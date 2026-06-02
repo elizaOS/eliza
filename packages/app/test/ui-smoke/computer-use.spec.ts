@@ -22,7 +22,7 @@ test("settings exposes computer use capability controls", async ({ page }) => {
   await page.getByRole("switch", { name: "Enable Computer Use" }).click();
 
   await expect(
-    page.getByText(/Computer Use requires Accessibility and Screen Recording/),
+    page.getByText(/Accessibility and Screen Recording permissions are required for computer use/),
   ).toBeVisible();
   await expect(page.locator("#permissions")).toBeVisible();
   await expect(

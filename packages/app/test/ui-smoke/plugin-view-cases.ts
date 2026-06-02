@@ -58,7 +58,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["screenshare", "tui", "/screenshare/tui"],
     ["task-coordinator", "gui", "/task-coordinator"],
     ["task-coordinator", "tui", "/task-coordinator/tui"],
-    ["orchestrator", "gui", "/orchestrator", { shellPill: "suppressed" }],
+    ["orchestrator", "gui", "/orchestrator"],
     ["orchestrator", "tui", "/orchestrator/tui"],
     ["trajectory-logger", "gui", "/trajectory-logger"],
     ["trajectory-logger", "tui", "/trajectory-logger/tui"],

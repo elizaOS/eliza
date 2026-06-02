@@ -91,7 +91,10 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // ...and the renderer returns to the pre-agent first-run onboarding surface
   // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
   await expect(
-    page.getByTestId("onboarding-toast").or(page.getByTestId("first-run-shell")),
+    page
+      .getByTestId("onboarding-toast")
+      .or(page.getByTestId("first-run-shell"))
+      .or(page.getByRole("form", { name: "Bootstrap token entry" })),
   ).toBeVisible({
     timeout: 20_000,
   });

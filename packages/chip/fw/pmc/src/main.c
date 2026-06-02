@@ -2,7 +2,7 @@
  * PMC firmware entry point.
  *
  * Boot sequence:
- *   1. Init AVFS state (max code from DVFS table TT corner placeholder).
+ *   1. Init AVFS state from the TT characterization seed table.
  *   2. Bring up AON + PMC + SoC fabric + SRAM rails via PMIC.
  *   3. Enter scheduler loop:
  *        - drain RPMI mailbox
