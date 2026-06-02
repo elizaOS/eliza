@@ -71,6 +71,7 @@ export interface ProvisioningWorkerConfig {
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
+const PREFLIGHT_KMS_KEY_ID = "system:provisioning-worker-preflight/v1";
 
 /**
  * Node health-check cadence. 5 minutes matches the `agent-hot-pool`
@@ -188,7 +189,7 @@ export async function assertProvisioningWorkerPreflight(
 
   try {
     const kms = createKmsClient({ env });
-    await kms.getOrCreateKey("system:provisioning-worker-preflight");
+    await kms.getOrCreateKey(PREFLIGHT_KMS_KEY_ID);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
