@@ -1706,6 +1706,14 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/picocolors.ts"),
       },
       {
+        find: /^cookie$/,
+        replacement: path.resolve(here, "src/shims/cookie.ts"),
+      },
+      {
+        find: /^set-cookie-parser$/,
+        replacement: path.resolve(here, "src/shims/set-cookie-parser.ts"),
+      },
+      {
         find: /^mammoth$/,
         replacement: path.resolve(here, "src/shims/mammoth.ts"),
       },
