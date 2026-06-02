@@ -2,7 +2,7 @@
 // + windowResize.js + tileManager.js + modalSnap.js + modalManager.js).
 // Turns a centered overlay panel into a draggable + edge/corner-resizable
 // floating window whose position/size persist per view, with desktop
-// edge-tiling (snap) on title-bar drag and an ephemeral minimized state.
+// edge-tiling (snap) on title-bar drag.
 //
 // Usage: const win = useWindowControls("win-compare", { w: 1180, h: 880 });
 //   - overlay:  className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
@@ -11,9 +11,6 @@
 //   - inside panel: <ResizeHandles controls={win} />
 //   - snap preview (rendered by the view, fixed-position so it floats above):
 //       {win.snapGhost ? <div className="od-snap-ghost" style={win.snapGhost} /> : null}
-//   - minimize button (header): onClick={win.minimize}
-//   - when win.minimized is true the view renders nothing (a dock chip
-//     elsewhere drives win.restore()).
 // Until the user first drags/resizes, `windowed` is false and the panel keeps
 // its default centered CSS — so nothing changes visually until interacted with.
 //
@@ -56,12 +53,6 @@ export interface WindowControls {
   /** Fixed-position CSS rect for the translucent snap preview, or null when
    *  the drag is not over a snap zone. The owning view renders it. */
   snapGhost: CSSProperties | null;
-  /** True while the window is minimized — the view should render nothing. */
-  minimized: boolean;
-  /** Hide the window (ephemeral; nothing persisted). A dock chip restores it. */
-  minimize: () => void;
-  /** Un-hide a minimized window. */
-  restore: () => void;
 }
 
 const MIN_W = 360;
@@ -157,7 +148,6 @@ export function useWindowControls(
   rectRef.current = rect;
 
   const [snapGhost, setSnapGhost] = useState<CSSProperties | null>(null);
-  const [minimized, setMinimized] = useState(false);
 
   // The rect the window had before it snapped to a zone — restored on the next
   // drag-away (tileManager.js `_tilePreSnap`). Null when not currently snapped.
@@ -278,9 +268,6 @@ export function useWindowControls(
     [ensureRect, persist],
   );
 
-  const minimize = useCallback(() => setMinimized(true), []);
-  const restore = useCallback(() => setMinimized(false), []);
-
   const panelStyle: CSSProperties = rect
     ? {
         position: "absolute",
@@ -300,8 +287,5 @@ export function useWindowControls(
     onDragStart,
     onResizeStart,
     snapGhost,
-    minimized,
-    minimize,
-    restore,
   };
 }
