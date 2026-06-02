@@ -134,3 +134,78 @@ describe("RemotePluginBridge action callbacks", () => {
     await bridge.detach();
   });
 });
+
+describe("RemotePluginBridge dynamic event registration", () => {
+  it("registers host runtime events that proxy back to worker handlers", async () => {
+    const channel = createBridgeChannel();
+    const runtime = {
+      registerPlugin: vi.fn(async (_registered: Plugin) => undefined),
+      unloadPlugin: vi.fn(async () => undefined),
+      registerEvent: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const bridge = new RemotePluginBridge({
+      channel,
+      runtime,
+      rpcTimeoutMs: 1_000,
+    });
+    bridge.attach();
+
+    channel.emitFromWorker({
+      type: "host-rpc",
+      requestId: 200,
+      api: "runtime",
+      method: "registerEvent",
+      args: {
+        name: "REMOTE_DYNAMIC_EVENT",
+        handlerRef: { rpc: true, id: "event-dynamic-1" },
+      },
+    });
+    await flush();
+
+    expect(runtime.registerEvent).toHaveBeenCalledWith(
+      "REMOTE_DYNAMIC_EVENT",
+      expect.any(Function),
+    );
+    expect(channel.outbox).toContainEqual(
+      expect.objectContaining({
+        type: "host-rpc-result",
+        requestId: 200,
+        ok: true,
+        payload: null,
+      }),
+    );
+
+    const registeredHandler = vi.mocked(runtime.registerEvent).mock
+      .calls[0]?.[1] as ((payload: unknown) => Promise<void>) | undefined;
+    if (!registeredHandler)
+      throw new Error("expected registered event handler");
+
+    const eventPromise = registeredHandler({ value: "payload" });
+    await flush();
+
+    const workerRpc = channel.outbox.find(
+      (message): message is WorkerRpcMessage =>
+        message.type === "worker-rpc" &&
+        message.surface === "event" &&
+        message.target === "event-dynamic-1",
+    );
+    expect(workerRpc).toMatchObject({
+      type: "worker-rpc",
+      surface: "event",
+      target: "event-dynamic-1",
+      args: { value: "payload" },
+    });
+
+    if (!workerRpc) throw new Error("expected worker-rpc");
+    channel.emitFromWorker({
+      type: "worker-rpc-result",
+      requestId: workerRpc.requestId,
+      ok: true,
+      payload: null,
+    });
+
+    await expect(eventPromise).resolves.toBeUndefined();
+    await bridge.detach();
+  });
+});

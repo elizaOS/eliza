@@ -72,7 +72,7 @@ What plugin handlers receive as their `runtime` argument. Each method issues a `
 **Supported methods (`SUPPORTED_RUNTIME_METHODS`):**
 `getService`, `useModel`, `getMemory`, `createMemory`, `updateMemory`, `emitEvent`, `registerEvent`, `getSetting`, `setSetting`, `composeState`.
 
-`runtime.registerEvent()` is not yet wired for remote-mode; calling it throws. Declare event handlers statically on the `Plugin.events` object instead.
+`runtime.registerEvent()` is proxied in remote mode. Static `Plugin.events` is still preferred for known events, but runtime-registered handlers are stored in the worker handler registry and the host registers a local event stub that forwards payloads back to that worker handler.
 
 ### `buildAnnounceDescriptor(plugin, registry)` — `src/descriptor.ts`
 
@@ -152,6 +152,6 @@ Implement `WorkerChannel` in `src/envelope.ts` (or a separate file), export it, 
 - **Static surfaces only at announce time.** `buildAnnounceDescriptor` snapshots the plugin's surface arrays at bootstrap. Surfaces added after `init()` are not reflected in the descriptor sent to the host (dynamic announce is not yet implemented).
 - **Action callbacks are proxied.** When the host invokes an action with a callback, the bridge passes a callback id to the worker and `callback(...)` round-trips over `host-rpc actionCallback`; actions may use either callback responses or return values.
 - **Service instances are lazy and per-worker.** The `serviceInstances` WeakMap in `descriptor.ts` caches the `Promise<RemoteServiceInstance>` for each `RemoteServiceClass`. The first host invocation of any method on a service triggers `service.start(runtime)`. Subsequent calls reuse the cached instance for the worker's lifetime.
-- **`runtime.registerEvent` is not wired.** Calling it inside a remote handler throws. Declare event handlers in the static `Plugin.events` object.
+- **`runtime.registerEvent` is proxied.** Static `Plugin.events` is still preferred for known events, but runtime-registered handlers are forwarded through `host-rpc registerEvent` and later invoked via `worker-rpc event`.
 - **`"tests"` surface is not host-RPC reachable.** The dispatcher explicitly rejects it with a clear error.
 - **HMAC auth is opt-in.** Pass `rpcAuth` in `DispatchContext` to require MAC verification; omitting it disables the check entirely (appropriate for local workers).

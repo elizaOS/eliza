@@ -640,6 +640,28 @@ export class RemotePluginBridge {
         );
         return null;
       }
+      case "registerEvent": {
+        const eventName = String(args.name ?? "");
+        if (!eventName) {
+          throw new Error("runtime.registerEvent requires an event name.");
+        }
+        const handlerRef = args.handlerRef as unknown as
+          | RemoteFunctionRef
+          | undefined;
+        if (!handlerRef?.rpc || !handlerRef.id) {
+          throw new Error(
+            "runtime.registerEvent requires a remote handler reference.",
+          );
+        }
+        const handler = this.makeEventHandlerStub(handlerRef);
+        (
+          this.runtime.registerEvent as (
+            event: string,
+            handler: (payload: unknown) => Promise<void>,
+          ) => void
+        )(eventName, handler as (payload: unknown) => Promise<void>);
+        return null;
+      }
       case "getSetting": {
         const key = String(args.key);
         const value = this.runtime.getSetting(key);
@@ -673,7 +695,7 @@ export class RemotePluginBridge {
       }
       default:
         throw new Error(
-          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, getSetting, setSetting, composeState, actionCallback.`,
+          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, registerEvent, getSetting, setSetting, composeState, actionCallback.`,
         );
     }
   }

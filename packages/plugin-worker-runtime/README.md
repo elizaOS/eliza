@@ -79,5 +79,5 @@ This package is part of the elizaOS monorepo. It is `private: true` and consumed
 ## Known limitations (P1)
 
 - **Action callbacks are proxied.** When the host invokes an action with a callback, the bridge passes a callback id to the worker and `callback(...)` round-trips over `host-rpc actionCallback`.
-- **`runtime.registerEvent` is not supported.** Declare event handlers statically on the `Plugin.events` object.
+- **`runtime.registerEvent` is proxied.** Static `Plugin.events` is still preferred for known event surfaces, but handlers may register additional event listeners at runtime; the host registers a local event stub that forwards payloads back to the worker handler.
 - **Dynamic surface announcement is not implemented.** Surfaces must be present on the `Plugin` object before `bootstrap()` is called; anything added inside `init()` is not sent to the host.

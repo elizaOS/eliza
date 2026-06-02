@@ -17,6 +17,7 @@ import type {
   HostRpcMessage,
   HostRpcResultMessage,
   JsonValue,
+  RemoteFunctionRef,
   RemotePluginWorkerMessage,
 } from "@elizaos/plugin-remote-manifest";
 import type { WorkerChannel } from "./envelope";
@@ -162,7 +163,7 @@ export interface RuntimeProxyApi {
   emitEvent(name: string, payload: JsonValue): Promise<void>;
   registerEvent(
     name: string,
-    handler: (payload: JsonValue) => void,
+    handler: (payload: JsonValue) => Promise<void> | void,
   ): Promise<void>;
   getSetting(key: string): Promise<JsonValue | null>;
   setSetting(key: string, value: JsonValue): Promise<void>;
@@ -174,7 +175,17 @@ export interface RuntimeProxyApi {
   ): Promise<JsonValue>;
 }
 
-export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
+export interface RuntimeProxyApiOptions {
+  registerDynamicEventHandler?: (
+    name: string,
+    handler: (payload: JsonValue) => Promise<void> | void,
+  ) => RemoteFunctionRef;
+}
+
+export function buildRuntimeProxyApi(
+  proxy: RuntimeProxy,
+  options: RuntimeProxyApiOptions = {},
+): RuntimeProxyApi {
   return {
     getService: (serviceType) =>
       proxy.call("getService", { serviceType }) as Promise<never>,
@@ -192,10 +203,14 @@ export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
     emitEvent: async (name, payload) => {
       await proxy.call("emitEvent", { name, payload });
     },
-    registerEvent: async (_name, _handler) => {
-      throw new Error(
-        "runtime.registerEvent inside a remote-mode plugin is not yet supported in P1; declare events via Plugin.events instead.",
-      );
+    registerEvent: async (name, handler) => {
+      if (!options.registerDynamicEventHandler) {
+        throw new Error(
+          "runtime.registerEvent inside a remote-mode plugin requires a dynamic event handler registry.",
+        );
+      }
+      const handlerRef = options.registerDynamicEventHandler(name, handler);
+      await proxy.call("registerEvent", { name, handlerRef });
     },
     getSetting: (key) => proxy.call("getSetting", { key }),
     setSetting: async (key, value) => {

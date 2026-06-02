@@ -212,15 +212,40 @@ describe("buildRuntimeProxyApi", () => {
     await expect(compose).resolves.toEqual({ composed: true });
   });
 
-  it("fails fast for unsupported in-worker registerEvent calls", async () => {
+  it("proxies dynamic registerEvent calls with a worker handler ref", async () => {
     const channel = new FakeChannel();
-    const runtime = buildRuntimeProxyApi(
-      new RuntimeProxy({ channel, allocRequestId: () => 1 }),
-    );
+    const handler = async () => {};
+    const proxy = new RuntimeProxy({ channel, allocRequestId: () => 1 });
+    proxy.attach();
+    const runtime = buildRuntimeProxyApi(proxy, {
+      registerDynamicEventHandler: (name, registeredHandler) => {
+        expect(name).toBe("event");
+        expect(registeredHandler).toBe(handler);
+        return { rpc: true, id: "event-dynamic-1" };
+      },
+    });
+    const result = runtime.registerEvent("event", handler);
 
-    await expect(runtime.registerEvent("event", () => {})).rejects.toThrow(
-      "runtime.registerEvent inside a remote-mode plugin is not yet supported",
-    );
-    expect(channel.sent).toEqual([]);
+    expect(channel.sent).toEqual([
+      {
+        type: "host-rpc",
+        requestId: 1,
+        api: "runtime",
+        method: "registerEvent",
+        args: {
+          name: "event",
+          handlerRef: { rpc: true, id: "event-dynamic-1" },
+        },
+      },
+    ]);
+
+    channel.deliver({
+      type: "host-rpc-result",
+      requestId: 1,
+      ok: true,
+      payload: null,
+    });
+
+    await expect(result).resolves.toBeUndefined();
   });
 });
