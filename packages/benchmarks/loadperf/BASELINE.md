@@ -4,32 +4,50 @@ Reference measurements captured on `develop`. Re-run the KPIs (`run-all.mjs`) to
 refresh; ratchet `budgets.json` down as these improve. All sizes are
 **brotli**-compressed bytes.
 
-Captured: 2026-05-31 (commit on `develop`).
+Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below).
 
-## Bundle (`bundle-kpi.mjs`) — measured
+## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 
-Build under test: `packages/app/dist` (316 JS/CSS assets).
+Two of the original baseline numbers were measurement artifacts, not real:
+
+1. **Bundle "2.33 MB duplicate-lib FAIL" was a stale watch-mode dist.** The
+   measured `dist/` had three build generations layered together (Electrobun
+   fast-dist leaves `emptyOutDir` off, so each rebuild appended). On a **clean
+   `bun run --cwd packages/app build:web`** the bundle PASSES all budgets — see
+   the corrected table immediately below. (research/01-frontend-bundle-load.md)
+2. **Boot "70 ms readyMs PASS" was false.** `lib.mjs` treated any HTTP 200 with
+   `ready===undefined` as ready, timing the API bind, not agent readiness.
+   **Real cold boot ≈ 28.4 s (FAILS the 25 s budget)**, RSS ≈ 1272 MB (passes).
+   Fixing the readiness gate (loadperf W5.0) is a prerequisite for trusting boot
+   deltas. (research/03-agent-boot-plugins.md)
+
+## Bundle (`bundle-kpi.mjs`) — CORRECTED, clean `build:web`, measured 2026-06-02
 
 | Metric | Value | Budget | Status |
 | --- | --- | --- | --- |
-| initial entry brotli | 706 KB (`index-*.js`) | 2.30 MB | PASS |
-| total assets brotli | 6.93 MB | 16.0 MB | PASS |
-| largest chunk brotli | 706 KB (`index-*.js`) | 2.30 MB | PASS |
-| duplicate-lib waste | **2.33 MB** | 1.20 MB | **FAIL** |
+| total brotli | 3.75 MB | 15.6 MB | PASS |
+| eager (first-paint) brotli | 1202.6 KB across 52 chunks | 1.43 MB | PASS |
+| initial entry brotli | 1104.4 KB (`index-*.js`, 5.23 MB raw) | 2.25 MB | PASS |
+| largest chunk brotli | 1104.4 KB (`index-*.js`) | 2.25 MB | PASS |
+| duplicate-lib waste | 0.30 MB | 1.20 MB | PASS |
 
-- total raw: 37.3 MB across 316 files
-- The **duplicate-lib budget is the one failing check**: the same logical chunks
-  are emitted once per entry point, wasting ~2.33 MB brotli in redundant copies.
-- Heavy single-file chunks: `phonemizer-*.js` (~671 KB brotli), the `index-*`
-  app chunk (~706 KB brotli), plus the `three` family spread across multiple
-  chunk names.
+- total raw 17.44 MB; lazy (on-demand) 2636 KB brotli.
+- Heavy chunks (mostly lazy): `phonemizer` 622.8 KB (1 chunk — already deduped),
+  `mermaid` 205 KB, `three` family 330 KB across 4 chunks. These are NOT on the
+  eager path; don't "fix" them as if they were.
+- **Always measure a clean `build:web` output, never a watch-mode dist.**
 
-## Boot (`boot-kpi.mjs`) — skipped this run
+### Original (WRONG — stale watch-mode dist), kept for the record
+initial entry 706 KB · total 6.93 MB · "duplicate-lib waste 2.33 MB FAIL" —
+all artifacts of measuring a 3-generation layered watch dist; disregard.
 
-- Status: **skipped** — the headless `dev-server` exited early during the
-  capture window (a concurrent process was rewriting `packages/app-core/**` at
-  the time). Re-run on a quiet checkout:
-  `node packages/benchmarks/loadperf/boot-kpi.mjs`
+## Boot (`boot-kpi.mjs`) — CORRECTED
+
+- **Real cold readyMs ≈ 28.4 s (median; runs 23 s / 28 s / >33 s under load) —
+  FAILS the 25 000 ms budget.** Peak RSS ≈ 1272 MB (passes 1600 MB).
+- The original "70 ms PASS" was a false positive from the permissive readiness
+  check. Until W5.0 lands (require explicit `ready:true`, report median/p95),
+  read boot numbers from research/03 directly, not from the old latest.json.
 - Budgets: cold `readyMs` ≤ 25 000, peak RSS ≤ 1600 MB.
 
 ## Frontend (`frontend-kpi.mjs`) — skipped this run

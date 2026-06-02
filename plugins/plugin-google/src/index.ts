@@ -11,6 +11,7 @@ export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
 export * from "./drive.js";
 export * from "./gmail.js";
+export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./scopes.js";
 export * from "./types.js";

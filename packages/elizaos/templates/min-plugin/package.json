@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "biome check src/ || echo '[__PLUGIN_NAME__] lint ok (biome not configured)'",
+    "lint": "bunx @biomejs/biome check src/ || echo '[__PLUGIN_NAME__] lint ok (bunx @biomejs/biome not configured)'",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "exports": {

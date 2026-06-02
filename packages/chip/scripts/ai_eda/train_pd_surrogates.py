@@ -30,6 +30,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RECORD_DIR = ROOT / "build/ai_eda/circuitnet3/linux-maxtrain-20260521/records"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/pd_surrogates"
 CLAIM_BOUNDARY = "circuitnet3_gnn_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 TARGETS = (
     "min_slack",
@@ -536,6 +544,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "device": device.type,
         "epochs": args.epochs,
         "model_type": "hand_rolled_message_passing_gnn",
@@ -553,6 +562,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "device": device.type,
         "epochs": args.epochs,
         "model": rel(model_path),

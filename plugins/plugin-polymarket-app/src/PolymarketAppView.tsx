@@ -65,9 +65,6 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
             <h1 className="truncate text-base font-semibold text-txt">
               Polymarket
             </h1>
-            <p className="truncate text-xs-tight text-muted">
-              Native market discovery and trading readiness
-            </p>
           </div>
         </div>
 
@@ -98,9 +95,9 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                   <h2 className="text-sm font-semibold text-txt">
                     Read access
                   </h2>
-                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                  <div className="mt-1 text-xs leading-relaxed text-muted">
                     Gamma and Data API reads are public.
-                  </p>
+                  </div>
                 </div>
                 <StatusPill ready={status?.publicReads.ready ?? false} />
               </div>
@@ -112,10 +109,10 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                   <h2 className="text-sm font-semibold text-txt">
                     Trading readiness
                   </h2>
-                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                  <div className="mt-1 text-xs leading-relaxed text-muted">
                     Orders stay disabled until signed CLOB calls are
                     implemented.
-                  </p>
+                  </div>
                 </div>
                 <StatusPill ready={status?.trading.ready ?? false} />
               </div>
@@ -158,9 +155,9 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
               <div>
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    <div className="text-xs font-semibold uppercase tracking-normal text-muted">
                       {selectedMarket.category ?? "Market"}
-                    </p>
+                    </div>
                     <h2 className="mt-2 text-xl font-semibold leading-tight text-txt">
                       {selectedMarket.question ?? selectedMarket.slug}
                     </h2>
@@ -169,9 +166,9 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                 </div>
 
                 {selectedMarket.description ? (
-                  <p className="mt-4 text-sm leading-relaxed text-muted">
+                  <div className="mt-4 text-sm leading-relaxed text-muted">
                     {selectedMarket.description}
-                  </p>
+                  </div>
                 ) : null}
 
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -250,6 +247,62 @@ function MarketListItem({
         {market.volume24hr
           ? `24h volume ${market.volume24hr}`
           : (market.category ?? "Market")}
+      </span>
+    </button>
+  );
+}
+
+function PolymarketTuiMarketRow({
+  market,
+  index,
+  active,
+  onSelect,
+}: {
+  market: PolymarketMarket;
+  index: number;
+  active: boolean;
+  onSelect: (market: PolymarketMarket) => void;
+}) {
+  const label = market.question ?? market.slug ?? market.id;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-market-${market.id}`,
+    role: "list-item",
+    label,
+    group: "polymarket-tui-markets",
+    status: active ? "active" : "inactive",
+    description: `Select the ${label} market`,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      onClick={() => onSelect(market)}
+      aria-current={active ? "true" : undefined}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "4ch minmax(0,1fr) 10ch",
+        gap: 10,
+        width: "100%",
+        border: "none",
+        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        background: active ? "rgba(125,211,252,0.08)" : "transparent",
+        color: "inherit",
+        padding: "9px 0",
+        textAlign: "left",
+        fontFamily: "inherit",
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ color: "#64748b" }}>
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span style={{ color: "#e2e8f0", overflow: "hidden" }}>{label}</span>
+      <span style={{ color: market.active ? "#a7f3d0" : "#94a3b8" }}>
+        {market.active ? "active" : "closed"}
+      </span>
+      <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+        vol {market.volume ?? "n/a"} / liq {market.liquidity ?? "n/a"}
       </span>
     </button>
   );
@@ -360,6 +413,15 @@ export function PolymarketTuiView() {
     void refresh();
   }, [refresh]);
 
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "polymarket-tui-markets",
+    description: "Reload Polymarket status and active markets",
+    onActivate: () => void refresh(),
+  });
+
   const viewState = {
     viewType: "tui",
     viewId: "polymarket",
@@ -425,6 +487,8 @@ export function PolymarketTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>active markets</strong>
             <button
+              ref={refreshControl.ref}
+              {...refreshControl.agentProps}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
@@ -443,42 +507,13 @@ export function PolymarketTuiView() {
           </div>
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           {(state?.markets.markets ?? []).map((market, index) => (
-            <button
+            <PolymarketTuiMarketRow
               key={market.id}
-              type="button"
-              onClick={() => setSelectedMarket(market)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "4ch minmax(0,1fr) 10ch",
-                gap: 10,
-                width: "100%",
-                border: "none",
-                borderTop:
-                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-                background:
-                  selectedMarket?.id === market.id
-                    ? "rgba(125,211,252,0.08)"
-                    : "transparent",
-                color: "inherit",
-                padding: "9px 0",
-                textAlign: "left",
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              <span style={{ color: "#64748b" }}>
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
-                {market.question ?? market.slug ?? market.id}
-              </span>
-              <span style={{ color: market.active ? "#a7f3d0" : "#94a3b8" }}>
-                {market.active ? "active" : "closed"}
-              </span>
-              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
-                vol {market.volume ?? "n/a"} / liq {market.liquidity ?? "n/a"}
-              </span>
-            </button>
+              market={market}
+              index={index}
+              active={selectedMarket?.id === market.id}
+              onSelect={setSelectedMarket}
+            />
           ))}
         </section>
 

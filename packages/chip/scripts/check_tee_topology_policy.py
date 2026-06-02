@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,16 @@ TOPOLOGY_GATE = {
     "desktop": {"claim": "npuProtected", "firmware": "npuFirmware"},
     "cloud": {"claim": "gpuProtected", "firmware": "gpuFirmware"},
 }
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "signed_quote_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "reproducible_build_digest_claim_allowed": False,
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def validate_policy(topology: str, blob: dict[str, Any]) -> list[str]:
@@ -192,6 +203,7 @@ def main() -> int:
             {
                 "schema": "eliza.tee_topology_policy_check.v1",
                 "status": "tee_topology_policy_release_blocked",
+                "generated_utc": utc_now(),
                 "claim_boundary": (
                     "Per-topology TeeEvidencePolicy shape + private-inference-gate "
                     "contract only; the golden digests are placeholders, not bytes "
@@ -213,7 +225,9 @@ def main() -> int:
                 "summary": {
                     "topology_count": len(topologies),
                     "release_claim_allowed": False,
+                    "false_claim_flags": FALSE_CLAIM_FLAGS,
                 },
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
             },
             indent=2,
             sort_keys=True,

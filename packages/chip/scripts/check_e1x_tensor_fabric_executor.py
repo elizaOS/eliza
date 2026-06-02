@@ -7,6 +7,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_tensor_fabric_executor.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_output_claim_allowed": False,
+    "full_wafer_execution_claim_allowed": False,
+}
 
 PROOF = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkernel-proof.json"
 SCHEDULE = ROOT / "benchmarks/results/e1x-real-graph-tensor-tile-schedule.json"
@@ -251,6 +261,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Sampled tensor fabric-executor evidence: scalar RV64IM W4A8 row "
             "partials from every proof layer are merged through the same one-group "

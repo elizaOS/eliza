@@ -52,8 +52,10 @@ const CUTOFF_LEAK_PATTERNS: readonly RegExp[] = [
 	/\bthe latest (?:information|data|knowledge) i have (?:is|dates|goes)?\s*(?:from|to|up to|back to)\s+(?:(?:early|mid|late)\s+)?(?:\d{4}|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i,
 	// "based on data through ...", "based on the data I was trained on", "based on my training data"
 	/\bbased on (?:data through|the data i was trained on|my training data)\b/i,
-	// "my training data | set | corpus"
-	/\bmy training (?:data|set|corpus)\b/i,
+	// "my training data" — the leak phrase. NOT "my training set"/"my training
+	// corpus": those are ordinary ML artifacts a coding/ML agent legitimately
+	// builds or loads, not a reference to the model's own knowledge horizon.
+	/\bmy training data\b/i,
 ];
 
 /**

@@ -226,6 +226,9 @@ export class MessageManager {
 
 			// Split long messages
 			const parts = this.splitMessage(text);
+			if (parts.length === 0) {
+				return messageIds;
+			}
 
 			for (const part of parts) {
 				const response = await this.client.im.message.create({
@@ -262,6 +265,9 @@ export class MessageManager {
 		try {
 			const text = content.text || "";
 			const parts = this.splitMessage(text);
+			if (parts.length === 0) {
+				return messageIds;
+			}
 
 			for (const part of parts) {
 				const response = await this.client.im.message.reply({
@@ -389,6 +395,10 @@ export class MessageManager {
 	 * Splits a long message into chunks.
 	 */
 	private splitMessage(content: string): string[] {
+		if (!content.trim()) {
+			return [];
+		}
+
 		if (content.length <= MAX_MESSAGE_LENGTH) {
 			return [content];
 		}

@@ -34,6 +34,13 @@ POLICY_FALSE_FIELDS = {
     "writes_design_files",
     "release_use_allowed",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+}
 
 
 def rel(path: Path) -> str:
@@ -89,6 +96,12 @@ def validate_manifest(path: Path) -> list[str]:
         for field in sorted(POLICY_FALSE_FIELDS):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")
+        for field in sorted(REQUIRED_FALSE_CLAIM_FLAGS):
+            if policy.get(field) is not False:
+                errors.append(f"policy.{field} must be false")
+    for field in sorted(REQUIRED_FALSE_CLAIM_FLAGS):
+        if manifest.get(field) is not False:
+            errors.append(f"{field} must be false")
 
     source = manifest.get("source")
     proxy_text = ""

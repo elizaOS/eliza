@@ -8,7 +8,7 @@ Provides the health and sleep domain layer for Eliza agents — connector regist
 
 ## Plugin surface
 
-The plugin object (`healthPlugin`) registers no actions, providers, or evaluators. Its `init` function calls four registration helpers:
+The plugin object (`healthPlugin`) registers no runtime actions, providers, or evaluators directly. Health owns the reusable action/provider/route/service surfaces (`createOwnerHealthAction`, `createOwnerScreenTimeAction`, `createHealthActionRunner`, `createScreenTimeActionRunner`, `createHealthProvider`, `createHealthSleepRouteHandler`, `createHealthSleepServiceMethods`) so host plugins inject access checks, route context, and storage/service adapters instead of duplicating health metadata. Its `init` function calls four registration helpers:
 
 | Registration call | What it contributes |
 |---|---|
@@ -40,7 +40,7 @@ The plugin object (`healthPlugin`) registers no actions, providers, or evaluator
 src/
   index.ts                      Plugin entry; exports healthPlugin + all public surfaces
   actions/
-    index.ts                    No actions at Wave-1 (deferred to Wave-2); exports HEALTH_ACTIONS_DEFERRED_TO_WAVE_2
+    index.ts                    Health/screen-time action factories and runner adapters for host plugins
   anchors/
     index.ts                    Re-exports HEALTH_ANCHORS + registerHealthAnchors from connectors/
   connectors/
@@ -73,8 +73,16 @@ src/
     health-provider-registry.ts HealthProviderSpec registry; getHealthProviderSpec / setHealthProviderSpec
     health-records.ts           createLifeOpsHealth* record factories
     service-normalize-health.ts normalizeHealthSignal — normalizes inbound health-signal payloads
+  routes/
+    index.ts                    Re-exports health-owned route factories
+    sleep.ts                    createHealthSleepRouteHandler for sleep history / regularity / baseline
   screen-time/
-    index.ts                    Type-only exports: LifeOpsScreenTimePerAppUsage, LifeOpsScreenTimeSummaryPayload
+    index.ts                    Screen-time exports and LifeOpsScreenTimeSummaryPayload contract
+    builders.ts                 Pure summary / breakdown / metrics / visible-bucket builders
+    mobile-signals.ts           Android Usage Stats / iOS Screen Time signal parsing and data-source status helpers
+    ranges.ts                   Screen-time range labels / current+prior windows / history day enumeration
+    social-taxonomy.ts          Screen-time target classification by category / device / service / browser
+    system-inactivity-apps.ts   OS lock / screen-saver app classification for screen-time filtering
   sleep/
     index.ts                    Barrel: all sleep/circadian domain helpers
     awake-probability.ts        computeAwakeProbability — logistic awake-probability model
@@ -85,6 +93,7 @@ src/
     sleep-episode-types.ts      SleepEpisodeRepository interface; LifeOpsHealthSleepEpisode derivatives
     sleep-recap.ts              SleepRecap interface (recap payload shape)
     sleep-regularity.ts         computeSleepRegularity — regularity scoring
+    sleep-service.ts            createHealthSleepServiceMethods for history / regularity / baseline DTOs
     sleep-wake-events.ts        Sleep/wake event detection helpers
     source-reliability.ts       resolveActivitySignalReliability — per-source confidence weights
   util/
@@ -130,9 +139,9 @@ The OAuth-dir root is resolved via `resolveOAuthDir` from `@elizaos/core`, so it
 4. Wire the OAuth reader in `src/health-bridge/health-connectors.ts`.
 5. Export from `src/health-bridge/index.ts` if new public helpers are added.
 
-### Add an action
+### Add an action surface
 
-Wave-1 note: actions are deferred to Wave-2 (`HEALTH_ACTIONS_DEFERRED_TO_WAVE_2`). When the time comes, create `src/actions/<name>.ts`, export from `src/actions/index.ts`, and add to the `actions` array in `healthPlugin` in `src/index.ts`. Actions that require `LifeOpsService` cannot live here without the W2-A decoupling; keep those in `plugin-lifeops` until then.
+Action metadata and parameter ownership belongs here. If the action still needs LifeOps persistence or owner access checks, expose a factory/runner pair that accepts host adapters instead of importing `plugin-lifeops`. Only add an action directly to `healthPlugin.actions` when it no longer depends on LifeOps storage or routing.
 
 ### Add a default pack
 
@@ -141,9 +150,9 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 ## Conventions / gotchas
 
 - **Wave-1 soft-dependency posture.** All four `register*` calls in `init` check for the registry on the runtime and log a single skip line if absent — never throw. Callers do not need to guard.
-- **No actions at Wave-1.** The `actions: []` in `healthPlugin` is intentional; `plugin-lifeops` continues to host the health actions until Wave-2 decouples `LifeOpsService`.
+- **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `plugin-lifeops` may register host-adapted health actions only by calling plugin-health factories.
 - **No `app-lifeops` build-time dep.** `src/util/time.ts` and `src/util/time-util.ts` are local copies of same-named helpers to avoid a circular dependency. Do not replace them with imports from `app-lifeops`.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
-- **screen-time aggregation lives upstream.** `src/screen-time/index.ts` exports only types. The actual aggregator lives in `plugin-lifeops` pending Wave-2 (W2-D) signal-bus decoupling.
+- **screen-time aggregation is still being decoupled.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The remaining repository-backed aggregator still lives in `plugin-lifeops` pending Wave-2 (W2-D) signal-bus decoupling.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
 - See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.

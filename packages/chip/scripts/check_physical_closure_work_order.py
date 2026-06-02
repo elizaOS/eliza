@@ -41,6 +41,7 @@ REQUIRED_CLAIM_POLICY_FALSE_FLAGS = {
     "physical_signoff_claim_allowed",
     "lab_validation_claim_allowed",
 }
+FALSE_CLAIM_FLAGS = {key: False for key in REQUIRED_CLAIM_POLICY_FALSE_FLAGS}
 
 
 def load_yaml(path: Path) -> dict:
@@ -180,6 +181,8 @@ def main() -> int:
         for key in REQUIRED_CLAIM_POLICY_FALSE_FLAGS:
             if claim_policy.get(key) is not False:
                 failures.append(f"claim_policy.{key} must be false")
+        if claim_policy.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+            failures.append("claim_policy.false_claim_flags must match denied physical claims")
         allowed = validate_text_list(
             "claim_policy.allowed_local_claims",
             claim_policy.get("allowed_local_claims"),

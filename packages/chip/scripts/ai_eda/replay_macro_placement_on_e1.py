@@ -23,6 +23,14 @@ DEFAULT_PLAN = ROOT / "build/ai_eda/macro_placement_replay/validation/replay_pla
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_replay_preflight"
 DEFAULT_OPENLANE_CONFIG = ROOT / "pd/openlane/config.sky130.json"
 CLAIM_BOUNDARY = "macro_placement_replay_preflight_only_no_ppa_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -262,6 +270,7 @@ def main() -> int:
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
+            **FALSE_CLAIM_FLAGS,
             "source_replay_plan": rel(args.plan),
             "candidate_id": plan.get("candidate_id"),
             "placement_case_id": plan.get("placement_case_id"),
@@ -286,6 +295,7 @@ def main() -> int:
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
+            **FALSE_CLAIM_FLAGS,
             "source_replay_plan": rel(args.plan),
             "status": "FAIL_INVALID_REPLAY_PREFLIGHT",
             "blockers": [str(exc)],

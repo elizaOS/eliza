@@ -601,11 +601,24 @@ async function registerStaticPluginPhase(
     }
   };
 
-  await Promise.all(registrations.map(trackImport));
-  if (phase === "blocking") {
-    _blockingStaticPluginsRegistered = true;
-  } else {
+  if (phase === "deferred") {
+    // Deferred plugins run in the background after the API server is already
+    // listening; they must not hold the ready gate. Importing them one at a
+    // time and yielding to the event loop (setImmediate) between each lets the
+    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
+    // module evaluations, instead of starving it until the whole batch finishes
+    // (observed ready was dominated by this on contended hosts). All plugins
+    // still register — only the scheduling changes.
+    for (const registration of registrations) {
+      await trackImport(registration);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
     _deferredStaticPluginsRegistered = true;
+  } else {
+    await Promise.all(registrations.map(trackImport));
+    _blockingStaticPluginsRegistered = true;
   }
 }
 
@@ -3292,6 +3305,14 @@ export async function startEliza(
   //     tripping the 180s health check on every fresh provision.
   const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   if (!isMobilePlatform() && !isCloudProvisioned) {
+    // pre-resolve-setup's two serial cost centers: the OS-keychain hydrate and
+    // the vault PGlite cold-start. Timed separately and surfaced below so the
+    // boot-history telemetry shows which is the long pole. NOTE: the order is
+    // load-bearing: hydrateWalletKeysFromNodePlatformSecureStore writes wallet
+    // keys into process.env that runVaultBootstrap then mirrors into the vault,
+    // so these must stay sequential unless that mirror is decoupled. Measure
+    // here before attempting to overlap them.
+    const keychainStartMs = Date.now();
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -3301,12 +3322,14 @@ export async function startEliza(
         `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const keychainMs = Date.now() - keychainStartMs;
 
     const { runVaultBootstrap } = await importAppCoreRuntime();
     const { sharedVault } = await importAppCoreRuntime();
+    const vaultStartMs = Date.now();
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(

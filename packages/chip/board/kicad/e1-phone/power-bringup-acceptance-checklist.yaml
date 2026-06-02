@@ -106,7 +106,7 @@ acceptance_items:
       - post-route copper width, via-count, return path, and current density review for VBUS, VBAT, SYS, and RF_VBAT
       - PI simulation or bench load-step report for AP, display, camera, RF, and IO rails
       - fabricator stackup, copper weight, via current rating, and impedance table
-    blocker: High-current layout and PI/load-step evidence are missing because the PCB is not routed.
+    blocker: Local routed copper exists for review only; high-current release layout review, PI/load-step evidence, current-density signoff, and factory stackup data are missing.
   - id: display_camera_radio_audio_rail_enable_logs
     owner: bringup
     status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence

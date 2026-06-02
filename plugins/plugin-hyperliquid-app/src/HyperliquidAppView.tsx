@@ -139,9 +139,6 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
 
         <div className="min-w-0">
           <h1 className="text-base font-semibold text-txt">Hyperliquid</h1>
-          <p className="truncate text-xs text-muted">
-            Native read/status surface for Hyperliquid
-          </p>
         </div>
 
         <div className="flex-1" />
@@ -258,13 +255,13 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
                   <h2 className="text-sm font-semibold text-txt">Positions</h2>
                   {positions?.readBlockedReason ? (
-                    <p className="mt-2 text-xs text-muted">
+                    <div className="mt-2 text-xs text-muted">
                       {positions.readBlockedReason}
-                    </p>
+                    </div>
                   ) : (
-                    <p className="mt-2 text-2xl font-semibold text-txt">
+                    <div className="mt-2 text-2xl font-semibold text-txt">
                       {positions?.positions.length ?? 0}
-                    </p>
+                    </div>
                   )}
                 </div>
 
@@ -273,13 +270,13 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                     Open orders
                   </h2>
                   {orders?.readBlockedReason ? (
-                    <p className="mt-2 text-xs text-muted">
+                    <div className="mt-2 text-xs text-muted">
                       {orders.readBlockedReason}
-                    </p>
+                    </div>
                   ) : (
-                    <p className="mt-2 text-2xl font-semibold text-txt">
+                    <div className="mt-2 text-2xl font-semibold text-txt">
                       {orders?.orders.length ?? 0}
-                    </p>
+                    </div>
                   )}
                 </div>
               </section>
@@ -319,6 +316,16 @@ export function HyperliquidTuiView() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const tuiRefreshButton = useAgentElement<HTMLButtonElement>({
+    id: "tui-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "hyperliquid-tui-markets",
+    description:
+      "Reload Hyperliquid status, markets, positions, and orders in the terminal view",
+    status: loading ? "active" : "inactive",
+  });
 
   const viewState = {
     viewType: "tui",
@@ -388,6 +395,8 @@ export function HyperliquidTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>markets</strong>
             <button
+              ref={tuiRefreshButton.ref}
+              {...tuiRefreshButton.agentProps}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}

@@ -369,4 +369,60 @@ describe("Slack message connector adapter", () => {
     expect(client.pins.add).not.toHaveBeenCalled();
     expect(client.pins.remove).not.toHaveBeenCalled();
   });
+
+  it("normalizes hostile fetch and search limits before reading Slack history", async () => {
+    const runtime = createRuntime();
+    const messages = Array.from({ length: 4 }, (_, index) => ({
+      ts: `170000000${index}.000001`,
+      text: index % 2 === 0 ? "incident followup" : "hello",
+      user: "U123ABC",
+    }));
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        client: {},
+        defaultAccountId: "default",
+        accountStates: new Map(),
+        readHistory: vi.fn(async () => messages),
+        slackMessageToMemory: vi.fn(
+          async (message: { ts: string; text: string }) => ({
+            id: message.ts,
+            roomId: "room-1",
+            entityId: "entity-1",
+            content: { text: message.text },
+            createdAt: Number(message.ts.split(".")[0]),
+          }),
+        ),
+      },
+    );
+
+    const fetched = await service.fetchConnectorMessages(
+      { runtime },
+      { channelId: "C12345678", limit: 1.9 },
+    );
+    const searched = await service.searchConnectorMessages(
+      { runtime },
+      {
+        channelId: "C12345678",
+        query: "incident",
+        limit: Number.NEGATIVE_INFINITY,
+      },
+    );
+
+    expect(service.readHistory).toHaveBeenNthCalledWith(
+      1,
+      "C12345678",
+      expect.objectContaining({ limit: 1 }),
+      "default",
+    );
+    expect(service.readHistory).toHaveBeenNthCalledWith(
+      2,
+      "C12345678",
+      expect.objectContaining({ limit: 100 }),
+      "default",
+    );
+    expect(fetched).toHaveLength(4);
+    expect(searched).toHaveLength(2);
+  });
 });

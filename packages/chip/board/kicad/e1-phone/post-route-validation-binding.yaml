@@ -55,8 +55,8 @@ local_routed_candidate_validation_state:
   real_footprint_board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
   real_footprint_binding: board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
   source_binding: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
-  board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
-  real_footprint_board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+  real_footprint_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
   matches_real_footprint_board: true
   footprint_count: 89
   legacy_e1phone_footprint_ref_count: 0
@@ -322,7 +322,7 @@ cross_checks:
   factory_and_enclosure_coupling_remains_fail_closed: true
 
 release_blockers:
-  - routed KiCad PCB, DRC, ERC, and zone-fill evidence are missing
+  - local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2304 DRC rows, 366 ERC rows, and no signed waivers
   - post-route SI/PI length, skew, impedance, return-path, current-density, and load-step evidence is missing
   - RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing
   - USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing

@@ -100,6 +100,15 @@ BLOCKED_HARDWARE_GATES: list[dict[str, str]] = [
         "proving_command": "lab validation campaign (pending silicon + lab)",
     },
 ]
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "secure_boot_claim_allowed": False,
+    "memory_encryption_claim_allowed": False,
+    "iommu_isolation_claim_allowed": False,
+    "npu_isolation_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "side_channel_claim_allowed": False,
+}
 
 
 def run_checker(checker_id: str, script: str) -> dict[str, Any]:
@@ -193,11 +202,13 @@ def build_report() -> dict[str, Any]:
         "software_checks": checks,
         "blocked_hardware_gates": BLOCKED_HARDWARE_GATES,
         "findings": structured_findings(checks, BLOCKED_HARDWARE_GATES),
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "summary": {
             "software_check_count": len(checks),
             "software_passing_count": len(checks) - len(failed),
             "blocked_hardware_count": len(BLOCKED_HARDWARE_GATES),
             "release_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
     }
 

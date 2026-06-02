@@ -152,6 +152,49 @@ describe("FormService form schema hardening", () => {
     expect(Object.getPrototypeOf(values)).toBe(null);
     expect(values.name).toBe("Jane");
   });
+
+  it("ignores expired active sessions when starting or listing sessions", async () => {
+    service.registerForm(validForm());
+    const expired = await service.startSession("signup", entityId, roomId);
+    expired.expiresAt = Date.now() - 1;
+    await service.saveSession(expired);
+
+    await expect(
+      service.getActiveSession(entityId, roomId),
+    ).resolves.toBeNull();
+    await expect(service.getAllActiveSessions(entityId)).resolves.toEqual([]);
+
+    const fresh = await service.startSession("signup", entityId, roomId);
+
+    expect(fresh.id).not.toBe(expired.id);
+    await expect(
+      service.getActiveSession(entityId, roomId),
+    ).resolves.toMatchObject({
+      id: fresh.id,
+      status: "active",
+    });
+  });
+
+  it("does not restore or mutate expired stashed sessions", async () => {
+    service.registerForm(validForm());
+    const session = await service.startSession("signup", entityId, roomId);
+    await service.stash(session.id, entityId);
+    const stashed = await service.getStashedSessions(entityId);
+    expect(stashed).toHaveLength(1);
+    const stashedSession = stashed[0];
+    if (!stashedSession) throw new Error("expected a stashed session");
+
+    const expiredStashed = { ...stashedSession, expiresAt: Date.now() - 1 };
+    await service.saveSession(expiredStashed);
+
+    await expect(service.getStashedSessions(entityId)).resolves.toEqual([]);
+    await expect(service.restore(session.id, entityId)).rejects.toThrow(
+      `Session not found: ${session.id}`,
+    );
+    await expect(
+      service.updateField(session.id, entityId, "name", "Janet", 1, "manual"),
+    ).rejects.toThrow(`Session not found: ${session.id}`);
+  });
 });
 
 describe("form extraction hardening", () => {
@@ -242,9 +285,7 @@ describe("field validation edge cases", () => {
   it("rejects non-finite numbers", () => {
     const control = { key: "amount", label: "Amount", type: "number" };
 
-    expect(validateField(Number.POSITIVE_INFINITY, control).valid).toBe(
-      false,
-    );
+    expect(validateField(Number.POSITIVE_INFINITY, control).valid).toBe(false);
     expect(validateField("Infinity", control).valid).toBe(false);
     expect(validateField("1e309", control).valid).toBe(false);
     expect(validateField("123", control).valid).toBe(true);

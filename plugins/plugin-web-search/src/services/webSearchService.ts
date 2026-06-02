@@ -21,6 +21,69 @@ function parsePublishedDate(value: string | undefined): Date | undefined {
     return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+function normalizeApiKey(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function validateSearchQuery(query: unknown): string {
+    if (typeof query !== "string" || !query.trim()) {
+        throw new Error("search query is required");
+    }
+    return query.trim();
+}
+
+function assertOptionalPositiveInteger(value: unknown, name: string): void {
+    if (
+        value !== undefined &&
+        (typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            !Number.isInteger(value) ||
+            value < 1)
+    ) {
+        throw new Error(`${name} must be a positive finite integer`);
+    }
+}
+
+function assertOptionalNonNegativeInteger(value: unknown, name: string): void {
+    if (
+        value !== undefined &&
+        (typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            !Number.isInteger(value) ||
+            value < 0)
+    ) {
+        throw new Error(`${name} must be a non-negative finite integer`);
+    }
+}
+
+function validateSearchOptions(options?: SearchOptions): void {
+    if (options === undefined) return;
+    if (!isRecord(options)) {
+        throw new Error("search options must be an object");
+    }
+    assertOptionalPositiveInteger(options.limit, "limit");
+    assertOptionalNonNegativeInteger(options.days, "days");
+    if (options.topic !== undefined && options.topic !== "general" && options.topic !== "news") {
+        throw new Error("topic must be general or news");
+    }
+    if (options.type !== undefined && options.type !== "general" && options.type !== "news") {
+        throw new Error("type must be general or news");
+    }
+    if (
+        options.searchDepth !== undefined &&
+        options.searchDepth !== "basic" &&
+        options.searchDepth !== "advanced"
+    ) {
+        throw new Error("searchDepth must be basic or advanced");
+    }
+    if (options.includeAnswer !== undefined && typeof options.includeAnswer !== "boolean") {
+        throw new Error("includeAnswer must be a boolean");
+    }
+    if (options.includeImages !== undefined && typeof options.includeImages !== "boolean") {
+        throw new Error("includeImages must be a boolean");
+    }
+}
+
 function normalizeResponse(query: string, response: unknown): SearchResponse {
     const payload = isRecord(response) ? response : {};
     const rawResults = Array.isArray(payload.results) ? payload.results : [];
@@ -96,8 +159,8 @@ export class WebSearchService extends IWebSearchService {
     }
 
     private async initialize(runtime: IAgentRuntime): Promise<void> {
-        const apiKey = runtime.getSetting("TAVILY_API_KEY");
-        if (typeof apiKey !== "string" || apiKey.length === 0) {
+        const apiKey = normalizeApiKey(runtime.getSetting("TAVILY_API_KEY"));
+        if (!apiKey) {
             // Degrade gracefully instead of throwing, so the plugin can be
             // installed unconfigured without crashing agent boot. The service
             // stays inert and `search()` reports an honest, recoverable error
@@ -114,11 +177,13 @@ export class WebSearchService extends IWebSearchService {
     }
 
     async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
+        const normalizedQuery = validateSearchQuery(query);
+        validateSearchOptions(options);
         if (!this.configured || !this.tavilyClient) {
             throw new Error("Web search is not configured: set TAVILY_API_KEY to enable it.");
         }
         try {
-            const response = await this.tavilyClient.search(query, {
+            const response = await this.tavilyClient.search(normalizedQuery, {
                 includeAnswer: options?.includeAnswer ?? true,
                 maxResults: options?.limit ?? 3,
                 topic: options?.topic ?? options?.type ?? "general",
@@ -127,7 +192,7 @@ export class WebSearchService extends IWebSearchService {
                 days: options?.days ?? 3,
             });
 
-            return normalizeResponse(query, response);
+            return normalizeResponse(normalizedQuery, response);
         } catch (cause) {
             const err = cause instanceof Error ? cause : new Error(String(cause));
             logger.error({ src: "plugin-web-search", err }, "Web search error");

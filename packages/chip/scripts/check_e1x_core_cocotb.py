@@ -15,6 +15,15 @@ PE_CORE_REPORT = ROOT / "build/reports/e1x_pe_core_cocotb.json"
 GENERATED_MODEL_SHARD_SAMPLE_JSON = (
     ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_riscv_compliance_claim_allowed": False,
+}
 RUNS = {
     "tiny_core": {
         "top": "e1x_tiny_core_tb",
@@ -186,6 +195,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": "E1X core cocotb verification covers the legacy tiny-core tile contract, local SRAM shard loading, generated model-shard loading, and standalone RV64IM_Zicsr_Zifencei PE-core execution tests; not full RISC-V compliance, full model compiler/runtime, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_tiny_core_contract.sv",

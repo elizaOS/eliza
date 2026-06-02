@@ -75,6 +75,7 @@ function taskDetail(overrides: JsonRecord = {}) {
     artifacts: [],
     messages: [],
     transcripts: [],
+    ...overrides,
   };
 }
 
@@ -343,7 +344,7 @@ async function installOrchestratorWorkbenchRoutes(
         threadId: "smoke-task-1",
         sessionId: null,
         senderKind: "user",
-        direction: "stdin",
+        direction: "stdout",
         content: body.content,
         timestamp: Date.parse(NOW),
         metadata: {},
@@ -583,10 +584,10 @@ test.describe("orchestrator GUI workbench", () => {
       "2/2",
     );
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
-      "Active (1)",
+      /active \(1\)/,
     );
-    await expect(page.getByText("12.3K")).toBeVisible();
-    await expect(page.getByText("$0.42")).toBeVisible();
+    await expect(page.getByTitle("Usage").first()).toContainText("12.3K");
+    await expect(page.getByTitle("Usage").first()).toContainText("$0.42");
 
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Build Kanban planner app",

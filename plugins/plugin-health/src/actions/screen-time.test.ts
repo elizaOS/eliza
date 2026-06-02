@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
   SCREEN_TIME_PARAMETERS,
   SCREEN_TIME_SIMILES,
@@ -70,6 +71,39 @@ describe("screen-time action runner", () => {
     expect(SCREEN_TIME_PARAMETERS.map((parameter) => parameter.name)).toContain(
       "windowHours",
     );
+  });
+
+  it("creates the owner screen-time action metadata in plugin-health", async () => {
+    const validate = vi.fn(async () => true);
+    const handler = vi.fn(async () => ({
+      text: "screen-time handled",
+      success: true,
+    }));
+    const action = createOwnerScreenTimeAction({ validate, handler });
+
+    expect(action.name).toBe("OWNER_SCREENTIME");
+    expect(action.similes).toContain("SCREEN_TIME");
+    expect(action.descriptionCompressed).toContain("time_on_site");
+    expect(action.parameters?.map((parameter) => parameter.name)).toEqual([
+      "action",
+      "source",
+      "identifier",
+      "date",
+      "days",
+      "limit",
+      "windowDays",
+      "windowHours",
+      "appNameOrBundleId",
+      "domain",
+      "deviceId",
+    ]);
+    await expect(action.validate(runtime, message)).resolves.toBe(true);
+    await expect(action.handler(runtime, message)).resolves.toMatchObject({
+      text: "screen-time handled",
+      success: true,
+    });
+    expect(validate).toHaveBeenCalled();
+    expect(handler).toHaveBeenCalled();
   });
 
   it("runs daily screen-time through injected service and renderer adapters", async () => {

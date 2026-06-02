@@ -61,4 +61,40 @@ describe("Tailscale account resolution", () => {
       TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 120,
     });
   });
+
+  it("ignores malformed account JSON and sanitizes hostile numeric config", async () => {
+    const rt = runtime({
+      TAILSCALE_ACCOUNTS: "{not json",
+      TAILSCALE_TAGS: " tag:one, ,tag:two ",
+      TAILSCALE_DEFAULT_PORT: "123abc",
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: "60.5",
+    });
+
+    expect(
+      readTailscaleAccounts(rt).map((account) => account.accountId),
+    ).toEqual(["default"]);
+    await expect(validateTailscaleConfig(rt)).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:one", "tag:two"],
+      TAILSCALE_DEFAULT_PORT: 3000,
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 3600,
+    });
+  });
+
+  it("trims array tags and rejects fractional runtime defaults", async () => {
+    const rt = runtime({
+      TAILSCALE_ACCOUNTS: JSON.stringify({
+        cloud: {
+          tags: [" tag:cloud ", "", "tag:ops"],
+          defaultPort: 1.5,
+          authKeyExpirySeconds: Number.NaN,
+        },
+      }),
+    });
+
+    await expect(validateTailscaleConfig(rt, "cloud")).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:cloud", "tag:ops"],
+      TAILSCALE_DEFAULT_PORT: 3000,
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 3600,
+    });
+  });
 });

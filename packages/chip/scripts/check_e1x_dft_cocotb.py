@@ -11,6 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_dft_cocotb.json"
 RESULT_DIR = ROOT / "verify/cocotb/results"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "atpg_coverage_claim_allowed": False,
+    "scan_signoff_claim_allowed": False,
+}
 
 RUNS = {
     "sram_ecc": {
@@ -110,6 +120,7 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X SECDED ECC codec and March C- MBIST controller cocotb verification only; "
             "not scan-chain stitching, ATPG coverage, foundry SRAM macro behavior, at-speed "

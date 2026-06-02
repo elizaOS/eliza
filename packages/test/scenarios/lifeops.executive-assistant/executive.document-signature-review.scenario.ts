@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Document review" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Document review",
+    },
   ],
   turns: [
     {
@@ -22,9 +27,20 @@ export default scenario({
       room: "main",
       text: "Scan recent docs and attachments for signature, redline, notarization, upload, review, or approval work. Create tasks only for explicit approvals.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_DOCUMENTS", "MESSAGE", "LIFE", "RESOLVE_REQUEST"],
+        acceptedActions: [
+          "OWNER_DOCUMENTS",
+          "MESSAGE",
+          "LIFE",
+          "RESOLVE_REQUEST",
+        ],
         description: "document approval review",
-        includesAny: ["signature", "redline", "notarization", "upload", "approval"],
+        includesAny: [
+          "signature",
+          "redline",
+          "notarization",
+          "upload",
+          "approval",
+        ],
       }),
       responseIncludesAny: [/signature|redline|approval|notar/i],
       responseJudge: {
@@ -35,14 +51,28 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["OWNER_DOCUMENTS", "MESSAGE", "LIFE", "RESOLVE_REQUEST"] },
+    {
+      type: "selectedAction",
+      actionName: ["OWNER_DOCUMENTS", "MESSAGE", "LIFE", "RESOLVE_REQUEST"],
+    },
     {
       type: "custom",
       name: "document-review-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_DOCUMENTS", "MESSAGE", "LIFE", "RESOLVE_REQUEST"],
+        acceptedActions: [
+          "OWNER_DOCUMENTS",
+          "MESSAGE",
+          "LIFE",
+          "RESOLVE_REQUEST",
+        ],
         description: "document approval review",
-        includesAny: ["signature", "redline", "notarization", "upload", "approval"],
+        includesAny: [
+          "signature",
+          "redline",
+          "notarization",
+          "upload",
+          "approval",
+        ],
       }),
     },
     judgeRubric({

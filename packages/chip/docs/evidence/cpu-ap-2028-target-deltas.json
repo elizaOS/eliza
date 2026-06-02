@@ -1,6 +1,9 @@
 {
   "claim_boundary": "current_repo_is_tiny_cpu_scaffold_plus_pinned_single_rocket_import_plan",
   "claim_policy": {
+    "false_claim_flags": {
+      "phone_class_claim_allowed": false
+    },
     "phone_class_claim_allowed": false,
     "single_rocket_linux_boot_may_close": "linux_bringup_ap_import_evidence",
     "single_rocket_linux_boot_may_not_close": "phone_class_2028_target"

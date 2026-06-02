@@ -67,9 +67,10 @@ export function parseCommand(
 			matchedAlias = alias;
 			break;
 		}
+		const remainder = trimmed.slice(alias.length);
 		if (
-			trimmed.toLowerCase().startsWith(`${normalized} `) ||
-			trimmed.toLowerCase().startsWith(`${normalized}:`)
+			trimmed.toLowerCase().startsWith(normalized) &&
+			/^[\s:]/.test(remainder)
 		) {
 			matchedAlias = alias;
 			break;
@@ -195,7 +196,7 @@ export function normalizeCommandBody(
 	}
 
 	// Handle colon in command (e.g., "/command: args" -> "/command args")
-	normalized = normalized.replace(/^(\/\w+):\s*/, "$1 ");
+	normalized = normalized.replace(/^([/!][^\s:]+):\s*/, "$1 ");
 
 	return normalized.trim();
 }

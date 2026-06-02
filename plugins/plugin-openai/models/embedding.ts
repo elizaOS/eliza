@@ -159,7 +159,7 @@ export async function handleTextEmbedding(
 
   const data = (await response.json()) as OpenAIEmbeddingResponse;
 
-  const firstResult = data.data[0];
+  const firstResult = Array.isArray(data.data) ? data.data[0] : undefined;
   if (!firstResult?.embedding) {
     throw new Error("OpenAI API returned invalid embedding response structure");
   }

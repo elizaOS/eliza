@@ -172,6 +172,8 @@ def validate_policy(report_id: str, report: dict[str, Any]) -> list[str]:
         return [f"{report_id}: policy must be a non-empty mapping"]
     errors: list[str] = []
     for field, value in policy.items():
+        if field == "false_claim_flags":
+            continue
         if value is not False:
             errors.append(f"{report_id}: policy.{field} must be false")
     for required in (
@@ -184,6 +186,11 @@ def validate_policy(report_id: str, report: dict[str, Any]) -> list[str]:
         str(field).endswith("claim_allowed") and value is False for field, value in policy.items()
     ):
         errors.append(f"{report_id}: policy must include at least one false *_claim_allowed field")
+    expected_false_claim_flags = {
+        field: value for field, value in sorted(policy.items()) if field != "false_claim_flags"
+    }
+    if policy.get("false_claim_flags") != expected_false_claim_flags:
+        errors.append(f"{report_id}: policy.false_claim_flags must match denied PD claims")
     return errors
 
 

@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { useFetchData } from "../../hooks";
 import {
@@ -98,6 +99,19 @@ export function CharacterLearnedSkillsSection() {
     grouped.active.length === 0 &&
     grouped.disabled.length === 0;
 
+  const { ref: refreshRef, agentProps: refreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "learned-skills-refresh",
+      role: "button",
+      label: t("learnedskills.refresh", { defaultValue: "Refresh" }),
+      group: "learned-skills",
+      description: "Reload the list of learned skills",
+      onActivate: () => {
+        setActionErrorMessage(null);
+        refresh();
+      },
+    });
+
   return (
     <section
       className="flex min-w-0 flex-col gap-4 rounded-sm border border-border/40 bg-bg/70 px-4 py-4"
@@ -121,6 +135,7 @@ export function CharacterLearnedSkillsSection() {
           </div>
         </div>
         <Button
+          ref={refreshRef}
           variant="outline"
           size="icon"
           className="h-8 w-8 rounded-sm"
@@ -133,6 +148,7 @@ export function CharacterLearnedSkillsSection() {
             defaultValue: "Refresh learned skills",
           })}
           title={t("learnedskills.refresh", { defaultValue: "Refresh" })}
+          {...refreshAgentProps}
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -191,6 +207,50 @@ export function CharacterLearnedSkillsSection() {
         ) : null}
       </div>
     </section>
+  );
+}
+
+function slugifySkillName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function SkillActionButton({
+  skill,
+  action,
+  label,
+  variant,
+  disabled,
+  onActivate,
+}: {
+  skill: string;
+  action: "promote" | "disable" | "delete";
+  label: string;
+  variant: "default" | "outline" | "ghost";
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `learned-skill-${action}-${slugifySkillName(skill)}`,
+    role: "button",
+    label: `${label} ${skill}`,
+    group: "learned-skills",
+    description: `${label} the ${skill} learned skill`,
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant={variant}
+      disabled={disabled}
+      onClick={onActivate}
+      {...agentProps}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -263,37 +323,39 @@ function SkillSection({
                   </div>
                   <div className="flex shrink-0 flex-col gap-1">
                     {onPromote ? (
-                      <Button
-                        size="sm"
-                        variant="default"
-                        disabled={busyName === skill.name}
-                        onClick={() => onPromote(skill.name)}
-                      >
-                        {t("learnedskills.promote", {
+                      <SkillActionButton
+                        skill={skill.name}
+                        action="promote"
+                        label={t("learnedskills.promote", {
                           defaultValue: "Promote",
                         })}
-                      </Button>
+                        variant="default"
+                        disabled={busyName === skill.name}
+                        onActivate={() => onPromote(skill.name)}
+                      />
                     ) : null}
                     {onDisable ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busyName === skill.name}
-                        onClick={() => onDisable(skill.name)}
-                      >
-                        {t("learnedskills.disable", {
+                      <SkillActionButton
+                        skill={skill.name}
+                        action="disable"
+                        label={t("learnedskills.disable", {
                           defaultValue: "Disable",
                         })}
-                      </Button>
+                        variant="outline"
+                        disabled={busyName === skill.name}
+                        onActivate={() => onDisable(skill.name)}
+                      />
                     ) : null}
-                    <Button
-                      size="sm"
+                    <SkillActionButton
+                      skill={skill.name}
+                      action="delete"
+                      label={t("learnedskills.delete", {
+                        defaultValue: "Delete",
+                      })}
                       variant="ghost"
                       disabled={busyName === skill.name}
-                      onClick={() => onDelete(skill.name)}
-                    >
-                      {t("learnedskills.delete", { defaultValue: "Delete" })}
-                    </Button>
+                      onActivate={() => onDelete(skill.name)}
+                    />
                   </div>
                 </div>
               </CardContent>

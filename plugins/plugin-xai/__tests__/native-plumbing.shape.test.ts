@@ -65,6 +65,68 @@ describe("xAI native text plumbing", () => {
     });
   });
 
+  it("trims config values and normalizes trailing slashes in the base URL", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "x",
+            object: "chat.completion",
+            created: 0,
+            model: "trimmed-small",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextSmall(
+        createRuntime({
+          XAI_API_KEY: "  trimmed-key  ",
+          XAI_BASE_URL: " https://xai.test/v1/// ",
+          XAI_SMALL_MODEL: "  trimmed-small  ",
+        }),
+        { prompt: "hi" },
+      ),
+    ).resolves.toBe("ok");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://xai.test/v1/chat/completions",
+    );
+    const requestBody = JSON.parse(
+      fetchMock.mock.calls[0]?.[1]?.body as string,
+    ) as Record<string, unknown>;
+    expect(requestBody.model).toBe("trimmed-small");
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      Authorization: "Bearer trimmed-key",
+    });
+  });
+
+  it.each([
+    { XAI_BASE_URL: "not a url" },
+    { XAI_BASE_URL: "file:///tmp/xai" },
+    { XAI_SMALL_MODEL: " " },
+    { XAI_MODEL: "\t" },
+    { XAI_EMBEDDING_MODEL: "" },
+  ])("rejects hostile config before fetch %#", async (overrides) => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextSmall(createRuntime(overrides), { prompt: "hi" }),
+    ).rejects.toThrow(/XAI_BASE_URL|XAI_(SMALL_MODEL|MODEL|EMBEDDING_MODEL)/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("forwards tools and returns native shape with toolCalls when caller passes tools", {
     timeout: 15000,
   }, async () => {
@@ -155,6 +217,72 @@ describe("xAI native text plumbing", () => {
 
     const result = await handleTextSmall(createRuntime(), { prompt: "hi" });
     expect(result).toBe("hello");
+  });
+
+  it.each([
+    [{ prompt: 123 }, "prompt must be a string"],
+    [
+      { prompt: "hi", temperature: Number.NaN },
+      "temperature must be a finite number",
+    ],
+    [
+      { prompt: "hi", maxTokens: 0 },
+      "maxTokens must be a positive finite integer",
+    ],
+    [
+      { prompt: "hi", maxTokens: 1.5 },
+      "maxTokens must be a positive finite integer",
+    ],
+    [
+      { prompt: "hi", stopSequences: ["ok", 1] },
+      "stopSequences must be an array of strings",
+    ],
+  ])("rejects hostile text generation params before fetch %#", async (params, message) => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextSmall(createRuntime(), params as never),
+    ).rejects.toThrow(message);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clamps temperature while preserving valid generation options", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "x",
+            object: "chat.completion",
+            created: 0,
+            model: "grok-test-small",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      temperature: 99,
+      maxTokens: 2,
+      stopSequences: ["STOP"],
+    });
+
+    const requestBody = JSON.parse(
+      fetchMock.mock.calls[0]?.[1]?.body as string,
+    ) as Record<string, unknown>;
+    expect(requestBody.temperature).toBe(2);
+    expect(requestBody.max_tokens).toBe(2);
+    expect(requestBody.stop).toEqual(["STOP"]);
   });
 
   it("sends responseSchema as strict json_schema and returns native result shape", async () => {
@@ -280,6 +408,22 @@ describe("xAI native text plumbing", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {},
+    { text: 42 },
+    { text: "\t" },
+  ])("rejects malformed embedding params before fetch %#", async (params) => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(createRuntime(), params as never),
+    ).rejects.toThrow(
+      /Embedding text must be a string|Empty text provided for embedding/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("creates embeddings and emits usage", async () => {
     const fetchMock = vi.fn(
       async () =>
@@ -310,6 +454,29 @@ describe("xAI native text plumbing", () => {
         modelName: "grok-embed-test",
         tokens: { prompt: 4, completion: 0, total: 4 },
       }),
+    );
+  });
+
+  it.each([
+    { object: "list", data: [], model: "grok-embed-test", usage: {} },
+    {
+      object: "list",
+      data: [{ object: "embedding", embedding: [0.1, Number.NaN], index: 0 }],
+      model: "grok-embed-test",
+      usage: {},
+    },
+  ])("rejects malformed embedding provider payload %#", async (payload) => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      /No embedding|non-finite/,
     );
   });
 });

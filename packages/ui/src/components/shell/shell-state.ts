@@ -99,7 +99,7 @@ export function shellReducer(
       if (state.phase !== "responding") return state;
       const messages = state.messages.slice();
       const last = messages[messages.length - 1];
-      if (!last || last.role !== "assistant") return state;
+      if (last?.role !== "assistant") return state;
       messages[messages.length - 1] = {
         ...last,
         content: last.content + action.delta,

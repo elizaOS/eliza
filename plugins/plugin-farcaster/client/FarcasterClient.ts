@@ -1,4 +1,4 @@
-import { type Content, elizaLogger } from "@elizaos/core";
+import { type Content, logger as elizaLogger } from "@elizaos/core";
 import { isApiErrorResponse, type NeynarAPIClient } from "@neynar/nodejs-sdk";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import { LRUCache } from "lru-cache";

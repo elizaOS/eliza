@@ -89,6 +89,7 @@
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
       "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
+      "@elizaos/logger": ["./packages/logger/src/index.ts"],
       "@elizaos/plugin-2004scape": ["./plugins/plugin-2004scape/src/index.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/src/index.ts"

@@ -22,6 +22,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE = ROOT / "docs/evidence/memory/uma-dram-evidence-gate.yaml"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_memory_claim_allowed": False,
+    "real_target_memory_claim_allowed": False,
+    "contended_bandwidth_claim_allowed": False,
+}
 
 
 def parse_int(value: str) -> int:
@@ -145,6 +151,7 @@ def main() -> int:
         },
         "target_thresholds_status": "blocked_until_parse",
         "release_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
     }
     process_contract = ROOT / "docs/spec-db/process-14a-effects.yaml"
     process_sha = sha256_file(process_contract) if process_contract.is_file() else None

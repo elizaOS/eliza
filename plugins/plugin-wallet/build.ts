@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { renameSync, rmSync } from "node:fs";
+import { copyFileSync, renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
 
 // Externalize everything in `dependencies` + `peerDependencies` so transitive
@@ -58,6 +58,11 @@ if (
 console.log("📝 Generating TypeScript declarations...");
 // wallet tsconfig has noEmit: true — override with --noEmit false, set outDir + rootDir explicitly
 await $`tsc --emitDeclarationOnly --declaration --noEmit false --outDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
+
+// The runtime entry is dist/index.mjs. Keep the legacy .d.ts file for tooling
+// that reads package-level "types", and also emit the NodeNext-matching .d.mts
+// declaration so resolvers that pair .mjs with .d.mts do not fall back to any.
+copyFileSync("dist/index.d.ts", "dist/index.d.mts");
 
 console.log(
   `✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,

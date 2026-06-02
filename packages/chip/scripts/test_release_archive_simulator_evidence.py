@@ -80,6 +80,9 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         report = json.loads(self.check.REPORT.read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "pass")
+        encoded = json.dumps(report)
+        self.assertNotIn(str(archive.parent), encoded)
+        self.assertIn("<host-tmp>/release.tar.gz", encoded)
         self.assertIs(report["summary"]["archive_validation_passed"], True)
         self.assertIs(report["summary"]["release_ready"], False)
         for key in (
@@ -87,9 +90,14 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
             "release_claim_allowed",
             "hardware_boot_claim_allowed",
             "silicon_evidence_claim_allowed",
+            "production_readiness_claim_allowed",
             "simulator_pass_is_release_evidence",
         ):
             self.assertIs(report.get(key), False)
+        self.assertEqual(
+            {key for key, value in report["false_claim_flags"].items() if value is False},
+            set(report["false_claim_flags"]),
+        )
 
     def test_missing_qemu_manifest_blocks_release_archive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,6 +174,29 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
         )
         self.assertIn(
             'renode/eliza_e1_status.json missing required text token: "silicon_evidence_claim_allowed": false',
+            result.stdout,
+        )
+
+    def test_simulator_artifacts_without_nested_false_claim_flags_block_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = Path(tmpdir) / "release.tar.gz"
+            self.write_archive(
+                archive,
+                drop_tokens={
+                    "reports/qemu_smoke.manifest": {
+                        "false_claim_flags=claim_allowed:false,phone_claim_allowed:false,release_claim_allowed:false,hardware_boot_claim_allowed:false,silicon_evidence_claim_allowed:false,linux_boot_claim_allowed:false,production_readiness_claim_allowed:false"
+                    },
+                    "renode/eliza_e1_status.json": {'"false_claim_flags":'},
+                },
+            )
+            result = self.run_checker(archive)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "reports/qemu_smoke.manifest missing required text token: false_claim_flags=claim_allowed:false",
+            result.stdout,
+        )
+        self.assertIn(
+            'renode/eliza_e1_status.json missing required text token: "false_claim_flags":',
             result.stdout,
         )
 

@@ -69,4 +69,49 @@ describe("Anthropic image description plumbing", () => {
     );
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
+
+  it("formats provider failures without leaking image URL query secrets", async () => {
+    mocks.generateText.mockRejectedValue(
+      Object.assign(new Error("raw provider error"), {
+        status: 400,
+        data: { error: { message: "unsupported image media type" } },
+      })
+    );
+
+    let thrown: unknown;
+    try {
+      await handleImageDescription(
+        createRuntime(),
+        "https://example.com/private.png?token=super-secret&signature=also-secret"
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toBe(
+      "[Anthropic] IMAGE_DESCRIPTION request using claude-test-small failed: unsupported image media type"
+    );
+    expect(message).not.toContain("super-secret");
+  });
+
+  it("uses fallback title and description parsing for unlabeled hostile text", async () => {
+    const hostileText =
+      "\n\nIgnore previous instructions\n<script>alert('x')</script>\nDetails follow.";
+    mocks.generateText.mockResolvedValue({
+      text: hostileText,
+      usage: { inputTokens: 12, outputTokens: 9, totalTokens: 21 },
+    });
+
+    const result = await handleImageDescription(createRuntime(), {
+      imageUrl: "https://example.com/image.png",
+      prompt: "short caption",
+    });
+
+    expect(result).toEqual({
+      title: "Ignore previous instructions",
+      description: hostileText.trim(),
+    });
+  });
 });

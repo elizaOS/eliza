@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NAV_GROUPS } from "./LifeOpsNavRail.js";
 
 vi.mock("@elizaos/ui", () => ({
@@ -26,6 +26,25 @@ vi.mock("@elizaos/ui", () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
+  useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
+}));
+
+vi.mock("@elizaos/ui/agent-surface", () => ({
+  Sidebar: ({ children }: { children: ReactNode }) => <nav>{children}</nav>,
+  SidebarContent: {
+    RailItem: ({ children }: { children: ReactNode }) => (
+      <button type="button">{children}</button>
+    ),
+  },
+  SidebarPanel: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SidebarScrollRegion: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  TooltipHint: ({ children }: { children: ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
 }));
 
 vi.mock(
@@ -37,6 +56,10 @@ vi.mock(
 );
 
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("LifeOpsNavRail", () => {
   it("keeps health plugin pages out of primary LifeOps navigation", () => {
@@ -72,5 +95,23 @@ describe("LifeOpsNavRail", () => {
     ]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
+  });
+
+  it("keeps compact mode icon-led while preserving accessible destinations", () => {
+    const { container } = render(
+      <LifeOpsNavRail
+        activeSection="assistant"
+        onNavigate={() => undefined}
+        collapsible={false}
+        labelMode="active"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Assistant" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Overview" })).toBeTruthy();
+    expect(container.textContent).toContain("Assistant");
+    expect(container.textContent).not.toContain("Overview");
+    expect(container.textContent).not.toContain("Calendar");
+    expect(container.textContent).not.toContain("Settings");
   });
 });

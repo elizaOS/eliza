@@ -157,10 +157,6 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
   }),
 }));
 
-vi.mock("./components/voice/VoiceWaveform", () => ({
-  VoiceWaveform: () => <div data-testid="voice-waveform" />,
-}));
-
 vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
 }));

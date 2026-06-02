@@ -54,6 +54,7 @@ const DEFAULT_VOICE = "en-US-MichelleNeural";
 const DEFAULT_LANG = "en-US";
 const DEFAULT_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 const DEFAULT_TIMEOUT_MS = 30000;
+const MAX_TEXT_LENGTH = 5000;
 
 // Voice presets mapping common voice names to Edge TTS voices
 const VOICE_PRESETS: Record<string, string> = {
@@ -84,10 +85,19 @@ function getSetting(
 function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {
   const timeoutStr = getSetting(runtime, "EDGE_TTS_TIMEOUT_MS");
   const settings: EdgeTTSSettings = {
-    voice: getSetting(runtime, "EDGE_TTS_VOICE", DEFAULT_VOICE),
-    lang: getSetting(runtime, "EDGE_TTS_LANG", DEFAULT_LANG),
-    outputFormat: getSetting(runtime, "EDGE_TTS_OUTPUT_FORMAT", DEFAULT_OUTPUT_FORMAT),
-    timeoutMs: timeoutStr ? Number.parseInt(timeoutStr, 10) : DEFAULT_TIMEOUT_MS,
+    voice: requireNonEmptySetting(
+      "EDGE_TTS_VOICE",
+      getSetting(runtime, "EDGE_TTS_VOICE", DEFAULT_VOICE)
+    ),
+    lang: requireNonEmptySetting(
+      "EDGE_TTS_LANG",
+      getSetting(runtime, "EDGE_TTS_LANG", DEFAULT_LANG)
+    ),
+    outputFormat: requireNonEmptySetting(
+      "EDGE_TTS_OUTPUT_FORMAT",
+      getSetting(runtime, "EDGE_TTS_OUTPUT_FORMAT", DEFAULT_OUTPUT_FORMAT)
+    ),
+    timeoutMs: parseTimeoutMs(timeoutStr),
   };
   const rate = getSetting(runtime, "EDGE_TTS_RATE");
   if (rate !== undefined) settings.rate = rate;
@@ -98,6 +108,28 @@ function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {
   const proxy = getSetting(runtime, "EDGE_TTS_PROXY");
   if (proxy !== undefined) settings.proxy = proxy;
   return settings;
+}
+
+function requireNonEmptySetting(key: string, value: string): string {
+  if (value.trim().length === 0) {
+    throw new Error(`${key} must be a non-empty string`);
+  }
+  return value;
+}
+
+function parseTimeoutMs(value: string | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error("EDGE_TTS_TIMEOUT_MS must be a positive integer");
+  }
+  const timeoutMs = Number(normalized);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("EDGE_TTS_TIMEOUT_MS must be a positive integer");
+  }
+  return timeoutMs;
 }
 
 /**
@@ -120,8 +152,32 @@ function resolveVoice(voice: string | undefined, defaultVoice: string): string {
  */
 function speedToRate(speed: number | undefined): string | undefined {
   if (speed === undefined || speed === 1.0) return undefined;
+  if (!Number.isFinite(speed) || speed <= 0) {
+    throw new Error("TEXT_TO_SPEECH speed must be a positive finite number");
+  }
   const percentage = Math.round((speed - 1) * 100);
   return percentage >= 0 ? `+${percentage}%` : `${percentage}%`;
+}
+
+function normalizeEdgeTTSParams(input: string | EdgeTTSParams): EdgeTTSParams {
+  if (typeof input === "string") {
+    return { text: input };
+  }
+  if (!input || typeof input !== "object" || typeof input.text !== "string") {
+    throw new Error("TEXT_TO_SPEECH requires text to be a string");
+  }
+  return input;
+}
+
+function validateText(text: string, source: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`${source} requires non-empty text`);
+  }
+  if (trimmed.length > MAX_TEXT_LENGTH) {
+    throw new Error(`${source} text exceeds ${MAX_TEXT_LENGTH} character limit`);
+  }
+  return trimmed;
 }
 
 /**
@@ -240,19 +296,12 @@ export const edgeTTSPlugin: Plugin = {
       runtime: IAgentRuntime,
       input: string | EdgeTTSParams
     ): Promise<Buffer | ArrayBuffer | Uint8Array> => {
-      const params: EdgeTTSParams = typeof input === "string" ? { text: input } : input;
+      const inputParams = normalizeEdgeTTSParams(input);
       const settings = getEdgeTTSSettings(runtime);
 
       logger.log(`[EdgeTTS] Using TEXT_TO_SPEECH with voice: ${settings.voice}`);
 
-      if (params.text.trim().length === 0) {
-        throw new Error("TEXT_TO_SPEECH requires non-empty text");
-      }
-
-      // Edge TTS has a practical limit around 5000 characters
-      if (params.text.length > 5000) {
-        throw new Error("TEXT_TO_SPEECH text exceeds 5000 character limit");
-      }
+      const params = { ...inputParams, text: validateText(inputParams.text, "TEXT_TO_SPEECH") };
 
       try {
         const audioBuffer = await generateSpeech(settings, params);
@@ -378,15 +427,12 @@ export async function synthesizeEdgeSpeech(
   text: string,
   overrides: Omit<EdgeTTSParams, "text"> = {}
 ): Promise<Buffer> {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    throw new Error("synthesizeEdgeSpeech requires non-empty text");
+  if (typeof text !== "string") {
+    throw new Error("synthesizeEdgeSpeech requires text to be a string");
   }
-  if (trimmed.length > 5000) {
-    throw new Error("synthesizeEdgeSpeech text exceeds 5000 character limit");
-  }
+  const trimmed = validateText(text, "synthesizeEdgeSpeech");
   const settings = getEdgeTTSSettings(null);
-  return generateSpeech(settings, { text: trimmed, ...overrides });
+  return generateSpeech(settings, { ...overrides, text: trimmed });
 }
 
 // Re-export types
@@ -398,4 +444,5 @@ export const _test = {
   speedToRate,
   inferExtension,
   getEdgeTTSSettings,
+  normalizeEdgeTTSParams,
 };

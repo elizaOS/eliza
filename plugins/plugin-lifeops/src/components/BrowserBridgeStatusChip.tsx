@@ -1,10 +1,11 @@
 import { client } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type BrowserBridgeReadinessState,
   resolveBrowserBridgeReadiness,
-} from "../lifeops/browser-readiness.js";
+} from "@elizaos/plugin-browser";
+import { useCallback, useEffect, useState } from "react";
+import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { buildLifeOpsHash } from "../lifeops-route.js";
 
 const BROWSER_SETUP_PANEL_ID = "lifeops-browser-setup";
@@ -152,9 +153,18 @@ export function BrowserBridgeStatusChip({
     writeSetupHash();
     focusBrowserSetupPanel();
   }, [onNavigate]);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "overview-browser-status-chip",
+    role: "button",
+    label: descriptor.label,
+    group: "lifeops-overview",
+    status: state,
+    description: "Open the browser companion setup panel",
+  });
 
   return (
     <button
+      ref={ref}
       type="button"
       onClick={handleClick}
       aria-label={descriptor.label}
@@ -163,6 +173,7 @@ export function BrowserBridgeStatusChip({
       data-state={state}
       data-loaded={loaded ? "1" : "0"}
       className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-bg/30 transition-colors hover:bg-bg/50 ${descriptor.borderClass}`}
+      {...agentProps}
     >
       <span
         className={`h-2 w-2 rounded-full ${descriptor.dotClass}`}

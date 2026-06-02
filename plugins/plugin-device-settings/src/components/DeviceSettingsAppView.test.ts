@@ -42,6 +42,14 @@ import { DeviceSettingsAppView } from "./DeviceSettingsAppView";
 const t = (_key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? "";
 
+function overlayContext(exitToApps = vi.fn()) {
+  return {
+    exitToApps,
+    uiTheme: "light" as const,
+    t,
+  };
+}
+
 function mockBridge() {
   systemBridge.getDeviceSettings.mockResolvedValue({
     brightness: Number.NaN,
@@ -94,9 +102,7 @@ describe("DeviceSettingsAppView", () => {
   it("clamps hostile bridge brightness and volume values before writing them back", async () => {
     mockBridge();
 
-    render(
-      React.createElement(DeviceSettingsAppView, { exitToApps: vi.fn(), t }),
-    );
+    render(React.createElement(DeviceSettingsAppView, overlayContext()));
 
     const brightness = await screen.findByTestId("device-settings-brightness");
     expect((brightness as HTMLInputElement).value).toBe("0");
@@ -131,7 +137,9 @@ describe("DeviceSettingsAppView", () => {
     );
     const exitToApps = vi.fn();
 
-    render(React.createElement(DeviceSettingsAppView, { exitToApps, t }));
+    render(
+      React.createElement(DeviceSettingsAppView, overlayContext(exitToApps)),
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Back" }));
     expect(exitToApps).toHaveBeenCalledTimes(1);

@@ -43,6 +43,7 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
+  isDuplicateChatMessage,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -1477,6 +1478,7 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: chatMetadata,
+      clientMessageId,
     } = chatPayload;
 
     const runtime = state.runtime;
@@ -1484,6 +1486,36 @@ export async function handleConversationRoutes(
       disconnectTracker.markCompleted();
       disconnectTracker.dispose();
       error(res, "Agent is not running", 503);
+      return true;
+    }
+
+    // HTTP idempotency (report 05, Finding 1 / W3.1). A retried or
+    // double-submitted POST carries the same client-stamped `clientMessageId`;
+    // without an idempotency key (absent/invalid id) this is always false, so
+    // behavior is unchanged for those requests. On a duplicate within the TTL
+    // window we skip the second LLM turn entirely and return the same benign
+    // shape the client already tolerates for a no-op turn (an empty `done` with
+    // `noResponseReason: "ignored"`): the client drops the duplicate optimistic
+    // placeholder and re-syncs the original turn from the DB. No second
+    // generation runs and no duplicate assistant memory is persisted.
+    const clientMessageIdForLog = clientMessageId ?? null;
+    if (isDuplicateChatMessage(conv.roomId, clientMessageIdForLog)) {
+      logger.info(
+        {
+          conversationId: conv.id,
+          roomId: conv.roomId,
+          clientMessageId: clientMessageIdForLog,
+        },
+        "[ConversationStream] duplicate chat send suppressed (idempotent)",
+      );
+      initSse(res);
+      writeSseJson(res, {
+        type: "done",
+        fullText: "",
+        agentName: state.agentName,
+        noResponseReason: "ignored",
+      });
+      finishStreamResponse();
       return true;
     }
 
@@ -1820,12 +1852,36 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: restMetadata,
+      clientMessageId,
     } = chatPayload;
     const runtime = state.runtime;
     if (!runtime) {
       error(res, "Agent is not running", 503);
       return true;
     }
+
+    // HTTP idempotency (report 05, Finding 1 / W3.1) — same guard as the
+    // streaming path. Absent/invalid `clientMessageId` is never a duplicate, so
+    // unkeyed requests are unaffected. On a duplicate we skip the second LLM
+    // turn and return the no-op JSON shape this endpoint already produces.
+    const clientMessageIdForLog = clientMessageId ?? null;
+    if (isDuplicateChatMessage(conv.roomId, clientMessageIdForLog)) {
+      logger.info(
+        {
+          conversationId: conv.id,
+          roomId: conv.roomId,
+          clientMessageId: clientMessageIdForLog,
+        },
+        "[conversations] duplicate chat send suppressed (idempotent)",
+      );
+      json(res, {
+        text: "",
+        agentName: state.agentName,
+        noResponseReason: "ignored",
+      });
+      return true;
+    }
+
     const userId = ensureAdminEntityId(state);
     const turnStartedAt = Date.now();
 

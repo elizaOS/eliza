@@ -1,7 +1,10 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+  getBooleanValue,
+  getNumberValue,
   getPriorityNumberValue,
+  getRecordValue,
   getStringArrayValue,
   getStringValue,
   parseLinearPromptResponse,
@@ -34,6 +37,26 @@ describe("parseLinearPromptResponse", () => {
     expect(getStringArrayValue("clear all")).toEqual([]);
     expect(getPriorityNumberValue("urgent")).toBe(1);
     expect(getPriorityNumberValue("low")).toBe(4);
+  });
+
+  it("rejects hostile or malformed model values without leaking bogus fields", () => {
+    expect(parseLinearPromptResponse('["not", "an", "object"]')).toEqual({});
+    expect(parseLinearPromptResponse('{"title":"first"} trailing {"title":"second"}')).toEqual({});
+    expect(getRecordValue('{"updates":{"title":"Fix it"}}')).toEqual({
+      updates: { title: "Fix it" },
+    });
+    expect(getRecordValue('{"updates":')).toBeUndefined();
+    expect(getStringArrayValue(["bug, regression", null, 4, false])).toEqual([
+      "bug",
+      "regression",
+      "4",
+      "false",
+    ]);
+    expect(getStringArrayValue('"clear"')).toEqual([]);
+    expect(getBooleanValue("YES")).toBe(true);
+    expect(getBooleanValue("0")).toBeUndefined();
+    expect(getNumberValue("Infinity")).toBeUndefined();
+    expect(getPriorityNumberValue(0)).toBeUndefined();
   });
 
   it("fuzzes arbitrary model text as non-throwing object output", () => {

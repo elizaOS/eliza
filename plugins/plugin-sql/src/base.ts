@@ -1387,8 +1387,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     end?: number;
     roomId?: UUID;
     worldId?: UUID;
+    /**
+     * When `false`, skip fetching/materializing the embedding vector. List and
+     * browse callers discard embeddings, so fetching the 384-float column for
+     * every row (via the embeddingTable join) is pure waste. Defaults to `true`
+     * (embeddings included) to preserve existing behavior.
+     */
+    includeEmbedding?: boolean;
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
+    const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
@@ -1428,28 +1436,73 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.agentId, agentId));
       }
 
+      const memorySelect = {
+        id: memoryTable.id,
+        type: memoryTable.type,
+        createdAt: memoryTable.createdAt,
+        content: memoryTable.content,
+        entityId: memoryTable.entityId,
+        agentId: memoryTable.agentId,
+        roomId: memoryTable.roomId,
+        unique: memoryTable.unique,
+        metadata: memoryTable.metadata,
+      };
+      type SelectedMemory = {
+        id: string;
+        type: string;
+        createdAt: Date;
+        content: unknown;
+        entityId: string;
+        agentId: string;
+        roomId: string;
+        unique: boolean;
+        metadata: unknown;
+      };
+      const mapRow = (m: SelectedMemory, embedding: ArrayLike<number> | null | undefined) => ({
+        id: m.id as UUID,
+        type: m.type,
+        createdAt: m.createdAt.getTime(),
+        content: typeof m.content === "string" ? JSON.parse(m.content) : m.content,
+        entityId: m.entityId as UUID,
+        agentId: m.agentId as UUID,
+        roomId: m.roomId as UUID,
+        unique: m.unique,
+        metadata: m.metadata as MemoryMetadata,
+        embedding: embedding ? Array.from(embedding) : undefined,
+      });
+
+      if (includeEmbedding) {
+        const baseQuery = tx
+          .select({
+            memory: memorySelect,
+            embedding: embeddingTable[this.embeddingDimension],
+          })
+          .from(memoryTable)
+          .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+          .where(and(...conditions))
+          .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
+        const rows = await (async () => {
+          if (params.count && offset !== undefined && offset > 0) {
+            return baseQuery.limit(params.count).offset(offset);
+          } else if (params.count) {
+            return baseQuery.limit(params.count);
+          } else if (offset !== undefined && offset > 0) {
+            return baseQuery.offset(offset);
+          } else {
+            return baseQuery;
+          }
+        })();
+        return rows.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
+      }
+
+      // includeEmbedding === false: skip the embeddingTable join + column. The
+      // left join never filtered rows, so the result set is identical — only the
+      // 384-float vector is omitted (callers that requested this discard it).
       const baseQuery = tx
-        .select({
-          memory: {
-            id: memoryTable.id,
-            type: memoryTable.type,
-            createdAt: memoryTable.createdAt,
-            content: memoryTable.content,
-            entityId: memoryTable.entityId,
-            agentId: memoryTable.agentId,
-            roomId: memoryTable.roomId,
-            unique: memoryTable.unique,
-            metadata: memoryTable.metadata,
-          },
-          embedding: embeddingTable[this.embeddingDimension],
-        })
+        .select({ memory: memorySelect })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
-
-      // Apply limit and offset for pagination
-      // Build query conditionally to maintain proper types
       const rows = await (async () => {
         if (effectiveLimit && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
@@ -1461,22 +1514,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           return baseQuery;
         }
       })();
-
-      return rows.map((row) => ({
-        id: row.memory.id as UUID,
-        type: row.memory.type,
-        createdAt: row.memory.createdAt.getTime(),
-        content:
-          typeof row.memory.content === "string"
-            ? JSON.parse(row.memory.content)
-            : row.memory.content,
-        entityId: row.memory.entityId as UUID,
-        agentId: row.memory.agentId as UUID,
-        roomId: row.memory.roomId as UUID,
-        unique: row.memory.unique,
-        metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ? Array.from(row.embedding) : undefined,
-      }));
+      return rows.map((row) => mapRow(row.memory as SelectedMemory, undefined));
     });
   }
 

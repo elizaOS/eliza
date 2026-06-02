@@ -353,7 +353,7 @@
       "@elizaos/plugin-defense-of-the-agents": [
         "./plugins/plugin-defense-of-the-agents/dist/index.d.ts"
       ],
-      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],
+      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.mts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"
       ],

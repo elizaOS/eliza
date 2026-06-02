@@ -1,5 +1,11 @@
 schema: eliza.uma_coherency_validation_strategy.v1
 status: fail_closed_until_evidence
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
 scope: CPU, DMA, NPU, display, GPU or 2D engine, and Android userspace sharing one DRAM system.
 current_repo_status:
   memory_model: rtl/memory/e1_axi_lite_dram.sv

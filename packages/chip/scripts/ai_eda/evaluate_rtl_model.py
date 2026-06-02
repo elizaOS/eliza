@@ -207,6 +207,11 @@ def main() -> int:
             "model_quality_claim_allowed": False,
             "requires_human_review": True,
             "requires_deterministic_gates": True,
+            "false_claim_flags": {
+                "generated_rtl_committed": False,
+                "generated_rtl_enters_source": False,
+                "model_quality_claim_allowed": False,
+            },
         },
         "models": list(MODELS),
         "tasks": [task_entry(task) for task in TASKS],

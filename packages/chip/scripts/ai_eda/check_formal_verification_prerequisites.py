@@ -16,6 +16,10 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.formal_verification_prerequisites.v1"
 EXPECTED_CLAIM_BOUNDARY = "formal_verification_prerequisites_only_no_proof_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "formal_proof_claim_allowed": False,
+}
 REQUIRED_TOOLS = {"sby", "yosys", "yosys-smtbmc", "z3", "boolector", "bitwuzla", "abc"}
 
 
@@ -79,6 +83,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("formal_proof_claim_allowed") is not False:
         errors.append("formal_proof_claim_allowed must be false for prerequisites")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied formal prerequisite claims")
     if report.get("status") not in {
         "READY_FOR_STRICT_FORMAL_HOST",
         "BLOCKED_FORMAL_PREREQUISITES",

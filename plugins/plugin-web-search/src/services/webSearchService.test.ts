@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SearchOptions } from "../types";
 import { WebSearchService } from "./webSearchService";
 
 const searchMock = vi.hoisted(() => vi.fn());
@@ -24,16 +25,24 @@ describe("WebSearchService", () => {
         tavilyMock.mockClear();
     });
 
-    it("boots inert without TAVILY_API_KEY and throws on search", async () => {
-        // Graceful degradation: missing key must NOT crash agent boot. The
-        // service starts unconfigured (no Tavily client) and reports an honest,
-        // recoverable error only when search() is actually invoked.
+    it("starts inert without TAVILY_API_KEY and trims configured keys", async () => {
+        // Graceful degradation: missing/blank keys must NOT crash agent boot.
         const inert = await WebSearchService.start(runtime({}));
+        await expect(inert.search("anything")).rejects.toThrow(
+            "Web search is not configured: set TAVILY_API_KEY to enable it."
+        );
+        const blank = await WebSearchService.start(runtime({ TAVILY_API_KEY: "  " }));
+        await expect(blank.search("eliza")).rejects.toThrow(
+            "Web search is not configured: set TAVILY_API_KEY to enable it."
+        );
         expect(tavilyMock).not.toHaveBeenCalled();
-        await expect(inert.search("anything")).rejects.toThrow("Web search is not configured");
 
         await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
         expect(tavilyMock).toHaveBeenCalledWith({ apiKey: "tvly-test" });
+
+        tavilyMock.mockClear();
+        await WebSearchService.start(runtime({ TAVILY_API_KEY: "  tvly-trimmed  " }));
+        expect(tavilyMock).toHaveBeenCalledWith({ apiKey: "tvly-trimmed" });
     });
 
     it("maps search options to Tavily and normalizes sparse results", async () => {
@@ -108,6 +117,37 @@ describe("WebSearchService", () => {
             includeImages: true,
             days: 10,
         });
+    });
+
+    it("rejects malformed search queries and options before Tavily calls", async () => {
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        await expect(service.search(" \n\t ")).rejects.toThrow("search query is required");
+        await expect(service.search(42 as unknown as string)).rejects.toThrow(
+            "search query is required"
+        );
+        await expect(
+            service.search("eliza", "limit=3" as unknown as SearchOptions)
+        ).rejects.toThrow("search options must be an object");
+        await expect(service.search("eliza", { limit: 0 })).rejects.toThrow(
+            "limit must be a positive finite integer"
+        );
+        await expect(service.search("eliza", { limit: 1.5 })).rejects.toThrow(
+            "limit must be a positive finite integer"
+        );
+        await expect(service.search("eliza", { days: Number.POSITIVE_INFINITY })).rejects.toThrow(
+            "days must be a non-negative finite integer"
+        );
+        await expect(
+            service.search("eliza", { topic: "javascript:alert(1)" } as unknown as SearchOptions)
+        ).rejects.toThrow("topic must be general or news");
+        await expect(
+            service.search("eliza", { searchDepth: "deep" } as unknown as SearchOptions)
+        ).rejects.toThrow("searchDepth must be basic or advanced");
+        await expect(
+            service.search("eliza", { includeImages: "true" } as unknown as SearchOptions)
+        ).rejects.toThrow("includeImages must be a boolean");
+        expect(searchMock).not.toHaveBeenCalled();
     });
 
     it("maps news freshness and image searches through the shared search path", async () => {

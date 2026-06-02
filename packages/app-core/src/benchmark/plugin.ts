@@ -8,7 +8,12 @@
  *
  * @module benchmark/plugin
  */
-import { type ActionParameter, logger, type Plugin } from "@elizaos/core";
+import {
+  type Action,
+  type ActionParameter,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Benchmark context (module-level shared state, set per-request by the server)
@@ -1506,92 +1511,98 @@ export function createBenchmarkPlugin(): Plugin {
           },
         ],
       },
-      ...VENDING_BENCHMARK_ACTION_NAMES.map((name) => ({
-        name,
-        contextGate: {},
-        roleGate: { minRole: "NONE" as const },
-        suppressPostActionContinuation: true,
-        similes: [],
-        description:
-          "Vending-Bench compatibility action. Captures one vending simulator action for the benchmark environment.",
-        validate: async () => isVendingBenchmarkContext(),
-        handler: async (_runtime, _message, _state, options) => {
-          const params = extractActionParameters(options);
-          logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
-          const capturedAction = recordCapturedAction({
-            toolName: name,
-            arguments: params,
-            params: { tool_name: name, arguments: params },
-          });
-          return {
-            text: `Benchmark vending action captured: ${name}`,
-            success: true,
-            continueChain: false,
-            values: { captured: true },
-            data: { action: capturedAction },
-          };
-        },
-        parameters: [],
-      })),
-      ...LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
-        name,
-        contextGate: {},
-        roleGate: { minRole: "NONE" as const },
-        suppressPostActionContinuation: true,
-        similes: [],
-        description: lifeOpsBenchmarkToolDescription(name),
-        routingHint:
-          name.startsWith("MESSAGE") || name.startsWith("ARCHIVE_")
-            ? "PERSONAL_ASSISTANT: inbox/email/Gmail/chat/thread/archive/read/draft/send -> MESSAGE or ARCHIVE_THREAD; do not use MEMORY."
-            : "PERSONAL_ASSISTANT: calendar/event/availability/schedule -> CALENDAR.",
-        allowAdditionalParameters: true,
-        validate: async () => true,
-        handler: async (_runtime, _message, _state, options) => {
-          const params = stripRuntimeActionContext(
-            extractActionParameters(options),
-          );
-          logger.debug(`[${name}] params:`, JSON.stringify(params));
-          const capturedAction = recordCapturedAction(
-            captureLifeOpsBenchmarkToolAction(name, params),
-          );
-          return {
-            text: `Benchmark LifeOps action captured: ${name}`,
-            success: true,
-            continueChain: false,
-            values: { captured: true },
-            data: { action: capturedAction },
-          };
-        },
-        parameters: LIFEOPS_BENCHMARK_TOOL_PARAMETERS,
-      })),
-      ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
-        name,
-        contextGate: {},
-        roleGate: { minRole: "NONE" as const },
-        suppressPostActionContinuation: true,
-        similes: [],
-        description:
-          "LOCA-bench compatibility action. Captures a planner-emitted MCP tool call for the Python LOCA runner.",
-        allowAdditionalParameters: true,
-        validate: async () => isLocaBenchmarkContext(),
-        handler: async (_runtime, _message, _state, options) => {
-          const params = stripRuntimeActionContext(
-            extractActionParameters(options),
-          );
-          logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
-          const capturedAction = recordCapturedAction(
-            captureNamedBenchmarkToolAction(name, params),
-          );
-          return {
-            text: `Benchmark LOCA action captured: ${name}`,
-            success: true,
-            continueChain: false,
-            values: { captured: true },
-            data: { action: capturedAction },
-          };
-        },
-        parameters: locaBenchmarkToolParametersFor(name),
-      })),
+      ...VENDING_BENCHMARK_ACTION_NAMES.map(
+        (name): Action => ({
+          name,
+          contextGate: {},
+          roleGate: { minRole: "NONE" as const },
+          suppressPostActionContinuation: true,
+          similes: [],
+          description:
+            "Vending-Bench compatibility action. Captures one vending simulator action for the benchmark environment.",
+          validate: async () => isVendingBenchmarkContext(),
+          handler: async (_runtime, _message, _state, options) => {
+            const params = extractActionParameters(options);
+            logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
+            const capturedAction = recordCapturedAction({
+              toolName: name,
+              arguments: params,
+              params: { tool_name: name, arguments: params },
+            });
+            return {
+              text: `Benchmark vending action captured: ${name}`,
+              success: true,
+              continueChain: false,
+              values: { captured: true },
+              data: { action: capturedAction },
+            };
+          },
+          parameters: [],
+        }),
+      ),
+      ...LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES.map(
+        (name): Action => ({
+          name,
+          contextGate: {},
+          roleGate: { minRole: "NONE" as const },
+          suppressPostActionContinuation: true,
+          similes: [],
+          description: lifeOpsBenchmarkToolDescription(name),
+          routingHint:
+            name.startsWith("MESSAGE") || name.startsWith("ARCHIVE_")
+              ? "PERSONAL_ASSISTANT: inbox/email/Gmail/chat/thread/archive/read/draft/send -> MESSAGE or ARCHIVE_THREAD; do not use MEMORY."
+              : "PERSONAL_ASSISTANT: calendar/event/availability/schedule -> CALENDAR.",
+          allowAdditionalParameters: true,
+          validate: async () => true,
+          handler: async (_runtime, _message, _state, options) => {
+            const params = stripRuntimeActionContext(
+              extractActionParameters(options),
+            );
+            logger.debug(`[${name}] params:`, JSON.stringify(params));
+            const capturedAction = recordCapturedAction(
+              captureLifeOpsBenchmarkToolAction(name, params),
+            );
+            return {
+              text: `Benchmark LifeOps action captured: ${name}`,
+              success: true,
+              continueChain: false,
+              values: { captured: true },
+              data: { action: capturedAction },
+            };
+          },
+          parameters: LIFEOPS_BENCHMARK_TOOL_PARAMETERS,
+        }),
+      ),
+      ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map(
+        (name): Action => ({
+          name,
+          contextGate: {},
+          roleGate: { minRole: "NONE" as const },
+          suppressPostActionContinuation: true,
+          similes: [],
+          description:
+            "LOCA-bench compatibility action. Captures a planner-emitted MCP tool call for the Python LOCA runner.",
+          allowAdditionalParameters: true,
+          validate: async () => isLocaBenchmarkContext(),
+          handler: async (_runtime, _message, _state, options) => {
+            const params = stripRuntimeActionContext(
+              extractActionParameters(options),
+            );
+            logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
+            const capturedAction = recordCapturedAction(
+              captureNamedBenchmarkToolAction(name, params),
+            );
+            return {
+              text: `Benchmark LOCA action captured: ${name}`,
+              success: true,
+              continueChain: false,
+              values: { captured: true },
+              data: { action: capturedAction },
+            };
+          },
+          parameters: locaBenchmarkToolParametersFor(name),
+        }),
+      ),
     ],
   };
 }

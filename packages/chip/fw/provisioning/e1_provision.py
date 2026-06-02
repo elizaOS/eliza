@@ -32,8 +32,8 @@ It is NOT silicon. The real ATE writer is a hard physical dependency:
 The `RealAteWriter` protocol below names that boundary explicitly; this module
 ships only `ModelOtpArray`, which raises if asked to behave like silicon.
 
-Ed25519 for the RMA signed authorization is real (cryptography library), not a
-stub — an unforged OEM signature is required to enter RMA.
+Ed25519 for the RMA signed authorization is real (cryptography library). An
+unforged OEM signature is required to enter RMA.
 """
 
 from __future__ import annotations

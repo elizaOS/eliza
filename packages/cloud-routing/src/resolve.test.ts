@@ -10,6 +10,7 @@ import {
   isFeature,
   isFeaturePolicy,
 } from "./features.ts";
+import * as publicApi from "./index.ts";
 import {
   cloudServiceApisBaseUrl,
   getFeaturePolicy,
@@ -73,6 +74,22 @@ describe("resolveCloudRoute", () => {
     ).toMatchObject({
       source: "cloud-proxy",
       baseUrl: "https://cloud.example.com/api/v1/apis/quotes",
+      headers: { Authorization: "Bearer cloud-secret" },
+    });
+  });
+
+  it("uses the production cloud API base URL when no override is configured", () => {
+    expect(
+      resolveCloudRoute(
+        runtime({
+          ELIZAOS_CLOUD_API_KEY: "cloud-secret",
+          ELIZAOS_CLOUD_ENABLED: true,
+        }),
+        spec,
+      ),
+    ).toMatchObject({
+      source: "cloud-proxy",
+      baseUrl: "https://www.elizacloud.ai/api/v1/apis/quotes",
       headers: { Authorization: "Bearer cloud-secret" },
     });
   });
@@ -234,6 +251,43 @@ describe("cloud routing helpers", () => {
 });
 
 describe("per-feature routing registry", () => {
+  it("exports the public package contract through the barrel", () => {
+    expect(publicApi.FEATURES).toBe(FEATURES);
+    expect(publicApi.FEATURE_IDS).toBe(FEATURE_IDS);
+    expect(publicApi.FEATURE_POLICIES).toEqual(["local", "cloud", "auto"]);
+    expect(publicApi.resolveCloudRoute).toBe(resolveCloudRoute);
+    expect(publicApi.resolveFeatureCloudRoute).toBe(resolveFeatureCloudRoute);
+    expect(publicApi.cloudServiceApisBaseUrl).toBe(cloudServiceApisBaseUrl);
+    expect(publicApi.toRuntimeSettings).toBe(toRuntimeSettings);
+
+    const route = publicApi.resolveCloudRoute(
+      runtime({ QUOTES_API_KEY: "local-secret" }),
+      spec,
+    );
+    expect(route.source).toBe("local-key");
+  });
+
+  it("exposes the exact feature registry and setting-key contract", () => {
+    expect(FEATURES.map(({ id, settingKey }) => ({ id, settingKey }))).toEqual([
+      { id: "llm", settingKey: "ELIZAOS_CLOUD_ROUTING_LLM" },
+      { id: "rpc", settingKey: "ELIZAOS_CLOUD_ROUTING_RPC" },
+      { id: "tool_use", settingKey: "ELIZAOS_CLOUD_ROUTING_TOOL_USE" },
+      { id: "embeddings", settingKey: "ELIZAOS_CLOUD_ROUTING_EMBEDDINGS" },
+      { id: "media", settingKey: "ELIZAOS_CLOUD_ROUTING_MEDIA" },
+      { id: "tts", settingKey: "ELIZAOS_CLOUD_ROUTING_TTS" },
+      { id: "stt", settingKey: "ELIZAOS_CLOUD_ROUTING_STT" },
+    ]);
+    expect(FEATURE_IDS).toEqual([
+      "llm",
+      "rpc",
+      "tool_use",
+      "embeddings",
+      "media",
+      "tts",
+      "stt",
+    ]);
+  });
+
   it("exposes a non-empty, type-tagged feature list", () => {
     expect(FEATURES.length).toBeGreaterThan(0);
     expect(FEATURE_IDS).toContain("llm");
@@ -271,6 +325,17 @@ describe("per-feature routing registry", () => {
 });
 
 describe("getFeaturePolicy", () => {
+  it("reads every registered feature setting key", () => {
+    for (const feature of FEATURES) {
+      expect(
+        getFeaturePolicy(
+          runtime({ [feature.settingKey]: "cloud" }),
+          feature.id,
+        ),
+      ).toBe("cloud");
+    }
+  });
+
   it("returns the persisted policy for a known feature", () => {
     expect(
       getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }), "llm"),

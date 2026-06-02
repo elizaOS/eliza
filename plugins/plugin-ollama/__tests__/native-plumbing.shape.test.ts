@@ -43,6 +43,19 @@ function createRuntime() {
   return runtime as IAgentRuntime;
 }
 
+function createRuntimeWithEvents() {
+  const events: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const runtime = {
+    character: { system: "system prompt" },
+    emitEvent: vi.fn(async (event: string, payload: Record<string, unknown>) => {
+      events.push({ event, payload });
+    }),
+    getSetting: vi.fn(() => undefined),
+  };
+
+  return { runtime: runtime as unknown as IAgentRuntime, events };
+}
+
 function expectGenerateTextResult(value: unknown): asserts value is GenerateTextResult {
   expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
@@ -121,6 +134,17 @@ describe("Ollama native text plumbing", () => {
     });
   });
 
+  it("rejects malformed array tool definitions before calling the provider", async () => {
+    const result = await handleTextSmall(createRuntime(), {
+      prompt: "use a broken tool",
+      tools: [{ description: "missing name", parameters: { type: "object" } }],
+    } as never);
+
+    expect(result).toBe("Error generating text. Please try again later.");
+    expect(generateTextMock).not.toHaveBeenCalled();
+    expect(streamTextMock).not.toHaveBeenCalled();
+  });
+
   it("forwards toolChoice when tools are present", async () => {
     generateTextMock.mockResolvedValue({
       text: "",
@@ -180,6 +204,62 @@ describe("Ollama native text plumbing", () => {
     expect(callArg.prompt).toBeUndefined();
     expect(result.text).toBe("hello");
     expect(result.toolCalls).toEqual([]);
+  });
+
+  it("normalizes hostile/non-string message content without dropping tool history", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    });
+
+    await handleTextSmall(createRuntime(), {
+      messages: [
+        { role: "system", content: { nested: "system", injection: "</system>" } },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call-1",
+              function: { name: "lookup", arguments: '{"q":"quote \\" and </tool>"}' },
+            },
+            { id: "bad-call", function: { arguments: '{"missing":"name"}' } },
+          ],
+        },
+        { role: "tool", toolCallId: "call-1", name: "lookup", content: '{"ok":true}' },
+        { role: "user", content: null, providerOptions: "not-an-object" },
+      ],
+    } as never);
+
+    const callArg = generateTextMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.messages).toEqual([
+      { role: "system", content: '{"nested":"system","injection":"</system>"}' },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "lookup",
+            input: { q: 'quote " and </tool>' },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "lookup",
+            output: { type: "json", value: { ok: true } },
+          },
+        ],
+      },
+      { role: "user", content: "" },
+    ]);
   });
 
   it("omits stopSequences when the array is empty", async () => {
@@ -398,6 +478,40 @@ describe("Ollama native text plumbing", () => {
     }
     expect(chunks).toEqual(["a", "b"]);
     await expect(stream.text).resolves.toBe("ab");
+  });
+
+  it("emits MODEL_USED once after a successful plain stream is fully consumed", async () => {
+    streamTextMock.mockImplementation(() => ({
+      textStream: (async function* () {
+        yield "a";
+        yield "b";
+      })(),
+      text: Promise.resolve("ab"),
+      usage: Promise.resolve({ inputTokens: 3, outputTokens: 4 }),
+      finishReason: Promise.resolve("stop"),
+    }));
+    const { runtime, events } = createRuntimeWithEvents();
+
+    const result = (await handleTextSmall(runtime, {
+      prompt: "hello",
+      stream: true,
+    } as never)) as TextStreamResult;
+
+    expect(events).toHaveLength(0);
+    for await (const _ of result.textStream) {
+      // drain stream to trigger usage accounting
+    }
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event: "MODEL_USED",
+      payload: {
+        source: "ollama",
+        provider: "ollama",
+        type: "TEXT_SMALL",
+        model: "eliza-1-2b",
+        tokens: { prompt: 3, completion: 4, total: 7 },
+      },
+    });
   });
 
   it("handles rejected stream promises when plain textStream fails before callers await usage", async () => {

@@ -116,3 +116,38 @@ Per-device steps on the manufacturing line, lifecycle = MFG:
 - `boot-image-format.md` §3 key ladder, §4 rollback
 - `otp-fuse-map.md` fuse allocation
 - `test-plan.md` cases TC-MFG-*, TC-SIGNER-*
+
+## 9. Machine-checkable evidence contract
+
+This document is allowed to remain a pre-silicon operating contract only when
+it explicitly refuses production claims and names the artifacts required to
+promote it. It is not production key-ceremony evidence by itself.
+
+### Non-claim flags
+
+| Flag | Value |
+|---|---|
+| release_claim_allowed | false |
+| secure_boot_claim_allowed | false |
+| silicon_secure_boot_claim_allowed | false |
+
+### Required production evidence
+
+Production promotion requires all of these machine-checkable evidence records:
+
+- HSM attestation bundle: vendor certificate chain, FIPS validation reference,
+  firmware version, device serial, and tamper-seal IDs.
+- Ceremony transcript: signed agenda, participant role roster, witness
+  signatures, video-log digest, and timestamped root-key generation transcript.
+- Public-key digest manifest: `R.pub`, SHA-256 digest, OTP root-key-hash
+  candidate, and release-manifest binding.
+- Signer audit export: append-only log snapshot with sequence numbers, HSM
+  serials, signer-host attestation quotes, request image hashes, and Merkle
+  root.
+- Provisioning sample log: device UID, programmed OTP fields, readback result,
+  lifecycle transition record, and scrap-bin disposition for any mismatch.
+- Revocation drill record: test key revocation list, OTA distribution proof,
+  rollback-index update, and verifier rejection transcript.
+
+The boot-security checker may treat this file as contract-backed only while the
+non-claim flags and required production evidence section remain present.

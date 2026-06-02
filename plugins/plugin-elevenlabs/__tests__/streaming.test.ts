@@ -216,6 +216,30 @@ describe("plugin-elevenlabs TTS streaming", () => {
       ),
     ).rejects.toThrow(/upstream 503/);
   });
+
+  it.each([
+    "",
+    " \n\t ",
+    null,
+    { text: "" },
+    { text: "hello", voiceId: " " },
+    { text: "hello", model: "" },
+    { text: "hello", format: "\t" },
+  ])("rejects hostile TTS input before streaming %#", async (input) => {
+    streamMock.mockReset();
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      ttsHandler?.(
+        runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+        input as never,
+      ),
+    ).rejects.toThrow(/ElevenLabs TTS .*required|must be a non-empty string/);
+    expect(streamMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("plugin-elevenlabs STT transcription", () => {
@@ -317,6 +341,38 @@ describe("plugin-elevenlabs STT transcription", () => {
     ).rejects.toThrow(
       "Failed to fetch audio from URL: https://audio.example/missing.wav",
     );
+    expect(convertMock).not.toHaveBeenCalled();
+
+    restoreFetch();
+  });
+
+  it.each([
+    "",
+    "not a url",
+    "file:///etc/passwd",
+    "data:audio/wav;base64,AAAA",
+    { audioUrl: "javascript:alert(1)" },
+    { audioUrl: " " },
+    null,
+    {},
+  ])("rejects hostile transcription URL input before fetch %#", async (input) => {
+    convertMock.mockReset();
+    const fetchMock = vi.fn();
+    const restoreFetch = setGlobalValue("fetch", fetchMock);
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createFakeRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        input as never,
+      ),
+    ).rejects.toThrow(/audioUrl|Invalid input type/);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(convertMock).not.toHaveBeenCalled();
 
     restoreFetch();

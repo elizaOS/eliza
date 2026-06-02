@@ -37,5 +37,9 @@ describe("plugin remote contract", () => {
       fsAllowlist: ["."],
       process: true,
     });
+    expect(plugin.remote.permissions.bun.env).toEqual([
+      "ANTHROPIC_API_KEY",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+    ]);
   });
 });

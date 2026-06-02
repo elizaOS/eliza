@@ -9,6 +9,7 @@ blockers when proof cannot be produced from this machine.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import shutil
 import subprocess
@@ -26,6 +27,22 @@ CAPTURE_COMMANDS = {
     ),
     "dma_trace": "adb shell cat /sys/bus/platform/devices/10020000.npu/dma_trace",
 }
+PROOF_CAPTURE_COMMAND = (
+    "E1_NPU_WRITE_PROOF_JSON=1 "
+    "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
+    "E1_NPU_CYCLES=<measured-cycles> "
+    "E1_NPU_HZ=<measured-hz> "
+    "E1_NPU_DMA_BYTES_READ=<measured-bytes-read> "
+    "E1_NPU_DMA_BYTES_WRITTEN=<measured-bytes-written> "
+    "E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes> "
+    "E1_NPU_NNAPI_TOTAL_NODE_COUNT=<measured-total-nodes> "
+    "E1_NPU_CPU_FALLBACK_PERCENT=0 "
+    "E1_NPU_UNSUPPORTED_OP_COUNT=0 "
+    "E1_NPU_DATAFLOW_NAME=<measured-dataflow> "
+    "E1_NPU_GENERATED_BY=<operator-or-job-id> "
+    "E1_NPU_TARGET=<target-id> "
+    "scripts/android/capture_e1_npu_nnapi_evidence.sh"
+)
 DEFAULT_STATUS_JSON = Path("build/reports/e1_npu_nnapi_proof_readiness.json")
 
 
@@ -158,6 +175,10 @@ def blocker_code(blocker: dict[str, Any]) -> str:
 def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     seen: set[str] = set()
+    commands = proof_next_commands()
+    next_command = next(
+        command for command in commands if "capture_e1_npu_nnapi_evidence.sh" in command
+    )
     for blocker in local_blockers:
         code = blocker_code(blocker)
         if code in seen:
@@ -180,9 +201,36 @@ def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, 
                     "resolution",
                     "Capture the required e1-npu NNAPI target proof and rerun make e1-npu-nnapi-proof-check.",
                 ),
+                "next_command": next_command,
+                "next_commands": commands,
             }
         )
     return findings
+
+
+def proof_next_commands() -> list[str]:
+    return [
+        CAPTURE_COMMANDS["adb_devices"],
+        PROOF_CAPTURE_COMMAND,
+        "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
+    ]
+
+
+def next_command_plan() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "e1_npu_nnapi_target_proof_capture",
+            "area": "npu",
+            "source": "packages/chip/build/reports/e1_npu_nnapi_proof_readiness.json",
+            "claim_boundary": "operator_commands_only_not_nnapi_acceleration_or_release_evidence",
+            "commands": proof_next_commands(),
+            "requires": [
+                "booted Android target exposing a real e1-npu NNAPI accelerator",
+                "measured MAC, cycle, clock, DMA, delegated-node, and fallback counters",
+                "rerun of the NNAPI proof readiness checker after capture",
+            ],
+        }
+    ]
 
 
 def main(argv: list[str]) -> int:
@@ -255,6 +303,11 @@ def main(argv: list[str]) -> int:
 
     status = {
         "schema": "eliza.e1_npu_nnapi_proof_readiness.v1",
+        "claim_boundary": "readiness_status_only_not_nnapi_acceleration_or_release_evidence",
+        "generated_utc": dt.datetime.now(dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "benchmark": "tflite_e1_npu",
         "status": "proof_valid" if artifact_status.get("available") else "blocked",
         "proof_json_state": proof_json_state(artifact_status),
@@ -269,6 +322,7 @@ def main(argv: list[str]) -> int:
         "dependencies": dependencies,
         "local_blockers": local_blockers,
         "findings": structured_findings(local_blockers),
+        "next_command_plan": next_command_plan(),
         "adb_probe": probe,
         "required_capture_commands": CAPTURE_COMMANDS,
     }

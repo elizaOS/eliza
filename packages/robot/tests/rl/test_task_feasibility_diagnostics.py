@@ -176,6 +176,42 @@ def test_success_predicate_diagnostics_reports_foot_contact_switches() -> None:
     ]
 
 
+def test_success_predicate_diagnostics_reports_required_foot_contact() -> None:
+    rows = _success_predicate_diagnostics(
+        success={
+            "left_foot_contact_required": False,
+            "right_foot_contact_required": True,
+        },
+        final_info={},
+        traces={
+            "torso_z": [],
+            "delta_x": [],
+            "delta_y": [],
+            "delta_yaw": [],
+            "left_foot_contact": [1.0, 0.0],
+            "right_foot_contact": [0.0, 1.0],
+        },
+        start_torso_z_m=0.16,
+        stand_height_m=0.27,
+        elapsed_s=0.5,
+    )
+
+    assert rows == [
+        {
+            "predicate": "left_foot_contact_required",
+            "expected": False,
+            "actual": False,
+            "unmet": False,
+        },
+        {
+            "predicate": "right_foot_contact_required",
+            "expected": True,
+            "actual": True,
+            "unmet": False,
+        },
+    ]
+
+
 def test_success_predicate_diagnostics_prefers_tracked_motion_but_torso_height() -> None:
     rows = _success_predicate_diagnostics(
         success={

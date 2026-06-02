@@ -62,6 +62,10 @@ def _load_manifest(ckpt_dir: Path, *, strict: bool = False) -> CheckpointManifes
                 f"checkpoint manifest {ckpt_dir / 'manifest.json'} is missing "
                 f"required production field(s): {', '.join(missing)}"
             )
+    action_scale = raw.get("action_scale")
+    schedule = raw.get("action_scale_schedule")
+    if isinstance(schedule, dict) and schedule.get("final_scale") is not None:
+        action_scale = schedule["final_scale"]
     return CheckpointManifest(
         regime=raw["regime"],
         curriculum_version=int(raw["curriculum_version"]),
@@ -90,7 +94,7 @@ def _load_manifest(ckpt_dir: Path, *, strict: bool = False) -> CheckpointManifes
         ),
         normalize_observations=bool(raw.get("normalize_observations", True)),
         action_scale=(
-            float(raw["action_scale"]) if raw.get("action_scale") is not None else None
+            float(action_scale) if action_scale is not None else None
         ),
     )
 

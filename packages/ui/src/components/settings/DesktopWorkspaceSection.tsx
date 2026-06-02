@@ -6,8 +6,10 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
@@ -36,6 +38,48 @@ import {
 import { useDesktopWindowControls } from "./useDesktopWindowControls";
 
 export { DESKTOP_WORKSPACE_CLICK_AUDIT } from "./desktop-workspace-audit-config";
+
+function WorkspaceActionButton({
+  agentId,
+  label,
+  group,
+  variant = "outline",
+  className = "min-h-9 justify-start whitespace-normal text-left sm:min-h-10",
+  disabled,
+  onClick,
+  children,
+}: {
+  agentId: string;
+  label: string;
+  group: string;
+  variant?: "outline" | "default";
+  className?: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group,
+    status: disabled ? "inactive" : "active",
+    onActivate: onClick,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size="sm"
+      className={className}
+      disabled={disabled}
+      onClick={onClick}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}
 
 function buildDesktopDiagnosticsBundle(options: {
   diagnosticsText: string;
@@ -176,7 +220,14 @@ export function DesktopWorkspaceSection({
     }
   }, [desktopRuntime]);
 
+  const documentVisible = useDocumentVisibility();
   useEffect(() => {
+    // The 2s dev-diagnostics poll (/api/dev/stack + /api/dev/console-log) is
+    // aggressive; run it only while the document is visible so a backgrounded
+    // window stops polling entirely. Refreshes once on becoming visible.
+    if (!documentVisible) {
+      return;
+    }
     void refreshDevDiagnostics();
     if (!desktopRuntime) {
       return;
@@ -189,7 +240,7 @@ export function DesktopWorkspaceSection({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [desktopRuntime, refreshDevDiagnostics]);
+  }, [desktopRuntime, documentVisible, refreshDevDiagnostics]);
 
   const runAction = useCallback(
     async (
@@ -277,6 +328,27 @@ export function DesktopWorkspaceSection({
     setActionError(null);
   }, [diagnosticsText, devConsoleText, devStackText, t]);
 
+  const { ref: consoleFilterRef, agentProps: consoleFilterAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "desktop-console-filter",
+      role: "textarea",
+      label: t("desktopworkspacesection.console.filterPlaceholder", {
+        defaultValue: "Filter console lines (e.g. rpc, fetch, talkmode, 404)",
+      }),
+      group: "desktop-console",
+      getValue: () => devConsoleFilter,
+      onFill: setDevConsoleFilter,
+    });
+  const { ref: clipboardDraftRef, agentProps: clipboardDraftAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "desktop-clipboard-draft",
+      role: "textarea",
+      label: t("desktopworkspacesection.ClipboardDraft"),
+      group: "desktop-clipboard",
+      getValue: () => clipboardDraft,
+      onFill: setClipboardDraft,
+    });
+
   if (!desktopRuntime) {
     return (
       <ContentLayout contentHeader={contentHeader}>
@@ -292,25 +364,27 @@ export function DesktopWorkspaceSection({
   return (
     <ContentLayout contentHeader={contentHeader} contentClassName="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+        <WorkspaceActionButton
+          agentId="desktop-refresh-diagnostics"
+          label={t("desktopworkspacesection.RefreshDiagnostics")}
+          group="desktop-toolbar"
+          disabled={loading}
           onClick={() => {
             void refreshSnapshot();
             void refreshDevDiagnostics();
           }}
-          disabled={loading}
         >
           <RefreshCw
             className={`mr-1 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
           />
           {t("desktopworkspacesection.RefreshDiagnostics")}
-        </Button>
-        <Button
+        </WorkspaceActionButton>
+        <WorkspaceActionButton
+          agentId="desktop-open-settings-window"
+          label={t("desktopworkspacesection.OpenDesktopSettingsWindow")}
+          group="desktop-toolbar"
           variant="default"
-          size="sm"
-          className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+          disabled={busyAction === "desktop-open-settings-window"}
           onClick={() =>
             void runAction(
               "desktop-open-settings-window",
@@ -319,11 +393,10 @@ export function DesktopWorkspaceSection({
               false,
             )
           }
-          disabled={busyAction === "desktop-open-settings-window"}
         >
           <Monitor className="mr-1 h-3.5 w-3.5" />
           {t("desktopworkspacesection.OpenDesktopSettingsWindow")}
-        </Button>
+        </WorkspaceActionButton>
       </div>
 
       {(actionError || actionMessage) && (
@@ -358,36 +431,42 @@ export function DesktopWorkspaceSection({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              <WorkspaceActionButton
+                agentId="desktop-refresh-logs"
+                label={t("desktopworkspacesection.devStack.refreshLogs", {
+                  defaultValue: "Refresh Desktop Logs",
+                })}
+                group="desktop-dev-stack"
                 onClick={() => void refreshDevDiagnostics()}
               >
                 {t("desktopworkspacesection.devStack.refreshLogs", {
                   defaultValue: "Refresh Desktop Logs",
                 })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-copy-dev-stack"
+                label={t("desktopworkspacesection.devStack.copyStack", {
+                  defaultValue: "Copy Dev Stack",
+                })}
+                group="desktop-dev-stack"
                 onClick={() => void copyTextToClipboard(devStackText)}
               >
                 {t("desktopworkspacesection.devStack.copyStack", {
                   defaultValue: "Copy Dev Stack",
                 })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-copy-diagnostics-bundle"
+                label={t("desktopworkspacesection.devStack.copyBundle", {
+                  defaultValue: "Copy Full Diagnostics Bundle",
+                })}
+                group="desktop-dev-stack"
                 onClick={() => void copyDesktopDiagnosticsBundle()}
               >
                 {t("desktopworkspacesection.devStack.copyBundle", {
                   defaultValue: "Copy Full Diagnostics Bundle",
                 })}
-              </Button>
+              </WorkspaceActionButton>
             </div>
             <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
               {devStackText}
@@ -407,11 +486,12 @@ export function DesktopWorkspaceSection({
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2">
               {DESKTOP_WORKSPACE_SURFACES.map((surface) => (
-                <Button
+                <WorkspaceActionButton
                   key={surface.id}
-                  variant="outline"
-                  size="sm"
-                  className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                  agentId={`desktop-surface-${surface.id}`}
+                  label={getSurfaceLabel(surface.id)}
+                  group="desktop-surfaces"
+                  disabled={busyAction === `desktop-surface-${surface.id}`}
                   onClick={() =>
                     void runAction(
                       `desktop-surface-${surface.id}`,
@@ -422,10 +502,9 @@ export function DesktopWorkspaceSection({
                       false,
                     )
                   }
-                  disabled={busyAction === `desktop-surface-${surface.id}`}
                 >
                   {getSurfaceLabel(surface.id)}
-                </Button>
+                </WorkspaceActionButton>
               ))}
             </div>
           </CardContent>
@@ -448,20 +527,24 @@ export function DesktopWorkspaceSection({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+            <WorkspaceActionButton
+              agentId="desktop-console-refresh-tail"
+              label={t("desktopworkspacesection.console.refreshTail", {
+                defaultValue: "Refresh Console Tail",
+              })}
+              group="desktop-console"
               onClick={() => void refreshDevDiagnostics()}
             >
               {t("desktopworkspacesection.console.refreshTail", {
                 defaultValue: "Refresh Console Tail",
               })}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+            </WorkspaceActionButton>
+            <WorkspaceActionButton
+              agentId="desktop-console-copy-tail"
+              label={t("desktopworkspacesection.console.copyTail", {
+                defaultValue: "Copy Visible Console Tail",
+              })}
+              group="desktop-console"
               onClick={() =>
                 void copyTextToClipboard(
                   filteredDevConsoleText || devConsoleText,
@@ -471,7 +554,7 @@ export function DesktopWorkspaceSection({
               {t("desktopworkspacesection.console.copyTail", {
                 defaultValue: "Copy Visible Console Tail",
               })}
-            </Button>
+            </WorkspaceActionButton>
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-muted">
             <span>
@@ -512,6 +595,7 @@ export function DesktopWorkspaceSection({
             </span>
           </div>
           <Textarea
+            ref={consoleFilterRef}
             value={devConsoleFilter}
             onChange={(event) => setDevConsoleFilter(event.target.value)}
             placeholder={t(
@@ -522,6 +606,7 @@ export function DesktopWorkspaceSection({
               },
             )}
             className="min-h-[4rem] text-xs"
+            {...consoleFilterAgentProps}
           />
           <Textarea
             value={
@@ -548,71 +633,80 @@ export function DesktopWorkspaceSection({
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              <WorkspaceActionButton
+                agentId="desktop-show-window"
+                label={t("gameview.ShowWindow")}
+                group="desktop-window-controls"
+                disabled={busyAction === "desktop-show-window"}
                 onClick={() =>
                   void runAction("desktop-show-window", windowControls.show)
                 }
-                disabled={busyAction === "desktop-show-window"}
               >
                 {t("gameview.ShowWindow")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-hide-window"
+                label={t("gameview.HideWindow")}
+                group="desktop-window-controls"
+                disabled={busyAction === "desktop-hide-window"}
                 onClick={() =>
                   void runAction("desktop-hide-window", windowControls.hide)
                 }
-                disabled={busyAction === "desktop-hide-window"}
               >
                 {t("gameview.HideWindow")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-focus-window"
+                label={t("gameview.FocusWindow")}
+                group="desktop-window-controls"
+                disabled={busyAction === "desktop-focus-window"}
                 onClick={() =>
                   void runAction("desktop-focus-window", windowControls.focus)
                 }
-                disabled={busyAction === "desktop-focus-window"}
               >
                 {t("gameview.FocusWindow")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-minimize-window"
+                label={
+                  snapshot?.window.minimized
+                    ? t("desktopworkspacesection.RestoreWindow")
+                    : t("desktopworkspacesection.MinimizeWindow")
+                }
+                group="desktop-window-controls"
+                disabled={busyAction === "desktop-minimize-window"}
                 onClick={() =>
                   void runAction(
                     "desktop-minimize-window",
                     windowControls.toggleMinimize,
                   )
                 }
-                disabled={busyAction === "desktop-minimize-window"}
               >
                 {snapshot?.window.minimized
                   ? t("desktopworkspacesection.RestoreWindow")
                   : t("desktopworkspacesection.MinimizeWindow")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-maximize-toggle"
+                label={
+                  snapshot?.window.maximized
+                    ? t("desktopworkspacesection.UnmaximizeWindow")
+                    : t("desktopworkspacesection.MaximizeWindow")
+                }
+                group="desktop-window-controls"
                 className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                disabled={busyAction === "desktop-maximize-toggle"}
                 onClick={() =>
                   void runAction(
                     "desktop-maximize-toggle",
                     windowControls.toggleMaximize,
                   )
                 }
-                disabled={busyAction === "desktop-maximize-toggle"}
               >
                 {snapshot?.window.maximized
                   ? t("desktopworkspacesection.UnmaximizeWindow")
                   : t("desktopworkspacesection.MaximizeWindow")}
-              </Button>
+              </WorkspaceActionButton>
             </div>
           </CardContent>
         </Card>
@@ -628,10 +722,11 @@ export function DesktopWorkspaceSection({
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              <WorkspaceActionButton
+                agentId="desktop-notify"
+                label={t("desktopworkspacesection.SendTestNotification")}
+                group="desktop-lifecycle"
+                disabled={busyAction === "desktop-notify"}
                 onClick={() =>
                   void runAction(
                     "desktop-notify",
@@ -640,14 +735,14 @@ export function DesktopWorkspaceSection({
                     false,
                   )
                 }
-                disabled={busyAction === "desktop-notify"}
               >
                 {t("desktopworkspacesection.SendTestNotification")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-restart-agent"
+                label={t("finetuningview.RestartAgentTitle")}
+                group="desktop-lifecycle"
+                disabled={busyAction === "desktop-restart-agent"}
                 onClick={() =>
                   void runAction(
                     "desktop-restart-agent",
@@ -655,14 +750,14 @@ export function DesktopWorkspaceSection({
                     t("desktopworkspacesection.AgentRestartRequested"),
                   )
                 }
-                disabled={busyAction === "desktop-restart-agent"}
               >
                 {t("finetuningview.RestartAgentTitle")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-relaunch-app"
+                label={t("desktopworkspacesection.Relaunch")}
+                group="desktop-lifecycle"
+                disabled={busyAction === "desktop-relaunch-app"}
                 onClick={() =>
                   void runAction(
                     "desktop-relaunch-app",
@@ -671,14 +766,18 @@ export function DesktopWorkspaceSection({
                     false,
                   )
                 }
-                disabled={busyAction === "desktop-relaunch-app"}
               >
                 {t("desktopworkspacesection.Relaunch")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-toggle-auto-launch"
+                label={
+                  snapshot?.autoLaunch?.enabled
+                    ? t("desktopworkspacesection.DisableAutoLaunch")
+                    : t("desktopworkspacesection.EnableAutoLaunch")
+                }
+                group="desktop-lifecycle"
+                disabled={busyAction === "desktop-toggle-auto-launch"}
                 onClick={() =>
                   void runAction("desktop-toggle-auto-launch", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -692,16 +791,21 @@ export function DesktopWorkspaceSection({
                     });
                   })
                 }
-                disabled={busyAction === "desktop-toggle-auto-launch"}
               >
                 {snapshot?.autoLaunch?.enabled
                   ? t("desktopworkspacesection.DisableAutoLaunch")
                   : t("desktopworkspacesection.EnableAutoLaunch")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-toggle-hidden-launch"
+                label={
+                  snapshot?.autoLaunch?.openAsHidden
+                    ? t("desktopworkspacesection.LaunchVisibleOnLogin")
+                    : t("desktopworkspacesection.LaunchHiddenOnLogin")
+                }
+                group="desktop-lifecycle"
                 className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                disabled={busyAction === "desktop-toggle-hidden-launch"}
                 onClick={() =>
                   void runAction("desktop-toggle-hidden-launch", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -716,12 +820,11 @@ export function DesktopWorkspaceSection({
                     });
                   })
                 }
-                disabled={busyAction === "desktop-toggle-hidden-launch"}
               >
                 {snapshot?.autoLaunch?.openAsHidden
                   ? t("desktopworkspacesection.LaunchVisibleOnLogin")
                   : t("desktopworkspacesection.LaunchHiddenOnLogin")}
-              </Button>
+              </WorkspaceActionButton>
             </div>
           </CardContent>
         </Card>
@@ -739,10 +842,11 @@ export function DesktopWorkspaceSection({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              <WorkspaceActionButton
+                agentId="desktop-open-file-dialog"
+                label={t("desktopworkspacesection.OpenFilesDialog")}
+                group="desktop-file-dialogs"
+                disabled={busyAction === "desktop-open-file-dialog"}
                 onClick={() =>
                   void runAction(
                     "desktop-open-file-dialog",
@@ -766,14 +870,14 @@ export function DesktopWorkspaceSection({
                     false,
                   )
                 }
-                disabled={busyAction === "desktop-open-file-dialog"}
               >
                 {t("desktopworkspacesection.OpenFilesDialog")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-open-folder-dialog"
+                label={t("desktopworkspacesection.OpenFolderDialog")}
+                group="desktop-file-dialogs"
+                disabled={busyAction === "desktop-open-folder-dialog"}
                 onClick={() =>
                   void runAction(
                     "desktop-open-folder-dialog",
@@ -796,14 +900,15 @@ export function DesktopWorkspaceSection({
                     false,
                   )
                 }
-                disabled={busyAction === "desktop-open-folder-dialog"}
               >
                 {t("desktopworkspacesection.OpenFolderDialog")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-save-dialog"
+                label={t("desktopworkspacesection.SaveFileDialog")}
+                group="desktop-file-dialogs"
                 className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                disabled={busyAction === "desktop-save-dialog"}
                 onClick={() =>
                   void runAction(
                     "desktop-save-dialog",
@@ -826,10 +931,9 @@ export function DesktopWorkspaceSection({
                     false,
                   )
                 }
-                disabled={busyAction === "desktop-save-dialog"}
               >
                 {t("desktopworkspacesection.SaveFileDialog")}
-              </Button>
+              </WorkspaceActionButton>
             </div>
             <div className="space-y-2 rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
               <div>
@@ -859,16 +963,19 @@ export function DesktopWorkspaceSection({
           </CardHeader>
           <CardContent className="space-y-3">
             <Textarea
+              ref={clipboardDraftRef}
               value={clipboardDraft}
               onChange={(event) => setClipboardDraft(event.target.value)}
               className="min-h-24 w-full rounded-sm border border-border bg-bg px-3 py-2 text-sm text-txt outline-none"
               placeholder={t("desktopworkspacesection.ClipboardDraft")}
+              {...clipboardDraftAgentProps}
             />
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              <WorkspaceActionButton
+                agentId="desktop-clipboard-read"
+                label={t("desktopworkspacesection.ReadClipboard")}
+                group="desktop-clipboard"
+                disabled={busyAction === "desktop-clipboard-read"}
                 onClick={() =>
                   void runAction("desktop-clipboard-read", async () => {
                     const result = await invokeDesktopBridgeRequest<{
@@ -880,27 +987,27 @@ export function DesktopWorkspaceSection({
                     setClipboardDraft(result?.text ?? "");
                   })
                 }
-                disabled={busyAction === "desktop-clipboard-read"}
               >
                 {t("desktopworkspacesection.ReadClipboard")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-clipboard-copy"
+                label={t("desktopworkspacesection.CopyDraft")}
+                group="desktop-clipboard"
+                disabled={busyAction === "desktop-clipboard-copy"}
                 onClick={() =>
                   void runAction("desktop-clipboard-copy", async () => {
                     await copyTextToClipboard(clipboardDraft);
                   })
                 }
-                disabled={busyAction === "desktop-clipboard-copy"}
               >
                 {t("desktopworkspacesection.CopyDraft")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                agentId="desktop-clipboard-clear"
+                label={t("desktopworkspacesection.ClearClipboard")}
+                group="desktop-clipboard"
+                disabled={busyAction === "desktop-clipboard-clear"}
                 onClick={() =>
                   void runAction("desktop-clipboard-clear", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -910,16 +1017,16 @@ export function DesktopWorkspaceSection({
                     setClipboardDraft("");
                   })
                 }
-                disabled={busyAction === "desktop-clipboard-clear"}
               >
                 {t("desktopworkspacesection.ClearClipboard")}
-              </Button>
+              </WorkspaceActionButton>
               {savePaths[0] && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                  <WorkspaceActionButton
+                    agentId="desktop-open-path"
+                    label={t("desktopworkspacesection.OpenSavedPath")}
+                    group="desktop-clipboard"
+                    disabled={busyAction === "desktop-open-path"}
                     onClick={() =>
                       void runAction(
                         "desktop-open-path",
@@ -934,14 +1041,14 @@ export function DesktopWorkspaceSection({
                         false,
                       )
                     }
-                    disabled={busyAction === "desktop-open-path"}
                   >
                     {t("desktopworkspacesection.OpenSavedPath")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                  </WorkspaceActionButton>
+                  <WorkspaceActionButton
+                    agentId="desktop-reveal-path"
+                    label={t("desktopworkspacesection.RevealSavedPath")}
+                    group="desktop-clipboard"
+                    disabled={busyAction === "desktop-reveal-path"}
                     onClick={() =>
                       void runAction(
                         "desktop-reveal-path",
@@ -956,10 +1063,9 @@ export function DesktopWorkspaceSection({
                         false,
                       )
                     }
-                    disabled={busyAction === "desktop-reveal-path"}
                   >
                     {t("desktopworkspacesection.RevealSavedPath")}
-                  </Button>
+                  </WorkspaceActionButton>
                 </>
               )}
             </div>

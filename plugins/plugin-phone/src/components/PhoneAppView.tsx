@@ -247,6 +247,194 @@ function PhoneDialKey({
   );
 }
 
+function RecentCallButton({
+  entry,
+  onCall,
+}: {
+  entry: CallLogEntry;
+  onCall: (number: string) => void;
+}) {
+  const label = callLabelFor(entry);
+  const showNumber =
+    entry.cachedName && entry.cachedName.trim().length > 0
+      ? entry.number
+      : null;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `recent-call-${entry.id}`,
+    role: "list-item",
+    label: `Call ${label}`,
+    group: "phone-recent",
+    description: `Place a call to ${label}`,
+    onActivate: () => onCall(entry.number),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onCall(entry.number)}
+      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99]"
+      {...agentProps}
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
+        {callIconFor(entry.type)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {label}
+        </span>
+        <span className="block truncate text-xs text-muted">
+          {showNumber ? `${showNumber} · ` : ""}
+          {formatTimestamp(entry.date)}
+        </span>
+      </span>
+      <PhoneIcon className="h-4 w-4 shrink-0 text-muted" />
+    </button>
+  );
+}
+
+function ContactButton({
+  contact,
+  onCall,
+}: {
+  contact: ContactRow;
+  onCall: (number: string) => void;
+}) {
+  const primary = contact.phoneNumbers[0] ?? "";
+  const displayName = contact.displayName || primary || "Unknown";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `contact-${contact.id}`,
+    role: "list-item",
+    label: `Call ${displayName}`,
+    group: "phone-contacts",
+    status: primary.length === 0 ? "inactive" : "active",
+    description: `Place a call to ${displayName}`,
+    onActivate: () => {
+      if (primary.length > 0) onCall(primary);
+    },
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onCall(primary)}
+      disabled={primary.length === 0}
+      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99] disabled:opacity-50"
+      {...agentProps}
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
+        <UserIcon className="h-4 w-4 text-muted" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {displayName}
+        </span>
+        {primary ? (
+          <span className="block truncate text-xs text-muted">{primary}</span>
+        ) : null}
+      </span>
+      <PhoneIcon className="h-4 w-4 shrink-0 text-muted" />
+    </button>
+  );
+}
+
+function TuiDialKey({
+  digit,
+  onPress,
+}: {
+  digit: string;
+  onPress: (digit: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-dial-key-${digit}`,
+    role: "button",
+    label: `Dial ${digit}`,
+    group: "phone-tui-dialpad",
+    description: `Append ${digit} to the number being dialed`,
+    onActivate: () => onPress(digit),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onPress(digit)}
+      style={{
+        background: "transparent",
+        color: "#e2e8f0",
+        border: "1px solid rgba(125,211,252,0.28)",
+        borderRadius: 4,
+        padding: "8px 0",
+        cursor: "pointer",
+        fontFamily: "inherit",
+      }}
+      {...agentProps}
+    >
+      {digit}
+    </button>
+  );
+}
+
+function TuiRecentCallButton({
+  call,
+  index,
+  onSelect,
+}: {
+  call: CallLogEntry;
+  index: number;
+  onSelect: (number: string) => void;
+}) {
+  const label = callLabelFor(call);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-recent-call-${call.id}`,
+    role: "list-item",
+    label: `Use ${label}`,
+    group: "phone-tui-recent",
+    description: `Load ${label} (${call.number}) into the dialer input`,
+    onActivate: () => onSelect(call.number),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(call.number)}
+      style={{
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
+        gap: 10,
+        border: "none",
+        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        background: "transparent",
+        color: "#cbd5e1",
+        padding: "8px 0",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "left",
+      }}
+      {...agentProps}
+    >
+      <span style={{ color: "#64748b" }}>
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span style={{ color: "#e2e8f0", overflow: "hidden" }}>{label}</span>
+      <span
+        style={{
+          color: call.type === "missed" ? "#fca5a5" : "#94a3b8",
+        }}
+      >
+        {call.type}
+      </span>
+      <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+        {call.number} | {formatTimestamp(call.date)} | {call.durationSeconds}s
+      </span>
+      {(call.agentSummary || call.agentTranscript) && (
+        <span style={{ gridColumn: "2 / 4", color: "#a7f3d0" }}>
+          {call.agentSummary ?? call.agentTranscript}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   const [activeTab, setActiveTab] = useState<PhoneTab>("dialer");
   const [dialed, setDialed] = useState("");
@@ -431,6 +619,24 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     label: backspaceLabel,
     group: "phone-dialer",
     description: "Delete the last digit of the dialed number",
+  });
+  const emptyDialerAgent = useAgentElement<HTMLButtonElement>({
+    id: "recent-empty-dialer",
+    role: "button",
+    label: t("phone.tabs.dialer", { defaultValue: "Dialer" }),
+    group: "phone-recent",
+    description: "Switch to the Dialer tab from the empty recent-calls state",
+    onActivate: () => setActiveTab("dialer"),
+  });
+  const emptyRefreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "recent-empty-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "phone-recent",
+    description: "Reload the recent calls list from the empty state",
+    onActivate: () => {
+      void refreshCalls();
+    },
   });
 
   return (
@@ -619,16 +825,20 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                   </p>
                   <div className="mt-4 flex justify-center gap-2">
                     <Button
+                      ref={emptyDialerAgent.ref}
                       variant="outline"
                       size="sm"
                       onClick={() => setActiveTab("dialer")}
+                      {...emptyDialerAgent.agentProps}
                     >
                       {t("phone.tabs.dialer", { defaultValue: "Dialer" })}
                     </Button>
                     <Button
+                      ref={emptyRefreshAgent.ref}
                       variant="outline"
                       size="sm"
                       onClick={() => void refreshCalls()}
+                      {...emptyRefreshAgent.agentProps}
                     >
                       <RefreshCw className="mr-2 h-4 w-4" />
                       {t("actions.refresh", { defaultValue: "Refresh" })}
@@ -638,36 +848,11 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               </div>
             ) : null}
             <ul className="flex flex-col gap-1">
-              {calls.map((entry) => {
-                const label = callLabelFor(entry);
-                const showNumber =
-                  entry.cachedName && entry.cachedName.trim().length > 0
-                    ? entry.number
-                    : null;
-                return (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      onClick={() => onCallEntry(entry.number)}
-                      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99]"
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
-                        {callIconFor(entry.type)}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-txt">
-                          {label}
-                        </span>
-                        <span className="block truncate text-xs text-muted">
-                          {showNumber ? `${showNumber} · ` : ""}
-                          {formatTimestamp(entry.date)}
-                        </span>
-                      </span>
-                      <PhoneIcon className="h-4 w-4 shrink-0 text-muted" />
-                    </button>
-                  </li>
-                );
-              })}
+              {calls.map((entry) => (
+                <li key={entry.id}>
+                  <RecentCallButton entry={entry} onCall={onCallEntry} />
+                </li>
+              ))}
             </ul>
           </div>
         </TabsContent>
@@ -725,34 +910,11 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               </div>
             ) : null}
             <ul className="flex flex-col gap-1">
-              {(contacts ?? []).map((contact) => {
-                const primary = contact.phoneNumbers[0] ?? "";
-                return (
-                  <li key={contact.id}>
-                    <button
-                      type="button"
-                      onClick={() => onCallEntry(primary)}
-                      disabled={primary.length === 0}
-                      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99] disabled:opacity-50"
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
-                        <UserIcon className="h-4 w-4 text-muted" aria-hidden />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-txt">
-                          {contact.displayName || primary || "Unknown"}
-                        </span>
-                        {primary ? (
-                          <span className="block truncate text-xs text-muted">
-                            {primary}
-                          </span>
-                        ) : null}
-                      </span>
-                      <PhoneIcon className="h-4 w-4 shrink-0 text-muted" />
-                    </button>
-                  </li>
-                );
-              })}
+              {(contacts ?? []).map((contact) => (
+                <li key={contact.id}>
+                  <ContactButton contact={contact} onCall={onCallEntry} />
+                </li>
+              ))}
             </ul>
           </div>
         </TabsContent>
@@ -850,6 +1012,91 @@ export function PhoneTuiView() {
     }
   }, [refresh, savingTranscript, summary, transcript, transcriptCallId]);
 
+  const numberInputAgent = useAgentElement<HTMLInputElement>({
+    id: "tui-number",
+    role: "text-input",
+    label: "Phone number",
+    group: "phone-tui-dialer",
+    description: "The phone number to call or open in the dialer",
+    getValue: () => dialed,
+    onFill: (value) => setDialed(value),
+  });
+  const tuiBackspaceAgent = useAgentElement<HTMLButtonElement>({
+    id: "tui-backspace",
+    role: "button",
+    label: "Backspace",
+    group: "phone-tui-dialer",
+    description: "Delete the last digit of the dialed number",
+    onActivate: () => setDialed((prev) => (prev ? prev.slice(0, -1) : "")),
+  });
+  const tuiOpenDialerAgent = useAgentElement<HTMLButtonElement>({
+    id: "tui-open-dialer",
+    role: "button",
+    label: "Open dialer",
+    group: "phone-tui-dialer",
+    description: "Open the system dialer with the dialed number",
+    onActivate: () => {
+      void openDialer();
+    },
+  });
+  const tuiCallAgent = useAgentElement<HTMLButtonElement>({
+    id: "tui-call",
+    role: "button",
+    label: "Call",
+    group: "phone-tui-dialer",
+    description: "Place a call to the dialed number",
+    onActivate: () => {
+      void callNumber();
+    },
+  });
+  const callIdInputAgent = useAgentElement<HTMLInputElement>({
+    id: "tui-call-id",
+    role: "text-input",
+    label: "Call ID",
+    group: "phone-tui-transcript",
+    description: "The call ID the transcript will be saved against",
+    getValue: () => transcriptCallId,
+    onFill: (value) => setTranscriptCallId(value),
+  });
+  const transcriptInputAgent = useAgentElement<HTMLTextAreaElement>({
+    id: "tui-transcript",
+    role: "textarea",
+    label: "Transcript",
+    group: "phone-tui-transcript",
+    description: "The transcript text to save for the call",
+    getValue: () => transcript,
+    onFill: (value) => setTranscript(value),
+  });
+  const summaryInputAgent = useAgentElement<HTMLInputElement>({
+    id: "tui-summary",
+    role: "text-input",
+    label: "Summary",
+    group: "phone-tui-transcript",
+    description: "An optional summary saved alongside the transcript",
+    getValue: () => summary,
+    onFill: (value) => setSummary(value),
+  });
+  const saveTranscriptAgent = useAgentElement<HTMLButtonElement>({
+    id: "tui-save-transcript",
+    role: "button",
+    label: "Save transcript",
+    group: "phone-tui-transcript",
+    description: "Save the call ID, transcript, and optional summary",
+    onActivate: () => {
+      void saveTranscript();
+    },
+  });
+  const tuiRefreshAgent = useAgentElement<HTMLButtonElement>({
+    id: "tui-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "phone-tui-recent",
+    description: "Reload the recent calls list and phone status",
+    onActivate: () => {
+      void refresh();
+    },
+  });
+
   const state = {
     viewType: "tui",
     viewId: "phone",
@@ -914,6 +1161,7 @@ export function PhoneTuiView() {
             number
           </label>
           <input
+            ref={numberInputAgent.ref}
             id="phone-tui-number"
             name="number"
             value={dialed}
@@ -929,6 +1177,7 @@ export function PhoneTuiView() {
               fontFamily: "inherit",
               marginBottom: 12,
             }}
+            {...numberInputAgent.agentProps}
           />
 
           <div
@@ -940,27 +1189,17 @@ export function PhoneTuiView() {
             }}
           >
             {DIAL_KEYS.map((key) => (
-              <button
+              <TuiDialKey
                 key={key}
-                type="button"
-                onClick={() => setDialed((prev) => `${prev}${key}`)}
-                style={{
-                  background: "transparent",
-                  color: "#e2e8f0",
-                  border: "1px solid rgba(125,211,252,0.28)",
-                  borderRadius: 4,
-                  padding: "8px 0",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {key}
-              </button>
+                digit={key}
+                onPress={(digit) => setDialed((prev) => `${prev}${digit}`)}
+              />
             ))}
           </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
             <button
+              ref={tuiBackspaceAgent.ref}
               type="button"
               onClick={() =>
                 setDialed((prev) => (prev ? prev.slice(0, -1) : ""))
@@ -974,10 +1213,12 @@ export function PhoneTuiView() {
                 cursor: "pointer",
                 fontFamily: "inherit",
               }}
+              {...tuiBackspaceAgent.agentProps}
             >
               backspace
             </button>
             <button
+              ref={tuiOpenDialerAgent.ref}
               type="button"
               onClick={() => void openDialer()}
               style={{
@@ -989,10 +1230,12 @@ export function PhoneTuiView() {
                 cursor: "pointer",
                 fontFamily: "inherit",
               }}
+              {...tuiOpenDialerAgent.agentProps}
             >
               open-dialer
             </button>
             <button
+              ref={tuiCallAgent.ref}
               type="button"
               onClick={() => void callNumber()}
               disabled={!normalizeNumber(dialed) || calling}
@@ -1008,6 +1251,7 @@ export function PhoneTuiView() {
                     : "pointer",
                 fontFamily: "inherit",
               }}
+              {...tuiCallAgent.agentProps}
             >
               call
             </button>
@@ -1021,6 +1265,7 @@ export function PhoneTuiView() {
             call id
           </label>
           <input
+            ref={callIdInputAgent.ref}
             id="phone-tui-call-id"
             name="callId"
             value={transcriptCallId}
@@ -1036,6 +1281,7 @@ export function PhoneTuiView() {
               fontFamily: "inherit",
               marginBottom: 10,
             }}
+            {...callIdInputAgent.agentProps}
           />
           <label
             htmlFor="phone-tui-transcript"
@@ -1044,6 +1290,7 @@ export function PhoneTuiView() {
             transcript
           </label>
           <textarea
+            ref={transcriptInputAgent.ref}
             id="phone-tui-transcript"
             name="transcript"
             value={transcript}
@@ -1061,6 +1308,7 @@ export function PhoneTuiView() {
               fontFamily: "inherit",
               marginBottom: 10,
             }}
+            {...transcriptInputAgent.agentProps}
           />
           <label
             htmlFor="phone-tui-summary"
@@ -1069,6 +1317,7 @@ export function PhoneTuiView() {
             summary
           </label>
           <input
+            ref={summaryInputAgent.ref}
             id="phone-tui-summary"
             name="summary"
             value={summary}
@@ -1084,8 +1333,10 @@ export function PhoneTuiView() {
               fontFamily: "inherit",
               marginBottom: 12,
             }}
+            {...summaryInputAgent.agentProps}
           />
           <button
+            ref={saveTranscriptAgent.ref}
             type="button"
             onClick={() => void saveTranscript()}
             disabled={
@@ -1105,6 +1356,7 @@ export function PhoneTuiView() {
                   : "pointer",
               fontFamily: "inherit",
             }}
+            {...saveTranscriptAgent.agentProps}
           >
             save-transcript
           </button>
@@ -1129,6 +1381,7 @@ export function PhoneTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>recent calls</strong>
             <button
+              ref={tuiRefreshAgent.ref}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
@@ -1141,6 +1394,7 @@ export function PhoneTuiView() {
                 cursor: loading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
               }}
+              {...tuiRefreshAgent.agentProps}
             >
               refresh
             </button>
@@ -1150,49 +1404,12 @@ export function PhoneTuiView() {
             <div style={{ color: "#64748b" }}>no recent calls</div>
           )}
           {calls.map((call, index) => (
-            <button
+            <TuiRecentCallButton
               key={call.id}
-              type="button"
-              onClick={() => setDialed(call.number)}
-              style={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
-                gap: 10,
-                border: "none",
-                borderTop:
-                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-                background: "transparent",
-                color: "#cbd5e1",
-                padding: "8px 0",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                textAlign: "left",
-              }}
-            >
-              <span style={{ color: "#64748b" }}>
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
-                {callLabelFor(call)}
-              </span>
-              <span
-                style={{
-                  color: call.type === "missed" ? "#fca5a5" : "#94a3b8",
-                }}
-              >
-                {call.type}
-              </span>
-              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
-                {call.number} | {formatTimestamp(call.date)} |{" "}
-                {call.durationSeconds}s
-              </span>
-              {(call.agentSummary || call.agentTranscript) && (
-                <span style={{ gridColumn: "2 / 4", color: "#a7f3d0" }}>
-                  {call.agentSummary ?? call.agentTranscript}
-                </span>
-              )}
-            </button>
+              call={call}
+              index={index}
+              onSelect={setDialed}
+            />
           ))}
         </section>
       </div>

@@ -15,6 +15,11 @@ EXPECTED_PHASES = [
     "L3_rva23_profile_candidate",
     "L4_phone_2028_ap",
 ]
+FALSE_CLAIM_FLAGS = {
+    "linux_capable_claim_allowed": False,
+    "phone_2028_claim_allowed": False,
+    "rva23_claim_allowed": False,
+}
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -62,6 +67,11 @@ def main() -> int:
     require(
         policy.get("phone_2028_claim_allowed") is False,
         "2028 phone-class claim must remain blocked",
+        errors,
+    )
+    require(
+        policy.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        "claim policy false_claim_flags must match denied CPU/AP roadmap claims",
         errors,
     )
     require(

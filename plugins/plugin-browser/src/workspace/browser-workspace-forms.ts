@@ -9,6 +9,7 @@ import {
   normalizeBrowserWorkspaceText,
 } from "./browser-workspace-helpers.js";
 import {
+  createEmptyWebBrowserWorkspaceDom,
   ensureBrowserWorkspaceDom,
   getJSDOMClass,
   installBrowserWorkspaceWebRuntime,
@@ -310,9 +311,6 @@ export async function loadWebBrowserWorkspaceTabDocument(
   tab: WebBrowserWorkspaceTabState,
 ): Promise<void> {
   const state = getBrowserWorkspaceRuntimeState("web", tab.id);
-  const { createEmptyWebBrowserWorkspaceDom } = await import(
-    "./browser-workspace-jsdom.js"
-  );
   if (tab.url === "about:blank") {
     tab.dom = createEmptyWebBrowserWorkspaceDom(tab.url);
     installBrowserWorkspaceWebRuntime(tab, tab.dom);

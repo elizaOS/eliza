@@ -1,3 +1,5 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+
 export type DataSourceState = "live" | "partial" | "unwired";
 
 export interface DataSourceDescriptor {
@@ -32,6 +34,43 @@ function sourceToneClass(state: DataSourceState): string {
   }
 }
 
+function DataSourceSetupButton({
+  source,
+  className,
+  initials,
+  label,
+  onSetup,
+}: {
+  source: DataSourceDescriptor;
+  className: string;
+  initials: string;
+  label: string;
+  onSetup: (sourceId: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-source-${source.id}`,
+    role: "button",
+    label: `Set up ${source.label}`,
+    group: "lifeops-overview",
+    status: source.state,
+    description: `Connect the ${source.label} data source`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={label}
+      aria-label={`Set up ${source.label}`}
+      onClick={() => onSetup(source.id)}
+      className={className}
+      data-state={source.state}
+      {...agentProps}
+    >
+      {initials}
+    </button>
+  );
+}
+
 export function DataSourcesStrip({
   sources,
   className = "",
@@ -53,19 +92,16 @@ export function DataSourcesStrip({
           : "";
         const initials = sourceInitials(source.label) || "?";
         const label = `${source.label}: ${source.state}`;
-        if (isClickable) {
+        if (isClickable && onSetup) {
           return (
-            <button
+            <DataSourceSetupButton
               key={source.id}
-              type="button"
-              title={label}
-              aria-label={`Set up ${source.label}`}
-              onClick={() => onSetup?.(source.id)}
+              source={source}
               className={`${baseClasses}${interactiveClasses}`}
-              data-state={source.state}
-            >
-              {initials}
-            </button>
+              initials={initials}
+              label={label}
+              onSetup={onSetup}
+            />
           );
         }
         return (

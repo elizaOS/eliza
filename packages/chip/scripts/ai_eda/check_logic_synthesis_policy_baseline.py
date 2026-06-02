@@ -28,6 +28,13 @@ VALID_EQUIVALENCE_STATUSES = {
     "BLOCKED_EQUIVALENCE_TIMEOUT",
     "SKIPPED_NO_TRANSFORM_PASS",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -49,6 +56,14 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
+
+
 def validate_corpus(corpus: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if corpus.get("schema") != "eliza.ai_eda.logic_synthesis_recipe_corpus.v1":
@@ -57,6 +72,7 @@ def validate_corpus(corpus: dict[str, Any]) -> list[str]:
         errors.append("corpus claim_boundary is missing or incorrect")
     if corpus.get("release_use_allowed") is not False:
         errors.append("corpus release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(corpus, "corpus"))
     policy = corpus.get("policy")
     if not isinstance(policy, dict) or policy.get("source_modification_forbidden") is not True:
         errors.append("corpus policy must forbid source modification")
@@ -67,6 +83,10 @@ def validate_corpus(corpus: dict[str, Any]) -> list[str]:
     ):
         if not isinstance(policy, dict) or policy.get(field) is not True:
             errors.append(f"corpus policy {field} must be true")
+    if isinstance(policy, dict):
+        for field in REQUIRED_FALSE_CLAIM_FLAGS:
+            if policy.get(field) is not False:
+                errors.append(f"corpus policy.{field} must be false")
 
     targets = corpus.get("target_modules")
     recipes = corpus.get("recipes")
@@ -180,6 +200,7 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
         errors.append("baseline claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
         errors.append("baseline release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(report, "baseline"))
     if report.get("run_id") != report_path.parent.name:
         errors.append("baseline run_id must match report directory name")
 
@@ -235,6 +256,7 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
             seen.add(result_id)
         if result.get("claim_boundary") != BASELINE_CLAIM_BOUNDARY:
             errors.append(f"{result_id}: claim_boundary is missing or incorrect")
+        errors.extend(validate_false_claim_flags(result, result_id))
         target_id = result.get("target")
         recipe_id = result.get("recipe")
         if target_id not in targets:

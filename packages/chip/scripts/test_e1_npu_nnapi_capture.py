@@ -53,7 +53,11 @@ def write_fake_adb(path: Path, include_accelerator: bool = True) -> None:
 
 
 def run_capture(
-    temp_root: Path, include_accelerator: bool = True
+    temp_root: Path,
+    include_accelerator: bool = True,
+    include_counter_env: bool = True,
+    cpu_fallback_percent: str = "0",
+    unsupported_op_count: str = "0",
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = temp_root / "bin"
     bin_dir.mkdir()
@@ -80,6 +84,13 @@ def run_capture(
             "E1_NPU_TARGET": "unit-test-android-target",
         }
     )
+    if include_counter_env:
+        env.update(
+            {
+                "E1_NPU_CPU_FALLBACK_PERCENT": cpu_fallback_percent,
+                "E1_NPU_UNSUPPORTED_OP_COUNT": unsupported_op_count,
+            }
+        )
     return subprocess.run(
         [str(CAPTURE)],
         cwd=ROOT,
@@ -132,6 +143,11 @@ def test_capture_writes_validator_compatible_proof_json() -> None:
         status = json.loads(status_path.read_text(encoding="utf-8"))
         if check.returncode != 0 or not status.get("proof_valid"):
             raise AssertionError(check.stdout + "\n" + json.dumps(status, indent=2))
+        proof_data = json.loads(proof.read_text(encoding="utf-8"))
+        if proof_data["nnapi"]["cpu_fallback_percent"] != 0:
+            raise AssertionError(json.dumps(proof_data["nnapi"], indent=2))
+        if proof_data["nnapi"]["unsupported_op_count"] != 0:
+            raise AssertionError(json.dumps(proof_data["nnapi"], indent=2))
 
 
 def test_capture_refuses_marker_missing_proof_json() -> None:
@@ -151,6 +167,40 @@ def test_capture_refuses_marker_missing_proof_json() -> None:
             raise AssertionError("capture wrote proof JSON despite missing e1-npu markers")
 
 
+def test_capture_refuses_unmeasured_or_nonzero_fallback_counters() -> None:
+    parent = ROOT / "benchmarks/results/test-temp"
+    parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=parent) as td:
+        temp_root = Path(td)
+        result = run_capture(temp_root, include_counter_env=False)
+        if result.returncode == 0:
+            raise AssertionError("capture should fail without measured NNAPI fallback counters")
+        if "E1_NPU_CPU_FALLBACK_PERCENT" not in result.stdout:
+            raise AssertionError(result.stdout)
+        if (temp_root / "e1_npu_nnapi.proof.json").exists():
+            raise AssertionError("capture wrote proof JSON without measured fallback counters")
+
+    with tempfile.TemporaryDirectory(dir=parent) as td:
+        temp_root = Path(td)
+        result = run_capture(temp_root, cpu_fallback_percent="1.0")
+        if result.returncode == 0:
+            raise AssertionError("capture should fail on nonzero CPU fallback percent")
+        if "E1_NPU_CPU_FALLBACK_PERCENT must be 0" not in result.stdout:
+            raise AssertionError(result.stdout)
+        if (temp_root / "e1_npu_nnapi.proof.json").exists():
+            raise AssertionError("capture wrote proof JSON with nonzero CPU fallback")
+
+    with tempfile.TemporaryDirectory(dir=parent) as td:
+        temp_root = Path(td)
+        result = run_capture(temp_root, unsupported_op_count="1")
+        if result.returncode == 0:
+            raise AssertionError("capture should fail on unsupported NNAPI ops")
+        if "E1_NPU_UNSUPPORTED_OP_COUNT must be 0" not in result.stdout:
+            raise AssertionError(result.stdout)
+        if (temp_root / "e1_npu_nnapi.proof.json").exists():
+            raise AssertionError("capture wrote proof JSON with unsupported ops")
+
+
 def test_capture_refreshes_android_manifest_by_default() -> None:
     text = CAPTURE.read_text(encoding="utf-8")
     if 'refresh_android_manifest="${E1_NPU_REFRESH_ANDROID_MANIFEST:-1}"' not in text:
@@ -163,6 +213,7 @@ def main() -> int:
     for test in (
         test_capture_writes_validator_compatible_proof_json,
         test_capture_refuses_marker_missing_proof_json,
+        test_capture_refuses_unmeasured_or_nonzero_fallback_counters,
         test_capture_refreshes_android_manifest_by_default,
     ):
         test()

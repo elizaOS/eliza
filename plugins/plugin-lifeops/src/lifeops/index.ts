@@ -30,6 +30,7 @@ export * from "./policy-memory.js";
 export * from "./remote-desktop.js";
 export * from "./repository.js";
 export * from "./runtime.js";
+export * from "./schedule-sync-config.js";
 export * from "./schema.js";
 export * from "./screen-context.js";
 export * from "./service.js";

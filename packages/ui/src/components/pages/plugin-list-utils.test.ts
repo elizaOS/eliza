@@ -9,7 +9,6 @@ import {
 
 function plugin(overrides: Partial<PluginInfo> & { id: string }): PluginInfo {
   return {
-    id: overrides.id,
     name: overrides.name ?? overrides.id,
     description: overrides.description ?? "",
     enabled: overrides.enabled ?? false,
@@ -164,7 +163,17 @@ describe("buildPluginListState", () => {
           id: "needs-config",
           name: "B Needs Config",
           enabled: true,
-          parameters: [{ key: "TOKEN", type: "string", required: true }],
+          parameters: [
+            {
+              key: "TOKEN",
+              type: "string",
+              description: "",
+              required: true,
+              sensitive: false,
+              currentValue: null,
+              isSet: false,
+            },
+          ],
         }),
         plugin({ id: "ready", name: "C Ready", enabled: true }),
       ],

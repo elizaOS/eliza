@@ -15,6 +15,10 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.cuda_full_training_matrix.v1"
 EXPECTED_CLAIM_BOUNDARY = "cuda_full_training_matrix_only_no_training_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "large_training_claim_allowed": False,
+}
 REQUIRED_JOB_IDS = {
     "host_preflight",
     "asset_fetch_and_verify",
@@ -116,6 +120,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("large_training_claim_allowed") is not False:
         errors.append("large_training_claim_allowed must remain false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied CUDA full-training claims")
     if report.get("status") not in {"MATRIX_READY_FOR_CUDA_HOST", "MATRIX_RECORDED_WITH_BLOCKERS"}:
         errors.append("unsupported status")
     evidence_run_ids = report.get("evidence_run_ids")

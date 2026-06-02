@@ -9,8 +9,8 @@ claim_boundary: Generated non-release routed-board STEP from the real-footprint 
   complete, and not fabrication/enclosure release evidence.
 source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
 output_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
-board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
-step_sha256: 592fad3df9a619b125d28f322aa22803ca37c3a825e0b4e8170b277cf7e16ae7
+board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+step_sha256: fbb8b372614d6b9ed8dbe7b5fb01e2472cbc2ee784b786b1a0c2cf85e5a11fec
 board_island_count: 2
 footprint_envelope_count: 89
 pad_contact_visual_count: 1452

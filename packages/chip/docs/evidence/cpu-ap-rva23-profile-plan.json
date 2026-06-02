@@ -1,6 +1,11 @@
 {
   "claim_boundary": "rva23_claim_blocked_until_profile_matrix_and_external_evidence_exist",
   "claim_policy": {
+    "false_claim_flags": {
+      "phone_2028_claim_allowed": false,
+      "rva23_candidate_claim_allowed": false,
+      "rva23_compliant_claim_allowed": false
+    },
     "phone_2028_claim_allowed": false,
     "rva23_candidate_claim_allowed": false,
     "rva23_compliant_claim_allowed": false,

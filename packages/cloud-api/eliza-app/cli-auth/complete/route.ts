@@ -42,8 +42,7 @@ app.post("/", async (c) => {
       .limit(1);
 
     if (
-      !cliSession ||
-      cliSession.status !== "pending" ||
+      cliSession?.status !== "pending" ||
       new Date() > cliSession.expires_at
     ) {
       return c.json(

@@ -206,6 +206,26 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
     return plan
 
 
+def finding_payload(finding: Finding, command_plan: list[dict[str, object]]) -> dict[str, Any]:
+    row = asdict(finding)
+    commands: list[str] = []
+    for batch in command_plan:
+        values = batch.get("commands")
+        if isinstance(values, list):
+            commands.extend(command for command in values if isinstance(command, str) and command)
+    if commands:
+        row["next_command"] = next(
+            (
+                command
+                for command in commands
+                if "capture_launcher_runtime_evidence.py" in command
+            ),
+            commands[0],
+        )
+        row["next_commands"] = list(dict.fromkeys(commands))
+    return row
+
+
 def existing_artifact(path_value: object) -> bool:
     if not isinstance(path_value, str) or not path_value:
         return False
@@ -557,7 +577,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
             "next_command_batch_count": len(command_plan),
         },
         "blocker_dependency_counts": dependency_counts,
-        "findings": [asdict(finding) for finding in findings],
+        "findings": [finding_payload(finding, command_plan) for finding in findings],
         "next_command_plan": command_plan,
         "evidence": evidence,
     }

@@ -20,6 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/formal_solver_isolation"
 SCHEMA = "eliza.ai_eda.formal_solver_isolation.v1"
 CLAIM_BOUNDARY = "single_solver_smoke_evidence_only_no_release_or_deep_proof_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "formal_proof_claim_allowed": False,
+}
 DEFAULT_BLOCKS = ("e1_dbg_mmio_bridge", "e1_npu", "e1_dma", "e1_soc_top")
 DEFAULT_SOLVERS = ("z3", "bitwuzla")
 
@@ -231,6 +235,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "formal_proof_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "status": status,
         "summary": {
             "case_count": len(cases),

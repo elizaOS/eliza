@@ -56,7 +56,7 @@ tasks:
     # seated keyframes; HiWonder overrides below use a deeper validated crouch.
     init_state: "crouch"
     init_torso_height_ratio: 0.90
-    init_foot_clearance_m: 0.002
+    init_foot_clearance_m: 0.0
     min_init_stand_height_drop_m: 0.03
     profile_init:
       hiwonder-ainex:
@@ -104,6 +104,159 @@ tasks:
       hold_s: 1.0
     max_episode_s: 4.0
 
+  - id: weight_shift_left
+    tier: 1
+    verbs:
+      en: ["shift weight left", "load left foot", "stand on left foot",
+           "lean onto left foot", "plant left foot"]
+    description: "Keep the body upright while loading the left foot and unloading the right foot."
+    reward:
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 1.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      left_foot_contact_required: true
+      right_foot_contact_required: false
+      max_abs_delta_x_m: 0.05
+      max_abs_delta_y_m: 0.08
+      max_abs_delta_yaw_rad: 0.25
+      no_fall: true
+      hold_s: 0.4
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 4.0
+
+  - id: weight_shift_right
+    tier: 1
+    verbs:
+      en: ["shift weight right", "load right foot", "stand on right foot",
+           "lean onto right foot", "plant right foot"]
+    description: "Keep the body upright while loading the right foot and unloading the left foot."
+    reward:
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 1.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      left_foot_contact_required: false
+      right_foot_contact_required: true
+      max_abs_delta_x_m: 0.05
+      max_abs_delta_y_m: 0.08
+      max_abs_delta_yaw_rad: 0.25
+      no_fall: true
+      hold_s: 0.4
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 4.0
+
+  - id: lift_left_foot
+    tier: 1
+    verbs:
+      en: ["lift left foot", "raise left foot", "step with left foot",
+           "swing left foot"]
+    description: "Plant the right foot while lifting the left foot without drifting or falling."
+    reward:
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      left_foot_contact_required: false
+      right_foot_contact_required: true
+      min_swing_foot_clearance_m: 0.010
+      max_abs_delta_x_m: 0.05
+      max_abs_delta_y_m: 0.08
+      max_abs_delta_yaw_rad: 0.25
+      no_fall: true
+      hold_s: 0.4
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 4.0
+
+  - id: lift_right_foot
+    tier: 1
+    verbs:
+      en: ["lift right foot", "raise right foot", "step with right foot",
+           "swing right foot"]
+    description: "Plant the left foot while lifting the right foot without drifting or falling."
+    reward:
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      left_foot_contact_required: true
+      right_foot_contact_required: false
+      min_swing_foot_clearance_m: 0.010
+      max_abs_delta_x_m: 0.05
+      max_abs_delta_y_m: 0.08
+      max_abs_delta_yaw_rad: 0.25
+      no_fall: true
+      hold_s: 0.4
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 4.0
+
+  - id: step_in_place
+    tier: 1
+    verbs:
+      en: ["step in place", "march in place", "alternate feet",
+           "walk in place", "practice stepping"]
+    description: "Alternate planted feet with swing-foot clearance while staying upright in place."
+    reward:
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      alternating_contact_weight: 4.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.012
+      max_abs_delta_x_m: 0.08
+      max_abs_delta_y_m: 0.08
+      max_abs_delta_yaw_rad: 0.25
+      no_fall: true
+      hold_s: 0.5
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 5.0
+
   - id: walk_forward
     tier: 1
     verbs:
@@ -124,10 +277,12 @@ tasks:
       foot_clearance_weight: 1.0
       alternating_contact_weight: 4.0
       locomotion_no_progress_penalty: 5.0
-      late_hold_progress_start: 0.65
-      goal_hold_progress_start: 0.65
+      late_hold_progress_start: 0.95
+      goal_hold_progress_start: 1.0
       no_support_weight: 3.0
       double_support_weight: 2.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
       action_rate_weight: -0.01
     success:
       torso_z_min_ratio: 0.75

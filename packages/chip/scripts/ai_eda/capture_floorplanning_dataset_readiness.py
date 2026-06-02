@@ -554,6 +554,12 @@ def main() -> int:
         "conversion_claim_allowed": False,
         "training_claim_allowed": False,
         "e1_optimization_claim_allowed": False,
+        "false_claim_flags": {
+            "release_use_allowed": False,
+            "conversion_claim_allowed": False,
+            "training_claim_allowed": False,
+            "e1_optimization_claim_allowed": False,
+        },
         "status": "BLOCKED_WITH_READINESS_CONTRACT" if blockers else "READY_FOR_CONVERSION",
         "assets": assets,
         "blockers": blockers,

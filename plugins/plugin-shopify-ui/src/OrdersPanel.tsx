@@ -68,12 +68,25 @@ function FinancialBadge({
 function OrderRow({ order }: { order: ShopifyOrder }) {
   const [expanded, setExpanded] = useState(false);
 
+  const toggle = useAgentElement<HTMLButtonElement>({
+    id: `order-toggle-${order.id}`,
+    role: "button",
+    label: `Order ${order.name} details`,
+    group: "orders",
+    status: expanded ? "active" : "inactive",
+    description: `Expand or collapse details for order ${order.name}`,
+    onActivate: () => setExpanded((prev) => !prev),
+  });
+
   return (
     <div className="rounded-xl border border-border/20 bg-card/30">
       <button
+        ref={toggle.ref}
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
         className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-card/50 rounded-xl"
+        {...toggle.agentProps}
       >
         <div className="min-w-[4rem] shrink-0">
           <div className="text-sm font-semibold text-txt">{order.name}</div>

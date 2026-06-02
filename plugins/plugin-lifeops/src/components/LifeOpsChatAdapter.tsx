@@ -58,6 +58,21 @@ export function postToChat(text: string, options?: { select?: boolean }): void {
   );
 }
 
+function postToChatAfterOpen(
+  text: string,
+  options?: { select?: boolean },
+): void {
+  if (typeof window === "undefined") {
+    postToChat(text, options);
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      postToChat(text, options);
+    });
+  });
+}
+
 export function buildMessageChatPrefill(message: LifeOpsInboxMessage): string {
   const subject = message.subject?.trim() || `${channelLabel(message.channel)}`;
   const receivedAt = formatChatDateTime(message.receivedAt);
@@ -121,13 +136,7 @@ export function useLifeOpsChatLauncher(): {
     ) => {
       select(selection ?? {});
       chatChrome?.openChat();
-      if (typeof window === "undefined") {
-        postToChat(text, options);
-        return;
-      }
-      window.requestAnimationFrame(() => {
-        postToChat(text, options);
-      });
+      postToChatAfterOpen(text, options);
     },
     [chatChrome, select],
   );

@@ -13,6 +13,8 @@ This is a **Capacitor bridge library**, not an elizaOS runtime plugin. It regist
 | Export | Description |
 |--------|-------------|
 | `AppleCalendar` | Capacitor plugin instance. Call its methods to access EventKit. |
+| `appleCalendarMacosBridgeCandidates` | Shared macOS EventKit dylib candidate policy consumed by LifeOps and other host plugins. |
+| `APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME` | Expected macOS EventKit dylib basename. |
 
 ### `AppleCalendar` methods (all return Promises)
 
@@ -37,6 +39,7 @@ plugins/plugin-native-calendar/
   src/
     index.ts          Entry: registers "AppleCalendar" Capacitor plugin, lazy-loads web fallback.
     definitions.ts    All TypeScript interfaces and types for the plugin API.
+    macos-bridge-policy.ts  Shared macOS EventKit dylib candidate policy.
     web.ts            Browser/web fallback. checkPermissions/requestPermissions return { calendar: "restricted", canRequest: false }; all other methods return { ok: false, error: "not_supported" }.
   ios/Sources/CalendarPlugin/
     CalendarPlugin.swift  Swift implementation: EventKit CRUD, permission handling, JSON mapping.
@@ -74,6 +77,7 @@ None. This package reads no environment variables and has no runtime configurati
 - **Not an elizaOS Plugin object.** There is no `Plugin` export with actions/providers/services. This is a Capacitor bridge; import `AppleCalendar` and call it directly from service code.
 - **Attendees are blocked by EventKit.** `createEvent`/`updateEvent` reject any `attendees` payload with `error: "unsupported_feature"`. EventKit does not permit third-party apps to set invitees.
 - **macOS uses the Electrobun EventKit dylib**, not this Capacitor plugin, for the desktop runtime. This Capacitor path is for the iOS/Capacitor app shell only.
+- **macOS bridge policy lives here.** Host plugins may resolve and call the Electrobun EventKit dylib, but the candidate list and expected basename belong to this package.
 - **iOS 17+ permission model.** `requestFullAccessToEvents` is used on iOS 17+; older devices fall back to `requestAccess(to:)`. `writeOnly` authorization maps to `restricted`, not `granted`.
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.

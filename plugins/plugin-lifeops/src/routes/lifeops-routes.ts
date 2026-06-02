@@ -12,6 +12,10 @@ import {
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
+import {
+  LIFEOPS_SCHEDULE_STATE_SCOPES,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -92,10 +96,6 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
-import {
-  LIFEOPS_SCHEDULE_STATE_SCOPES,
-  type SyncLifeOpsScheduleObservationsRequest,
-} from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { sanitizePaymentSourceForClient } from "../lifeops/service-mixin-payments.js";
 

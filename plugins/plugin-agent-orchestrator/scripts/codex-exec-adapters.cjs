@@ -57,7 +57,7 @@ function resolveCodexApprovalFlags(approvalPreset) {
 }
 
 function patchCodexAdapter(adapter) {
-  if (!adapter || adapter.adapterType !== "codex") {
+  if (adapter?.adapterType !== "codex") {
     return adapter;
   }
 

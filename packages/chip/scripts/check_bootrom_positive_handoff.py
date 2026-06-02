@@ -40,12 +40,63 @@ CLAIM_BOUNDARY = (
 )
 
 REQUIRED_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "capture_claim_boundary_recorded",
+        ("claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation",),
+    ),
+    ("capture_command_exit_zero", ("## command_exit_code: 0",)),
     ("reset_vector_fetch", ("reset-vector-fetch", "<_start>")),
     ("verifier_entrypoint_executed", ("<e1_secure_boot_main>",)),
     ("authenticated_image_verified", ("authenticated-image-verified",)),
     ("handoff_target_loaded_from_manifest", ("handoff-target-loaded-from-manifest",)),
     ("opensbi_entry_reached", ("OpenSBI", "entry")),
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "phone_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_secure_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+CAPTURE_SCRIPT = "scripts/capture_bootrom_positive_handoff.sh"
+DEFAULT_TRANSCRIPT = "docs/boot-rom/transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt"
+DEFAULT_REPORT = "build/reports/gate-bootrom-positive-handoff-check.json"
+
+
+def capture_command_configured() -> bool:
+    return bool(os.environ.get("ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD", "").strip())
+
+
+def next_command_plan() -> list[dict]:
+    return [
+        {
+            "id": "capture_bootrom_positive_handoff",
+            "scope": "repo_simulator",
+            "claim_boundary": "operator_capture_commands_only_not_secure_boot_evidence",
+            "commands": [
+                f"{CAPTURE_SCRIPT} plan",
+                (
+                    "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD='<real signed-image simulator command>' "
+                    f"{CAPTURE_SCRIPT} preflight"
+                ),
+                (
+                    "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD='<real signed-image simulator command>' "
+                    f"{CAPTURE_SCRIPT} run"
+                ),
+                "python3 scripts/check_bootrom_positive_handoff.py",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ],
+            "requires": [
+                "real secure-boot mask ROM simulator command, not a copied negative transcript",
+                "provisioned non-production test root",
+                "signed first-stage/OpenSBI payload selected from a signed manifest",
+                "reset-vector, verifier-entrypoint, authenticated-image, manifest-target, and OpenSBI-entry markers",
+            ],
+            "outputs": [DEFAULT_TRANSCRIPT, DEFAULT_REPORT],
+        }
+    ]
 
 
 def now_iso() -> str:
@@ -79,17 +130,30 @@ def report_payload(status: str, checks: list[dict], blocker_reason: str | None) 
         "as_of": now_iso(),
         "generated_utc": now_iso(),
         "subsystem": "security",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
+        "claim_allowed": False,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
         "linux_boot_claim_allowed": False,
         "android_boot_claim_allowed": False,
         "silicon_secure_boot_claim_allowed": False,
+        "production_readiness_claim_allowed": False,
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": sum(1 for check in checks if check["status"] == "pass"),
             "failures": failures,
+            "capture_command_configured": capture_command_configured(),
+            "next_command_batch_count": 0 if status == "PASS" else len(next_command_plan()),
         },
+        "capture_preflight": {
+            "status": "pass" if capture_command_configured() else "blocked",
+            "configured_env": "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD",
+            "command_configured": capture_command_configured(),
+            "transcript": rel(TRANSCRIPT),
+            "report": rel(REPORT_PATH),
+        },
+        "next_command_plan": [] if status == "PASS" else next_command_plan(),
         "checks": checks,
     }
 

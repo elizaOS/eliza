@@ -54,12 +54,12 @@ describe("vision image input validation", () => {
     expect(() =>
       parseVisionDataImageUrl("https://example.test/image.png"),
     ).toThrow(/Only data image URLs/);
-    expect(() =>
-      parseVisionDataImageUrl("javascript:alert(1)"),
-    ).toThrow(/Only data image URLs/);
-    expect(() =>
-      parseVisionDataImageUrl("data:image/png,not-base64"),
-    ).toThrow(/must be base64/);
+    expect(() => parseVisionDataImageUrl("javascript:alert(1)")).toThrow(
+      /Only data image URLs/,
+    );
+    expect(() => parseVisionDataImageUrl("data:image/png,not-base64")).toThrow(
+      /must be base64/,
+    );
     expect(() =>
       parseVisionDataImageUrl("data:text/html;base64,PGgxPkJvb208L2gxPg=="),
     ).toThrow(/Unsupported image media type/);

@@ -28,7 +28,7 @@ import {
   type LifeOpsUnclearReason,
 } from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
-import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
+import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";

@@ -29,14 +29,8 @@ export interface PrefixHash {
 	segmentHash: string;
 }
 
-function toHex(bytes: Uint8Array): string {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, "0"))
-		.join("");
-}
-
 export function hashString(value: string): string {
-	return toHex(createHash("sha256").update(value).digest());
+	return createHash("sha256").update(value).digest("hex");
 }
 
 function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {

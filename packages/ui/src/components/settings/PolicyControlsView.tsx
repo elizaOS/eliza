@@ -2,6 +2,7 @@ import { asRecord as asSharedRecord } from "@elizaos/shared";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { useTranslation } from "../../state/TranslationContext";
 import type {
@@ -217,6 +218,16 @@ export function PolicyControlsView() {
     [addressConfig.addresses],
   );
 
+  const { ref: saveRef, agentProps: saveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-save",
+      role: "button",
+      label: "Save policies",
+      group: "policy-controls",
+      description: "Persist wallet policy changes",
+      onActivate: () => void handleSave(),
+    });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -258,6 +269,7 @@ export function PolicyControlsView() {
 
       {/* Auto-Approve */}
       <PolicyRow
+        agentId="auto-approve"
         title={t("policycontrols.autoApprove.title", {
           defaultValue: "Auto-Approve",
         })}
@@ -283,6 +295,10 @@ export function PolicyControlsView() {
             {t("policycontrols.threshold", { defaultValue: "Threshold" })}
           </Label>
           <UsdField
+            agentId="auto-approve-threshold"
+            agentLabel={t("policycontrols.threshold", {
+              defaultValue: "Threshold",
+            })}
             value={autoApproveConfig.threshold ?? "5"}
             onChange={(v) =>
               updatePolicy("auto-approve-threshold", {
@@ -295,6 +311,7 @@ export function PolicyControlsView() {
 
       {/* Spending Limits */}
       <PolicyRow
+        agentId="spending-limit"
         title={t("policycontrols.spending.title", {
           defaultValue: "Spending Limits",
         })}
@@ -322,6 +339,7 @@ export function PolicyControlsView() {
       >
         <div className="grid grid-cols-3 gap-3">
           <UsdFieldLabeled
+            agentId="spending-per-tx"
             label={t("policycontrols.spending.perTx", {
               defaultValue: "Per Tx",
             })}
@@ -333,6 +351,7 @@ export function PolicyControlsView() {
             }
           />
           <UsdFieldLabeled
+            agentId="spending-daily"
             label={t("policycontrols.spending.daily", {
               defaultValue: "Daily",
             })}
@@ -344,6 +363,7 @@ export function PolicyControlsView() {
             }
           />
           <UsdFieldLabeled
+            agentId="spending-weekly"
             label={t("policycontrols.spending.weekly", {
               defaultValue: "Weekly",
             })}
@@ -359,6 +379,7 @@ export function PolicyControlsView() {
 
       {/* Rate Limits */}
       <PolicyRow
+        agentId="rate-limit"
         title={t("policycontrols.rateLimit.title", {
           defaultValue: "Rate Limits",
         })}
@@ -378,6 +399,7 @@ export function PolicyControlsView() {
       >
         <div className="grid grid-cols-2 gap-4">
           <SliderField
+            agentId="rate-limit-per-hour"
             label={t("policycontrols.rateLimit.perHour", {
               defaultValue: "Per Hour",
             })}
@@ -391,6 +413,7 @@ export function PolicyControlsView() {
             }
           />
           <SliderField
+            agentId="rate-limit-per-day"
             label={t("policycontrols.rateLimit.perDay", {
               defaultValue: "Per Day",
             })}
@@ -408,6 +431,7 @@ export function PolicyControlsView() {
 
       {/* Address Controls */}
       <PolicyRow
+        agentId="approved-addresses"
         title={t("policycontrols.address.title", {
           defaultValue: "Address Controls",
         })}
@@ -444,6 +468,7 @@ export function PolicyControlsView() {
 
       {/* Time Restrictions */}
       <PolicyRow
+        agentId="time-window"
         title={t("policycontrols.time.title", {
           defaultValue: "Time Restrictions",
         })}
@@ -477,6 +502,8 @@ export function PolicyControlsView() {
             })}
           </span>
           <Button
+            ref={saveRef}
+            {...saveAgentProps}
             variant="default"
             size="sm"
             className="text-xs"
@@ -530,18 +557,28 @@ export function PolicyControlsView() {
 /* ── Sub-components ──────────────────────────────────────────────────── */
 
 function PolicyRow({
+  agentId,
   title,
   desc,
   enabled,
   onToggle,
   children,
 }: {
+  agentId: string;
   title: string;
   desc: string;
   enabled: boolean;
   onToggle: (v: boolean) => void;
   children?: React.ReactNode;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `policy-toggle-${agentId}`,
+    role: "toggle",
+    label: `Toggle ${title}`,
+    group: "policy-controls",
+    status: enabled ? "active" : "inactive",
+    onActivate: () => onToggle(!enabled),
+  });
   return (
     <div className="py-3.5">
       <div className="flex items-center justify-between">
@@ -550,6 +587,8 @@ function PolicyRow({
           <div className="text-xs text-muted mt-0.5">{desc}</div>
         </div>
         <Switch
+          ref={ref}
+          {...agentProps}
           checked={enabled}
           onCheckedChange={onToggle}
           aria-label={title}
@@ -561,18 +600,34 @@ function PolicyRow({
 }
 
 function UsdField({
+  agentId,
+  agentLabel,
   value,
   onChange,
 }: {
+  agentId: string;
+  agentLabel: string;
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `policy-usd-${agentId}`,
+    role: "number-input",
+    label: agentLabel,
+    group: "policy-controls",
+    getValue: () => value,
+    onFill: (v) => {
+      if (/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(v)) onChange(v.slice(0, 32));
+    },
+  });
   return (
     <div className="relative w-28">
       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-2xs text-muted pointer-events-none">
         $
       </span>
       <Input
+        ref={ref}
+        {...agentProps}
         type="text"
         inputMode="decimal"
         value={value}
@@ -588,10 +643,12 @@ function UsdField({
 }
 
 function UsdFieldLabeled({
+  agentId,
   label,
   value,
   onChange,
 }: {
+  agentId: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -599,24 +656,42 @@ function UsdFieldLabeled({
   return (
     <div className="space-y-1">
       <Label className="text-xs-tight text-muted">{label}</Label>
-      <UsdField value={value} onChange={onChange} />
+      <UsdField
+        agentId={agentId}
+        agentLabel={label}
+        value={value}
+        onChange={onChange}
+      />
     </div>
   );
 }
 
 function SliderField({
+  agentId,
   label,
   value,
   min,
   max,
   onChange,
 }: {
+  agentId: string;
   label: string;
   value: number;
   min: number;
   max: number;
   onChange: (v: number) => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLSpanElement>({
+    id: `policy-slider-${agentId}`,
+    role: "slider",
+    label,
+    group: "policy-controls",
+    getValue: () => value,
+    onFill: (v) => {
+      const n = Number(v);
+      if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+    },
+  });
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between">
@@ -626,12 +701,55 @@ function SliderField({
         </span>
       </div>
       <Slider
+        ref={ref}
+        {...agentProps}
         value={[value]}
         min={min}
         max={max}
         step={1}
         onValueChange={([v]: number[]) => onChange(v)}
       />
+    </div>
+  );
+}
+
+function AddressRow({
+  address,
+  chain,
+  onRemove,
+}: {
+  address: string;
+  chain: string;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const removeControl = useAgentElement<HTMLButtonElement>({
+    id: `policy-address-remove-${address}`,
+    role: "button",
+    label: t("policycontrols.address.remove", { defaultValue: "remove" }),
+    group: "policy-addresses",
+    description: `Remove ${address} from the address policy list`,
+    onActivate: onRemove,
+  });
+  return (
+    <div className="flex items-center justify-between group text-xs-tight font-mono text-muted py-1">
+      <div className="flex items-center gap-1.5 truncate">
+        <span className="truncate">{address}</span>
+        {chain && (
+          <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
+            {chain}
+          </span>
+        )}
+      </div>
+      <button
+        ref={removeControl.ref}
+        type="button"
+        className="text-danger opacity-0 group-hover:opacity-100 text-2xs ml-2"
+        onClick={onRemove}
+        {...removeControl.agentProps}
+      >
+        {t("policycontrols.address.remove", { defaultValue: "remove" })}
+      </button>
     </div>
   );
 }
@@ -648,6 +766,44 @@ function AddressSection({
   const { t } = useTranslation();
   const [newAddr, setNewAddr] = useState("");
   const [addrError, setAddrError] = useState<string | null>(null);
+
+  const { ref: allowlistRef, agentProps: allowlistAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-allowlist",
+      role: "button",
+      label: "Address allowlist mode",
+      group: "policy-address",
+      status: config.mode === "whitelist" ? "active" : "inactive",
+      onActivate: () => onUpdate({ ...config, mode: "whitelist" }),
+    });
+  const { ref: blocklistRef, agentProps: blocklistAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-blocklist",
+      role: "button",
+      label: "Address blocklist mode",
+      group: "policy-address",
+      status: config.mode === "blacklist" ? "active" : "inactive",
+      onActivate: () => onUpdate({ ...config, mode: "blacklist" }),
+    });
+  const { ref: newAddrRef, agentProps: newAddrAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "policy-address-input",
+      role: "text-input",
+      label: "New policy address",
+      group: "policy-address",
+      getValue: () => newAddr,
+      onFill: (v) => {
+        setNewAddr(v);
+        setAddrError(null);
+      },
+    });
+  const { ref: addRef, agentProps: addAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-add",
+      role: "button",
+      label: "Add policy address",
+      group: "policy-address",
+    });
 
   const handleAdd = () => {
     const trimmed = newAddr.trim();
@@ -691,6 +847,8 @@ function AddressSection({
     <div className="space-y-3">
       <div className="flex gap-2">
         <Button
+          ref={allowlistRef}
+          {...allowlistAgentProps}
           variant={config.mode === "whitelist" ? "default" : "ghost"}
           size="sm"
           className="text-xs-tight h-7"
@@ -701,6 +859,8 @@ function AddressSection({
           })}
         </Button>
         <Button
+          ref={blocklistRef}
+          {...blocklistAgentProps}
           variant={config.mode === "blacklist" ? "default" : "ghost"}
           size="sm"
           className="text-xs-tight h-7"
@@ -714,38 +874,21 @@ function AddressSection({
 
       {addresses.length > 0 && (
         <div className="space-y-1">
-          {addresses.map((addr) => {
-            const chain = chainTypeLabel(addr);
-            return (
-              <div
-                key={addr}
-                className="flex items-center justify-between group text-xs-tight font-mono text-muted py-1"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="truncate">{addr}</span>
-                  {chain && (
-                    <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
-                      {chain}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="text-danger opacity-0 group-hover:opacity-100 text-2xs ml-2"
-                  onClick={() => handleRemove(addr)}
-                >
-                  {t("policycontrols.address.remove", {
-                    defaultValue: "remove",
-                  })}
-                </button>
-              </div>
-            );
-          })}
+          {addresses.map((addr) => (
+            <AddressRow
+              key={addr}
+              address={addr}
+              chain={chainTypeLabel(addr)}
+              onRemove={() => handleRemove(addr)}
+            />
+          ))}
         </div>
       )}
 
       <div className="flex gap-2">
         <Input
+          ref={newAddrRef}
+          {...newAddrAgentProps}
           type="text"
           value={newAddr}
           onChange={(e) => {
@@ -759,6 +902,8 @@ function AddressSection({
           className="h-8 text-xs font-mono flex-1"
         />
         <Button
+          ref={addRef}
+          {...addAgentProps}
           variant="ghost"
           size="sm"
           className="text-xs h-8"

@@ -700,7 +700,7 @@ function travelProviderRelayRouteHandler(): LegacyRouteHandler {
     const method = (httpReq.method ?? "GET").toUpperCase();
     const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
     const { handleTravelProviderRelayRoute } = await import(
-      "./travel-provider-relay-routes.js"
+      "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes"
     );
     await handleTravelProviderRelayRoute(
       httpReq,

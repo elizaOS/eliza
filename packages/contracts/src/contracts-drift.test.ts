@@ -1,9 +1,16 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+	type BscTradeRoutePreference,
+	type BscTradeRouteProvider,
+	type BscTradeSide,
+	type BscTradeTxStatus,
+	CHARACTER_LANGUAGES,
+	type CharacterLanguage,
 	DEPLOYMENT_TARGET_RUNTIMES,
 	type DeploymentTargetRuntime,
 	ELIZA_CLOUD_SERVICES,
 	type ElizaCloudService,
+	type EvmSigningCapabilityKind,
 	LINKED_ACCOUNT_ACCOUNT_SOURCES,
 	LINKED_ACCOUNT_HEALTH_STATES,
 	LINKED_ACCOUNT_PROVIDER_IDS,
@@ -15,12 +22,21 @@ import {
 	type LinkedAccountSource,
 	type LinkedAccountStatus,
 	type ResolvedElizaCloudTopology,
+	type RoleGrantSource,
+	type RoleName,
 	SERVICE_CAPABILITIES,
 	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 	SERVICE_TRANSPORTS,
 	type ServiceCapability,
 	type ServiceRouteAccountStrategy,
 	type ServiceTransport,
+	type StewardWebhookEventType,
+	type TradePermissionMode,
+	type WalletChainKind,
+	type WalletMarketOverviewProviderId,
+	type WalletNetworkMode,
+	type WalletProviderKind,
+	type WalletSource,
 } from './index.js';
 
 describe('@elizaos/contracts public literals', () => {
@@ -59,6 +75,7 @@ describe('@elizaos/contracts public literals', () => {
 			'deepseek-api',
 			'zai-api',
 			'moonshot-api',
+			'cerebras-api',
 		]);
 
 		expect(new Set(LINKED_ACCOUNT_PROVIDER_IDS).size).toBe(LINKED_ACCOUNT_PROVIDER_IDS.length);
@@ -121,5 +138,70 @@ describe('@elizaos/contracts public literals', () => {
 
 		expect(Object.keys(services).sort()).toEqual([...ELIZA_CLOUD_SERVICES].sort());
 		expectTypeOf<ElizaCloudService>().toEqualTypeOf<(typeof ELIZA_CLOUD_SERVICES)[number]>();
+	});
+
+	it('exports character language literals consumed by style presets', () => {
+		expect([...CHARACTER_LANGUAGES]).toEqual(['en', 'zh-CN', 'ko', 'es', 'pt', 'vi', 'tl']);
+		expect(new Set(CHARACTER_LANGUAGES).size).toBe(CHARACTER_LANGUAGES.length);
+
+		expectTypeOf<CharacterLanguage>().toEqualTypeOf<(typeof CHARACTER_LANGUAGES)[number]>();
+	});
+
+	it('keeps role unions exhaustive for role-resolution consumers', () => {
+		const roleNames = ['OWNER', 'ADMIN', 'USER', 'GUEST'] as const;
+		const roleGrantSources = ['owner', 'manual', 'connector_admin'] as const;
+
+		expectTypeOf<RoleName>().toEqualTypeOf<(typeof roleNames)[number]>();
+		expectTypeOf<RoleGrantSource>().toEqualTypeOf<(typeof roleGrantSources)[number]>();
+	});
+
+	it('keeps wallet union contracts exhaustive for wallet API consumers', () => {
+		const networkModes = ['mainnet', 'testnet'] as const;
+		const walletSources = ['local', 'cloud'] as const;
+		const chainKinds = ['evm', 'solana'] as const;
+		const providerKinds = ['local', 'privy', 'steward'] as const;
+		const tradePermissionModes = [
+			'user-sign-only',
+			'manual-local-key',
+			'agent-auto',
+			'disabled',
+		] as const;
+		const bscTradeSides = ['buy', 'sell'] as const;
+		const bscTradeRouteProviders = ['pancakeswap-v2', '0x'] as const;
+		const bscTradeRoutePreferences = ['pancakeswap-v2', '0x', 'auto'] as const;
+		const bscTradeStatuses = ['pending', 'success', 'reverted', 'not_found'] as const;
+		const evmSigningCapabilityKinds = [
+			'local',
+			'steward-self',
+			'steward-cloud',
+			'cloud-view-only',
+			'none',
+		] as const;
+		const marketOverviewProviders = ['coingecko', 'polymarket'] as const;
+		const stewardWebhookEvents = [
+			'tx.pending',
+			'tx.approved',
+			'tx.denied',
+			'tx.confirmed',
+		] as const;
+
+		expectTypeOf<WalletNetworkMode>().toEqualTypeOf<(typeof networkModes)[number]>();
+		expectTypeOf<WalletSource>().toEqualTypeOf<(typeof walletSources)[number]>();
+		expectTypeOf<WalletChainKind>().toEqualTypeOf<(typeof chainKinds)[number]>();
+		expectTypeOf<WalletProviderKind>().toEqualTypeOf<(typeof providerKinds)[number]>();
+		expectTypeOf<TradePermissionMode>().toEqualTypeOf<(typeof tradePermissionModes)[number]>();
+		expectTypeOf<BscTradeSide>().toEqualTypeOf<(typeof bscTradeSides)[number]>();
+		expectTypeOf<BscTradeRouteProvider>().toEqualTypeOf<(typeof bscTradeRouteProviders)[number]>();
+		expectTypeOf<BscTradeRoutePreference>().toEqualTypeOf<
+			(typeof bscTradeRoutePreferences)[number]
+		>();
+		expectTypeOf<BscTradeTxStatus>().toEqualTypeOf<(typeof bscTradeStatuses)[number]>();
+		expectTypeOf<EvmSigningCapabilityKind>().toEqualTypeOf<
+			(typeof evmSigningCapabilityKinds)[number]
+		>();
+		expectTypeOf<WalletMarketOverviewProviderId>().toEqualTypeOf<
+			(typeof marketOverviewProviders)[number]
+		>();
+		expectTypeOf<StewardWebhookEventType>().toEqualTypeOf<(typeof stewardWebhookEvents)[number]>();
 	});
 });

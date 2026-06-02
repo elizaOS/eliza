@@ -637,6 +637,78 @@ describe("google plugin", () => {
     });
   });
 
+  it("normalizes hostile Gmail limits before listing messages", async () => {
+    const fakeGmail = {
+      users: {
+        messages: {
+          list: vi.fn(async () => ({
+            data: { messages: [] },
+          })),
+          get: vi.fn(),
+        },
+      },
+    };
+    const factory = { gmail: vi.fn(async () => fakeGmail) } as GoogleApiClientFactory;
+    const client = new GoogleGmailClient(factory);
+
+    await expect(
+      client.searchGmailMessages({
+        accountId: "acct_google_1",
+        query: "in:inbox",
+        maxResults: Number.POSITIVE_INFINITY,
+      })
+    ).resolves.toEqual([]);
+    fakeGmail.users.messages.list.mockClear();
+    await expect(
+      client.listGmailUnrespondedThreads({
+        accountId: "acct_google_1",
+        olderThanDays: -4,
+        maxResults: Number.NaN,
+      })
+    ).resolves.toEqual([]);
+
+    expect(fakeGmail.users.messages.list).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ q: "in:sent older_than:3d", maxResults: 100 })
+    );
+  });
+
+  it("escapes Drive folder IDs and preserves explicit trashed predicates", async () => {
+    const fakeDrive = {
+      files: {
+        list: vi.fn(async () => ({ data: { files: [] } })),
+      },
+    };
+    const factory = { drive: vi.fn(async () => fakeDrive) } as GoogleApiClientFactory;
+    const client = new GoogleDriveClient(factory);
+
+    await client.listDriveFiles({
+      accountId: "acct_google_1",
+      folderId: "root' OR trashed = true OR 'x",
+      maxResults: Number.NEGATIVE_INFINITY,
+    });
+    await client.searchDriveFiles({
+      accountId: "acct_google_1",
+      query: "name contains 'Plan' and trashed = true",
+      maxResults: 1.9,
+    });
+
+    expect(fakeDrive.files.list).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        q: "'root\\' OR trashed = true OR \\'x' in parents and trashed = false",
+        pageSize: 25,
+      })
+    );
+    expect(fakeDrive.files.list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        q: "name contains 'Plan' and trashed = true",
+        pageSize: 1,
+      })
+    );
+  });
+
   it("uses fake Calendar, Drive, and Meet clients with narrow capabilities", async () => {
     const fakeCalendar = {
       calendarList: {

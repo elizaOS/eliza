@@ -79,7 +79,21 @@ run_capture() {
 	start_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 	status=FAIL
 	status_file=$(mktemp "${TMPDIR:-/tmp}/capture-aosp-evidence.XXXXXX")
+	emit_signal_trailer() {
+		rc=$1
+		signal_name=$2
+		end_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+		echo "eliza-evidence: ended_utc=$end_utc"
+		echo "eliza-evidence: status=FAIL"
+		echo "eliza-evidence: interrupted_by_signal=$signal_name"
+		echo "END_UTC=$end_utc"
+		echo "RESULT=$rc"
+		echo "$rc" > "$status_file"
+		exit "$rc"
+	}
 	{
+		trap 'emit_signal_trailer 130 INT' INT
+		trap 'emit_signal_trailer 143 TERM' TERM
 		echo "eliza-evidence: target=aosp artifact=$artifact"
 		echo "eliza-evidence: external_tree=$aosp"
 		echo "eliza-evidence: command=$command_label"
@@ -114,6 +128,7 @@ run_capture() {
 		if [ "$rc" -eq 0 ]; then
 			status=PASS
 		fi
+		trap - INT TERM
 		echo "eliza-evidence: ended_utc=$end_utc"
 		echo "eliza-evidence: status=$status"
 		echo "END_UTC=$end_utc"

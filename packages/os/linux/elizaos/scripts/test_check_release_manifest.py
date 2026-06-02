@@ -281,6 +281,39 @@ class ReleaseManifestRuntimeEvidenceTests(unittest.TestCase):
             self.assertIn("staged_bun_sha256 mismatch", messages)
             self.assertTrue(any(result.status == "FAIL" for result in results))
 
+    def test_report_payload_records_actionable_hash_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "filename": "elizaos-linux-riscv64-gui-test.iso",
+                        "sha256": "a" * 64,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            results = [
+                gate.GateResult(
+                    "FAIL",
+                    "iso_sha256 mismatch between manifest and evidence: "
+                    "manifest='a' evidence='b'",
+                )
+            ]
+
+            payload = gate.report_payload("FAIL", results, manifest)
+
+            self.assertEqual(payload["status"], "fail")
+            self.assertEqual(payload["summary"]["failures"], 1)
+            self.assertEqual(len(payload["findings"]), 1)
+            finding = payload["findings"][0]
+            self.assertIn("qemu_virt_smoke.py", finding["next_command"])
+            self.assertIn("--iso packages/os/linux/elizaos/out/elizaos-linux-riscv64-gui-test.iso", finding["next_command"])
+            self.assertIn("check_release_manifest.py", finding["next_commands"][-1])
+            self.assertIs(payload["release_claim_allowed"], False)
+            self.assertIn("not_generated_eliza_ap", payload["claim_boundary"])
+
 
 if __name__ == "__main__":
     unittest.main()

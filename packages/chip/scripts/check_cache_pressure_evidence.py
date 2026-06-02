@@ -35,6 +35,11 @@ REQUIRED_METRICS = {
 REQUIRED_COVERAGE_LEVELS = {"l1d", "l2", "l3", "slc"}
 REQUIRED_CONTENTION_AGENTS = {"cpu_miss_stream", "display_qos"}
 PHONE_CLAIM_LEVELS = {"L5_PROTOTYPE_SILICON", "L6_COMPLETE_PHONE"}
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 CACHE_PRESSURE_MAX_AGE = timedelta(days=30)
 REQUIRED_HARNESS = ROOT / "verify/cocotb/cache/test_cache_pressure.py"
 EXPECTED_JUNIT_RESULTS = {
@@ -438,6 +443,7 @@ def missing_report(report_path: Path) -> dict[str, Any]:
         "rtl_pressure_claim_allowed": False,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "evidence_class": "missing_cocotb_cache_pressure_harness",
         "claim_boundary": (
             "Cache throughput/QoS claims require a measured pressure report from "
@@ -568,6 +574,18 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                     ),
                 }
             )
+    if data.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        findings.append(
+            {
+                "name": "false_claim_flags",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": (
+                    "cache-pressure cocotb evidence must carry a nested false_claim_flags "
+                    "map matching the denied generic, phone, and release claims"
+                ),
+            }
+        )
     if data.get("evidence_class") != MEASURED_EVIDENCE_CLASS:
         findings.append(
             {
@@ -777,6 +795,7 @@ def measured_report(report_path: Path, data: dict[str, Any]) -> dict[str, Any]:
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
         "claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "findings": findings,
         "blocked_count": len(blocking) + len(gaps),
         "memory_blocked_count": len(
@@ -801,6 +820,7 @@ def build_report(report_path: Path) -> dict[str, Any]:
             "rtl_pressure_claim_allowed": False,
             "phone_claim_allowed": False,
             "release_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
             "evidence_class": "invalid_cache_pressure_report",
             "findings": [
                 {

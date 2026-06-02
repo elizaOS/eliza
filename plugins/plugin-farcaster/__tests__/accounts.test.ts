@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { FarcasterService } from "../services/FarcasterService";
 import {
   getFarcasterFid,
+  listFarcasterAccountIds,
+  readFarcasterAccountId,
   resolveDefaultFarcasterAccountId,
   validateFarcasterConfig,
 } from "../utils/config";
@@ -48,6 +50,40 @@ describe("Farcaster account config", () => {
     const config = validateFarcasterConfig(rt);
     expect(config.accountId).toBe("brand");
     expect(config.FARCASTER_FID).toBe(456);
+  });
+
+  it("ignores malformed FARCASTER_ACCOUNTS JSON instead of crashing account discovery", () => {
+    const rt = runtime({
+      FARCASTER_ACCOUNTS: "{not json",
+    });
+
+    expect(listFarcasterAccountIds(rt)).toEqual(["default"]);
+    expect(resolveDefaultFarcasterAccountId(rt)).toBe("default");
+  });
+
+  it("does not leak legacy env credentials into named account validation", () => {
+    const rt = runtime({
+      FARCASTER_FID: "123",
+      FARCASTER_SIGNER_UUID: "signer-default",
+      FARCASTER_NEYNAR_API_KEY: "key-default",
+      FARCASTER_ACCOUNTS: JSON.stringify({
+        brand: {
+          FARCASTER_FID: 456,
+        },
+      }),
+    });
+
+    expect(() => validateFarcasterConfig(rt, "brand")).toThrow("FARCASTER_SIGNER_UUID");
+    expect(() => validateFarcasterConfig(rt, "brand")).toThrow("FARCASTER_NEYNAR_API_KEY");
+  });
+
+  it("reads account IDs from nested Farcaster metadata and normalizes whitespace", () => {
+    expect(
+      readFarcasterAccountId(
+        { accountId: " " },
+        { data: { farcaster: { accountId: "  brand  " } } }
+      )
+    ).toBe("brand");
   });
 
   it("keeps active managers keyed by agent and account", () => {

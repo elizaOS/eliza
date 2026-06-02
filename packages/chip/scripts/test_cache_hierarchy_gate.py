@@ -23,6 +23,7 @@ def valid_scoped_artifact() -> dict:
         "claim_boundary": "Local cache evidence only; not phone, silicon, or release evidence.",
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
+        "false_claim_flags": cache.FALSE_CLAIM_FLAGS,
         "provenance": {
             "source_artifacts": [
                 {
@@ -139,6 +140,14 @@ class CacheHierarchyGateTest(unittest.TestCase):
             any("phone_claim_allowed must be false" in error for error in errors),
             errors,
         )
+
+    def test_scoped_artifact_without_nested_false_claim_flags_is_rejected(self) -> None:
+        artifact = valid_scoped_artifact()
+        del artifact["false_claim_flags"]
+
+        errors = self.run_gate(valid_gate(), artifact)
+
+        self.assertTrue(any("false_claim_flags" in error for error in errors), errors)
 
     def test_artifact_schema_mapping_gap_is_rejected(self) -> None:
         gate = valid_gate()

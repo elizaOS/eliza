@@ -4,12 +4,106 @@
 // from voice-main.tsx — importing the entry module would re-run its
 // `createRoot`/`root.render` and mount a second React tree onto the canvas.
 //
-// TSL's node API is a runtime proxy with no usable static types, so — like the
-// production VoiceWaveform — the three/tsl modules are typed loosely at this
-// boundary and nowhere else. Concepts receive `THREE`/`TSL` already imported.
+// TSL's node API is a runtime proxy with no usable static types, so the
+// three/tsl modules are typed loosely at this boundary and nowhere else.
+// Concepts receive `THREE`/`TSL` already imported.
 
 export type WebGPUModule = Record<string, any>;
 export type TSLModule = Record<string, any>;
+
+/** Visual mode for the voice orb harness: idle / mic open / agent speaking. */
+export type VoiceWaveformMode = "idle" | "listening" | "responding";
+
+/** Minimal analyser surface — lets the harness drive the orb from a fake. */
+export type FrequencyAnalyser = Pick<
+  AnalyserNode,
+  "frequencyBinCount" | "getByteFrequencyData"
+>;
+
+/**
+ * Average `analyser` frequency data into `count` normalized [0,1] buckets.
+ * Pure and DOM-free so the orb can be driven from a fake analyser.
+ */
+export function sampleFrequencyLevels(
+  analyser: FrequencyAnalyser | null | undefined,
+  count: number,
+): Float32Array {
+  const out = new Float32Array(count);
+  if (!analyser || count <= 0) return out;
+  const bins = analyser.frequencyBinCount;
+  if (bins <= 0) return out;
+  const buf = new Uint8Array(bins);
+  analyser.getByteFrequencyData(buf);
+  const step = Math.max(1, Math.floor(bins / count));
+  for (let i = 0; i < count; i += 1) {
+    let sum = 0;
+    for (let j = 0; j < step; j += 1) {
+      sum += buf[i * step + j] ?? 0;
+    }
+    out[i] = sum / step / 255;
+  }
+  return out;
+}
+
+export interface LevelSummary {
+  /** Mean amplitude across the whole spectrum, [0,1]. */
+  energy: number;
+  /** Mean amplitude of the low third (bass), [0,1]. */
+  low: number;
+  /** Mean amplitude of the middle third (mids), [0,1]. */
+  mid: number;
+  /** Mean amplitude of the upper third (treble), [0,1]. */
+  high: number;
+}
+
+/**
+ * Collapse per-bucket frequency levels into an overall energy plus low/mid/high
+ * band averages. Pure so the shader-driving math stays unit-testable.
+ */
+export function summarizeLevels(levels: Float32Array): LevelSummary {
+  const n = levels.length;
+  if (n === 0) return { energy: 0, low: 0, mid: 0, high: 0 };
+  const third = Math.max(1, Math.floor(n / 3));
+  let total = 0;
+  let low = 0;
+  let mid = 0;
+  let high = 0;
+  for (let i = 0; i < n; i += 1) {
+    const v = levels[i] ?? 0;
+    total += v;
+    if (i < third) low += v;
+    else if (i < third * 2) mid += v;
+    else high += v;
+  }
+  const highCount = Math.max(1, n - third * 2);
+  return {
+    energy: total / n,
+    low: low / third,
+    mid: mid / third,
+    high: high / highCount,
+  };
+}
+
+/**
+ * Fake analyser with a slow, bass-weighted moving spectrum so the orb visibly
+ * pulses in the harness without a live audio graph. Matches the read-only
+ * surface the harness consumes (`frequencyBinCount` + `getByteFrequencyData`).
+ */
+export function makeOscillatingAnalyser(): FrequencyAnalyser {
+  const bins = 128;
+  return {
+    frequencyBinCount: bins,
+    getByteFrequencyData: (buf: Uint8Array) => {
+      const t = Date.now() / 1000;
+      for (let i = 0; i < buf.length; i += 1) {
+        const f = i / buf.length;
+        const wave = Math.sin(t * 4 + f * 8) * 0.5 + 0.5;
+        const tilt = 1 - f * 0.6;
+        buf[i] = Math.max(0, Math.min(255, Math.round(wave * tilt * 230)));
+      }
+    },
+  };
+}
 
 /** Per-frame state pushed into the shader uniforms. Amplitudes are [0,1]. */
 export interface OrbFrame {

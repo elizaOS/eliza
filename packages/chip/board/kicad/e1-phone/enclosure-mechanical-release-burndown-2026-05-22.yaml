@@ -436,7 +436,7 @@ cross_checks:
 
 release_blockers:
   - selected supplier STEP/B-rep geometry, signed drawings, land patterns, datums, and sample evidence are missing
-  - routed KiCad PCB, ERC/DRC, production component STEP export, and transform report are missing
+  - local routed KiCad PCB and STEP candidates exist for review only; release ERC/DRC, production component STEP export, and transform report are missing
   - board/component height model bindings are incomplete and concept STEP artifacts cannot release enclosure fit
   - USB-C plug overmold sweep, insertion-cycle, saddle or shell-stake load path, and ESD/chassis review are missing
   - side power/volume button force-travel, load-bypass, wake, recovery-combo, lifecycle, and side-load evidence are missing

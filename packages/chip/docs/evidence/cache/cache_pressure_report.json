@@ -1,4 +1,5 @@
 {
+  "blocked_count": 5,
   "claim_allowed": false,
   "claim_boundary": "This cocotb report measures RTL pressure behavior only. It is not L5/L6 silicon, DRAM, LPDDR, Android, or phone bandwidth evidence.",
   "cocotb_top_levels": [
@@ -18,8 +19,77 @@
     "slc"
   ],
   "evidence_class": "rtl_cocotb_pressure_measurement",
+  "false_claim_flags": {
+    "claim_allowed": false,
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
+  "findings": [
+    {
+      "name": "status",
+      "path": "docs/evidence/cache/cache_pressure_report.json",
+      "reason": "measured cache-pressure reports must be producer-status pass; stale blocked reports stay blocked",
+      "record_status": "blocked",
+      "status": "invalid"
+    },
+    {
+      "name": "captured_utc",
+      "path": "docs/evidence/cache/cache_pressure_report.json",
+      "reason": "captured_utc must be an ISO-8601 timestamp with timezone",
+      "status": "invalid"
+    },
+    {
+      "name": "claim_boundary",
+      "path": "docs/evidence/cache/cache_pressure_report.json",
+      "reason": "claim_boundary must explicitly block phone/release promotion",
+      "status": "invalid"
+    },
+    {
+      "name": "generated_by_sha256",
+      "path": "docs/evidence/cache/cache_pressure_report.json",
+      "reason": "generated_by_sha256 must hash-bind the cocotb harness",
+      "status": "invalid"
+    },
+    {
+      "name": "result_artifacts",
+      "path": "docs/evidence/cache/cache_pressure_report.json",
+      "reason": "measured pressure reports must hash-bind cocotb JUnit XML result_artifacts",
+      "status": "invalid"
+    },
+    {
+      "name": "lmbench_memory_runner",
+      "path": "docs/evidence/memory/lmbench_blocked.json",
+      "reason": "RV64 cross toolchain or lmbench source absent",
+      "status": "blocked"
+    },
+    {
+      "missing_reports": [
+        {
+          "name": "contended_android_memory_trace",
+          "path": "docs/evidence/memory/contended_android_memory_trace.json"
+        },
+        {
+          "name": "contended_bandwidth_latency_report",
+          "path": "docs/evidence/memory/contended_bandwidth_latency_report.json"
+        },
+        {
+          "name": "lpddr_bandwidth_latency_benchmark_report",
+          "path": "docs/evidence/memory/lpddr_bandwidth_latency_benchmark_report.json"
+        },
+        {
+          "name": "phone_2028_memory_scorecard",
+          "path": "docs/evidence/memory/phone_2028_memory_scorecard.json"
+        }
+      ],
+      "name": "l5_l6_memory_real_target_reports",
+      "path": "docs/evidence/memory",
+      "reason": "Phone-class memory evidence requires real-target L5/L6 bandwidth, latency, contention, Android shared-buffer, and scorecard artifacts.",
+      "status": "missing"
+    }
+  ],
   "generated_by": "verify/cocotb/cache/test_cache_pressure.py",
   "generated_utc": "2026-05-30T23:52:11Z",
+  "memory_blocked_count": 1,
   "metrics": {
     "attempted_misses": 20,
     "blocked_cycles": 8,
@@ -36,8 +106,8 @@
   ],
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
-  "rtl_pressure_claim_allowed": true,
+  "rtl_pressure_claim_allowed": false,
   "schema": "eliza.cache_pressure_evidence.v1",
   "source": "cocotb-cache-pressure",
-  "status": "pass"
+  "status": "blocked"
 }

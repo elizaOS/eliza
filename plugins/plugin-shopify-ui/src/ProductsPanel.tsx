@@ -47,6 +47,58 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const titleInput = useAgentElement<HTMLInputElement>({
+    id: "create-product-title",
+    role: "text-input",
+    label: "Product title",
+    group: "create-product",
+    description: "Title for the new product (required)",
+    getValue: () => title,
+    onFill: (value) => setTitle(value),
+  });
+  const vendorInput = useAgentElement<HTMLInputElement>({
+    id: "create-product-vendor",
+    role: "text-input",
+    label: "Product vendor",
+    group: "create-product",
+    description: "Vendor for the new product",
+    getValue: () => vendor,
+    onFill: (value) => setVendor(value),
+  });
+  const typeInput = useAgentElement<HTMLInputElement>({
+    id: "create-product-type",
+    role: "text-input",
+    label: "Product type",
+    group: "create-product",
+    description: "Type/category for the new product",
+    getValue: () => productType,
+    onFill: (value) => setProductType(value),
+  });
+  const priceInput = useAgentElement<HTMLInputElement>({
+    id: "create-product-price",
+    role: "number-input",
+    label: "Product base price",
+    group: "create-product",
+    description: "Base price for the new product",
+    getValue: () => price,
+    onFill: (value) => setPrice(value),
+  });
+  const cancelButton = useAgentElement<HTMLButtonElement>({
+    id: "create-product-cancel",
+    role: "button",
+    label: "Cancel create product",
+    group: "create-product",
+    description: "Close the create-product dialog without saving",
+    onActivate: onClose,
+  });
+  const submitButton = useAgentElement<HTMLButtonElement>({
+    id: "create-product-submit",
+    role: "button",
+    label: "Submit new product",
+    group: "create-product",
+    description: "Create the new draft product",
+  });
+
   function reset() {
     setTitle("");
     setVendor("");
@@ -110,11 +162,13 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
               Title <span className="text-danger">*</span>
             </label>
             <Input
+              ref={titleInput.ref}
               id="product-title"
               placeholder="e.g. Classic T-Shirt"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              {...titleInput.agentProps}
             />
           </div>
           <div className="space-y-1.5">
@@ -125,10 +179,12 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
               Vendor
             </label>
             <Input
+              ref={vendorInput.ref}
               id="product-vendor"
               placeholder="e.g. Acme Co."
               value={vendor}
               onChange={(e) => setVendor(e.target.value)}
+              {...vendorInput.agentProps}
             />
           </div>
           <div className="space-y-1.5">
@@ -139,10 +195,12 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
               Product type
             </label>
             <Input
+              ref={typeInput.ref}
               id="product-type"
               placeholder="e.g. Apparel"
               value={productType}
               onChange={(e) => setProductType(e.target.value)}
+              {...typeInput.agentProps}
             />
           </div>
           <div className="space-y-1.5">
@@ -153,6 +211,7 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
               Base price
             </label>
             <Input
+              ref={priceInput.ref}
               id="product-price"
               type="number"
               min="0"
@@ -160,6 +219,7 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
               placeholder="0.00"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
+              {...priceInput.agentProps}
             />
           </div>
 
@@ -170,10 +230,21 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
           ) : null}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button
+              ref={cancelButton.ref}
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              {...cancelButton.agentProps}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !title.trim()}>
+            <Button
+              ref={submitButton.ref}
+              type="submit"
+              disabled={submitting || !title.trim()}
+              {...submitButton.agentProps}
+            >
               {submitting ? "Creating…" : "Create product"}
             </Button>
           </DialogFooter>
@@ -272,6 +343,22 @@ export function ProductsPanel({
     group: "products",
     description: "Open the dialog to create a new product",
   });
+  const prevPageButton = useAgentElement<HTMLButtonElement>({
+    id: "products-page-prev",
+    role: "button",
+    label: "Previous products page",
+    group: "products",
+    description: "Go to the previous page of products",
+    onActivate: () => onPageChange(page - 1),
+  });
+  const nextPageButton = useAgentElement<HTMLButtonElement>({
+    id: "products-page-next",
+    role: "button",
+    label: "Next products page",
+    group: "products",
+    description: "Go to the next page of products",
+    onActivate: () => onPageChange(page + 1),
+  });
 
   return (
     <div className="space-y-3">
@@ -337,6 +424,7 @@ export function ProductsPanel({
           </span>
           <div className="flex items-center gap-1.5">
             <Button
+              ref={prevPageButton.ref}
               type="button"
               variant="outline"
               size="icon"
@@ -344,10 +432,12 @@ export function ProductsPanel({
               disabled={page <= 1 || loading}
               onClick={() => onPageChange(page - 1)}
               aria-label="Previous page"
+              {...prevPageButton.agentProps}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
+              ref={nextPageButton.ref}
               type="button"
               variant="outline"
               size="icon"
@@ -355,6 +445,7 @@ export function ProductsPanel({
               disabled={page >= totalPages || loading}
               onClick={() => onPageChange(page + 1)}
               aria-label="Next page"
+              {...nextPageButton.agentProps}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

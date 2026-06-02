@@ -99,8 +99,8 @@ escalation ladders, autofill whitelists). LifeOps-owned packs live in
 - `morning-brief` — fired on `wake.confirmed`.
 - `quiet-user-watcher` — daily watcher.
 - `habit-starters` — eight habits, **offered** (not auto-seeded).
-- `executive-assistant` — sixteen personal/executive assistant scenarios,
-  **offered** (not auto-seeded).
+- `executive-assistant` — twenty-five scheduled records covering twenty
+  personal/executive assistant scenario families, **offered** (not auto-seeded).
 - `inbox-triage-starter` — opt-in, gated on Gmail.
 - `followup-starter` — watcher firing per overdue relationship.
 - `autofill-whitelist-pack`, `consolidation-policies`, `escalation-ladders`

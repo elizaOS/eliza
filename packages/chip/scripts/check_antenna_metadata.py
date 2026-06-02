@@ -18,6 +18,7 @@ PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
 REPORT = ROOT / "build/reports/antenna_metadata.json"
 SCHEMA = "eliza.antenna_metadata.v1"
 CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evidence"
+TARGET_CELL = "e1_chip_top"
 FALSE_CLAIM_FLAGS = {
     "release_claim_allowed": False,
     "padframe_claim_allowed": False,
@@ -119,12 +120,29 @@ def write_report(
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def latest_report() -> Path | None:
-    reports = sorted(
+def antenna_reports() -> list[Path]:
+    return sorted(
         [*RUNS.glob(ANTENNA_REPORT_GLOB), *DERIVED_RUNS.glob(DERIVED_ANTENNA_REPORT_GLOB)],
         key=lambda path: path.stat().st_mtime,
     )
-    return reports[-1] if reports else None
+
+
+def report_contains_target_cell(path: Path) -> bool:
+    try:
+        payload = yaml.safe_load(path.read_text()) or []
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(payload, list):
+        return False
+    return any(isinstance(cell, dict) and cell.get("cell") == TARGET_CELL for cell in payload)
+
+
+def latest_report() -> Path | None:
+    reports = antenna_reports()
+    for report in reversed(reports):
+        if report_contains_target_cell(report):
+            return report
+    return None
 
 
 def display_path(path: Path) -> str:
@@ -152,7 +170,7 @@ def missing_metadata(report_path: Path) -> dict[str, list[str]]:
     for cell in payload:
         if not isinstance(cell, dict):
             raise ValueError("OpenLane antenna report schema error: cell entry is not a mapping")
-        if cell.get("cell") != "e1_chip_top":
+        if cell.get("cell") != TARGET_CELL:
             continue
         top_cell_seen = True
         for direction in missing:
@@ -160,7 +178,7 @@ def missing_metadata(report_path: Path) -> dict[str, list[str]]:
             if isinstance(pins, list):
                 missing[direction].extend(str(pin) for pin in pins)
     if not top_cell_seen:
-        raise MissingTopCellError("OpenLane antenna report does not include cell=e1_chip_top")
+        raise MissingTopCellError(f"OpenLane antenna report does not include cell={TARGET_CELL}")
     return {direction: sorted(set(pins)) for direction, pins in missing.items() if pins}
 
 

@@ -46,6 +46,10 @@
   "generated_utc": "2026-05-24T02:03:00Z",
   "language_note": "Pythia (Bera et al., MICRO'21) is a CPU C++ tabular-SARSA prefetcher. Earlier project notes describing it as a GPU/ML prefetcher were incorrect; corrected here.",
   "phone_claim_allowed": false,
+  "false_claim_flags": {
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
   "port_location": "external/ChampSim/prefetcher/pythia/",
   "provenance": {
     "source_artifacts": [
