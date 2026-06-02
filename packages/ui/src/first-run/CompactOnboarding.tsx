@@ -70,7 +70,9 @@ export function CompactOnboarding(): React.ReactElement {
           <span
             aria-hidden
             className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${
-              voice.listening ? "bg-accent/15 ring-1 ring-accent" : "bg-bg-hover"
+              voice.listening
+                ? "bg-accent/15 ring-1 ring-accent"
+                : "bg-bg-hover"
             }`}
           >
             🎙️
