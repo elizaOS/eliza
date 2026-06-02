@@ -1,69 +1,23 @@
 import {
+  addLanguageRule,
+  DEFAULT_CHARACTER_LANGUAGE as DEFAULT_LANGUAGE,
+  normalizeCharacterLanguage,
+} from "./character-language.js";
+import {
   CHARACTER_DEFINITIONS,
   type CharacterDefinition,
 } from "./character-presets.characters.js";
 import { SHARED_STYLE_RULES } from "./character-presets.shared.js";
-import {
-  CHARACTER_LANGUAGES,
-  type CharacterLanguage,
-  type StylePreset,
+import type {
+  CharacterLanguage,
+  StylePreset,
 } from "./contracts/first-run-options.js";
+import { CHARACTER_LANGUAGES } from "./contracts/first-run-options.js";
 
-export { SHARED_STYLE_RULES };
-
-const DEFAULT_LANGUAGE: CharacterLanguage = "en";
-
-const LANGUAGE_REPLY_RULES: Record<CharacterLanguage, string> = {
-  en: "Default to natural English unless the user clearly switches languages.",
-  "zh-CN":
-    "Default to natural simplified Chinese unless the user clearly switches languages.",
-  ko: "Default to natural Korean unless the user clearly switches languages.",
-  es: "Default to natural Spanish unless the user clearly switches languages.",
-  pt: "Default to natural Brazilian Portuguese unless the user clearly switches languages.",
-  vi: "Default to natural Vietnamese unless the user clearly switches languages.",
-  tl: "Default to natural Tagalog unless the user clearly switches languages.",
-};
-
-function addLanguageRule(system: string, language: CharacterLanguage): string {
-  const rule = LANGUAGE_REPLY_RULES[language];
-  return `${system} ${rule}`;
-}
-
-export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
-  if (typeof input !== "string") {
-    return DEFAULT_LANGUAGE;
-  }
-
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return DEFAULT_LANGUAGE;
-  }
-
-  if ((CHARACTER_LANGUAGES as readonly string[]).includes(trimmed)) {
-    return trimmed as CharacterLanguage;
-  }
-
-  const lower = trimmed.toLowerCase();
-  if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
-    return "zh-CN";
-  }
-  if (lower.startsWith("ko")) {
-    return "ko";
-  }
-  if (lower.startsWith("es")) {
-    return "es";
-  }
-  if (lower.startsWith("pt")) {
-    return "pt";
-  }
-  if (lower.startsWith("vi")) {
-    return "vi";
-  }
-  if (lower.startsWith("tl") || lower.startsWith("fil")) {
-    return "tl";
-  }
-  return DEFAULT_LANGUAGE;
-}
+// Re-export for backward compatibility — the data-free implementation now lives
+// in ./character-language.js so the i18n keyword matcher can import it without
+// pulling the ~49KB CHARACTER_DEFINITIONS data that this module builds below.
+export { normalizeCharacterLanguage, SHARED_STYLE_RULES };
 
 function mergeSharedStyleRules(all: readonly string[]): string[] {
   const merged = [...all];
