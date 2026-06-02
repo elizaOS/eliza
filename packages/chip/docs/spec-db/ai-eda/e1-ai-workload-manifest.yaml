@@ -68,7 +68,7 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: benchmarks/sim/run_npu_scale_sim.py
-        sha256: 66d6d477de83407ca364c06f58e19ab4f560b3fd86f5af4ba47182fbc27244f2
+        sha256: cd67ee3d1f2bd99b352ad8ec80942a2a731097a6debb37cbda9229fbaff2b7b7
         role: simulator
       - path: docs/spec-db/npu-2028-target.yaml
         sha256: cd379e2914d4ca089270d1a82ae9e6e69fdb850d4656d42ffa395f8e6e78077c
@@ -95,7 +95,7 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: benchmarks/sim/run_npu_scale_sim.py
-        sha256: 66d6d477de83407ca364c06f58e19ab4f560b3fd86f5af4ba47182fbc27244f2
+        sha256: cd67ee3d1f2bd99b352ad8ec80942a2a731097a6debb37cbda9229fbaff2b7b7
         role: simulator
       - path: docs/spec-db/competitor-2028-target.md
         sha256: 0efd5b23ee19f908fbce1d2a2015e1a8f296c64c275d810bcbfb9b953529bef5
@@ -150,7 +150,7 @@ workloads:
         sha256: ab4ef28f289ec6bd64c892f7e5faf336fbd8d291bce75e408669c989c0654c31
         role: e2e_test
       - path: compiler/runtime/e1_npu_stablehlo.py
-        sha256: 856f11461e773aeb979f7350e43b46685aeac813601cedc9f8dc7d389e2143af
+        sha256: e3d9b3c9cbdc7adef4c3b1bdeca4dc886b3a90e65c43a906168b541dcd261633
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
         sha256: 6ae121292252e26217ccaecee615a1ab53140c6a65925fa120d4022153e14562
