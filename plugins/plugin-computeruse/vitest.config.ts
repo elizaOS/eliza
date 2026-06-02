@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const coreSrcRoot = path.resolve(__dirname, "../../packages/core/src");
+const loggerSrcRoot = path.resolve(__dirname, "../../packages/logger/src");
 
 const testExcludes = [
   "dist/**",
@@ -26,6 +27,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.*)$/,
         replacement: path.join(coreSrcRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(loggerSrcRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/logger\/(.*)$/,
+        replacement: path.join(loggerSrcRoot, "$1"),
       },
     ],
   },
